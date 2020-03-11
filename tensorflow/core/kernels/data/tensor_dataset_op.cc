@@ -38,6 +38,8 @@ class TensorDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
       : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
+    dtypes_.reserve(tensors_.size());
+    shapes_.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
       shapes_.emplace_back(t.shape().dim_sizes());
@@ -62,6 +64,8 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return 1LL; }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -70,12 +74,12 @@ class TensorDatasetOp::Dataset : public DatasetBase {
     components.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       Node* node;
-      if (ctx->optimization_only()) {
+      if (ctx->serialize_data_tensors()) {
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+      } else {
         TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
         DCHECK_NE(ctx->input_list(), nullptr);
         ctx->input_list()->emplace_back(node->name(), t);
-      } else {
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
       }
       components.emplace_back(node);
     }
@@ -129,7 +133,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    bool produced_ GUARDED_BY(mu_);
+    bool produced_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<Tensor> tensors_;

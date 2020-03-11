@@ -21,14 +21,20 @@ import numpy as np
 from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.python import pywrap_tensorflow
+# We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
+# protobuf errors where a file is defined twice on MacOS.
+# pylint: disable=invalid-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_bfloat16
+from tensorflow.python import _dtypes
 from tensorflow.python.util.tf_export import tf_export
 
-_np_bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
+_np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
+# pylint: disable=slots-on-old-class
 @tf_export("dtypes.DType", "DType")
-class DType(object):
+class DType(_dtypes.DType):
   """Represents the type of the elements in a `Tensor`.
 
   The following `DType` objects are defined:
@@ -60,29 +66,7 @@ class DType(object):
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
-
-  def __init__(self, type_enum):
-    """Creates a new `DataType`.
-
-    NOTE(mrry): In normal circumstances, you should not need to
-    construct a `DataType` object directly. Instead, use the
-    `tf.as_dtype()` function.
-
-    Args:
-      type_enum: A `types_pb2.DataType` enum value.
-
-    Raises:
-      TypeError: If `type_enum` is not a value `types_pb2.DataType`.
-
-    """
-    # TODO(mrry): Make the necessary changes (using __new__) to ensure
-    # that calling this returns one of the interned values.
-    type_enum = int(type_enum)
-    if (type_enum not in types_pb2.DataType.values() or
-        type_enum == types_pb2.DT_INVALID):
-      raise TypeError("type_enum is not a valid types_pb2.DataType: %s" %
-                      type_enum)
-    self._type_enum = type_enum
+  __slots__ = ()
 
   @property
   def _is_ref_dtype(self):
@@ -107,7 +91,7 @@ class DType(object):
 
   @property
   def real_dtype(self):
-    """Returns the dtype correspond to this dtype's real part."""
+    """Returns the `DType` corresponding to this `DType`'s real part."""
     base = self.base_dtype
     if base == complex64:
       return float32
@@ -117,61 +101,9 @@ class DType(object):
       return self
 
   @property
-  def is_numpy_compatible(self):
-    return self._type_enum not in _NUMPY_INCOMPATIBLE
-
-  @property
   def as_numpy_dtype(self):
-    """Returns a `numpy.dtype` based on this `DType`."""
+    """Returns a Python `type` object based on this `DType`."""
     return _TF_TO_NP[self._type_enum]
-
-  @property
-  def as_datatype_enum(self):
-    """Returns a `types_pb2.DataType` enum value based on this `DType`."""
-    return self._type_enum
-
-  @property
-  def is_bool(self):
-    """Returns whether this is a boolean data type"""
-    return self.base_dtype == bool
-
-  @property
-  def is_integer(self):
-    """Returns whether this is a (non-quantized) integer type."""
-    return (self.is_numpy_compatible and not self.is_quantized and
-            np.issubdtype(self.as_numpy_dtype, np.integer))
-
-  @property
-  def is_floating(self):
-    """Returns whether this is a (non-quantized, real) floating point type."""
-    return ((self.is_numpy_compatible and
-             np.issubdtype(self.as_numpy_dtype, np.floating)) or
-            self.base_dtype == bfloat16)
-
-  @property
-  def is_complex(self):
-    """Returns whether this is a complex floating point type."""
-    return self.base_dtype in (complex64, complex128)
-
-  @property
-  def is_quantized(self):
-    """Returns whether this is a quantized data type."""
-    return self.base_dtype in _QUANTIZED_DTYPES_NO_REF
-
-  @property
-  def is_unsigned(self):
-    """Returns whether this type is unsigned.
-
-    Non-numeric, unordered, and quantized types are not considered unsigned, and
-    this function returns `False`.
-
-    Returns:
-      Whether a `DType` is unsigned.
-    """
-    try:
-      return self.min == 0
-    except TypeError:
-      return False
 
   @property
   def min(self):
@@ -188,10 +120,10 @@ class DType(object):
     # there is no simple way to get the min value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).min
+      return np.finfo(self.as_numpy_dtype).min
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).min
+        return np.iinfo(self.as_numpy_dtype).min
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
@@ -212,10 +144,10 @@ class DType(object):
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).max
+      return np.finfo(self.as_numpy_dtype).max
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).max
+        return np.iinfo(self.as_numpy_dtype).max
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
@@ -261,39 +193,28 @@ class DType(object):
     """Returns True iff this DType refers to the same type as `other`."""
     if other is None:
       return False
-    try:
-      dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype  # pylint: disable=protected-access
-    except TypeError:
-      return False
+
+    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+      try:
+        other = as_dtype(other)
+      except TypeError:
+        return False
+
+    return self._type_enum == other._type_enum  # pylint: disable=protected-access
 
   def __ne__(self, other):
     """Returns True iff self != other."""
     return not self.__eq__(other)
 
-  @property
-  def name(self):
-    """Returns the string name for this `DType`."""
-    return _TYPE_TO_STRING[self._type_enum]
-
-  def __str__(self):
-    return "<dtype: %r>" % self.name
-
-  def __repr__(self):
-    return "tf." + self.name
-
-  def __hash__(self):
-    return self._type_enum
+  # "If a class that overrides __eq__() needs to retain the implementation
+  #  of __hash__() from a parent class, the interpreter must be told this
+  #  explicitly by setting __hash__ = <ParentClass>.__hash__."
+  # TODO(slebedev): Remove once __eq__ and __ne__ are implemented in C++.
+  __hash__ = _dtypes.DType.__hash__
 
   def __reduce__(self):
     return as_dtype, (self.name,)
-
-  @property
-  def size(self):
-    if (self._type_enum == types_pb2.DT_VARIANT or
-        self._type_enum == types_pb2.DT_RESOURCE):
-      return 1
-    return np.dtype(self.as_numpy_dtype).itemsize
+# pylint: enable=slots-on-old-class
 
 
 # Define data type range of numpy dtype
@@ -390,11 +311,6 @@ qint16_ref = DType(types_pb2.DT_QINT16_REF)
 quint16_ref = DType(types_pb2.DT_QUINT16_REF)
 qint32_ref = DType(types_pb2.DT_QINT32_REF)
 bfloat16_ref = DType(types_pb2.DT_BFLOAT16_REF)
-
-_NUMPY_INCOMPATIBLE = frozenset([
-    types_pb2.DT_VARIANT, types_pb2.DT_VARIANT_REF, types_pb2.DT_RESOURCE,
-    types_pb2.DT_RESOURCE_REF
-])
 
 # Maintain an intern table so that we don't have to create a large
 # number of small objects.
@@ -566,6 +482,10 @@ for pdt in [
     _NP_TO_TF[pdt] = next(
         _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
 
+
+TF_VALUE_DTYPES = set(_NP_TO_TF.values())
+
+
 _TF_TO_NP = {
     types_pb2.DT_HALF:
         np.float16,
@@ -712,6 +632,12 @@ def as_dtype(type_value):
     return _ANY_TO_TF[type_value]
   except KeyError:
     pass
+
+  if hasattr(type_value, "dtype"):
+    try:
+      return _NP_TO_TF[np.dtype(type_value.dtype).type]
+    except (KeyError, TypeError):
+      pass
 
   raise TypeError("Cannot convert value %r to a TensorFlow DType." %
                   (type_value,))

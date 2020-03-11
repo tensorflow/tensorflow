@@ -26,8 +26,13 @@ namespace tensorflow {
 namespace grappler {
 using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
+// In order to avoid the overhead of creating a large thread pool, we set a
+// small default thread count. This value should be revised should DeviceSimple
+// be used to evaluate nodes with a large degree of intra-op parallelism.
+const int kDeviceSimpleThreads = 2;
+
 DeviceSimple::DeviceSimple() : DeviceBase(Env::Default()) {
-  eigen_worker_threads_.num_threads = port::MaxParallelism();
+  eigen_worker_threads_.num_threads = kDeviceSimpleThreads;
   eigen_worker_threads_.workers = new thread::ThreadPool(
       Env::Default(), "evaluation_utils", eigen_worker_threads_.num_threads);
   eigen_device_.reset(new Eigen::ThreadPoolDevice(

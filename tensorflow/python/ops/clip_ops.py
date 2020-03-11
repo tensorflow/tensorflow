@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -31,6 +29,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -49,30 +48,59 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   correct results.
 
   For example:
-  
-  ```python
-  A = tf.constant([[1, 20, 13], [3, 21, 13]])
-  B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
-  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError` 
-  as input and clip_values are of different dtype
-  ```
-  
+
+  Basic usage passes a scalar as the min and max value.
+
+  >>> t = tf.constant([[-10., -1., 0.], [0., 2., 10.]])
+  >>> t2 = tf.clip_by_value(t, clip_value_min=-1, clip_value_max=1)
+  >>> t2.numpy()
+  array([[-1., -1.,  0.],
+         [ 0.,  1.,  1.]], dtype=float32)
+
+  The min and max can be the same size as `t`, or broadcastable to that size.
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[2],[1]]
+  >>> t3 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  >>> t3.numpy()
+  array([[ 2.,  2., 10.],
+         [ 1.,  1., 10.]], dtype=float32)
+
+  Broadcasting fails, intentionally, if you would expand the dimensions of `t`
+
+  >>> t = tf.constant([[-1, 0., 10.], [-1, 0, 10]])
+  >>> clip_min = [[[2, 1]]] # Has a third axis
+  >>> t4 = tf.clip_by_value(t, clip_value_min=clip_min, clip_value_max=100)
+  Traceback (most recent call last):
+  ...
+  InvalidArgumentError: Incompatible shapes: [2,3] vs. [1,1,2]
+
+  It throws a `TypeError` if you try to clip an `int` to a `float` value
+  (`tf.cast` the input to `float` first).
+
+  >>> t = tf.constant([[1, 2], [3, 4]], dtype=tf.int32)
+  >>> t5 = tf.clip_by_value(t, clip_value_min=-3.1, clip_value_max=3.1)
+  Traceback (most recent call last):
+  ...
+  TypeError: Cannot convert ...
+
+
   Args:
     t: A `Tensor` or `IndexedSlices`.
-    clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The minimum value to clip by.
-    clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
-      as `t`. The maximum value to clip by.
+    clip_value_min: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
+    clip_value_max: The minimum value to clip to. A scalar `Tensor` or one that
+      is broadcastable to the shape of `t`.
     name: A name for the operation (optional).
 
   Returns:
     A clipped `Tensor` or `IndexedSlices`.
 
   Raises:
-    ValueError: If the clip tensors would trigger array broadcasting
-      that would make the returned tensor larger than the input.
-    TypeError: If dtype of the input is `int32` and dtype of 
-    the `clip_value_min' or `clip_value_max` is `float32`  
+    `tf.errors.InvalidArgumentError`: If the clip tensors would trigger array
+      broadcasting that would make the returned tensor larger than the input.
+    TypeError: If dtype of the input is `int32` and dtype of
+      the `clip_value_min` or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -92,12 +120,12 @@ def clip_by_value(t, clip_value_min, clip_value_max,
       t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
-  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+  # TODO(scottzhu): switch to use new implementation in 2 weeks.
   # return gen_math_ops.clip_by_value(
   #     t, clip_value_min, clip_value_max, name=name)
 
 
-# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# TODO(scottzhu): switch to use new implementation in 2 weeks.
 # @ops.RegisterGradient("ClipByValue")
 def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""
@@ -208,8 +236,8 @@ def global_norm(t_list, name=None):
   Raises:
     TypeError: If `t_list` is not a sequence.
   """
-  if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, six.string_types)):
+  if (not isinstance(t_list, collections_abc.Sequence) or
+      isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   with ops.name_scope(name, "global_norm", t_list) as name:
@@ -261,9 +289,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Any of the entries of `t_list` that are of type `None` are ignored.
 
-  This is the correct way to perform gradient clipping (for example, see
-  [Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
-  ([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
+  This is the correct way to perform gradient clipping (Pascanu et al., 2012).
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.
@@ -281,9 +307,14 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
+
+  References:
+    On the difficulty of training Recurrent Neural Networks:
+      [Pascanu et al., 2012](http://proceedings.mlr.press/v28/pascanu13.html)
+      ([pdf](http://proceedings.mlr.press/v28/pascanu13.pdf))
   """
-  if (not isinstance(t_list, collections.Sequence)
-      or isinstance(t_list, six.string_types)):
+  if (not isinstance(t_list, collections_abc.Sequence) or
+      isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
   if use_norm is None:

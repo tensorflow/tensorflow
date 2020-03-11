@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import numbers
 import os
 import re
 import sys
 import time
+import types
 
 import six
 
@@ -49,6 +51,30 @@ TEST_REPORTER_TEST_ENV = "TEST_REPORT_FILE_PREFIX"
 # Environment variable that lets the TensorFlow runtime allocate a new
 # threadpool for each benchmark.
 OVERRIDE_GLOBAL_THREADPOOL = "TF_OVERRIDE_GLOBAL_THREADPOOL"
+
+
+def _rename_function(f, arg_num, name):
+  """Rename the given function's name appears in the stack trace."""
+  func_code = six.get_function_code(f)
+  if six.PY2:
+    new_code = types.CodeType(arg_num, func_code.co_nlocals,
+                              func_code.co_stacksize, func_code.co_flags,
+                              func_code.co_code, func_code.co_consts,
+                              func_code.co_names, func_code.co_varnames,
+                              func_code.co_filename, name,
+                              func_code.co_firstlineno, func_code.co_lnotab,
+                              func_code.co_freevars, func_code.co_cellvars)
+  else:
+    new_code = types.CodeType(arg_num, 0, func_code.co_nlocals,
+                              func_code.co_stacksize, func_code.co_flags,
+                              func_code.co_code, func_code.co_consts,
+                              func_code.co_names, func_code.co_varnames,
+                              func_code.co_filename, name,
+                              func_code.co_firstlineno, func_code.co_lnotab,
+                              func_code.co_freevars, func_code.co_cellvars)
+
+  return types.FunctionType(new_code, f.__globals__, name, f.__defaults__,
+                            f.__closure__)
 
 
 def _global_report_benchmark(
@@ -136,11 +162,42 @@ class _BenchmarkRegistrar(type):
   """The Benchmark class registrar.  Used by abstract Benchmark class."""
 
   def __new__(mcs, clsname, base, attrs):
-    newclass = super(mcs, _BenchmarkRegistrar).__new__(
-        mcs, clsname, base, attrs)
+    newclass = type.__new__(mcs, clsname, base, attrs)
     if not newclass.is_abstract():
       GLOBAL_BENCHMARK_REGISTRY.add(newclass)
     return newclass
+
+
+class ParameterizedBenchmark(_BenchmarkRegistrar):
+  """Metaclass to generate parameterized benchmarks."""
+
+  def __new__(mcs, clsname, base, attrs):
+    param_config_list = attrs["_benchmark_parameters"]
+
+    for name in attrs.copy().keys():
+      if not name.startswith("benchmark"):
+        continue
+
+      original_benchmark = attrs[name]
+      del attrs[name]
+
+      for param_config in param_config_list:
+        test_name_suffix = param_config[0]
+        params = param_config[1:]
+        benchmark_name = name + "__" + test_name_suffix
+        if benchmark_name in attrs:
+          raise Exception(
+              "Benchmark named {} already defined.".format(benchmark_name))
+
+        def create_benchmark_function(params):
+          return lambda self: original_benchmark(self, *params)
+
+        benchmark = create_benchmark_function(params)
+        # Renaming is important because `report_benchmark` function looks up the
+        # function name in the stack trace.
+        attrs[benchmark_name] = _rename_function(benchmark, 1, benchmark_name)
+
+    return super(mcs, ParameterizedBenchmark).__new__(mcs, clsname, base, attrs)
 
 
 class Benchmark(six.with_metaclass(_BenchmarkRegistrar, object)):
@@ -323,6 +380,16 @@ class TensorFlowBenchmark(Benchmark):
       lm1 = l - 1
       return (s[l//2] + s[lm1//2]) / 2.0
 
+    def _mean_and_stdev(x):
+      if not x:
+        return -1, -1
+      l = len(x)
+      mean = sum(x) / l
+      if l == 1:
+        return mean, -1
+      variance = sum([(e - mean) * (e - mean) for e in x]) / (l - 1)
+      return mean, math.sqrt(variance)
+
     median_delta = _median(deltas)
 
     benchmark_values = {
@@ -333,6 +400,10 @@ class TensorFlowBenchmark(Benchmark):
         "throughput": mbs / median_delta
     }
     self.report_benchmark(**benchmark_values)
+
+    mean_delta, stdev_delta = _mean_and_stdev(deltas)
+    unreported_extras["wall_time_mean"] = mean_delta
+    unreported_extras["wall_time_stdev"] = stdev_delta
     benchmark_values["extras"].update(unreported_extras)
     return benchmark_values
 

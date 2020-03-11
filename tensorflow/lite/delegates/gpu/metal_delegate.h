@@ -16,57 +16,63 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_
 
-#import <Metal/Metal.h>
+#ifdef SWIG
+#define TFL_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TFL_COMPILE_LIBRARY
+#define TFL_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TFL_CAPI_EXPORT __declspec(dllimport)
+#endif  // TFL_COMPILE_LIBRARY
+#else
+#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
 
-#include <functional>
+#ifdef __cplusplus
+extern "C" {
+#else
+// For "C" 'bool' is not built-in type.
+#include <stdbool.h>
+#endif  // __cplusplus
 
-#include "tensorflow/lite/c/c_api_internal.h"
+typedef struct TfLiteDelegate TfLiteDelegate;
+
+typedef enum {
+  // waitUntilCompleted
+  TFLGpuDelegateWaitTypePassive,
+  // Minimize latency. It uses active spinning instead of mutex and consumes
+  // additional CPU resources.
+  TFLGpuDelegateWaitTypeActive,
+  // Useful when the output is used with GPU pipeline then or if external
+  // command encoder is set.
+  TFLGpuDelegateWaitTypeDoNotWait,
+  // Tries to avoid GPU sleep mode.
+  TFLGpuDelegateWaitTypeAggressive,
+} TFLGpuDelegateWaitType;
 
 // Creates a new delegate instance that need to be destroyed with
 // DeleteFlowDelegate when delegate is no longer used by tflite.
-struct GpuDelegateOptions {
+typedef struct {
   // Allows to quantify tensors, downcast values, process in float16 etc.
   bool allow_precision_loss;
-
-  enum class WaitType {
-    // waitUntilCompleted
-    kPassive,
-    // Minimize latency. It uses active spinning instead of mutex and consumes
-    // additional CPU resources.
-    kActive,
-    // Useful when the output is used with GPU pipeline then or if external
-    // command encoder is set.
-    kDoNotWait,
-    // Tries to avoid GPU sleep mode.
-    kAggressive,
-  };
-  WaitType wait_type;
-};
+  TFLGpuDelegateWaitType wait_type;
+} TFLGpuDelegateOptions;
 
 // Creates a new delegate instance that need to be destroyed with
-// `DeleteTfLiteGpuDelegate` when delegate is no longer used by TFLite.
+// `TFLDeleteTfLiteGpuDelegate` when delegate is no longer used by TFLite.
 // When `options` is set to `nullptr`, the following default values are used:
 // .precision_loss_allowed = false,
 // .wait_type = kPassive,
-TfLiteDelegate* NewGpuDelegate(const GpuDelegateOptions* options);
+TFL_CAPI_EXPORT extern TfLiteDelegate* TFLGpuDelegateCreate(
+    const TFLGpuDelegateOptions* options);
 
-// Destroys a delegate created with `NewGpuDelegate` call.
-void DeleteGpuDelegate(TfLiteDelegate* delegate);
+// Destroys a delegate created with `TFLGpuDelegateCreate` call.
+TFL_CAPI_EXPORT extern void TFLGpuDelegateDelete(TfLiteDelegate* delegate);
 
-// Binds Metal buffer to an input or an output tensor in the initialized
-// delegate.  Bound buffer should have sufficient storage to accommodate all
-// elements of a tensor.  Returns non-zero on success, or zero otherwise.
-//
-// *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
-bool BindMetalBufferToTensor(TfLiteDelegate* delegate, int tensor_index,
-                             id<MTLBuffer> metal_buffer);
-
-// Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
-// into this encoder instead of the internal encoder.
-// The callback is a user-defined function to take control over encoder and
-// command buffer. Can be nullptr.
-bool TFLSetCommandEncoder(
-    TfLiteDelegate* delegate, id<MTLComputeCommandEncoder> encoder,
-    std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder);
+#ifdef __cplusplus
+}  // extern "C"
+#endif  // __cplusplus
 
 #endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_DELEGATE_H_

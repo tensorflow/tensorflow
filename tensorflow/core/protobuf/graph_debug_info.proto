@@ -1,10 +1,12 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "GraphDebugInfoProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message GraphDebugInfo {
   // This represents a file/line location in the source code.
@@ -37,5 +39,14 @@ message GraphDebugInfo {
   repeated string files = 1;
 
   // This maps a node name to a stack trace in the source code.
+  // The map key is a mangling of the containing function and op name with
+  // syntax:
+  //   op.name '@' func_name
+  // For ops in the top-level graph, the func_name is the empty string.
+  // Note that op names are restricted to a small number of characters which
+  // exclude '@', making it impossible to collide keys of this form. Function
+  // names accept a much wider set of characters.
+  // It would be preferable to avoid mangling and use a tuple key of (op.name,
+  // func_name), but this is not supported with protocol buffers.
   map<string, StackTrace> traces = 2;
 }

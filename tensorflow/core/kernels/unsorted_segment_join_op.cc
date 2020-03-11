@@ -114,10 +114,10 @@ class UnsortedSegmentJoinOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output("output", output_shape,
                                                      &output_tensor));
 
-    // Preprating flat tensors.
-    auto output_flat = output_tensor->flat<string>();
+    // Preparating flat tensors.
+    auto output_flat = output_tensor->flat<tstring>();
     auto flat_segment_id = segment_id.flat<INDICES_TYPE>();
-    auto flat_input = input.flat<string>();
+    auto flat_input = input.flat<tstring>();
 
     for (int i = 0; i < flat_segment_id.size(); i++) {
       OP_REQUIRES(

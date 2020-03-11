@@ -416,9 +416,21 @@ TEST_F(OperatorTest, BuiltinMul) {
 TEST_F(OperatorTest, ResizeBilinear) {
   ResizeBilinearOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, ResizeNearestNeighbor) {
@@ -727,6 +739,13 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+TEST_F(OperatorTest, BuiltinSegmentSum) {
+  SegmentSumOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SEGMENT_SUM", OperatorType::kSegmentSum), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, BuiltinReverseSequence) {
   ReverseSequenceOperator op;
   op.seq_dim = 3;
@@ -917,7 +936,35 @@ TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
 TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
 
-TEST_F(OperatorTest, VersioningMulTest) { SimpleVersioningTest<MulOperator>(); }
+void SimpleMulVersioningTest(ArrayDataType data_type, float multiplier,
+                             int version) {
+  MulOperator op;
+  op.inputs = {"input1", "input2"};
+  op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model model;
+  Array& input0 = model.GetOrCreateArray(op.inputs[0]);
+  Array& input1 = model.GetOrCreateArray(op.inputs[1]);
+  Array& output = model.GetOrCreateArray(op.outputs[0]);
+
+  input0.data_type = data_type;
+  input0.GetOrCreateQuantizationParams().scale = 1.0f;
+  input1.data_type = data_type;
+  input1.GetOrCreateQuantizationParams().scale = 1.0f;
+  output.data_type = data_type;
+  output.GetOrCreateQuantizationParams().scale = 1.0f / multiplier;
+
+  OperatorSignature signature = {.op = &op, .model = &model};
+  EXPECT_EQ(base_op->GetVersion(signature), version);
+}
+
+TEST_F(OperatorTest, VersioningMulTest) {
+  SimpleMulVersioningTest(ArrayDataType::kUint8, 0.5f, 1);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 0.5f, 2);
+  SimpleMulVersioningTest(ArrayDataType::kInt8, 2.0f, 3);
+}
 
 TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }
 
@@ -957,7 +1004,7 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   output_uint8_array.data_type = ArrayDataType::kUint8;
   OperatorSignature uint8_signature = {.op = &fully_connected_op,
                                        .model = &uint8_model};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+  EXPECT_EQ(op->GetVersion(uint8_signature), 6);
 
   Model int8_model;
   Array& input_int8_array =
@@ -971,7 +1018,7 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   output_int8_array.data_type = ArrayDataType::kInt8;
   OperatorSignature int8_signature = {.op = &fully_connected_op,
                                       .model = &int8_model};
-  EXPECT_EQ(op->GetVersion(int8_signature), 4);
+  EXPECT_EQ(op->GetVersion(int8_signature), 6);
 }
 
 TEST_F(OperatorTest, VersioningDequantizeTest) {

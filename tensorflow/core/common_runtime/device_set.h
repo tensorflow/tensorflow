@@ -21,11 +21,14 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+
+typedef std::vector<std::pair<Device*, int32>> PrioritizedDeviceVector;
 
 // DeviceSet is a container class for managing the various types of
 // devices used by a model.
@@ -35,7 +38,7 @@ class DeviceSet {
   ~DeviceSet();
 
   // Does not take ownership of 'device'.
-  void AddDevice(Device* device);
+  void AddDevice(Device* device) TF_LOCKS_EXCLUDED(devices_mu_);
 
   // Set the device designated as the "client".  This device
   // must also be registered via AddDevice().
@@ -64,15 +67,58 @@ class DeviceSet {
   // with more preferable devices earlier.
   std::vector<DeviceType> PrioritizedDeviceTypeList() const;
 
+  // Return the prioritized list of devices in this set.
+  // Devices are prioritized first by `DeviceTypeOrder`, then by name.
+  const PrioritizedDeviceVector& prioritized_devices() const
+      TF_LOCKS_EXCLUDED(devices_mu_);
+
+  // Return the prioritized list of unique device types in this set.
+  //
+  // The list will be ordered by decreasing priority. The priorities (the second
+  // element in the list's `std::pair<DeviceType, int32>`) will be initialized
+  // to the value of `DeviceTypeOrder` for the device types.
+  const PrioritizedDeviceTypeVector& prioritized_device_types() const
+      TF_LOCKS_EXCLUDED(devices_mu_);
+
   // An order to sort by device types according to system-determined
   // priority.
   //
   // Higher result implies higher priority.
   static int DeviceTypeOrder(const DeviceType& d);
 
+  // Sorts a PrioritizedDeviceVector according to devices and explicit
+  // priorities.
+  //
+  // After a call to this function, the argument vector will be sorted by
+  // explicit priority (the second element in the `std::pair<DeviceType,
+  // int32>`), then by `DeviceTypeOrder` of the device type, and lastly
+  // by device name.
+  static void SortPrioritizedDeviceVector(PrioritizedDeviceVector* vector);
+
+  // Sorts a PrioritizedDeviceTypeVector according to types and explicit
+  // priorities.
+  //
+  // After a call to this function, the argument vector will be sorted by
+  // explicit priority (the second element in the `std::pair<DeviceType,
+  // int32>`), then by `DeviceTypeOrder` of the device type.
+  static void SortPrioritizedDeviceTypeVector(
+      PrioritizedDeviceTypeVector* vector);
+
  private:
+  mutable mutex devices_mu_;
+
   // Not owned.
   std::vector<Device*> devices_;
+
+  // Cached prioritized vector, created on-the-fly when
+  // prioritized_devices() is called.
+  mutable PrioritizedDeviceVector prioritized_devices_
+      TF_GUARDED_BY(devices_mu_);
+
+  // Cached prioritized vector, created on-the-fly when
+  // prioritized_device_types() is called.
+  mutable PrioritizedDeviceTypeVector prioritized_device_types_
+      TF_GUARDED_BY(devices_mu_);
 
   // Fullname -> device* for device in devices_.
   std::unordered_map<string, Device*> device_by_name_;

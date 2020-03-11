@@ -8,7 +8,7 @@ Our smart reply model generates reply suggestions based on chat messages. The
 suggestions are intended to be contextually relevant, one-touch responses that
 help the user to easily reply to an incoming message.
 
-<a class="button button-primary" href="http://download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip">Download
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/smartreply_1.0_2017_11_01.zip">Download
 starter model and labels</a>
 
 ### Sample application
@@ -16,12 +16,13 @@ starter model and labels</a>
 There is a TensorFlow Lite sample application that demonstrates the smart reply
 model on Android.
 
-<a class="button button-primary" href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply">View
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android">View
 Android example</a>
 
 Read the
-[GitHub page](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/g3doc)
-to learn how the app works.
+[GitHub page](https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android/)
+to learn how the app works. Inside this project, you will also learn how to
+build an app with custom C++ ops.
 
 ## How it works
 
@@ -36,13 +37,13 @@ The on-device model comes with several benefits. It is:
 
 ## Example output
 
-<img alt="Animation showing smart reply" src="images/smart_reply.gif" />
+<img alt="Animation showing smart reply" src="images/smart_reply.gif" style="max-width: 300px"/>
 
 ## Read more about this
 
 <ul>
   <li><a href="https://arxiv.org/pdf/1708.00630.pdf">Research paper</a></li>
-  <li><a href="https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/models/smartreply/">Source code</a></li>
+  <li><a href="https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android">Source code</a></li>
 </ul>
 
 ## Users

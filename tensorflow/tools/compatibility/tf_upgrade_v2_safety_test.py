@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 import six
 
 from tensorflow.python.framework import test_util
@@ -46,20 +44,17 @@ class TfUpgradeV2SafetyTest(test_util.TensorFlowTestCase):
 
   def testTensorFlowImport(self):
     text = "import tensorflow as tf"
-    expected_text = ("import tensorflow.compat.v1 as tf" + os.linesep +
-                     "tf.disable_v2_behavior()" + os.linesep)
+    expected_text = ("import tensorflow.compat.v1 as tf")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "import tensorflow as tf, other_import as y"
-    expected_text = ("import tensorflow.compat.v1 as tf, other_import as y" +
-                     os.linesep + "tf.disable_v2_behavior()" + os.linesep)
+    expected_text = ("import tensorflow.compat.v1 as tf, other_import as y")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "import tensorflow"
-    expected_text = ("import tensorflow.compat.v1 as tensorflow" + os.linesep +
-                     "tensorflow.disable_v2_behavior()" + os.linesep)
+    expected_text = ("import tensorflow.compat.v1 as tensorflow")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -70,6 +65,25 @@ class TfUpgradeV2SafetyTest(test_util.TensorFlowTestCase):
 
     text = "import tensorflow.foo as bar"
     expected_text = "import tensorflow.compat.v1.foo as bar"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def testTensorFlowGoogleImport(self):
+    text = "import tensorflow.google as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "import tensorflow.google"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "import tensorflow.google.compat.v1 as tf"
+    expected_text = "import tensorflow.google.compat.v1 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "import tensorflow.google.compat.v2 as tf"
+    expected_text = "import tensorflow.google.compat.v2 as tf"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
@@ -86,7 +100,6 @@ except AttributeError:
     expected_text = """
 try:
   import tensorflow.compat.v1 as tf  # import line
-  tf.disable_v2_behavior()
 
   tf.ones([4, 5])
 except AttributeError:
@@ -124,6 +137,42 @@ except AttributeError:
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(text, new_text)
 
+  def testTensorFlowGoogleFromImport(self):
+    text = "from tensorflow.google.compat import v1 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "from tensorflow.google.compat import v2 as tf"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+  def testTensorFlowDontChangeContrib(self):
+    text = "import tensorflow.contrib as foo"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+    text = "from tensorflow import contrib"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(text, new_text)
+
+  def test_contrib_to_addons_move(self):
+    small_mapping = {
+        "tf.contrib.layers.poincare_normalize":
+            "tfa.layers.PoincareNormalize",
+        "tf.contrib.layers.maxout":
+            "tfa.layers.Maxout",
+        "tf.contrib.layers.group_norm":
+            "tfa.layers.GroupNormalization",
+        "tf.contrib.layers.instance_norm":
+            "tfa.layers.InstanceNormalization",
+    }
+    for symbol, replacement in small_mapping.items():
+      text = "{}('stuff', *args, **kwargs)".format(symbol)
+      _, report, _, _ = self._upgrade(text)
+      self.assertIn(replacement, report)
+
+if __name__ == "__main__":
+  test_lib.main()
   def testTensorFlowDontChangeContrib(self):
     text = "import tensorflow.contrib as foo"
     _, _, _, new_text = self._upgrade(text)

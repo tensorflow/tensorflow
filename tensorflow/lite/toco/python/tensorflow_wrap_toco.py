@@ -20,5 +20,5 @@ from __future__ import print_function
 # TODO(aselle): Remove once no clients internally depend on this.
 
 # pylint: disable=unused-import
-from tensorflow.python.pywrap_tensorflow import TocoConvert
+from tensorflow.python._pywrap_toco_api import TocoConvert
 # pylint: enable=unused-import

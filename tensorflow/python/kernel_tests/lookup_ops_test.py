@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import os
 import tempfile
+
 import numpy as np
 import six
 
@@ -26,7 +27,10 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import counter
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers as reader_ops
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
@@ -36,13 +40,18 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable
+from tensorflow.python.util import compat
 
 
 class BaseLookupTableTest(test.TestCase):
@@ -394,6 +403,53 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual([10, -1, 5], self.evaluate(result1))
     self.assertAllEqual([10, -1, 5], self.evaluate(result2))
 
+  @test_util.enable_control_flow_v2
+  def testLookupTableInWhileV2(self):
+    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+
+    beta = variables.Variable(1.0, trainable=True)
+
+    @def_function.function
+    def get_loss(unused_beta):
+      return map_fn.map_fn(
+          lookup.lookup,
+          constant_op.constant([2, 3], dtype=dtypes.int64),
+          dtype=dtypes.float32)
+
+    with backprop.GradientTape() as tape:
+      loss = get_loss(beta)
+
+    self.assertIsNone(tape.gradient(loss, beta))
+
+  @test_util.enable_control_flow_v2
+  def testLookupTableInCondV2(self):
+    lookup = self.getHashTable()(lookup_ops.KeyValueTensorInitializer(
+        constant_op.constant([2, 5], dtype=dtypes.int64),
+        constant_op.constant([-10.0, 1], dtype=dtypes.float32)), -1)
+
+    beta = variables.Variable(1.0, trainable=True)
+
+    @def_function.function
+    def get_loss(beta):
+
+      def true_fn():
+        return lookup.lookup(constant_op.constant(2, dtype=dtypes.int64))
+
+      def false_fn():
+        return constant_op.constant(0, dtype=dtypes.float32)
+
+      return beta * control_flow_ops.cond(
+          constant_op.constant(True), true_fn=true_fn, false_fn=false_fn)
+
+    with backprop.GradientTape() as tape:
+      loss = get_loss(beta)
+    grad = tape.gradient(loss, beta)
+    self.evaluate(variables.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    self.assertAllEqual(grad, -10.)
+
 
 class KeyValueTensorInitializerTest(BaseLookupTableTest):
 
@@ -432,6 +488,82 @@ class KeyValueTensorInitializerTest(BaseLookupTableTest):
     with self.assertRaises(errors_impl.OpError):
       table = self.getHashTable()(init, default_value=-1)
       self.initialize_table(table)
+
+
+class DatasetInitializerTest(BaseLookupTableTest):
+
+  def _createVocabFile(self, basename, values=("brain", "salad", "surgery")):
+    vocabulary_file = os.path.join(self.get_temp_dir(), basename)
+    with open(vocabulary_file, "w") as f:
+      f.write("\n".join(values) + "\n")
+    return vocabulary_file
+
+  def test_basic(self):
+    keys = dataset_ops.Dataset.range(100)
+    values = dataset_ops.Dataset.range(100).map(
+        lambda x: string_ops.as_string(x * 2))
+    ds = dataset_ops.Dataset.zip((keys, values))
+    init = lookup_ops.DatasetInitializer(ds)
+    table = self.getHashTable()(init, default_value="")
+    self.initialize_table(table)
+
+    output = table.lookup(constant_op.constant([0, 2, 5], dtypes.int64))
+    result = self.evaluate(output)
+    self.assertAllEqual(["0", "4", "10"], result)
+
+  def test_basic_bad_shape(self):
+    keys = dataset_ops.Dataset.range(100)
+    values = dataset_ops.Dataset.range(100).map(
+        lambda x: string_ops.as_string(x * 2))
+    values = values.batch(4)
+    ds = dataset_ops.Dataset.zip((keys, values))
+    with self.assertRaises(ValueError):
+      lookup_ops.DatasetInitializer(ds)
+
+  def test_from_file(self):
+    vocabulary_file = self._createVocabFile("test.txt", ("one", "two", "three"))
+    ds = reader_ops.TextLineDataset(vocabulary_file)
+    ds = ds.enumerate(start=1)
+    init = lookup_ops.DatasetInitializer(ds)
+    table = self.getHashTable()(init, default_value="")
+    self.initialize_table(table)
+
+    output = table.lookup(constant_op.constant([2, 3, 4], dtypes.int64))
+    result = self.evaluate(output)
+    self.assertAllEqual(["two", "three", ""], result)
+
+  def test_from_multiple_files(self):
+    vocabulary_file1 = self._createVocabFile("test1.txt",
+                                             ("one", "two", "three"))
+    vocabulary_file2 = self._createVocabFile("test2.txt",
+                                             ("four", "five", "six"))
+    ds = reader_ops.TextLineDataset([vocabulary_file1, vocabulary_file2])
+    ds = ds.enumerate(start=1)
+    init = lookup_ops.DatasetInitializer(ds)
+    table = self.getHashTable()(init, default_value="")
+    self.initialize_table(table)
+
+    output = table.lookup(constant_op.constant([2, 3, 4], dtypes.int64))
+    result = self.evaluate(output)
+    self.assertAllEqual(["two", "three", "four"], result)
+
+  def test_map_variable(self):
+    ds = dataset_ops.Dataset.range(100)
+    captured_var = variables.Variable(0)
+
+    def func(_):
+      return captured_var.assign_add(1)
+
+    ds = ds.map(func)
+    ds = ds.enumerate(start=1)
+    init = lookup_ops.DatasetInitializer(ds)
+    table = self.getHashTable()(init, default_value=-1)
+    self.evaluate(captured_var.initializer)
+    self.initialize_table(table)
+
+    output = table.lookup(constant_op.constant([1, 2, 101], dtypes.int64))
+    result = self.evaluate(output)
+    self.assertAllEqual([1, 2, -1], result)
 
 
 class InitializeTableFromFileOpTest(BaseLookupTableTest):
@@ -898,6 +1030,19 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
 
       self.assertAllEqual([3, 1, 3], self.evaluate(out2))
       self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
+
+  def testStaticVocabularyTableAssetTracking(self):
+    vocab_file = self._createVocabFile("vocab.txt")
+    vocab_size = 3
+    oov_buckets = 1
+    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
+        vocab_file, vocab_size=vocab_size), oov_buckets)
+    object_graph_view = graph_view.ObjectGraphView(table)
+    objects = object_graph_view.list_objects()
+    assets = list(filter(lambda obj: isinstance(obj, tracking.Asset), objects))
+    self.assertLen(assets, 1)
+    self.assertEqual(
+        self.evaluate(assets[0].asset_path), compat.as_bytes(vocab_file))
 
   def testSparseTensor(self):
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
@@ -1737,6 +1882,20 @@ class DenseHashTableOpTest(test.TestCase):
             empty_key=[1, 2, 3],
             deleted_key=[1, 2, 3])
         self.assertAllEqual(0, self.evaluate(table5.size()))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testStringToResource(self):
+    v = variables.Variable(1.)
+    v1 = variables.Variable(1.)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.resource,
+        default_value=v.handle,
+        empty_key="<empty>",
+        deleted_key="<deleted>")
+    self.assertEqual([], table.lookup("not_found").shape)
+    table.insert("v1", v1.handle)
+    self.assertEqual([], table.lookup("v1").shape)
 
 
 class IndexTableFromFile(test.TestCase):

@@ -99,8 +99,8 @@ __global__ void GenerateNormalizedProb(const T* logits, const U* sum_probs,
 
 template <typename T, typename U>
 struct SubtractAndExpFunctor {
-  __host__ __device__ SubtractAndExpFunctor(const T* logits,
-                                            const T* max_logits,
+  __host__ __device__ SubtractAndExpFunctor(const T* __restrict__ logits,
+                                            const T* __restrict__ max_logits,
                                             const int num_cols)
       : logits_(logits), max_logits_(max_logits), num_cols_(num_cols) {}
 
@@ -165,8 +165,8 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<T*>(max_logits.flat<T>().data()),
           reinterpret_cast<const T*>(logits_in_.flat<T>().data()), rows, cols);
 
-      const int numThreads = 128;
-      const int numBlocks = Eigen::divup(rows * cols, numThreads);
+      const int numThreadsPerBlock = 128;
+      const int numBlocks = Eigen::divup(rows * cols, numThreadsPerBlock);
 
       gpuprim::CountingInputIterator<int> counting_iterator(0);
       using InputIterType =
@@ -185,7 +185,7 @@ class SoftmaxOpGPU : public OpKernel {
           input_itr, rows, cols);
 
       TF_CHECK_OK(GpuLaunchKernel(
-          GenerateNormalizedProb<T, acc_type>, numBlocks, numThreads, 0,
+          GenerateNormalizedProb<T, acc_type>, numBlocks, numThreadsPerBlock, 0,
           cu_stream, reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
           reinterpret_cast<const acc_type*>(sum_probs.flat<acc_type>().data()),
           reinterpret_cast<const T*>(max_logits.flat<T>().data()),

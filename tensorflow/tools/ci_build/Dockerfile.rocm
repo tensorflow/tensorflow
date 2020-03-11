@@ -1,15 +1,15 @@
-# This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.  
+# This Dockerfile provides a starting point for a ROCm installation of
+# MIOpen and tensorflow.
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/debian/
+ARG DEB_ROCM_REPO=http://repo.radeon.com/rocm/apt/3.0/
 ARG ROCM_PATH=/opt/rocm
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common 
+RUN apt update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
@@ -57,12 +57,12 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 # Install rocm pkgs
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
-    rocm-dev rocm-libs rocm-utils rocm-cmake \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand \
-    rocm-profiler cxlactivitylogger && \
+    rocm-dev rocm-libs hipcub rocm-utils rocm-cmake \
+    rocfft miopen-hip miopengemm rocblas hipblas rocrand rccl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl

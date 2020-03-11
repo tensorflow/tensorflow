@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -601,11 +602,12 @@ TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesTypeMismatch) {
       {component_split_1_1}, TensorShape({1}), component_values_1);
   int input_ragged_rank = 1;
   int output_ragged_rank = 2;
-  BuildDecodeRaggedTensorGraph<string, int64>(
+  BuildDecodeRaggedTensorGraph<tstring, int64>(
       input_ragged_rank, output_ragged_rank, TensorShape({1}),
       {variant_component_1});
-  EXPECT_TRUE(absl::StartsWith(RunOpKernel().error_message(),
-                               "Expected values Tensor dtype: 7, found: 3"));
+  EXPECT_TRUE(
+      absl::StartsWith(RunOpKernel().error_message(),
+                       "Expected values Tensor dtype: string, found: int32"));
 }
 
 TEST_F(RaggedTensorFromVariantKernelTest, RaggedValuesRankNotGreaterThanOne) {

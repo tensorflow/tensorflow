@@ -19,11 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
@@ -137,4 +139,7 @@ class DenseLayerTest(test.TestCase):
 if __name__ == "__main__":
   os.environ["TF_XLA_FLAGS"] = ("--tf_xla_enable_lazy_compilation=true " +
                                 os.environ.get("TF_XLA_FLAGS", ""))
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   test.main()

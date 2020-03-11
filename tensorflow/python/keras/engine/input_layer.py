@@ -25,6 +25,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import node as node_module
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.util.tf_export import keras_export
 
@@ -40,22 +41,48 @@ class InputLayer(base_layer.Layer):
   It is generally recommend to use the functional layer API via `Input`,
   (which creates an `InputLayer`) without directly using `InputLayer`.
 
+  When using InputLayer with Keras Sequential model, it can be skipped by
+  moving the input_shape parameter to the first layer after the InputLayer.
+
   This class can create placeholders for tf.Tensors, tf.SparseTensors, and
-  tf.RaggedTensors by choosing 'sparse=True' or 'ragged=True'.
+  tf.RaggedTensors by choosing 'sparse=True' or 'ragged=True'. Note that
+  'sparse' and 'ragged' can't be configured to True at same time.
+  Usage:
+
+  ```python
+  # With explicit InputLayer.
+  model = tf.keras.Sequential([
+    tf.keras.layers.InputLayer(input_shape=(4,)),
+    tf.keras.layers.Dense(8)])
+  model.compile(tf.optimizers.RMSprop(0.001), loss='mse')
+  model.fit(np.zeros((10, 4)),
+            np.ones((10, 8)))
+
+  # Without InputLayer and let the first layer to have the input_shape.
+  # Keras will add a input for the model behind the scene.
+  model = tf.keras.Sequential([
+    tf.keras.layers.Dense(8, input_shape=(4,))])
+  model.compile(tf.optimizers.RMSprop(0.001), loss='mse')
+  model.fit(np.zeros((10, 4)),
+            np.ones((10, 8)))
+  ```
 
   Arguments:
       input_shape: Shape tuple (not including the batch axis), or `TensorShape`
         instance (not including the batch axis).
       batch_size: Optional input batch size (integer or None).
-      dtype: Datatype of the input.
+      dtype: Optional datatype of the input. When not provided, the Keras
+          default float type will be used.
       input_tensor: Optional tensor to use as layer input
           instead of creating a placeholder.
       sparse: Boolean, whether the placeholder created is meant to be sparse.
+          Default to False.
       ragged: Boolean, whether the placeholder created is meant to be ragged.
           In this case, values of 'None' in the 'shape' argument represent
           ragged dimensions. For more information about RaggedTensors, see
           https://www.tensorflow.org/guide/ragged_tensors.
-      name: Name of the layer (string).
+          Default to False.
+      name: Optional name of the layer (string).
   """
 
   def __init__(self,
@@ -71,8 +98,8 @@ class InputLayer(base_layer.Layer):
     if strategy and batch_size is not None and \
         distributed_training_utils.global_batch_size_supported(strategy):
       if batch_size % strategy.num_replicas_in_sync != 0:
-        raise ValueError('The `batch_size` argument value {} cannot be '
-                         'divisible by number of replicas {}'.format(
+        raise ValueError('The `batch_size` argument ({}) must be divisible by '
+                         'the number of replicas ({})'.format(
                              batch_size, strategy.num_replicas_in_sync))
       batch_size = batch_size // strategy.num_replicas_in_sync
 
@@ -102,8 +129,10 @@ class InputLayer(base_layer.Layer):
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
+    self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -152,12 +181,17 @@ class InputLayer(base_layer.Layer):
         'batch_input_shape': self._batch_input_shape,
         'dtype': self.dtype,
         'sparse': self.sparse,
+        'ragged': self.ragged,
         'name': self.name
     }
     return config
 
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.InputLayerSavedModelSaver(self)
 
-@keras_export('keras.layers.Input', 'keras.Input')
+
+@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -169,19 +203,13 @@ def Input(  # pylint: disable=invalid-name
     **kwargs):
   """`Input()` is used to instantiate a Keras tensor.
 
-  A Keras tensor is a tensor object from the underlying backend
-  (Theano or TensorFlow), which we augment with certain
-  attributes that allow us to build a Keras model
+  A Keras tensor is a TensorFlow symbolic tensor object,
+  which we augment with certain attributes that allow us to build a Keras model
   just by knowing the inputs and outputs of the model.
 
-  For instance, if a, b and c are Keras tensors,
+  For instance, if `a`, `b` and `c` are Keras tensors,
   it becomes possible to do:
   `model = Model(input=[a, b], output=c)`
-
-  The added Keras attribute is:
-      `_keras_history`: Last layer applied to the tensor.
-          the entire layer graph is retrievable from that layer,
-          recursively.
 
   Arguments:
       shape: A shape tuple (integers), not including the batch size.
@@ -204,7 +232,8 @@ def Input(  # pylint: disable=invalid-name
           values of 'None' in the 'shape' argument represent ragged dimensions.
           For more information about RaggedTensors, see
           https://www.tensorflow.org/guide/ragged_tensors.
-      **kwargs: deprecated arguments support.
+      **kwargs: deprecated arguments support. Supports `batch_shape` and
+          `batch_input_shape`.
 
   Returns:
     A `tensor`.
@@ -229,21 +258,31 @@ def Input(  # pylint: disable=invalid-name
   ```
 
   Raises:
-    ValueError: in case of invalid arguments.
+    ValueError: If both `sparse` and `ragged` are provided.
+    ValueError: If both `shape` and (`batch_input_shape` or `batch_shape`) are
+      provided.
+    ValueError: If both `shape` and `tensor` are None.
+    ValueError: if any unrecognized parameters are provided.
   """
   if sparse and ragged:
     raise ValueError(
         'Cannot set both sparse and ragged to True in a Keras input.')
 
-  batch_shape = None
-  if 'batch_shape' in kwargs:
-    batch_shape = kwargs.pop('batch_shape')
-    if shape and batch_shape:
-      raise ValueError('Only provide the shape OR '
-                       'batch_shape argument to '
-                       'Input, not both at the same time.')
-    batch_size = batch_shape[0]
-    shape = batch_shape[1:]
+  input_layer_config = {'name': name, 'dtype': dtype, 'sparse': sparse,
+                        'ragged': ragged, 'input_tensor': tensor}
+
+  batch_input_shape = kwargs.pop('batch_input_shape',
+                                 kwargs.pop('batch_shape', None))
+  if shape and batch_input_shape:
+    raise ValueError('Only provide the `shape` OR `batch_input_shape` argument '
+                     'to Input, not both at the same time.')
+  if batch_input_shape:
+    shape = batch_input_shape[1:]
+    input_layer_config.update({'batch_input_shape': batch_input_shape})
+  else:
+    input_layer_config.update(
+        {'batch_size': batch_size, 'input_shape': shape})
+
   if kwargs:
     raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
 
@@ -253,23 +292,7 @@ def Input(  # pylint: disable=invalid-name
                      '`shape` does not include the batch '
                      'dimension.')
 
-  if batch_shape:
-    input_layer = InputLayer(
-        batch_input_shape=batch_shape,
-        name=name,
-        dtype=dtype,
-        sparse=sparse,
-        ragged=ragged,
-        input_tensor=tensor)
-  else:
-    input_layer = InputLayer(
-        input_shape=shape,
-        batch_size=batch_size,
-        name=name,
-        dtype=dtype,
-        sparse=sparse,
-        ragged=ragged,
-        input_tensor=tensor)
+  input_layer = InputLayer(**input_layer_config)
 
   # Return tensor including `_keras_history`.
   # Note that in this case train_output and test_output are the same pointer.

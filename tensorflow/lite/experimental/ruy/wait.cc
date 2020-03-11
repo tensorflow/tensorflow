@@ -15,25 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/wait.h"
 
-#include <condition_variable>  // NOLINT(build/c++11)
-#include <functional>
-#include <mutex>  // NOLINT(build/c++11)
-
-#include "tensorflow/lite/experimental/ruy/time.h"
+#include <chrono>  // NOLINT(build/c++11)
 
 namespace ruy {
 
-void WaitUntil(const std::function<bool()>& condition,
-               const Duration& spin_duration, std::condition_variable* condvar,
-               std::mutex* mutex) {
+void Wait(const std::function<bool()>& condition, const Duration& spin_duration,
+          std::condition_variable* condvar, std::mutex* mutex) {
   // First, trivial case where the `condition` is already true;
   if (condition()) {
     return;
   }
 
   // Then try busy-waiting.
-  const TimePoint wait_start = Clock::now();
-  while (Clock::now() - wait_start < spin_duration) {
+  const TimePoint wait_start = Now();
+  while (Now() - wait_start < spin_duration) {
     if (condition()) {
       return;
     }
@@ -44,8 +39,8 @@ void WaitUntil(const std::function<bool()>& condition,
   condvar->wait(lock, condition);
 }
 
-void WaitUntil(const std::function<bool()>& condition,
-               std::condition_variable* condvar, std::mutex* mutex) {
+void Wait(const std::function<bool()>& condition,
+          std::condition_variable* condvar, std::mutex* mutex) {
   // This value was empirically derived with some microbenchmark, we don't have
   // high confidence in it.
   //
@@ -67,9 +62,8 @@ void WaitUntil(const std::function<bool()>& condition,
   // a little while, then start on a new GEMM. In that case the wait interval
   // may be a little longer. There may also not be another GEMM for a long time,
   // in which case we'll end up passively waiting below.
-  const double kMaxBusyWaitSeconds = 2e-3;
-  const Duration spin_duration = DurationFromSeconds(kMaxBusyWaitSeconds);
-  WaitUntil(condition, spin_duration, condvar, mutex);
+  const Duration spin_duration = DurationFromMilliseconds(2);
+  Wait(condition, spin_duration, condvar, mutex);
 }
 
 }  // namespace ruy

@@ -1,4 +1,6 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-data-types=DT_INT32,DT_INT32 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-output-arrays=Add -o - | FileCheck --check-prefix=NONE %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input0,input1 -tf-input-shapes=10:10 -tf-input-data-types=',DT_INT32' -tf-output-arrays=Add -o - | FileCheck --check-prefix=SOME %s
 
 node {
   name: "Add"
@@ -37,9 +39,16 @@ versions {
 }
 
 # CHECK: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
-# CHECK: attributes {tf.entry_function = {inputs = "input0, input1", outputs = "Add"}} {
-# CHECK:   %0:2 = "_tf.Placeholder.input"(%arg0) {device = "", dtype = "tfdtype$DT_INT32", name = "input0", shape = "tfshape$dim {\0A  size: 10\0A}\0A"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   %1:2 = "_tf.Placeholder.input"(%arg1) {device = "", dtype = "tfdtype$DT_INT32", name = "input1", shape = "tfshape$dim {\0A  size: 10\0A}\0A"} : (tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   %2:2 = "_tf.Add"(%0#0, %1#0) {T = "tfdtype$DT_INT32", device = "", name = "Add"} : (tensor<10xi32>, tensor<10xi32>) -> (tensor<10xi32>, !_tf.control)
-# CHECK:   return %2#0 : tensor<10xi32>
-# CHECK: }
+# CHECK: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# CHECK:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# CHECK:   fetch %[[add]]
+
+# SOME: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+# SOME: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# SOME:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# SOME:   fetch %[[add]]
+
+# NONE: func @main(%arg0: tensor<10xi32>, %arg1: tensor<10xi32>) -> tensor<10xi32>
+# NONE: attributes {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
+# NONE:   %[[add:.*]], %[[add_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+# NONE:   fetch %[[add]]

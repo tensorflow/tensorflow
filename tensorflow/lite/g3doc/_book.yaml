@@ -24,6 +24,8 @@ upper_tabs:
         path: /lite/guide/android
       - title: "iOS quickstart"
         path: /lite/guide/ios
+      - title: "Python quickstart"
+        path: /lite/guide/python
       - title: "FAQ"
         path: /lite/guide/faq
       - title: "Roadmap"
@@ -34,22 +36,17 @@ upper_tabs:
         path: /lite/convert/
       - title: "Python API"
         path: /lite/convert/python_api
-      - title: "Command line examples"
-        path: /lite/convert/cmdline_examples
-      - title: "Command line reference"
-        path: /lite/convert/cmdline_reference
+      - title: "Command line"
+        path: /lite/convert/cmdline
       - title: "Convert quantized models"
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-
-      - heading: "Convert a TensorFlow 2.0 model"
-      - title: "TensorFlow Lite converter and 2.0"
-        path: /lite/r2/convert/
-      - title: "Generate a concrete function"
-        path: /lite/r2/convert/concrete_function
-      - title: "Python API"
-        path: /lite/r2/convert/python_api
+      - title: "1.x compatibility"
+        path: /lite/convert/1x_compatibility
+      - title: "Add metadata"
+        path: /lite/convert/metadata
+        status: experimental
 
       - heading: "Inference"
       - title: "Overview"
@@ -62,8 +59,12 @@ upper_tabs:
         path: /lite/guide/ops_compatibility
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
+        status: experimental
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
+      - title: "Generate code from metadata"
+        path: /lite/guide/codegen
+        status: experimental
 
       - heading: "Performance"
       - title: "Best practices"
@@ -74,17 +75,23 @@ upper_tabs:
         path: /lite/performance/model_optimization
       - title: "Post-training quantization"
         path: /lite/performance/post_training_quantization
-      - title: "Post-training quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
-      - title: "Post-training integer quantization example"
-        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_integer_quant.ipynb
-        status: external
+      - title: "Post-training weight quantization"
+        path: /lite/performance/post_training_quant
+      - title: "Post-training integer quantization"
+        path: /lite/performance/post_training_integer_quant
+      - title: "Post-training float16 quantization"
+        path: /lite/performance/post_training_float16_quant
       - title: "Delegates"
         path: /lite/performance/delegates
       - title: "GPU delegate"
         path: /lite/performance/gpu
       - title: "Advanced GPU"
         path: /lite/performance/gpu_advanced
+      - title: "NNAPI delegate"
+        path: /lite/performance/nnapi
+      - title: "Hexagon delegate"
+        path: /lite/performance/hexagon_delegate
+        status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 
@@ -98,13 +105,14 @@ upper_tabs:
 
       - heading: "Microcontrollers"
       - title: "Overview"
-        path: /lite/microcontrollers/overview
+        path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
         path: /lite/microcontrollers/get_started
-      - title: "Build and convert models"
-        path: /lite/microcontrollers/build_convert
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
+      - title: "Build and convert models"
+        path: /lite/microcontrollers/build_convert
+
 
     - name: "Examples"
       contents:
@@ -115,22 +123,24 @@ upper_tabs:
       contents:
       - title: "Overview"
         path: /lite/models/
-      - heading: "Image classification"
-      - title: "Overview"
+      - heading: "Vision"
+      - title: "Image classification"
         path: /lite/models/image_classification/overview
-      - title: "Android"
-        path: /lite/models/image_classification/android
-      - title: "iOS"
-        path: /lite/models/image_classification/ios
-      - heading: "Other techniques"
       - title: "Object detection"
         path: /lite/models/object_detection/overview
       - title: "Pose estimation"
         path: /lite/models/pose_estimation/overview
       - title: "Segmentation"
         path: /lite/models/segmentation/overview
+      - title: "Style transfer"
+        path: /lite/models/style_transfer/overview
+      - heading: "Text"
+      - title: "Question and answer"
+        path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
+      - title: "Text classification"
+        path: /lite/models/text_classification/overview
 
     - name: "Python API"
       skip_translation: true

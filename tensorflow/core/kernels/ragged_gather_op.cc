@@ -138,16 +138,16 @@ class RaggedGatherOpBase : public OpKernel {
     // Add `splits` that come from all but the last dimension of the dense
     // Tensor `indices`.  In particular, for each dimension D, we add a
     // splits tensor whose values are:
-    //   range(splits.shape[D]*splits.shape[D+1] + 1, step=splits.shape[D+1])
-    // E.g., if indices.shape=[5, 3] then we will add a splits tensor
-    // [0, 3, 6, 9, 12, 15], since the outermost dimension has 5 elements,
-    // each of which contains 3 values.
+    //   range(reduce_prod(splits.shape[:D]) + 1) * splits.shape[D+1]
+    // E.g., if indices.shape=[2, 3, 4] then we will add splits tensors:
+    //   [0, 3, 6]                    # length=2+1, stride=3
+    //   [0, 4, 8, 12, 16, 20, 24]    # length=2*3+1, stride=4
+    int nrows = 1;
     for (int dim = 0; dim < indices_in.dims() - 1; ++dim) {
-      int stride = indices_in.dim_size(dim + 1);
-      int index = stride;
-      for (int i = 0; i < indices_in.dim_size(dim); ++i) {
-        out_splits->at(dim).push_back(index);
-        index += stride;
+      nrows *= indices_in.dim_size(dim);
+      int row_length = indices_in.dim_size(dim + 1);
+      for (int i = 1; i < nrows + 1; ++i) {
+        out_splits->at(dim).push_back(i * row_length);
       }
     }
 
@@ -292,7 +292,7 @@ class RaggedGatherOp : public RaggedGatherOpBase<INDEX_TYPE, SPLITS_TYPE> {
   REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int32, value_type, int64) \
   REGISTER_CPU_KERNEL_WITH_INDEX_TYPE(int64, value_type, int64)
 TF_CALL_POD_TYPES(REGISTER_CPU_KERNEL);
-TF_CALL_string(REGISTER_CPU_KERNEL);
+TF_CALL_tstring(REGISTER_CPU_KERNEL);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU_KERNEL);
 TF_CALL_quint16(REGISTER_CPU_KERNEL);
 TF_CALL_qint16(REGISTER_CPU_KERNEL);

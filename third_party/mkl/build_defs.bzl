@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Skylark macros for MKL.
 
 if_mkl is a conditional to check if we are building with MKL.
@@ -26,7 +25,7 @@ def if_mkl(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:build_with_mkl")): if_true,
+        "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -42,8 +41,8 @@ def if_mkl_ml(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_only")): if_false,
-        str(Label("//third_party/mkl:build_with_mkl")): if_true,
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_only": if_false,
+        "@org_tensorflow//third_party/mkl:build_with_mkl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -58,7 +57,7 @@ def if_mkl_ml_only(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:build_with_mkl_ml_only")): if_true,
+        "@org_tensorflow//third_party/mkl:build_with_mkl_ml_only": if_true,
         "//conditions:default": if_false,
     })
 
@@ -75,7 +74,7 @@ def if_mkl_lnx_x64(if_true, if_false = []):
       a select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:build_with_mkl_lnx_x64")): if_true,
+        "@org_tensorflow//third_party/mkl:build_with_mkl_lnx_x64": if_true,
         "//conditions:default": if_false,
     })
 
@@ -92,7 +91,7 @@ def if_enable_mkl(if_true, if_false = []):
       A select evaluating to either if_true or if_false as appropriate.
     """
     return select({
-        str(Label("//third_party/mkl:enable_mkl")): if_true,
+        "@org_tensorflow//third_party/mkl:enable_mkl": if_true,
         "//conditions:default": if_false,
     })
 
@@ -106,11 +105,11 @@ def mkl_deps():
       inclusion in the deps attribute of rules.
     """
     return select({
-        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_only")): ["@mkl_dnn"],
-        str(Label("//third_party/mkl_dnn:build_with_mkl_dnn_v1_only")): ["@mkl_dnn_v1//:mkl_dnn"],
-        str(Label("//third_party/mkl:build_with_mkl_ml_only")): ["//third_party/mkl:intel_binary_blob"],
-        str(Label("//third_party/mkl:build_with_mkl")): [
-            "//third_party/mkl:intel_binary_blob",
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_only": ["@mkl_dnn"],
+        "@org_tensorflow//third_party/mkl_dnn:build_with_mkl_dnn_v1_only": ["@mkl_dnn_v1//:mkl_dnn"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl_ml_only": ["@org_tensorflow//third_party/mkl:intel_binary_blob"],
+        "@org_tensorflow//third_party/mkl:build_with_mkl": [
+            "@org_tensorflow//third_party/mkl:intel_binary_blob",
             "@mkl_dnn",
         ],
         "//conditions:default": [],

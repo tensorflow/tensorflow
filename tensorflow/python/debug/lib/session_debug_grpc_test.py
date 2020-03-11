@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -38,6 +37,7 @@ from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -115,7 +115,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
   def tearDown(self):
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
     session_debug_testlib.SessionDebugTestBase.tearDown(self)
 
   def _debug_urls(self, run_number=None):
@@ -164,7 +164,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
     self.assertAllClose(42.0, w_result)
 
     dump = debug_data.DebugDumpDir(self._dump_root)
-    self.assertEqual(5, dump.size)
+    self.assertLessEqual(5, dump.size)
     self.assertAllClose([2.1], dump.get_tensors("u", 0, "DebugIdentity"))
     self.assertAllClose([2.1], dump.get_tensors("u/read", 0, "DebugIdentity"))
     self.assertAllClose([20.0], dump.get_tensors("v", 0, "DebugIdentity"))
@@ -345,7 +345,7 @@ class SessionDebugConcurrentTest(
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
 
   def _get_concurrent_debug_urls(self):
     urls = []
@@ -574,7 +574,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
@@ -628,7 +628,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])

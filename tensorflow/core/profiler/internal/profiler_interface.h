@@ -16,15 +16,29 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
-class EagerContext;
-struct ProfilerContext {
-  EagerContext* eager_context = nullptr;
+namespace profiler {
+
+enum class DeviceType {
+  kUnspecified,
+  kCpu,
+  kGpu,
+  kTpu,
 };
 
-namespace profiler {
+struct ProfilerOptions {
+  // DeviceType::kUnspecified: All registered device profiler will be enabled.
+  // DeviceType::kCpu: only CPU will be profiled.
+  // DeviceType::kGpu: only CPU/GPU will be profiled.
+  // DeviceType::kTpu: only CPU/TPU will be profiled.
+  DeviceType device_type = DeviceType::kUnspecified;
+
+  // Inexpensive ops are not traced by default.
+  int host_tracer_level = 2;
+};
 
 // Interface for tensorflow profiler plugins.
 //
@@ -44,21 +58,21 @@ class ProfilerInterface {
   // Stops profiling.
   virtual Status Stop() = 0;
 
-  // Moves collected profile data into step_stats_collector.
+  // Saves collected profile data into run_metadata.
+  // After this or the overload below are called once, subsequent calls might
+  // return empty data.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
+
+  // Saves collected profile data into XSpace.
+  // After this or the overload above are called once, subsequent calls might
+  // return empty data.
+  virtual Status CollectData(XSpace* space) = 0;
+
+  // Which device this ProfilerInterface is used for.
+  virtual DeviceType GetDeviceType() = 0;
 };
 
 }  // namespace profiler
-
-using ProfilerFactory =
-    std::unique_ptr<profiler::ProfilerInterface> (*)(const ProfilerContext*);
-
-void RegisterProfilerFactory(ProfilerFactory factory);
-
-void CreateProfilers(
-    const ProfilerContext* context,
-    std::vector<std::unique_ptr<profiler::ProfilerInterface>>* result);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PROFILER_INTERFACE_H_

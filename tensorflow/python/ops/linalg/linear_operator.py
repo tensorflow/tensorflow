@@ -37,6 +37,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -147,6 +148,9 @@ class LinearOperator(module.Module):
     way.
   """
 
+  # TODO(b/143910018) Remove graph_parents in V3.
+  @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
+                               " no longer be used.", "graph_parents")
   def __init__(self,
                dtype,
                graph_parents=None,
@@ -163,8 +167,8 @@ class LinearOperator(module.Module):
     Args:
       dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
-      graph_parents: Python list of graph prerequisites of this `LinearOperator`
-        Typically tensors that are passed during initialization.
+      graph_parents: (Deprecated) Python list of graph prerequisites of this
+        `LinearOperator` Typically tensors that are passed during initialization
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `dtype` is real, this is equivalent to being symmetric.
@@ -198,12 +202,11 @@ class LinearOperator(module.Module):
 
     self._is_square_set_or_implied_by_hints = is_square
 
-    graph_parents = [] if graph_parents is None else graph_parents
-    for i, t in enumerate(graph_parents):
-      if t is None or not tensor_util.is_tensor(t):
-        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if graph_parents is not None:
+      self._set_graph_parents(graph_parents)
+    else:
+      self._graph_parents = []
     self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
-    self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
@@ -229,6 +232,7 @@ class LinearOperator(module.Module):
     return self._name
 
   @property
+  @deprecation.deprecated(None, "Do not call `graph_parents`.")
   def graph_parents(self):
     """List of graph dependencies of this `LinearOperator`."""
     return self._graph_parents
@@ -270,15 +274,17 @@ class LinearOperator(module.Module):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.get_shape()`.
+    `TensorShape([B1,...,Bb, M, N])`, equivalent to `A.shape`.
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
     """
     return self._shape()
 
-  @abc.abstractmethod
   def _shape_tensor(self):
+    # This is not an abstractmethod, since we want derived classes to be able to
+    # override this with optional kwargs, which can reduce the number of
+    # `convert_to_tensor` calls.  See derived classes for examples.
     raise NotImplementedError("_shape_tensor is not implemented.")
 
   def shape_tensor(self, name="shape_tensor"):
@@ -307,7 +313,7 @@ class LinearOperator(module.Module):
 
     If this operator acts like the batch matrix `A` with
     `A.shape = [B1,...,Bb, M, N]`, then this returns
-    `TensorShape([B1,...,Bb])`, equivalent to `A.get_shape()[:-2]`
+    `TensorShape([B1,...,Bb])`, equivalent to `A.shape[:-2]`
 
     Returns:
       `TensorShape`, statically determined, may be undefined.
@@ -330,12 +336,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      if self.batch_shape.is_fully_defined():
-        return linear_operator_util.shape_tensor(
-            self.batch_shape.as_list(), name="batch_shape")
-      else:
-        return self.shape_tensor()[:-2]
+      return self._batch_shape_tensor()
+
+  def _batch_shape_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    if self.batch_shape.is_fully_defined():
+      return linear_operator_util.shape_tensor(
+          self.batch_shape.as_list(), name="batch_shape")
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[:-2]
 
   @property
   def tensor_rank(self, name="tensor_rank"):
@@ -368,11 +379,16 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      if self.tensor_rank is not None:
-        return ops.convert_to_tensor(self.tensor_rank)
-      else:
-        return array_ops.size(self.shape_tensor())
+      return self._tensor_rank_tensor()
+
+  def _tensor_rank_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    if self.tensor_rank is not None:
+      return ops.convert_to_tensor(self.tensor_rank)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return array_ops.size(shape)
 
   @property
   def domain_dimension(self):
@@ -406,12 +422,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      dim_value = tensor_shape.dimension_value(self.domain_dimension)
-      if dim_value is not None:
-        return ops.convert_to_tensor(dim_value)
-      else:
-        return self.shape_tensor()[-1]
+      return self._domain_dimension_tensor()
+
+  def _domain_dimension_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    dim_value = tensor_shape.dimension_value(self.domain_dimension)
+    if dim_value is not None:
+      return ops.convert_to_tensor(dim_value)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[-1]
 
   @property
   def range_dimension(self):
@@ -445,12 +466,17 @@ class LinearOperator(module.Module):
     """
     # Derived classes get this "for free" once .shape() is implemented.
     with self._name_scope(name):
-      # Prefer to use statically defined shape if available.
-      dim_value = tensor_shape.dimension_value(self.range_dimension)
-      if dim_value is not None:
-        return ops.convert_to_tensor(dim_value)
-      else:
-        return self.shape_tensor()[-2]
+      return self._range_dimension_tensor()
+
+  def _range_dimension_tensor(self, shape=None):
+    # `shape` may be passed in if this can be pre-computed in a
+    # more efficient manner, e.g. without excessive Tensor conversions.
+    dim_value = tensor_shape.dimension_value(self.range_dimension)
+    if dim_value is not None:
+      return ops.convert_to_tensor(dim_value)
+    else:
+      shape = self.shape_tensor() if shape is None else shape
+      return shape[-2]
 
   def _assert_non_singular(self):
     """Private default implementation of _assert_non_singular."""
@@ -622,9 +648,12 @@ class LinearOperator(module.Module):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              x.get_shape()[arg_dim])
+              x.shape[arg_dim])
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def __matmul__(self, other):
+    return self.matmul(other)
 
   def _matvec(self, x, adjoint=False):
     x_mat = array_ops.expand_dims(x, axis=-1)
@@ -635,7 +664,7 @@ class LinearOperator(module.Module):
     """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
 
     ```python
-    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
 
     X = ... # shape [..., N], batch vector
@@ -663,7 +692,7 @@ class LinearOperator(module.Module):
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(x.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(x.shape[-1])
       return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
@@ -722,20 +751,24 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._log_abs_determinant()
 
-  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    """Default implementation of _solve."""
-    if self.is_square is False:
+  def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Solve by conversion to a dense matrix."""
+    if self.is_square is False:  # pylint: disable=g-bool-id-comparison
       raise NotImplementedError(
           "Solve is not yet implemented for non-square operators.")
-    logging.warn(
-        "Using (possibly slow) default implementation of solve."
-        "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
-      return linear_operator_util.cholesky_solve_with_broadcast(
+      return linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self.to_dense()), rhs)
     return linear_operator_util.matrix_solve_with_broadcast(
         self.to_dense(), rhs, adjoint=adjoint)
+
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Default implementation of _solve."""
+    logging.warn(
+        "Using (possibly slow) default implementation of solve."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    return self._dense_solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.
@@ -808,7 +841,7 @@ class LinearOperator(module.Module):
       arg_dim = -1 if adjoint_arg else -2
       tensor_shape.dimension_at_index(
           self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[arg_dim])
+              rhs.shape[arg_dim])
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
@@ -862,8 +895,7 @@ class LinearOperator(module.Module):
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
-          self.shape, self_dim).assert_is_compatible_with(
-              rhs.get_shape()[-1])
+          self.shape, self_dim).assert_is_compatible_with(rhs.shape[-1])
 
       return self._solvevec(rhs, adjoint=adjoint)
 
@@ -939,8 +971,6 @@ class LinearOperator(module.Module):
 
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
-    logging.warn("Using (possibly slow) default implementation of to_dense."
-                 "  Converts by self.matmul(identity).")
     if self.batch_shape.is_fully_defined():
       batch_shape = self.batch_shape
     else:
@@ -1028,8 +1058,73 @@ class LinearOperator(module.Module):
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 
+  def _eigvals(self):
+    return linalg_ops.self_adjoint_eigvals(self.to_dense())
+
+  def eigvals(self, name="eigvals"):
+    """Returns the eigenvalues of this linear operator.
+
+    If the operator is marked as self-adjoint (via `is_self_adjoint`)
+    this computation can be more efficient.
+
+    Note: This currently only supports self-adjoint operators.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb, N]` `Tensor` of same `dtype` as `self`.
+    """
+    if not self.is_self_adjoint:
+      raise NotImplementedError("Only self-adjoint matrices are supported.")
+    with self._name_scope(name):
+      return self._eigvals()
+
+  def _cond(self):
+    if not self.is_self_adjoint:
+      # In general the condition number is the ratio of the
+      # absolute value of the largest and smallest singular values.
+      vals = linalg_ops.svd(self.to_dense(), compute_uv=False)
+    else:
+      # For self-adjoint matrices, and in general normal matrices,
+      # we can use eigenvalues.
+      vals = math_ops.abs(self._eigvals())
+
+    return (math_ops.reduce_max(vals, axis=-1) /
+            math_ops.reduce_min(vals, axis=-1))
+
+  def cond(self, name="cond"):
+    """Returns the condition number of this linear operator.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
+    """
+    with self._name_scope(name):
+      return self._cond()
+
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
+
+  def _set_graph_parents(self, graph_parents):
+    """Set self._graph_parents.  Called during derived class init.
+
+    This method allows derived classes to set graph_parents, without triggering
+    a deprecation warning (which is invoked if `graph_parents` is passed during
+    `__init__`.
+
+    Args:
+      graph_parents: Iterable over Tensors.
+    """
+    # TODO(b/143910018) Remove this function in V3.
+    graph_parents = [] if graph_parents is None else graph_parents
+    for i, t in enumerate(graph_parents):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    self._graph_parents = graph_parents
 
 
 # Overrides for tf.linalg functions. This allows a LinearOperator to be used in
@@ -1048,10 +1143,17 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
 
 
 # The signature has to match with the one in python/op/array_ops.py,
-# so we have k and padding_value even though we don't use them here.
+# so we have k, padding_value, and align even though we don't use them here.
+# pylint:disable=unused-argument
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
+def _diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0,
+    align="RIGHT_LEFT"):
   return input.diag_part(name)
+# pylint:enable=unused-argument
 
 
 @dispatch.dispatch_for_types(linalg.det, LinearOperator)

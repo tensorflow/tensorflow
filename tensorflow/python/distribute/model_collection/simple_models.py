@@ -22,9 +22,12 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.distribute.model_collection import model_collection_base
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.module import module
+from tensorflow.python.ops import variables
 
 _BATCH_SIZE = 10
 
@@ -39,25 +42,22 @@ def _get_data_for_simple_models():
 
 
 class SimpleFunctionalModel(model_collection_base.ModelAndInput):
-  """A simple functinal model and its inputs."""
+  """A simple functional model and its inputs."""
 
   def get_model(self, **kwargs):
-    output_name = 'output_layer'
+    output_name = 'output_1'
 
     x = keras.layers.Input(shape=(3,), dtype=dtypes.float32)
     y = keras.layers.Dense(5, dtype=dtypes.float32, name=output_name)(x)
 
     model = keras.Model(inputs=x, outputs=y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    run_distributed = kwargs.pop('run_distributed', None)
-    assert run_distributed is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
-        optimizer=optimizer,
-        run_distributed=run_distributed)
+        optimizer=optimizer)
 
-    return model, output_name
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()
@@ -70,22 +70,19 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
   """A simple sequential model and its inputs."""
 
   def get_model(self, **kwargs):
-    output_name = 'output_layer'
+    output_name = 'output_1'
 
     model = keras.Sequential()
     y = keras.layers.Dense(
         5, dtype=dtypes.float32, name=output_name, input_dim=3)
     model.add(y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    run_distributed = kwargs.pop('run_distributed', None)
-    assert run_distributed is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
-        optimizer=optimizer,
-        run_distributed=run_distributed)
+        optimizer=optimizer)
 
-    return model, output_name
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()
@@ -96,11 +93,9 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
 
 class _SimpleModel(keras.Model):
 
-  output_name = 'output_layer'
-
   def __init__(self):
-    self._dense_layer = keras.layers.Dense(
-        5, dtype=dtypes.float32, name=self.output_name)
+    super(_SimpleModel, self).__init__()
+    self._dense_layer = keras.layers.Dense(5, dtype=dtypes.float32)
 
   def call(self, inputs):
     return self._dense_layer(inputs)
@@ -112,16 +107,37 @@ class SimpleSubclassModel(model_collection_base.ModelAndInput):
   def get_model(self, **kwargs):
     model = _SimpleModel()
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    run_distributed = kwargs.pop('run_distributed', None)
-    assert run_distributed is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
         cloning=False,
-        optimizer=optimizer,
-        run_distributed=run_distributed)
+        optimizer=optimizer)
 
-    return model, model.output_name
+    return model
+
+  def get_data(self):
+    return _get_data_for_simple_models()
+
+  def get_batch_size(self):
+    return _BATCH_SIZE
+
+
+class _SimpleModule(module.Module):
+
+  def __init__(self):
+    self.v = variables.Variable(3.0)
+
+  @def_function.function
+  def __call__(self, x):
+    return self.v * x
+
+
+class SimpleTFModuleModel(model_collection_base.ModelAndInput):
+  """A simple model based on tf.Module and its data."""
+
+  def get_model(self, **kwargs):
+    model = _SimpleModule()
+    return model
 
   def get_data(self):
     return _get_data_for_simple_models()

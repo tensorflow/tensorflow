@@ -1,5 +1,14 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir -mlir-print-debuginfo %s -o - | FileCheck %s
 
+# Verify that importing a Graph with a backedge leads to two NextIteration nodes
+# to break the cycle.
+
+# CHECK-LABEL: func @main()
+# CHECK:    %[[NEXTITERATION:[a-z0-9]+]], %[[NEXTITERATION_token:[a-z0-9]+]], {{.*}} = tf_executor.NextIteration.Source
+# CHECK:    tf_executor.Merge {{.*}} %[[NEXTITERATION]]
+
+# CHECK:    tf_executor.NextIteration.Sink [%[[NEXTITERATION_token]]]
+
 node {
   name: "Const"
   op: "Const"
@@ -202,21 +211,4 @@ library {
 versions {
   producer: 27
 }
-
-# CHECK:       func @main() {
-# CHECK-NEXT:    %0:2 = "_tf.NextIteration.source"() {T = "tfdtype$DT_INT32", device = "", name = "while/NextIteration"} : () -> (tensor<*xi32>, !_tf.control) loc("while/NextIteration")
-# CHECK-NEXT:    %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control) loc("Const")
-# CHECK-NEXT:    %2:2 = "_tf.Enter"(%1#0) {T = "tfdtype$DT_INT32", device = "", frame_name = "while/while_context", is_constant = false, name = "while/Enter", parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>, !_tf.control) loc("while/Enter")
-# CHECK-NEXT:    %3:3 = "_tf.Merge"(%2#0, %0#0) {N = 2 : i64, T = "tfdtype$DT_INT32", device = "", name = "while/Merge"} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<i32>, !_tf.control) loc("while/Merge")
-# CHECK-NEXT:    %4:2 = "_tf.Const"(%3#2) {device = "", dtype = "tfdtype$DT_INT32", name = "while/Less/y", value = dense<10> : tensor<i32>} : (!_tf.control) -> (tensor<i32>, !_tf.control) loc("while/Less/y")
-# CHECK-NEXT:    %5:2 = "_tf.Less"(%3#0, %4#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Less"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi1>, !_tf.control) loc("while/Less")
-# CHECK-NEXT:    %6:2 = "_tf.LoopCond"(%5#0) {device = "", name = "while/LoopCond"} : (tensor<*xi1>) -> (tensor<i1>, !_tf.control) loc("while/LoopCond")
-# CHECK-NEXT:    %7:3 = "_tf.Switch"(%3#0, %6#0) {T = "tfdtype$DT_INT32", _class = ["loc:@while/Merge"], device = "", name = "while/Switch"} : (tensor<*xi32>, tensor<i1>) -> (tensor<*xi32>, tensor<*xi32>, !_tf.control) loc("while/Switch")
-# CHECK-NEXT:    %8:2 = "_tf.Exit"(%7#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Exit"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control) loc("while/Exit")
-# CHECK-NEXT:    %9:2 = "_tf.Identity"(%7#1) {T = "tfdtype$DT_INT32", device = "", name = "while/Identity"} : (tensor<*xi32>) -> (tensor<*xi32>, !_tf.control) loc("while/Identity")
-# CHECK-NEXT:    %10:2 = "_tf.Const"(%9#1) {device = "", dtype = "tfdtype$DT_INT32", name = "while/Add/y", value = dense<1> : tensor<i32>} : (!_tf.control) -> (tensor<i32>, !_tf.control) loc("while/Add/y")
-# CHECK-NEXT:    %11:2 = "_tf.Add"(%9#0, %10#0) {T = "tfdtype$DT_INT32", device = "", name = "while/Add"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control) loc("while/Add")
-# CHECK-NEXT:    %12 = "_tf.NextIteration.sink"(%11#0) {T = "tfdtype$DT_INT32", device = "", name = "while/NextIteration"} : (tensor<*xi32>) -> !_tf.control loc("while/NextIteration")
-# CHECK-NEXT:    return loc(unknown)
-# CHECK-NEXT:  }
 

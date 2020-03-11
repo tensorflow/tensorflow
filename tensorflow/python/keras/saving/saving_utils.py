@@ -18,13 +18,16 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import os
+import six
 
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -42,16 +45,15 @@ def extract_model_metrics(model):
     Dictionary mapping metric names to metric instances. May return `None` if
     the model does not contain any metrics.
   """
-  if not getattr(model, '_compile_metrics', None):
-    return None
+  if getattr(model, '_compile_metrics', None):
+    # TODO(psv/kathywu): use this implementation in model to estimator flow.
+    # We are not using model.metrics here because we want to exclude the metrics
+    # added using `add_metric` API.
+    return {m.name: m for m in model._compile_metric_functions}  # pylint: disable=protected-access
+  return None
 
-  # TODO(psv/kathywu): use this implementation in model to estimator flow.
-  # We are not using model.metrics here because we want to exclude the metrics
-  # added using `add_metric` API.
-  return {m.name: m for m in model._compile_metric_functions}  # pylint: disable=protected-access
 
-
-def model_input_signature(model):
+def model_input_signature(model, keep_original_batch_size=False):
   """Inspect model to get its input signature.
 
   The model's input signature is a list with a single (possibly-nested) object.
@@ -62,32 +64,20 @@ def model_input_signature(model):
   will have input signature: [{'feature1': TensorSpec, 'feature2': TensorSpec}]
 
   Args:
-    model: Keras Model object
+    model: Keras Model object.
+    keep_original_batch_size: A boolean indicating whether we want to keep using
+      the original batch size or set it to None. Default is `False`, which means
+      that the batch dim of the returned input signature will always be set to
+      `None`.
 
   Returns:
     A list containing either a single TensorSpec or an object with nested
     TensorSpecs. This list does not contain the `training` argument.
   """
-  try:
-    inputs = model.inputs
-    input_names = model.input_names
-  except AttributeError:
+  input_specs = model._get_save_spec(dynamic_batch=not keep_original_batch_size)  # pylint: disable=protected-access
+  if input_specs is None:
     return None
-  flat_inputs = nest.flatten(inputs)
-  flat_input_names = nest.flatten(input_names)
-  flat_input_specs = []
-  for input_tensor, input_name in zip(flat_inputs, flat_input_names):
-    # If the user has not explicitly provided the input_signature, we
-    # create it from the inputs. We make sure to set the first dimension
-    # (batch) to None here, as in serving or retraining, batch should not
-    # be fixed. See b/132783590 for context.
-    input_shape = [None] + input_tensor.shape[1:].as_list()
-    flat_input_specs.append(tensor_spec.TensorSpec(
-        shape=input_shape, dtype=input_tensor.dtype,
-        name=input_name))
-  input_specs = nest.pack_sequence_as(structure=inputs,
-                                      flat_sequence=flat_input_specs)
-
+  input_specs = _enforce_names_consistency(input_specs)
   # Return a list with a single element as the model's input signature.
   if isinstance(input_specs, collections.Sequence) and len(input_specs) == 1:
     # Note that the isinstance check filters out single-element dictionaries,
@@ -136,13 +126,18 @@ def trace_model_call(model, input_signature=None):
     # When given a single input, Keras models will call the model on the tensor
     # rather than a list consisting of the single tensor.
     inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs, training=False))
-    try:
-      output_names = model.output_names
-    except AttributeError:
-      from tensorflow.python.keras.engine import training_utils  # pylint: disable=g-import-not-at-top
-      output_names = training_utils.generic_output_names(outputs_list)
-    return {name: output for name, output in zip(output_names, outputs_list)}
+
+    with base_layer_utils.call_context().enter(
+        model, inputs=inputs, build_graph=False, training=False, saving=True):
+      outputs = model(inputs, training=False)
+
+    # Outputs always has to be a flat dict.
+    output_names = model.output_names  # Functional Model.
+    if output_names is None:  # Subclassed Model.
+      from tensorflow.python.keras.engine import compile_utils  # pylint: disable=g-import-not-at-top
+      output_names = compile_utils.create_pseudo_output_names(outputs)
+    outputs = nest.flatten(outputs)
+    return {name: output for name, output in zip(output_names, outputs)}
 
   return _wrapped_model
 
@@ -175,26 +170,23 @@ def model_metadata(model, include_optimizer=True, require_config=True):
           'You will have to compile your model again after loading it. '
           'Prefer using a Keras optimizer instead '
           '(see keras.io/optimizers).')
-    else:
-      metadata['training_config'] = {
-          'loss': model.loss,
-          # pylint: disable=protected-access
-          'metrics': model._compile_metrics,
-          'weighted_metrics': model._compile_weighted_metrics,
-          # pylint: enable=protected-access
-          'sample_weight_mode': model.sample_weight_mode,
-          'loss_weights': model.loss_weights,
-      }
+    elif model._compile_was_called:  # pylint: disable=protected-access
+      training_config = model._get_compile_args()  # pylint: disable=protected-access
+      training_config.pop('optimizer', None)  # Handled separately.
+      metadata['training_config'] = _serialize_nested_config(training_config)
       if isinstance(model.optimizer, optimizer_v2.RestoredOptimizer):
         raise NotImplementedError(
             'As of now, Optimizers loaded from SavedModel cannot be saved. '
-            'If you\'re calling `model.save` or `tf.keras.models.save_model`, '
-            'please set the `include_optimizer` option to `False`. For '
+            'If you\'re calling `model.save` or `tf.keras.models.save_model`,'
+            ' please set the `include_optimizer` option to `False`. For '
             '`tf.saved_model.save`, delete the optimizer from the model.')
       else:
         optimizer_config = {
-            'class_name': model.optimizer.__class__.__name__,
-            'config': model.optimizer.get_config()}
+            'class_name':
+                generic_utils.get_registered_name(model.optimizer.__class__),
+            'config':
+                model.optimizer.get_config()
+        }
       metadata['training_config']['optimizer_config'] = optimizer_config
   return metadata
 
@@ -212,23 +204,31 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   if custom_objects is None:
     custom_objects = {}
 
-  optimizer_config = training_config['optimizer_config']
-  optimizer = optimizers.deserialize(
-      optimizer_config, custom_objects=custom_objects)
+  with generic_utils.CustomObjectScope(custom_objects):
+    optimizer_config = training_config['optimizer_config']
+    optimizer = optimizers.deserialize(optimizer_config)
 
-  # Recover loss functions and metrics.
-  loss_config = training_config['loss']  # Deserialize loss class.
-  if isinstance(loss_config, dict) and 'class_name' in loss_config:
-    loss_config = losses.get(loss_config)
-  loss = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), loss_config)
-  metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), training_config['metrics'])
-  weighted_metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj),
-      training_config.get('weighted_metrics', None))
-  sample_weight_mode = training_config['sample_weight_mode']
-  loss_weights = training_config['loss_weights']
+    # Recover losses.
+    loss = None
+    loss_config = training_config.get('loss', None)
+    if loss_config is not None:
+      loss = _deserialize_nested_config(losses.deserialize, loss_config)
+
+    # Recover metrics.
+    metrics = None
+    metrics_config = training_config.get('metrics', None)
+    if metrics_config is not None:
+      metrics = _deserialize_nested_config(_deserialize_metric, metrics_config)
+
+    # Recover weighted metrics.
+    weighted_metrics = None
+    weighted_metrics_config = training_config.get('weighted_metrics', None)
+    if weighted_metrics_config is not None:
+      weighted_metrics = _deserialize_nested_config(_deserialize_metric,
+                                                    weighted_metrics_config)
+
+    sample_weight_mode = training_config['sample_weight_mode']
+    loss_weights = training_config['loss_weights']
 
   return dict(
       optimizer=optimizer,
@@ -237,3 +237,71 @@ def compile_args_from_training_config(training_config, custom_objects=None):
       weighted_metrics=weighted_metrics,
       loss_weights=loss_weights,
       sample_weight_mode=sample_weight_mode)
+
+
+def _deserialize_nested_config(deserialize_fn, config):
+  """Deserializes arbitrary Keras `config` using `deserialize_fn`."""
+
+  def _is_single_object(obj):
+    if isinstance(obj, dict) and 'class_name' in obj:
+      return True  # Serialized Keras object.
+    if isinstance(obj, six.string_types):
+      return True  # Serialized function or string.
+    return False
+
+  if config is None:
+    return None
+  if _is_single_object(config):
+    return deserialize_fn(config)
+  elif isinstance(config, dict):
+    return {
+        k: _deserialize_nested_config(deserialize_fn, v)
+        for k, v in config.items()
+    }
+  elif isinstance(config, (tuple, list)):
+    return [_deserialize_nested_config(deserialize_fn, obj) for obj in config]
+
+  raise ValueError('Saved configuration not understood.')
+
+
+def _serialize_nested_config(config):
+  """Serialized a nested structure of Keras objects."""
+
+  def _serialize_fn(obj):
+    if callable(obj):
+      return generic_utils.serialize_keras_object(obj)
+    return obj
+
+  return nest.map_structure(_serialize_fn, config)
+
+
+def _deserialize_metric(metric_config):
+  """Deserialize metrics, leaving special strings untouched."""
+  from tensorflow.python.keras import metrics as metrics_module  # pylint:disable=g-import-not-at-top
+  if metric_config in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    # Do not deserialize accuracy and cross-entropy strings as we have special
+    # case handling for these in compile, based on model output shape.
+    return metric_config
+  return metrics_module.deserialize(metric_config)
+
+
+def _enforce_names_consistency(specs):
+  """Enforces that either all specs have names or none do."""
+
+  def _has_name(spec):
+    return hasattr(spec, 'name') and spec.name is not None
+
+  def _clear_name(spec):
+    spec = copy.deepcopy(spec)
+    if hasattr(spec, 'name'):
+      spec._name = None  # pylint:disable=protected-access
+    return spec
+
+  flat_specs = nest.flatten(specs)
+  name_inconsistency = (
+      any(_has_name(s) for s in flat_specs) and
+      not all(_has_name(s) for s in flat_specs))
+
+  if name_inconsistency:
+    specs = nest.map_structure(_clear_name, specs)
+  return specs

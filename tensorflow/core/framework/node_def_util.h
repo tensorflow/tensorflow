@@ -21,21 +21,30 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/padding.h"
 
 namespace tensorflow {
 
-class Node;
-struct NodeDebugInfo;
-
-// We forward declare protos so that kernels don't need to depend on them
-class NodeDef;
-class OpDef;
 class AttrSlice;
+// We forward declare protos so that kernels don't need to depend on them
+class OpDef;
+class AttrValue;
+class NameAttrList;
+class TensorProto;
+class TensorShapeProto;
 
 // Name of the attribute used to encode node colocation constraints.
 //
@@ -49,7 +58,6 @@ extern const char* const kColocationGroupPrefix;
 
 // Produce a human-readable version of a Node or NodeDef that is more concise
 // than a text-format proto.
-string SummarizeNode(const Node& node);
 string SummarizeNodeDef(const NodeDef& node_def);
 string SummarizeAttrs(const NodeDef& node_def);
 string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
@@ -57,23 +65,17 @@ string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device);
 // Produces a formatted string pattern from the node which can uniquely identify
 // this node upstream to produce an informative error message. The pattern
 // followed is: {{node <node_name>}}
-string FormatNodeForError(const Node& node);
 string FormatNodeDefForError(const NodeDef& node_def);
 string FormatNodeDefForError(
     StringPiece node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info);
-
-// Merges the original node names from the debug information of 'from' to the
-// debug information of 'to'.
-void MergeDebugInfo(const NodeDebugInfo& from, Node* to);
-void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to);
-void MergeDebugInfo(const NodeDef& from, NodeDef* to);
 
 typedef protobuf::Map<string, AttrValue> AttrValueMap;
 
 // Adds an attr with name <name> and value <value> to *node_def.
 // The type of the attr is based on the type of value.
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def);
+void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, StringPiece value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, const char* value, NodeDef* node_def);
 void AddNodeAttr(StringPiece name, int32 value, NodeDef* node_def);
@@ -157,7 +159,7 @@ class AttrSlice {
   // account.
   //
   // TODO(irving): There is a bug in this routine inherited from its
-  // OptimizerCSE::EqualAttrs precedecessor.  The same tensor attr can be
+  // OptimizerCSE::EqualAttrs predecessor.  The same tensor attr can be
   // represented in more than one way as an AttrValue, since TensorProto is
   // not 1-1.  This bug will go away once I replace everything with NodeInfo,
   // which stores a Tensor object directly.  The Scratch object will also go
@@ -189,6 +191,8 @@ bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name);
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    string* value);  // type: "string"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   tstring* value);  // type: "tstring"
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int64* value);  // type: "int"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    int32* value);  // type: "int"
@@ -208,6 +212,8 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    Tensor* value);  // type: "tensor"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<string>* value);  // type "list(string)"
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   std::vector<tstring>* value);  // type "list(tstring)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    std::vector<int64>* value);  // type "list(int)"
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -234,11 +240,15 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const TensorProto** value);  // type: "tensor"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const TensorProto** value);  // type: "tensor"
 
 // This version avoids copying the NameAttrList.
 // REQUIRES: Must not use *value beyond the lifetime of node_def.
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value);  // type: "func"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const NameAttrList** value);  // type: "func"
 
 // These versions copies the NameAttrList(s).
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
@@ -249,16 +259,55 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
 // Look up the attr with name attr_name and set *value to its value.  If no
 // attr with attr_name is found in node_def, or the attr does not have
 // a matching type, false is returned.
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       string* value);  // type: "string"
-bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,
-                       std::vector<string>* value);  // type: "string"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    string* value);  // type: "string"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    int64* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<int64>* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    int32* value);  // type: "int"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    float* value);  // type: "float"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    bool* value);  // type: "bool"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    DataType* value);  // type: "type"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    TensorShape* value);  // type: "shape"
+
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<string>* value);  // type: "list(string)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<tstring>* value);  // type: "list(tstring)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<int32>* value);  // type: "list(int)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<float>* value);  // type: "list(float)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<bool>* value);  // type: "list(bool)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<DataType>* value);  // type: "list(type)"
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<TensorShape> value);  // type: "shape"
+
+// Overloads of TryGetNodeAttr() that avoid copying the non-POD attribute
+// values.
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const string*>* value);  // type: "list(string)"
+bool TryGetNodeAttr(
+    const AttrSlice& attrs, StringPiece attr_name,
+    std::vector<const TensorShapeProto*>* value);  // type: "list(shape)"
 
 // Look up the attr with name attr_name and return a reference to its value.
 // If no attr with attr_name is found in node_def, or the attr does not have
 // a matching type, a reference to an empty string is returned.
 // REQUIRES: Must not use the returned value beyond the lifetime of node_def.
 const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name);
+
+// Specialization to parse an attribute directly into a Padding enum.
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value);
 
 // Computes the input type for a specific node input.
 // REQUIRES: ValidateOpDef(op_def).ok()
@@ -307,9 +356,6 @@ typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
     NameRangeMap;
 Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs);
-
 // Adds default values to *node_def for unspecified attrs from op_def.
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def);
 
@@ -332,9 +378,6 @@ Status ValidateExternalNodeDefSyntax(const NodeDef& node_def);
 // of the NodeDef instead of the formatted string.
 Status AttachDef(const Status& status, const NodeDef& node_def,
                  bool allow_multiple_formatted_node = false);
-Status AttachDef(const Status& status, const Node& node,
-                 bool allow_multiple_formatted_node = false);
-
 // Appends the given prefix and suffix to the original node name in order to
 // make the name unique. If it's an "Enter" node and uniquify_frame_name is
 // true, use the same way to reset attribute "frame_name".

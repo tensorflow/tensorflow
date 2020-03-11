@@ -145,12 +145,13 @@ class WorkerHeartbeatManager(object):
 
   # Default timeout is set to allow other shutdown triggered operations (log
   # flushing etc) to finish before terminating the worker.
-  def shutdown(self, wait_time_in_ms=60000):
+  def shutdown(self, wait_time_in_ms=60000, exit_code=0):
     """Shutdown all workers after `shutdown_timeout_secs`."""
     logging.info('Shutting down %s.', self)
     req = event_pb2.WorkerHeartbeatRequest(
         watchdog_config=event_pb2.WatchdogConfig(timeout_ms=wait_time_in_ms),
-        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT)
+        shutdown_mode=event_pb2.SHUTDOWN_AFTER_TIMEOUT,
+        exit_code=event_pb2.RequestedExitCode(exit_code=exit_code))
     self.configure(req)
 
     # Wait for workers to shutdown.
@@ -196,7 +197,7 @@ class WatchdogManager(threading.Thread):
                session,
                devices=None,
                ping_interval=60,
-               shutdown_timeout=3600):
+               shutdown_timeout=2 * 3600):
     """Initialize a watchdog manager.
 
     Args:
@@ -220,7 +221,7 @@ class WatchdogManager(threading.Thread):
     self._session = None
     self._worker_manager = None
 
-  def _reset_manager(self):
+  def _reset_manager(self, stopping=False):
     """Reset the graph, session and worker manager."""
     self._graph = ops.Graph()
     self._session = session_lib.Session(
@@ -236,11 +237,17 @@ class WatchdogManager(threading.Thread):
       self._worker_manager = WorkerHeartbeatManager.from_devices(
           self._session, self._devices)
 
+    if stopping:
+      timeout_ms = -1
+      shutdown_mode = event_pb2.NOT_CONFIGURED
+    else:
+      timeout_ms = self.shutdown_timeout * 1000
+      shutdown_mode = event_pb2.WAIT_FOR_COORDINATOR
+
     self._worker_manager.configure(
         event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(
-                timeout_ms=self.shutdown_timeout * 1000,),
-            shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=timeout_ms),
+            shutdown_mode=shutdown_mode))
 
   def configure_and_run(self):
     logging.info(
@@ -253,10 +260,7 @@ class WatchdogManager(threading.Thread):
 
   def stop(self):
     logging.info('Stopping worker watchdog.')
-    self._worker_manager.configure(
-        event_pb2.WorkerHeartbeatRequest(
-            watchdog_config=event_pb2.WatchdogConfig(timeout_ms=-1,),
-            shutdown_mode=event_pb2.NOT_CONFIGURED))
+    self._reset_manager(stopping=True)
     self._running = False
     self.join()
 
@@ -292,6 +296,14 @@ def start_worker_watchdog(session,
     _WATCHDOG = WatchdogManager(session, devices, ping_interval,
                                 shutdown_timeout)
     _WATCHDOG.configure_and_run()
+
+
+def stop_worker_watchdog():
+  """Stop global worker watchdog."""
+  global _WATCHDOG
+  if _WATCHDOG is not None:
+    _WATCHDOG.stop()
+    _WATCHDOG = None
 
 
 class GracefulShutdownHook(session_run_hook.SessionRunHook):
@@ -346,7 +358,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           self._heartbeat_supported = False
       else:
         logging.warn(
-            'No workers support hearbeats. Failure handling will be disabled.')
+            'No workers support heartbeats. Failure handling will be disabled.')
 
   def saver(self):
     if self._saver:
@@ -406,7 +418,7 @@ class ResetComputation(object):
 
   def __call__(self, run_context, all_workers, lame_workers):
     del run_context, lame_workers
-    all_workers.shutdown()
+    all_workers.shutdown(exit_code=42)
 
     logging.info('Resetting coordinator.')
     raise CoordinatorResetError()
@@ -423,7 +435,7 @@ class ShutdownLameWorkers(object):
     pass
 
   def __call__(self, run_context, all_workers, lame_workers):
-    lame_workers.shutdown()
+    lame_workers.shutdown(exit_code=42)
 
 
 class ShutdownAllWorkers(object):
@@ -437,4 +449,4 @@ class ShutdownAllWorkers(object):
     pass
 
   def __call__(self, run_context, all_workers, lame_workers):
-    all_workers.shutdown()
+    all_workers.shutdown(exit_code=42)

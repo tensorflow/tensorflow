@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/string_util.h"
 
@@ -36,14 +36,15 @@ namespace {
 // invalidate all TfLiteTensor* handles during inference or allocation.
 class TensorHandle {
  public:
-  TensorHandle(tflite::Interpreter* interpreter, int tensor_index)
+  TensorHandle(tflite_api_dispatcher::Interpreter* interpreter,
+               int tensor_index)
       : interpreter_(interpreter), tensor_index_(tensor_index) {}
 
   TfLiteTensor* tensor() const { return interpreter_->tensor(tensor_index_); }
   int index() const { return tensor_index_; }
 
  private:
-  tflite::Interpreter* const interpreter_;
+  tflite_api_dispatcher::Interpreter* const interpreter_;
   const int tensor_index_;
 };
 
@@ -125,6 +126,7 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       env->GetLongArrayRegion(long_array, 0, num_elements, long_dst);
       return to_copy;
     }
+    case kTfLiteInt8:
     case kTfLiteUInt8: {
       jbyteArray byte_array = static_cast<jbyteArray>(array);
       jbyte* byte_dst = static_cast<jbyte*>(dst);
@@ -173,6 +175,7 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
                               static_cast<const jlong*>(src));
       return size;
     }
+    case kTfLiteInt8:
     case kTfLiteUInt8: {
       jbyteArray byte_array = static_cast<jbyteArray>(dst);
       env->SetByteArrayRegion(byte_array, 0, len,
@@ -308,8 +311,8 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_Tensor_create(
     JNIEnv* env, jclass clazz, jlong interpreter_handle, jint tensor_index) {
-  tflite::Interpreter* interpreter =
-      reinterpret_cast<tflite::Interpreter*>(interpreter_handle);
+  tflite_api_dispatcher::Interpreter* interpreter =
+      reinterpret_cast<tflite_api_dispatcher::Interpreter*>(interpreter_handle);
   return reinterpret_cast<jlong>(new TensorHandle(interpreter, tensor_index));
 }
 
@@ -404,6 +407,27 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
   return static_cast<jint>(tensor->type);
 }
 
+JNIEXPORT jstring JNICALL Java_org_tensorflow_lite_Tensor_name(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlong handle) {
+  TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Target Tensor doesn't exist.");
+    return nullptr;
+  }
+
+  if (tensor->name == nullptr) {
+    return env->NewStringUTF("");
+  }
+
+  jstring tensor_name = env->NewStringUTF(tensor->name);
+  if (tensor_name == nullptr) {
+    return env->NewStringUTF("");
+  }
+  return tensor_name;
+}
+
 JNIEXPORT jintArray JNICALL
 Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
@@ -411,6 +435,25 @@ Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   int num_dims = tensor->dims->size;
   jintArray result = env->NewIntArray(num_dims);
   env->SetIntArrayRegion(result, 0, num_dims, tensor->dims->data);
+  return result;
+}
+
+JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shapeSignature(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) return nullptr;
+
+  int num_dims = 0;
+  int const* data = nullptr;
+  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
+    num_dims = tensor->dims_signature->size;
+    data = tensor->dims_signature->data;
+  } else {
+    num_dims = tensor->dims->size;
+    data = tensor->dims->data;
+  }
+  jintArray result = env->NewIntArray(num_dims);
+  env->SetIntArrayRegion(result, 0, num_dims, data);
   return result;
 }
 
@@ -437,6 +480,18 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
                                                              jclass clazz,
                                                              jlong handle) {
   return GetTensorIndexFromHandle(env, handle);
+}
+
+JNIEXPORT jfloat JNICALL Java_org_tensorflow_lite_Tensor_quantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jfloat>(tensor ? tensor->params.scale : 0.f);
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_quantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jint>(tensor ? tensor->params.zero_point : 0);
 }
 
 #ifdef __cplusplus

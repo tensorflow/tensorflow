@@ -22,6 +22,8 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_live_range.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -29,204 +31,11 @@ namespace xla {
 using absl::flat_hash_map;
 using absl::flat_hash_set;
 
-namespace {
-// FlattenSchedule walks through the instruction, and recurse into each called
-// computations. As it walks it also tracks down the ordinal number of each
-// instruction in the schedule and store it in the `instruction_schedule` and
-// 'flattened_instruction_sequence`. The end of each computation is tracked in
-// `computation_schedule`.
-int64 FlattenSchedule(
-    const HloComputation& computation,
-    const HloInstructionSequence& instruction_sequence,
-    const HloSchedule* schedule, int64 start_time,
-    HloInstructionSequence* flattened_instruction_sequence,
-    absl::flat_hash_map<const HloInstruction*, int64>* instruction_schedule,
-    absl::flat_hash_map<const HloComputation*, int64>* computation_schedule) {
-  int64 time = start_time;
-  for (HloInstruction* instruction : instruction_sequence.instructions()) {
-    if (schedule != nullptr) {
-      // Recurse into sub computations if we have a module-scoped schedule.
-      if (instruction->opcode() == HloOpcode::kCall ||
-          instruction->opcode() == HloOpcode::kConditional) {
-        for (const HloComputation* called_computation :
-             instruction->called_computations()) {
-          const HloInstructionSequence& called_sequence =
-              schedule->sequence(called_computation);
-          time = FlattenSchedule(*called_computation, called_sequence, schedule,
-                                 time, flattened_instruction_sequence,
-                                 instruction_schedule, computation_schedule);
-          computation_schedule->insert({called_computation, time});
-        }
-      }
-      if (instruction->opcode() == HloOpcode::kWhile) {
-        const HloInstructionSequence& condition_sequence =
-            schedule->sequence(instruction->while_condition());
-        time =
-            FlattenSchedule(*instruction->while_condition(), condition_sequence,
-                            schedule, time, flattened_instruction_sequence,
-                            instruction_schedule, computation_schedule);
-        computation_schedule->insert({instruction->while_condition(), time});
-        const HloInstructionSequence& body_sequence =
-            schedule->sequence(instruction->while_body());
-        time = FlattenSchedule(*instruction->while_body(), body_sequence,
-                               schedule, time, flattened_instruction_sequence,
-                               instruction_schedule, computation_schedule);
-      }
-    }
-    if (instruction_schedule->count(instruction) != 0) {
-      continue;
-    }
-    instruction_schedule->insert({instruction, time++});
-    flattened_instruction_sequence->push_back(instruction);
-  }
-  computation_schedule->insert({&computation, time});
-  DCHECK_EQ(instruction_schedule->size(),
-            flattened_instruction_sequence->size());
-  DCHECK_EQ(instruction_schedule->size(), time);
-  return time;
+bool HeapSimulator::Chunk::OverlapsWith(Chunk other_chunk) const {
+  CHECK_NE(size, 0);
+  CHECK_NE(other_chunk.size, 0);
+  return offset < other_chunk.chunk_end() && other_chunk.offset < chunk_end();
 }
-
-// The aliased buffers could have overlapping live ranges.
-// NormalizeAliasedBuffers normalizes the buffer such that each alias buffer has
-// disjoint live range while keeping the live range union the same. This avoid
-// double counting aliased buffer sizes.
-//
-// Before(buffer1 and 2 are aliased):
-//
-//           +----+          live range of buffer1
-//   +------------------+    live range of buffer2
-//
-// After:
-//
-//           +----------+    live range of buffer1
-//   +------+                live range of buffer2
-//
-// Before(buffer1 and 2 are aliased):
-//
-//           +----------+    live range of buffer1
-//   +------------+          live range of buffer2
-//
-// After:
-//
-//           +----------+    live range of buffer1
-//   +------+                live range of buffer2
-//
-// Before(buffer1 and 2 are aliased):
-//
-//           +----------+    live range of buffer1
-//   +---+                   live range of buffer2
-//
-// After(unchanged):
-//
-//           +----------+    live range of buffer1
-//   +---+                   live range of buffer2
-//
-// As another example, imagine we have the following code sequence with live
-// ranges of each while-aliased buffers:
-//
-//                     a      p1    p2    e     b
-// a = ...             +
-//                     |
-// {                   |
-//   p1 = param        |       +
-//   ROOT true         |       |
-// }                   |       +
-// { // body           |
-//   p2 = param        +             +
-//   c = p2 + 1                      +
-//   d = c + 1
-//   ROOT e = d + 1                       +
-// }                                      |
-//                                        |
-// b = while (a)                          +     +
-//                                              |
-// f = b + 1                                    +
-//
-// After normalization it becomes:
-//
-//                     a      p1    p2    e     b
-// a = ...             +
-//                     |
-// {                   +
-//   p1 = param                +
-//   ROOT true                 |
-// }                           +
-// { // body
-//   p2 = param                      +
-//   c = p2 + 1                      +
-//   d = c + 1
-//   ROOT e = d + 1                       +
-// }                                      |
-//                                        |
-// b = while (a)                          +
-//                                              +
-// f = b + 1                                    +
-//
-// Note there is no overlap of live ranges after normalization.
-void NormalizeAliasedBuffers(
-    absl::flat_hash_map<const HloValue*, int64>* buffer_start_map,
-    absl::flat_hash_map<const HloValue*, int64>* buffer_end_map,
-    const std::vector<const HloValue*>& values_to_assign,
-    const HloAliasAnalysis& alias_analysis) {
-  absl::flat_hash_set<const HloValue*> values_to_assign_set(
-      values_to_assign.begin(), values_to_assign.end());
-  for (const HloBuffer& hlo_buffer : alias_analysis.buffers()) {
-    std::vector<const HloValue*> aliased_buffers;
-    for (const HloValue* hlo_value : hlo_buffer.values()) {
-      if (values_to_assign_set.count(hlo_value) != 0) {
-        aliased_buffers.push_back(hlo_value);
-        CHECK_NE(buffer_start_map->count(hlo_value), 0);
-        CHECK_NE(buffer_end_map->count(hlo_value), 0);
-      }
-    }
-    absl::c_sort(
-        aliased_buffers, [&](const HloValue* value1, const HloValue* value2) {
-          if ((*buffer_start_map)[value1] != (*buffer_start_map)[value2]) {
-            return (*buffer_start_map)[value1] < (*buffer_start_map)[value2];
-          }
-          return (*buffer_end_map)[value1] < (*buffer_end_map)[value2];
-        });
-
-    for (int64 i = 0; i < aliased_buffers.size(); ++i) {
-      // We can't use aliased_buffers.size() - 1 since aliased_buffers.size() is
-      // an unsigned integer and can be 0.
-      if (i + 1 == aliased_buffers.size()) {
-        break;
-      }
-
-      const HloValue* value1 = aliased_buffers[i];
-      const HloValue* value2 = aliased_buffers[i + 1];
-      if ((*buffer_start_map)[value1] == (*buffer_start_map)[value2]) {
-        // If value1 has the same start time as value2, make value1 disappear by
-        // setting the end time same as start time:
-        //
-        // Before:
-        // +----+           value1
-        // +----------+     value2
-        //
-        // After:
-        // +                value1
-        // +----------+     value2
-        //
-        // Note that only when heap simulator runs before copy insertion can
-        // this happen where one instruction defines multiple aliased buffers --
-        // This is illegle to execute and can be fixed by copy insertion later.
-        (*buffer_end_map)[value1] = (*buffer_start_map)[value1];
-        continue;
-      }
-
-      if ((*buffer_end_map)[value1] < (*buffer_start_map)[value2]) {
-        continue;
-      }
-
-      if ((*buffer_end_map)[value1] > (*buffer_end_map)[value2]) {
-        (*buffer_end_map)[value2] = (*buffer_end_map)[value1];
-      }
-      (*buffer_end_map)[value1] = (*buffer_start_map)[value2] - 1;
-    }
-  }
-}
-}  // namespace
 
 /*static*/
 StatusOr<int64> HeapSimulator::MinimumMemoryForModule(
@@ -289,8 +98,12 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
   const HloComputation* entry_computation = module.entry_computation();
   const HloInstructionSequence& instruction_sequence =
       schedule.sequence(entry_computation);
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      HloLiveRange::Run(schedule, alias_analysis, entry_computation));
   TF_RETURN_IF_ERROR(heap.RunComputation(*entry_computation,
-                                         instruction_sequence, alias_analysis));
+                                         instruction_sequence, alias_analysis,
+                                         hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -304,8 +117,13 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
         memory_by_computation) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/nullptr, memory_by_computation);
-  TF_RETURN_IF_ERROR(
-      heap.RunComputation(computation, instruction_sequence, alias_analysis));
+  HloSchedule schedule(computation.parent());
+  schedule.set_sequence(&computation, instruction_sequence);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
+                      HloLiveRange::Run(schedule, alias_analysis, &computation,
+                                        /*module_scoped_analysis=*/false));
+  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                         alias_analysis, hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -318,8 +136,11 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     const Options& options) {
   HeapSimulator heap(std::move(algorithm), size_fn, options,
                      /*schedule=*/schedule, nullptr);
-  TF_RETURN_IF_ERROR(
-      heap.RunComputation(computation, instruction_sequence, alias_analysis));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloLiveRange> hlo_live_range,
+      HloLiveRange::Run(*schedule, alias_analysis, &computation));
+  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                         alias_analysis, hlo_live_range.get()));
   return heap.Finish();
 }
 
@@ -328,35 +149,21 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
 Status HeapSimulator::RunComputation(
     const HloComputation& computation,
     const HloInstructionSequence& instruction_sequence,
-    const HloAliasAnalysis& alias_analysis) {
+    const HloAliasAnalysis& alias_analysis, HloLiveRange* hlo_live_range) {
   XLA_VLOG_LINES(1, computation.parent()->ToString());
   XLA_VLOG_LINES(2, computation.ToString());
 
+  VLOG(1) << hlo_live_range->ToString();
+
   HloDataflowAnalysis& dataflow_analysis = alias_analysis.dataflow_analysis();
-
-  // program_end_time is the time of the last instruction scheduled. It is equal
-  // to the number of instructions in a computation.
-  int64 program_end_time =
-      FlattenSchedule(computation, instruction_sequence, schedule_, 0,
-                      &flattened_instruction_sequence_, &instruction_schedule_,
-                      &computation_schedule_);
-
-  VLOG(1) << "Program end time: " << program_end_time;
-
-  algorithm_->SetSchedules(&flattened_instruction_sequence_,
-                           &instruction_schedule_, &computation_schedule_);
-
-  // We track the definition and free events for each buffer, then we go through
-  // each step and reply those events in program order.
-  absl::flat_hash_map<const HloValue*, int64> buffer_start_map;
-  absl::flat_hash_map<const HloValue*, int64> buffer_end_map;
 
   // Record the buffer define/free event for each time step. We free all
   // remaining buffers (entry parameter, etc) after the program has finished
   // running, so we set the size of to program_end_time + 1.
-  std::vector<std::vector<const HloValue*>> buffers_defined(program_end_time +
-                                                            1);
-  std::vector<std::vector<const HloValue*>> buffers_freed(program_end_time + 1);
+  std::vector<std::vector<const HloValue*>> buffers_defined(
+      hlo_live_range->schedule_end_time() + 1);
+  std::vector<std::vector<const HloValue*>> buffers_freed(
+      hlo_live_range->schedule_end_time() + 1);
 
   // values_to_assign tracks the HloValues that we need to assign a buffer to.
   // Note that we only need to assign a buffer to a value when both of the
@@ -369,106 +176,49 @@ Status HeapSimulator::RunComputation(
   // - If the instruction is in a nested call of the current computation, only
   // assign a buffer if we are doing global heap simulation.
   std::vector<const HloValue*> values_to_assign;
+  values_to_assign.reserve(dataflow_analysis.values().size());
 
-  // Keeps track of buffer start time and buffer end time.
   for (const HloValue* value : dataflow_analysis.values()) {
-    // Ignore buffers that are not defined.
-    if (instruction_schedule_.count(value->defining_instruction()) == 0) {
+    // Ignore buffers that are not tracked.
+    if (hlo_live_range->instruction_schedule().count(
+            value->defining_instruction()) == 0) {
       continue;
     }
     if (IgnoreBuffer(value)) {
       continue;
     }
     values_to_assign.push_back(value);
-    int64 buffer_start_time = instruction_schedule_[value->instruction()];
-
-    int64 buffer_end_time = -1;
-    // A buffer's live range ends when the last user finishes executing.
-    for (const HloUse& use : value->uses()) {
-      const HloInstruction* used = use.instruction;
-      // As an optimization, we deem a while's init value's live range ends as
-      // soon as the loop body starts. This optimization is only applicable to
-      // the whole module simulation.
-      if (schedule_ != nullptr && used->opcode() == HloOpcode::kWhile) {
-        // The current live range is at the end of the while, move it to the
-        // beginning of the body.
-        used = used->while_body()->parameter_instruction(0);
-        VLOG(1) << "Moved value " << value->ToShortString()
-                << " to while param: " << used->ToString();
-      }
-      if (instruction_schedule_.count(used) == 0) {
-        // We didn't track the instruction `used`. This happens when we do
-        // computation scope (versus module scope) heap simulation and when the
-        // used instruction is outside of the computation being simulated.
-        continue;
-      }
-      buffer_end_time = std::max(buffer_end_time, instruction_schedule_[used]);
-    }
-
-    if (buffer_end_time == -1) {
-      buffer_end_time = buffer_start_time;
-    }
-
-    for (const HloPosition& position : value->positions()) {
-      const HloComputation* position_comp = position.instruction->parent();
-      // If this instruction lives out, the live range of the instruction should
-      // be extended to the end of the computation.
-      if (position.instruction == position_comp->root_instruction()) {
-        if (schedule_ == nullptr && &computation != position_comp) {
-          continue;
-        }
-        if (computation_schedule_.count(position_comp) == 0) {
-          continue;
-        }
-        buffer_end_time =
-            std::max(buffer_end_time, computation_schedule_[position_comp]);
-      }
-    }
-
-    // Entry parameters live across whole computation.
-    if (value->instruction()->opcode() == HloOpcode::kParameter &&
-        value->instruction()->parent() ==
-            computation.parent()->entry_computation()) {
-      buffer_end_time = program_end_time;
-    }
-
-    CHECK(buffer_start_time <= buffer_end_time);
-
-    buffer_start_map[value] = buffer_start_time;
-    buffer_end_map[value] = buffer_end_time;
   }
 
-  NormalizeAliasedBuffers(&buffer_start_map, &buffer_end_map, values_to_assign,
-                          alias_analysis);
+  auto& buffer_live_ranges = hlo_live_range->buffer_live_ranges();
 
   absl::c_sort(values_to_assign,
                [&](const HloValue* value1, const HloValue* value2) {
-                 if (buffer_start_map[value1] != buffer_start_map[value2]) {
-                   return buffer_start_map[value1] < buffer_start_map[value2];
-                 }
-
-                 if (buffer_end_map[value1] != buffer_end_map[value2]) {
-                   return buffer_end_map[value1] < buffer_end_map[value2];
-                 }
-                 return value1->id() < value2->id();
+                 const auto& live_range1 = buffer_live_ranges.at(value1);
+                 const auto& live_range2 = buffer_live_ranges.at(value2);
+                 return std::forward_as_tuple(live_range1.start,
+                                              live_range1.end, value1->id()) <
+                        std::forward_as_tuple(live_range2.start,
+                                              live_range2.end, value2->id());
                });
 
   // For each value that we need to assign a buffer to, add the define and free
   // events.
   for (const HloValue* value : values_to_assign) {
-    buffers_defined[buffer_start_map[value]].push_back(value);
-    buffers_freed[buffer_end_map[value]].push_back(value);
+    auto live_range = buffer_live_ranges.at(value);
+    buffers_defined[live_range.start].push_back(value);
+    buffers_freed[live_range.end].push_back(value);
   }
 
   // All HloValues in a hlo buffer should be allocated to the same address. This
   // map tracks the first value that got allocated in a buffer.
   absl::flat_hash_map<const HloBuffer*, const HloValue*> first_allocated_value;
 
-  VLOG(1) << "Program time" << program_end_time;
+  VLOG(1) << "Program time" << hlo_live_range->schedule_end_time();
 
   // Go through each step in the program and replay each buffer define and free
   // events.
-  for (int64 i = 0; i < program_end_time + 1; ++i) {
+  for (int64 i = 0; i < hlo_live_range->schedule_end_time() + 1; ++i) {
     VLOG(1) << "Time step: " << i;
 
     for (const HloValue* value : buffers_defined[i]) {
@@ -500,11 +250,28 @@ Status HeapSimulator::RunComputation(
             if (operand_buffer->values().size() > 1) {
               continue;
             }
-            if (buffer_end_map.count(operand_value) == 0) {
+            auto it = buffer_live_ranges.find(operand_value);
+            if (it == buffer_live_ranges.end()) {
               continue;
             }
+
+            auto& operand_live_range = it->second;
+
+            auto& user_live_range = buffer_live_ranges[value];
+
             // Can only share buffers that are about to be freed.
-            if (buffer_end_map[operand_value] != i) {
+            if (operand_live_range.end != i) {
+              continue;
+            }
+
+            if (IgnoreBuffer(operand_value)) {
+              continue;
+            }
+
+            if (!absl::c_linear_search(buffers_freed[i], operand_value)) {
+              // If the operand buffer is not being freed (either because it has
+              // existing users, or it has been reused by other buffers), don't
+              // consider the operand as a candidate of buffer sharing.
               continue;
             }
 
@@ -527,7 +294,7 @@ Status HeapSimulator::RunComputation(
               ShareBuffer(value, operand_value, value->instruction());
               // The live range of the operand buffer is now extended to the end
               // of the current instruction.
-              buffer_end_map[operand_value] = buffer_end_map[value];
+              operand_live_range.end = user_live_range.end;
               VLOG(1) << "Sharing " << value->ToShortString() << " with "
                       << operand_value->ToShortString()
                       << ", size:" << size_fn_(*value);
@@ -717,6 +484,54 @@ HeapSimulator::Result NoFragmentationStatsHeap::Finish() {
   return result;
 }
 
+GlobalDecreasingSizeBestFitHeap::GlobalDecreasingSizeBestFitHeap(
+    int64 alignment, Type type)
+    : alignment_(alignment) {
+  if (type == kTemporal) {
+    buffer_interval_compare_ = GetTemporalBufferIntervalCompare();
+  } else {
+    CHECK(type == kSpatial);
+    buffer_interval_compare_ = GetSpatialBufferIntervalCompare();
+  }
+}
+
+GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetTemporalBufferIntervalCompare() const {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    int64 x_end = x.end;
+    for (auto colocation : GetTransitiveColocations(x)) {
+      x_end = std::max(x_end, buffer_intervals_.at(colocation).end);
+    }
+
+    int64 y_end = y.end;
+    for (auto colocation : GetTransitiveColocations(y)) {
+      y_end = std::max(y_end, buffer_intervals_.at(colocation).end);
+    }
+
+    if (x_end - x.start != y_end - y.start) {
+      return x_end - x.start > y_end - y.start;
+    }
+
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
+/*static*/ GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare
+GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare() {
+  return [&](const BufferInterval& x, const BufferInterval& y) {
+    if (x.size != y.size) {
+      return x.size > y.size;
+    }
+    if (x.end - x.start != y.end - y.start) {
+      return x.end - x.start > y.end - y.start;
+    }
+    return x.buffer->id() < y.buffer->id();
+  };
+}
+
 void GlobalDecreasingSizeBestFitHeap::Alloc(const HloValue* buffer,
                                             int64 size) {
   // Degenerate case: 0-sized buffers are always allocated at offset 0.
@@ -782,28 +597,30 @@ void GlobalDecreasingSizeBestFitHeap::Free(const HloValue* buffer, int64 size) {
 
 using Chunk = HeapSimulator::Chunk;
 
-void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
-    int64 start, int64 end, const Chunk& chunk) {
-  node_storage_.emplace_back(
-      BufferIntervalTreeNode{start, end, end, chunk, nullptr, nullptr});
-
-  if (node_storage_.size() == 1) {
+void BufferIntervalTree::Add(int64 start, int64 end, const Chunk& chunk) {
+  node_storage_.emplace_back(BufferIntervalTreeNode{
+      start, end, end, chunk,
+      /*left=*/nullptr, /*right=*/nullptr, /*parent=*/nullptr});
+  if (root_ == nullptr) {
+    root_ = &node_storage_.back();
     // This is root.
     return;
   }
 
-  BufferIntervalTreeNode* parent = &node_storage_.front();
+  BufferIntervalTreeNode* parent = root_;
   while (true) {
     parent->subtree_end = std::max(parent->subtree_end, end);
     if (parent->start > start) {
       if (parent->left == nullptr) {
         parent->left = &node_storage_.back();
+        node_storage_.back().parent = parent;
         return;
       }
       parent = parent->left;
     } else {
       if (parent->right == nullptr) {
         parent->right = &node_storage_.back();
+        node_storage_.back().parent = parent;
         return;
       }
       parent = parent->right;
@@ -811,15 +628,141 @@ void GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::Add(
   }
 }
 
-std::vector<Chunk>
-GlobalDecreasingSizeBestFitHeap::BufferIntervalTree::ChunksOverlappingInTime(
+bool BufferIntervalTree::Remove(int64 start, int64 end, const Chunk& chunk) {
+  BufferIntervalTreeNode* to_delete = root_;
+  while (to_delete != nullptr) {
+    if (to_delete->start == start && to_delete->end == end &&
+        to_delete->chunk.offset == chunk.offset) {
+      break;
+    }
+    if (start < to_delete->start) {
+      to_delete = to_delete->left;
+    } else {
+      to_delete = to_delete->right;
+    }
+  }
+  if (to_delete == nullptr) {
+    // Nothing to delete.
+    return false;
+  }
+  // Found the node to be deleted, enter deletion sequence.
+
+  // Recursively traverse the parents of node and fix up the `subtree_end`
+  // invariant of a node. Recursive lambda need an explicit
+  // std::function declaration.
+  std::function<void(BufferIntervalTreeNode*)> fix_up =
+      [&](BufferIntervalTreeNode* node) {
+        if (node == nullptr) {
+          return;
+        }
+        node->subtree_end = node->end;
+        if (node->left) {
+          node->subtree_end =
+              std::max(node->subtree_end, node->left->subtree_end);
+        }
+        if (node->right) {
+          node->subtree_end =
+              std::max(node->subtree_end, node->right->subtree_end);
+        }
+        // Recursively go up.
+        fix_up(node->parent);
+      };
+
+  if (to_delete->right == nullptr) {
+    // to_delete has no right child, simply move up left child of to_delete if
+    // any.
+    //
+    // Turn:
+    //      parent
+    //       /
+    // to_delete
+    //  /      \
+    // left    nullptr
+    //
+    // Into:
+    //      parent
+    //      /
+    //    left
+    if (root_ == to_delete) {
+      // Deleting root is simply reseting root;
+      root_ = to_delete->left;
+      return true;
+    }
+
+    if (to_delete == to_delete->parent->left) {
+      // to_delete is left child of parent.
+      to_delete->parent->left = to_delete->left;
+    }
+    if (to_delete == to_delete->parent->right) {
+      // to_delete is right child of parent.
+      to_delete->parent->right = to_delete->left;
+    }
+    // Rewire parent to the node being moved up.
+    if (to_delete->left) {
+      to_delete->left->parent = to_delete->parent;
+    }
+    // Fix up starting from subroot.
+    fix_up(to_delete);
+  } else {
+    // 1. Find left-most node of the right subtree, promote it to the position
+    // of to_delete.
+    BufferIntervalTreeNode* to_promote = to_delete->right;
+    while (to_promote->left != nullptr) {
+      // Go to left-most subtree.
+      to_promote = to_promote->left;
+    }
+
+    // 2. Copy the content of `to_promote` to `to_delete`.
+    to_delete->start = to_promote->start;
+    to_delete->end = to_promote->end;
+    // This is incorrect but we will fix this up later in the `fix_up`
+    // procedure.
+    to_delete->subtree_end = to_promote->subtree_end;
+    to_delete->chunk = to_promote->chunk;
+    auto to_promote_parent = to_promote->parent;
+    // 3. Move the right child of `to_promote` up if there is any.
+    //
+    // Turn
+    //
+    // to_delete
+    //         \
+    //        to_promote_parent
+    //         /
+    //    to_promote
+    //          \
+    //          right
+    // into
+    //
+    // to_promote
+    //         \
+    //         to_promote_parent
+    //         /
+    //      right
+    if (to_promote_parent->left == to_promote) {
+      to_promote_parent->left = to_promote->right;
+    } else {
+      to_promote_parent->right = to_promote->right;
+    }
+    if (to_promote->right) {
+      // Set correct parent.
+      to_promote->right->parent = to_promote_parent;
+    }
+    // 4. Recursive fix up the `subtree_end` starting from
+    // `to_promote_parent`.
+    fix_up(to_promote_parent);
+  }
+  // Don't free the entry in node_storage_ until we free the entire tree.
+  return true;
+}
+
+std::vector<Chunk> BufferIntervalTree::ChunksOverlappingInTime(
     int64 start, int64 end) const {
   std::vector<Chunk> result;
-  if (node_storage_.empty()) {
+  if (root_ == nullptr) {
     return result;
   }
   std::vector<const BufferIntervalTreeNode*> visiting_stack;
-  visiting_stack.push_back(&node_storage_.front());
+  visiting_stack.push_back(root_);
   while (!visiting_stack.empty()) {
     const BufferIntervalTreeNode* top = visiting_stack.back();
     visiting_stack.pop_back();
@@ -866,49 +809,7 @@ GlobalDecreasingSizeBestFitHeap::GetSortedBufferIntervals() const {
   for (auto& entry : buffer_intervals_) {
     sorted_buffer_intervals.push_back(entry.second);
   }
-  if (type_ == kTemporal) {
-    // Sort by live-range. A live range is defined by the range between the
-    // start of the first buffer and the end of the last co-located
-    // buffer. There could be "holes" in the live ranges of each co-located
-    // buffers, but in this heuristics we think they are contiguous.
-    absl::c_sort(sorted_buffer_intervals,
-                 [&](const BufferInterval& x, const BufferInterval& y) {
-                   int64 x_end = x.end;
-                   for (auto colocation : GetTransitiveColocations(x)) {
-                     x_end =
-                         std::max(x_end, buffer_intervals_.at(colocation).end);
-                   }
-
-                   int64 y_end = y.end;
-                   for (auto colocation : GetTransitiveColocations(y)) {
-                     y_end =
-                         std::max(y_end, buffer_intervals_.at(colocation).end);
-                   }
-
-                   if (x_end - x.start != y_end - y.start) {
-                     return x_end - x.start > y_end - y.start;
-                   }
-
-                   if (x.size != y.size) {
-                     return x.size > y.size;
-                   }
-                   return x.buffer->id() < y.buffer->id();
-                 });
-  } else {
-    // Sort by spatial size. We don't look at co-locates as they should have the
-    // same size.
-    CHECK(type_ == kSpatial);
-    absl::c_sort(sorted_buffer_intervals,
-                 [&](const BufferInterval& x, const BufferInterval& y) {
-                   if (x.size != y.size) {
-                     return x.size > y.size;
-                   }
-                   if (x.end - x.start != y.end - y.start) {
-                     return x.end - x.start > y.end - y.start;
-                   }
-                   return x.buffer->id() < y.buffer->id();
-                 });
-  }
+  absl::c_sort(sorted_buffer_intervals, buffer_interval_compare_);
 
   return sorted_buffer_intervals;
 }
@@ -960,6 +861,7 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
   // Find the minimum free chunk that can hold this buffer.
   ChunkCandidate chunk_candidate{Chunk{-1, INT64_MAX}, result_.heap_size};
   Chunk& min_fit_chunk = chunk_candidate.chunk;
+  int64 preferred_chunk_end = preferred_offset + buffer_interval.size;
   auto use_free_chunk_if_smaller = [&](int64 free_offset, int64 free_size) {
     if (free_size < buffer_interval.size) {
       return;
@@ -967,8 +869,14 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
 
     // If a preferred offset is provided, pick that offset.
     if (free_offset <= preferred_offset &&
-        free_offset + free_size >= preferred_offset + buffer_interval.size) {
+        free_offset + free_size >= preferred_chunk_end) {
       min_fit_chunk = {preferred_offset, buffer_interval.size};
+    } else if (free_offset + free_size == result_.heap_size &&
+               free_offset <= preferred_offset) {
+      // If the free offset is at the very end and if the preferred offset lies
+      // in this, pick the preferred offset and grow the heap.
+      min_fit_chunk = {preferred_offset, buffer_interval.size};
+      chunk_candidate.heap_size = preferred_chunk_end;
     }
 
     // Pick the min-fit chunk only if we didn't have a preferred offset or a
@@ -987,6 +895,12 @@ GlobalDecreasingSizeBestFitHeap::FindChunkCandidate(
     offset = std::max(offset, RoundUpToNearest(chunk.chunk_end(), alignment_));
   }
   use_free_chunk_if_smaller(offset, result_.heap_size - offset);
+  // When preferred offset is provided and the preferred offset is larger than
+  // the current heap size, simply use the preferred offset provided.
+  if (result_.heap_size <= preferred_offset) {
+    chunk_candidate.heap_size = preferred_chunk_end;
+    min_fit_chunk = {preferred_offset, buffer_interval.size};
+  }
 
   if (min_fit_chunk.offset == -1) {
     // Increase the heap size to fit in the last free chunk.

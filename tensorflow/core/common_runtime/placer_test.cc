@@ -37,13 +37,13 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -92,18 +92,20 @@ class FakeDevice : public Device {
 
   Allocator* GetAllocator(AllocatorAttributes attr) override { return nullptr; }
 
-  static std::unique_ptr<Device> MakeCPU(const string& name) {
+  static std::unique_ptr<Device> MakeDevice(const string& name,
+                                            const string& device_type) {
     DeviceAttributes device_attributes;
     device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeCPU").type());
+    device_attributes.set_device_type(DeviceType(device_type).type());
     return std::unique_ptr<Device>(new FakeDevice(device_attributes));
   }
 
+  static std::unique_ptr<Device> MakeCPU(const string& name) {
+    return MakeDevice(name, "FakeCPU");
+  }
+
   static std::unique_ptr<Device> MakeGPU(const string& name) {
-    DeviceAttributes device_attributes;
-    device_attributes.set_name(name);
-    device_attributes.set_device_type(DeviceType("FakeGPU").type());
-    return std::unique_ptr<Device>(new FakeDevice(device_attributes));
+    return MakeDevice(name, "FakeGPU");
   }
 };
 
@@ -192,6 +194,13 @@ REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeCPU").Priority(2),
 REGISTER_KERNEL_BUILDER(Name("TestDatasetOp").Device("FakeGPU").Priority(1),
                         DummyOp);
 
+// Op that has kernels with XLA device priority higher than FakeCPU.
+REGISTER_OP("TestXlaOp").Input("a: float").Output("b: float");
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("XLA_CPU").Priority(2),
+                        DummyOp);
+REGISTER_KERNEL_BUILDER(Name("TestXlaOp").Device("FakeCPU").Priority(1),
+                        DummyOp);
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 // A PlacerTest method has three phases:
@@ -207,7 +216,8 @@ class PlacerTest : public ::testing::Test {
   PlacerTest() : PlacerTest(10) {}
 
   explicit PlacerTest(int num_devices) {
-    // Build a set of num_devices GPU and num_devices CPU devices.
+    // Build a set of num_devices GPU, num_devices CPU devices, and one XLA_CPU
+    // device.
     // NOTE: this->local_devices_ owns the device objects;
     // this->devices_ contains borrowed pointers to the device
     // objects.
@@ -220,6 +230,9 @@ class PlacerTest : public ::testing::Test {
           "/job:a/replica:0/task:0/device:FakeGPU:", num_devices - 1 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
+    local_devices_.emplace_back(FakeDevice::MakeDevice(
+        "/job:a/replica:0/task:0/device:XLA_CPU:0", "XLA_CPU"));
+    devices_.AddDevice(local_devices_.back().get());
   }
 
   // Builds the given graph, and (if successful) indexes the node
@@ -241,9 +254,9 @@ class PlacerTest : public ::testing::Test {
   // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
-               bool log_device_placement) {
-    Placer placer(graph, "", &graph->flib_def(), devices, nullptr,
+  Status Place(Graph* graph, DeviceSet* devices, Device* default_local_device,
+               bool allow_soft_placement, bool log_device_placement) {
+    Placer placer(graph, "", &graph->flib_def(), devices, default_local_device,
                   allow_soft_placement, log_device_placement);
     return placer.Run();
   }
@@ -261,7 +274,7 @@ class PlacerTest : public ::testing::Test {
     RewriterConfig* rewriter_config = graph_opts->mutable_rewrite_options();
     rewriter_config->set_disable_meta_optimizer(true);
 
-    // Placing nested functions requires go through some PRE_PLACEMNT passes.
+    // Placing nested functions requires go through some PRE_PLACEMENT passes.
     // Currently, just the IsolateDeepOpsPass.
     GraphOptimizationPassOptions optimization_options;
     std::unique_ptr<Graph> graph_ptr(graph);
@@ -286,15 +299,18 @@ class PlacerTest : public ::testing::Test {
   }
 
   Status Place(Graph* graph, DeviceSet* devices) {
-    return Place(graph, devices, true, false);
+    return Place(graph, devices, nullptr, true, false);
   }
 
   Status Place(Graph* graph, bool allow_soft_placement,
                bool log_device_placement) {
-    return Place(graph, &devices_, allow_soft_placement, log_device_placement);
+    return Place(graph, &devices_, nullptr, allow_soft_placement,
+                 log_device_placement);
   }
 
-  Status Place(Graph* graph) { return Place(graph, &devices_, true, false); }
+  Status Place(Graph* graph) {
+    return Place(graph, &devices_, nullptr, true, false);
+  }
 
   Status CallOptPassesAndPlace(Graph* graph, bool allow_soft_placement,
                                bool log_device_placement) {
@@ -339,7 +355,7 @@ class PlacerTest : public ::testing::Test {
 class SoftPlacementPlacerTest : public PlacerTest,
                                 public ::testing::WithParamInterface<bool> {};
 
-INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+INSTANTIATE_TEST_SUITE_P(All, SoftPlacementPlacerTest,
                          ::testing::Values(false, true),
                          ::testing::PrintToStringParamName());
 
@@ -418,6 +434,31 @@ TEST_F(PlacerTest, TestNoConstraintsWithPrioritizedKernels) {
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "n2", "FakeCPU");
+}
+
+// Test that if the node supports XLA_CPU and FakeCPU, it will be placed on
+// XLA_CPU if and only if the node is assigned to the XLA_CPU device.
+TEST_F(PlacerTest, TestXlaOpPlacement) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 0), b.opts().WithName("n1"));
+    ops::UnaryOp("TestXlaOp", ops::NodeOut(input, 1), b.opts().WithName("n2"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  GetNodeByName(g, "n2")->set_assigned_device_name(
+      "/job:a/replica:0/task:0/device:XLA_CPU:0");
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+  // n1 should be placed on FakeCPU even if the op supports XLA_CPU with higher
+  // priority than FakeCPU.
+  EXPECT_DEVICE_TYPE(g, "n1", "FakeCPU");
+  // n2 should be placed on XLA_CPU because it supports XLA_CPU and it is
+  // assigned to a XLA_CPU device.
+  EXPECT_DEVICE_TYPE(g, "n2", "XLA_CPU");
 }
 
 TEST_F(PlacerTest, TestGPUInputIntoPrioritizedKernel) {
@@ -1179,6 +1220,27 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
   EXPECT_COLOCATED(g, "in", "foo");
 }
 
+TEST_F(PlacerTest, TestChainColocation) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    Node* colocated_with_input = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
+    Node* colocated_with_input_and_other = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("foo").WithAttr("_class", {"loc:@colocated_1"}));
+    CHECK(colocated_with_input);
+    CHECK(colocated_with_input_and_other);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "in", "colocated_1");
+  EXPECT_COLOCATED(g, "in", "foo");
+}
+
 TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1430,8 +1492,8 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 }
 
 // Test that placement fails when an op with no registered kernels is
-// requested.
-TEST_F(PlacerTest, TestNoKernelsRegistered) {
+// requested and no device is requested for the node
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequestedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1445,6 +1507,58 @@ TEST_F(PlacerTest, TestNoKernelsRegistered) {
                                 "No OpKernel was registered to support Op "
                                 "'VariableNoKernels' used by {{node var}}"));
   EXPECT_TRUE(absl::StrContains(s.error_message(), "<no registered kernels>"));
+}
+
+// Test that placement fails when an op does not have registered kernel
+// and the requested device has the same (job, replica, task) as the placer's
+// local device
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceLocal) {
+  const string cpu_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const string gpu_device = "/job:b/replica:0/task:0/device:FakeGPU:0";
+
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableNoKernels", b.opts().WithName("var"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  GetNodeByName(g, "var")->set_requested_device(gpu_device);
+
+  DeviceSet devices;
+  std::unique_ptr<Device> gpu(FakeDevice::MakeGPU(gpu_device));
+  devices.AddDevice(gpu.get());
+  std::unique_ptr<Device> cpu(FakeDevice::MakeCPU(cpu_device));
+  devices.AddDevice(cpu.get());
+  Status s = Place(&g, &devices, cpu.get(), false, false);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+  EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                "No OpKernel was registered to support Op "
+                                "'VariableNoKernels' used by {{node var}}"));
+  EXPECT_TRUE(absl::StrContains(s.error_message(), "<no registered kernels>"));
+}
+
+// Test that placement succeeds when an op does not have registered kernel
+// and the requested device has different (job, replica, task) than the placer's
+// local device
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithRequestedDeviceRemote) {
+  const string local_device = "/job:b/replica:0/task:0/device:FakeCPU:0";
+  const string remote_device = "/job:b/replica:0/task:1/device:FakeGPU:0";
+
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    ops::SourceOp("VariableNoKernels", b.opts().WithName("var"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  GetNodeByName(g, "var")->set_requested_device(remote_device);
+
+  DeviceSet heterogeneous;
+  std::unique_ptr<Device> gpu(FakeDevice::MakeGPU(remote_device));
+  heterogeneous.AddDevice(gpu.get());
+  std::unique_ptr<Device> cpu(FakeDevice::MakeCPU(local_device));
+  heterogeneous.AddDevice(cpu.get());
+  TF_EXPECT_OK(Place(&g, &heterogeneous, cpu.get(), false, false));
+  EXPECT_DEVICE_CONTAINS(g, "var", remote_device);
 }
 
 // Test that placement fails when a kernel is registered but no known
@@ -1610,7 +1724,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_TRUE(absl::StrContains(s.error_message(), "but available devices"));
 }
 
-#if !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Test that we inform the user if they appear to be explicitly placing nodes
 // on a GPU when CUDA is not available
 TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
@@ -2172,7 +2286,7 @@ TEST_F(NestedPlacerTest, OutputTwoResources_UnassignedResource) {
    * the "second pass" as they are "sources". It assigns `r1` to GPU because it
    * is in the same group as `b`. It assigns `r2` to GPU because GPU has a
    * higher device preference. Finally, `a` is assigned to GPU because `r2` is
-   * on GPU - this test that the "second pass" heuristics respect colocaton
+   * on GPU - this test that the "second pass" heuristics respect colocation
    * groups (even when the consumer of the source, i.e. PCO is on a different
    * device).
    */
@@ -2380,7 +2494,7 @@ TEST_F(NestedPlacerTest, DuplicateInputResource_Conflict) {
    *                 r1:RESOURCE:GPU
    *
    * There is a conflict but Placer always overrides requested devices
-   * when they result in coflict due to resource edges. Which device
+   * when they result in conflict due to resource edges. Which device
    * is picked for a/r1/r2 is indeterministic.
    */
   FunctionDef func = test::function::Swap();

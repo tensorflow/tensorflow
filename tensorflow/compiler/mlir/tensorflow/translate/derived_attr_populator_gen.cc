@@ -16,14 +16,14 @@ limitations under the License.
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
+#include "mlir/TableGen/Operator.h"  // TF:llvm-project
 
 using llvm::LessRecord;
 using llvm::raw_ostream;
@@ -56,13 +56,22 @@ static void EmitOpAttrPopulators(const std::vector<Operator> &ops,
       const auto &attr = named_attr.attr;
       if (!attr.isDerivedAttr()) continue;
       auto retType = attr.getReturnType();
-      if (retType == "Type" || retType == "mlir::OperandElementTypeRange" ||
-          retType == "mlir::ResultElementTypeRange") {
-        OUT(2) << "TF_RETURN_IF_ERROR(SetAttribute(\"" << attr_name << "\", op."
-               << attr_name << "(), values));\n";
+      if (retType == "ShapedType" || retType == "mlir::TF::OperandShapeRange" ||
+          retType == "mlir::TF::ResultShapeRange") {
+        OUT(2) << "TF_RETURN_IF_ERROR(SetShapeAttribute(\"" << attr_name
+               << "\", op." << attr_name << "(), values));\n";
+      } else if (retType == "Type" ||
+                 retType == "mlir::OperandElementTypeRange" ||
+                 retType == "mlir::ResultElementTypeRange") {
+        OUT(2) << "TF_RETURN_IF_ERROR(SetTypeAttribute(\"" << attr_name
+               << "\", op." << attr_name << "(), values));\n";
+      } else if (attr.isSubClassOf("TF_DerivedOperandSizeAttr") ||
+                 attr.isSubClassOf("TF_DerivedResultSizeAttr")) {
+        OUT(2) << "TF_RETURN_IF_ERROR(SetSizeAttribute(\"" << attr_name
+               << "\", op." << attr_name << "(), values));\n";
       } else {
         PrintFatalError(op.getLoc(),
-                        "NYI: Derived attributes other than DerivedTypeAttr");
+                        "NYI: attribute populator for derived attributes");
       }
     }
 
@@ -92,6 +101,55 @@ static void EmitInstAttrPopulator(const std::vector<Operator> &ops,
     OUT(2) << "}\n";
   }
   OUT(2) << "return Status::OK();\n";
+  OUT(0) << "}\n\n";
+}
+
+// Emits TensorFlow derived attribute name collector functions for each of the
+// ops.
+static void EmitOpAttrNameCollector(const std::vector<Operator> &ops,
+                                    raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+
+  for (const auto &op : ops) {
+    // Emit function signature.
+    auto op_name = op.getCppClassName();
+    OUT(0) << "static void Collect" << op_name
+           << "DerivedAttrsName(mlir::TF::" << op_name
+           << "& op, llvm::SmallDenseSet<llvm::StringRef>* values) {\n";
+
+    // Insert the name for each derived attribute in the set.
+    for (const auto &named_attr : op.getAttributes()) {
+      auto attr_name = named_attr.name;
+      const auto &attr = named_attr.attr;
+      if (!attr.isDerivedAttr()) continue;
+      OUT(2) << "values->insert(\"" << attr_name << "\");\n";
+    }
+
+    OUT(2) << "return;\n";
+    OUT(0) << "}\n\n";
+  }
+}
+
+// Emits TensorFlow derived attribute name collector function taking an
+// Operation as argument.
+static void EmitInstAttrNameCollector(const std::vector<Operator> &ops,
+                                      raw_ostream *ostream) {
+  raw_ostream &os = *ostream;
+
+  // Emit function signature.
+  OUT(0) << "static void CollectDerivedAttrsName(mlir::Operation* op, "
+            "llvm::SmallDenseSet<llvm::StringRef>* values) {\n";
+
+  for (const auto &op : ops) {
+    auto op_name = op.getCppClassName();
+
+    // Emit conditional for the op and then call collect for the op on match.
+    OUT(2) << "if (auto tf_op = llvm::dyn_cast<mlir::TF::" << op_name
+           << ">(op)) {\n";
+    OUT(4) << "Collect" << op_name << "DerivedAttrsName(tf_op, values);\n";
+    OUT(2) << "}\n";
+  }
+  OUT(2) << "return;\n";
   OUT(0) << "}\n\n";
 }
 
@@ -125,14 +183,14 @@ static bool DerivedAttrWritersMain(raw_ostream &os, RecordKeeper &records) {
   EmitOpAttrPopulators(ops, &os);
   EmitInstAttrPopulator(ops, &os);
 
+  EmitOpAttrNameCollector(ops, &os);
+  EmitInstAttrNameCollector(ops, &os);
+
   return false;
 }
 
 int main(int argc, char **argv) {
-  llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
-  llvm::PrettyStackTraceProgram X(argc, argv);
-
-  llvm::llvm_shutdown_obj Y;
+  llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv);
   return TableGenMain(argv[0], &DerivedAttrWritersMain);
 }

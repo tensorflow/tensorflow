@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -46,20 +47,24 @@ class NcclAllReduceThunk : public Thunk {
   // (Indeed, because the NCCL channels are a global variable, in the real
   // world, the value returned here is stale as soon as you read it, so it's not
   // clear how you *could* use it for anything other than tests.)
-  static absl::flat_hash_set<int> DevicesWithOpenNcclChannels();
+  static absl::flat_hash_set<GlobalDeviceId> DevicesWithOpenNcclChannels();
 
-  // TODO(b/125951860): Plumb more datatypes / reduction operators. Initial
-  // implementation is simply F32 summation.
-  //
   // TODO(b/125951860): Support all-reduces with replica groups, i.e.
   // all-reduces that compute multiple sums across subsets of all replicas.
-  NcclAllReduceThunk(int64 replica_count, int64 element_count,
-                     const BufferAllocation::Slice& source_buffer,
-                     const BufferAllocation::Slice& destination_buffer,
+  struct Buffer {
+    int64 element_count;
+    BufferAllocation::Slice source_buffer;
+    BufferAllocation::Slice destination_buffer;
+  };
+  NcclAllReduceThunk(int64 replica_count, std::vector<Buffer> buffers,
                      const HloInstruction* all_reduce);
   ~NcclAllReduceThunk() override;
 
   Status ExecuteOnStream(const ExecuteParams& params) override;
+
+  // Returns whether the given instruction can be lowered to a nccl all-reduce
+  // call.
+  static bool CanImplement(const HloInstruction* crs);
 
  private:
   // Extra data stored in NcclAllReduceThunk whose types we don't want exposed
@@ -69,9 +74,7 @@ class NcclAllReduceThunk : public Thunk {
   struct AuxData;
 
   const int64 replica_count_;
-  const int64 element_count_;
-  const BufferAllocation::Slice source_buffer_;
-  const BufferAllocation::Slice destination_buffer_;
+  const std::vector<Buffer> buffers_;
   std::unique_ptr<AuxData> aux_data_;
 };
 

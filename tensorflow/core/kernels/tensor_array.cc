@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
 namespace tensorflow {
@@ -91,8 +92,8 @@ Status TensorArray::CopyShapesFrom(TensorArray* rhs,
   if (tensors_.size() != rhs->tensors_.size()) {
     return errors::InvalidArgument(
         "TensorArray sizes do not match during CopyShapesFrom: ",
-        handle_.vec<string>()(1), " has size ", tensors_.size(), " but rhs ",
-        rhs->handle_.vec<string>()(1), " has size ", rhs->tensors_.size());
+        handle_.vec<tstring>()(1), " has size ", tensors_.size(), " but rhs ",
+        rhs->handle_.vec<tstring>()(1), " has size ", rhs->tensors_.size());
   }
   for (std::size_t i = 0; i < tensors_.size(); ++i) {
     // Skip "soft copy" of indices which have not been written.

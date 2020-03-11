@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -893,14 +892,14 @@ class LibxsmmSparseMatMul {
     // sure the same cache entry is not used from two threads at a time.
     std::multimap<std::tuple<int, int, int, int>,
                   std::unique_ptr<TensorInfoCacheEntry>>
-        entries GUARDED_BY(lock);
+        entries TF_GUARDED_BY(lock);
 
     TensorInfoCache() : lock(), entries() {}
     // Look up and remove first entry with these parameters, creating one if
     // there isn't one
     std::unique_ptr<TensorInfoCacheEntry> take_cache_entry(int M, int K, int N,
                                                            int max_threads)
-        LOCKS_EXCLUDED(lock) {
+        TF_LOCKS_EXCLUDED(lock) {
       tensorflow::mutex_lock ml(lock);
       auto key = std::make_tuple(M, K, N, max_threads);
       auto it = entries.find(key);
@@ -919,7 +918,7 @@ class LibxsmmSparseMatMul {
     }
     // Add a cache entry with certain parameters
     void return_cache_entry(std::unique_ptr<TensorInfoCacheEntry> e)
-        LOCKS_EXCLUDED(lock) {
+        TF_LOCKS_EXCLUDED(lock) {
       tensorflow::mutex_lock ml(lock);
       auto key = std::make_tuple(e->M, e->K, e->N, e->max_threads);
       entries.insert(std::make_pair(key, std::move(e)));
@@ -1238,7 +1237,9 @@ inline BlockingCounter* SparseMatMul<TL, TR>::ShuffleMatrix(
     const DeviceBase::CpuWorkerThreads* thread_pool, MatrixR* buffer) {
   DCHECK_EQ(N % 2, 0);
   DCHECK_LE(kNumOperands * sizeof(float) / sizeof(TR), N);
-  int num_threads = std::min(thread_pool->num_threads, 16);
+  // Note(nikhilsarda): This heuristic is optimal in benchmarks as of
+  // Jan 21, 2020.
+  int num_threads = std::min(thread_pool->num_threads, 8);
   BlockingCounter* counter = new BlockingCounter(num_threads);
   DCHECK_EQ(N, buffer->dimension(1));
   auto shuffle_work = [&mat, slice_row_start, slice_num_rows, slice_col_start,
@@ -1397,8 +1398,8 @@ void wrapper_libxsmm_spmdm_createSparseSlice_generic_thread(
     libxsmm_CSR_sparseslice* libxsmm_output_csr_a, int block_id, int tid,
     int nthreads) {
   return libxsmm_spmdm_createSparseSlice_bfloat16_thread(
-      handle, transA, reinterpret_cast<const uint16*>(A), libxsmm_output_csr_a,
-      block_id, tid, nthreads);
+      handle, transA, reinterpret_cast<const libxsmm_bfloat16*>(A),
+      libxsmm_output_csr_a, block_id, tid, nthreads);
 }
 
 void wrapper_libxsmm_spmdm_compute_generic_thread(
@@ -1407,9 +1408,10 @@ void wrapper_libxsmm_spmdm_compute_generic_thread(
     libxsmm_CSR_sparseslice* A_sparse, const bfloat16* B, char transC,
     const bfloat16* beta, float* C, int block_id, int tid, int nthreads) {
   return libxsmm_spmdm_compute_bfloat16_thread(
-      handle, transA, transB, reinterpret_cast<const uint16*>(alpha), A_sparse,
-      reinterpret_cast<const uint16*>(B), transC,
-      reinterpret_cast<const uint16*>(beta), C, block_id, tid, nthreads);
+      handle, transA, transB, reinterpret_cast<const libxsmm_bfloat16*>(alpha),
+      A_sparse, reinterpret_cast<const libxsmm_bfloat16*>(B), transC,
+      reinterpret_cast<const libxsmm_bfloat16*>(beta), C, block_id, tid,
+      nthreads);
 }
 void wrapper_libxsmm_spmdm_compute_generic_thread(
     empty_type_wrapper<float>, const libxsmm_spmdm_handle* handle, char transA,
@@ -1428,13 +1430,6 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
     const typename LibxsmmSparseMatMul<TL, TR>::ConstMatrixMapR& right,
     bool transpose_left, const DeviceBase::CpuWorkerThreads* thread_pool,
     bool transpose_output, MatrixMap* output) {
-  if (false) {
-    // Not handled by libxsmm currently
-    SparseMatMul<TL, TR>::Compute(
-        nullptr /* Assumes no cached data for fallback */, left, right,
-        transpose_left, thread_pool, transpose_output, output);
-    return;
-  }
   const int num_threads = thread_pool->num_threads;
   const int left_dim0 = transpose_left ? left.dimension(1) : left.dimension(0);
   const int left_dim1 = transpose_left ? left.dimension(0) : left.dimension(1);
@@ -1445,6 +1440,7 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
            (transpose_output ? output->dimension(1) : output->dimension(0)));
   CHECK_EQ(right_dim1,
            (transpose_output ? output->dimension(0) : output->dimension(1)));
+#if 0  // this issue seems to be resolved
   if (left_dim0 < 32 || left_dim1 < 32 || right_dim1 < 32) {
     // Causes problems in libxsmm
     SparseMatMul<TL, TR>::Compute(
@@ -1452,6 +1448,7 @@ inline void LibxsmmSparseMatMul<TL, TR>::Compute(
         transpose_left, thread_pool, transpose_output, output);
     return;
   }
+#endif
   auto left_data = left.data();
   auto right_data = right.data();
   auto output_data = output->data();
@@ -1550,7 +1547,7 @@ inline void SparseMatMul<TL, TR>::Compute(
   // Note buffer needs enough space to hold at most a KR * NR matrix since that
   // is the block size per iteration.
   const int buffer_num_rows =
-      std::min(KR, right_dim0) * (std::min(NR, right_dim1) + N - 1) / N;
+      std::min(KR, right_dim0) * ((std::min(NR, right_dim1) + N - 1) / N);
   MatrixR buffer(buffer_num_rows, N);
   std::vector<ConstMatrixMapR*> right_slices;
 
@@ -1612,12 +1609,17 @@ inline void SparseMatMul<TL, TR>::Compute(
       }
       bc.Wait();
       tasks.clear();
-      gtl::STLDeleteElements(&right_slices);
+      for (auto& temp : right_slices) {
+        delete temp;
+      }
       right_slices.clear();
     }
   }
   for (auto& left_slice : left_slices) {
-    gtl::STLDeleteElements(&left_slice);
+    for (auto& temp : left_slice) {
+      delete temp;
+    }
+    left_slice.clear();
   }
 }
 
@@ -1636,15 +1638,14 @@ inline void SparseMatMul<TL, TR>::Compute(
                           SparseMatMulOp<TA, TB, LibxsmmSparseMatMul>);
 #endif
 
-REGISTER_SPARSE_MATMUL(bfloat16, bfloat16);
-
 REGISTER_SPARSE_MATMUL(float, bfloat16);
-
 REGISTER_SPARSE_MATMUL(bfloat16, float);
 
 #ifdef TENSORFLOW_USE_LIBXSMM
+REGISTER_SPARSE_MATMUL_LIBXSMM(bfloat16, bfloat16);
 REGISTER_SPARSE_MATMUL_LIBXSMM(float, float);
 #else
+REGISTER_SPARSE_MATMUL(bfloat16, bfloat16);
 REGISTER_SPARSE_MATMUL(float, float);
 #endif
 

@@ -18,8 +18,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TFControlFlow {
@@ -51,14 +52,14 @@ TFControlFlowDialect::TFControlFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TFControlFlowDialect::parseType(StringRef tyData, Location loc) const {
-  if (tyData != "control")
-    return (emitError(loc, "unknown TFControl type: " + tyData), nullptr);
+Type TFControlFlowDialect::parseType(DialectAsmParser &parser) const {
+  if (parser.parseKeyword("control", ": unknown TFControl type")) return Type();
+
   return TFControlType::get(getContext());
 }
 
 // Prints a type registered to this dialect.
-void TFControlFlowDialect::printType(Type type, raw_ostream &os) const {
+void TFControlFlowDialect::printType(Type type, DialectAsmPrinter &os) const {
   assert(type.isa<TFControlType>());
   os << "control";
 }

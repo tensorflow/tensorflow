@@ -33,14 +33,28 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_DISPATCH_H_
 
-#include <limits>
+#include <algorithm>
+#include <cstdint>
+#include <limits>  // IWYU pragma: keep
+#include <type_traits>
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
+#include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/kernel_common.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/pack.h"
+#include "tensorflow/lite/experimental/ruy/pack_common.h"
+#include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
+#include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/trmul.h"
+#include "tensorflow/lite/experimental/ruy/trmul_params.h"
 
 namespace ruy {
 
@@ -95,23 +109,24 @@ void EnforceZeroPointSupport(LhsScalar lhs_zero_point, RhsScalar rhs_zero_point,
 
 template <typename Spec, typename DstScalar>
 void EnforceDstSpecSupport(const Spec& spec, DstScalar dst_zero_point) {
+  static_assert(std::is_same<typename Spec::DstScalar, DstScalar>::value, "");
   if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) return;
 
   // If user is looking for the raw accumulator, zero_point and all the other
   // dequantize fields don't make sense and should not be set.
-  RUY_DCHECK(dst_zero_point == 0);
-  RUY_DCHECK(spec.clamp_max == std::numeric_limits<std::int32_t>::max());
-  RUY_DCHECK(spec.clamp_min == std::numeric_limits<std::int32_t>::min());
-  RUY_DCHECK(spec.multiplier_fixedpoint == 0);
-  RUY_DCHECK(spec.multiplier_exponent == 0);
-  RUY_DCHECK(spec.multiplier_fixedpoint_perchannel == nullptr);
-  RUY_DCHECK(spec.multiplier_exponent_perchannel == nullptr);
+  RUY_DCHECK_EQ(dst_zero_point, 0);
+  RUY_DCHECK_EQ(spec.clamp_max, std::numeric_limits<std::int32_t>::max());
+  RUY_DCHECK_EQ(spec.clamp_min, std::numeric_limits<std::int32_t>::min());
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint, 0);
+  RUY_DCHECK_EQ(spec.multiplier_exponent, 0);
+  RUY_DCHECK_EQ(spec.multiplier_fixedpoint_perchannel, nullptr);
+  RUY_DCHECK_EQ(spec.multiplier_exponent_perchannel, nullptr);
 }
 
-inline bool IsColMajorTrMul(const DMatrix& lhs, const DMatrix& rhs,
-                            const DMatrix& dst) {
-  return IsColMajor(lhs.layout) && IsColMajor(rhs.layout) &&
-         IsColMajor(dst.layout);
+inline bool IsColMajorTrMul(const TrMulParams& params) {
+  return IsColMajor(params.src[Side::kLhs].layout) &&
+         IsColMajor(params.src[Side::kRhs].layout) &&
+         IsColMajor(params.dst.layout);
 }
 
 inline void CreatePackedLayout(const Layout& src, const Type& scalar,
@@ -131,8 +146,8 @@ inline void CreatePackedLayout(const Layout& src, const Type& scalar,
 }
 
 template <typename Scalar, typename PackedScalar>
-void CreatePackedMatrix(const DMatrix& src, const KernelLayout& kernel_layout,
-                        PMatrix* packed) {
+void CreatePackedMatrix(Side side, const KernelLayout& kernel_layout,
+                        TrMulParams* params) {
   // Ruy always uses 32-bit signed accumulators for quantized
   // matrix multiplication, so we would like to always use std::int32_t
   // unconditionally for SumsType.
@@ -142,6 +157,8 @@ void CreatePackedMatrix(const DMatrix& src, const KernelLayout& kernel_layout,
       typename std::conditional<std::is_floating_point<Scalar>::value, Scalar,
                                 std::int32_t>::type;
 
+  const DMatrix& src = params->src[side];
+  PMatrix* packed = &params->packed[side];
   packed->data_type = Type::Create<PackedScalar>();
   packed->sums_type = Type::Create<SumsType>();
   CreatePackedLayout(src.layout, packed->data_type, kernel_layout,
@@ -160,7 +177,7 @@ void PopulateTrMulParams(TrMulParams* params) {
   if (ThePath != Path::kStandardCpp) {
     // The optimized code paths currently only handle the case of all matrices
     // being column major.
-    if (!IsColMajorTrMul(params->lhs, params->rhs, params->dst)) {
+    if (!IsColMajorTrMul(*params)) {
       fallback_to_standard_cpp = true;
     }
   }
@@ -178,20 +195,22 @@ void PopulateTrMulParams(TrMulParams* params) {
   using LhsKernelLayout = typename Kernel::LhsLayout;
   using RhsKernelLayout = typename Kernel::RhsLayout;
 
-  CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
-      params->lhs, ToKernelLayout<LhsKernelLayout>(), &params->packed_lhs);
-  CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
-      params->rhs, ToKernelLayout<RhsKernelLayout>(), &params->packed_rhs);
+  params->path = ThePath;
 
-  params->lhs_run_pack =
+  params->local_data_cache_size = Spec::local_data_cache_size();
+  params->shared_data_cache_size = Spec::shared_data_cache_size();
+
+  CreatePackedMatrix<LhsScalar, PackedLhsScalar>(
+      Side::kLhs, ToKernelLayout<LhsKernelLayout>(), params);
+  CreatePackedMatrix<RhsScalar, PackedRhsScalar>(
+      Side::kRhs, ToKernelLayout<RhsKernelLayout>(), params);
+  params->run_pack[Side::kLhs] =
       &RunPack<ThePath, LhsKernelLayout, LhsScalar, PackedLhsScalar>;
-  params->rhs_run_pack =
+  params->run_pack[Side::kRhs] =
       &RunPack<ThePath, RhsKernelLayout, RhsScalar, PackedRhsScalar>;
   params->run_kernel =
       &RunKernel<ThePath, PackedLhsScalar, PackedRhsScalar, DstScalar, Spec>;
 
-  params->cache_friendly_traversal_threshold =
-      Spec::cache_friendly_traversal_threshold();
   return;
 }
 
@@ -304,8 +323,8 @@ void CreateTrMulParams(const Matrix<LhsScalar>& lhs,
                        Context* context, Matrix<DstScalar>* dst, Path the_path,
                        TrMulParams* params) {
   // Fill in the fields we already know.
-  params->lhs = ToDMatrix(lhs);
-  params->rhs = ToDMatrix(rhs);
+  params->src[Side::kLhs] = ToDMatrix(lhs);
+  params->src[Side::kRhs] = ToDMatrix(rhs);
   params->dst = ToDMatrix(*dst);
   params->spec = ToVoidPtr(&spec);
 
@@ -318,7 +337,7 @@ template <typename LhsScalar, typename RhsScalar, typename DstScalar,
           typename Spec>
 void ReferenceMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
                   const Spec& spec, Matrix<DstScalar>* dst) {
-  gemmlowp::ScopedProfilingLabel label("ReferenceMul");
+  profiler::ScopeLabel label("ReferenceMul");
   for (int i = 0; i < lhs.layout.rows; i++) {
     for (int j = 0; j < rhs.layout.cols; j++) {
       using AccumScalar = typename Spec::AccumScalar;
@@ -364,6 +383,45 @@ struct CompileTimeEnabledReferenceMul</*ReferenceMulIsEnabled=*/false> {
   }
 };
 
+inline void HandlePrepackedCaching(TrMulParams* params,
+                                   const SidePair<bool>& cacheable,
+                                   Context* context) {
+  if (context->cache_policy == CachePolicy::kNoCache) {
+    return;
+  }
+
+  if (context->cache_policy == CachePolicy::kCacheLHSOnNarrowMul) {
+    // TODO(b/149304278) Cache on dst.cols <= selected kernel width.
+    if (!cacheable[Side::kLhs] || params->dst.layout.cols > 4) {
+      return;
+    }
+    PrepackedCache* prepacked_cache = context->GetPrepackedCache();
+    auto cache_key = std::make_pair(reinterpret_cast<void*>(params->run_kernel),
+                                    params->src[Side::kLhs].data);
+    auto it = prepacked_cache->FindAndUpdate(cache_key);
+    if (it != prepacked_cache->cend()) {
+      params->packed[Side::kLhs].data = it->second.first.data;
+      params->packed[Side::kLhs].sums = it->second.first.sums;
+      params->is_prepacked[Side::kLhs] = true;
+      return;
+    }
+
+    // Allocate the prepacked matrix.
+    PrepackedMatrix prepacked_lhs;
+    prepacked_lhs.data_size = DataSize(params->packed[Side::kLhs]);
+    prepacked_lhs.sums_size = SumsSize(params->packed[Side::kLhs]);
+    prepacked_cache->AllocatePrepackedMatrix(&prepacked_lhs);
+    params->packed[Side::kLhs].data = prepacked_lhs.data;
+    params->packed[Side::kLhs].sums = prepacked_lhs.sums;
+    params->is_prepacked[Side::kLhs] = true;
+    Tuning tuning = context->GetMainThreadTuning();
+    params->RunPack(Side::kLhs, tuning, 0,
+                    params->packed[Side::kLhs].layout.cols);
+    prepacked_cache->Insert(cache_key, prepacked_lhs);
+    return;
+  }
+}
+
 template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
           typename DstScalar, typename Spec>
 void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
@@ -372,7 +430,10 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   static_assert((CompiledPaths & ~kAllPaths) == Path::kNone,
                 "CompiledPaths must be a subset of ruy::kAllPaths");
 
-  gemmlowp::ScopedProfilingLabel label("Mul");
+  profiler::ScopeLabel mul_label("Mul");
+  profiler::ScopeLabel shape_specific_label("matmul shape: %dx%dx%d",
+                                            lhs.layout.rows, lhs.layout.cols,
+                                            rhs.layout.cols);
 
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
@@ -411,6 +472,8 @@ void DispatchMul(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
   TrMulParams params;
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
+  SidePair<bool> cacheable(lhs.cacheable, rhs.cacheable);
+  HandlePrepackedCaching(&params, cacheable, context);
   TrMul(&params, context);
 }
 

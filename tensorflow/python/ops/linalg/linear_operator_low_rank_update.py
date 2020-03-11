@@ -228,16 +228,16 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     with ops.name_scope(name, values=values):
 
       # Create U and V.
-      self._u = ops.convert_to_tensor(u, name="u")
+      self._u = linear_operator_util.convert_nonref_to_tensor(u, name="u")
       if v is None:
         self._v = self._u
       else:
-        self._v = ops.convert_to_tensor(v, name="v")
+        self._v = linear_operator_util.convert_nonref_to_tensor(v, name="v")
 
       if diag_update is None:
         self._diag_update = None
       else:
-        self._diag_update = ops.convert_to_tensor(
+        self._diag_update = linear_operator_util.convert_nonref_to_tensor(
             diag_update, name="diag_update")
 
       # Create base_operator L.
@@ -248,12 +248,13 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents(graph_parents)
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag_update, is_diag_update_positive)
@@ -261,17 +262,11 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       self._check_shapes()
 
-      # Pre-compute the so-called "capacitance" matrix
-      #   C := D^{-1} + V^H L^{-1} U
-      self._capacitance = self._make_capacitance()
-      if self._use_cholesky:
-        self._chol_capacitance = linalg_ops.cholesky(self._capacitance)
-
   def _check_shapes(self):
     """Static check that shapes are compatible."""
     # Broadcast shape also checks that u and v are compatible.
     uv_shape = array_ops.broadcast_static_shape(
-        self.u.get_shape(), self.v.get_shape())
+        self.u.shape, self.v.shape)
 
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape, uv_shape[:-2])
@@ -282,17 +277,15 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
     if self._diag_update is not None:
       tensor_shape.dimension_at_index(uv_shape, -1).assert_is_compatible_with(
-          self._diag_update.get_shape()[-1])
+          self._diag_update.shape[-1])
       array_ops.broadcast_static_shape(
-          batch_shape, self._diag_update.get_shape()[:-1])
+          batch_shape, self._diag_update.shape[:-1])
 
   def _set_diag_operators(self, diag_update, is_diag_update_positive):
     """Set attributes self._diag_update and self._diag_operator."""
     if diag_update is not None:
       self._diag_operator = linear_operator_diag.LinearOperatorDiag(
           self._diag_update, is_positive_definite=is_diag_update_positive)
-      self._diag_inv_operator = linear_operator_diag.LinearOperatorDiag(
-          1. / self._diag_update, is_positive_definite=is_diag_update_positive)
     else:
       if tensor_shape.dimension_value(self.u.shape[-1]) is not None:
         r = tensor_shape.dimension_value(self.u.shape[-1])
@@ -300,7 +293,6 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
         r = array_ops.shape(self.u)[-1]
       self._diag_operator = linear_operator_identity.LinearOperatorIdentity(
           num_rows=r, dtype=self.dtype)
-      self._diag_inv_operator = self._diag_operator
 
   @property
   def u(self):
@@ -335,13 +327,16 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   def _shape(self):
     batch_shape = array_ops.broadcast_static_shape(
         self.base_operator.batch_shape,
-        self.u.get_shape()[:-2])
+        self.u.shape[:-2])
     return batch_shape.concatenate(self.base_operator.shape[-2:])
 
   def _shape_tensor(self):
     batch_shape = array_ops.broadcast_dynamic_shape(
         self.base_operator.batch_shape_tensor(),
         array_ops.shape(self.u)[:-2])
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        batch_shape,
+        array_ops.shape(self.v)[:-2])
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
@@ -373,7 +368,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     #                  = det(C) det(D) det(L)
     # where C is sometimes known as the capacitance matrix,
     #   C := D^{-1} + V^H L^{-1} U
-    det_c = linalg_ops.matrix_determinant(self._capacitance)
+    det_c = linalg_ops.matrix_determinant(self._make_capacitance())
     det_d = self.diag_operator.determinant()
     det_l = self.base_operator.determinant()
     return det_c * det_d * det_l
@@ -386,11 +381,12 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     log_abs_det_l = self.base_operator.log_abs_determinant()
 
     if self._use_cholesky:
-      chol_cap_diag = array_ops.matrix_diag_part(self._chol_capacitance)
+      chol_cap_diag = array_ops.matrix_diag_part(
+          linalg_ops.cholesky(self._make_capacitance()))
       log_abs_det_c = 2 * math_ops.reduce_sum(
           math_ops.log(chol_cap_diag), axis=[-1])
     else:
-      det_c = linalg_ops.matrix_determinant(self._capacitance)
+      det_c = linalg_ops.matrix_determinant(self._make_capacitance())
       log_abs_det_c = math_ops.log(math_ops.abs(det_c))
       if self.dtype.is_complex:
         log_abs_det_c = math_ops.cast(log_abs_det_c, dtype=self.dtype)
@@ -425,11 +421,11 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs
     if self._use_cholesky:
-      capinv_vh_linv_rhs = linear_operator_util.cholesky_solve_with_broadcast(
-          self._chol_capacitance, vh_linv_rhs)
+      capinv_vh_linv_rhs = linalg_ops.cholesky_solve(
+          linalg_ops.cholesky(self._make_capacitance()), vh_linv_rhs)
     else:
       capinv_vh_linv_rhs = linear_operator_util.matrix_solve_with_broadcast(
-          self._capacitance, vh_linv_rhs, adjoint=adjoint)
+          self._make_capacitance(), vh_linv_rhs, adjoint=adjoint)
     # U C^{-1} V^H M^{-1} rhs
     u_capinv_vh_linv_rhs = math_ops.matmul(u, capinv_vh_linv_rhs)
     # L^{-1} U C^{-1} V^H L^{-1} rhs
@@ -448,5 +444,5 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     vh_linv_u = math_ops.matmul(self.v, linv_u, adjoint_a=True)
 
     # D^{-1} + V^H L^{-1} V
-    capacitance = self._diag_inv_operator.add_to_tensor(vh_linv_u)
+    capacitance = self._diag_operator.inverse().add_to_tensor(vh_linv_u)
     return capacitance

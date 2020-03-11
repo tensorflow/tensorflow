@@ -13,48 +13,46 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/writer/writer_lib.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/writer/enum_mapping.h"
-#include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/schema/reflection/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
-template <class T>
-using Offset = flatbuffers::Offset<T>;
-template <class T>
-using Vector = flatbuffers::Vector<T>;
-using FlatBufferBuilder = flatbuffers::FlatBufferBuilder;
 
-std::pair<BuiltinOptions, Offset<void>> CreateBuiltinUnion(
-    FlatBufferBuilder* fbb, enum BuiltinOperator op, void* builtin_op_data) {
+std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
+    flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
+    void* builtin_op_data) {
   switch (op) {
 #include "tensorflow/lite/experimental/writer/option_writer_generated.h"
   }
-  return std::make_pair(BuiltinOptions_NONE, Offset<void>());
+  return std::make_pair(BuiltinOptions_NONE, flatbuffers::Offset<void>());
 }
 
 template <class T_OUTPUT, class T_INPUT>
-Offset<Vector<T_OUTPUT>> InterpreterWriter::ExportVector(FlatBufferBuilder* fbb,
-                                                         const T_INPUT& v) {
+flatbuffers::Offset<flatbuffers::Vector<T_OUTPUT>> SubgraphWriter::ExportVector(
+    flatbuffers::FlatBufferBuilder* fbb, const T_INPUT& v) {
   std::vector<T_OUTPUT> inputs(v.begin(), v.end());
   return fbb->template CreateVector<T_OUTPUT>(inputs);
 }
 
-Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<Operator>> operators;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Operator>>>
+SubgraphWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<Operator>> operators;
 
   std::vector<int> operator_to_opcode;
   // TODO(aselle): Augment this once we put execution plan in schema.
-  operator_to_opcode.resize(interpreter_->nodes_size(), -1);
-  for (int op_index : interpreter_->execution_plan()) {
+  operator_to_opcode.resize(subgraph_->nodes_size(), -1);
+  for (int op_index : subgraph_->execution_plan()) {
     const auto* node_and_registration =
-        interpreter_->node_and_registration(op_index);
+        subgraph_->node_and_registration(op_index);
     const TfLiteRegistration* registration = &node_and_registration->second;
     if (!registration->custom_name) {
       operator_to_opcode[op_index] =
@@ -65,18 +63,18 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
     }
   }
   // second pass serialize operators
-  for (int op_index : interpreter_->execution_plan()) {
+  for (int op_index : subgraph_->execution_plan()) {
     const auto* node_and_registration =
-        interpreter_->node_and_registration(op_index);
+        subgraph_->node_and_registration(op_index);
     const TfLiteNode& node = node_and_registration->first;
     const TfLiteRegistration& registration = node_and_registration->second;
-    Offset<void> builtin_options;
+    flatbuffers::Offset<void> builtin_options;
     BuiltinOptions builtin_options_type = BuiltinOptions_NONE;
     // Custom data
     // TODO(aselle): Custom options format is not known by default. Just assume
     // for now.
     auto custom_options_format = CustomOptionsFormat_FLEXBUFFERS;
-    Offset<Vector<uint8_t>> custom_options = 0;
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom_options = 0;
 
     if (!registration.custom_name) {
       // builtin
@@ -90,7 +88,7 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
       if (custom_writer != custom_op_to_writer_.end() &&
           custom_writer->second) {
         // delegate to custom writer if it exists
-        custom_writer->second(fbb, interpreter_, op_index, &custom_options,
+        custom_writer->second(fbb, subgraph_, op_index, &custom_options,
                               &custom_options_format);
       } else {
         // use the custom data as fact
@@ -112,22 +110,22 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
                                        custom_options, custom_options_format));
   }
 
-  return fbb->template CreateVector<Offset<Operator>>(operators);
+  return fbb->template CreateVector<flatbuffers::Offset<Operator>>(operators);
 }
 
-Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
-    FlatBufferBuilder* fbb) {
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Tensor>>>
+SubgraphWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
   // Initialized to -1.
   // A value of -1 means this tensor will not be exported.
-  tensor_to_written_tensor_.resize(interpreter_->tensors_size(), -1);
+  tensor_to_written_tensor_.resize(subgraph_->tensors_size(), -1);
 
-  std::vector<Offset<Tensor>> tensors;
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
 
   // Make a map from tensor index to whether the tensor is a temporary.
-  std::vector<bool> tensor_is_temporary(interpreter_->tensors_size(), false);
-  for (int op_index = 0; op_index < interpreter_->nodes_size(); ++op_index) {
+  std::vector<bool> tensor_is_temporary(subgraph_->tensors_size(), false);
+  for (int op_index = 0; op_index < subgraph_->nodes_size(); ++op_index) {
     const auto* node_and_registration =
-        interpreter_->node_and_registration(op_index);
+        subgraph_->node_and_registration(op_index);
     for (auto tensor_index :
          TfLiteIntArrayView(node_and_registration->first.temporaries))
       tensor_is_temporary[tensor_index] = true;
@@ -135,7 +133,7 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
 
   // Now we need to remap all used tensor indices
   int curr_output_index = 0;
-  for (int tensor_index = 0; tensor_index < interpreter_->tensors_size();
+  for (int tensor_index = 0; tensor_index < subgraph_->tensors_size();
        tensor_index++) {
     // Temporary tensors and unused tensors will not be written.
     if (!tensor_is_temporary[tensor_index] &&
@@ -144,12 +142,12 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
     }
   }
 
-  for (int tensor_index = 0; tensor_index < interpreter_->tensors_size();
+  for (int tensor_index = 0; tensor_index < subgraph_->tensors_size();
        ++tensor_index) {
     // Tensor not exported.
     if (tensor_to_written_tensor_[tensor_index] == -1) continue;
 
-    if (TfLiteTensor* tensor = interpreter_->tensor(tensor_index)) {
+    if (TfLiteTensor* tensor = subgraph_->tensor(tensor_index)) {
       // We only need to convert non temporaries
       if (tensor->allocation_type != kTfLiteArenaRw &&
           tensor->allocation_type != kTfLiteMmapRo &&
@@ -165,19 +163,38 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
       // Primitive type.
       TensorType type = TfLiteTypeToSchemaType(tensor->type);
       // Handle quantization
-      const Offset<Vector<float>> null_array;
-      Offset<Vector<float>> scale_array;
-      Offset<Vector<int64_t>> zero_point_array;
-      if (tensor->params.scale != 0.f) {
-        // We have quantization, make a single arugment array (multi channel
-        // quant needs updating here).
-        scale_array = fbb->CreateVector<float>({tensor->params.scale});
-        zero_point_array =
-            fbb->CreateVector<int64_t>({tensor->params.zero_point});
+      flatbuffers::Offset<QuantizationParameters> quantization_params;
+
+      const flatbuffers::Offset<flatbuffers::Vector<float>> null_array;
+      flatbuffers::Offset<flatbuffers::Vector<float>> scale_array;
+      flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point_array;
+
+      if (tensor->quantization.type == kTfLiteAffineQuantization) {
+        if (tensor->params.scale != 0.f) {
+          // Quantization with a single argument array.
+          scale_array = fbb->CreateVector<float>({tensor->params.scale});
+          zero_point_array =
+              fbb->CreateVector<int64_t>({tensor->params.zero_point});
+          quantization_params = CreateQuantizationParameters(
+              *fbb, null_array, null_array, scale_array, zero_point_array);
+        } else {  // Multi channel quantization.
+          const TfLiteAffineQuantization* params =
+              reinterpret_cast<TfLiteAffineQuantization*>(
+                  tensor->quantization.params);
+          const size_t num_scales = params->scale->size;
+
+          std::vector<float> scale_vector(params->scale->data,
+                                          params->scale->data + num_scales);
+          std::vector<int64_t> zero_point_vector(
+              params->zero_point->data, params->zero_point->data + num_scales);
+          scale_array = fbb->CreateVector<float>(scale_vector);
+          zero_point_array = fbb->CreateVector<int64_t>(zero_point_vector);
+          quantization_params = CreateQuantizationParameters(
+              *fbb, null_array, null_array, scale_array, zero_point_array,
+              QuantizationDetails_NONE, 0, params->quantized_dimension);
+        }
       }
-      Offset<QuantizationParameters> quantization_params =
-          CreateQuantizationParameters(*fbb, null_array, null_array,
-                                       scale_array, zero_point_array);
+
       // Shape
       TfLiteIntArrayView shape_view(tensor->dims);
       std::vector<int> shape =
@@ -189,33 +206,32 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
                                      quantization_params, tensor->is_variable));
     }
   }
-  return fbb->template CreateVector<Offset<Tensor>>(tensors);
+  return fbb->template CreateVector<flatbuffers::Offset<Tensor>>(tensors);
 }
 
-Offset<Vector<Offset<Buffer>>> InterpreterWriter::ExportBuffers(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<Buffer>> buffer_vector;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
+SubgraphWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<Buffer>> buffer_vector;
   for (auto buffer : buffers_) {
     auto data_offset = fbb->CreateVector(buffer.first, buffer.second);
     buffer_vector.push_back(CreateBuffer(*fbb, data_offset));
   }
-  return fbb->template CreateVector<Offset<Buffer>>(buffer_vector);
+  return fbb->template CreateVector<flatbuffers::Offset<Buffer>>(buffer_vector);
 }
 
-Offset<Vector<Offset<OperatorCode>>> InterpreterWriter::CreateOpCodeTable(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<OperatorCode>> codes;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>>
+SubgraphWriter::CreateOpCodeTable(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (auto it : opcodes_) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
     codes.push_back(CreateOperatorCodeDirect(
         *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
   }
-  return fbb->template CreateVector<Offset<OperatorCode>>(codes);
+  return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
 
 template <class T>
-std::vector<int> InterpreterWriter::RemapTensorIndicesToWritten(
-    const T& input) {
+std::vector<int> SubgraphWriter::RemapTensorIndicesToWritten(const T& input) {
   std::vector<int> output;
   output.reserve(input.size());
   for (int x : input) {
@@ -231,18 +247,18 @@ std::vector<int> InterpreterWriter::RemapTensorIndicesToWritten(
   return output;
 }
 
-TfLiteStatus InterpreterWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
-                                          size_t* size) {
+TfLiteStatus SubgraphWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
+                                       size_t* size) {
   if (!out || !size) return kTfLiteError;
-  FlatBufferBuilder builder(/*initial_size=*/10240);
+  flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
-  std::vector<Offset<SubGraph>> subgraphs_as_vector;
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
   {  // subgraph specific stuff
     auto tensors = ExportTensors(&builder);
     std::vector<int> written_inputs =
-        RemapTensorIndicesToWritten(interpreter_->inputs());
+        RemapTensorIndicesToWritten(subgraph_->inputs());
     std::vector<int> written_outputs =
-        RemapTensorIndicesToWritten(interpreter_->outputs());
+        RemapTensorIndicesToWritten(subgraph_->outputs());
     auto inputs = ExportVector<int32_t>(&builder, written_inputs);
     auto outputs = ExportVector<int32_t>(&builder, written_outputs);
 
@@ -250,9 +266,10 @@ TfLiteStatus InterpreterWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
     subgraphs_as_vector.push_back(
         CreateSubGraph(builder, tensors, inputs, outputs, ops, /* name */ 0));
   }
-  Offset<Vector<Offset<Buffer>>> buffers = ExportBuffers(&builder);
+  flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
+      buffers = ExportBuffers(&builder);
 
-  auto description = builder.CreateString("Exported from Interpreter.");
+  auto description = builder.CreateString("Exported from Subgraph.");
 
   auto op_codes = CreateOpCodeTable(&builder);
   auto model = CreateModel(builder, TFLITE_SCHEMA_VERSION, op_codes,
@@ -266,7 +283,7 @@ TfLiteStatus InterpreterWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
   return kTfLiteOk;
 }
 
-TfLiteStatus InterpreterWriter::Write(const std::string& filename) {
+TfLiteStatus SubgraphWriter::Write(const std::string& filename) {
   std::unique_ptr<uint8_t[]> buffer;
   size_t size;
   TF_LITE_ENSURE_STATUS(GetBuffer(&buffer, &size));
@@ -274,13 +291,16 @@ TfLiteStatus InterpreterWriter::Write(const std::string& filename) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
-  if (fwrite(buffer.get(), 1, size, fp) != size) return kTfLiteError;
+  if (fwrite(buffer.get(), 1, size, fp) != size) {
+    fclose(fp);
+    return kTfLiteError;
+  }
   if (fclose(fp)) return kTfLiteError;
 
   return kTfLiteOk;
 }
 
-TfLiteStatus InterpreterWriter::RegisterCustomWriter(
+TfLiteStatus SubgraphWriter::RegisterCustomWriter(
     const std::string& custom_name, CustomWriter custom_writer) {
   if (custom_op_to_writer_.find(custom_name) != custom_op_to_writer_.end()) {
     return kTfLiteError;

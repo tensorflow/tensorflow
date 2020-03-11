@@ -33,3 +33,11 @@ keras_export(
 keras_export('keras.preprocessing.text.one_hot')(one_hot)
 keras_export('keras.preprocessing.text.hashing_trick')(hashing_trick)
 keras_export('keras.preprocessing.text.Tokenizer')(Tokenizer)
+
+# text.tokenizer_from_json is only available if keras_preprocessing >= 1.1.0
+try:
+  tokenizer_from_json = text.tokenizer_from_json
+  keras_export('keras.preprocessing.text.tokenizer_from_json')(
+      tokenizer_from_json)
+except AttributeError:
+  pass

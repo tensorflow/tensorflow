@@ -36,7 +36,8 @@ using ConfigMap =
     std::map<string, tensorflow::RewriterConfig_CustomGraphOptimizer>;
 
 // tf.data optimizations, in the order we want to perform them.
-constexpr std::array<const char*, 15> kTFDataOptimizations = {
+constexpr std::array<const char*, 16> kTFDataOptimizations = {
+    "make_stateless",
     "noop_elimination",
     "shuffle_and_repeat_fusion",
     "map_fusion",
@@ -55,11 +56,7 @@ constexpr std::array<const char*, 15> kTFDataOptimizations = {
 
 // Standard grappler optimizations, in the order we want to perform them.
 constexpr std::array<const char*, 5> kGrapplerOptimizations = {
-    "pruning",
-    "function",
-    "shape",
-    "arithmetic",
-    "dependency"};
+    "pruning", "function", "shape", "arithmetic", "dependency"};
 
 // Parses a list of string optimizer configurations into a map from
 // optimizer name -> rewriter config for that optimizer.
@@ -174,8 +171,8 @@ Status TFDataMetaOptimizer::Init(
 
   // Initialize standard grappler optimizers.
   enabled_optimizers_["pruning"] = MakeUnique<ModelPruner>();
-  enabled_optimizers_["function"] =
-      MakeUnique<FunctionOptimizer>(RewriterConfig::ON);
+  enabled_optimizers_["function"] = MakeUnique<FunctionOptimizer>(
+      RewriterConfig::ON, /*lower_control_flow=*/true);
   enabled_optimizers_["shape"] = MakeUnique<ShapeOptimizer>();
   enabled_optimizers_["arithmetic"] = MakeUnique<ArithmeticOptimizer>();
   enabled_optimizers_["dependency"] = MakeUnique<DependencyOptimizer>();

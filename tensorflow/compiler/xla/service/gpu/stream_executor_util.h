@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/kernel_spec.h"
 
 // Helper functions for interacting with StreamExecutor.
@@ -74,18 +74,17 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              int64 threads_per_block, int64 block_count,
                              se::Stream* stream);
 
-// Create PtxCompilationOptions out of HloModuleConfig.
-se::cuda::PtxCompilationOptions PtxOptsFromConfig(
-    const HloModuleConfig& hlo_module_config);
+// Create GpuAsmOpts out of HloModuleConfig.
+se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config);
 
 // Initializes `buffer` with random data on `stream`.
 // `rng_state` is an inout parameter for the pseudorandom generator state.
 // `buffer_type` determines what buffer would be filled out with.
 //
 // Precondition: `buffer_type` is a floating point type, `rng_state` needs to be
-// initalized to zero on the first use.
-void InitializeFloatBuffer(se::Stream* stream, PrimitiveType buffer_type,
-                           int64* rng_state, se::DeviceMemoryBase buffer);
+// initialized to zero on the first use.
+void InitializeBuffer(se::Stream* stream, PrimitiveType buffer_type,
+                      int64* rng_state, se::DeviceMemoryBase buffer);
 
 }  // namespace gpu
 }  // namespace xla

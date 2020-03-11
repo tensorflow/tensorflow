@@ -19,11 +19,14 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "numpy/arrayobject.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
 #include "include/pybind11/stl.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -32,6 +35,100 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
+
+// Custom holder types.
+//
+// We must keep the PyLocalClient object alive as long as any of the runtime
+// objects are alive. Since we don't have a lot of control over Python
+// destructor ordering, we keep the PyLocalClient object as a std::shared_ptr<>,
+// and ensure that each Python runtime object holds a reference to the
+// PyLocalClient. An alternative design would be to keep a single global
+// singleton PyLocalClient, although this seems less flexible, especially for
+// writing tests.
+//
+// To maintain PyLocalClient references, we define pybind11 holder classes that
+// are custom smart pointers that also keep a reference to a PyLocalClient.
+// pybind11 has a `keep_alive` feature that has a similar goal, but it doesn't
+// seem sufficiently flexible to describe ownership relationships in cases where
+// the ownership doesn't pertain to a direct argument or return value of a
+// function. Another alternative to the holder classes would be to create proxy
+// objects that contain both a reference and a runtime class; holder classes
+// seem less tedious to define.
+
+// A pair of a PyLocalClient reference and an unowned pointer to T.
+template <typename T>
+struct ClientAndPtr {
+  ClientAndPtr() = default;
+  // pybind11 requires that we define a constructor that takes a raw pointer,
+  // but it should be unreachable.
+  explicit ClientAndPtr(T*) {
+    LOG(FATAL) << "ClientAndPtr should constructed via WrapWithClient.";
+  }
+
+  ClientAndPtr(const ClientAndPtr&) = default;
+  ClientAndPtr(ClientAndPtr&&) = default;
+  ClientAndPtr& operator=(const ClientAndPtr&) = default;
+  ClientAndPtr& operator=(ClientAndPtr&&) = default;
+
+  std::shared_ptr<PyLocalClient> client;
+  T* contents;
+
+  T* get() const { return contents; }
+  T* operator->() const { return contents; }
+  T& operator*() const { return *contents; }
+};
+
+// By defining a templated helper function, we can use return type deduction
+// and avoid specifying types at the caller.
+template <typename T>
+ClientAndPtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+                               T* contents) {
+  ClientAndPtr<T> result;
+  result.client = std::move(client);
+  result.contents = contents;
+  return result;
+}
+
+// A pair of a PyLocalClient reference and an owned pointer to T.
+template <typename T>
+struct ClientAndUniquePtr {
+  ClientAndUniquePtr() = default;
+  // pybind11 requires that we define a constructor that takes a raw pointer,
+  // but it should be unreachable.
+  explicit ClientAndUniquePtr(T*) {
+    LOG(FATAL) << "ClientAndUniquePtr should constructed via WrapWithClient.";
+  }
+  ClientAndUniquePtr(const ClientAndUniquePtr&) = delete;
+  ClientAndUniquePtr(ClientAndUniquePtr&&) = default;
+  ClientAndUniquePtr& operator=(const ClientAndUniquePtr&) = delete;
+  ClientAndUniquePtr& operator=(ClientAndUniquePtr&&) = default;
+
+  std::shared_ptr<PyLocalClient> client;
+  std::unique_ptr<T> contents;
+
+  T* get() const { return contents.get(); }
+  T* operator->() const { return contents.get(); }
+  T& operator*() const { return *contents; }
+};
+
+template <typename T>
+ClientAndUniquePtr<T> WrapWithClient(std::shared_ptr<PyLocalClient> client,
+                                     std::unique_ptr<T> contents) {
+  ClientAndUniquePtr<T> result;
+  result.client = std::move(client);
+  result.contents = std::move(contents);
+  return result;
+}
+
+}  // namespace xla
+
+PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndPtr<T>);
+PYBIND11_DECLARE_HOLDER_TYPE(T, xla::ClientAndUniquePtr<T>);
+
+namespace xla {
+
+// Initializes the NumPy API for the use of the types module.
+bool InitializeNumpyAPIForTypes();
 
 // Helper that converts a failing StatusOr to an exception.
 // For use only inside pybind11 code.
@@ -48,6 +145,15 @@ StatusOr<PrimitiveType> DtypeToPrimitiveType(const pybind11::dtype& np_type);
 
 // Converts a PrimitiveType to a Numpy dtype.
 StatusOr<pybind11::dtype> PrimitiveTypeToDtype(PrimitiveType type);
+
+// Returns a numpy-style format descriptor string for `type`.
+StatusOr<std::string> FormatDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns a numpy-style typestr for `type`, as returned by np.dtype(...).str
+StatusOr<pybind11::str> TypeDescriptorForPrimitiveType(PrimitiveType type);
+
+// Returns the strides for `shape`.
+std::vector<ssize_t> ByteStridesForShape(const Shape& shape);
 
 // Converts a literal to (possibly-nested tuples of) NumPy arrays.
 // The literal's leaf arrays are not copied; instead the NumPy arrays share
@@ -78,6 +184,16 @@ pybind11::tuple IntSpanToTuple(absl::Span<int64 const> xs);
 // Converts a Python sequence of integers to a std::vector<int64>
 std::vector<int64> IntSequenceToVector(const pybind11::object& sequence);
 
+// Private helper function used in the implementation of the type caster for
+// xla::BorrowingLiteral. Converts a Python array-like object into a buffer
+// pointer and shape.
+struct CastToArrayResult {
+  pybind11::object array;  // Holds a reference to the array to keep it alive.
+  const char* buf_ptr;
+  xla::Shape shape;
+};
+absl::optional<CastToArrayResult> CastToArray(pybind11::handle h);
+
 }  // namespace xla
 
 // This namespace is a documented pybind11 extension point.
@@ -104,7 +220,7 @@ struct type_caster<absl::Span<const T>> {
   using value_conv = make_caster<T>;
 
   PYBIND11_TYPE_CASTER(absl::Span<const T>,
-                       _("Span[") + value_conv::name() + _("]"));
+                       _("Span[") + value_conv::name + _("]"));
 
   // absl::Span doesn't hold ownership. We therefore need a temporary array.
   // Pybind appears to keep type_casters alive until the callee has run.
@@ -151,7 +267,7 @@ struct type_caster<xla::StatusOr<T>> {
   using value_conv = make_caster<T>;
 
   PYBIND11_TYPE_CASTER(xla::StatusOr<T>,
-                       _("StatusOr[") + value_conv::name() + _("]"));
+                       _("StatusOr[") + value_conv::name + _("]"));
 
   static handle cast(xla::StatusOr<T> src, return_value_policy policy,
                      handle parent) {
@@ -175,32 +291,38 @@ struct type_caster<xla::BorrowingLiteral> {
   PYBIND11_TYPE_CASTER(xla::BorrowingLiteral, _("xla::BorrowingLiteral"));
 
   // Pybind appears to keep type_casters alive until the callee has run.
-  pybind11::array array;
+  absl::InlinedVector<pybind11::array, 1> arrays;
 
-  bool load(handle handle, bool) {
-    array = pybind11::array::ensure(
-        handle, pybind11::array::c_style |
-                    pybind11::detail::npy_api::NPY_ARRAY_ALIGNED_);
-    if (!array) return false;
-    pybind11::buffer_info buffer_info = array.request();
-
-    absl::InlinedVector<xla::int64, 4> dims(array.ndim());
-    for (int i = 0; i < array.ndim(); ++i) {
-      dims[i] = array.shape(i);
+  bool load(handle input, bool) {
+    // TODO(b/79707221): support nested tuples if/when XLA adds support for
+    // nested BorrowingLiterals.
+    if (pybind11::isinstance<pybind11::tuple>(input)) {
+      pybind11::tuple tuple =
+          pybind11::reinterpret_borrow<pybind11::tuple>(input);
+      std::vector<xla::Shape> shapes;
+      std::vector<const char*> buffers;
+      arrays.reserve(tuple.size());
+      shapes.reserve(tuple.size());
+      buffers.reserve(tuple.size());
+      for (pybind11::handle entry : tuple) {
+        auto c = xla::CastToArray(entry);
+        if (!c) {
+          return false;
+        }
+        arrays.push_back(c->array);
+        buffers.push_back(c->buf_ptr);
+        shapes.push_back(c->shape);
+      }
+      value = xla::BorrowingLiteral(buffers,
+                                    xla::ShapeUtil::MakeTupleShape(shapes));
+    } else {
+      auto c = xla::CastToArray(input);
+      if (!c) {
+        return false;
+      }
+      arrays.push_back(c->array);
+      value = xla::BorrowingLiteral(c->buf_ptr, c->shape);
     }
-    auto type = xla::DtypeToPrimitiveType(array.dtype());
-    if (!type.ok()) {
-      throw std::runtime_error(type.status().ToString());
-    }
-    xla::Shape shape = xla::ShapeUtil::MakeShape(type.ValueOrDie(), dims);
-    if (buffer_info.size * buffer_info.itemsize !=
-        xla::ShapeUtil::ByteSizeOf(shape)) {
-      throw std::runtime_error(absl::StrCat(
-          "Size mismatch for buffer: ", buffer_info.size * buffer_info.itemsize,
-          " vs. ", xla::ShapeUtil::ByteSizeOf(shape)));
-    }
-    value =
-        xla::BorrowingLiteral(static_cast<const char*>(buffer_info.ptr), shape);
     return true;
   }
 };
@@ -443,6 +565,69 @@ struct type_caster<xla::PrecisionConfig> {
       value.add_operand_precision(
           operand_precision.cast<xla::PrecisionConfig::Precision>());
     }
+    return true;
+  }
+};
+
+template <>
+struct type_caster<xla::OpSharding> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::OpSharding, _("xla::OpSharding"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle_obj, bool) {
+    if (handle_obj.is_none()) {
+      return true;
+    }
+
+    // Sets `type` field.
+    handle sharding_type = getattr(handle_obj, "type");
+    if (!sharding_type.is_none()) {
+      value.set_type(sharding_type.cast<xla::OpSharding_Type>());
+    }
+
+    // Sets `tile_assignment_dimensions` field.
+    std::vector<xla::int64> dims;
+    dims = getattr(handle_obj, "tile_assignment_dimensions")
+               .cast<std::vector<xla::int64>>();
+    std::copy(dims.begin(), dims.end(),
+              tensorflow::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_tile_assignment_dimensions()));
+
+    // Sets `tile_assignment_devices` field.
+    std::vector<xla::int64> devices;
+    devices = getattr(handle_obj, "tile_assignment_devices")
+                  .cast<std::vector<xla::int64>>();
+    std::copy(devices.begin(), devices.end(),
+              tensorflow::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_tile_assignment_devices()));
+
+    // Sets `tuple_shardings` field.
+    sequence tuple_shardings =
+        reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
+
+    for (auto tuple_sharding : tuple_shardings) {
+      xla::OpSharding* sharding = value.add_tuple_shardings();
+
+      handle sharding_type = getattr(tuple_sharding, "type");
+      if (!sharding_type.is_none()) {
+        sharding->set_type(sharding_type.cast<xla::OpSharding_Type>());
+      }
+      std::vector<xla::int64> dims;
+      dims = getattr(tuple_sharding, "tile_assignment_dimensions")
+                 .cast<std::vector<xla::int64>>();
+      std::copy(dims.begin(), dims.end(),
+                tensorflow::protobuf::RepeatedFieldBackInserter(
+                    sharding->mutable_tile_assignment_dimensions()));
+
+      std::vector<xla::int64> devices;
+      devices = getattr(tuple_sharding, "tile_assignment_devices")
+                    .cast<std::vector<xla::int64>>();
+      std::copy(devices.begin(), devices.end(),
+                tensorflow::protobuf::RepeatedFieldBackInserter(
+                    sharding->mutable_tile_assignment_devices()));
+    }
+
     return true;
   }
 };

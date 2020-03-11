@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 67
+// Next ID: 72
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -179,6 +179,10 @@ message HloInstructionProto {
   // Non-positive all_reduce_id is equivalent to no all_reduce_id.
   int64 all_reduce_id = 45 [deprecated = true];
 
+  // If true, interprets ids in ReplicaGroup as global device ids, which is
+  // a linearized id of `replica_id * partition_count + partition_id`.
+  bool use_global_device_ids = 71;
+
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone
   // partners.
@@ -230,6 +234,20 @@ message HloInstructionProto {
 
   // The delta value for kRngGetAndUpdateState.
   int64 delta = 66;
+
+  // Specifies if the gather/scatter indices are guaranteed to be sorted by the
+  // caller.
+  bool indices_are_sorted = 67;
+
+  // Frontend attributes to pass to the XLA backend.
+  xla.FrontendAttributes frontend_attributes = 68;
+
+  // Specifies if all elements updated are guaranteed to be unique by
+  // the caller.
+  bool unique_indices = 69;
+
+  // RNG algorithm used by kRngBitGenerator.
+  xla.RandomAlgorithm rng_algorithm = 70;
 }
 
 // Serialization of HloComputation.

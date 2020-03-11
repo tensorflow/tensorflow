@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_gatherer.h"
 
 #include <algorithm>
+
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 #include "tensorflow/core/common_runtime/collective_rma_local.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -44,8 +46,9 @@ namespace tensorflow {
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              int64 step_id, int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
+              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
+              int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -91,7 +94,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
@@ -113,7 +116,7 @@ class RingGathererTest : public ::testing::Test {
  protected:
   RingGathererTest() : device_type_(DEVICE_CPU) {}
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   void InitGPUDevices() {
     auto device_factory = DeviceFactory::GetFactory("GPU");
     CHECK(device_factory);
@@ -132,7 +135,7 @@ class RingGathererTest : public ::testing::Test {
 
   void Init(int num_workers, int num_devices, DataType dtype,
             const DeviceType& device_type, int num_subdivs, int fail_after) {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
     InitGPUDevices();
 #endif
     device_type_ = device_type;
@@ -164,12 +167,15 @@ class RingGathererTest : public ::testing::Test {
     if (!dev_mgr_ || device_type == DEVICE_CPU) {
       LOG(ERROR) << "resetting dev_mgr for " << local_devices.size()
                  << " devices: ";
-      dev_mgr_.reset(new DeviceMgr(std::move(local_devices)));
+      dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     }
-    if (!gpu_ring_order_) gpu_ring_order_.reset(new string());
-    dev_resolver_.reset(new DeviceResolverLocal(dev_mgr_.get()));
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
-                           fail_after);
+    if (!gpu_ring_order_) {
+      gpu_ring_order_ = absl::make_unique<string>();
+    }
+    dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
+    work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
+                           kStepId, fail_after);
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
     col_params_.name = "test_collective";
@@ -450,7 +456,6 @@ class RingGathererTest : public ::testing::Test {
       gtl::InlinedVector<AllocatorAttributes, 4> input_aa(
           {AllocatorAttributes()});
       op_params.input_alloc_attrs = &input_aa;
-      gtl::InlinedVector<DeviceContext*, 4> input_dc;
       DeviceContext* dev_ctx = nullptr;
       auto* dev_info = device_->tensorflow_gpu_device_info();
       if (dev_info) {
@@ -459,8 +464,6 @@ class RingGathererTest : public ::testing::Test {
       } else {
         dev_ctx = new DeviceContext;
       }
-      input_dc.push_back(dev_ctx);
-      op_params.input_device_contexts = &input_dc;
       op_params.op_device_context = dev_ctx;
       AllocatorAttributes generic_alloc_attr;
       op_params.output_attr_array = &generic_alloc_attr;
@@ -518,13 +521,14 @@ class RingGathererTest : public ::testing::Test {
   CollectiveExecutor* col_exec_;
   CollectiveRemoteAccessLocal* rma_;
   std::unique_ptr<DeviceResolverLocal> dev_resolver_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<DeviceInstance*> instances_;
   CollectiveParams col_params_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpu_devices_;
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 gather_counter_ GUARDED_BY(mu_) = 0;
+  int32 gather_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,
@@ -599,7 +603,7 @@ TEST_F(RingGathererTest, InitializeParams) {
     }                                                                         \
   }
 
-#ifndef GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Success tests
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 1, 0)
 DEF_TEST(FLOAT, CPU, 1, 2, 1, 2, 0)
@@ -624,7 +628,7 @@ DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 7)
 DEF_TEST(FLOAT, CPU, 2, 8, 1, 9408, 11)
 #endif
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // GPU tests.  So long as the device names are all in a single tasks we
 // bypass inter-worker routing code and can fake multiple GPUs with a single
 // GPU, from the perspective of the RingGatherer logic.  So these tests

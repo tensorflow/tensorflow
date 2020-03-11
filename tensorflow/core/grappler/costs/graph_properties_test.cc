@@ -879,7 +879,7 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
   EXPECT_EQ(DT_FLOAT, restorev2_prop.dtype());
   EXPECT_EQ("float: [128,256]", PropToString(restorev2_prop));
 
-  // Check input shapes of assign op are propagted correctly.
+  // Check input shapes of assign op are propagated correctly.
   const auto input_props = properties.GetInputProperties("init_restore");
   ASSERT_EQ(2, input_props.size());
   const OpInfo::TensorProperties& input_prop = input_props[1];
@@ -995,7 +995,7 @@ TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
   // When using aggressive_shape_inference, we run EvaluateNode() for
   // whitelisted ops and small input / output tensors. For instance, Fill op is
   // evaluated and produces output tensor value if output tensor size is smal
-  // (currently, fewer than 17 elements); otherwise we don't run EvalauteNode().
+  // (currently, fewer than 17 elements); otherwise we don't run EvaluateNode().
   // This is to avoid wasting time and memory for producing huge tensors (e.g.,
   // initializing a large table using Fill.
   {
@@ -1997,6 +1997,72 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithoutInferenceFn) {
   EXPECT_EQ(DT_FLOAT, prop.dtype());
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ("float: [10,100]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, ShapeAnnotatedFunctionOp) {
+  // A function, which we cannot infer output shape statically.
+  auto f = FunctionDefHelper::Create(
+      // Name
+      "FuncShapeCannotBeInferred",
+      // Inputs
+      {},
+      // Outputs
+      {"output: float"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          // Placeholder without shape attr; unknown rank.
+          {{"p"}, "Placeholder", {}, {{"dtype", DataType::DT_FLOAT}}},
+      },
+      // Returns
+      {{"output", "p:output:0"}});
+  FunctionDefLibrary function_lib;
+  function_lib.add_function()->Swap(&f);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(function_lib));
+  tensorflow::Node* func_op;
+  TensorShapeProto output_shape;
+  output_shape.set_unknown_rank(false);
+  output_shape.add_dim()->set_size(1);
+  output_shape.add_dim()->set_size(2);
+  output_shape.add_dim()->set_size(3);
+  output_shape.add_dim()->set_size(4);
+  // The function node, f, includes shape annotation.
+  TF_CHECK_OK(tensorflow::NodeBuilder("f", "FuncShapeCannotBeInferred",
+                                      s.graph()->op_registry())
+                  .Attr("_execution_count", 1)
+                  .Attr("_same_output_for_iterations", true)
+                  .Attr("_output_dtype_vector", {DataType::DT_FLOAT})
+                  .Attr("_output_shape_vector", {output_shape})
+                  .Finalize(s.graph(), &func_op));
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // InferStatically with aggressive_shape_inference would fail to infer
+  // the output shape of the node f.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
+    const auto out_props = properties.GetOutputProperties("f");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: ?", PropToString(out_prop0));
+  }
+  // With aggressive_shape_inference, it skips recursively callying
+  // InferStatically for the function node and outputs annotated shape info.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
+    const auto out_props = properties.GetOutputProperties("f");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [1,2,3,4]", PropToString(out_prop0));
+  }
 }
 }  // namespace
 }  // namespace grappler

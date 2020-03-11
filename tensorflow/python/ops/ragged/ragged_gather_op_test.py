@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,90 +33,141 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  def testDocStringExamples(self):
-    params = constant_op.constant(['a', 'b', 'c', 'd', 'e'])
-    indices = constant_op.constant([3, 1, 2, 1, 0])
-    ragged_params = ragged_factory_ops.constant([['a', 'b', 'c'], ['d'], [],
-                                                 ['e']])
-    ragged_indices = ragged_factory_ops.constant([[3, 1, 2], [1], [], [0]])
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, ragged_indices),
-        [[b'd', b'b', b'c'], [b'b'], [], [b'a']])
-    self.assertAllEqual(
-        ragged_gather_ops.gather(ragged_params, indices),
-        [[b'e'], [b'd'], [], [b'd'], [b'a', b'b', b'c']])
-    self.assertAllEqual(
-        ragged_gather_ops.gather(ragged_params, ragged_indices),
-        [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]])
+  @parameterized.named_parameters([
+      # Basic gather (axis=0 and batch_dims=0)
+      dict(testcase_name='Params1DTensor_Indices1DTensor',
+           params=['a', 'b', 'c', 'd', 'e'],
+           indices=[2, 0, 2, 1],
+           expected=['c', 'a', 'c', 'b']),
+      dict(testcase_name='Params1DTensor_Indices2DRagged',
+           params=['a', 'b', 'c', 'd', 'e'],
+           indices=[[3, 1, 2], [1], [], [0]],
+           expected=[['d', 'b', 'c'], ['b'], [], ['a']]),
+      dict(testcase_name='Params2DRagged_Indices0DTensor',
+           params=[['a', 'b'], ['c', 'd', 'e'], ['f'], [], ['g']],
+           indices=1,
+           expected=['c', 'd', 'e']),
+      dict(testcase_name='Params2DRagged_Indices1DTensor',
+           params=[['a', 'b', 'c'], ['d'], [], ['e']],
+           indices=[3, 1, 2, 1, 0],
+           expected=[
+               ['e'], ['d'], [], ['d'], ['a', 'b', 'c']]),
+      dict(testcase_name='Params2DRagged_Indices2DRagged',
+           params=[['a', 'b', 'c'], ['d'], [], ['e']],
+           indices=[[3, 1, 2], [1], [], [0]],
+           expected=[
+               [['e'], ['d'], []], [['d']], [], [['a', 'b', 'c']]]),
+      dict(testcase_name='Params3DRagged_Indices2DTensor',
+           params=[
+               [['a', 'b'], []], [['c', 'd'], ['e'], ['f']], [['g']]],
+           indices=[[1, 2], [0, 1], [2, 2]],
+           indices_ragged_rank=0,
+           expected=[
+               [[['c', 'd'], ['e'], ['f']], [['g']]],
+               [[['a', 'b'], []], [['c', 'd'], ['e'], ['f']]],
+               [[['g']], [['g']]]]),
+      dict(testcase_name='Params3DRagged_Indices3DTensor',
+           params=[[['a', 'b'], []],
+                   [['c', 'd'], ['e'], ['f']],
+                   [['g']]],
+           indices=[[[1, 2], [0, 1], [2, 2]], [[0, 0], [1, 2], [0, 1]]],
+           indices_ragged_rank=0,
+           expected=[
+               [[[['c', 'd'], ['e'], ['f']], [['g']]],
+                [[['a', 'b'], []], [['c', 'd'], ['e'], ['f']]],
+                [[['g']], [['g']]]],
+               [[[['a', 'b'], []], [['a', 'b'], []]],
+                [[['c', 'd'], ['e'], ['f']], [['g']]],
+                [[['a', 'b'], []], [['c', 'd'], ['e'], ['f']]]]]),
+      dict(testcase_name='Params1DTensor_Indices4DRaggedRank2',
+           params=['a', 'b', 'c', 'd', 'e', 'f', 'g'],
+           indices=[[[[3, 4], [0, 6]], []],
+                    [[[2, 1], [1, 0]], [[2, 5]], [[2, 3]]],
+                    [[[1, 0]]]],
+           indices_ragged_rank=2,
+           expected=[
+               [[['d', 'e'], ['a', 'g']], []],
+               [[['c', 'b'], ['b', 'a']], [['c', 'f']], [['c', 'd']]],
+               [[['b', 'a']]]]),
+      # Batch gather (batch_dims=1)
+      dict(testcase_name='Batch1D_Params2DRagged_Indices1DTensor',
+           params=[['a', 'b'], ['c'], ['d', 'e', 'f', 'g'], ['h']],
+           indices=[1, 0, 3, 0],
+           batch_dims=1,
+           expected=['b', 'c', 'g', 'h']),
+      dict(testcase_name='Batch1D_Params2DRagged_Indices2DTensor',
+           params=[['a', 'b'], ['c'], ['d', 'e', 'f', 'g'], ['h']],
+           indices=[[1, 0], [0, 0], [3, 1], [0, 0]],
+           indices_ragged_rank=0,
+           batch_dims=1,
+           expected=[['b', 'a'], ['c', 'c'], ['g', 'e'], ['h', 'h']]),
+      dict(testcase_name='Batch1D_Params2DRagged_Indices2DRagged',
+           params=[['a', 'b'], ['c'], ['d', 'e', 'f', 'g'], ['h']],
+           indices=[[1, 0], [], [3, 2, 1], [0]],
+           batch_dims=1,
+           expected=[['b', 'a'], [], ['g', 'f', 'e'], ['h']]),
+      dict(testcase_name='Batch1D_Params3DRagged_Indices3DRagged',
+           params=[[['a'], ['b', 'c']],
+                   [],
+                   [['d', 'e', 'f'], ['g'], ['h', 'i'], ['j']],
+                   [['k']]],
+           indices=[[[1, 0], []], [], [[3, 2, 1], [0]], [[0]]],
+           batch_dims=1,
+           expected=[[[['b', 'c'], ['a']], []],
+                     [],
+                     [[['j'], ['h', 'i'], ['g']], [['d', 'e', 'f']]],
+                     [[['k']]]]),
+      # Batch gather (batch_dims=2)
+      dict(testcase_name='Batch2D_Params3DRagged_Indices2DRagged',
+           params=[[['a', 'b', 'c'], ['d', 'e'], ['f']],
+                   [['g'], ['h', 'i']]],
+           indices=[[0, 1, 0], [0, 1]],
+           batch_dims=2,
+           expected=[['a', 'e', 'f'], ['g', 'i']]),
+      dict(testcase_name='Batch2D_Params3DRagged_Indices3DRagged',
+           params=[[['a', 'b', 'c'], ['d', 'e'], ['f']],
+                   [['g'], ['h', 'i']]],
+           indices=[[[2, 1, 0], [1, 1], [0]], [[0], []]],
+           batch_dims=2,
+           expected=[[['c', 'b', 'a'], ['e', 'e'], ['f']], [['g'], []]]),
+      # Batch gather (batch_dims=3)
+      dict(testcase_name='Batch3D_Params4DRagged_Indices3DRagged',
+           params=[[[['a', 'b', 'c'], ['d', 'e'], ['f']],
+                    [['g'], ['h', 'i']]], [[['j']]]],
+           indices=[[[0, 1, 0], [0, 1]], [[0]]],
+           batch_dims=3,
+           expected=[[['a', 'e', 'f'], ['g', 'i']], [['j']]]),
 
-  def testTensorParamsAndTensorIndices(self):
-    params = ['a', 'b', 'c', 'd', 'e']
-    indices = [2, 0, 2, 1]
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices), [b'c', b'a', b'c', b'b'])
-    self.assertIsInstance(ragged_gather_ops.gather(params, indices), ops.Tensor)
-
-  def testRaggedParamsAndTensorIndices(self):
-    params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
-                                          [], ['g']])
-    indices = [2, 0, 2, 1]
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices),
-        [[b'f'], [b'a', b'b'], [b'f'], [b'c', b'd', b'e']])
-
-  def testTensorParamsAndRaggedIndices(self):
-    params = ['a', 'b', 'c', 'd', 'e']
-    indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices),
-        [[b'c', b'b'], [b'b', b'c', b'a'], [b'd']])
-
-  def testRaggedParamsAndRaggedIndices(self):
-    params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
-                                          [], ['g']])
-    indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices),
-        [[[b'f'], [b'c', b'd', b'e']],                # [[p[2], p[1]      ],
-         [[b'c', b'd', b'e'], [b'f'], [b'a', b'b']],  #  [p[1], p[2], p[0]],
-         [[]]]                                        #  [p[3]            ]]
-    )  # pyformat: disable
-
-  def testRaggedParamsAndScalarIndices(self):
-    params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
-                                          [], ['g']])
-    indices = 1
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices), [b'c', b'd', b'e'])
-
-  def test3DRaggedParamsAnd2DTensorIndices(self):
-    params = ragged_factory_ops.constant([[['a', 'b'], []],
-                                          [['c', 'd'], ['e'], ['f']], [['g']]])
-    indices = [[1, 2], [0, 1], [2, 2]]
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices),
-        [[[[b'c', b'd'], [b'e'], [b'f']], [[b'g']]],            # [[p1, p2],
-         [[[b'a', b'b'], []], [[b'c', b'd'], [b'e'], [b'f']]],  #  [p0, p1],
-         [[[b'g']], [[b'g']]]]                                  #  [p2, p2]]
-    )  # pyformat: disable
-
-  def testTensorParamsAnd4DRaggedIndices(self):
+  ])  # pyformat: disable
+  def testRaggedGather(self,
+                       params,
+                       indices,
+                       expected,
+                       axis=None,
+                       batch_dims=0,
+                       params_ragged_rank=None,
+                       indices_ragged_rank=None):
+    params = ragged_factory_ops.constant(params, ragged_rank=params_ragged_rank)
     indices = ragged_factory_ops.constant(
-        [[[[3, 4], [0, 6]], []], [[[2, 1], [1, 0]], [[2, 5]], [[2, 3]]],
-         [[[1, 0]]]],  # pyformat: disable
-        ragged_rank=2,
-        inner_shape=(2,))
-    params = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
-    self.assertAllEqual(
-        ragged_gather_ops.gather(params, indices),
-        [[[[b'd', b'e'], [b'a', b'g']], []],
-         [[[b'c', b'b'], [b'b', b'a']], [[b'c', b'f']], [[b'c', b'd']]],
-         [[[b'b', b'a']]]])  # pyformat: disable
+        indices, ragged_rank=indices_ragged_rank)
+    actual = ragged_gather_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
+    self.assertAllEqual(actual, self._str_to_bytes(expected))
+
+  def _str_to_bytes(self, x):
+    if isinstance(x, list):
+      return [self._str_to_bytes(v) for v in x]
+    elif isinstance(x, str) and bytes is not str:
+      return bytes(x, 'utf-8')
+    else:
+      return x
 
   def testOutOfBoundsError(self):
     tensor_params = ['a', 'b', 'c']
@@ -138,7 +191,7 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     indices = constant_op.constant([0], dtype=dtypes.int64)
     indices = array_ops.placeholder_with_default(indices, None)
     self.assertRaisesRegexp(ValueError,
-                            r'indices\.shape\.ndims must be known statically',
+                            r'rank\(indices\) must be known statically',
                             ragged_gather_ops.gather, params, indices)
 
   # pylint: disable=bad-whitespace
@@ -255,6 +308,87 @@ class RaggedGatherOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     params_grad = params.with_flat_values(params_flat_values_grad)
     self.assertAllClose(params_grad, expected_grad, atol=2e-6, rtol=2e-6)
+
+  @parameterized.parameters([
+      # Basic gather (batch_dims == 0, axis == 0)
+      dict(params_shape=[3, 4], indices_shape=[], axis=0),
+      dict(params_shape=[3, 4], indices_shape=[5], axis=0),
+      dict(params_shape=[3, 4], indices_shape=[2, 5], axis=0),
+      # Gather over axis (axis > 0)
+      dict(params_shape=[3, 4], indices_shape=[], axis=1),
+      dict(params_shape=[3, 4], indices_shape=[2], axis=1),
+      dict(params_shape=[3, 4], indices_shape=[2, 5], axis=1),
+      dict(params_shape=[7, 3, 1], indices_shape=[2, 4], axis=1),
+      dict(params_shape=[3, 4, 5, 6], indices_shape=[2, 1, 7], axis=1),
+      dict(params_shape=[7, 3, 5], indices_shape=[], axis=2),
+      dict(params_shape=[7, 3, 5], indices_shape=[2], axis=2),
+      dict(params_shape=[7, 3, 5], indices_shape=[4, 2], axis=2),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[4, 2], axis=2),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[], axis=3),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[4], axis=3),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[8, 4], axis=3),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[2, 3, 2, 3], axis=3),
+      # Batched gather (batch_dims > 0)
+      dict(params_shape=[7, 3], indices_shape=[7], batch_dims=1),
+      dict(params_shape=[7, 3], indices_shape=[7, 5], batch_dims=1),
+      dict(params_shape=[5, 3], indices_shape=[5, 7, 4, 2], batch_dims=1),
+      dict(params_shape=[2, 3, 6], indices_shape=[2], batch_dims=1),
+      dict(params_shape=[7, 3, 6], indices_shape=[7, 5, 4, 2], batch_dims=1),
+      dict(params_shape=[7, 3, 5], indices_shape=[7, 3], batch_dims=2),
+      dict(params_shape=[7, 3, 5], indices_shape=[7, 3, 2], batch_dims=2),
+      dict(params_shape=[7, 3, 5, 6], indices_shape=[7, 3, 5], batch_dims=3),
+      dict(params_shape=[2, 3, 5, 6], indices_shape=[2, 3, 5, 7], batch_dims=3),
+      # Batched gather with axis (axis > batch_dims > 0)
+      dict(params_shape=[2, 3, 6], indices_shape=[2], axis=2, batch_dims=1),
+      dict(params_shape=[2, 3, 6], indices_shape=[2, 4], axis=2, batch_dims=1),
+      dict(
+          params_shape=[3, 1, 6, 7], indices_shape=[3, 4], axis=3,
+          batch_dims=1),
+      dict(
+          params_shape=[3, 2, 6, 7], indices_shape=[3, 4], axis=3,
+          batch_dims=1),
+      dict(
+          params_shape=[2, 3, 6, 7], indices_shape=[2, 3], axis=3,
+          batch_dims=2),
+  ])
+  def testMatchesDenseGather(self,
+                             params_shape,
+                             indices_shape,
+                             axis=None,
+                             batch_dims=0):
+    # Build random params & indices matrics w/ the expected shapes.
+    if axis is None:
+      axis = batch_dims
+    params = np.random.randint(100, size=params_shape, dtype=np.int32)
+    indices = np.random.randint(
+        params_shape[axis], size=indices_shape, dtype=np.int32)
+
+    # Use array_ops.gather to get the expected value.
+    expected = array_ops.gather(
+        params, indices, axis=axis, batch_dims=batch_dims)
+
+    # Build ragged tensors with varying ragged_ranks from params & axis.
+    params_tensors = [params] + [
+        ragged_tensor.RaggedTensor.from_tensor(params, ragged_rank=i)
+        for i in range(1, len(params_shape))
+    ]
+    indices_tensors = [indices] + [
+        ragged_tensor.RaggedTensor.from_tensor(indices, ragged_rank=i)
+        for i in range(1, len(indices_shape))
+    ]
+
+    # For each combination of params & axis tensors, check that
+    # ragged_gather_ops.gather matches array_ops.gather.
+    for params_tensor in params_tensors:
+      for indices_tensor in indices_tensors:
+        actual = ragged_gather_ops.gather(
+            params_tensor, indices_tensor, axis=axis, batch_dims=batch_dims)
+        if isinstance(actual, ragged_tensor.RaggedTensor):
+          actual = actual.to_tensor()
+        self.assertAllEqual(
+            expected, actual, 'params.ragged_rank=%s, indices.ragged_rank=%s' %
+            (getattr(params_tensor, 'ragged_rank',
+                     0), getattr(indices_tensor, 'ragged_rank', 0)))
 
 
 if __name__ == '__main__':

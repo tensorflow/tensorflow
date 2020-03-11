@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
+import zipfile
 
 import numpy as np
 
@@ -32,6 +32,7 @@ from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -74,6 +75,20 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
+
+  def testDebuggerExampleFilePathReturnsFalse(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/debug_mnist.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v1/example_v1.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v2/example_v2.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
 
   def testNonPythonFileRaisesException(self):
     with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
@@ -133,7 +148,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testAnnotateWholeValidSourceFileGivesCorrectResult(self):
@@ -219,6 +234,49 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
     # Clean up unrelated source file.
     os.remove(unrelated_source_path)
 
+  def testLoadingPythonSourceFileWithNonAsciiChars(self):
+    source_path = tempfile.mktemp()
+    with open(source_path, "wb") as source_file:
+      source_file.write(u"print('\U0001f642')\n".encode("utf-8"))
+    source_lines, _ = source_utils.load_source(source_path)
+    self.assertEqual(source_lines, [u"print('\U0001f642')", u""])
+    # Clean up unrelated source file.
+    os.remove(source_path)
+
+  def testLoadNonexistentNonParPathFailsWithIOError(self):
+    bad_path = os.path.join(self.get_temp_dir(), "nonexistent.py")
+    with self.assertRaisesRegexp(
+        IOError, "neither exists nor can be loaded.*par.*"):
+      source_utils.load_source(bad_path)
+
+  def testLoadingPythonSourceFileInParFileSucceeds(self):
+    # Create the .par file first.
+    temp_file_path = os.path.join(self.get_temp_dir(), "model.py")
+    with open(temp_file_path, "wb") as f:
+      f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
+    par_path = os.path.join(self.get_temp_dir(), "train_model.par")
+    with zipfile.ZipFile(par_path, "w") as zf:
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
+
+    source_path = os.path.join(par_path, "tensorflow_models", "model.py")
+    source_lines, _ = source_utils.load_source(source_path)
+    self.assertEqual(
+        source_lines, ["import tensorflow as tf", "x = tf.constant(42.0)", ""])
+
+  def testLoadingPythonSourceFileInParFileFailsRaisingIOError(self):
+    # Create the .par file first.
+    temp_file_path = os.path.join(self.get_temp_dir(), "model.py")
+    with open(temp_file_path, "wb") as f:
+      f.write(b"import tensorflow as tf\nx = tf.constant(42.0)\n")
+    par_path = os.path.join(self.get_temp_dir(), "train_model.par")
+    with zipfile.ZipFile(par_path, "w") as zf:
+      zf.write(temp_file_path, os.path.join("tensorflow_models", "model.py"))
+
+    source_path = os.path.join(par_path, "tensorflow_models", "nonexistent.py")
+    with self.assertRaisesRegexp(
+        IOError, "neither exists nor can be loaded.*par.*"):
+      source_utils.load_source(source_path)
+
 
 @test_util.run_v1_only("b/120545219")
 class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
@@ -256,7 +314,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testGenerateSourceList(self):
@@ -283,7 +341,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
     #   while/Less:0           4
     #   while/LoopCond:0       4
     #   while/Switch:0         1
-    #   while/Swtich:1         3
+    #   while/Switch:1         3
     #   while/Identity:0       3
     #   while/Add/y:0          3
     #   while/Add:0            3

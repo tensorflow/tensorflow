@@ -358,8 +358,8 @@ void ProcessOpWithShapeInput(Model* model, Operator* op) {
     return;
   }
   CHECK(dims_array.data_type == ArrayDataType::kInt32) << "dims must be int32";
-  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 4)
-      << "dims vector can be no larger than 4 values";
+  CHECK_LE(RequiredBufferSizeForShape(dims_array.shape()), 6)
+      << "dims vector can be no larger than 6 values";
 
   std::vector<int32> const& dims =
       dims_array.GetBuffer<ArrayDataType::kInt32>().data;
@@ -1747,7 +1747,7 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
 }
 
 void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
-  CHECK(op->inputs.size() == 3 || op->inputs.size() == 4);
+  CHECK(op->inputs.size() == 4 || op->inputs.size() == 5);
   const auto& input_array = model->GetArray(op->inputs[0]);
   if (!input_array.has_shape()) return;
 
@@ -1757,7 +1757,7 @@ void ProcessSvdfOperator(Model* model, SvdfOperator* op) {
   const auto& weights_time_array = model->GetArray(op->inputs[2]);
   if (!weights_time_array.has_shape()) return;
 
-  const bool has_bias = (op->inputs.size() == 4);
+  const bool has_bias = (op->inputs.size() == 5);
   if (has_bias) {
     const auto& bias_array = model->GetArray(op->inputs[3]);
     if (!bias_array.has_shape()) return;
@@ -1885,9 +1885,12 @@ void ProcessSparseToDenseOperator(Model* model, SparseToDenseOperator* op) {
   } else {
     const std::vector<int64>& output_shape_data =
         output_shape_array.GetBuffer<ArrayDataType::kInt64>().data;
-    std::copy(
+    // explicitly cast elements to int in order to avoid MSVC warnings about
+    // narrowing conversion.
+    std::transform(
         output_shape_data.begin(), output_shape_data.end(),
-        std::back_inserter(*output_array.mutable_shape()->mutable_dims()));
+        std::back_inserter(*output_array.mutable_shape()->mutable_dims()),
+        [](const int64 dim) { return static_cast<int>(dim); });
   }
 }
 
@@ -2433,6 +2436,16 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
     case OperatorType::kMatrixDiagV2:
       // MatrixDiagV2 operators are converted to MatrixDiag, after which their
       // shapes are propagated.
+      break;
+    case OperatorType::kMatrixDiagV3:
+      // MatrixDiagV3 operators are converted to MatrixDiag, after which their
+      // shapes are propagated.
+      break;
+    case OperatorType::kMatrixSetDiagV3:
+      // MatrixSetDiagV3 operators are converted to MatrixSetDiag, after which
+      // their shapes are propagated.
+      break;
+    case OperatorType::kSegmentSum:
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

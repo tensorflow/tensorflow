@@ -118,7 +118,7 @@ static uint32_t Sqrt64(uint64_t num) {
 
 uint32_t* FilterbankSqrt(struct FilterbankState* state, int scale_down_shift) {
   const int num_channels = state->num_channels;
-  const int64_t* work = state->work + 1;
+  const uint64_t* work = state->work + 1;
   // Reuse the work buffer since we're fine clobbering it at this point to hold
   // the output.
   uint32_t* output = (uint32_t*)state->work;

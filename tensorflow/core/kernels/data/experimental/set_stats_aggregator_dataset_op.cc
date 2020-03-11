@@ -25,6 +25,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
@@ -87,9 +88,9 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
     core::RefCountPtr<StatsAggregatorResource> resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 1), &resource));
-    string tag;
+    tstring tag;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "tag", &tag));
-    string prefix;
+    tstring prefix;
     OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, "counter_prefix", &prefix));
 
     *output =
@@ -137,6 +138,10 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
 
     int64 Cardinality() const override { return input_->Cardinality(); }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -162,13 +167,20 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return dataset()->input_->MakeIterator(&iter_ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         mutex_lock l(mu_);
+        IteratorContext iter_ctx = ContextWithAggregator(ctx);
+        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+      }
+
+      IteratorContext ContextWithAggregator(IteratorContext* ctx) {
         StatsAggregatorResource* resource =
             dataset()->stats_aggregator_resource_;
         IteratorContext::Params params(ctx);
@@ -177,7 +189,7 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
                                                 dataset()->tag_,
                                                 dataset()->prefix_));
         IteratorContext iter_ctx(std::move(params));
-        return input_impl_->GetNext(&iter_ctx, out_tensors, end_of_sequence);
+        return iter_ctx;
       }
 
      protected:
@@ -188,26 +200,26 @@ class SetStatsAggregatorDatasetOp : public UnaryDatasetOpKernel {
       }
 
       Status SaveInternal(IteratorStateWriter* writer) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return SaveInput(writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
-        return errors::Unimplemented(dataset()->DebugString(),
-                                     " does not support checkpointing");
+        mutex_lock l(mu_);
+        return RestoreInput(ctx, reader, input_impl_);
       }
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
     const Tensor resource_handle_;
     StatsAggregatorResource* stats_aggregator_resource_;
-    string tag_;
-    string prefix_;
+    tstring tag_;
+    tstring prefix_;
   };
 };
 
@@ -218,5 +230,6 @@ REGISTER_KERNEL_BUILDER(
     SetStatsAggregatorDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

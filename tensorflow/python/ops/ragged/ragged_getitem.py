@@ -19,8 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
@@ -40,9 +44,6 @@ def ragged_tensor_getitem(self, key):
   principles of Python ("In the face of ambiguity, refuse the temptation to
   guess"), we simply disallow this operation.
 
-  Any dimensions added by `array_ops.newaxis` will be ragged if the following
-  dimension is ragged.
-
   Args:
     self: The RaggedTensor to slice.
     key: Indicates which piece of the RaggedTensor to return, using standard
@@ -55,7 +56,7 @@ def ragged_tensor_getitem(self, key):
         `Tensor`s
       * `Ellipsis`
       * `tf.newaxis`
-      * `tuple` containing any of the above (for multidimentional indexing)
+      * `tuple` containing any of the above (for multidimensional indexing)
 
   Returns:
     A `Tensor` or `RaggedTensor` object.  Values that include at least one
@@ -70,30 +71,28 @@ def ragged_tensor_getitem(self, key):
 
   Examples:
 
-    ```python
-    >>> # A 2-D ragged tensor with 1 ragged dimension.
-    >>> rt = ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
-    >>> rt[0].eval().tolist()       # First row (1-D `Tensor`)
-    ['a', 'b', 'c']
-    >>> rt[:3].eval().tolist()      # First three rows (2-D RaggedTensor)
-    [['a', 'b', 'c'], ['d', 'e'], '[f'], [g']]
-    >>> rt[3, 0].eval().tolist()    # 1st element of 4th row (scalar)
-    'g'
+  >>> # A 2-D ragged tensor with 1 ragged dimension.
+  >>> rt = tf.ragged.constant([['a', 'b', 'c'], ['d', 'e'], ['f'], ['g']])
+  >>> rt[0].numpy()                 # First row (1-D `Tensor`)
+  array([b'a', b'b', b'c'], dtype=object)
+  >>> rt[:3].to_list()              # First three rows (2-D RaggedTensor)
+  [[b'a', b'b', b'c'], [b'd', b'e'], [b'f']]
+  >>> rt[3, 0].numpy()              # 1st element of 4th row (scalar)
+  b'g'
 
-    >>> # A 3-D ragged tensor with 2 ragged dimensions.
-    >>> rt = ragged.constant([[[1, 2, 3], [4]],
-    ...                    [[5], [], [6]],
-    ...                    [[7]],
-    ...                    [[8, 9], [10]]])
-    >>> rt[1].eval().tolist()       # Second row (2-D RaggedTensor)
-    [[5], [], [6]]
-    >>> rt[3, 0].eval().tolist()    # First element of fourth row (1-D Tensor)
-    [8, 9]
-    >>> rt[:, 1:3].eval().tolist()  # Items 1-3 of each row (3-D RaggedTensor)
-    [[[4]], [[], [6]], [], [[10]]]
-    >>> rt[:, -1:].eval().tolist()  # Last item of each row (3-D RaggedTensor)
-    [[[4]], [[6]], [[7]], [[10]]]
-    ```
+  >>> # A 3-D ragged tensor with 2 ragged dimensions.
+  >>> rt = tf.ragged.constant([[[1, 2, 3], [4]],
+  ...                          [[5], [], [6]],
+  ...                          [[7]],
+  ...                          [[8, 9], [10]]])
+  >>> rt[1].to_list()               # Second row (2-D RaggedTensor)
+  [[5], [], [6]]
+  >>> rt[3, 0].numpy()              # First element of fourth row (1-D Tensor)
+  array([8, 9], dtype=int32)
+  >>> rt[:, 1:3].to_list()          # Items 1-3 of each row (3-D RaggedTensor)
+  [[[4]], [[], [6]], [], [[10]]]
+  >>> rt[:, -1:].to_list()          # Last item of each row (3-D RaggedTensor)
+  [[[4]], [[6]], [[7]], [[10]]]
   """
   scope_tensors = [self] + list(_tensors_in_key_list(key))
   if isinstance(key, (list, tuple)):
@@ -135,15 +134,27 @@ def _ragged_getitem(rt_input, key_list):
   # that puts all values in a single row.
   if row_key is array_ops.newaxis:
     inner_rt = _ragged_getitem(rt_input, inner_keys)
-    nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
-    return ragged_tensor.RaggedTensor.from_row_splits(
-        inner_rt, array_ops.stack([0, nsplits - 1]), validate=False)
+    nsplits = tensor_shape.dimension_at_index(inner_rt.row_splits.shape, 0)
+    if nsplits.value is not None:
+      nsplits = nsplits.value
+    else:
+      nsplits = array_ops.shape(inner_rt.row_splits,
+                                out_type=inner_rt.row_splits.dtype)[0]
+    return ragged_tensor.RaggedTensor.from_uniform_row_length(
+        inner_rt, nsplits - 1, nrows=1, validate=False)
 
   # Slicing a range of rows: first slice the outer dimension, and then
   # call `_ragged_getitem_inner_dimensions` to handle the inner keys.
   if isinstance(row_key, slice):
     sliced_rt_input = _slice_ragged_row_dimension(rt_input, row_key)
+    if rt_input.uniform_row_length is not None:
+      # If the inner dimension has uniform_row_length, then preserve it (by
+      # re-wrapping the values in a new RaggedTensor).  Note that the row
+      # length won't have changed, since we're slicing a range of rows (and not
+      # slicing the rows themselves).
+      sliced_rt_input = ragged_tensor.RaggedTensor.from_uniform_row_length(
+          sliced_rt_input.values, rt_input.uniform_row_length,
+          nrows=sliced_rt_input.nrows())
     return _ragged_getitem_inner_dimensions(sliced_rt_input, inner_keys)
 
   # Indexing a single row: slice values to get the indicated row, and then
@@ -246,11 +257,14 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
   # RaggedTensor that puts each value in its own row.
   if column_key is array_ops.newaxis:
     inner_rt = _ragged_getitem_inner_dimensions(rt_input, key_list[1:])
-    nsplits = array_ops.shape(inner_rt.row_splits,
-                              out_type=inner_rt.row_splits.dtype)[0]
-    return ragged_tensor.RaggedTensor.from_row_splits(inner_rt,
-                                                      math_ops.range(nsplits),
-                                                      validate=False)
+    nsplits = tensor_shape.dimension_at_index(inner_rt.row_splits.shape, 0)
+    if nsplits.value is not None:
+      nsplits = nsplits.value
+    else:
+      nsplits = array_ops.shape(inner_rt.row_splits,
+                                out_type=inner_rt.row_splits.dtype)[0]
+    return ragged_tensor.RaggedTensor.from_uniform_row_length(
+        inner_rt, 1, nrows=nsplits - 1, validate=False)
 
   # Slicing a range of columns in a ragged inner dimension.  We use a
   # recursive call to process the values, and then assemble a RaggedTensor
@@ -262,27 +276,89 @@ def _ragged_getitem_inner_dimensions(rt_input, key_list):
       return rt_input.with_values(
           _ragged_getitem_inner_dimensions(rt_input.values, key_list[1:]))
     else:
+      if not (isinstance(column_key.start, (ops.Tensor, int, type(None))) and
+              isinstance(column_key.stop, (ops.Tensor, int, type(None)))):
+        raise TypeError("slice offsets must be integers or None")
+
       # Nontrivial slice: use ragged_gather to extract the indicated slice as
       # a new RaggedTensor (inner_rt), and then recursively process its values.
-      # The splits can be taken from inner_rt.row_splits().
-      inner_rt_starts = rt_input.row_splits[:-1]
-      inner_rt_limits = rt_input.row_splits[1:]
-      if column_key.start is not None and column_key.start != 0:
-        inner_rt_starts = _add_offset_to_ranges(
-            column_key.start, rt_input.row_splits[:-1], rt_input.row_splits[1:])
-      if column_key.stop is not None and column_key.stop != 0:
-        inner_rt_limits = _add_offset_to_ranges(
-            column_key.stop, rt_input.row_splits[:-1], rt_input.row_splits[1:])
+      starts = rt_input.row_splits[:-1]
+      limits = rt_input.row_splits[1:]
+      step = 1 if column_key.step is None else column_key.step
+      lower_bound = _if_ge_zero(step, lambda: starts, lambda: starts - 1)
+      upper_bound = _if_ge_zero(step, lambda: limits, lambda: limits - 1)
+      # inner_rt_starts[i] = index to start gathering for row i.
+      if column_key.start is None:
+        inner_rt_starts = _if_ge_zero(step, lambda: starts, lambda: limits - 1)
+      else:
+        start_offset = math_ops.cast(column_key.start, starts.dtype)
+        inner_rt_starts = _if_ge_zero(
+            column_key.start,
+            lambda: math_ops.minimum(starts + start_offset, upper_bound),
+            lambda: math_ops.maximum(limits + start_offset, lower_bound))
+      # inner_rt_limits[i] = index to stop gathering for row i.
+      if column_key.stop is None:
+        inner_rt_limits = _if_ge_zero(step, lambda: limits, lambda: starts - 1)
+      else:
+        stop_offset = math_ops.cast(column_key.stop, starts.dtype)
+        inner_rt_limits = _if_ge_zero(
+            column_key.stop,
+            lambda: math_ops.minimum(starts + stop_offset, upper_bound),
+            lambda: math_ops.maximum(limits + stop_offset, lower_bound))
       inner_rt = _build_ragged_tensor_from_value_ranges(
           inner_rt_starts, inner_rt_limits, column_key.step, rt_input.values)
+      # If the row dimension is uniform, then calculate the new
+      # uniform_row_length, and rebuild inner_rt using that uniform_row_lengths.
+      if rt_input.uniform_row_length is not None:
+        new_row_length = _slice_length(rt_input.uniform_row_length, column_key)
+        inner_rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+            inner_rt.values, new_row_length, rt_input.nrows())
       return inner_rt.with_values(
           _ragged_getitem_inner_dimensions(inner_rt.values, key_list[1:]))
 
   # Indexing a single column in a ragged inner dimension: raise an Exception.
   # See RaggedTensor.__getitem__.__doc__ for an explanation of why indexing
   # into a ragged inner dimension is problematic.
-  else:
+  if rt_input.uniform_row_length is None:
     raise ValueError("Cannot index into an inner ragged dimension.")
+
+  # Indexing a single column in a uniform inner dimension: check that the
+  # given index is in-bounds, and then use a strided slice over rt_input.values
+  # to take the indicated element from each row.
+  row_length = rt_input.uniform_row_length
+  column_key = math_ops.cast(column_key, row_length.dtype)
+  oob_err_msg = "Index out of bounds when indexing into a ragged tensor"
+  oob_checks = [
+      check_ops.assert_greater_equal(
+          column_key, -row_length, message=oob_err_msg),
+      check_ops.assert_less(column_key, row_length, message=oob_err_msg),
+  ]
+  with ops.control_dependencies(oob_checks):
+    offset = _if_ge_zero(column_key, lambda: column_key,
+                         lambda: row_length + column_key)
+    sliced_rt = rt_input.values[offset::row_length]
+    return _ragged_getitem_inner_dimensions(sliced_rt, key_list[1:])
+
+
+def _slice_length(value_length, slice_key):
+  """Computes the number of elements in a slice of a value with a given length.
+
+  Returns the equivalent of: `len(range(value_length)[slice_key])`
+
+  Args:
+    value_length: Scalar int `Tensor`: the length of the value being sliced.
+    slice_key: A `slice` object used to slice elements from the the value.
+
+  Returns:
+    The number of elements in the sliced value.
+  """
+  # Note: we could compute the slice length without creating a zeros tensor
+  # with some variant of (stop-start)//step, but doing so would require more
+  # ops (for checking bounds, handling negative indices, negative step sizes,
+  # etc); and we expect this to be an uncommon operation, so we use this
+  # simpler implementation.
+  zeros = array_ops.zeros(value_length, dtype=dtypes.bool)
+  return array_ops.size(zeros[slice_key], out_type=value_length.dtype)
 
 
 def _expand_ellipsis(key_list, num_remaining_dims):
@@ -380,35 +456,16 @@ def _build_ragged_tensor_from_value_ranges(starts, limits, step, values):
   return value_indices.with_values(gathered_values)
 
 
-def _add_offset_to_ranges(offset, starts, limits):
-  """Adds an indexing offset to each of the specified ranges.
-
-  If offset>=0, then return output[i]=min(starts[i]+offset, limits[i])
-  If offset<0, then return output[i]=max(limits[i]+offset, starts[i])
-
-  Args:
-    offset: The offset to add.  None, or an int, or a scalar Tensor.
-    starts: 1-D integer tensor containing start indices.
-    limits: 1-D integer tensor containing limit indices.
-
-  Returns:
-    A 1-D integer tensor.
-  """
-
-  def map_positive_offset(offset):
-    return math_ops.minimum(starts + offset, limits)
-
-  def map_negative_offset(offset):
-    return math_ops.maximum(limits + offset, starts)
-
-  if isinstance(offset, ops.Tensor):
-    offset = math_ops.cast(offset, starts.dtype)
-    return control_flow_ops.cond(offset >= 0,
-                                 lambda: map_positive_offset(offset),
-                                 lambda: map_negative_offset(offset))
-  elif isinstance(offset, int):
-    return (map_positive_offset(offset)
-            if offset > 0 else map_negative_offset(offset))
-
+def _if_ge_zero(value, true_fn, false_fn):
+  """Returns `true_fn() if value >= 0 else false_fn()`."""
+  # If `value` is statically known, then don't use a control flow op.
+  if isinstance(value, ops.Tensor):
+    const_value = tensor_util.constant_value(value)
+    if const_value is None:
+      return control_flow_ops.cond(value >= 0, true_fn, false_fn)
+    else:
+      value = const_value
+  if value >= 0:
+    return true_fn()
   else:
-    raise TypeError("slice offsets must be integers or None")
+    return false_fn()

@@ -538,11 +538,10 @@ class RangeTest(test.TestCase):
             0, 0, 1, dtype=dtypes.float64).dtype, dtypes.float64)
 
   def testMixedDType(self):
-    # Test case for GitHub issue 29867
-    with self.cached_session(use_gpu=True):
-      tf_ans = math_ops.range(constant_op.constant(5), dtype=dtypes.float32)
-      self.assertAllEqual(
-          self.evaluate(tf_ans), np.arange(np.int32(5), dtype=np.float32))
+    # Test case for GitHub issue 35710
+    tf_ans = math_ops.range(
+        constant_op.constant(4, dtype=dtypes.int32), dtype=dtypes.int64)
+    self.assertAllEqual(self.evaluate(tf_ans), np.array([0, 1, 2, 3]))
 
 
 # TODO(vrv): move to sequence_ops_test?
@@ -753,6 +752,13 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
         else:
           shape = [4, 16, 16, 16, 64]
           convolution = convolutional.conv3d
+
+          if test.is_built_with_rocm():
+            # This subtest triggers a known bug in ROCm runtime code
+            # The bug has been fixed and will be available in ROCm 2.7
+            # Re-enable this test once ROCm 2.7 is released
+            continue
+
         inputs = random_ops.random_normal(shape, dtype=dtype)
         inputs_2norm = linalg_ops.norm(inputs)
         outputs = convolution(

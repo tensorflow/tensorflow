@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/dnn.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/launch_dim.h"
 #include "tensorflow/stream_executor/lib/array_slice.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/temporary_memory_manager.h"
 
 namespace stream_executor {
@@ -118,11 +118,11 @@ class Stream {
   // devices should also override AllowsSyncOnCompletion to return false.) For
   // these devices, this method can be used after work is finished to retrieve
   // execution status.
-  port::Status RefreshStatus() LOCKS_EXCLUDED(mu_);
+  port::Status RefreshStatus() TF_LOCKS_EXCLUDED(mu_);
 
   // Initialize the stream. This must be performed before entraining any other
   // operations.
-  Stream &Init() LOCKS_EXCLUDED(mu_);
+  Stream &Init() TF_LOCKS_EXCLUDED(mu_);
 
   // Initializes timer t via the StreamExecutor.
   Stream &InitTimer(Timer *t);
@@ -135,13 +135,13 @@ class Stream {
   // create a new sub-stream.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  Stream *GetOrCreateSubStream() LOCKS_EXCLUDED(mu_);
+  Stream *GetOrCreateSubStream() TF_LOCKS_EXCLUDED(mu_);
 
   // Return the sub-stream back to the host stream so that it can be reused
   // later. Sub-streams that are !ok() will not be reused.
   //
   // TODO(b/112196569): The semantics of failed sub-streams is error-prone.
-  void ReturnSubStream(Stream *sub_stream) LOCKS_EXCLUDED(mu_);
+  void ReturnSubStream(Stream *sub_stream) TF_LOCKS_EXCLUDED(mu_);
 
   // Allocate temporary memories. The stream will deallocate them when blocked
   // or destroyed.
@@ -236,12 +236,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<float> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -262,12 +261,11 @@ class Stream {
       const DeviceMemory<float> &estimated_variance,
       const DeviceMemory<float> &side_input, const dnn::BatchDescriptor &x_desc,
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
+      const double exponential_average_factor,
       dnn::ActivationMode activation_mode, DeviceMemory<Eigen::half> *y,
       DeviceMemory<float> *batch_mean, DeviceMemory<float> *batch_var,
       DeviceMemory<float> *saved_mean, DeviceMemory<float> *saved_inv_var,
       bool is_training,
-      std::function<const DeviceMemory<float> &()> var_to_inv_var,
-      std::function<void()> inv_var_to_var,
       ScratchAllocator *reserve_space_allocator,
       ScratchAllocator *workspace_allocator);
 
@@ -343,6 +341,28 @@ class Stream {
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<int8> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
+      ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
   Stream &ThenFusedConvolveWithAlgorithm(
       const dnn::BatchDescriptor &conv_input_descriptor,
       const DeviceMemory<double> &conv_input_data, double conv_input_scale,
@@ -397,6 +417,20 @@ class Stream {
       const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
       const dnn::BatchDescriptor &output_descriptor, DeviceMemory<int8> *output,
       ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenFusedConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &conv_input_descriptor,
+      const DeviceMemory<int8> &conv_input_data, float conv_input_scale,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<int8> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &side_input_data, float side_input_scale,
+      const dnn::BatchDescriptor &bias_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
       const dnn::AlgorithmConfig &algorithm_config,
       dnn::ProfileResult *output_profile_result);
 
@@ -1876,6 +1910,18 @@ class Stream {
                           ScratchAllocator *workspace_allocator,
                           dnn::ProfileResult *output_profile_result);
 
+  // Enqueue a CTCLoss operation onto the stream.
+  // See DnnSupport::DoCtcLoss for more details.
+  Stream &ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
+                      const DeviceMemory<float> &probs_data,
+                      absl::Span<const int> labels_data,
+                      absl::Span<const int> labels_lengths_data,
+                      absl::Span<const int> input_lengths_data,
+                      DeviceMemory<float> *costs_data,
+                      const dnn::RnnStateTensorDescriptor &grads_desc,
+                      DeviceMemory<float> *grads_data,
+                      ScratchAllocator *workspace_allocator);
+
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
   Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
@@ -1903,7 +1949,7 @@ class Stream {
   //
   // Returns an OK status if the blocking was successful and the stream is ok().
   // Otherwise returns an error describing why the blocking failed.
-  port::Status BlockHostUntilDone() LOCKS_EXCLUDED(mu_);
+  port::Status BlockHostUntilDone() TF_LOCKS_EXCLUDED(mu_);
 
   // Warning! This method interacts with internal threads in
   // sometimes-unpredictable ways and is intended for GPU-Executor-internal
@@ -1968,7 +2014,7 @@ class Stream {
   internal::TemporaryMemoryManager *temporary_memory_manager();
 
   // Returns a debugging string "[stream=0x...,impl=0x...]".
-  string DebugStreamPointers() const;
+  std::string DebugStreamPointers() const;
 
  private:
   friend class host::HostBlas;  // for parent_.
@@ -1978,14 +2024,14 @@ class Stream {
   friend struct ThenBlasImpl;  // for implementing ThenBlasXXX.
   friend class ocl::CLBlas;    // for parent_.
 
-  bool InErrorState() const LOCKS_EXCLUDED(mu_) {
+  bool InErrorState() const TF_LOCKS_EXCLUDED(mu_) {
     absl::ReaderMutexLock lock(&mu_);
     return !ok_;
   }
 
   // Sets the error state if operation_retcode is false.
   // This is a useful shorthand for many stream routines.
-  void CheckError(bool operation_retcode) LOCKS_EXCLUDED(mu_) {
+  void CheckError(bool operation_retcode) TF_LOCKS_EXCLUDED(mu_) {
     if (operation_retcode) {
       return;
     }
@@ -1994,7 +2040,7 @@ class Stream {
   }
 
   // Checks the status and logs the error message, if any.
-  void CheckStatus(port::Status status) LOCKS_EXCLUDED(mu_);
+  void CheckStatus(port::Status status) TF_LOCKS_EXCLUDED(mu_);
 
   void SetError() { CheckError(false /* = operation_retcode */); }
 
@@ -2022,17 +2068,17 @@ class Stream {
   // Whether Init() was successfully called to allocate this stream on the
   // underlying platform. It simply flips from 0 to 1 with a sanity check.
   // See StreamExecutor::AllocateStream.
-  bool allocated_ GUARDED_BY(mu_);
+  bool allocated_ TF_GUARDED_BY(mu_);
 
   // Whether all operations have entrained successfully to the current program
   // point.
-  bool ok_ GUARDED_BY(mu_);
+  bool ok_ TF_GUARDED_BY(mu_);
 
   // Sub-streams that are generated from this stream. Each element has a pointer
   // to sub-stream and a boolean value indicating if this substream is ready to
   // be reused.
   std::vector<std::pair<std::unique_ptr<Stream>, bool>> sub_streams_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   // Streams can allocate temporary memories to help with work they enqueue
   // (e.g. for scratch memory spaces). This member tracks those allocations and
@@ -2042,7 +2088,7 @@ class Stream {
 
   // Callbacks enqueued to be run after the next call to BlockHostUntilDone().
   std::vector<std::function<void()>> after_block_host_until_done_callbacks_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   // Implementation of ThenConvolveBackwardBias that is shared by all types.
   template <typename T>

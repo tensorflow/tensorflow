@@ -47,7 +47,7 @@ namespace xla {
 // The following types are used for ahead of time compilation.
 
 // Contains the object file data created as a result of ahead-of-time
-// compuation.
+// computation.
 using ObjectFileData = std::vector<char>;
 
 // Abstract superclass describing the result of an ahead-of-time compilation.
@@ -73,6 +73,9 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual se::Platform::Id PlatformId() const = 0;
 
+  virtual int64 replica_count() const { return 0; }
+  virtual int64 num_cores() const { return 0; }
+
   // Optional allocator that may be used for allocating temp space on the device
   // during compilation.
   se::DeviceMemoryAllocator* device_allocator() const {
@@ -96,6 +99,21 @@ class AotCompilationOptions {
     static_device_assignment_ = device_assignment;
   }
 
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  void set_fusion_config(const std::vector<std::vector<bool>>& fusion_config) {
+    fusion_config_ = fusion_config;
+  }
+
  protected:
   AotCompilationOptions();
 
@@ -103,6 +121,9 @@ class AotCompilationOptions {
   se::DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
   absl::optional<DeviceAssignment> static_device_assignment_;
+  std::vector<std::vector<bool>> fusion_config_;
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -151,13 +172,6 @@ class Compiler {
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
-  // Optimizes a HLO module group, a set of module which runs concurrently on
-  // multiple devices potentially communicating data between the modules.
-  virtual Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group,
-      absl::Span<se::StreamExecutor* const> executors,
-      se::DeviceMemoryAllocator* device_allocator) = 0;
-
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
@@ -170,14 +184,6 @@ class Compiler {
   // device_allocator is optional; see RunHloPasses.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
-      se::DeviceMemoryAllocator* device_allocator) = 0;
-
-  // Compiles a set of HLO modules that can run in parallel, potentially
-  // communicating data between the modules.
-  virtual StatusOr<std::vector<std::unique_ptr<Executable>>>
-  RunBackendOnModuleGroup(
-      std::unique_ptr<HloModuleGroup> module_group,
-      std::vector<std::vector<se::StreamExecutor*>> stream_exec,
       se::DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially

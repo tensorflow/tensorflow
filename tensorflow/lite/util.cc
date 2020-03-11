@@ -17,7 +17,20 @@ limitations under the License.
 #include <complex>
 #include <cstring>
 
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
+namespace {
+
+TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(context,
+                       "Encountered an unresolved custom op. Did you miss "
+                       "a custom op or delegate?");
+  return kTfLiteError;
+}
+
+}  // namespace
 
 bool IsFlexOp(const char* custom_name) {
   return custom_name && strncmp(custom_name, kFlexCustomCodePrefix,
@@ -90,21 +103,32 @@ TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
       *bytes = sizeof(TfLiteFloat16);
       break;
     default:
-      context->ReportError(
-          context,
-          "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
-          "uint8, bool, complex64 supported currently.",
-          type);
+      if (context) {
+        context->ReportError(
+            context,
+            "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
+            "uint8, bool, complex64 supported currently.",
+            type);
+      }
       return kTfLiteError;
   }
   return kTfLiteOk;
 }
 
-TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
-  context->ReportError(context,
-                       "Encountered an unresolved custom op. Did you miss "
-                       "a custom op or delegate?");
-  return kTfLiteError;
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name) {
+  return TfLiteRegistration{nullptr,
+                            nullptr,
+                            nullptr,
+                            /*invoke*/ &UnresolvedOpInvoke,
+                            nullptr,
+                            BuiltinOperator_CUSTOM,
+                            custom_op_name,
+                            1};
+}
+
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration) {
+  return registration.builtin_code == tflite::BuiltinOperator_CUSTOM &&
+         registration.invoke == &UnresolvedOpInvoke;
 }
 
 }  // namespace tflite

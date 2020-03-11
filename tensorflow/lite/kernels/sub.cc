@@ -15,7 +15,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -131,15 +131,10 @@ TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
   tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
                                               &op_params->output_multiplier,
                                               &op_params->output_shift);
-  if (output->type == kTfLiteUInt8) {
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &op_params->output_activation_min,
-                                  &op_params->output_activation_max);
-  } else {
-    CalculateActivationRangeInt8(params->activation, output,
-                                 &op_params->output_activation_min,
-                                 &op_params->output_activation_max);
-  }
+
+  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+      context, params->activation, output, &op_params->output_activation_min,
+      &op_params->output_activation_max));
   return kTfLiteOk;
 }
 
@@ -183,9 +178,9 @@ TfLiteStatus PrepareInt16SubOp(TfLiteContext* context,
   TF_LITE_ENSURE(context, data->input1_shift <= 0);
   TF_LITE_ENSURE(context, data->input2_shift <= 0);
 
-  CalculateActivationRangeQuantized(context, params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
+  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+      context, params->activation, output, &data->output_activation_min,
+      &data->output_activation_max));
   return kTfLiteOk;
 }
 

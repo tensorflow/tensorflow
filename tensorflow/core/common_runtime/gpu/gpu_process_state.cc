@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -125,9 +124,11 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
     if (useCudaMemoryGuardAllocator()) {
+      LOG(INFO) << "Using memory guard allocator for GPU.";
       gpu_allocator = new GPUDebugAllocator(gpu_allocator, platform_gpu_id);
       gpu_allocator = new GPUNanResetAllocator(gpu_allocator, platform_gpu_id);
     } else if (useCudaMallocAllocator()) {
+      LOG(INFO) << "Using CUDA malloc allocator for GPU.";
       // If true, passes all allocation requests through to cudaMalloc
       // useful for doing memory debugging with tools like cuda-memcheck
       // **WARNING** probably will not work in a multi-gpu scenario

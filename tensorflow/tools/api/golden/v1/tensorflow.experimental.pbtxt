@@ -1,7 +1,19 @@
 path: "tensorflow.experimental"
 tf_module {
   member_method {
+    name: "async_clear_error"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "async_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "output_all_intermediates"
+    argspec: "args=[\'state\'], varargs=None, keywords=None, defaults=None"
   }
 }

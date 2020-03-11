@@ -20,12 +20,17 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/lower_function_call_op.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 #include "tensorflow/core/common_runtime/lower_while_op.h"
-#include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
+
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr;
+/*static*/ constexpr const char* const
+    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
 
 namespace {
 
@@ -40,15 +45,15 @@ constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
 // Checks if boolean attribute is defined and it's value is 'true'.
 bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && match;
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && match;
 }
 
 // Checks if string attribute is defined and it's not empty.
 bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
   string match;
-  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
-  return s.ok() && !match.empty();
+  bool found = TryGetNodeAttr(n->attrs(), attr_name, &match);
+  return found && !match.empty();
 }
 
 bool LowerUsingSwitchMergeIsOn(const Node* n) {
@@ -115,6 +120,23 @@ Status LowerFunctionalOpsPass::Run(
                                           ? *keep_lowered_nodes_fetchable_
                                           : !HasArgsOrRetvals(*g);
 
+  // We disable lowering control flow to switch/merge variants for the
+  // single-threaded executor, which does not support it.
+  const bool functional_control_flow =
+      options.session_options &&
+      (options.session_options->config.experimental().executor_type() ==
+       "SINGLE_THREADED_EXECUTOR");
+
+  // Returns true if `node` will be used for XLA compilation.
+  const auto used_by_xla = [](Node* node) -> bool {
+    return MarkedForTpuCompilation(node) || MarkedForXlaCompilation(node);
+  };
+
+  // Returns true if control flow `node` should be lowered to Switch/Merge.
+  const auto lower_control_flow = [&](Node* node) -> bool {
+    return LowerUsingSwitchMergeIsOn(node) && !used_by_xla(node);
+  };
+
   // Lower all If, Case, While ops that have the `kLowerUsingSwitchMergeAttr`
   // attr set and inline all function calls into the graph.
   // We start at `i` = 2 to skip the source and sink nodes.
@@ -125,40 +147,41 @@ Status LowerFunctionalOpsPass::Run(
   for (int i = 2; i < g->num_node_ids(); ++i) {
     Node* n = g->FindNodeId(i);
     if (n == nullptr) continue;  // deleted node
-    if (MarkedForTpuCompilation(n)) continue;
-    if (MarkedForXlaCompilation(n)) continue;
 
-    // Always lower function calls produces by lowering If/While nodes.
-    if (IsFunctionCall(*flib_def, *n) &&
+    // Always lower function calls produced by lowering If/While nodes.
+    if (IsFunctionCall(*flib_def, *n) && !used_by_xla(n) &&
         (lower_function_calls || LowerAsMultiDeviceFunctionIsOn(n))) {
       TF_RETURN_IF_ERROR(RewriteFunctionCallNode(n, g, *flib_def,
                                                  keep_lowered_nodes_fetchable));
       continue;
     }
 
-    if (LowerUsingSwitchMergeIsOn(n)) {
-      if (n->IsIfNode()) {
-        TF_RETURN_IF_ERROR(
-            RewriteIfNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
-      } else if (n->type_string() == "Case") {
-        TF_RETURN_IF_ERROR(
-            RewriteCaseNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
-      } else if (n->type_string() == "While") {
-        TF_RETURN_IF_ERROR(
-            RewriteWhileNode(n, g, *flib_def, keep_lowered_nodes_fetchable));
-      } else {
-        return errors::Internal(
-            "Node ", FormatNodeForError(*n), " of type ", n->type_string(),
-            " has '", LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr,
-            "' attr set but it does not support lowering.\n");
-      }
+    // If we are allowed to used function control flow, we do not need to check
+    // for If/While/Case nodes in the graph.
+    if (functional_control_flow) continue;
+
+    if (n->IsIfNode() && lower_control_flow(n)) {
+      TF_RETURN_IF_ERROR(RewriteIfNode(n, g, keep_lowered_nodes_fetchable));
+
+    } else if (n->type_string() == "Case" && lower_control_flow(n)) {
+      TF_RETURN_IF_ERROR(RewriteCaseNode(n, g, keep_lowered_nodes_fetchable));
+
+    } else if (n->IsWhileNode() && lower_control_flow(n)) {
+      TF_RETURN_IF_ERROR(RewriteWhileNode(n, g, keep_lowered_nodes_fetchable));
+
+    } else {
+      DCHECK(!lower_control_flow(n))
+          << "Node " << FormatNodeForError(*n) << " of type "
+          << n->type_string() << " has '"
+          << LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr
+          << "' attr set but it does not support lowering.\n";
     }
   }
 
   return Status::OK();
 }
 
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       LowerFunctionalOpsPass);
 
 }  // namespace tensorflow

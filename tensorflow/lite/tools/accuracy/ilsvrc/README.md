@@ -100,9 +100,6 @@ python generate_validation_labels.py \
 ```
 bazel build -c opt \
   --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
   //tensorflow/lite/tools/accuracy/ilsvrc:imagenet_accuracy_eval
 ```
 
@@ -110,7 +107,7 @@ bazel build -c opt \
      (make the directory if required):
 
 ```
-adb push bazel-bin/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
+adb push bazel-bin/third_party/tensorflow/lite/tools/accuracy/ilsvrc/imagenet_accuracy_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.
@@ -162,7 +159,6 @@ adb shell /data/local/tmp/imagenet_accuracy_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/accuracy/ilsvrc:imagenet_accuracy_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

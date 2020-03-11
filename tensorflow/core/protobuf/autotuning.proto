@@ -10,6 +10,8 @@ package tensorflow;
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+
 message CudnnVersion {
   int32 major = 1;
   int32 minor = 2;
@@ -80,5 +82,7 @@ message AutotuningLog {
   // stream_executor::DeviceDescription::pci_bus_id.
   string device_pci_bus_id = 5;
 
-  // Next ID: 6
+  string blas_version = 6;
+
+  // Next ID: 7
 }

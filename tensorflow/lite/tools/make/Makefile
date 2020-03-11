@@ -39,6 +39,7 @@ INCLUDES := \
 -I$(MAKEFILE_DIR)/downloads/neon_2_sse \
 -I$(MAKEFILE_DIR)/downloads/farmhash/src \
 -I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
+-I$(MAKEFILE_DIR)/downloads/fp16/include \
 -I$(OBJDIR)
 # This is at the end so any globally-installed frameworks like protobuf don't
 # override local versions in the source tree.
@@ -55,11 +56,8 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG -fPIC
-CXXFLAGS += $(EXTRA_CXXFLAGS)
-CFLAGS := ${CXXFLAGS}
-CXXFLAGS += --std=c++11
-CFLAGS :=
+CFLAGS := -O3 -DNDEBUG -fPIC
+CXXFLAGS := $(CFLAGS) --std=c++11 $(EXTRA_CXXFLAGS)
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
@@ -69,6 +67,21 @@ ifeq ($(HOST_OS),windows)
 CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
 endif
 
+# Auto-detect optimization opportunity if building natively.
+ifeq ($(HOST_OS),$(TARGET))
+ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+ifeq ($(TARGET_ARCH),armv7l)
+ifneq ($(shell cat /proc/cpuinfo | grep Features | grep neon),)
+  ifneq ($(shell cat /proc/cpuinfo | grep Features | grep vfpv4),)
+    CXXFLAGS += -mfpu=neon-vfpv4
+  else
+    CXXFLAGS += -mfpu=neon
+  endif
+endif # ifeq ($(TARGET_ARCH),armv7l)
+endif # ifeq ($(HOST_ARCH),$(TARGET_ARCH))
+endif # ifeq ($(HOST_OS),$(TARGET))
+endif
+
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 LIB_NAME := libtensorflow-lite.a
@@ -76,6 +89,7 @@ LIB_NAME := libtensorflow-lite.a
 # Benchmark static library and binary
 BENCHMARK_LIB_NAME := benchmark-lib.a
 BENCHMARK_BINARY_NAME := benchmark_model
+BENCHMARK_PERF_OPTIONS_BINARY_NAME := benchmark_model_performance_options
 
 # A small example program that shows how to link against the library.
 MINIMAL_SRCS := \
@@ -85,9 +99,13 @@ MINIMAL_SRCS := \
 # build files.
 
 PROFILER_SRCS := \
+	tensorflow/lite/profiling/memory_info.cc \
+	tensorflow/lite/profiling/platform_profiler.cc \
 	tensorflow/lite/profiling/time.cc
+
 PROFILE_SUMMARIZER_SRCS := \
 	tensorflow/lite/profiling/profile_summarizer.cc \
+	tensorflow/lite/profiling/profile_summary_formatter.cc \
 	tensorflow/core/util/stats_calculator.cc
 
 CMD_LINE_TOOLS_SRCS := \
@@ -99,40 +117,38 @@ $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
-tensorflow/lite/experimental/ruy/allocator.cc \
-tensorflow/lite/experimental/ruy/block_map.cc \
-tensorflow/lite/experimental/ruy/blocking_counter.cc \
-tensorflow/lite/experimental/ruy/context.cc \
-tensorflow/lite/experimental/ruy/detect_dotprod.cc \
-tensorflow/lite/experimental/ruy/kernel_arm32.cc \
-tensorflow/lite/experimental/ruy/kernel_arm64.cc \
-tensorflow/lite/experimental/ruy/pack.cc \
-tensorflow/lite/experimental/ruy/pmu.cc \
-tensorflow/lite/experimental/ruy/thread_pool.cc \
-tensorflow/lite/experimental/ruy/trace.cc \
-tensorflow/lite/experimental/ruy/trmul.cc \
-tensorflow/lite/experimental/ruy/tune.cc \
-tensorflow/lite/experimental/ruy/wait.cc
+$(wildcard tensorflow/lite/experimental/resource/*.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/optimized/*.cc) \
 $(wildcard tensorflow/lite/kernels/internal/reference/*.cc) \
+$(wildcard tensorflow/lite/tools/optimize/sparsity/*.cc) \
 $(PROFILER_SRCS) \
 tensorflow/lite/tools/make/downloads/farmhash/src/farmhash.cc \
 tensorflow/lite/tools/make/downloads/fft2d/fftsg.c \
+tensorflow/lite/tools/make/downloads/fft2d/fftsg2d.c \
 tensorflow/lite/tools/make/downloads/flatbuffers/src/util.cpp
+CORE_CC_ALL_SRCS += \
+	$(shell find tensorflow/lite/tools/make/downloads/absl/absl/ \
+	             -type f -name \*.cc | grep -v test | grep -v benchmark | grep -v synchronization | grep -v debugging | grep -v hash | grep -v flags | grep -v random)
 endif
 # Remove any duplicates.
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
+$(wildcard tensorflow/lite/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
-$(wildcard tensorflow/lite/kernels/*test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util*.cc) \
+tensorflow/lite/experimental/ruy/tune_tool.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -148,22 +164,21 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
 
-BUILD_WITH_NNAPI ?= true
-ifeq ($(BUILD_TYPE),micro)
-	BUILD_WITH_NNAPI=false
+BUILD_WITH_RUY ?= false
+ifeq ($(TARGET_ARCH),aarch64)
+	BUILD_WITH_RUY=true
 endif
-ifeq ($(TARGET),windows)
-	BUILD_WITH_NNAPI=false
+ifeq ($(BUILD_WITH_RUY),true)
+  CXXFLAGS += -DTFLITE_WITH_RUY
 endif
-ifeq ($(TARGET),ios)
-	BUILD_WITH_NNAPI=false
-endif
-ifeq ($(TARGET),rpi)
-	BUILD_WITH_NNAPI=false
-endif
+
+BUILD_WITH_NNAPI ?= false
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
+	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/quant_lstm_sup.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation.cc
+	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_util.cc
+	LIBS += -lrt
 else
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate_disabled.cc
 	CORE_CC_ALL_SRCS += tensorflow/lite/nnapi/nnapi_implementation_disabled.cc
@@ -177,7 +192,6 @@ else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
-
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
@@ -185,14 +199,19 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
 EVALUATION_UTILS_SRCS := \
   tensorflow/lite/tools/evaluation/utils.cc
-BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
+BENCHMARK_ALL_SRCS := \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS) \
 	$(CMD_LINE_TOOLS_SRCS) \
 	$(EVALUATION_UTILS_SRCS)
 
-BENCHMARK_SRCS := $(filter-out \
+BENCHMARK_MAIN_SRC := $(BENCHMARK_SRCS_DIR)/benchmark_main.cc
+BENCHMARK_PERF_OPTIONS_SRC := \
+	$(BENCHMARK_SRCS_DIR)/benchmark_tflite_performance_options_main.cc
+BENCHMARK_LIB_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
+	$(BENCHMARK_MAIN_SRC) \
+	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
@@ -207,11 +226,12 @@ ALL_SRCS := \
 	$(PROFILER_SRCS) \
 	$(PROFILER_SUMMARIZER_SRCS) \
 	$(TF_LITE_CC_SRCS) \
-	$(BENCHMARK_SRCS) \
-  $(CMD_LINE_TOOLS_SRCS)
+	$(BENCHMARK_LIB_SRCS) \
+	$(CMD_LINE_TOOLS_SRCS)
 
 # Where compiled objects are stored.
-GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET)_$(TARGET_ARCH)/
+TARGET_OUT_DIR ?= $(TARGET)_$(TARGET_ARCH)
+GENDIR := $(MAKEFILE_DIR)/gen/$(TARGET_OUT_DIR)/
 OBJDIR := $(GENDIR)obj/
 BINDIR := $(GENDIR)bin/
 LIBDIR := $(GENDIR)lib/
@@ -219,6 +239,7 @@ LIBDIR := $(GENDIR)lib/
 LIB_PATH := $(LIBDIR)$(LIB_NAME)
 BENCHMARK_LIB := $(LIBDIR)$(BENCHMARK_LIB_NAME)
 BENCHMARK_BINARY := $(BINDIR)$(BENCHMARK_BINARY_NAME)
+BENCHMARK_PERF_OPTIONS_BINARY := $(BINDIR)$(BENCHMARK_PERF_OPTIONS_BINARY_NAME)
 MINIMAL_BINARY := $(BINDIR)minimal
 
 CXX := $(CC_PREFIX)${TARGET_TOOLCHAIN_PREFIX}g++
@@ -231,13 +252,24 @@ $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MINIMAL_SRCS))))
 LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(TF_LITE_CC_SRCS)))))
 
-BENCHMARK_OBJS := $(addprefix $(OBJDIR), \
-$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(patsubst %.cpp,%.o,$(BENCHMARK_SRCS)))))
+BENCHMARK_MAIN_OBJ := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_MAIN_SRC))))
+
+BENCHMARK_PERF_OPTIONS_OBJ := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_PERF_OPTIONS_SRC))))
+
+BENCHMARK_LIB_OBJS := $(addprefix $(OBJDIR), \
+$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(BENCHMARK_LIB_SRCS))))
 
 # For normal manually-created TensorFlow Lite C++ source files.
+$(OBJDIR)%.o: %.cpp
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 $(OBJDIR)%.o: %.cc
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
+
 # For normal manually-created TensorFlow Lite C source files.
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
@@ -247,7 +279,7 @@ $(OBJDIR)%.o: %.cpp
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY)
+all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
 
 # The target that's compiled for micro-controllers
 micro: $(LIB_PATH)
@@ -271,19 +303,25 @@ $(MINIMAL_BINARY): $(MINIMAL_OBJS) $(LIB_PATH)
 
 minimal: $(MINIMAL_BINARY)
 
-$(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_OBJS)
+$(BENCHMARK_LIB) : $(LIB_PATH) $(BENCHMARK_LIB_OBJS)
 	@mkdir -p $(dir $@)
-	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_OBJS)
+	$(AR) $(ARFLAGS) $(BENCHMARK_LIB) $(LIB_OBJS) $(BENCHMARK_LIB_OBJS)
 
 benchmark_lib: $(BENCHMARK_LIB)
 
-$(BENCHMARK_BINARY) : $(BENCHMARK_LIB)
+$(BENCHMARK_BINARY) : $(BENCHMARK_MAIN_OBJ) $(BENCHMARK_LIB)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-o $(BENCHMARK_BINARY) \
+	-o $(BENCHMARK_BINARY) $(BENCHMARK_MAIN_OBJ) \
 	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
 
-benchmark: $(BENCHMARK_BINARY)
+$(BENCHMARK_PERF_OPTIONS_BINARY) : $(BENCHMARK_PERF_OPTIONS_OBJ) $(BENCHMARK_LIB)
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) \
+	-o $(BENCHMARK_PERF_OPTIONS_BINARY) $(BENCHMARK_PERF_OPTIONS_OBJ) \
+	$(LIBFLAGS) $(BENCHMARK_LIB) $(LDFLAGS) $(LIBS)
+
+benchmark: $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)
 
 libdir:
 	@echo $(LIBDIR)

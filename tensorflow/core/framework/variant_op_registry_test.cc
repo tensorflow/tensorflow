@@ -18,7 +18,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -118,11 +118,28 @@ TEST(VariantOpDecodeRegistryTest, TestBasic) {
   v.Encode(&data);
   VariantTensorDataProto proto;
   data.ToProto(&proto);
-  Variant encoded = proto;
+  Variant encoded = std::move(proto);
   EXPECT_TRUE((*decode_fn)(&encoded));
   VariantValue* decoded = encoded.get<VariantValue>();
   EXPECT_NE(decoded, nullptr);
   EXPECT_EQ(decoded->early_exit, true);
+}
+
+TEST(VariantOpDecodeRegistryTest, TestEmpty) {
+  VariantTensorDataProto empty_proto;
+  Variant empty_encoded = std::move(empty_proto);
+  EXPECT_TRUE(DecodeUnaryVariant(&empty_encoded));
+  EXPECT_TRUE(empty_encoded.is_empty());
+
+  VariantTensorData data;
+  Variant number = 3.0f;
+  number.Encode(&data);
+  VariantTensorDataProto proto;
+  data.ToProto(&proto);
+  proto.set_type_name("");
+  Variant encoded = std::move(proto);
+  // Failure when type name is empty but there's data in the proto.
+  EXPECT_FALSE(DecodeUnaryVariant(&encoded));
 }
 
 TEST(VariantOpDecodeRegistryTest, TestDuplicate) {
@@ -198,7 +215,7 @@ TEST(VariantOpZerosLikeRegistryTest, TestBasicCPU) {
   EXPECT_EQ(vv_out->value, 1);  // CPU
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetUnaryOpFn(
@@ -222,7 +239,7 @@ TEST(VariantOpUnaryOpRegistryTest, TestBasicGPU) {
   VariantValue* vv_out = CHECK_NOTNULL(v_out.get<VariantValue>());
   EXPECT_EQ(vv_out->value, 2);  // GPU
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(VariantOpUnaryOpRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;
@@ -269,7 +286,7 @@ TEST(VariantOpAddRegistryTest, TestBasicCPU) {
   EXPECT_EQ(vv_out->value, 7);  // CPU
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   class Blah {};
   EXPECT_EQ(UnaryVariantOpRegistry::Global()->GetBinaryOpFn(
@@ -295,7 +312,7 @@ TEST(VariantOpAddRegistryTest, TestBasicGPU) {
   VariantValue* vv_out = CHECK_NOTNULL(v_out.get<VariantValue>());
   EXPECT_EQ(vv_out->value, -7);  // GPU
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TEST(VariantOpAddRegistryTest, TestDuplicate) {
   UnaryVariantOpRegistry registry;

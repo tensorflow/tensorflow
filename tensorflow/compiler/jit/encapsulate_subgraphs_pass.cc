@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -61,6 +62,7 @@ const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
 const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 const char* const kXlaHostTransferSequencerAttr =
     "_xla_host_transfer_sequencer";
+const char* const kXlaHasReferenceVarsAttr = "_XlaHasReferenceVars";
 
 void SortControlInputs(GraphDef* gdef) {
   int64 num_nodes = gdef->node_size();
@@ -674,12 +676,10 @@ Status Encapsulator::Subgraph::AddFunctionCallNode(
 Status Encapsulator::GetFunctionNameAttr(Node const* node, string* attr) const {
   AttrSlice attrs = node->attrs();
   attr->clear();
-  bool found_group_attribute = false;
   for (const auto& node_attr : attrs) {
     if (node_attr.first == group_attribute_) {
       TF_RETURN_IF_ERROR(AttrValueHasType(node_attr.second, "string"));
       *attr = node_attr.second.s();
-      found_group_attribute = true;
       break;
     }
   }
@@ -788,7 +788,6 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
 
   TF_RETURN_IF_ERROR(CopySubgraphNodes(&node_images));
   TF_RETURN_IF_ERROR(CopySubgraphEdges(node_images, &src_arg_pairs));
-
   MarkGuaranteedConstants(*graph_in_, src_arg_pairs);
 
   for (auto& entry : subgraphs_) {
@@ -1193,12 +1192,13 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   std::unique_ptr<DeviceMgr> device_mgr =
-      absl::make_unique<DeviceMgr>(std::move(devices));
-  OptimizerOptions opts;
+      absl::make_unique<StaticDeviceMgr>(std::move(devices));
+  const auto* config = &options.session_options->config;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(device_mgr.get(),
-                                        options.session_options->env,
-                                        TF_GRAPH_DEF_VERSION, library, opts));
+      new ProcessFunctionLibraryRuntime(
+          device_mgr.get(), options.session_options->env,
+          /*config=*/config, TF_GRAPH_DEF_VERSION, library,
+          config->graph_options().optimizer_options()));
   FunctionLibraryRuntime* flr =
       pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
   if (flr == nullptr) {
@@ -1311,13 +1311,21 @@ Status EncapsulateSubgraphsPass::Run(
   }
 
   *options.graph = std::move(graph_out);
+  TF_ASSIGN_OR_RETURN(absl::flat_hash_set<Node*> ref_related_nodes,
+                      GetNodesRelatedToRefVariables(**options.graph, flr));
+  for (Node* node : (*options.graph)->nodes()) {
+    bool has_ref_vars = ref_related_nodes.contains(node);
+    node->AddAttr(kXlaHasReferenceVarsAttr, has_ref_vars);
+    VLOG(3) << "Has ref vars = " << has_ref_vars
+            << ", node: " << node->def().SerializeAsString();
+  }
   return Status::OK();
 }
 
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      TryGetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled) &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

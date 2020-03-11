@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -736,6 +736,9 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
  private:
   RunStepResponse* response_;  // Not owned.
 };
+
+bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
+                              Tensor* out_tensor);
 
 }  // namespace tensorflow
 

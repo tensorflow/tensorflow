@@ -22,9 +22,11 @@ from __future__ import print_function
 import weakref
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -34,6 +36,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -58,7 +61,8 @@ class VariableHolder(object):
     v = None
 
     # Get expected variable name.
-    with ops.name_scope(kwargs.get("name", None), "Variable") as name:
+    with ops.name_scope(
+        kwargs.get("name", None), "Variable", skip_on_eager=False) as name:
       variable_name = ops.name_from_scope_name(name)
       kwargs["name"] = name
 
@@ -103,6 +107,14 @@ def _get_element_from_tensor_info(tensor_info, graph):
         graph.get_tensor_by_name(tensor_info.coo_sparse.values_tensor_name),
         graph.get_tensor_by_name(
             tensor_info.coo_sparse.dense_shape_tensor_name))
+  elif encoding == "composite_tensor":
+    struct_coder = nested_structure_coder.StructureCoder()
+    spec_proto = struct_pb2.StructuredValue(
+        type_spec_value=tensor_info.composite_tensor.type_spec)
+    spec = struct_coder.decode_proto(spec_proto)
+    components = [graph.get_tensor_by_name(component.name) for component in
+                  tensor_info.composite_tensor.components]
+    return spec._from_components(components)  # pylint: disable=protected-access
   else:
     raise ValueError("Invalid TensorInfo.encoding: %s" % encoding)
 
@@ -116,8 +128,7 @@ def _lift_single_variable(old_variable, graph, variable_holder):
       trainable=old_variable.trainable,
       extra_handle_data=old_variable.handle)
   new_variable._initializer_op = old_variable._initializer_op  # pylint: disable=protected-access
-  graph.inputs.append(old_variable.handle)
-  graph.captures[new_variable.handle] = old_variable.handle
+  graph.add_capture(new_variable.handle, old_variable.handle)
   # Now that we've added the new variable to graph.captures,
   # graph.capture will use that cached value and do some post-processing
   # on the capture like recording it on the tape.
@@ -151,28 +162,28 @@ def _lift_unlifted_variables(graph, variable_holder):
         ops.GraphKeys.GLOBAL_VARIABLES)
     local_collection_variables = ops.get_collection(
         ops.GraphKeys.LOCAL_VARIABLES)
-    existing_captures = set(graph.internal_captures)
+    existing_captures = {id(c) for c in graph.internal_captures}
     lifted_variables = {}
 
     def _should_lift_variable(v):
       return ((v._in_graph_mode  # pylint: disable=protected-access
                and v.graph.building_function)
               and isinstance(v, resource_variable_ops.BaseResourceVariable)
-              and v.handle not in existing_captures)
+              and id(v.handle) not in existing_captures)
 
     for old_variable in global_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
 
     for old_variable in local_collection_variables:
       if _should_lift_variable(old_variable):
         new_variable = _lift_single_variable(
             old_variable, graph, variable_holder)
-        lifted_variables[old_variable] = new_variable
-        existing_captures.add(old_variable.handle)
+        lifted_variables[id(old_variable)] = new_variable
+        existing_captures.add(id(old_variable.handle))
         if new_variable._in_graph_mode:  # pylint: disable=protected-access
           outer_graph = new_variable.graph
           # Variables are added to the global collection by default. In this
@@ -191,15 +202,17 @@ def _lift_unlifted_variables(graph, variable_holder):
     ]:
       mutable_collection = ops.get_collection_ref(collection_name)
       for index, current in enumerate(mutable_collection):
-        mutable_collection[index] = lifted_variables.get(current, current)
+        mutable_collection[index] = lifted_variables.get(id(current), current)
         if not resource_variable_ops.is_resource_variable(
             mutable_collection[index]):
-          logging.warning(
+          logging.log_first_n(
+              logging.WARN,
               "Unable to create a python object for variable {} because it is "
               "a reference variable. It may not be visible to training APIs. "
               "If this is a problem, consider rebuilding the SavedModel after "
               "running tf.compat.v1.enable_resource_variables().".format(
-                  mutable_collection[index]))
+                  mutable_collection[index]),
+              5)
 
 
 # TODO(allenl): make this trackable
@@ -242,22 +255,22 @@ class WrappedFunction(function.ConcreteFunction):
     """
     # TODO(b/129646028): Add support for CompositeTensors.
     name = name or "pruned"
-    feeds = nest.map_structure(self.graph.as_graph_element, feeds)
-    flat_feeds = nest.flatten(feeds)
+    flat_feeds = nest.flatten(feeds, expand_composites=True)
+    flat_feeds = [self.graph.as_graph_element(t) for t in flat_feeds]
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
         raise ValueError("Feeds must be tensors.")
 
     # Ignoring all feeds that are captures allows prune to be called
     # using wrapped_func.inputs even when it uses variables
-    internal_captures = self.graph.internal_captures
-    flat_feeds = [f for f in flat_feeds if f not in internal_captures]
+    internal_captures = {id(c) for c in self.graph.internal_captures}
+    flat_feeds = [f for f in flat_feeds if id(f) not in internal_captures]
 
     operation_fetches = []
     tensor_fetches = []
     tensor_infos = []
 
-    def _fetch_preprocesing_callback(fetch):
+    def _fetch_preprocessing_callback(fetch):
       """Extract out lists of ops, tensors, and tensor type info.
 
       Turns TensorInfos into Tensors in the original `fetches` structure.
@@ -276,19 +289,20 @@ class WrappedFunction(function.ConcreteFunction):
       elif isinstance(fetch, meta_graph_pb2.TensorInfo):
         tensor_infos.append(fetch)
         decoded = _get_element_from_tensor_info(fetch, self._func_graph)
-        if tensor_util.is_tensor(decoded):
+        if (tensor_util.is_tensor(decoded) or
+            isinstance(decoded, composite_tensor.CompositeTensor)):
           tensor_fetches.append(decoded)
         else:
           operation_fetches.append(decoded)
         return decoded
-      elif isinstance(fetch, ops.Tensor):
+      elif isinstance(fetch, (ops.Tensor, composite_tensor.CompositeTensor)):
         tensor_fetches.append(fetch)
         return fetch
       else:
         graph_element = self.graph.as_graph_element(fetch)
-        return _fetch_preprocesing_callback(graph_element)
+        return _fetch_preprocessing_callback(graph_element)
 
-    fetches = nest.map_structure(_fetch_preprocesing_callback, fetches)
+    fetches = nest.map_structure(_fetch_preprocessing_callback, fetches)
 
     # Expand composite tensors into their component dense Tensors.
     tensor_fetches = nest.flatten(tensor_fetches, expand_composites=True)
@@ -303,7 +317,8 @@ class WrappedFunction(function.ConcreteFunction):
     lift_map = lift_to_graph.lift_to_graph(
         operation_fetches + tensor_fetches,
         pruned_graph,
-        sources=flat_feeds + internal_captures)
+        sources=flat_feeds + self.graph.internal_captures,
+        base_graph=self._func_graph)
 
     # Note that we add the component tensors of any composite tensors to the
     # returned function's outputs list; the list must contain these component
@@ -311,10 +326,9 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_graph.outputs.extend(lift_map[x] for x in tensor_fetches)
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
-    for external_capture, internal_capture in self.graph.captures.items():
-      pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
-    pruned_graph.inputs.extend(pruned_graph.captures.values())
+    for external_capture, internal_capture in self.graph.captures:
+      pruned_graph.add_capture(external_capture, lift_map[internal_capture])
     for ti in tensor_infos:
       if ti.WhichOneof("encoding") == "name":  # Dense tensors only
         t = pruned_graph.as_graph_element(ti.name)

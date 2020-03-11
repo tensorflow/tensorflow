@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
@@ -198,6 +199,15 @@ class Layer(base_layer.Layer):
     # Avoid an incorrect lint error
     self._trainable_weights = []
     self.built = False
+
+    if dtype is None:
+      # Indicates to infer dtype from inputs. When the V2 dtype behavior is
+      # enabled, Keras layers default their dtype to floatx instead, so we pass
+      # an "_infer" policy to keep the old V1 behavior.
+      dtype = policy.Policy('_infer')
+
+    if 'autocast' not in kwargs:
+      kwargs['autocast'] = False
 
     super(Layer, self).__init__(trainable=trainable, name=name, dtype=dtype,
                                 **kwargs)
@@ -429,7 +439,7 @@ class Layer(base_layer.Layer):
     with vs.variable_scope(
         self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       self._current_scope = scope
-      with ops.name_scope(self._name_scope()):
+      with ops.name_scope(self._name_scope(), skip_on_eager=False):
         use_resource = (use_resource or
                         self._use_resource_variables or
                         scope.use_resource)
@@ -542,7 +552,7 @@ class Layer(base_layer.Layer):
     return outputs
 
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph', '_thread_local'])
+    no_copy = set(['_graph', '_thread_local', '_metrics_lock'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)
@@ -577,7 +587,7 @@ def _add_elements_to_collection(elements, collection_list):
   collection_list = nest.flatten(collection_list)
   for name in collection_list:
     collection = ops.get_collection_ref(name)
-    collection_set = set(collection)
+    collection_set = {id(e) for e in collection}
     for element in elements:
-      if element not in collection_set:
+      if id(element) not in collection_set:
         collection.append(element)

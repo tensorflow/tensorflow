@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearModel"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NoisyLinearCosineDecay"
     mtype: "<type \'type\'>"
   }
@@ -24,13 +28,9 @@ tf_module {
     name: "SequenceFeatures"
     mtype: "<type \'type\'>"
   }
-  member_method {
-    name: "export_saved_model"
-    argspec: "args=[\'model\', \'saved_model_path\', \'custom_objects\', \'as_text\', \'input_signature\', \'serving_only\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'False\'], "
-  }
-  member_method {
-    name: "load_from_saved_model"
-    argspec: "args=[\'saved_model_path\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  member {
+    name: "WideDeepModel"
+    mtype: "<type \'type\'>"
   }
   member_method {
     name: "terminate_keras_multiprocessing_pools"

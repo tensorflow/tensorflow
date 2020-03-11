@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/parse_text_proto.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -26,21 +27,12 @@ limitations under the License.
 namespace tensorflow {
 namespace mangling_util {
 namespace {
+
 const char kAttributePrefix[] = "tf.";
 const char kDataTypePrefix[] = "tfdtype$";
 const char kTensorShapePrefix[] = "tfshape$";
 const char kTensorPrefix[] = "tftensor$";
 
-// Sets output to the given input with 'prefix' stripped, or return an error if
-// the prefix did not exist.
-Status ConsumePrefix(absl::string_view str, absl::string_view prefix,
-                     absl::string_view* output) {
-  if (absl::StartsWith(str, prefix)) {
-    *output = str.substr(prefix.size());
-    return Status::OK();
-  }
-  return errors::FailedPrecondition("Not a mangled string");
-}
 }  // namespace
 
 string MangleAttributeName(absl::string_view str) {
@@ -69,34 +61,19 @@ MangledKind GetMangledKind(absl::string_view str) {
 }
 
 string MangleShape(const TensorShapeProto& shape) {
-  return absl::StrCat(kTensorShapePrefix, shape.DebugString());
+  return absl::StrCat(kTensorShapePrefix, shape.ShortDebugString());
 }
 
 Status DemangleShape(absl::string_view str, TensorShapeProto* proto) {
-  absl::string_view pbtxt;
-  TF_RETURN_IF_ERROR(ConsumePrefix(str, kTensorShapePrefix, &pbtxt));
-  tensorflow::protobuf::io::ArrayInputStream input_stream(pbtxt.data(),
-                                                          pbtxt.size());
-  if (!tensorflow::protobuf::TextFormat::Parse(&input_stream, proto)) {
-    return errors::FailedPrecondition(
-        "Could not parse TFTensorShape mangled proto");
-  }
-  return Status::OK();
+  return ParseTextProto(str, kTensorShapePrefix, proto);
 }
 
 string MangleTensor(const TensorProto& tensor) {
-  return absl::StrCat(kTensorPrefix, tensor.DebugString());
+  return absl::StrCat(kTensorPrefix, tensor.ShortDebugString());
 }
 
 Status DemangleTensor(absl::string_view str, TensorProto* proto) {
-  absl::string_view pbtxt;
-  TF_RETURN_IF_ERROR(ConsumePrefix(str, kTensorPrefix, &pbtxt));
-  tensorflow::protobuf::io::ArrayInputStream input_stream(pbtxt.data(),
-                                                          pbtxt.size());
-  if (!tensorflow::protobuf::TextFormat::Parse(&input_stream, proto)) {
-    return errors::FailedPrecondition("Could not parse TFTensor mangled proto");
-  }
-  return Status::OK();
+  return ParseTextProto(str, kTensorPrefix, proto);
 }
 
 string MangleDataType(const DataType& dtype) {

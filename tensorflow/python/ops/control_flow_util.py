@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilty functions for control flow.
+"""Utility functions for control flow.
 
 This file is necessary to avoid cyclic dependencies between ops.py and
 control_flow_ops.py.
@@ -26,9 +26,12 @@ from __future__ import print_function
 import os
 import traceback
 
+from tensorflow.python import tf2
 from tensorflow.python.platform import tf_logging as logging
 
-ENABLE_CONTROL_FLOW_V2 = (os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
+ENABLE_CONTROL_FLOW_V2 = ((tf2.enabled() and
+                           os.getenv("TF_ENABLE_CONTROL_FLOW_V2") != "0") or
+                          os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_COND_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_WHILE_V2", "0") != "0" or
                           os.getenv("TF_ENABLE_TENSOR_ARRAY_V2", "0") != "0")

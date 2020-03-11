@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_SHARED_BATCH_SCHEDULER_H_
 
 #include <stddef.h>
+
 #include <deque>
 #include <functional>
 #include <list>
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace serving {
@@ -185,11 +187,11 @@ class SharedBatchScheduler
   // All "active" queues, i.e. ones that either:
   //  - have not been removed, or
   //  - have been removed but are not yet empty.
-  QueueList queues_ GUARDED_BY(mu_);
+  QueueList queues_ TF_GUARDED_BY(mu_);
 
   // An iterator over 'queues_', pointing to the queue from which the next
   // available batch thread should grab work.
-  typename QueueList::iterator next_queue_to_schedule_ GUARDED_BY(mu_);
+  typename QueueList::iterator next_queue_to_schedule_ TF_GUARDED_BY(mu_);
 
   // Used by idle batch threads to wait for work to enter the system. Notified
   // whenever a batch becomes schedulable.
@@ -232,7 +234,7 @@ class Queue {
   using SchedulableBatchCallback = std::function<void()>;
   Queue(const typename SharedBatchScheduler<TaskType>::QueueOptions& options,
         Env* env, ProcessBatchCallback process_batch_callback,
-        SchedulableBatchCallback schdulable_batch_callback);
+        SchedulableBatchCallback schedulable_batch_callback);
 
   // Illegal to destruct unless the queue is empty.
   ~Queue();
@@ -275,15 +277,15 @@ class Queue {
 
  private:
   // Same as IsEmpty(), but assumes the caller already holds a lock on 'mu_'.
-  bool IsEmptyInternal() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool IsEmptyInternal() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Closes the open batch residing at the back of 'batches_', and inserts a
   // fresh open batch behind it.
-  void StartNewBatch() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void StartNewBatch() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Determines whether the open batch residing at the back of 'batches_' is
   // currently schedulable.
-  bool IsOpenBatchSchedulable() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool IsOpenBatchSchedulable() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const typename SharedBatchScheduler<TaskType>::QueueOptions options_;
 
@@ -303,28 +305,28 @@ class Queue {
   // Whether this queue can accept new tasks. This variable is monotonic: it
   // starts as false, and then at some point gets set to true and remains true
   // for the duration of this object's life.
-  bool closed_ GUARDED_BY(mu_) = false;
+  bool closed_ TF_GUARDED_BY(mu_) = false;
 
   // The enqueued batches. See the invariants in the class comments above.
-  std::deque<std::unique_ptr<Batch<TaskType>>> batches_ GUARDED_BY(mu_);
+  std::deque<std::unique_ptr<Batch<TaskType>>> batches_ TF_GUARDED_BY(mu_);
 
   // The time at which the first task was added to the open (back-most) batch
   // in 'batches_'. Valid iff that batch contains at least one task.
-  uint64 open_batch_start_time_micros_ GUARDED_BY(mu_);
+  uint64 open_batch_start_time_micros_ TF_GUARDED_BY(mu_);
 
   // Whether this queue contains a batch that is eligible to be scheduled. Used
   // to keep track of when to call 'schedulable_batch_callback_'.
-  bool schedulable_batch_ GUARDED_BY(mu_) = false;
+  bool schedulable_batch_ TF_GUARDED_BY(mu_) = false;
 
   // The number of batches currently being processed by batch threads.
   // Incremented in ScheduleBatch() and decremented in ProcessBatch().
-  int num_batches_being_processed_ GUARDED_BY(mu_) = 0;
+  int num_batches_being_processed_ TF_GUARDED_BY(mu_) = 0;
 
   // Used by CloseAndWaitUntilEmpty() to wait until the queue is empty, for the
   // case in which the queue is not empty when CloseAndWaitUntilEmpty() starts.
   // When ProcessBatch() dequeues the last batch and makes the queue empty, if
   // 'empty_notification_' is non-null it calls 'empty_notification_->Notify()'.
-  Notification* empty_notification_ GUARDED_BY(mu_) = nullptr;
+  Notification* empty_notification_ TF_GUARDED_BY(mu_) = nullptr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Queue);
 };
@@ -526,6 +528,8 @@ Queue<TaskType>::~Queue() {
 
 template <typename TaskType>
 Status Queue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
+  profiler::TraceMe trace_me(
+      [task] { return strings::StrCat("Schedule:", (*task)->size()); });
   if ((*task)->size() > options_.max_batch_size) {
     return errors::InvalidArgument("Task size ", (*task)->size(),
                                    " is larger than maximum batch size ",
@@ -616,6 +620,8 @@ std::unique_ptr<Batch<TaskType>> Queue<TaskType>::ScheduleBatch() {
 
 template <typename TaskType>
 void Queue<TaskType>::ProcessBatch(std::unique_ptr<Batch<TaskType>> batch) {
+  profiler::TraceMe trace_me(
+      [&batch] { return strings::StrCat("ProcessBatch:", batch->size()); });
   process_batch_callback_(std::move(batch));
 
   {

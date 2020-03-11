@@ -147,7 +147,7 @@ TEST_F(GrpcDebugTest, SendSingleDebugTensorViaGrpcTest) {
 
 TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
   Tensor tensor(DT_STRING, TensorShape({1, 1}));
-  tensor.flat<string>()(0) = string(5000 * 1024, 'A');
+  tensor.flat<tstring>()(0) = string(5000 * 1024, 'A');
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo_tensor", 0, "DebugIdentity");
   const Status status = DebugIO::PublishDebugTensor(
@@ -162,8 +162,8 @@ TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex0ViaGrpcTest) {
 
 TEST_F(GrpcDebugTest, SendDebugTensorWithLargeStringAtIndex1ViaGrpcTest) {
   Tensor tensor(DT_STRING, TensorShape({1, 2}));
-  tensor.flat<string>()(0) = "A";
-  tensor.flat<string>()(1) = string(5000 * 1024, 'A');
+  tensor.flat<tstring>()(0) = "A";
+  tensor.flat<tstring>()(1) = string(5000 * 1024, 'A');
   const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
                                    "foo_tensor", 0, "DebugIdentity");
   const Status status = DebugIO::PublishDebugTensor(
@@ -192,8 +192,8 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
 
   mutex mu;
   Notification all_done;
-  int tensor_count GUARDED_BY(mu) = 0;
-  std::vector<Status> statuses GUARDED_BY(mu);
+  int tensor_count TF_GUARDED_BY(mu) = 0;
+  std::vector<Status> statuses TF_GUARDED_BY(mu);
 
   const std::vector<string> urls({server_data_.url});
 

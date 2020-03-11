@@ -38,11 +38,12 @@ import datetime
 import os
 import threading
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python.eager import context
-from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import errors
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler.internal import _pywrap_profiler
 from tensorflow.python.util import compat
 
 _profiler = None
@@ -71,18 +72,16 @@ def start():
   with _profiler_lock:
     if _profiler is not None:
       raise ProfilerAlreadyRunningError('Another profiler is running.')
-    profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
     if context.default_execution_mode == context.EAGER_MODE:
       context.ensure_initialized()
-      pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
-          profiler_context,
-          context.context()._handle)  # pylint: disable=protected-access
-    _profiler = pywrap_tensorflow.TFE_NewProfiler(profiler_context)
-    pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
-    if not pywrap_tensorflow.TFE_ProfilerIsOk(_profiler):
+    _profiler = _pywrap_profiler.ProfilerSession()
+    try:
+      _profiler.start('')
+    except errors.AlreadyExistsError:
       logging.warning('Another profiler session is running which is probably '
                       'created by profiler server. Please avoid using profiler '
                       'server and profiler APIs at the same time.')
+      raise ProfilerAlreadyRunningError('Another profiler is running.')
 
 
 def stop():
@@ -102,13 +101,8 @@ def stop():
       raise ProfilerNotRunningError(
           'Cannot stop profiling. No profiler is running.')
     if context.default_execution_mode == context.EAGER_MODE:
-      context.async_wait()
-    with c_api_util.tf_buffer() as buffer_:
-      pywrap_tensorflow.TFE_ProfilerSerializeToString(
-          _profiler,
-          buffer_)
-      result = pywrap_tensorflow.TF_GetBuffer(buffer_)
-    pywrap_tensorflow.TFE_DeleteProfiler(_profiler)
+      context.context().executor.wait()
+    result = _profiler.stop()
     _profiler = None
     _run_num += 1
   return result
@@ -127,7 +121,7 @@ def maybe_create_event_file(logdir):
     if file_name.endswith(_EVENT_FILE_SUFFIX):
       return
   # TODO(b/127330388): Use summary_ops_v2.create_file_writer instead.
-  event_writer = pywrap_tensorflow.EventsWriter(
+  event_writer = _pywrap_events_writer.EventsWriter(
       compat.as_bytes(os.path.join(logdir, 'events')))
   event_writer.InitWithSuffix(compat.as_bytes(_EVENT_FILE_SUFFIX))
 
@@ -161,14 +155,9 @@ def start_profiler_server(port):
   Args:
     port: port profiler server listens to.
   """
-  profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
   if context.default_execution_mode == context.EAGER_MODE:
     context.ensure_initialized()
-    pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
-        profiler_context,
-        context.context()._handle)  # pylint: disable=protected-access
-  pywrap_tensorflow.TFE_StartProfilerServer(profiler_context, port)
-  pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
+  _pywrap_profiler.start_server(port)
 
 
 class Profiler(object):

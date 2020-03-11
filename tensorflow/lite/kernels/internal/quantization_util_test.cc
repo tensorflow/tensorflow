@@ -14,8 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 
+#include <limits>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/common.h"
 
 namespace tflite {
 namespace {
@@ -381,6 +384,44 @@ TEST(QuantizationUtilTest, QuantizeMultiplierGreaterThanOne) {
   EXPECT_THAT(quantize(2), Pair(1073741824, 2));
 }
 
+#ifndef __APPLE__  // Some Apple toolchains don't support std::ldexp
+TEST(QuantizationUtilTest, QuantizeMultiplierUnderflow) {
+  auto quantize = [](double d) {
+    int32_t q;
+    int s;
+    QuantizeMultiplier(d, &q, &s);
+    return std::pair<int32_t, int>{q, s};
+  };
+
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -31)), Pair(1073741824, -30));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -32)), Pair(1073741824, -31));
+  EXPECT_THAT(quantize(std::ldexp(0.99f, -32)), Pair(0, 0));
+  EXPECT_THAT(quantize(std::ldexp(1.0f, -33)), Pair(0, 0));
+}
+#endif
+
+TEST(QuantizationUtilTest, GetInvSqrtQuantizedMultiplierExp) {
+  auto inv_sqrt = [](std::int32_t input) {
+    int32_t output;
+    int output_shift;
+    GetInvSqrtQuantizedMultiplierExp(input, 1, &output, &output_shift);
+    return std::pair<int32_t, int>{output, output_shift};
+  };
+
+  const auto kInt32Max = std::numeric_limits<std::int32_t>::max();
+  EXPECT_THAT(inv_sqrt(0), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(1), Pair(kInt32Max, 0));
+  EXPECT_THAT(inv_sqrt(2), Pair(1518498372, 0));
+  EXPECT_THAT(inv_sqrt(3), Pair(1239850284, 0));
+  EXPECT_THAT(inv_sqrt(4), Pair(1073741828, 0));
+  EXPECT_THAT(inv_sqrt(100), Pair(214748363, 0));
+  EXPECT_THAT(inv_sqrt(10000), Pair(343597361, 4));
+  EXPECT_THAT(inv_sqrt(1000000), Pair(274877901, 7));
+  EXPECT_THAT(inv_sqrt(100000000), Pair(219902323, 10));
+  EXPECT_THAT(inv_sqrt((1 << 30)), Pair(268435457, 12));
+  EXPECT_THAT(inv_sqrt(kInt32Max), Pair(189812531, 12));
+}
+
 TEST(QuantizationUtilTest, PreprocessSoftmaxScaling) {
   auto quantize = [](double beta, double scale, int integer_bits) {
     int32_t q;
@@ -455,9 +496,3 @@ TEST(QuantizationUtilTest, QuantizeMultiplierArray) {
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

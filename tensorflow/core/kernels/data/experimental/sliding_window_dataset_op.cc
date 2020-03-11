@@ -23,10 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -110,6 +108,10 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       return n / window_shift_;
     }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -135,7 +137,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -290,8 +293,8 @@ class SlidingWindowDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::deque<std::vector<Tensor>> buffer_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::deque<std::vector<Tensor>> buffer_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const int64 window_size_;
@@ -309,5 +312,6 @@ REGISTER_KERNEL_BUILDER(
     SlidingWindowDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

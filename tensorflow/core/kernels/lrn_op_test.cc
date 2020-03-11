@@ -67,7 +67,7 @@ class LRNFloatTest : public OpsTestBase {
 
     Eigen::Tensor<float, 4, Eigen::RowMajor> expected(batch_size, rows, cols,
                                                       depth);
-    auto out = expected.reshape(Eigen::DSizes<int64, 2>{rest, depth});
+    auto out = expected.reshape(Eigen::DSizes<Eigen::Index, 2>{rest, depth});
     auto in = input.shaped<float, 2>({rest, depth});
 
     for (int64 i = 0; i < rest; ++i) {

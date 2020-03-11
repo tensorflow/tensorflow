@@ -74,7 +74,7 @@ class FakeWorker : public TestWorkerInterface {
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);
@@ -170,7 +170,9 @@ class FakeCache : public TestWorkerCache {
 
 class CollRMADistTest : public ::testing::Test {
  protected:
-  CollRMADistTest() {}
+  CollRMADistTest()
+      : work_queue_(
+            std::make_shared<UnboundedWorkQueue>(Env::Default(), "test")) {}
 
   ~CollRMADistTest() override {
     for (DeviceMgr* dm : device_mgrs_) {
@@ -198,7 +200,8 @@ class CollRMADistTest : public ::testing::Test {
     }
     // All tests simulate requests from worker 0 to worker 1.
     rma_.reset(new CollectiveRemoteAccessDistributed(
-        device_mgrs_[0], dev_resolvers_[dev0_worker_name], &wc_, kStepId));
+        device_mgrs_[0], dev_resolvers_[dev0_worker_name], work_queue_, &wc_,
+        kStepId));
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});
@@ -219,7 +222,7 @@ class CollRMADistTest : public ::testing::Test {
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(std::move(devices));
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
     dv->clear();
@@ -257,10 +260,11 @@ class CollRMADistTest : public ::testing::Test {
   std::vector<DeviceMgr*> device_mgrs_;
   std::unordered_map<string, DeviceResolverDistributed*> dev_resolvers_;
   std::unordered_map<string, std::vector<string>> dev_by_task_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
   mutex mu_;
-  int num_done_ GUARDED_BY(mu_);
+  int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
   Tensor expected_value_;
   Tensor to_tensor_;

@@ -16,10 +16,17 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_EXECUTE_NODE_H_
 
+#include <cstddef>
+
 #include "absl/types/span.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
+#include "tensorflow/core/common_runtime/eager/shape_inference.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 
 namespace tensorflow {
@@ -27,16 +34,22 @@ namespace eager {
 
 // RemoteExecuteNode is an implementation of EagerNode which enqueues
 // an operation via RPC in a remote EagerService.
-class RemoteExecuteNode : public EagerNode {
+class RemoteExecuteNode : public AsyncRemoteExecuteNode {
  public:
-  RemoteExecuteNode(std::unique_ptr<EnqueueRequest> request, Device* device,
-                    EagerClient* eager_client,
+  RemoteExecuteNode(EagerContext* eager_context,
+                    std::unique_ptr<EnqueueRequest> request, Device* device,
+                    uint64 context_view_id, EagerClient* eager_client,
+                    const NodeDef& ndef, FunctionLibraryDefinition* lib_def,
                     const gtl::InlinedVector<TensorHandle*, 4>& inputs,
                     absl::Span<TensorHandle*> retvals)
-      : EagerNode(),
+      : AsyncRemoteExecuteNode(),
+        eager_context_(eager_context),
         request_(std::move(request)),
         device_(device),
+        context_view_id_(context_view_id),
         eager_client_(eager_client),
+        ndef_(ndef),
+        lib_def_(lib_def),
         inputs_(inputs) {
     // Copy the output handles, since the container for them might get
     // destroyed.
@@ -50,55 +63,70 @@ class RemoteExecuteNode : public EagerNode {
     for (auto handle : inputs_) {
       handle->Ref();
     }
+    eager_client_->Ref();
+
+    needs_remote_inputs_ = false;
+    for (const TensorHandle* input : inputs_) {
+      // TODO(bramandia): Should this be op_device() instead?
+      if (input->resource_device() != nullptr &&
+          input->resource_device() != device_) {
+        needs_remote_inputs_ = true;
+        break;
+      }
+    }
   }
 
-  Status Run() override {
-    EnqueueResponse response;
-    Status status;
-    Notification n;
-    eager_client_->EnqueueAsync(request_.get(), &response,
-                                [&n, &status](const Status& s) {
-                                  status.Update(s);
-                                  n.Notify();
-                                });
-    n.WaitForNotification();
-
-    if (!status.ok()) {
-      Abort(status);
-      return status;
-    }
-
-    for (int i = 0; i < retvals_.size(); i++) {
-      Status s = retvals_[i]->SetRemoteShape(
-          response.queue_response(0).shape(i), device_);
-      if (!s.ok()) {
-        retvals_[i]->Poison(s);
-      }
-      retvals_[i]->Unref();
+  ~RemoteExecuteNode() override {
+    for (auto handle : retvals_) {
+      handle->Unref();
     }
 
     for (auto handle : inputs_) {
       handle->Unref();
     }
-
-    return status;
+    eager_client_->Unref();
   }
+
+  Status Prepare() override {
+    return RunShapeInference(ndef_, *lib_def_, inputs_, retvals_);
+  }
+
+  void RunAsync(StatusCallback done) override;
+
+  Status SyncExecutors() override { return eager_context_->SyncExecutors(); }
 
   void Abort(Status status) override {
+    int i = 0;
     for (auto handle : retvals_) {
-      handle->Poison(status);
-      handle->Unref();
+      handle->PoisonRemote(status, device_, context_view_id_);
+      ++i;
     }
+  }
 
-    for (auto handle : inputs_) {
-      handle->Unref();
-    }
+  const EagerClient* eager_client() const override { return eager_client_; }
+
+  bool needs_remote_inputs() const override { return needs_remote_inputs_; }
+
+  bool allow_multiple_pending_requests() const override {
+    return eager_client_->allow_multiple_pending_requests();
+  }
+
+  string DebugString() const override {
+    string out = "[RemoteExecuteNode]";
+    strings::StrAppend(&out, " request: ", request_->DebugString());
+    strings::StrAppend(&out, ", target_device: ", device_->name());
+    return out;
   }
 
  private:
+  EagerContext* eager_context_;  // Not owned, and must outlive this node.
   std::unique_ptr<EnqueueRequest> request_;
   Device* device_;             // Not owned
+  uint64 context_view_id_;
+  bool needs_remote_inputs_;
   EagerClient* eager_client_;  // Not owned, and must outlive this node.
+  const NodeDef ndef_;
+  const FunctionLibraryDefinition* lib_def_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };

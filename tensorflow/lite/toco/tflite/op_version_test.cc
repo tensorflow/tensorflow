@@ -22,6 +22,7 @@ namespace toco {
 namespace tflite {
 namespace {
 
+// TODO(b/150701120): port the tests to tools/versioning/op_version_test.cc.
 TEST(OpVersionTest, MinimumVersionForSameOpVersions) {
   Model model;
   // Float convolutional kernel is introduced since '1.5.0'.
@@ -78,9 +79,11 @@ TEST(OpVersionTest, MinimumVersionForMultipleOpVersions) {
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
   const string fc_input = "fc_input";
   const string fc_weights = "fc_weights";
+  const string fc_bias = "fc_bias";
   const string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
+  fc->inputs.push_back(fc_bias);
   fc->outputs.push_back(fc_output);
   array_map[fc_input] = std::unique_ptr<Array>(new Array);
   array_map[fc_weights] = std::unique_ptr<Array>(new Array);
@@ -120,9 +123,11 @@ TEST(OpVersionTest, MinimumVersionForMixedOpVersions) {
   std::unique_ptr<FullyConnectedOperator> fc(new FullyConnectedOperator());
   const string fc_input = "fc_input";
   const string fc_weights = "fc_weights";
+  const string fc_bias = "fc_bias";
   const string fc_output = "fc_output";
   fc->inputs.push_back(fc_input);
   fc->inputs.push_back(fc_weights);
+  fc->inputs.push_back(fc_bias);
   fc->outputs.push_back(fc_output);
   auto& array_map = model.GetMutableArrayMap();
   array_map[fc_input] = std::unique_ptr<Array>(new Array);

@@ -6,10 +6,10 @@ tf_module {
   }
   member_method {
     name: "do_not_convert"
-    argspec: "args=[\'func\', \'run_as\', \'return_dtypes\'], varargs=None, keywords=None, defaults=[\'None\', \'RunMode.GRAPH\', \'None\'], "
+    argspec: "args=[\'func\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "set_loop_options"
-    argspec: "args=[\'parallel_iterations\', \'back_prop\', \'swap_memory\', \'maximum_iterations\'], varargs=None, keywords=None, defaults=[\'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\'], "
+    argspec: "args=[\'parallel_iterations\', \'swap_memory\', \'maximum_iterations\', \'shape_invariants\'], varargs=None, keywords=None, defaults=[\'<object object instance>\', \'<object object instance>\', \'<object object instance>\', \'<object object instance>\'], "
   }
 }

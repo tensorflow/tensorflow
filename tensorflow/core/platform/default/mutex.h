@@ -30,7 +30,7 @@ std::cv_status wait_until_system_clock(
 template <class Rep, class Period>
 std::cv_status condition_variable::wait_for(
     mutex_lock &lock, std::chrono::duration<Rep, Period> dur) {
-  return internal::wait_until_system_clock(
+  return tensorflow::internal::wait_until_system_clock(
       &this->cv_, &lock.mutex()->mu_, std::chrono::system_clock::now() + dur);
 }
 

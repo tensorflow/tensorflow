@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -78,6 +79,18 @@ class SparseReshapeTest(test.TestCase):
         self._SparseTensorValue_2x3x4())
     with self.assertRaisesRegexp(ValueError, "Cannot reshape"):
       sparse_ops.sparse_reshape(sp_input, shape=(-1, 7))
+
+  @test_util.run_deprecated_v1
+  def testPropagatesFullyKnownDenseShapeWhenShapePartiallyKnown(self):
+    sp_input = sparse_tensor.SparseTensor.from_value(
+        self._SparseTensorValue_2x3x4())
+    self.assertAllEqual((2, 3, 4), sp_input.shape)
+    sp_output = sparse_ops.sparse_reshape(
+        sp_input, shape=array_ops.concat(
+            (constant_op.constant([2], dtype=dtypes.int64),
+             array_ops.placeholder(dtype=dtypes.int64, shape=[1])),
+            axis=0))
+    self.assertAllEqual((2, 3 * 4), sp_output.shape)
 
   def testSameShape(self):
     with self.session(use_gpu=False) as sess:

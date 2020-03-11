@@ -60,13 +60,6 @@ class LoopOptimizerTest : public GrapplerTest {
     AddNode(name, op, inputs, attributes, graph);
   }
 
-  void DisableAllStages(LoopOptimizer* optimizer) {
-    LoopOptimizer::LoopOptimizerOptions options;
-    options.enable_loop_invariant_node_motion = false;
-    options.enable_stack_push_removal = false;
-    optimizer->options_ = options;
-  }
-
   void EnableOnlyLoopInvariantNodeMotion(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_loop_invariant_node_motion = true;
@@ -75,6 +68,14 @@ class LoopOptimizerTest : public GrapplerTest {
   void EnableOnlyStackPushRemoval(LoopOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.enable_stack_push_removal = true;
+  }
+
+ private:
+  void DisableAllStages(LoopOptimizer* optimizer) {
+    LoopOptimizer::LoopOptimizerOptions options;
+    options.enable_loop_invariant_node_motion = false;
+    options.enable_stack_push_removal = false;
+    optimizer->options_ = options;
   }
 };
 
@@ -777,10 +778,6 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
   ops::Merge m3(scope.WithOpName("m3"), {v_in, sqrt1});
   ops::Merge m4(scope.WithOpName("m4"), {square1, sqrt2});
   ops::Merge m5(scope.WithOpName("m5"), {square2, sqrt1});
-  ops::Merge m6(scope.WithOpName("m6").WithControlDependencies(sqrt2),
-                {v_in, square1});
-  ops::Merge m7(scope.WithOpName("m7").WithControlDependencies(sqrt1),
-                {v_in, square1});
 
   ops::Switch s5(scope.WithOpName("switch5"), v_in, ctrl1);
   Output id1 = ops::Identity(scope.WithOpName("id1"), s5.output_false);
@@ -831,19 +828,6 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "square1");
       EXPECT_EQ(node.input(1), "sqrt2");
-    } else if (node.name() == "m6") {
-      // both inputs are alive and the control dependency can get triggered
-      EXPECT_EQ(node.op(), "Merge");
-      ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "v_in");
-      EXPECT_EQ(node.input(1), "square1");
-      EXPECT_EQ(node.input(2), "^sqrt2");
-    } else if (node.name() == "m7") {
-      // removed control input from dead sqrt1
-      EXPECT_EQ(node.op(), "Merge");
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "v_in");
-      EXPECT_EQ(node.input(1), "square1");
     } else if (node.name() == "m8") {
       // The node is to be preserved because of a fetch
       EXPECT_EQ(node.op(), "Merge");
@@ -859,11 +843,11 @@ TEST_F(LoopOptimizerTest, RemoveDeadBranchesConstantCondition) {
     }
   }
 
-  auto tensors_expected = EvaluateNodes(item.graph, {"m7", "m8", "m9"});
-  ASSERT_EQ(tensors_expected.size(), 3);
+  auto tensors_expected = EvaluateNodes(item.graph, {"m8", "m9"});
+  ASSERT_EQ(tensors_expected.size(), 2);
 
-  auto tensors = EvaluateNodes(output, {"m7", "m8", "m9"});
-  ASSERT_EQ(tensors.size(), 3);
+  auto tensors = EvaluateNodes(output, {"m8", "m9"});
+  ASSERT_EQ(tensors.size(), 2);
 
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
   test::ExpectTensorNear<float>(tensors_expected[1], tensors[1], 1e-6);
@@ -1098,7 +1082,6 @@ node {
   op: "Merge"
   input: "EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/control_dependency_1"
   input: "EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/control_dependency"
-  input: "^EpisodicReplayBuffer/add/assert_equal/Assert/AssertGuard/Assert"
   device: "/job:localhost/replica:0/task:0/device:CPU:0"
   attr {
     key: "N"
@@ -1687,7 +1670,7 @@ versions {
   TF_CHECK_OK(status);
   auto tensors_got = EvaluateNodes(output, item.fetch);
   ASSERT_EQ(tensors_got.size(), 1);
-  test::ExpectTensorEqual<string>(tensors_got[0], tensors_expected[0]);
+  test::ExpectTensorEqual<tstring>(tensors_got[0], tensors_expected[0]);
 
   EXPECT_EQ(output.node_size(), 8);
 

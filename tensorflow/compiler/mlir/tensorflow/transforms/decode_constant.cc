@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/decode_constant.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 
@@ -54,17 +54,19 @@ bool DecodeOpaqueValueInConstantOp(Operation *op) {
 // A pass to decode opaque constant values into readable ones.
 struct DecodeConstant : public FunctionPass<DecodeConstant> {
   void runOnFunction() override {
-    bool success = true;
-    getFunction().walk([&success](Operation *op) {
-      success &= DecodeOpaqueValueInConstantOp(op);
+    auto walk_result = getFunction().walk([](Operation *op) {
+      return DecodeOpaqueValueInConstantOp(op) ? WalkResult::advance()
+                                               : WalkResult::interrupt();
     });
-    if (!success) signalPassFailure();
+    if (walk_result.wasInterrupted()) signalPassFailure();
   }
 };
 
 }  // namespace
 
-FunctionPassBase *CreateDecodeConstantPass() { return new DecodeConstant(); }
+std::unique_ptr<OpPassBase<FuncOp>> CreateDecodeConstantPass() {
+  return std::make_unique<DecodeConstant>();
+}
 
 static PassRegistration<DecodeConstant> pass(
     "tf-decode-constant", "Decode opaque constant into human-readable ones");

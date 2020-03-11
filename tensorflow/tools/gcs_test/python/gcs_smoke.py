@@ -26,7 +26,7 @@ import tensorflow as tf
 from tensorflow.core.example import example_pb2
 from tensorflow.python.lib.io import file_io
 
-flags = tf.app.flags
+flags = tf.compat.v1.app.flags
 flags.DEFINE_string("gcs_bucket_url", "",
                     "The URL to the GCS bucket in which the temporary "
                     "tfrecord file is to be written and read, e.g., "
@@ -206,7 +206,7 @@ def main(argv):
   # Verify that writing to the records file in GCS works.
   print("\n=== Testing writing and reading of GCS record file... ===")
   example_data = create_examples(FLAGS.num_examples, 5)
-  with tf.python_io.TFRecordWriter(input_path) as hf:
+  with tf.io.TFRecordWriter(input_path) as hf:
     for e in example_data:
       hf.write(e.SerializeToString())
 
@@ -214,7 +214,7 @@ def main(argv):
 
   # Verify that reading from the tfrecord file works and that
   # tf_record_iterator works.
-  record_iter = tf.python_io.tf_record_iterator(input_path)
+  record_iter = tf.compat.v1.python_io.tf_record_iterator(input_path)
   read_count = 0
   for _ in record_iter:
     read_count += 1
@@ -229,14 +229,15 @@ def main(argv):
   # Verify that running the read op in a session works.
   print("\n=== Testing TFRecordReader.read op in a session... ===")
   with tf.Graph().as_default():
-    filename_queue = tf.train.string_input_producer([input_path], num_epochs=1)
-    reader = tf.TFRecordReader()
+    filename_queue = tf.compat.v1.train.string_input_producer([input_path],
+                                                              num_epochs=1)
+    reader = tf.compat.v1.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
 
-    with tf.Session() as sess:
-      sess.run(tf.global_variables_initializer())
-      sess.run(tf.local_variables_initializer())
-      tf.train.start_queue_runners()
+    with tf.compat.v1.Session() as sess:
+      sess.run(tf.compat.v1.global_variables_initializer())
+      sess.run(tf.compat.v1.local_variables_initializer())
+      tf.compat.v1.train.start_queue_runners()
       index = 0
       for _ in range(FLAGS.num_examples):
         print("Read record: %d" % index)
@@ -258,4 +259,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-  tf.app.run(main)
+  tf.compat.v1.app.run(main)

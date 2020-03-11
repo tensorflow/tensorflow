@@ -31,7 +31,7 @@ namespace tensorflow {
 class TestWorkerInterface : public WorkerInterface {
  public:
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     done(errors::Unimplemented("GetStatusAsync"));
   }
@@ -62,7 +62,7 @@ class TestWorkerInterface : public WorkerInterface {
   }
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
-                     MutableRunGraphResponseWrapper* repsonse,
+                     MutableRunGraphResponseWrapper* response,
                      StatusCallback done) override {
     done(errors::Unimplemented("RunGraphAsync"));
   }

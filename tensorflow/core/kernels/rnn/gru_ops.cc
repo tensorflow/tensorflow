@@ -341,11 +341,11 @@ class GRUBlockCellGradOp : public OpKernel {
                                            TensorShape({batch_size, cell_size}),
                                            &d_h_prevr_tensor));
 
-    Tensor d_x_component_1_h_prev_compenent_1;
+    Tensor d_x_component_1_h_prev_component_1;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
                             DataTypeToEnum<T>::v(),
                             TensorShape({batch_size, input_size + cell_size}),
-                            &d_x_component_1_h_prev_compenent_1));
+                            &d_x_component_1_h_prev_component_1));
 
     Tensor d_x_component_2_h_prevr;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(
@@ -365,7 +365,7 @@ class GRUBlockCellGradOp : public OpKernel {
         d_c_bar_tensor->matrix<T>(), d_r_bar_u_bar_tensor->matrix<T>(),
         d_r_bar_tensor.matrix<T>(), d_u_bar_tensor.matrix<T>(),
         d_h_prevr_tensor.matrix<T>(),
-        d_x_component_1_h_prev_compenent_1.matrix<T>(),
+        d_x_component_1_h_prev_component_1.matrix<T>(),
         d_x_component_2_h_prevr.matrix<T>());
   }
 };
@@ -380,7 +380,7 @@ REGISTER_KERNEL(float);
 #undef REGISTER_KERNEL
 
 // GPU support.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 
 // Forward declare the GPU Fprop functor.
@@ -445,6 +445,6 @@ DECLARE_GPU_SPEC(float);
 
 REGISTER_GPU_KERNEL(float);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

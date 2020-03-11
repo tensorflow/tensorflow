@@ -84,6 +84,10 @@ tf_class {
     argspec: "args=[\'self\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "experimental_ref"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_proto"
     argspec: "args=[\'variable_def\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -105,6 +109,10 @@ tf_class {
   }
   member_method {
     name: "read_value"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ref"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

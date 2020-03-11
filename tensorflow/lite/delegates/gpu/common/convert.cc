@@ -29,21 +29,9 @@ constexpr int kPhwc4ChannelsInPlane = 4;
 constexpr int kPhwo4i4ChannelsInPlane = 4;
 constexpr int kPiohw4ChannelsInPlane = 4;
 
-}  // namespace
-
-uint32_t GetElementsSizeForPHWO4I4(const OHWI& shape) {
-  return AlignByN(shape.i, kPhwo4i4ChannelsInPlane) *
-         AlignByN(shape.o, kPhwo4i4ChannelsInPlane) * shape.h * shape.w;
-}
-
-uint32_t GetElementsSizeForPHWO4I4(const IHWO& shape) {
-  return AlignByN(shape.i, kPhwo4i4ChannelsInPlane) *
-         AlignByN(shape.o, kPhwo4i4ChannelsInPlane) * shape.h * shape.w;
-}
-
 // Layout is Po,H,W,OI4x4.
 Status ConvertToPHWO4I4(absl::Span<const float> in, const OHWI& shape,
-                        absl::Span<float> out) {
+                        absl::Span<float> out, bool reverse_space) {
   if (in.size() != shape.DimensionsProduct()) {
     return InvalidArgumentError(absl::StrCat(
         "ConvertToPHWO4I4: Input data size does not match expected size: ",
@@ -70,7 +58,9 @@ Status ConvertToPHWO4I4(absl::Span<const float> in, const OHWI& shape,
                 // tensor is in OHWI
                 int tensor_o = p * kPhwo4i4ChannelsInPlane + co;
                 int tensor_i = c * kPhwo4i4ChannelsInPlane + ci;
-                value = in[shape.LinearIndex({tensor_o, h, w, tensor_i})];
+                const int in_h = reverse_space ? shape.h - 1 - h : h;
+                const int in_w = reverse_space ? shape.w - 1 - w : w;
+                value = in[shape.LinearIndex({tensor_o, in_h, in_w, tensor_i})];
               }
               (*output++) = value;
             }
@@ -82,11 +72,34 @@ Status ConvertToPHWO4I4(absl::Span<const float> in, const OHWI& shape,
   return OkStatus();
 }
 
+}  // namespace
+
+uint32_t GetElementsSizeForPHWO4I4(const OHWI& shape) {
+  return AlignByN(shape.i, kPhwo4i4ChannelsInPlane) *
+         AlignByN(shape.o, kPhwo4i4ChannelsInPlane) * shape.h * shape.w;
+}
+
+uint32_t GetElementsSizeForPHWO4I4(const IHWO& shape) {
+  return AlignByN(shape.i, kPhwo4i4ChannelsInPlane) *
+         AlignByN(shape.o, kPhwo4i4ChannelsInPlane) * shape.h * shape.w;
+}
+
 std::vector<float> ConvertToPHWO4I4(
     const Tensor<OHWI, DataType::FLOAT32>& tensor) {
   std::vector<float> transposed(GetElementsSizeForPHWO4I4(tensor.shape));
   ConvertToPHWO4I4(tensor.data, tensor.shape,
-                   absl::MakeSpan(transposed.data(), transposed.size()))
+                   absl::MakeSpan(transposed.data(), transposed.size()),
+                   /*reverse_space=*/false)
+      .IgnoreError();
+  return transposed;
+}
+
+std::vector<float> ConvertToPHWO4I4Transposed(
+    const Tensor<OHWI, DataType::FLOAT32>& tensor) {
+  std::vector<float> transposed(GetElementsSizeForPHWO4I4(tensor.shape));
+  ConvertToPHWO4I4(tensor.data, tensor.shape,
+                   absl::MakeSpan(transposed.data(), transposed.size()),
+                   /*reverse_space=*/true)
       .IgnoreError();
   return transposed;
 }

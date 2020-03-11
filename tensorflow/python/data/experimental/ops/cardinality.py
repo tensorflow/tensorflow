@@ -17,7 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.compat import compat
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -40,6 +42,18 @@ def cardinality(dataset):
   analysis fails to determine the number of elements in `dataset` (e.g. when the
   dataset source is a file).
 
+  >>> dataset = tf.data.Dataset.range(42)
+  >>> print(tf.data.experimental.cardinality(dataset).numpy())
+  42
+  >>> dataset = dataset.repeat()
+  >>> cardinality = tf.data.experimental.cardinality(dataset)
+  >>> print((cardinality == tf.data.experimental.INFINITE_CARDINALITY).numpy())
+  True
+  >>> dataset = dataset.filter(lambda x: True)
+  >>> cardinality = tf.data.experimental.cardinality(dataset)
+  >>> print((cardinality == tf.data.experimental.UNKNOWN_CARDINALITY).numpy())
+  True
+
   Args:
     dataset: A `tf.data.Dataset` for which to determine cardinality.
 
@@ -49,7 +63,53 @@ def cardinality(dataset):
     constant `INFINITE_CARDINALITY` and `UNKNOWN_CARDINALITY` respectively.
   """
 
-  if compat.forward_compatible(2019, 8, 3):
-    return ged_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
-  else:
-    return ged_ops.experimental_dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+  return ged_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+
+
+@tf_export("data.experimental.assert_cardinality")
+def assert_cardinality(expected_cardinality):
+  """Asserts the cardinality of the input dataset.
+
+  NOTE: The following assumes that "examples.tfrecord" contains 42 records.
+
+  >>> dataset = tf.data.TFRecordDataset("examples.tfrecord")
+  >>> cardinality = tf.data.experimental.cardinality(dataset)
+  >>> print((cardinality == tf.data.experimental.UNKNOWN_CARDINALITY).numpy())
+  True
+  >>> dataset = dataset.apply(tf.data.experimental.assert_cardinality(42))
+  >>> print(tf.data.experimental.cardinality(dataset).numpy())
+  42
+
+  Args:
+    expected_cardinality: The expected cardinality of the input dataset.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+
+  Raises:
+    FailedPreconditionError: The assertion is checked at runtime (when iterating
+      the dataset) and an error is raised if the actual and expected cardinality
+      differ.
+  """
+  def _apply_fn(dataset):
+    return _AssertCardinalityDataset(dataset, expected_cardinality)
+
+  return _apply_fn
+
+
+class _AssertCardinalityDataset(dataset_ops.UnaryUnchangedStructureDataset):
+  """A `Dataset` that assert the cardinality of its input."""
+
+  def __init__(self, input_dataset, expected_cardinality):
+    self._input_dataset = input_dataset
+    self._expected_cardinality = ops.convert_to_tensor(
+        expected_cardinality, dtype=dtypes.int64, name="expected_cardinality")
+
+    # pylint: enable=protected-access
+    variant_tensor = ged_ops.assert_cardinality_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._expected_cardinality,
+        **self._flat_structure)
+    super(_AssertCardinalityDataset, self).__init__(input_dataset,
+                                                    variant_tensor)

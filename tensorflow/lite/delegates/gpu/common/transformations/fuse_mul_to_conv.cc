@@ -33,15 +33,14 @@ class MergeConvolutionWithMul : public SequenceTransformation {
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[0];
     auto& mul_node = *sequence[1];
-    if (mul_node.operation.type != ToString(OperationType::MUL) &&
-        mul_node.operation.type != ToString(OperationType::MULTIPLY_SCALAR)) {
+    if (mul_node.operation.type != ToString(OperationType::MUL) ||
+        !mul_node.operation.attributes.has_value()) {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    MultiplyScalarAttributes mul_attr =
-        absl::any_cast<MultiplyScalarAttributes>(mul_node.operation.attributes);
-    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(
-            &mul_attr.param) &&
+    MultiplyAttributes mul_attr =
+        absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
+    if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param) &&
         !absl::get_if<float>(&mul_attr.param)) {
       return {
           TransformStatus::DECLINED,
@@ -93,13 +92,13 @@ class MergeMulWithConvolution : public SequenceTransformation {
                                        GraphFloat32* graph) final {
     auto& conv_node = *sequence[1];
     auto& mul_node = *sequence[0];
-    if (mul_node.operation.type != ToString(OperationType::MUL) &&
-        mul_node.operation.type != ToString(OperationType::MULTIPLY_SCALAR)) {
+    if (mul_node.operation.type != ToString(OperationType::MUL) ||
+        !mul_node.operation.attributes.has_value()) {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    MultiplyScalarAttributes mul_attr =
-        absl::any_cast<MultiplyScalarAttributes>(mul_node.operation.attributes);
+    MultiplyAttributes mul_attr =
+        absl::any_cast<MultiplyAttributes>(mul_node.operation.attributes);
     if (!absl::get_if<Tensor<Linear, DataType::FLOAT32>>(
             &mul_attr.param) &&
         !absl::get_if<float>(&mul_attr.param)) {
@@ -155,7 +154,7 @@ std::unique_ptr<SequenceTransformation> NewMergeMulWithConvolution() {
   return absl::make_unique<MergeMulWithConvolution>();
 }
 
-void FuseConvolution2DWithMultiply(const MultiplyScalarAttributes& mul_attr,
+void FuseConvolution2DWithMultiply(const MultiplyAttributes& mul_attr,
                                    Convolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -164,7 +163,7 @@ void FuseConvolution2DWithMultiply(const MultiplyScalarAttributes& mul_attr,
     for (int s = 0; s < attr->weights.shape.i; ++s) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -176,7 +175,7 @@ void FuseConvolution2DWithMultiply(const MultiplyScalarAttributes& mul_attr,
 }
 
 void FuseDepthwiseConvolution2DWithMultiply(
-    const MultiplyScalarAttributes& mul_attr,
+    const MultiplyAttributes& mul_attr,
     DepthwiseConvolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -186,7 +185,7 @@ void FuseDepthwiseConvolution2DWithMultiply(
       const float multiplier = mul ? mul->data[d] : *mul_scalar;
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({g, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{g, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -198,8 +197,7 @@ void FuseDepthwiseConvolution2DWithMultiply(
 }
 
 void FuseConvolutionTransposedWithMultiply(
-    const MultiplyScalarAttributes& mul_attr,
-    ConvolutionTransposedAttributes* attr) {
+    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int d = 0; d < attr->weights.shape.o; ++d) {
@@ -207,7 +205,7 @@ void FuseConvolutionTransposedWithMultiply(
     for (int s = 0; s < attr->weights.shape.i; ++s) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -218,14 +216,14 @@ void FuseConvolutionTransposedWithMultiply(
   }
 }
 
-void FuseFullyConnectedWithMultiply(const MultiplyScalarAttributes& mul_attr,
+void FuseFullyConnectedWithMultiply(const MultiplyAttributes& mul_attr,
                                     FullyConnectedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int d = 0; d < attr->weights.shape.o; ++d) {
     const float multiplier = mul ? mul->data[d] : *mul_scalar;
     for (int s = 0; s < attr->weights.shape.i; ++s) {
-      const int index = attr->weights.shape.LinearIndex({d, 0, 0, s});
+      const int index = attr->weights.shape.LinearIndex({{d, 0, 0, s}});
       attr->weights.data[index] *= multiplier;
     }
     if (!attr->bias.data.empty()) {
@@ -234,7 +232,7 @@ void FuseFullyConnectedWithMultiply(const MultiplyScalarAttributes& mul_attr,
   }
 }
 
-void FuseMultiplyWithConvolution2D(const MultiplyScalarAttributes& mul_attr,
+void FuseMultiplyWithConvolution2D(const MultiplyAttributes& mul_attr,
                                    Convolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -243,7 +241,7 @@ void FuseMultiplyWithConvolution2D(const MultiplyScalarAttributes& mul_attr,
     for (int d = 0; d < attr->weights.shape.o; ++d) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -252,7 +250,7 @@ void FuseMultiplyWithConvolution2D(const MultiplyScalarAttributes& mul_attr,
 }
 
 void FuseMultiplyWithDepthwiseConvolution2D(
-    const MultiplyScalarAttributes& mul_attr,
+    const MultiplyAttributes& mul_attr,
     DepthwiseConvolution2DAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
@@ -261,7 +259,7 @@ void FuseMultiplyWithDepthwiseConvolution2D(
     for (int g = 0; g < attr->weights.shape.o; ++g) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({g, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{g, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -270,8 +268,7 @@ void FuseMultiplyWithDepthwiseConvolution2D(
 }
 
 void FuseMultiplyWithConvolutionTransposed(
-    const MultiplyScalarAttributes& mul_attr,
-    ConvolutionTransposedAttributes* attr) {
+    const MultiplyAttributes& mul_attr, ConvolutionTransposedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int s = 0; s < attr->weights.shape.i; ++s) {
@@ -279,7 +276,7 @@ void FuseMultiplyWithConvolutionTransposed(
     for (int d = 0; d < attr->weights.shape.o; ++d) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -287,14 +284,14 @@ void FuseMultiplyWithConvolutionTransposed(
   }
 }
 
-void FuseMultiplyWithFullyConnected(const MultiplyScalarAttributes& mul_attr,
+void FuseMultiplyWithFullyConnected(const MultiplyAttributes& mul_attr,
                                     FullyConnectedAttributes* attr) {
   auto mul = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&mul_attr.param);
   auto mul_scalar = absl::get_if<float>(&mul_attr.param);
   for (int s = 0; s < attr->weights.shape.i; ++s) {
     const float multiplier = mul ? mul->data[s] : *mul_scalar;
     for (int d = 0; d < attr->weights.shape.o; ++d) {
-      const int index = attr->weights.shape.LinearIndex({d, 0, 0, s});
+      const int index = attr->weights.shape.LinearIndex({{d, 0, 0, s}});
       attr->weights.data[index] *= multiplier;
     }
   }

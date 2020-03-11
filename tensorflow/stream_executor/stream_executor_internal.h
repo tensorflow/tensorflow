@@ -179,23 +179,27 @@ class StreamExecutorInterface {
   virtual port::Status Init(int device_ordinal,
                             DeviceOptions device_options) = 0;
 
-  virtual bool GetKernel(const MultiKernelLoaderSpec &spec,
-                         KernelBase *kernel) {
-    return false;
-  }
-  virtual bool LoadModule(const MultiModuleLoaderSpec &spec,
-                          ModuleHandle *module_handle) {
-    return false;
+  virtual port::Status GetKernel(const MultiKernelLoaderSpec &spec,
+                                 KernelBase *kernel) {
+    return port::UnimplementedError("Not Implemented");
   }
   virtual bool UnloadModule(ModuleHandle module_handle) { return false; }
-  virtual bool Launch(Stream *stream, const ThreadDim &thread_dims,
-                      const BlockDim &block_dims, const KernelBase &k,
-                      const KernelArgsArrayBase &args) {
-    return false;
+  virtual port::Status LoadModule(const MultiModuleLoaderSpec &spec,
+                                  ModuleHandle *module_handle) {
+    return port::UnimplementedError("Not Implemented");
   }
+  virtual port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                              const BlockDim &block_dims, const KernelBase &k,
+                              const KernelArgsArrayBase &args) {
+    return port::UnimplementedError("Not Implemented");
+  }
+
   // Releases any state associated with the kernel.
   virtual void UnloadKernel(const KernelBase *kernel) {}
-  virtual void *Allocate(uint64 size) = 0;
+  virtual DeviceMemoryBase Allocate(uint64 size, int64 memory_space) = 0;
+  DeviceMemoryBase Allocate(uint64 size) {
+    return Allocate(size, /*memory_space=*/0);
+  }
   virtual void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset,
                              uint64 size) = 0;
   virtual void Deallocate(DeviceMemoryBase *mem) = 0;
@@ -213,9 +217,10 @@ class StreamExecutorInterface {
   virtual bool HostMemoryRegister(void *mem, uint64 size) = 0;
   virtual bool HostMemoryUnregister(void *mem) = 0;
   virtual bool SynchronizeAllActivity() = 0;
-  virtual bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) = 0;
-  virtual bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                                 uint64 size) = 0;
+  virtual port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                          uint64 size) = 0;
+  virtual port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                         uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                          const void *host_src, uint64 size) = 0;
   virtual port::Status SynchronousMemcpy(void *host_dst,
@@ -224,14 +229,14 @@ class StreamExecutorInterface {
   virtual port::Status SynchronousMemcpyDeviceToDevice(
       DeviceMemoryBase *gpu_dst, const DeviceMemoryBase &gpu_src,
       uint64 size) = 0;
-  virtual bool MemZero(Stream *stream, DeviceMemoryBase *location,
-                       uint64 size) = 0;
-  virtual bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-                      uint64 size) {
-    return false;
+  virtual port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                               uint64 size) = 0;
+  virtual port::Status Memset(Stream *stream, DeviceMemoryBase *location,
+                              uint8 pattern, uint64 size) {
+    return port::InternalError("Not implemented");
   }
-  virtual bool Memset32(Stream *stream, DeviceMemoryBase *location,
-                        uint32 pattern, uint64 size) = 0;
+  virtual port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                                uint32 pattern, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, void *host_dst,
                       const DeviceMemoryBase &gpu_src, uint64 size) = 0;
   virtual bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst,
@@ -281,8 +286,9 @@ class StreamExecutorInterface {
   // If ModuleHandle is set then we search for `symbol_name` only within the
   // module corresponding to `module_handle`.  Otherwise all loaded modules are
   // searched.
-  virtual bool GetSymbol(const string &symbol_name, ModuleHandle module_handle,
-                         void **mem, size_t *bytes) {
+  virtual bool GetSymbol(const std::string &symbol_name,
+                         ModuleHandle module_handle, void **mem,
+                         size_t *bytes) {
     return false;
   }
 
@@ -299,11 +305,11 @@ class StreamExecutorInterface {
   // before dispatching events to it).
   // Returns true if the listener was successfully registered, false otherwise.
   // Does not take ownership of listener.
-  virtual bool RegisterTraceListener(TraceListener* listener) { return false; }
+  virtual bool RegisterTraceListener(TraceListener *listener) { return false; }
 
   // Unregisters the specified listener from the device-specific Executor.
   // Returns true if the listener was successfully registered, false otherwise.
-  virtual bool UnregisterTraceListener(TraceListener* listener) {
+  virtual bool UnregisterTraceListener(TraceListener *listener) {
     return false;
   }
 
@@ -383,7 +389,6 @@ class StreamExecutorInterface {
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);
 };
-
 
 }  // namespace internal
 }  // namespace stream_executor

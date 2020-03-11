@@ -32,39 +32,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
-
-// An HLO module derived class which verifies itself on destruction. This class
-// is intended to be used in unit tests. Any verification errors are raised via
-// ADD_FAILURE.
-class VerifiedHloModule : public HloModule {
- public:
-  VerifiedHloModule(const string& name, const HloModuleConfig& config,
-                    bool verifier_layout_sensitive,
-                    bool allow_mixed_precision_in_hlo_verifier,
-                    std::function<int64(const Shape&)> shape_size_function)
-      : HloModule(name, config),
-        verifier_(
-            verifier_layout_sensitive, allow_mixed_precision_in_hlo_verifier,
-            /*instruction_can_change_layout_func=*/{}, shape_size_function) {}
-
-  ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
-
-  // Verifies the module using HloVerifier and returns the status.
-  Status Verify();
-
-  // Verifies the module and flags any error with ADD_FAILURE. 'message' is
-  // included in the failure message.
-  void VerifyOrAddFailure(const string& message);
-
- private:
-  HloVerifier verifier_;
-};
 
 // A base class for tests which build and/or run HLO code. The class includes
 // support for running an HLO module on two platforms and compare the results.
@@ -241,10 +215,13 @@ class HloTestBase : public ::testing::Test {
                                  bool run_hlo_passes = true,
                                  ExecutionProfile* profile = nullptr,
                                  string backend_config = "") TF_MUST_USE_RESULT;
+
+  // If assert_determinism is true, the assertion will fail unless all runs
+  // produce exactly the same output.
   ::testing::AssertionResult RunMultipleTimes(
       const absl::string_view hlo_string, bool run_hlo_passes,
-      std::vector<ExecutionProfile>* profiles,
-      string backend_config = "") TF_MUST_USE_RESULT;
+      std::vector<ExecutionProfile>* profiles, string backend_config = "",
+      bool assert_determinism = false) TF_MUST_USE_RESULT;
   ::testing::AssertionResult RunAndCompareFromFile(
       const string& filename, const absl::optional<ErrorSpec>& error,
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
@@ -300,6 +277,8 @@ class HloTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   HloComputation* FindComputation(HloModule* module, absl::string_view name);
   HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+  // Gets the instruction from the given module with the given opcode.
+  HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
 
   // Return an HLO verifier constructed for the test backend.
   HloVerifier& verifier() const { return *hlo_verifier_; }

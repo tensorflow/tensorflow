@@ -18,13 +18,20 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACK_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_PREPACK_H_
 
+#include <cstddef>
 #include <functional>
 
+#include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/dispatch.h"
+#include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
+#include "tensorflow/lite/experimental/ruy/trmul.h"
+#include "tensorflow/lite/experimental/ruy/trmul_params.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {
@@ -34,12 +41,11 @@ template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
 void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
                            const Matrix<RhsScalar>& rhs, const Spec& spec,
                            Context* context, Matrix<DstScalar>* dst,
-                           PrepackedMatrix* prepacked_lhs,
-                           PrepackedMatrix* prepacked_rhs,
+                           SidePair<PrepackedMatrix*> prepacked,
                            std::function<void*(std::size_t)> alloc_fn) {
-  gemmlowp::ScopedProfilingLabel label("PrePackForMul");
+  profiler::ScopeLabel label("PrePackForMul");
   Path the_path = context->GetPathToTake<CompiledPaths>();
-  RUY_CHECK(the_path != Path::kReference);
+  RUY_CHECK_NE(the_path, Path::kReference);
   constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
   Matrix<LhsScalar> transposed_lhs(lhs);
   Transpose(&transposed_lhs);
@@ -47,24 +53,21 @@ void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
 
+  const SidePair<int> origin{0, 0};
+  const SidePair<int> rounded_dims{params.packed[Side::kLhs].layout.cols,
+                                   params.packed[Side::kRhs].layout.cols};
+
   Tuning tuning = context->GetMainThreadTuning();
-  if (prepacked_lhs) {
-    prepacked_lhs->data_size = DataSize(params.packed_lhs);
-    prepacked_lhs->sums_size = SumsSize(params.packed_lhs);
-    prepacked_lhs->data = alloc_fn(prepacked_lhs->data_size);
-    prepacked_lhs->sums = alloc_fn(prepacked_lhs->sums_size);
-    params.packed_lhs.data = prepacked_lhs->data;
-    params.packed_lhs.sums = prepacked_lhs->sums;
-    params.LhsRunPack(tuning, 0, params.packed_lhs.layout.cols);
-  }
-  if (prepacked_rhs) {
-    prepacked_rhs->data_size = DataSize(params.packed_rhs);
-    prepacked_rhs->sums_size = SumsSize(params.packed_rhs);
-    prepacked_rhs->data = alloc_fn(prepacked_rhs->data_size);
-    prepacked_rhs->sums = alloc_fn(prepacked_rhs->sums_size);
-    params.packed_rhs.data = prepacked_rhs->data;
-    params.packed_rhs.sums = prepacked_rhs->sums;
-    params.RhsRunPack(tuning, 0, params.packed_rhs.layout.cols);
+  for (Side side : {Side::kLhs, Side::kRhs}) {
+    if (prepacked[side]) {
+      prepacked[side]->data_size = DataSize(params.packed[side]);
+      prepacked[side]->sums_size = SumsSize(params.packed[side]);
+      prepacked[side]->data = alloc_fn(prepacked[side]->data_size);
+      prepacked[side]->sums = alloc_fn(prepacked[side]->sums_size);
+      params.packed[side].data = prepacked[side]->data;
+      params.packed[side].sums = prepacked[side]->sums;
+      params.RunPack(side, tuning, origin[side], rounded_dims[side]);
+    }
   }
 }
 
@@ -73,16 +76,15 @@ template <Path CompiledPaths, typename LhsScalar, typename RhsScalar,
 void MulWithPrepackedInternal(const Matrix<LhsScalar>& lhs,
                               const Matrix<RhsScalar>& rhs, const Spec& spec,
                               Context* context, Matrix<DstScalar>* dst,
-                              PrepackedMatrix* prepacked_lhs,
-                              PrepackedMatrix* prepacked_rhs) {
-  gemmlowp::ScopedProfilingLabel label("MulWithPrepacked");
+                              SidePair<PrepackedMatrix*> prepacked) {
+  profiler::ScopeLabel label("MulWithPrepacked");
 
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,
                                 dst->zero_point);
 
   Path the_path = context->GetPathToTake<CompiledPaths>();
-  RUY_CHECK(the_path != Path::kReference);
+  RUY_CHECK_NE(the_path, Path::kReference);
   constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
   Matrix<LhsScalar> transposed_lhs(lhs);
   Transpose(&transposed_lhs);
@@ -90,16 +92,14 @@ void MulWithPrepackedInternal(const Matrix<LhsScalar>& lhs,
   CreateTrMulParams<TrMulCompiledPaths>(transposed_lhs, rhs, spec, context, dst,
                                         the_path, &params);
 
-  if (prepacked_lhs) {
-    params.packed_lhs.data = prepacked_lhs->data;
-    params.packed_lhs.sums = prepacked_lhs->sums;
-    params.lhs_is_prepacked = true;
+  for (Side side : {Side::kLhs, Side::kRhs}) {
+    if (prepacked[side]) {
+      params.packed[side].data = prepacked[side]->data;
+      params.packed[side].sums = prepacked[side]->sums;
+      params.is_prepacked[side] = true;
+    }
   }
-  if (prepacked_rhs) {
-    params.packed_rhs.data = prepacked_rhs->data;
-    params.packed_rhs.sums = prepacked_rhs->sums;
-    params.rhs_is_prepacked = true;
-  }
+
   TrMul(&params, context);
 }
 

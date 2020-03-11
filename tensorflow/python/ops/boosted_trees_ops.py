@@ -27,6 +27,7 @@ from tensorflow.python.ops import resources
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_aggregate_stats
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_bucketize
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_feature_split as calculate_best_feature_split
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_feature_split_v2 as calculate_best_feature_split_v2
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_calculate_best_gains_per_feature as calculate_best_gains_per_feature
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_center_bias as center_bias
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_create_quantile_stream_resource as create_quantile_stream_resource
@@ -43,6 +44,7 @@ from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_sparse_agg
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_sparse_calculate_best_feature_split as sparse_calculate_best_feature_split
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_training_predict as training_predict
 from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ensemble as update_ensemble
+from tensorflow.python.ops.gen_boosted_trees_ops import boosted_trees_update_ensemble_v2 as update_ensemble_v2
 from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantile_stream_resource_initialized as is_quantile_resource_initialized
 # pylint: enable=unused-import
 

@@ -27,11 +27,12 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/operation_interface.h"
+#include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -42,13 +43,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/monitoring/sampler.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
-#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
@@ -58,31 +57,15 @@ struct TFE_ContextOptions {
   TFE_ContextDevicePlacementPolicy device_placement_policy{
       TFE_DEVICE_PLACEMENT_SILENT};
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
+  // If true, lazily copy the remote inputs of a function to the target devices.
+  bool lazy_remote_inputs_copy = true;
 };
 
 struct TFE_Context {
-  TFE_Context(const tensorflow::SessionOptions& opts,
-              TFE_ContextDevicePlacementPolicy default_device_placement_policy,
-              TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
-              const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
-              tensorflow::Rendezvous* rendezvous,
-              const tensorflow::CustomKernelCreator* custom_kernel_creator)
-      : context(new tensorflow::EagerContext(
-            opts,
-            static_cast<tensorflow::ContextDevicePlacementPolicy>(
-                default_device_placement_policy),
-            static_cast<tensorflow::ContextMirroringPolicy>(
-                default_mirroring_policy),
-            async, device_mgr, device_mgr_owned, rendezvous,
-            custom_kernel_creator)) {}
-
-  ~TFE_Context() { context->Unref(); }
-
   tensorflow::EagerContext* context;
 };
 
 struct TFE_TensorHandle {
-  explicit TFE_TensorHandle(tensorflow::TensorHandle* h) : handle(h) {}
   static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
                                              TF_Status* s) {
     tensorflow::TensorHandle* handle;
@@ -90,16 +73,11 @@ struct TFE_TensorHandle {
     if (!s->status.ok()) {
       return nullptr;
     }
-    return new TFE_TensorHandle(handle);
+    return new TFE_TensorHandle{
+        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
   }
 
-  tensorflow::TensorHandle* handle;
-
-  // Create a symbolic tensor.
-  TFE_TensorHandle(TF_Output t, TF_DataType dtype)
-      : handle(new tensorflow::TensorHandle(
-            tensorflow::OutputGraphNode{t.oper, t.index},
-            static_cast<tensorflow::DataType>(dtype))) {}
+  std::unique_ptr<AbstractTensorHandleInterface> handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -110,36 +88,8 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
-struct TFE_OpInferenceContext {
-  explicit TFE_OpInferenceContext(const tensorflow::OpDef* op_def)
-      : op_def(op_def) {}
-
-  const tensorflow::OpDef* op_def;  // op definition from protobuf
-  int input_arg_idx = 0;  // arg definition index for the next input to be added
-  tensorflow::gtl::FlatSet<std::string> attrs;  // attributes inferred so far
-};
-
 struct TFE_Op {
-  TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
-         const tensorflow::AttrTypeMap* t,
-         TFE_OpInferenceContext* inference_ctx)
-      : operation(ctx->context, op, is_function, t),
-        inference_ctx(inference_ctx) {}
-
-  tensorflow::EagerOperation operation;
-  std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
-};
-
-struct TFE_ProfilerContext {
-  tensorflow::ProfilerContext profiler_context;
-};
-
-struct TFE_Profiler {
-  explicit TFE_Profiler(TFE_ProfilerContext* ctx) {
-    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
-  }
-
-  std::unique_ptr<tensorflow::ProfilerSession> profiler;
+  std::unique_ptr<AbstractOperationInterface> operation;
 };
 
 struct TFE_MonitoringCounterCell {
@@ -267,28 +217,36 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const char* attr_name, TF_Status* status);
 }  // namespace tensorflow
 
-struct TFE_TraceContext {
-  TF_Graph* const graph;
-
-  unsigned int node_counter = 0;
-  // Each tensor handle will have its ref count incremented when it's added as a
-  // map key, and decremented when this object is destroyed.
-  std::map<tensorflow::TensorHandle*, TF_Output> input_tensor_map;
-  std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
-      nullptr;
-
-  explicit TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
-
-  ~TFE_TraceContext() {
-    delete input_tensors;
-    for (auto input : input_tensor_map) {
-      input.first->Unref();
-    }
-  }
-};
-
 struct TFE_CancellationManager {
   tensorflow::CancellationManager cancellation_manager;
+};
+
+struct TFE_Executor {
+  explicit TFE_Executor(bool async)
+      : owned_executor(new tensorflow::EagerExecutor(async)) {}
+
+  explicit TFE_Executor(tensorflow::EagerExecutor* executor)
+      : owned_executor(nullptr), unowned_executor(executor) {}
+
+  tensorflow::EagerExecutor* executor() {
+    return owned_executor == nullptr ? unowned_executor : owned_executor.get();
+  }
+
+  std::unique_ptr<tensorflow::EagerExecutor> owned_executor;
+  tensorflow::EagerExecutor* unowned_executor;
+};
+
+// An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
+// that sometimes do not require serialization.
+struct TFE_OpAttrs {
+  explicit TFE_OpAttrs() : name(nullptr), attributes(nullptr) {}
+
+  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value,
+                       const char* op_name)
+      : name(op_name), attributes(value) {}
+
+  const char* name;
+  const tensorflow::AttrBuilder* attributes;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

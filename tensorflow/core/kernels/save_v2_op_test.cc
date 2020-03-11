@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -59,16 +60,17 @@ TEST_F(SaveV2OpTest, Simple) {
 
   MakeOp();
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&prefix](int x) -> string { return prefix; });
+  AddInput<tstring>(TensorShape({}),
+                    [&prefix](int x) -> tstring { return prefix; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({13}),
-                   [&tensornames](int x) -> string { return tensornames[x]; });
+  AddInput<tstring>(TensorShape({13}), [&tensornames](int x) -> tstring {
+    return tensornames[x];
+  });
 
   // Add the slice specs
-  AddInput<string>(TensorShape({13}),
-                   [](int x) -> string { return "" /* saves in full */; });
+  AddInput<tstring>(TensorShape({13}),
+                    [](int x) -> tstring { return "" /* saves in full */; });
 
   // Add a 1-d bool tensor
   AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });

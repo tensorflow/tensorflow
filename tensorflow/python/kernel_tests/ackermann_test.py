@@ -33,9 +33,6 @@ class AckermannTest(test.TestCase):
                                     'ackermann_op.so')
     ackermann = load_library.load_op_library(library_filename)
 
-    self.assertEqual(len(ackermann.OP_LIST.op), 1)
-    self.assertEqual(ackermann.OP_LIST.op[0].name, 'Ackermann')
-
     with self.cached_session():
       self.assertEqual(ackermann.ackermann().eval(), b'A(m, 0) == A(m-1, 1)')
 

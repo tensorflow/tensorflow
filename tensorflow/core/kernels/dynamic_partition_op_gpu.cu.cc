@@ -41,7 +41,7 @@ limitations under the License.
 #include "third_party/cub/iterator/constant_input_iterator.cuh"
 #include "third_party/cub/thread/thread_operators.cuh"
 #elif TENSORFLOW_USE_ROCM
-#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#include "rocm/include/hipcub/hipcub.hpp"
 #endif
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/bounds_check.h"
@@ -139,7 +139,8 @@ class BoundedOutputIterator
     int32* base;
     // Constructor
     __host__ __device__ __forceinline__
-    BoundedReference(int32* ptr, int32* base, IdentityOp op, int32 limit)
+    BoundedReference(int32* __restrict__ ptr, int32* __restrict__ base,
+                     IdentityOp op, int32 limit)
         : Reference(ptr, op), limit(limit), base(base) {}
 
     // Assignment
@@ -153,13 +154,13 @@ class BoundedOutputIterator
   typedef BoundedOutputIterator self_type;
   typedef BoundedReference reference;
 
-  __host__ __device__ __forceinline__ BoundedOutputIterator(int32* ptr,
-                                                            IdentityOp op,
-                                                            int32 size)
+  __host__ __device__ __forceinline__
+  BoundedOutputIterator(int32* __restrict__ ptr, IdentityOp op, int32 size)
       : TransformOutputIterator(ptr, op), limit(size), base(ptr) {}
 
   __host__ __device__ __forceinline__
-  BoundedOutputIterator(int32* ptr, int32* base, IdentityOp op, int32 size)
+  BoundedOutputIterator(int32* __restrict__ ptr, int32* __restrict__ base,
+                        IdentityOp op, int32 size)
       : TransformOutputIterator(ptr, op), limit(size), base(base) {}
 
   // Indirection

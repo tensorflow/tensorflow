@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 import os
 import sys
+
 from absl.testing import parameterized
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_worker_test_base as test_base
+from tensorflow.python.framework.errors_impl import NotFoundError
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
 from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
@@ -48,7 +50,13 @@ class MultiWorkerTrainingStateTest(test_base.IndependentWorkerTestBase,
     ]
     self.assertFalse(training_state.checkpoint_exists(saving_filepath))
 
-    model.fit(x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
+    try:
+      model.fit(
+          x=train_ds, epochs=2, steps_per_epoch=2, callbacks=callbacks_list)
+    except NotFoundError as e:
+      if 'Failed to create a NewWriteableFile' in e.message:
+        self.skipTest('b/138941852, path not found error in Windows py35.')
+
     self.assertTrue(training_state.checkpoint_exists(saving_filepath))
     self.assertTrue(
         training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))

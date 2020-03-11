@@ -1,6 +1,6 @@
-# OVIC Benchmarker for CVPR 2019
+# OVIC Benchmarker for ICCV-NeurIPS 2019
 
-This folder contains the SDK for track one of the [Low Power ImageNet Recognition Challenge workshop at CVPR 2019.](https://lpirc.ecn.purdue.edu/)
+This folder contains the SDK for track one of the [Low Power Computer Vision workshop at ICCV 2019.](https://rebootingcomputing.ieee.org/lpirc/)
 
 ## Pre-requisite
 
@@ -37,9 +37,9 @@ unzip -j /tmp/ovic.zip -d tensorflow/lite/java/ovic/src/testdata/
 You can run test with Bazel as below. This helps to ensure that the installation is correct.
 
 ```sh
-bazel test --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
+bazel test //tensorflow/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
 
-bazel test --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:OvicDetectorTest --cxxopt=-Wno-all --test_output=all
+bazel test //tensorflow/lite/java/ovic:OvicDetectorTest --cxxopt=-Wno-all --test_output=all
 ```
 
 ### Test your submissions
@@ -51,7 +51,7 @@ Once you have a submission that follows the instructions from the [competition s
 You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output for classification should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
 
 ```sh
-bazel build --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
+bazel build //tensorflow/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
 bazel-bin/tensorflow/lite/java/ovic/ovic_validator /path/to/my_model.lite classify
 ```
 
@@ -160,7 +160,7 @@ Note: You'll need ROOT access to the phone to change processor affinity.
 * Build and install the app.
 
 ```
-bazel build -c opt --cxxopt=--std=c++11 --cxxopt=-Wno-all //tensorflow/lite/java/ovic/demo/app:ovic_benchmarker_binary
+bazel build -c opt --cxxopt=-Wno-all //tensorflow/lite/java/ovic/demo/app:ovic_benchmarker_binary
 adb install -r bazel-bin/tensorflow/lite/java/ovic/demo/app/ovic_benchmarker_binary.apk
 ```
 
@@ -176,17 +176,19 @@ Note: the benchmarking results can be quite different depending on the backgroun
 
 | Classification Model | Pixel 1 latency (ms)  | Pixel 2 latency (ms) |
 | -------------------- |:---------------------:| --------------------:|
-|  float_model.lite    | 120                   | 155                  |
-| quantized_model.lite | 85                    | 74                   |
-|  low_res_model.lite  | 4.2                   | 4.0                  |
+|  float_model.lite    | 97                   | 113                  |
+| quantized_model.lite | 73                    | 61                   |
+|  low_res_model.lite  | 3                   | 3                  |
 
 
 | Detection Model      | Pixel 2 latency (ms)  |
 | -------------------- |:---------------------:|
-|  detect.lite         | 331                   |
-| quantized_detect.lite | 95                    |
-| quantized_fpnlite.lite | 119   |
+|  detect.lite         | 248                   |
+| quantized_detect.lite | 59                    |
+| quantized_fpnlite.lite | 96   |
 
+
+All latency numbers above are measured on `Oct 17 2019` (Github commit hash [I05def66f58fa8f2161522f318e00c1b520cf0606]( https://github.com/tensorflow/tensorflow/commit/4b02bc0e0ff7a0bc02264bc87528253291b7c949#diff-4e94df4d2961961ba5f69bbd666e0552]))
 
 Since Pixel 2 has excellent support for 8-bit quantized models, we strongly recommend you to check out the [quantization training tutorial](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/quantize).
 
@@ -213,37 +215,37 @@ Below are the baseline models (8-bit quantized MobilenetV2 and floating point
 MnasNet) used to compute the reference accuracy for ImageNet classification. The
 naming convention of the models are `[model class]_[resolution]_[multiplier]`.
 Latency (ms) is measured on a single Pixel 2 big core using the competition
-server on April 30th 2019.
+server on `Oct 17 2019`
 
 Model                     | Latency | Top-1 Accuracy
 :-----------------------: | :-----: | :------------:
 quant_mobilenetv2_96_35   | 4       | 0.420
-quant_mobilenetv2_96_50   | 6       | 0.478
-quant_mobilenetv2_128_35  | 7       | 0.474
-quant_mobilenetv2_128_50  | 10      | 0.546
-quant_mobilenetv2_96_75   | 10      | 0.560
-quant_mobilenetv2_160_35  | 11      | 0.534
-quant_mobilenetv2_96_100  | 13      | 0.579
-quant_mobilenetv2_160_50  | 15      | 0.583
-quant_mobilenetv2_192_35  | 16      | 0.557
-quant_mobilenetv2_128_75  | 17      | 0.611
-float_mnasnet_96_100      | 19      | 0.625
-quant_mobilenetv2_128_100 | 20      | 0.629
-quant_mobilenetv2_192_50  | 20      | 0.616
-quant_mobilenetv2_224_35  | 21      | 0.581
-quant_mobilenetv2_160_75  | 26      | 0.646
-quant_mobilenetv2_224_50  | 28      | 0.637
-quant_mobilenetv2_160_100 | 31      | 0.674
-float_mnasnet_224_50      | 36      | 0.679
-quant_mobilenetv2_192_75  | 36      | 0.674
-quant_mobilenetv2_192_100 | 44      | 0.695
-float_mnasnet_160_100     | 46      | 0.706
-quant_mobilenetv2_224_75  | 50      | 0.684
-float_mnasnet_224_75      | 59      | 0.718
-quant_mobilenetv2_224_100 | 60      | 0.704
-float_mnasnet_192_100     | 66      | 0.724
-float_mnasnet_224_100     | 91      | 0.742
-float_mnasnet_224_130     | 135     | 0.758
+quant_mobilenetv2_96_50   | 5       | 0.478
+quant_mobilenetv2_128_35  | 6       | 0.474
+quant_mobilenetv2_128_50  | 8      | 0.546
+quant_mobilenetv2_160_35  | 9      | 0.534
+quant_mobilenetv2_96_75   | 8      | 0.560
+quant_mobilenetv2_96_100  | 10      | 0.579
+quant_mobilenetv2_160_50  | 12      | 0.583
+quant_mobilenetv2_192_35  | 12      | 0.557
+quant_mobilenetv2_128_75  | 13      | 0.611
+quant_mobilenetv2_224_35  | 17      | 0.581
+quant_mobilenetv2_192_50  | 16      | 0.616
+float_mnasnet_96_100      | 21      | 0.625
+quant_mobilenetv2_128_100 | 16      | 0.629
+quant_mobilenetv2_160_75  | 20      | 0.646
+quant_mobilenetv2_224_50  | 22      | 0.637
+quant_mobilenetv2_160_100 | 25      | 0.674
+float_mnasnet_224_50      | 35      | 0.679
+quant_mobilenetv2_192_75  | 29      | 0.674
+float_mnasnet_160_100     | 45      | 0.706
+quant_mobilenetv2_192_100 | 35      | 0.695
+quant_mobilenetv2_224_75  | 39      | 0.684
+float_mnasnet_224_75      | 55      | 0.718
+float_mnasnet_192_100     | 62      | 0.724
+quant_mobilenetv2_224_100 | 48      | 0.704
+float_mnasnet_224_100     | 84      | 0.742
+float_mnasnet_224_130     | 126     | 0.758
 
 ### References
 

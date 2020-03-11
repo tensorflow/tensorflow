@@ -20,9 +20,9 @@ from __future__ import print_function
 import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
-from tensorflow.python.eager import test
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.platform import test
 
 
 class DistributionStrategyEmbeddingModelCorrectnessTest(
@@ -33,7 +33,6 @@ class DistributionStrategyEmbeddingModelCorrectnessTest(
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                run_distributed=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -51,32 +50,25 @@ class DistributionStrategyEmbeddingModelCorrectnessTest(
         model.set_weights(initial_weights)
 
       model.compile(
-          # TODO(b/130808953): Switch back the V1 optimizer once global_step is
-          # mirrored.
           optimizer=gradient_descent_keras.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
-          metrics=['sparse_categorical_accuracy'],
-          run_distributed=run_distributed)
+          metrics=['sparse_categorical_accuracy'])
     return model
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_embedding_model_correctness(self, distribution, use_numpy,
-                                       use_validation_data, run_distributed):
+                                       use_validation_data):
 
     self.use_distributed_dense = False
-    self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
-  def test_embedding_time_distributed_model_correctness(self, distribution,
-                                                        use_numpy,
-                                                        use_validation_data,
-                                                        run_distributed):
+  def test_embedding_time_distributed_model_correctness(
+      self, distribution, use_numpy, use_validation_data):
     self.use_distributed_dense = True
-    self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
 class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
@@ -87,7 +79,6 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
                 max_words=10,
                 initial_weights=None,
                 distribution=None,
-                run_distributed=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -121,7 +112,6 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
       model.compile(
           optimizer=gradient_descent_keras.SGD(learning_rate=0.1),
           loss='mse',
-          run_distributed=run_distributed,
           metrics=['mse'])
     return model
 
@@ -158,10 +148,8 @@ class DistributionStrategySiameseEmbeddingModelCorrectnessTest(
   @combinations.generate(
       keras_correctness_test_base.test_combinations_for_embedding_model())
   def test_siamese_embedding_model_correctness(self, distribution, use_numpy,
-                                               use_validation_data,
-                                               run_distributed):
-    self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              run_distributed)
+                                               use_validation_data):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
 if __name__ == '__main__':

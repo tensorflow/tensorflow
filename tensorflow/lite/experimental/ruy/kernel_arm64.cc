@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "profiling/instrumentation.h"
+#include <cstdint>
+
+#include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
+#include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 namespace ruy {
 
@@ -92,7 +96,7 @@ void CheckOffsetsInKernelParams8bit(const Params&) {
 // Relevant target CPUs for this kernel include ARM Cortex-A73 and Cortex-A75,
 // since these are 64-bit, out-of-order and without dotprod support.
 void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeon, optimized for out-of-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);
@@ -640,6 +644,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -655,24 +660,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -762,6 +771,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -777,24 +787,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -885,6 +899,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrh w7, [x3, x5, lsl #1]\n"
@@ -900,24 +915,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[1], [x3], #2\n"
         "st1 {v16.h}[2], [x3], #2\n"
         "st1 {v16.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[5], [x3], #2\n"
         "st1 {v16.h}[6], [x3], #2\n"
         "st1 {v16.h}[7], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v17.h}[1], [x3], #2\n"
         "st1 {v17.h}[2], [x3], #2\n"
         "st1 {v17.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
@@ -985,6 +1004,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -1000,24 +1020,28 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v16.s}[1], [x3], #4\n"
         "st1 {v16.s}[2], [x3], #4\n"
         "st1 {v16.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v17.s}[1], [x3], #4\n"
         "st1 {v17.s}[2], [x3], #4\n"
         "st1 {v17.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v18.s}[1], [x3], #4\n"
         "st1 {v18.s}[2], [x3], #4\n"
         "st1 {v18.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v19.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
@@ -1101,6 +1125,703 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
           "v26", "v27", "v28", "v29", "v30", "v31");
 }
 
+// Similar to existing Kernel8bitNeonOutOfOrder but specialized for the case of
+// RHS cols == 1.
+// Relevant target CPUs for this kernel include ARM Cortex-A73 and Cortex-A75,
+// since these are 64-bit, out-of-order and without dotprod support.
+void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 4>& params) {
+  profiler::ScopeLabel label(
+      "Kernel (kNeon, optimized for out-of-order cores)");
+
+  CheckOffsetsInKernelParams8bit(params);
+
+  const std::int8_t* lhs_col_ptr = params.lhs_base_ptr;
+  const std::int8_t* rhs_col_ptr = params.rhs_base_ptr;
+  const std::int8_t* lhs_ptr = lhs_col_ptr;
+  const std::int8_t* rhs_ptr = rhs_col_ptr;
+  void* dst_col_ptr = params.dst_base_ptr;
+  void* dst_ptr = dst_col_ptr;
+  int row = params.start_row;
+  int col = params.start_col;
+
+  // The asm kernel below has the following NEON register allocation:
+  //
+  // v16 -- v19 are int32 accumulators.
+  // During accumulation, v0 -- v3 are used to load int8 data from LHS and
+  // v4 from RHS:
+  //
+  //                         int8 RHS 16x1 block
+  //                           /-----------\
+  //                           |v4.b[0]    |
+  //                           |  ...      |
+  //                           |v4.b[15]   |
+  //                           \-----------/
+  //    int8 LHS 4x16 block
+  //  /---------------------\  /-----------\
+  //  |v0.b[0] ... v0.b[15] |  |v16.4s     |
+  //  |v1.b[0] ... v1.b[15] |  |v17.4s     |
+  //  |v2.b[0] ... v2.b[15] |  |v18.4s     |
+  //  |v3.b[0] ... v3.b[15] |  |v19.4s     |
+  //  \---------------------/  \-----------/
+  //                         int32 accumulators 4x1 block
+  //
+  // No attempt had been made so far at implementing the RUY_OPT_MAX_STREAMING
+  // optimization for this kernel.
+  asm volatile(
+#define RUY_MAKE_ZERO(reg) "dup " #reg ".4s, wzr\n"
+
+        // clang-format off
+
+        // Load some parameters into registers.
+        "ldr x5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_BASE_PTR) "]\n"
+        "ldr w6, [%[params], #" RUY_STR(RUY_OFFSET_START_ROW) "]\n"
+        "ldr w7, [%[params], #" RUY_STR(RUY_OFFSET_LAST_ROW) "]\n"
+        "ldr w8, [%[params], #" RUY_STR(RUY_OFFSET_LAST_COL) "]\n"
+        "ldr w9, [%[params], #" RUY_STR(RUY_OFFSET_LHS_STRIDE) "]\n"
+        "ldr w10, [%[params], #" RUY_STR(RUY_OFFSET_RHS_STRIDE) "]\n"
+        "ldr w11, [%[params], #" RUY_STR(RUY_OFFSET_DST_STRIDE) "]\n"
+        "ldr w12, [%[params], #" RUY_STR(RUY_OFFSET_DEPTH) "]\n"
+
+        // Load the first 64 bytes of LHS and RHS data.
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v2.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v3.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v4.16b}, [%[rhs_ptr]], #16\n"
+        "add %[rhs_ptr], %[rhs_ptr], #48\n"
+
+        // Clear accumulators.
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
+        // w1 is the number of levels of depth that we have already loaded
+        // LHS and RHS data for. Corresponding to the initial ld1 instructions
+        // above, this is currently 16.
+        "mov w1, #16\n"
+
+        // Perform the first few multiply-adds on the data that we have already
+        // loaded.
+        "smull    v8.8h,  v0.8b,  v4.8b\n"
+        "smull    v9.8h,  v1.8b,  v4.8b\n"
+        "smull    v10.8h,  v2.8b,  v4.8b\n"
+        "smull    v11.8h,  v3.8b,  v4.8b\n"
+
+        // Multiply-accumulate second-half, again into the same
+        // 16bit local accumulator registers. This is where we
+        // take advantage of having int8 instead of uint8 and therefore
+        // being able to accumulate two products into int16.
+        "smlal2   v8.8h,  v0.16b,  v4.16b\n"
+        "smlal2   v9.8h,  v1.16b,  v4.16b\n"
+        "smlal2   v10.8h,  v2.16b,  v4.16b\n"
+        "smlal2   v11.8h,  v3.16b,  v4.16b\n"
+
+        // Main loop of the whole GEMM, over rows and columns of the
+        // destination matrix.
+        "1:\n"
+
+        // Reminder - w1 is how many levels of depth we have already loaded
+        // data for, w12 is the total depth.
+        "cmp w1, w12\n"
+        "beq 79f\n"
+
+        "2:\n"
+
+        // Some multiplications and 16-bit accumulation were already done above,
+        // so we start right away in the middle.
+        "sadalp  v16.4s, v8.8h\n"
+        "ld1 {v4.16b}, [%[rhs_ptr]], #16\n"
+        "add %[rhs_ptr], %[rhs_ptr], #48\n"
+        "sadalp  v17.4s, v9.8h\n"
+        "sadalp  v18.4s, v10.8h\n"
+        "sadalp  v19.4s, v11.8h\n"
+
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v2.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v3.16b}, [%[lhs_ptr]], #16\n"
+
+        "smull    v8.8h,  v0.8b,  v4.8b\n"
+        "smull    v9.8h,  v1.8b,  v4.8b\n"
+        "smull    v10.8h,  v2.8b,  v4.8b\n"
+        "smull    v11.8h,  v3.8b,  v4.8b\n"
+
+        // Multiply-accumulate second-half, again into the same
+        // 16bit local accumulator registers. This is where we
+        // take advantage of having int8 instead of uint8 and therefore
+        // being able to accumulate two products into int16.
+        "smlal2   v8.8h,  v0.16b,  v4.16b\n"
+        "smlal2   v9.8h,  v1.16b,  v4.16b\n"
+        "smlal2   v10.8h,  v2.16b,  v4.16b\n"
+        "smlal2   v11.8h,  v3.16b,  v4.16b\n"
+
+        // Each iteration of this loop advances by 16 levels of depth.
+        "add w1, w1, #16\n"
+
+        // Loop termination condition
+        "cmp w1, w12\n"
+
+        "blt 2b\n"
+
+        "79:\n"
+
+        "sadalp  v16.4s, v8.8h\n"
+        "sadalp  v17.4s, v9.8h\n"
+        "sadalp  v18.4s, v10.8h\n"
+        "sadalp  v19.4s, v11.8h\n"
+
+        // End of accumulation. The registers v16 -- v19 contain the final
+        // int32 accumulator values of the current 4x1 destination block.
+        // We now have to compute the final 8-bit values from these int32
+        // accumulators, and advance to the next 4x1 block. We intertwine
+        // these two aspects whenever possible for optimal pipelining, both
+        // at the data flow level (prefetch data for next block as early as
+        // possible) and instruction pipelining level (some of the next-block
+        // work can dual-issue with some of the final work on the current
+        // block).
+
+        // Reduce 32bit accumulators horizontally.
+        "addp v16.4s, v16.4s, v17.4s\n"
+        "addp v18.4s, v18.4s, v19.4s\n"
+
+        // Reduce 32bit accumulators horizontally, second pass
+        // (each pass adds pairwise. we need to add 4-wise).
+        "addp v16.4s, v16.4s, v18.4s\n"
+
+        // Logic to advance to the next block in preparation for the next
+        // iteration of the main loop. For now, we only want to compute
+        // the LHS and RHS data pointers, lhs_col_ptr and rhs_col_ptr. We are
+        // not yet ready to update the values of row and col, as we still need
+        // the current values for the rest of the work on the current block.
+
+        "cmp %w[row], w7\n"  // Have we finished the last row?
+        "bge 4f\n"           // If finished last row, go to 4
+        // Not finished last row: then advance to next row.
+        "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #2\n"
+        "b 5f\n"
+        "4:\n"  // Finished last row...
+        "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+        // Now we need to advance to the next column. If we already
+        // finished the last column, then in principle we are done, however
+        // we can't just return here, as we need to allow the end work of the
+        // current block to complete. The good news is that at this point it
+        // doesn't matter what data we load for the next column, since
+        // we will exit from the main loop below before actually storing
+        // anything computed from that data.
+        "cmp %w[col], w8\n"  // Have we finished the last column?
+        "bge 5f\n" // If yes, just carry on without updating the column pointer.
+        // Not finished last column: then advance to next column.
+        // (still multiply column stride by 4 due to packing)
+        "add %[rhs_col_ptr], %[rhs_col_ptr], x10, lsl #2\n"
+        "5:\n"
+
+        // Set the LHS and RHS data pointers to the start of the columns just
+        // computed.
+        "mov %[lhs_ptr], %[lhs_col_ptr]\n"
+        "mov %[rhs_ptr], %[rhs_col_ptr]\n"
+
+        // Load some parameters needed for the end work on current block.
+        RUY_MAKE_ZERO(v8)
+        "ldr w4, [%[params], #" RUY_STR(RUY_OFFSET_DST_ZERO_POINT) "]\n"
+        "ldr w3, [%[params], #" RUY_STR(RUY_OFFSET_PROD_ZP_DEPTH) "]\n"
+        "ins v13.h[4], w4\n" // dst_zero_point
+        "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
+        "ldrb w6, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
+        "dup v9.4s, w3\n"   // create prod_zp_depth_vec
+        "add x5, x4, %x[row], lsl #2\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+        "csel x4, x4, x5, eq\n"
+
+        "ld1 {v15.4s}, [x4]\n" // multiplier_fixedpoint
+
+        // Now we load: bias data, LHS sums data, RHS sums data.
+
+        // First, load the base pointers from the params.
+        "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+
+        "add x5, x1, %x[row], lsl #2\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+        "csel x1, x1, x5, eq\n"
+
+        // Load 4 bias values.
+        "ld1 {v14.4s}, [x1]\n"
+
+        // Now that we know what LHS and RHS data the next iteration of the
+        // main loop will need to load, we start loading the first 32 bytes of
+        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
+        // in the rest of the work on the current block.
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v2.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v3.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v4.16b}, [%[rhs_ptr]], #16\n"
+        "add %[rhs_ptr], %[rhs_ptr], #48\n"
+
+        // Add to the bias values the product (depth * lhs_zero_point * rhs_zero_point),
+        // See the term NZ1Z2 in equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "add v14.4s, v14.4s, v9.4s\n"
+
+        // Perform the bias-addition (per the above, we have just folded into
+        // the bias the (depth * lhs_zero_point * rhs_zero_point) term.)
+        // (all four 32-bit accumulators are in v16 at this point)
+        "add v16.4s, v16.4s, v14.4s\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
+        "beq 401f\n"
+        "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add x3, x3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [x3]\n"
+        "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
+        "dup v10.4s, w5\n"  // create lhs_zero_point_vec
+        // Subtract rhs_sums * lhs_zero_point, per
+        // equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "mls v16.4s, v10.4s, v14.s[0]\n"
+        "401:\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
+        "beq 402f\n"
+        "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add x2, x2, %x[row], lsl #2\n"
+        "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
+        // Load 4 lhs_sums values.
+        "ld1 {v11.4s}, [x2]\n"
+        "ins v13.s[1], w5\n" // rhs_zero_point
+        // Compute lhs_sums * rhs_zero_point.
+        "mul v11.4s, v11.4s, v13.s[1]\n"
+        // Subtract lhs_sums * rhs_zero_point, per
+        // equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "sub v16.4s, v16.4s, v11.4s\n"
+
+        // If the destination is int32, it means the user asks for the raw
+        // accumulators, no need for us to downquantize the value.
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
+        "402:\n"
+
+        // At this point we have computed the final int32 values. Now we
+        // start down-quantizing them to obtain the final 8bit values from them.
+
+        // As part of this down-quantization, our int32 values will be
+        // multiplied by a multiplier that has a fixed-point component and an
+        // exponent component.
+
+        //Load the exponent part of the multiplier.
+        "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+        "add x5, x1, %x[row], lsl #2\n"
+        "csel x1, x1, x5, eq\n"
+
+        "ld1 {v14.4s}, [x1]\n"
+
+        "smax v12.4s, v14.4s, v8.4s\n"
+
+        "sshl v16.4s, v16.4s, v12.4s\n"
+
+        "smin v12.4s, v14.4s, v8.4s\n"
+
+        // Apply the fixed-point part of the multiplier.
+        "sqrdmulh v16.4s, v16.4s, v15.4s\n"
+
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
+        // Fix up values to be right-shifted, so that the (round to nearest,
+        // break ties upward) behavior of srshl applied to these fixed-up
+        // values, produces the same result as the desired (round to nearest,
+        // break ties away from zero) behavior on the original values.
+        "and v8.16b, v16.16b, v12.16b\n"
+        "sshr v8.4s, v8.4s, #31\n"
+        "sqadd v16.4s, v16.4s, v8.4s\n"
+#endif
+        // At this point we have reduced the problem of correctly implementing
+        // rounding divide-by-power-of-two, to what the SRSHL instruction can
+        // do.
+        "srshl v16.4s, v16.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT16) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT16) "f\n"
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT8) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT8) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_UINT8) ":\n"
+
+        // Cast-and-saturate from int32 to int16
+        // After this instruction, all data is in lower half (64-bits) of v16
+        "sqxtn v16.4h, v16.4s\n"
+
+        // At this point, v18 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
+        // Add the destination zero point
+        "dup v14.8h, v13.h[4]\n"
+        "add v16.8h, v16.8h, v14.8h\n"
+
+        // Cast-and-saturate from int16 to uint8
+        // Now all data is in the first 32-bits of v16
+        "sqxtun v16.8b, v16.8h\n"
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrb w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrb w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.16b, w2\n"  // clamp_min
+        "dup v15.16b, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "umax v16.16b, v16.16b, v14.16b\n"
+        // Apply the clamp_max bound
+        "umin v16.16b, v16.16b, v15.16b\n"
+
+        // Compute how much of the 4x1 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x1, there are some 4x1 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x1 block fit
+        "csel w1, w1, w3, le\n"
+
+        // Test if w1==4, i.e. if all of the 4x1 block fits.
+        "cmp w1, w3\n"
+
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x1 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x1 block fits.
+        // Store to dst_tmp_buf
+        "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "51:\n"
+        "ldrb w7, [x3, w5, uxtw]\n"
+        "strb w7, [x4, w5, uxtw]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x1 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov x3, x4\n"
+        "st1 {v16.b}[0], [x3], #1\n"
+        "st1 {v16.b}[1], [x3], #1\n"
+        "st1 {v16.b}[2], [x3], #1\n"
+        "st1 {v16.b}[3], [x3], #1\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #4\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT8) ":\n"
+
+        // Cast-and-saturate from int32 to int16
+        // After this, all values for output are in the lower half (64 bits) of v16.
+        "sqxtn v16.4h, v16.4s\n"
+
+        // At this point, v18 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
+        // Add the destination zero point
+        "dup v14.8h, v13.h[4]\n"
+        "add v16.8h, v16.8h, v14.8h\n"
+
+        // Cast-and-saturate from int16 to int8
+        "sqxtn v16.8b, v16.8h\n"
+        // At this point, we only need 4 lowest 8-bit values in v16.
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrb w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrb w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.16b, w2\n"  // clamp_min
+        "dup v15.16b, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "smax v16.16b, v16.16b, v14.16b\n"
+        // Apply the clamp_max bound
+        "smin v16.16b, v16.16b, v15.16b\n"
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x1 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+
+        // Test if w1==4, i.e. if all of the 4x1 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x1 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "st1 {v16.16b}, [%[dst_tmp_buf]]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "51:\n"
+        "ldrb w7, [x3, w5, uxtw]\n"
+        "strb w7, [x4, w5, uxtw]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov x3, x4\n"
+        "st1 {v16.b}[0], [x3], #1\n"
+        "st1 {v16.b}[1], [x3], #1\n"
+        "st1 {v16.b}[2], [x3], #1\n"
+        "st1 {v16.b}[3], [x3], #1\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #4\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT16) ":\n"
+
+        // Add the destination zero point
+        "dup v14.4h, v13.h[4]\n"
+        "saddw v16.4s, v16.4s, v14.4h\n"
+
+        // Cast-and-saturate from int32 to int16
+        // After this instruction, all data is in lower half of v16.
+        "sqxtn v16.4h, v16.4s\n"
+
+        // At this point, v18 -- v31 aren't used anymore for the current block,
+        // so we can start clearing these accumulators for the next block
+        // (next iteration of the main loop).
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrh w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrh w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.8h, w2\n"  // clamp_min
+        "dup v15.8h, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "smax v16.8h, v16.8h, v14.8h\n"
+        // Apply the clamp_max bound
+        "smin v16.8h, v16.8h, v15.8h\n"
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x4 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+
+       // Test if w1==4 && w2 == 4, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x4 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "str q16, [%[dst_tmp_buf], #0]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "51:\n"
+        "ldrh w7, [x3, x5, lsl #1]\n"
+        "strh w7, [x4, x5, lsl #1]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "blt 50b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov x3, x4\n"
+        "st1 {v16.h}[0], [x3], #2\n"
+        "st1 {v16.h}[1], [x3], #2\n"
+        "st1 {v16.h}[2], [x3], #2\n"
+        "st1 {v16.h}[3], [x3], #2\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #8\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // Compute how much of the 4x4 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 4x4, there are some 4x4 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #4\n"
+        "cmp w1, #4\n"
+        // Compute w1 = how many rows of the 4x4 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #4\n"
+
+        // Test if w1==4 i.e. if all of the 4x1 block fits.
+        "cmp w1, w3\n"
+        "ccmp w2, w3, 0, eq\n"
+        "mov x4, %[dst_ptr]\n"
+        // Yes, all of the 4x1 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 4x4 block fits.
+        // Store to dst_tmp_buf
+        "str q16, [%[dst_tmp_buf], #0]\n"
+        // Slow loop copying from dst_tmp_buf to dst.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "51:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov x3, x4\n"
+        "st1 {v16.s}[0], [x3], #4\n"
+        "st1 {v16.s}[1], [x3], #4\n"
+        "st1 {v16.s}[2], [x3], #4\n"
+        "st1 {v16.s}[3], [x3], #4\n"
+        "31:\n"
+
+        "add %[dst_ptr], %[dst_ptr], #16\n"
+
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+        RUY_MAKE_ZERO(v18)
+        RUY_MAKE_ZERO(v19)
+
+        RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        "smull    v8.8h,  v0.8b,  v4.8b\n"
+        "smull    v9.8h,  v1.8b,  v4.8b\n"
+        "smull    v10.8h,  v2.8b,  v4.8b\n"
+        "smull    v11.8h,  v3.8b,  v4.8b\n"
+        "smlal2   v8.8h,  v0.16b,  v4.16b\n"
+        "smlal2   v9.8h,  v1.16b,  v4.16b\n"
+        "smlal2   v10.8h,  v2.16b,  v4.16b\n"
+        "smlal2   v11.8h,  v3.16b,  v4.16b\n"
+
+        // Reload some params --- we had used x5 -- x7 for a few other things
+        // since the last time we had loaded them.
+        "ldr x5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_BASE_PTR) "]\n"
+        "ldr w6, [%[params], #" RUY_STR(RUY_OFFSET_START_ROW) "]\n"
+        "ldr w7, [%[params], #" RUY_STR(RUY_OFFSET_LAST_ROW) "]\n"
+
+        // Move to the next block of the destination matrix, for the next iter
+        // of the main loop.  Notice that lhs_col_ptr, rhs_col_ptr have already
+        // been updated earlier.
+        // Have we reached the end row?
+        "cmp %w[row], w7\n"
+        "beq 20f\n"  // yes, end row.
+        // Not end row. Move to the next row.
+        "add %w[row], %w[row], #4\n"
+        "b 21f\n"
+        "20:\n"
+        // Was already at end row.
+        "mov %w[row], w6\n"  // Move back to first row.
+        "add %w[col], %w[col], #4\n"  // Move to the next column.
+        "add %[dst_col_ptr], %[dst_col_ptr], x11, lsl #2\n"
+        "mov %[dst_ptr], %[dst_col_ptr]\n"
+        "21:\n"
+
+        // Main loop exit condition: have we hit the end column?
+        "cmp %w[col], w8\n"
+
+        // w1 is the number of levels of depth that we have already loaded
+        // LHS and RHS data for. Corresponding to the initial ld1 instructions
+        // above, this is currently 16.
+        "mov w1, #16\n"
+
+        "ble 1b\n"
+
+        // clang-format on
+
+        : [ lhs_col_ptr ] "+r"(lhs_col_ptr), [rhs_col_ptr] "+r"(rhs_col_ptr),
+          [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
+          [dst_col_ptr] "+r"(dst_col_ptr), [dst_ptr] "+r"(dst_ptr), [row] "+r"(row), [col] "+r"(col)
+        : [ params ] "r"(&params), [dst_rows] "r"(params.dst_rows),
+          [dst_cols] "r"(params.dst_cols), [dst_tmp_buf] "r"(params.dst_tmp_buf),
+          [dst_type_id] "r"(params.dst_type_id)
+        : "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "cc",
+          "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+          "v13", "v14", "v15", "v16", "v17", "v18", "v19");
+}
+
 // Variant of the above Kernel8bitNeonOutOfOrder, tuned for in-order CPUs.
 // Specifically here, the relevant in-order CPUs are ARM Cortex-A53 and
 // the original Cortex-A55, since these are 64-bit and do not support dotprod.
@@ -1111,8 +1832,7 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 4>& params) {
 // comments. Specifically, see this comment about tuning for Cortex-A53:
 // https://github.com/google/gemmlowp/blob/36212ad3651871bc3e9a599f1a6d5324778aea25/standalone/neon-gemm-kernel-benchmark.cc#L4215
 void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
-  gemmlowp::ScopedProfilingLabel label(
-      "Kernel (kNeon, optimized for in-order cores)");
+  profiler::ScopeLabel label("Kernel (kNeon, optimized for in-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);
 
@@ -1687,6 +2407,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -1702,24 +2423,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -1814,6 +2539,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -1829,24 +2555,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[0], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[1], [x3], #1\n"
         "st1 {v16.b}[2], [x3], #1\n"
         "st1 {v16.b}[3], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[4], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[5], [x3], #1\n"
         "st1 {v16.b}[6], [x3], #1\n"
         "st1 {v16.b}[7], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[8], [x3], #1\n"
         "add x4, x4, x11\n"
         "st1 {v16.b}[9], [x3], #1\n"
         "st1 {v16.b}[10], [x3], #1\n"
         "st1 {v16.b}[11], [x3], #1\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.b}[12], [x3], #1\n"
         "add x4, x4, x11\n"
@@ -1945,6 +2675,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrh w7, [x3, x5, lsl #1]\n"
@@ -1960,24 +2691,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[1], [x3], #2\n"
         "st1 {v16.h}[2], [x3], #2\n"
         "st1 {v16.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v16.h}[5], [x3], #2\n"
         "st1 {v16.h}[6], [x3], #2\n"
         "st1 {v16.h}[7], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[0], [x3], #2\n"
         "add x4, x4, x11\n"
         "st1 {v17.h}[1], [x3], #2\n"
         "st1 {v17.h}[2], [x3], #2\n"
         "st1 {v17.h}[3], [x3], #2\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.h}[4], [x3], #2\n"
         "add x4, x4, x11\n"
@@ -2067,6 +2802,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "mov x3, %[dst_tmp_buf]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -2082,24 +2818,28 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
         "b 31f\n"
         "30:\n"
         // Yes, all of the 4x4 block fits.
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v16.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v16.s}[1], [x3], #4\n"
         "st1 {v16.s}[2], [x3], #4\n"
         "st1 {v16.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v17.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v17.s}[1], [x3], #4\n"
         "st1 {v17.s}[2], [x3], #4\n"
         "st1 {v17.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
         "st1 {v18.s}[1], [x3], #4\n"
         "st1 {v18.s}[2], [x3], #4\n"
         "st1 {v18.s}[3], [x3], #4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v19.s}[0], [x3], #4\n"
         "add x4, x4, x11\n"
@@ -2198,7 +2938,7 @@ void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params) {
 // Relevant target CPUs for this kernel include ARM Cortex-A76,
 // since these are 64-bit, out-of-order and with dotprod support.
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeonDotprod, optimized for out-of-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);
@@ -2959,20 +3699,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -2993,6 +3741,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -3125,20 +3874,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -3159,6 +3916,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "151:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -3288,20 +4046,28 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 16bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -3322,6 +4088,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "251:\n"
         "ldrsh w7, [x3, x5, lsl #1]\n"
@@ -3367,89 +4134,89 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         // Yes, all of the 8x8 block fits, go to fast path.
         "beq 330f\n"
         // Not all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        // Write to dst_tmp_buf
         "mov x3, %[dst_tmp_buf]\n"
-        "mov x4, #16\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s}, [x3], x4\n"
+        "st1 {v16.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v16)
-        "st1 {v17.4s}, [x3], x4\n"
+        "st1 {v17.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v17)
-        "st1 {v18.4s}, [x3], x4\n"
+        "st1 {v18.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v18)
-        "st1 {v19.4s}, [x3], x4\n"
+        "st1 {v19.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v19)
-        "st1 {v20.4s}, [x3], x4\n"
+        "st1 {v20.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v20)
-        "st1 {v21.4s}, [x3], x4\n"
+        "st1 {v21.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v21)
-        "st1 {v22.4s}, [x3], x4\n"
+        "st1 {v22.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v22)
-        "st1 {v23.4s}, [x3], x4\n"
+        "st1 {v23.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v23)
-        "st1 {v24.4s}, [x3], x4\n"
+        "st1 {v24.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v24)
-        "st1 {v25.4s}, [x3], x4\n"
+        "st1 {v25.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v25)
-        "st1 {v26.4s}, [x3], x4\n"
+        "st1 {v26.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v26)
-        "st1 {v27.4s}, [x3], x4\n"
+        "st1 {v27.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v27)
-        "st1 {v28.4s}, [x3], x4\n"
+        "st1 {v28.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v28)
-        "st1 {v29.4s}, [x3], x4\n"
+        "st1 {v29.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v29)
-        "st1 {v30.4s}, [x3], x4\n"
+        "st1 {v30.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v30)
-        "st1 {v31.4s}, [x3], x4\n"
+        "st1 {v31.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write directly to destination matrix.
         "mov x4, %[dst_ptr]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
         "st1 {v16.4s, v17.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v18.4s, v19.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v20.4s, v21.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v22.4s, v23.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v24.4s, v25.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v26.4s, v27.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v28.4s, v29.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "add x4, x4, x11\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov x3, x4\n"
         "st1 {v30.4s, v31.4s}, [x3], #32\n"
         RUY_MAKE_ZERO(v30)
@@ -3475,6 +4242,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "351:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -3541,6 +4309,730 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
           "v26", "v27", "v28", "v29", "v30", "v31");
 }
 
+// Similar to the above 8-bit dotprod kernel, but specialized for the case of
+// RHS cols == 1.
+// Relevant target CPUs for this kernel include ARM Cortex-A76,
+// since these are 64-bit, out-of-order and with dotprod support.
+void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params) {
+  profiler::ScopeLabel label(
+      "Kernel (kNeonDotprod, optimized for out-of-order cores)");
+
+  CheckOffsetsInKernelParams8bit(params);
+
+  const std::int8_t* lhs_col_ptr = params.lhs_base_ptr;
+  const std::int8_t* rhs_col_ptr = params.rhs_base_ptr;
+  const std::int8_t* lhs_ptr = lhs_col_ptr;
+  const std::int8_t* rhs_ptr = rhs_col_ptr;
+  void* dst_col_ptr = params.dst_base_ptr;
+  void* dst_ptr = dst_col_ptr;
+  int row = params.start_row;
+  int col = params.start_col;
+
+  // The asm kernel below has the following NEON register allocation:
+  //
+  // v16 -- v31 are int32 accumulators.
+  // During accumulation, v0 -- v15 are used to load int8 data from LHS and
+  // RHS. At least v0 and v1 are used to load a 8x4 block of LHS, and v2 and
+  // v3 are used to load a 4x8 block of RHS, like this:
+  //
+  //                            int8 RHS 4x1 block
+  //                           /-------\
+  //                           |v2.b[0]|
+  //                           |  ...  |
+  //                           |v2.b[3]|
+  //                           \-------/
+  //    int8 LHS 8x4 block
+  //  /---------------------\  /--------\
+  //  |v0.b[0]  ... v0.b[3] |  |v16.s[0]|
+  //  |  ...          ...   |  |  ...   |
+  //  |v0.b[12] ... v0.b[15]|  |v16.s[3]|
+  //  |v1.b[0]  ... v1.b[3] |  |v17.s[0]|
+  //  |  ...         ...    |  |  ...   |
+  //  |v1.b[12] ... v1.b[15]|  |v17.s[3]|
+  //  \---------------------/  \--------/
+  //                           int32 accumulators 8x1 block
+  //
+  // In the RUY_OPT_MAX_STREAMING part of the kernel, this elementary step
+  // is repeated 4 times, using 4x more registers for LHS and RHS, so that
+  // is where instead of using v0 -- v3 for LHS and RHS, we use v0 -- v15.
+  //
+  // Outside of the RUY_OPT_MAX_STREAMING part of the kernel, v4 -- v7 are
+  // unused, and v8 -- v15 are used for loading parameters used for the
+  // post-accumulation part of the kernel.
+  asm volatile(
+#define RUY_MAKE_ZERO(reg) "dup " #reg ".4s, wzr\n"
+
+        // clang-format off
+
+        // Load some parameters into registers.
+        "ldr x5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_BASE_PTR) "]\n"
+        "ldr w6, [%[params], #" RUY_STR(RUY_OFFSET_START_ROW) "]\n"
+        "ldr w7, [%[params], #" RUY_STR(RUY_OFFSET_LAST_ROW) "]\n"
+        "ldr w8, [%[params], #" RUY_STR(RUY_OFFSET_LAST_COL) "]\n"
+        "ldr w9, [%[params], #" RUY_STR(RUY_OFFSET_LHS_STRIDE) "]\n"
+        "ldr w10, [%[params], #" RUY_STR(RUY_OFFSET_RHS_STRIDE) "]\n"
+        "ldr w11, [%[params], #" RUY_STR(RUY_OFFSET_DST_STRIDE) "]\n"
+        "ldr w12, [%[params], #" RUY_STR(RUY_OFFSET_DEPTH) "]\n"
+
+        // Load the first 32 bytes of LHS and RHS data.
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]]\n"
+        "add %[rhs_ptr], %[rhs_ptr], #32\n"
+
+        // Clear accumulators.
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        // w1 is the number of levels of depth that we have already loaded
+        // LHS and RHS data for. Corresponding to the initial ld1 instructions
+        // above, this is currently 4.
+        "mov w1, #4\n"
+
+        // Perform the first few multiply-adds on the data that we have already
+        // loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+
+        // Main loop of the whole GEMM, over rows and columns of the
+        // destination matrix.
+        "1:\n"
+
+        // Ordinary kernel inner loop (over depth), the simpler loop that the
+        // above was an equivalent 4x-partially-unrolled version of.
+
+        // Reminder - w1 is how many levels of depth we have already loaded
+        // data for, w12 is the total depth.
+        "cmp w1, w12\n"
+        "beq 79f\n"
+
+        "2:\n"
+
+        // Because of the data that we have already loaded, we can start the
+        // loop body right away with some multiply-adds.
+        // Each iteration of this loop advances by 4 levels of depth.
+        "add w1, w1, #4\n"
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        ".word 0x4f82e031  // sdot v17.4s, v1.16b, v2.4b[0]\n"
+        // Loop termination condition.
+        "cmp w1, w12\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]]\n"
+        "add %[rhs_ptr], %[rhs_ptr], #32\n"
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+
+        "blt 2b\n"
+
+        "79:\n"
+        // End of the inner loop on depth. Now perform the remaining
+        // multiply-adds of the last 4 levels of depth, for which the LHS
+        // and RHS data is already loaded.
+
+        ".word 0x4f82e031  // sdot v17.4s, v1.16b, v2.4b[0]\n"
+
+        // End of accumulation. The registers v16 -- v31 contain the final
+        // int32 accumulator values of the current 8x8 destination block.
+        // We now have to compute the final 8-bit values from these int32
+        // accumulators, and advance to the next 8x8 block. We intertwine
+        // these two aspects whenever possible for optimal pipelining, both
+        // at the data flow level (prefetch data for next block as early as
+        // possible) and instruction pipelining level (some of the next-block
+        // work can dual-issue with some of the final work on the current
+        // block).
+
+        // Logic to advance to the next block in preparation for the next
+        // iteration of the main loop. For now, we only want to compute
+        // the LHS and RHS data pointers, lhs_col_ptr and rhs_col_ptr. We are
+        // not yet ready to update the values of row and col, as we still need
+        // the current values for the rest of the work on the current block.
+
+        "cmp %w[row], w7\n"  // Have we finished the last row?
+        "bge 4f\n"           // If finished last row, go to 4
+        // Not finished last row: then advance to next row.
+        "add %[lhs_col_ptr], %[lhs_col_ptr], x9, lsl #3\n"
+        "b 5f\n"
+        "4:\n"  // Finished last row...
+        "mov %[lhs_col_ptr], x5\n"  // Go back to first row
+        // Now we need to advance to the next column. If we already
+        // finished the last column, then in principle we are done, however
+        // we can't just return here, as we need to allow the end work of the
+        // current block to complete. The good news is that at this point it
+        // doesn't matter what data we load for the next column, since
+        // we will exit from the main loop below before actually storing
+        // anything computed from that data.
+        "cmp %w[col], w8\n"  // Have we finished the last column?
+        "bge 5f\n" // If yes, just carry on without updating the column pointer.
+        // Not finished last column: then advance to next column.
+        "add %[rhs_col_ptr], %[rhs_col_ptr], x10, lsl #3\n"
+        "5:\n"
+
+        // Set the LHS and RHS data pointers to the start of the columns just
+        // computed.
+        "mov %[lhs_ptr], %[lhs_col_ptr]\n"
+        "mov %[rhs_ptr], %[rhs_col_ptr]\n"
+
+        // Load some parameters needed for the end work on current block.
+        RUY_MAKE_ZERO(v8)
+        "ldr w4, [%[params], #" RUY_STR(RUY_OFFSET_DST_ZERO_POINT) "]\n"
+        "ldr w3, [%[params], #" RUY_STR(RUY_OFFSET_PROD_ZP_DEPTH) "]\n"
+        "ins v13.h[4], w4\n" // dst_zero_point
+        "ldr x4, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_FIXEDPOINT) "]\n"
+        "ldrb w6, [%[params], #" RUY_STR(RUY_OFFSET_FLAGS) "]\n"
+        "dup v9.4s, w3\n"   // create prod_zp_depth_vec
+        "add x5, x4, %x[row], lsl #2\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+        "csel x4, x4, x5, eq\n"
+
+        "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_BIAS) "]\n"
+        "add x5, x1, %x[row], lsl #2\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_BIAS) "\n"
+        "csel x1, x1, x5, eq\n"
+
+        // Load 8 bias values.
+        "ld1 {v14.4s}, [x1], #16\n"
+        "ld1 {v15.4s}, [x1]\n"
+
+        // Now that we know what LHS and RHS data the next iteration of the
+        // main loop will need to load, we start loading the first 32 bytes of
+        // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
+        // in the rest of the work on the current block.
+        "ld1 {v0.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v1.16b}, [%[lhs_ptr]], #16\n"
+        "ld1 {v2.8b}, [%[rhs_ptr]]\n"
+        "add %[rhs_ptr], %[rhs_ptr], #32\n"
+
+        // Add to the bias values the product (depth * lhs_zero_point * rhs_zero_point),
+        // See the term NZ1Z2 in equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "add v14.4s, v14.4s, v9.4s\n"
+        "add v15.4s, v15.4s, v9.4s\n"
+
+        // Perform the bias-addition (per the above, we have just folded into
+        // the bias the (depth * lhs_zero_point * rhs_zero_point) term.)
+        "add v16.4s, v16.4s, v14.4s\n"
+        "add v17.4s, v17.4s, v15.4s\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_RHS_SUMS) "\n"
+        "beq 401f\n"
+        "ldr x3, [%[params], #" RUY_STR(RUY_OFFSET_RHS_SUMS) "]\n"
+        "add x3, x3, %x[col], lsl #2\n"
+        "ld1 {v14.4s}, [x3], #16\n"
+        "ld1 {v15.4s}, [x3]\n"
+        "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_ZERO_POINT) "]\n"
+        "dup v10.4s, w5\n"  // create lhs_zero_point_vec
+        // Subtract rhs_sums * lhs_zero_point, per
+        // equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "mls v16.4s, v10.4s, v14.s[0]\n"
+        "mls v17.4s, v10.4s, v14.s[0]\n"
+        "401:\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_LHS_SUMS) "\n"
+        "beq 402f\n"
+        "ldr x2, [%[params], #" RUY_STR(RUY_OFFSET_LHS_SUMS) "]\n"
+        "add x2, x2, %x[row], lsl #2\n"
+        "ldr w5, [%[params], #" RUY_STR(RUY_OFFSET_RHS_ZERO_POINT) "]\n"
+        // Load 4 lhs_sums values.
+        "ld1 {v11.4s}, [x2], #16\n"
+        "ld1 {v12.4s}, [x2]\n"
+        "ins v13.s[1], w5\n" // rhs_zero_point
+        // Compute lhs_sums * rhs_zero_point.
+        "mul v11.4s, v11.4s, v13.s[1]\n"
+        "mul v12.4s, v12.4s, v13.s[1]\n"
+        // Subtract lhs_sums * rhs_zero_point, per
+        // equation (7) in https://arxiv.org/pdf/1712.05877.pdf
+        "sub v16.4s, v16.4s, v11.4s\n"
+        "sub v17.4s, v17.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT32) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT32) "f\n"
+
+        "402:\n"
+
+        // At this point we have computed the final int32 values. Now we
+        // start down-quantizing them to obtain the final 8bit values from them.
+
+        // As part of this down-quantization, our int32 values will be
+        // multiplied by a multiplier that has a fixed-point component and an
+        // exponent component.
+
+        //Load the exponent part of the multiplier.
+        "ldr x1, [%[params], #" RUY_STR(RUY_OFFSET_MULTIPLIER_EXPONENT) "]\n"
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_HAS_PERCHANNEL) "\n"
+        "add x5, x1, %x[row], lsl #2\n"
+        "csel x1, x1, x5, eq\n"
+
+        "ldr q9, [x1]\n"
+        "ldr q10, [x1, #16]\n"
+
+        "tst w6, #" RUY_STR(RUY_ASM_FLAG_NEEDS_LEFT_SHIFT) "\n"
+        "beq 403f\n"
+        "smax v11.4s, v9.4s, v8.4s\n"
+        "smax v12.4s, v10.4s, v8.4s\n"
+        "sshl v16.4s, v16.4s, v11.4s\n"
+        "sshl v17.4s, v17.4s, v12.4s\n"
+        "403:\n"
+
+        "ldr q14, [x4]\n" // multiplier_fixedpoint
+        "ldr q15, [x4, #16]\n" // multiplier_fixedpoint
+
+        "smin v11.4s, v9.4s, v8.4s\n"
+        "smin v12.4s, v10.4s, v8.4s\n"
+
+        // Apply the fixed-point part of the multiplier.
+        "sqrdmulh v16.4s, v16.4s, v14.4s\n"
+        "sqrdmulh v17.4s, v17.4s, v15.4s\n"
+
+        // We have some rounding division-by-power-of-two to do. This should
+        // always use "round to nearest". We allow for some
+        // freedom in how ties are broken, to strike a good compromise of
+        // performance on given hardware vs. perfect agreement of results
+        // across hardware.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is enabled, we allow for implementation
+        // defined tie-breaks to help performance. On NEON, this means that we
+        // can just use the NEON rounding instructions, such as srshl. They
+        // happen to be breaking ties upward.
+        //
+        // When RUY_OPT_NATIVE_ROUNDING is disabled, we implement strict
+        // break-ties-away-from zero, as described in Appendix B of
+        // https://arxiv.org/pdf/1712.05877.pdf
+        // When we wrote that, we thought that that would be better unbiased
+        // than the NEON upwards tie-breaks, and we had observed some
+        // improvement on some model. However, that is only more unbiased for
+        // data centered at zero, which was likely the case in that model,
+        // but is not always the case. If we wanted something more consistently
+        // unbiased then we should try breaking ties toward-nearest-even.
+#if !RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)
+        // Fix up values to be right-shifted, so that the (round to nearest,
+        // break ties upward) behavior of srshl applied to these fixed-up
+        // values, produces the same result as the desired (round to nearest,
+        // break ties away from zero) behavior on the original values.
+        "and v8.16b, v16.16b, v11.16b\n"
+        "and v9.16b, v17.16b, v12.16b\n"
+        "sshr v8.4s, v8.4s, #31\n"
+        "sshr v9.4s, v9.4s, #31\n"
+        "sqadd v16.4s, v16.4s, v8.4s\n"
+        "sqadd v17.4s, v17.4s, v9.4s\n"
+
+#endif
+        // At this point we have reduced the problem of correctly implementing
+        // rounding divide-by-power-of-two, to what the SRSHL instruction can
+        // do.
+        "srshl v16.4s, v16.4s, v11.4s\n"
+        "srshl v17.4s, v17.4s, v12.4s\n"
+
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT16) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT16) "f\n"
+        "cmp %w[dst_type_id], #" RUY_STR(RUY_ASM_TYPE_ID_INT8) "\n"
+        "beq " RUY_STR(RUY_ASM_LABEL_STORE_INT8) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_UINT8) ":\n"
+
+        // Cast-and-saturate from int32 to int16
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+        // All data in v16 at this point.
+
+        // Add the destination zero point
+        "dup v14.8h, v13.h[4]\n"
+        "add v16.8h, v16.8h, v14.8h\n"
+
+        // Cast-and-saturate from int16 to uint8, leaving all data in the
+        // lower half of v16.
+        "sqxtun v16.8b, v16.8h\n"
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrb w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrb w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.16b, w2\n"  // clamp_min
+        "dup v15.16b, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "umax v16.16b, v16.16b, v14.16b\n"
+
+        // Apply the clamp_max bound
+        "umin v16.16b, v16.16b, v15.16b\n"
+
+        // Make it so that all of the final 8bit values are stored in the
+        // first 64bits of 128bit NEON registers, so they can be stored
+        // by 64bit st1 store instructions with byte alignment.
+        "dup d20, v16.d[1]\n"
+
+        // Compute how much of the 8x1 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x1, there are some 8x1 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x1 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+
+        // Test if w1==8, i.e. if all of the 8x1 block fits.
+        "cmp w1, w3\n"
+        // Yes, all of the 8x1 block fits, go to fast path.
+        "beq 30f\n"
+        // Not all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #8\n"
+        "b 31f\n"
+        "30:\n"
+        // Yes, all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x3, %[dst_ptr]\n"
+        "mov x4, x11\n"
+        "31:\n"
+
+        // Write our 8bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8b}, [x3]\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 41f\n"
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "51:\n"
+        "ldrb w7, [x3, w5, uxtw]\n"
+        "strb w7, [x4, w5, uxtw]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 51b\n"
+        "41:\n"
+        "add %[dst_ptr], %[dst_ptr], #8\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT8) ":\n"
+
+        // Cast-and-saturate from int32 to int16
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+
+
+        // Add the destination zero point
+        "dup v14.8h, v13.h[4]\n"
+        "add v16.8h, v16.8h, v14.8h\n"
+
+        // Cast-and-saturate from int16 to uint8
+        "sqxtn v16.8b, v16.8h\n"
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrb w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrb w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.16b, w2\n"  // clamp_min
+        "dup v15.16b, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "smax v16.16b, v16.16b, v14.16b\n"
+
+        // Apply the clamp_max bound
+        "smin v16.16b, v16.16b, v15.16b\n"
+
+        // Make it so that all of the final 8bit values are stored in the
+        // first 64bits of 128bit NEON registers, so they can be stored
+        // by 64bit st1 store instructions with byte alignment.
+        "dup d20, v16.d[1]\n"
+
+        // Compute how much of the 8x1 block of destination 8bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x8, there are some 8x8 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x1 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+
+        // Test if w1==8, i.e. if all of the 8x1 block fits.
+        "cmp w1, w3\n"
+        // Yes, all of the 8x1 block fits, go to fast path.
+        "beq 130f\n"
+        // Not all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #8\n"
+        "b 131f\n"
+        "130:\n"
+        // Yes, all of the 8x8 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x3, %[dst_ptr]\n"
+        "mov x4, x11\n"
+        "131:\n"
+
+        // Write our 8bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8b}, [x3]\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 141f\n"
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "151:\n"
+        "ldrb w7, [x3, w5, uxtw]\n"
+        "strb w7, [x4, w5, uxtw]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 151b\n"
+        "141:\n"
+        "add %[dst_ptr], %[dst_ptr], #8\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT16) ":\n"
+
+        // Add the destination zero point
+        "dup v14.8h, v13.h[4]\n"
+        "saddw v16.4s, v16.4s, v14.4h\n"
+        "saddw v17.4s, v17.4s, v14.4h\n"
+
+        // Cast-and-saturate from int32 to int16
+        "sqxtn v16.4h, v16.4s\n"
+        "sqxtn2 v16.8h, v17.4s\n"
+
+        // Load the clamp_min, clamp_max bounds
+        "ldrsh w2, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MIN) "]\n"
+        "ldrsh w3, [%[params], #" RUY_STR(RUY_OFFSET_CLAMP_MAX) "]\n"
+        "dup v14.8h, w2\n"  // clamp_min
+        "dup v15.8h, w3\n"  // clamp_max
+
+        // Apply the clamp_min bound
+        "smax v16.8h, v16.8h, v14.8h\n"
+        // Apply the clamp_max bound
+        "smin v16.8h, v16.8h, v15.8h\n"
+
+        // Compute how much of the 8x1 block of destination 16bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x8, there are some 8x1 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x1 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+
+        // Test if w1==8, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        // Yes, all of the 8x1 block fits, go to fast path.
+        "beq 230f\n"
+        // Not all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #16\n"
+        "b 231f\n"
+        "230:\n"
+        // Yes, all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x3, %[dst_ptr]\n"
+        "mov x4, x11\n"
+        "231:\n"
+
+        // Write our 16bit values to the destination
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.8h}, [x3]\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+
+        // If all of the 8x1 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 241f\n"
+        // Not all of the 8x1 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "mov w5, #0\n"
+        "251:\n"
+        "ldrsh w7, [x3, x5, lsl #1]\n"
+        "strh w7, [x4, x5, lsl #1]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 251b\n"
+        "241:\n"
+        "add %[dst_ptr], %[dst_ptr], #16\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        "b " RUY_STR(RUY_ASM_LABEL_AFTER_STORE) "f\n"
+
+        RUY_STR(RUY_ASM_LABEL_STORE_INT32) ":\n"
+
+        // Since the store type is the same as the accum type, no need for
+        // downcast. There's also no need for clamp by min/max.
+
+        // Compute how much of the 8x1 block of destination 32 bit values that
+        // we have computed, fit in the destination matrix. Typically, all of
+        // it fits, but when the destination matrix shape is not a multiple
+        // of 8x1, there are some 8x1 blocks along the boundaries that do
+        // not fit entirely.
+        "sub w1, %w[dst_rows], %w[row]\n"
+        "sub w2, %w[dst_cols], %w[col]\n"
+        "mov w3, #8\n"
+        "cmp w1, #8\n"
+        // Compute w1 = how many rows of the 8x1 block fit
+        "csel w1, w1, w3, le\n"
+        "cmp w2, #8\n"
+        // Compute w1 = how many rows of the 8x8 block fit
+        "csel w2, w2, w3, le\n"
+
+        // Test if w1==8, i.e. if all of the 8x8 block fits.
+        "cmp w1, w3\n"
+        // Yes, all of the 8x1 block fits, go to fast path.
+        "beq 330f\n"
+        // Not all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, #16\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+        "st1 {v16.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+        "st1 {v17.4s}, [x3], x4\n"
+        RUY_MAKE_ZERO(v17)
+
+        "b 331f\n"
+
+        "330:\n"
+        // Yes, all of the 8x1 block fits.
+        // Set (x3 address, x4 stride) to write directly to destination matrix.
+        "mov x4, %[dst_ptr]\n"
+        "mov x3, x4\n"
+
+        // Write our 32bit values to the destination described by
+        // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_MAKE_ZERO(v16)
+        RUY_MAKE_ZERO(v17)
+
+        "331:\n"
+
+        // For the next block: perform the first few multiply-adds on the data
+        // that we have already loaded.
+        ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+
+        // If all of the 8x8 block fits, we just finished writing it to the
+        // destination, so we skip the next part.
+        "beq 341f\n"
+
+        // Not all of the 8x8 block fits in the destination matrix.  We just
+        // wrote it to dst_tmp_buf. Now we perform the slow scalar loop over
+        // it to copy into the destination matrix the part that fits.
+        "mov x3, %[dst_tmp_buf]\n"
+        "mov x4, %[dst_ptr]\n"
+        "mov w6, #0\n"
+        "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
+        "mov w5, #0\n"
+        "351:\n"
+        "ldr w7, [x3, x5, lsl #2]\n"
+        "str w7, [x4, x5, lsl #2]\n"
+        "add w5, w5, #1\n"
+        "cmp w5, w1\n"
+        "blt 351b\n"
+        "341:\n"
+        "add %[dst_ptr], %[dst_ptr], #32\n"
+        // At this point we have completely finished writing values to the
+        // destination matrix for the current block.
+
+        RUY_STR(RUY_ASM_LABEL_AFTER_STORE) ":\n"
+
+        // Reload some params --- we had used x5 -- x7 for a few other things
+        // since the last time we had loaded them.
+        "ldr x5, [%[params], #" RUY_STR(RUY_OFFSET_LHS_BASE_PTR) "]\n"
+        "ldr w6, [%[params], #" RUY_STR(RUY_OFFSET_START_ROW) "]\n"
+        "ldr w7, [%[params], #" RUY_STR(RUY_OFFSET_LAST_ROW) "]\n"
+
+        // Move to the next block of the destination matrix, for the next iter
+        // of the main loop.  Notice that lhs_col_ptr, rhs_col_ptr have already
+        // been updated earlier.
+        // Have we reached the end row?
+        "cmp %w[row], w7\n"
+        "beq 20f\n"  // yes, end row.
+        // Not end row. Move to the next row.
+        "add %w[row], %w[row], #8\n"
+        "b 21f\n"
+        "20:\n"
+        // Was already at end row.
+        "mov %w[row], w6\n"  // Move back to first row.
+        "add %w[col], %w[col], #8\n"  // Move to the next column.
+        "add %[dst_col_ptr], %[dst_col_ptr], x11, lsl #3\n"
+        "mov %[dst_ptr], %[dst_col_ptr]\n"
+        "21:\n"
+
+        // Main loop exit condition: have we hit the end column?
+        "cmp %w[col], w8\n"
+
+        // w1 is the number of levels of depth that we have already loaded
+        // LHS and RHS data for. Corresponding to the initial ld1 instructions
+        // above, this is currently 4.
+        "mov w1, #4\n"
+
+        "ble 1b\n"
+
+        // clang-format on
+
+        : [ lhs_col_ptr ] "+r"(lhs_col_ptr), [rhs_col_ptr] "+r"(rhs_col_ptr),
+          [lhs_ptr] "+r"(lhs_ptr), [rhs_ptr] "+r"(rhs_ptr),
+          [dst_col_ptr] "+r"(dst_col_ptr), [dst_ptr] "+r"(dst_ptr), [row] "+r"(row), [col] "+r"(col)
+        : [ params ] "r"(&params), [dst_rows] "r"(params.dst_rows),
+          [dst_cols] "r"(params.dst_cols), [dst_tmp_buf] "r"(params.dst_tmp_buf),
+          [dst_type_id] "r"(params.dst_type_id)
+        : "x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12", "x13", "cc",
+          "memory", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v10", "v11", "v12",
+          "v13", "v14", "v15", "v16", "v17");
+}
+
 // Variant of the above Kernel8bitNeonDotprodOutOfOrder, tuned for in-order
 // CPUs. Specifically here, the relevant in-order CPUs are ARM Cortex-A55r1,
 // since these are 64-bit and support dotprod.
@@ -3551,7 +5043,7 @@ void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params) {
 // comments. Specifically, see this comment about tuning for Cortex-A55r1:
 // https://github.com/google/gemmlowp/blob/36212ad3651871bc3e9a599f1a6d5324778aea25/standalone/neon-gemm-kernel-benchmark.cc#L4412
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeonDotprod, optimized for in-order cores)");
 
   CheckOffsetsInKernelParams8bit(params);
@@ -4151,26 +5643,34 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -4184,6 +5684,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -4316,26 +5817,34 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
         // For the next block: perform the first few multiply-adds on the data
         // that we have already loaded.
         ".word 0x4f82e010  // sdot v16.4s, v0.16b, v2.4b[0]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
         ".word 0x4f82e814  // sdot v20.4s, v0.16b, v2.4b[2]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
         ".word 0x4fa2e012  // sdot v18.4s, v0.16b, v2.4b[1]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
         ".word 0x4fa2e816  // sdot v22.4s, v0.16b, v2.4b[3]\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8b}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -4349,6 +5858,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "150:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "151:\n"
         "ldrb w7, [x3, w5, uxtw]\n"
@@ -4479,20 +5989,28 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v16.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v16)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v17.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v17)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v18.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v18)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v19.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v19)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v20.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v20)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v21.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v21)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v22.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v22)
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "st1 {v23.8h}, [x3], x4\n"
         RUY_MAKE_ZERO(v23)
 
@@ -4513,6 +6031,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "250:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "251:\n"
         "ldrsh w7, [x3, x5, lsl #1]\n"
@@ -4571,91 +6090,76 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         // Yes, all of the 8x8 block fits, go to fast path.
         "beq 330f\n"
         // Not all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write to dst_tmp_buf
+        // Write to dst_tmp_buf
         "mov x3, %[dst_tmp_buf]\n"
-        "mov x4, #16\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s}, [x3], x4\n"
+        "st1 {v16.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v16)
-        "st1 {v17.4s}, [x3], x4\n"
+        "st1 {v17.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v17)
-        "st1 {v18.4s}, [x3], x4\n"
+        "st1 {v18.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v18)
-        "st1 {v19.4s}, [x3], x4\n"
+        "st1 {v19.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v19)
-        "st1 {v20.4s}, [x3], x4\n"
+        "st1 {v20.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v20)
-        "st1 {v21.4s}, [x3], x4\n"
+        "st1 {v21.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v21)
-        "st1 {v22.4s}, [x3], x4\n"
+        "st1 {v22.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v22)
-        "st1 {v23.4s}, [x3], x4\n"
+        "st1 {v23.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v23)
-        "st1 {v24.4s}, [x3], x4\n"
+        "st1 {v24.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v24)
-        "st1 {v25.4s}, [x3], x4\n"
+        "st1 {v25.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v25)
-        "st1 {v26.4s}, [x3], x4\n"
+        "st1 {v26.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v26)
-        "st1 {v27.4s}, [x3], x4\n"
+        "st1 {v27.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v27)
-        "st1 {v28.4s}, [x3], x4\n"
+        "st1 {v28.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v28)
-        "st1 {v29.4s}, [x3], x4\n"
+        "st1 {v29.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v29)
-        "st1 {v30.4s}, [x3], x4\n"
+        "st1 {v30.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v30)
-        "st1 {v31.4s}, [x3], x4\n"
+        "st1 {v31.4s}, [x3], #16\n"
         RUY_MAKE_ZERO(v31)
 
         "b 331f\n"
 
         "330:\n"
         // Yes, all of the 8x8 block fits.
-        // Set (x3 address, x4 stride) to write directly to destination matrix.
         "mov x4, %[dst_ptr]\n"
-        "mov x3, x4\n"
-
-        // Write our 32bit values to the destination described by
-        // (x3 address, x4 stride).
-        "st1 {v16.4s, v17.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v16.4s, v17.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v18.4s, v19.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v18.4s, v19.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v20.4s, v21.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v20.4s, v21.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v22.4s, v23.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v22.4s, v23.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v24.4s, v25.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v24.4s, v25.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v26.4s, v27.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v26.4s, v27.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v28.4s, v29.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v28.4s, v29.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
-        "add x4, x4, x11\n"
-        "mov x3, x4\n"
-        "st1 {v30.4s, v31.4s}, [x3], #32\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
+        "st1 {v30.4s, v31.4s}, [x4], x11\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -4679,6 +6183,7 @@ void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "350:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "351:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -4810,7 +6315,7 @@ void CheckOffsetsInKernelParamsFloat(const Params&) {
 // and we don't have evidence that going beyond 8x8 is needed.
 void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
   CheckOffsetsInKernelParamsFloat(params);
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeon, optimized for out-of-order cores)");
 
   const float* lhs_col_ptr = params.lhs_base_ptr;
@@ -5280,44 +6785,51 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -5331,6 +6843,7 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -5408,8 +6921,7 @@ void KernelFloatNeonOutOfOrder(const KernelParamsFloat<8, 8>& params) {
 // comments. Specifically, see this comment about tuning for Cortex-A53:
 // https://github.com/google/gemmlowp/blob/36212ad3651871bc3e9a599f1a6d5324778aea25/standalone/neon-gemm-kernel-benchmark.cc#L4215
 void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label(
-      "Kernel (kNeon, optimized for in-order cores)");
+  profiler::ScopeLabel label("Kernel (kNeon, optimized for in-order cores)");
 
   CheckOffsetsInKernelParamsFloat(params);
 
@@ -5474,21 +6986,21 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         RUY_MAKE_ZERO(v19)
         "ld1 {v3.4s}, [%[rhs_ptr]], #16\n"
         RUY_MAKE_ZERO(v20)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v21)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v22)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v23)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v24)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v25)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v26)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v27)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         RUY_MAKE_ZERO(v30)
@@ -5542,9 +7054,9 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v18.4s, v0.4s, v4.s[1]\n"
         "fmla v20.4s, v0.4s, v4.s[2]\n"
         "ins v1.d[1], x3\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         "mov v2.16b, v4.16b\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         "fmla v22.4s, v0.4s, v4.s[3]\n"
         "bne 2b\n"
 
@@ -5727,44 +7239,51 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -5778,6 +7297,7 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"
@@ -5854,7 +7374,7 @@ void KernelFloatNeonInOrder(const KernelParamsFloat<8, 8>& params) {
 // comments. Specifically, see this comment about tuning for Cortex-A55r1:
 // https://github.com/google/gemmlowp/blob/36212ad3651871bc3e9a599f1a6d5324778aea25/standalone/neon-gemm-kernel-benchmark.cc#L4412
 void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label(
+  profiler::ScopeLabel label(
       "Kernel (kNeonDotprod, optimized for in-order cores)");
 
   CheckOffsetsInKernelParamsFloat(params);
@@ -5920,21 +7440,21 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         RUY_MAKE_ZERO(v19)
         "ld1 {v3.4s}, [%[rhs_ptr]], #16\n"
         RUY_MAKE_ZERO(v20)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v21)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #64]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #64]\n")
         RUY_MAKE_ZERO(v22)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v23)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #128]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #128]\n")
         RUY_MAKE_ZERO(v24)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v25)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #192]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #192]\n")
         RUY_MAKE_ZERO(v26)
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v27)
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         RUY_MAKE_ZERO(v30)
@@ -5960,7 +7480,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 
         "2:\n"
 
-        RUY_PREFETCH("prfm pldl1keep, [%[lhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[lhs_ptr], #256]\n")
         "fmla v24.4s, v0.4s, v3.s[0]\n"
         "ldr x2, [%[lhs_ptr], #8]\n"
         "fmla v26.4s, v0.4s, v3.s[1]\n"
@@ -5984,7 +7504,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         "fmla v21.4s, v1.4s, v2.s[2]\n"
         "ins v4.d[1], x4\n"
         "fmla v23.4s, v1.4s, v2.s[3]\n"
-        RUY_PREFETCH("prfm pldl1keep, [%[rhs_ptr], #256]\n")
+        RUY_PREFETCH_LOAD("prfm pldl1keep, [%[rhs_ptr], #256]\n")
         "fmla v16.4s, v0.4s, v4.s[0]\n"
         "ldr d1, [%[lhs_ptr], #-16]\n"
         "fmla v18.4s, v0.4s, v4.s[1]\n"
@@ -6173,44 +7693,51 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
 
         // Write our 8bit values to the destination described by
         // (x3 address, x4 stride).
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         "str q16, [x3, #0]\n"
         "str q17, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v16)
         RUY_MAKE_ZERO(v17)
         "str q18, [x3, #0]\n"
         "str q19, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v18)
         RUY_MAKE_ZERO(v19)
         "str q20, [x3, #0]\n"
         "str q21, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v20)
         RUY_MAKE_ZERO(v21)
         "str q22, [x3, #0]\n"
         "str q23, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v22)
         RUY_MAKE_ZERO(v23)
         "str q24, [x3, #0]\n"
         "str q25, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v24)
         RUY_MAKE_ZERO(v25)
         "str q26, [x3, #0]\n"
         "str q27, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v26)
         RUY_MAKE_ZERO(v27)
         "str q28, [x3, #0]\n"
         "str q29, [x3, #16]\n"
         "add x3, x3, x4\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x3]\n")
         RUY_MAKE_ZERO(v28)
         RUY_MAKE_ZERO(v29)
         "str q30, [x3, #0]\n"
         "str q31, [x3, #16]\n"
-        "add x3, x3, x4\n"
         RUY_MAKE_ZERO(v30)
         RUY_MAKE_ZERO(v31)
 
@@ -6224,6 +7751,7 @@ void KernelFloatNeonDotprodInOrder(const KernelParamsFloat<8, 8>& params) {
         "mov x4, %[dst_ptr]\n"
         "mov w6, #0\n"
         "50:\n"
+        RUY_PREFETCH_STORE("prfm pstl1strm, [x4]\n")
         "mov w5, #0\n"
         "51:\n"
         "ldr w7, [x3, x5, lsl #2]\n"

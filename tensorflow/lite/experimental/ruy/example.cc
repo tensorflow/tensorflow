@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdint>
 #include <iostream>
 
 #include "tensorflow/lite/experimental/ruy/ruy.h"
@@ -89,6 +90,7 @@ void ExampleMulUint8AsymmetricQuantized(ruy::Context *context) {
 
   ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
   spec.multiplier_fixedpoint = 1 << 30;
+
   spec.multiplier_exponent = 0;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);
 
@@ -114,7 +116,7 @@ void ExampleMulInt8PerChannelQuantized(ruy::Context *context) {
   ruy::MakeSimpleLayout(2, 2, ruy::Order::kColMajor, &dst.layout);
   dst.data = dst_data;
 
-  ruy::BasicSpec<std::int32_t, std::uint8_t> spec;
+  ruy::BasicSpec<std::int32_t, std::int8_t> spec;
   spec.multiplier_fixedpoint_perchannel = multiplier_data;
   spec.multiplier_exponent_perchannel = exponent_data;
   ruy::Mul<ruy::kAllPaths>(lhs, rhs, spec, context, &dst);

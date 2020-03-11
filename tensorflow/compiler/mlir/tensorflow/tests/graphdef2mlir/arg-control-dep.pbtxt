@@ -40,7 +40,8 @@ library {
       }
     }
     # Drop the control dependency on arg for the node "test"
-    # CHECK:   %0:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "test", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
+    # CHECK-LABEL: func @foo
+    # CHECK: tf_executor.island wraps "tf.Const"()
     node_def {
       name: "test"
       op: "Const"

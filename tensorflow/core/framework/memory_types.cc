@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -97,6 +99,11 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   inp_mtypes->clear();
   out_mtypes->clear();
 
+  bool has_xla_compile = [&] {
+    const auto& it = ndef.attr().find(kXlaMustCompileAttr);
+    return it != ndef.attr().end() && it->second.b();
+  }();
+
   // For functions (which have no KernelDef) and their gradients, we can only
   // best-effort derive the memory type from the data type. For now, we assume
   // int32 is always on host memory and other types are always on device memory.
@@ -104,7 +111,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   // to derive the correct input/output memory types. We should also split
   // host-memory and non host-memory arguments into separate type lists.
   if (!status.ok() || IsFunctionCallOp(ndef.op())) {
-    if (device_type.type_string() == "TPU") {
+    if (device_type.type_string() == "TPU" || has_xla_compile) {
       // Here we assume that if tf.function() is called within
       // "with tf.device('/device:TPU:0')", the whole function will be compiled
       // and executed on TPU. This is true today, but when we implement auto
@@ -156,14 +163,14 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
   }
 
   std::vector<int32> hostmem_attr;
-  if (GetNodeAttr(ndef, "_input_hostmem", &hostmem_attr).ok()) {
+  if (TryGetNodeAttr(ndef, "_input_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < inp_mtypes->size()) {
         (*inp_mtypes)[i] = HOST_MEMORY;
       }
     }
   }
-  if (GetNodeAttr(ndef, "_output_hostmem", &hostmem_attr).ok()) {
+  if (TryGetNodeAttr(ndef, "_output_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < out_mtypes->size()) {
         (*out_mtypes)[i] = HOST_MEMORY;

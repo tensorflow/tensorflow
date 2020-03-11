@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,10 @@ ARG UBUNTU_VERSION=18.04
 
 FROM ubuntu:${UBUNTU_VERSION} as base
 
+RUN apt-get update && apt-get install -y curl
+
 ARG USE_PYTHON_3_NOT_2
+# TODO(angerson) Completely remove Python 2 support
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -40,7 +43,7 @@ RUN ${PIP} --no-cache-dir install --upgrade \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 
 # Options:
 #   tensorflow
@@ -48,7 +51,7 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 #   tf-nightly
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
-RUN apt-get update && apt-get install -y wget libhdf5-dev
+RUN apt-get update && apt-get install -y curl libhdf5-dev wget
 RUN ${PIP} install --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
@@ -75,15 +78,23 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN if [[ "${USE_PYTHON_3_NOT_2}" == "1" ]]; then ${PIP} install ipykernel==5.1.1 nbformat==4.4.0; fi
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
 RUN apt-get install -y --no-install-recommends wget
+# some examples require git to fetch dependencies
+RUN apt-get install -y --no-install-recommends git
 WORKDIR /tf/tensorflow-tutorials
-RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_classification.ipynb
-RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_text_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/regression.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/save_and_load.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/text_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/text_classification_with_hub.ipynb
 COPY readme-for-jupyter.md README.md
 RUN apt-get autoremove -y && apt-get remove -y wget
 WORKDIR /tf

@@ -33,6 +33,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -113,7 +115,9 @@ def _embedding_lookup_and_transform(params,
   Raises:
     ValueError: If `params` is empty.
   """
-  if params is None or params in ((), []):
+  if params is None:
+    raise ValueError("params must be specified")
+  if isinstance(params, (list, tuple)) and not params:
     raise ValueError("Need at least one param")
   if isinstance(params, variables.PartitionedVariable):
     params = list(params)  # Iterate to get the underlying Variables.
@@ -133,7 +137,7 @@ def _embedding_lookup_and_transform(params,
             array_ops.gather(params[0], ids, name=name), ids, max_norm)
         if transform_fn:
           result = transform_fn(result)
-      # Make sure the final result does not have colocation contraints on the
+      # Make sure the final result does not have colocation constraints on the
       # params. Similar to the case np > 1 where parallel_dynamic_stitch is
       # outside the scioe of all with ops.colocate_with(params[p]).
       return array_ops.identity(result)
@@ -204,7 +208,7 @@ def _embedding_lookup_and_transform(params,
           if transform_fn:
             # If transform_fn is provided, the clip_by_norm precedes
             # the transform and hence must be co-located. See below
-            # for the counterpart if transform_fn is not proveded.
+            # for the counterpart if transform_fn is not provided.
             result = transform_fn(_clip(result, pids, max_norm))
         partitioned_result.append(result)
       # Stitch these back together
@@ -255,13 +259,11 @@ def embedding_lookup(
     max_norm=None):
   """Looks up `ids` in a list of embedding tensors.
 
-  This function is used to perform parallel lookups on the list of
-  tensors in `params`.  It is a generalization of
-  `tf.gather`, where `params` is
+  This function is used to perform parallel lookups on the list of tensors in
+  `params`.  It is a generalization of `tf.gather`, where `params` is
   interpreted as a partitioning of a large embedding tensor.  `params` may be
   a `PartitionedVariable` as returned by using `tf.compat.v1.get_variable()`
-  with a
-  partitioner.
+  with a partitioner.
 
   If `len(params) > 1`, each element `id` of `ids` is partitioned between
   the elements of `params` according to the `partition_strategy`.
@@ -278,6 +280,8 @@ def embedding_lookup(
   contiguous manner. In this case, 13 ids are split across 5 partitions as:
   `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`
 
+  If the input ids are ragged tensors, partition variables are not supported and
+  the partition strategy and the max_norm are ignored.
   The results of the lookup are concatenated into a dense
   tensor. The returned tensor has shape `shape(ids) + shape(params)[1:]`.
 
@@ -287,8 +291,8 @@ def embedding_lookup(
       representing sharded embedding tensors.  Alternatively, a
       `PartitionedVariable`, created by partitioning along dimension 0. Each
       element must be appropriately sized for the given `partition_strategy`.
-    ids: A `Tensor` with type `int32` or `int64` containing the ids to be looked
-      up in `params`.
+    ids: A `Tensor` or a 'RaggedTensor' with type `int32` or `int64` containing
+      the ids to be looked up in `params`.
     partition_strategy: A string specifying the partitioning strategy, relevant
       if `len(params) > 1`. Currently `"div"` and `"mod"` are supported. Default
       is `"mod"`.
@@ -301,11 +305,18 @@ def embedding_lookup(
       than this value.
 
   Returns:
-    A `Tensor` with the same type as the tensors in `params`.
+    A `Tensor` or a 'RaggedTensor', depending on the input, with the same type
+    as the tensors in `params`.
 
   Raises:
     ValueError: If `params` is empty.
   """
+  if isinstance(ids, ragged_tensor.RaggedTensor):
+    return embedding_lookup_ragged(params, ids,
+                                   partition_strategy=partition_strategy,
+                                   max_norm=max_norm,
+                                   name=name)
+
   return _embedding_lookup_and_transform(
       params=params,
       ids=ids,
@@ -510,13 +521,13 @@ def embedding_lookup_sparse(params,
       elif combiner == "mean":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weight_sum = math_ops.segment_sum(weights, segment_ids)
-        embeddings = math_ops.div(embeddings, weight_sum, name=name)
+        embeddings = math_ops.divide(embeddings, weight_sum, name=name)
       elif combiner == "sqrtn":
         embeddings = math_ops.segment_sum(embeddings, segment_ids)
         weights_squared = math_ops.pow(weights, 2)
         weight_sum = math_ops.segment_sum(weights_squared, segment_ids)
         weight_sum_sqrt = math_ops.sqrt(weight_sum)
-        embeddings = math_ops.div(embeddings, weight_sum_sqrt, name=name)
+        embeddings = math_ops.divide(embeddings, weight_sum_sqrt, name=name)
       else:
         assert False, "Unrecognized combiner"
     else:
@@ -813,6 +824,52 @@ def safe_embedding_lookup_sparse(embedding_weights,
             (tensor_shape.Dimension(original_rank_dim) - 1).value).concatenate(
                 result.get_shape()[1:]))
     return final_result
+
+
+def embedding_lookup_ragged(embedding_weights,
+                            ragged_ids,
+                            partition_strategy="mod",
+                            max_norm=None,
+                            name=None):
+  """Look up the ragged ids in a list of embedding tensors.
+
+  Args:
+    embedding_weights: A tensor representing the complete embedding tensor
+      having the shape [e1, ...eM]
+    ragged_ids: A 'RaggedTensor' with type 'int32' or 'int64' containing the ids
+      to be looked up in 'embedding_weights' of shape [r0, ..rN]. Values must be
+      in the range '[0, embedding_weights.shape[0]]'.
+    partition_strategy: A string specifying the partitioning strategy.
+    max_norm: If not `None`, each embedding is clipped if its l2-norm is larger
+      than this value.
+    name: A name for the operation (optional)
+
+  Returns:
+    A ragged tensor of shape [r0, r1, ...rN, e1, ...eM].
+
+  Raises:
+    ValueError: whether the embedding_weights is empty or the ragged_ids is
+    not a RaggedTensor.
+  """
+  if embedding_weights is None:
+    raise ValueError("The embedding weights must be specified.")
+  if isinstance(embedding_weights, (list, tuple)) and not embedding_weights:
+    raise ValueError("The embedding weights should not be empty.")
+  if ragged_ids.dtype != dtypes.int32 and ragged_ids.dtype != dtypes.int64:
+    raise ValueError("The values contained by the inputs have type " +
+                     str(ragged_ids.dtype) +
+                     " and cannot be processed. All values"
+                     " should be indices, either of type `in32` or `int64`.")
+
+  with ops.name_scope(name, "embedding_lookup_ragged") as name:
+    looked_up_ragged = ragged_functional_ops.map_flat_values(
+        embedding_lookup,
+        params=embedding_weights,
+        ids=ragged_ids,
+        partition_strategy=partition_strategy,
+        max_norm=max_norm)
+
+    return looked_up_ragged
 
 
 def _prune_invalid_ids(sparse_ids, sparse_weights):

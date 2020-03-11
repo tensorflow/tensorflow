@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import importer
@@ -29,6 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import quantize_training
 from tensorflow.python.training import saver as saver_module
 
 
@@ -45,7 +45,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
       self.assertEquals(c.eval(), 42.0)
       self.assertEquals(len(sess.graph_def.node), 3)
 
-      result = pywrap_tensorflow.do_quantize_training_on_graphdef(
+      result = quantize_training.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
       # We just want to guarantee that some rewrite happened.
@@ -68,7 +68,7 @@ class PywrapQuantizeTrainingTest(test.TestCase):
 
       saver = saver_module.Saver({'b': b})
 
-      result = pywrap_tensorflow.do_quantize_training_on_graphdef(
+      result = quantize_training.do_quantize_training_on_graphdef(
           sess.graph_def, 8)
 
     with ops.Graph().as_default() as g, session.Session(graph=g) as sess:

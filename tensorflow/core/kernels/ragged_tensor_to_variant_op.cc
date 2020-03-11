@@ -152,7 +152,6 @@ class RaggedTensorToVariantOp : public OpKernel {
     OP_REQUIRES_OK(context, context->input_list("rt_nested_splits",
                                                 &ragged_nested_splits_in));
     const int ragged_nested_splits_len = ragged_nested_splits_in.size();
-    DCHECK_GT(ragged_nested_splits_len, 0);  // Enforced by REGISTER_OP.
     RaggedTensor batched_ragged_input;
     // Read ragged_values input.
     batched_ragged_input.values = context->input(ragged_nested_splits_len);
@@ -210,7 +209,7 @@ class RaggedTensorToVariantOp : public OpKernel {
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
-TF_CALL_string(REGISTER_KERNELS);
+TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_qint16(REGISTER_KERNELS);

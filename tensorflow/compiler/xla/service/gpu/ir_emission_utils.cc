@@ -16,8 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 
 #include <algorithm>
+#include <array>
 #include <vector>
 
+#include "llvm/IR/IntrinsicsNVPTX.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_util.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -68,22 +71,17 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 // the dimensions more major then the given dimensions, minor is the size of
 // dimensions more minor then the given dimensions, and middle is the size of
 // the given dimensions.
-std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
-    const Shape& shape, DimensionVector dims_middle) {
+std::array<int64, 3> PartitionShapeByMiddleDimensions(
+    const Shape& shape, absl::Span<const int64> dims_middle) {
   CHECK(LayoutUtil::AreDimensionsConsecutive(shape.layout(), dims_middle));
-
-  absl::Span<const int64> minor_to_major = LayoutUtil::MinorToMajor(shape);
-  int64 values[3] = {1, 1, 1};
+  std::array<int64, 3> values = {1, 1, 1};
   enum Segment { kMajor = 0, kMiddle = 1, kMinor = 2 };
   Segment cur_segment = kMinor;
 
-  // Iterate through the dimensions for the three segments in the order of
-  // minor, middle and major to accumulate the size of each segment.
-  absl::c_for_each(minor_to_major, [&](int64 cur_dim) {
+  for (int64 cur_dim : LayoutUtil::MinorToMajor(shape)) {
     if (cur_segment != kMajor) {
       // Handle change of segments.
-      bool cur_dim_in_middle = absl::c_any_of(
-          dims_middle, [&](int64 dim) { return dim == cur_dim; });
+      bool cur_dim_in_middle = absl::c_linear_search(dims_middle, cur_dim);
       if (cur_segment == kMinor) {
         if (cur_dim_in_middle) {
           cur_segment = kMiddle;
@@ -94,11 +92,9 @@ std::tuple<int64, int64, int64> PartitionShapeByMiddleDimensions(
         }
       }
     }
-
     values[cur_segment] *= shape.dimensions(cur_dim);
-  });
-
-  return std::make_tuple(values[kMajor], values[kMiddle], values[kMinor]);
+  }
+  return values;
 }
 
 }  // namespace
@@ -128,6 +124,37 @@ bool IsMatrixMultiplication(const HloInstruction& dot) {
 bool IsCublasGemm(const HloInstruction& hlo) {
   return hlo.opcode() == HloOpcode::kCustomCall &&
          hlo.custom_call_target() == kGemmCallTarget;
+}
+
+std::array<int64, 3> GetReductionTiling(
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    const stream_executor::DeviceDescription* device_description) {
+  if (reduction_dimensions.is_row_reduction) {
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
+    if (reduction_dimensions.dimensions[1] == 1) {
+      CHECK_EQ(reduction_dimensions.dimensions[0], 1);
+      return {tile_z, 1, 16};
+    }
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
+      return {tile_z, 1, 64};
+    }
+    int cc_major = 0, cc_minor = 0;
+    if (device_description != nullptr) {
+      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    }
+    int unroll_x = 8;
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+      unroll_x = 16;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
+    }
+    return {tile_z, 1, unroll_x};
+  }
+
+  // Column reduction.
+  return {1, 128, 1};
 }
 
 const char* const kCudnnBatchNormForwardInferenceCallTarget =
@@ -206,27 +233,51 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
     return false;
   }
 
-  bool is_row_reduction;
-  DimensionVector dims_in_elem;
-  std::tie(is_row_reduction, dims_in_elem) =
-      GetReductionKindAndContiguousComponents(input->shape(),
-                                              reduce.dimensions());
+  ReductionDimensions reduction_dimensions =
+      GetReductionKindAndContiguousComponents(reduce);
 
-  if (is_row_reduction) {
+  if (reduction_dimensions.is_row_reduction) {
     // For row reduction, the tile block is 1 x tile_size_x, and we are reducing
     // along tile_size_x which needs to be large enough to make the tiling
     // implementation efficient.
-    return dims_in_elem[2] >= kWarpSize;
+    return reduction_dimensions.dimensions[2] >= kWarpSize;
   }
 
-  // For column reduction, the tile block is tize_size_y x tile_size_x, and we
-  // are reducing along tile_size_y. Both tile_size_x and tile_size_y need to be
+  // For column reduction, the tile block is tile_size_y x tile_size_x, and we
+  // are reducing along tile_size_y. Only tile_size_y needs to be
   // large enough to make the tiling implementation efficient.
-  return dims_in_elem[2] >= kWarpSize && dims_in_elem[1] >= kWarpSize;
+  return reduction_dimensions.dimensions[1] >= kWarpSize;
 }
 
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
-    const Shape& input_shape, absl::Span<const int64> dims_to_reduce) {
+bool IsInputFusibleSlices(const HloInstruction& unnested_hlo,
+                          bool verify_no_strides) {
+  if (!unnested_hlo.IsInputFusion()) {
+    return false;
+  }
+
+  auto is_non_strided = [](const std::vector<int64>& strides) -> bool {
+    return absl::c_all_of(strides, [](int stride) { return stride == 1; });
+  };
+
+  const HloInstruction* root = unnested_hlo.fused_expression_root();
+  if (root->opcode() == HloOpcode::kSlice) {
+    return !verify_no_strides || is_non_strided(root->slice_strides());
+  }
+
+  if (root->opcode() != HloOpcode::kTuple) {
+    return false;
+  }
+
+  return absl::c_all_of(root->operands(), [&](const HloInstruction* instr) {
+    return instr->opcode() == HloOpcode::kSlice &&
+           (!verify_no_strides || is_non_strided(instr->slice_strides()));
+  });
+}
+
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    const HloInstruction& reduce) {
+  const Shape& input_shape = reduce.operand(0)->shape();
+  absl::Span<const int64> dims_to_reduce = reduce.dimensions();
   DimensionVector dims_to_keep;
   for (int64 dim = 0; dim < input_shape.rank(); ++dim) {
     if (!absl::c_linear_search(dims_to_reduce, dim)) {
@@ -235,38 +286,33 @@ std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
   }
 
   if (dims_to_keep.empty()) {
-    return std::make_pair(
-        true, DimensionVector{1, 1, ShapeUtil::ElementsIn(input_shape)});
+    return {/*is_row_reduction=*/true,
+            {1, 1, ShapeUtil::ElementsIn(input_shape)}};
   }
 
   if (LayoutUtil::AreDimensionsConsecutive(input_shape.layout(),
                                            dims_to_keep)) {
-    int64 num_reduced_major = 1, num_kept = 1, num_reduced_minor = 1;
-    std::tie(num_reduced_major, num_kept, num_reduced_minor) =
+    std::array<int64, 3> shape_partition =
         PartitionShapeByMiddleDimensions(input_shape, dims_to_keep);
-    if (num_kept == 1) {
-      return std::make_pair(
-          true, DimensionVector{1, 1, num_reduced_minor * num_reduced_major});
+    if (shape_partition[1] == 1) {
+      return {/*is_row_reduction=*/true,
+              {1, 1, shape_partition[0] * shape_partition[2]}};
     }
-    if (num_reduced_minor == 1) {
-      return std::make_pair(false,
-                            DimensionVector{1, num_reduced_major, num_kept});
+    if (shape_partition[2] == 1) {
+      return {/*is_row_reduction=*/false,
+              {1, shape_partition[0], shape_partition[1]}};
     }
-    return std::make_pair(
-        true, DimensionVector{num_reduced_major, num_kept, num_reduced_minor});
+    return {/*is_row_reduction=*/true, shape_partition};
   }
 
-  int64 num_kept_major = 1, num_reduced = 1, num_kept_minor = 1;
-  std::tie(num_kept_major, num_reduced, num_kept_minor) =
-      PartitionShapeByMiddleDimensions(
-          input_shape,
-          DimensionVector(dims_to_reduce.begin(), dims_to_reduce.end()));
-  if (num_kept_minor == 1) {
-    return std::make_pair(true,
-                          DimensionVector{1, num_kept_major, num_reduced});
+  std::array<int64, 3> shape_partition =
+      PartitionShapeByMiddleDimensions(input_shape, dims_to_reduce);
+
+  if (shape_partition[2] == 1) {
+    return {/*is_row_reduction=*/true,
+            {1, shape_partition[0], shape_partition[1]}};
   }
-  return std::make_pair(
-      false, DimensionVector{num_kept_major, num_reduced, num_kept_minor});
+  return {/*is_row_reduction=*/false, shape_partition};
 }
 
 // This emits a device-side call to
@@ -276,26 +322,52 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
+
+  // Variadic arguments implicit promotion [1] converts float to double,
+  // and bool/char/short are converted to int.
+  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
+  auto requires_int32_promotion = [](llvm::Type* type) {
+    return type->isIntegerTy(/*BitWidth=*/1) ||
+           type->isIntegerTy(/*BitWidth=*/8) ||
+           type->isIntegerTy(/*BitWidth=*/16);
+  };
+  auto requires_double_promotion = [](llvm::Type* type) {
+    return type->isFloatingPointTy();
+  };
+
   for (auto argument : arguments) {
-    argument_types.push_back(argument->getType());
+    llvm::Type* type = argument->getType();
+    if (requires_double_promotion(type)) {
+      argument_types.push_back(builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      argument_types.push_back(builder->getInt32Ty());
+    } else {
+      argument_types.push_back(type);
+    }
   }
   auto* arguments_type = llvm::StructType::create(argument_types);
   llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
   for (size_t i = 0; i < arguments.size(); ++i) {
+    llvm::Value* value = arguments[i];
+    llvm::Type* type = value->getType();
+    if (requires_double_promotion(type)) {
+      value = builder->CreateFPCast(value, builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      value = builder->CreateIntCast(value, builder->getInt32Ty(),
+                                     /*isSigned=*/true);
+    }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
+  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(),
-                                  {builder->getInt8Ty()->getPointerTo(),
-                                   arguments_type->getPointerTo()},
+          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
                                   /*isVarArg=*/false)),
       {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       arguments_ptr});
+       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.
@@ -395,6 +467,39 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    return se::dnn::ConvolutionKind::FORWARD;
+  }
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_DATA;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv) {
+  PrimitiveType output_primitive_type =
+      conv->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return se::dnn::ToDataType<Eigen::half>::value;
+    case F32:
+      return se::dnn::ToDataType<float>::value;
+    case F64:
+      return se::dnn::ToDataType<double>::value;
+    default:
+      break;
+  }
+  return InternalError("Unsupported convolution datatype : %s",
+                       conv->ToString());
+}
+
 string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
@@ -415,7 +520,35 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
+}
+
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce) {
+  for (const HloInstruction* inst : output_instructions) {
+    if (IsReductionFromOrToContiguousDimensions(*inst)) {
+      // Shapes, layouts and dimensions must be the same for all reduces
+      // inside of this fusion.
+      // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
+      if (!(ShapeUtil::Equal(first_reduce->shape(), inst->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(0)->shape(),
+                             inst->operand(0)->shape()) &&
+            ShapeUtil::Equal(first_reduce->operand(1)->shape(),
+                             inst->operand(1)->shape()) &&
+            first_reduce->dimensions() == inst->dimensions())) {
+        return false;
+      }
+    } else {
+      if (!(ShapeUtil::CompatibleIgnoringElementType(
+                first_reduce->operand(0)->shape(), inst->shape()) &&
+            LayoutUtil::Equal(first_reduce->operand(0)->shape().layout(),
+                              inst->shape().layout()))) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 }  // namespace gpu

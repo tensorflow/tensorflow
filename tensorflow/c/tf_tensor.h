@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_C_TF_TENSOR_H_
 #define TENSORFLOW_C_TF_TENSOR_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "tensorflow/c/tf_datatype.h"
@@ -174,6 +175,9 @@ TF_CAPI_EXPORT extern size_t TF_StringDecode(const char* src, size_t src_len,
 // Return the size in bytes required to encode a string `len` bytes long into a
 // TF_STRING tensor.
 TF_CAPI_EXPORT extern size_t TF_StringEncodedSize(size_t len);
+
+// Returns bool iff this tensor is aligned.
+TF_CAPI_EXPORT extern bool TF_TensorIsAligned(const TF_Tensor*);
 
 #ifdef __cplusplus
 } /* end extern "C" */

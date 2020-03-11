@@ -5,7 +5,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "OpDefProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/op_def_go_proto";
 import "tensorflow/core/framework/attr_value.proto";
 import "tensorflow/core/framework/types.proto";
 
@@ -14,7 +14,7 @@ import "tensorflow/core/framework/types.proto";
 // LINT.IfChange
 message OpDef {
   // Op names starting with an underscore are reserved for internal use.
-  // Names should be CamelCase and match the regexp "[A-Z][a-zA-Z0-9_]*".
+  // Names should be CamelCase and match the regexp "[A-Z][a-zA-Z0-9>_]*".
   string name = 1;
 
   // For describing inputs and outputs.

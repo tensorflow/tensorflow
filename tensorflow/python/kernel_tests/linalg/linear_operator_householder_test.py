@@ -46,7 +46,7 @@ class LinearOperatorHouseholderTest(
         shape_info((2, 1, 4, 4))]
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # This linear operator is never positive definite.
     return ["cholesky"]
 

@@ -36,7 +36,12 @@ namespace xla {
 // represent the runtime real size of those dynamic dimensions.
 class DynamicDimensionInference {
  public:
-  static StatusOr<DynamicDimensionInference> Run(HloModule* module);
+  using CustomCallInferenceHandler =
+      std::function<Status(HloInstruction*, DynamicDimensionInference*)>;
+
+  static StatusOr<DynamicDimensionInference> Run(
+      HloModule* module,
+      CustomCallInferenceHandler custom_call_handler = nullptr);
 
   string ToString() const;
 
@@ -46,10 +51,24 @@ class DynamicDimensionInference {
   HloInstruction* GetDynamicSize(HloInstruction* inst, const ShapeIndex& index,
                                  int64 dim) const;
 
+  // Forward dynamic dimension size at `dim` and its constraint from `inst` to
+  // `new_inst`.
+  Status ForwardDynamicSize(HloInstruction* inst, HloInstruction* new_inst,
+                            const ShapeIndex& index);
+
+  // Update the dynamic mapping so that we know dimension `dim` of instruction
+  // `inst` at `index` has a dynamic size, and its runtime size is represented
+  // by a scalar instruction `size`.
+  void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
+                      HloInstruction* size) {
+    SetDynamicSize(inst, index, dim, size, DimensionConstraint(1, 1));
+  }
+
   friend class DynamicDimensionInferenceVisitor;
 
  private:
-  explicit DynamicDimensionInference(HloModule* module);
+  explicit DynamicDimensionInference(
+      HloModule* module, CustomCallInferenceHandler custom_call_handler);
 
   // DynamicDimension is used as a key in the dynamic key-value mapping. It
   // unambiguously represents a dynamic dimension of a instruction at a given
@@ -144,6 +163,9 @@ class DynamicDimensionInference {
   //
   //
   struct DimensionConstraint {
+    explicit DimensionConstraint(int64 s, int64 m)
+        : stride(s), multiple_of(m) {}
+    DimensionConstraint() : stride(1), multiple_of(1) {}
     // Stride represents the distance of a newly placed element and the previous
     // placed element on this dynamic dimension.
     int64 stride;
@@ -164,6 +186,9 @@ class DynamicDimensionInference {
   // by a scalar instruction `size`.
   void SetDynamicSize(HloInstruction* inst, const ShapeIndex& index, int64 dim,
                       HloInstruction* size, DimensionConstraint constraint) {
+    VLOG(1) << "Set dimension inst " << inst->ToString() << " index "
+            << index.ToString() << "@" << dim << " to " << size->ToShortString()
+            << " constraint: " << constraint.multiple_of;
     Shape subshape = ShapeUtil::GetSubshape(inst->shape(), index);
     CHECK(!subshape.IsTuple())
         << "Can't set a tuple shape to dynamic dimension";
@@ -171,12 +196,13 @@ class DynamicDimensionInference {
         << "Asked to set invalid dynamic dimension. Shape: "
         << subshape.ToString() << ", Dimension: " << dim;
     DynamicDimension dynamic_dimension{inst, index, dim};
-    dynamic_mapping_.try_emplace(dynamic_dimension, size);
+    // Updating a dynamic dimension twice overwrites the previous one.
+    dynamic_mapping_[dynamic_dimension] = size;
     if (constraint_mapping_.count(dynamic_dimension) != 0) {
       CHECK_EQ(constraint_mapping_[dynamic_dimension].stride,
                constraint.stride);
     }
-    constraint_mapping_.try_emplace(dynamic_dimension, constraint);
+    constraint_mapping_[dynamic_dimension] = constraint;
     auto iter = per_hlo_dynamic_dimensions_.try_emplace(inst);
     iter.first->second.emplace(dynamic_dimension);
   }
@@ -205,6 +231,9 @@ class DynamicDimensionInference {
       absl::flat_hash_map<HloInstruction*,
                           absl::flat_hash_set<DynamicDimension>>;
   PerHloDynamicDimensions per_hlo_dynamic_dimensions_;
+
+  // A handler for custom calls.
+  CustomCallInferenceHandler custom_call_handler_;
 };
 
 }  // namespace xla

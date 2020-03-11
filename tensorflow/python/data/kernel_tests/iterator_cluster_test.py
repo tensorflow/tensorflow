@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib import lookup as lookup_ops
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -32,14 +34,15 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
-class IteratorClusterTest(test.TestCase):
+class IteratorClusterTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(test_base.graph_only_combinations())
   def testRemoteIteratorWithoutRemoteCallFail(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -95,7 +98,7 @@ class IteratorClusterTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(remote_op, feed_dict={target_placeholder: device1})
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(test_base.graph_only_combinations())
   def testRemoteIteratorUsingRemoteCallOp(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 2
@@ -106,7 +109,7 @@ class IteratorClusterTest(test.TestCase):
                                    "/job:worker/replica:0/task:0/cpu:1",
                                    worker[0].target)
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(test_base.graph_only_combinations())
   def testRemoteIteratorUsingRemoteCallOpCrossProcess(self):
     workers, _ = test_util.create_local_cluster(2, 1)
 
@@ -114,7 +117,7 @@ class IteratorClusterTest(test.TestCase):
                                    "/job:worker/replica:0/task:1/cpu:0",
                                    workers[0].target)
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(test_base.graph_only_combinations())
   def testCaptureHashTableInSharedIterator(self):
     worker, _ = test_util.create_local_cluster(1, 1)
 
@@ -124,18 +127,17 @@ class IteratorClusterTest(test.TestCase):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.HashTable(
+    table = lookup_ops.StaticHashTableV1(
         lookup_ops.KeyValueTensorInitializer(keys, values),
-        default_val,
-        shared_name="shared_table")
+        default_val)
 
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])
 
-    iterator = (
-        input_sentences.map(lambda x: string_ops.string_split([x]).values).map(
-            table.lookup)
-        .make_initializable_iterator(shared_name="shared_iterator"))
+    dataset = input_sentences.map(
+        lambda x: string_ops.string_split([x]).values).map(table.lookup)
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset, shared_name="shared_iterator")
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -149,7 +151,7 @@ class IteratorClusterTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @test_util.run_v1_only("b/120545219")
+  @combinations.generate(test_base.graph_only_combinations())
   def testImplicitDisposeParallelMapDataset(self):
     # Tests whether a parallel map dataset will be cleaned up correctly when
     # the pipeline does not run it until exhaustion.

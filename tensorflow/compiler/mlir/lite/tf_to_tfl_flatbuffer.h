@@ -17,10 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_
 
 #include "llvm/Support/SourceMgr.h"
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "tensorflow/core/lib/core/status.h"
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -36,42 +37,28 @@ LoadFromGraphdefOrMlirSource(
     bool use_splatted_constant, const std::vector<std::string>& extra_tf_opdefs,
     absl::string_view debug_info_file, absl::string_view input_arrays,
     absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, absl::string_view inference_type,
-    absl::string_view min_values, absl::string_view max_values,
-    bool prune_unused_nodes, llvm::SourceMgr* source_mgr,
-    mlir::MLIRContext* context);
+    absl::string_view output_arrays, bool prune_unused_nodes,
+    llvm::SourceMgr* source_mgr, mlir::MLIRContext* context);
 
-// Quantization passess will run only when the user specifies a quantized type
-// in the `-tf-inference-type` flag, which is converted to the function
-// attribute "tf.quantize" by the importer module.
-// TODO(fengliuai): switch to the cmd flag once the flags are moved to this
-// file with main method.
-bool ShouldRunQuantizePasses(mlir::ModuleOp m);
+// Load Saved model (either v1 or v2) into MLIR.
+stream_executor::port::StatusOr<mlir::OwningModuleRef> ImportSavedModel(
+    bool import_saved_model, bool import_saved_model_v1,
+    const std::string& input_filename, const std::string& saved_model_tags,
+    const std::string& saved_model_exported_names, mlir::MLIRContext* context);
 
-// Add the MLIR passes that convert TF control flow dialect to TF Lite dialect
-// to a MLIR `pass_manager`. These passes first raise the control flow in the TF
-// control flow dialect, decode the constant tensors, and then legalize the
-// module to TF Lite dialect with some optimizations afterwards.
-// If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
-// added, which produces TF Lite ops. If `run_quantize` is true, quantization
-// passes will be added. If `emit_quant_adaptor_ops` is true, Quantize and
-// Dequantize ops are added to the inputs and outputs of the quantized model.
-// If `lower_tensor_list_ops` is true, tensorlist ops will be lowered to basic
-// TF ops before legalization to TF Lite dialect.
-void AddTFToTFLConversionPasses(bool emit_builtin_tflite_ops, bool run_quantize,
-                                bool emit_quant_adaptor_ops,
-                                bool lower_tensor_list_ops,
-                                mlir::PassManager* pass_manager);
-
-// Taking a MLIR module in TF control flow dialect and a set of parameters,
+// Taking a MLIR module in TF executor dialect and a set of parameters,
 // applies a set of passes to convert the module to TF Lite dialect and
 // serializes the result to a string. Depending on an attribute in the module
-// main function, Quantization is applied. If `export_to_mlir` is true, the
+// main function, full integer quantization is applied.
+// If `quantizated_buffer_type` is provided as INT8 or FLOAT16, the
+// corresponding weight quantization will take place.
+// If `export_to_mlir` is true, the
 // result is exported in MLIR text format, otherwise exported in flat buffer.
-Status ConvertTFControlFlowToTFLOrFlatbuffer(
+Status ConvertTFExecutorToTFLOrFlatbuffer(
     mlir::ModuleOp module, bool export_to_mlir, bool emit_builtin_tflite_ops,
-    bool emit_select_tf_ops, bool emit_custom_ops, bool emit_quant_adaptor_ops,
-    bool lower_tensor_list_ops, std::string* result);
+    bool emit_select_tf_ops, bool emit_custom_ops,
+    const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
+    mlir::PassManager* pass_manager);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_TF_TO_TFL_FLATBUFFER_H_

@@ -17,6 +17,8 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
+import "tensorflow/lite/tools/evaluation/proto/preprocessing_steps.proto";
+
 option cc_enable_arenas = true;
 option java_multiple_files = true;
 option java_package = "tflite.evaluation";
@@ -89,20 +91,12 @@ message ProcessMetrics {
 
 // Parameters that define how images are preprocessed.
 //
-// Next ID: 5
+// Next ID: 3
 message ImagePreprocessingParams {
   // Required.
-  optional int32 image_height = 1;
-  // Required.
-  optional int32 image_width = 2;
+  repeated ImagePreprocessingStepParams steps = 1;
   // Same as tflite::TfLiteType.
-  optional int32 output_type = 3;
-  // Fraction for central-cropping.
-  // A central cropping-fraction of 0.875 is considered best for Inception
-  // models, hence the default value. See:
-  // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
-  // Set to 0 to disable cropping.
-  optional float cropping_fraction = 4 [default = 0.875];
+  required int32 output_type = 2;
 }
 
 // Parameters that control TFLite inference.
@@ -116,6 +110,7 @@ message TfliteInferenceParams {
     NONE = 0;
     NNAPI = 1;
     GPU = 2;
+    HEXAGON = 3;
   }
   optional Delegate delegate = 2;
   // Number of threads available to the TFLite Interpreter.
@@ -204,7 +199,7 @@ message InferenceProfilerMetrics {
 // Proto containing information about all the objects (predicted or
 // ground-truth) contained in an image.
 //
-// Next ID: 3
+// Next ID: 4
 message ObjectDetectionResult {
   // One instance of an object detected in an image.
   // Next ID: 4
@@ -232,8 +227,10 @@ message ObjectDetectionResult {
   }
 
   repeated ObjectInstance objects = 1;
-  // Required for ground-truth data, to compare against inference results.
+  // Filename of the image.
   optional string image_name = 2;
+  // Unique id for the image.
+  optional int64 image_id = 3;
 }
 
 // Proto containing ground-truth ObjectsSets for all images in a COCO validation

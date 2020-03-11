@@ -97,8 +97,8 @@ Status RaggedComponentsFromVariant(const Tensor& encoded_variant,
     }
     if (values_tensor->dtype() != value_dtype) {
       return errors::InvalidArgument(
-          "Expected values Tensor dtype: ", value_dtype,
-          ", found: ", values_tensor->dtype());
+          "Expected values Tensor dtype: ", DataTypeString(value_dtype),
+          ", found: ", DataTypeString(values_tensor->dtype()));
     }
     if (values_tensor->dims() < 1) {
       return errors::InvalidArgument(
@@ -217,8 +217,8 @@ class RaggedTensorFromVariantOp : public OpKernel {
  public:
   explicit RaggedTensorFromVariantOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context,
-                   context->GetAttr("input_ragged_rank", &input_ragged_rank_));
+    OP_REQUIRES_OK(context, context->GetAttr("input_ragged_rank",
+                                             &input_ragged_rank_attr_));
     OP_REQUIRES_OK(
         context, context->GetAttr("output_ragged_rank", &output_ragged_rank_));
   }
@@ -226,6 +226,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     // Read input Tensor.
     const Tensor& encoded_variant = context->input(0);
+    auto input_ragged_rank_ = input_ragged_rank_attr_;
 
     if (input_ragged_rank_ == -1) {  // Infer input_ragged_rank_.
       input_ragged_rank_ = output_ragged_rank_ - encoded_variant.dims();
@@ -277,7 +278,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   }
 
  private:
-  int input_ragged_rank_;
+  int input_ragged_rank_attr_;
   int output_ragged_rank_;
 
   void ReturnRaggedTensor(OpKernelContext* context,
@@ -303,7 +304,7 @@ class RaggedTensorFromVariantOp : public OpKernel {
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int32) \
   REGISTER_KERNELS_WITH_SPLIT_TYPE(value_type, int64)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
-TF_CALL_string(REGISTER_KERNELS);
+TF_CALL_tstring(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 TF_CALL_quint16(REGISTER_KERNELS);
 TF_CALL_qint16(REGISTER_KERNELS);

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -31,8 +31,10 @@ namespace {
 
 template <typename T>
 __global__ void RollKernel(const int32 nthreads, const int32 num_dims,
-                           const T* input, T* output, const int32* dim_size,
-                           const int32* threshold, const int64* dim_range) {
+                           const T* __restrict__ input, T* __restrict__ output,
+                           const int32* __restrict__ dim_size,
+                           const int32* __restrict__ threshold,
+                           const int64* __restrict__ dim_range) {
   CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
     int64 offset = 0;
     for (int i = 0; i < num_dims; i++) {
@@ -56,6 +58,7 @@ struct Roll<GPUDevice, T> {
                   const T* input, T* output,
                   const gtl::ArraySlice<int32> threshold,
                   const gtl::ArraySlice<int64> dim_range, const int64 isd) {
+    if (!num_elements) return;
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
     auto dim_bytes = sizeof(int32) * dim_size.size();
@@ -71,7 +74,7 @@ struct Roll<GPUDevice, T> {
     d.memcpyHostToDevice(thres_buf, threshold.data(), thres_bytes);
     d.memcpyHostToDevice(range_buf, dim_range.data(), range_bytes);
 
-    CudaLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
+    GpuLaunchConfig cfg = GetGpuLaunchConfig(num_elements, d);
 
     TF_CHECK_OK(GpuLaunchKernel(RollKernel<T>, cfg.block_count,
                                 cfg.thread_per_block, 0, d.stream(),
@@ -93,9 +96,10 @@ TF_CALL_int64(DEFINE_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 TF_CALL_complex64(DEFINE_GPU_SPECS);
 TF_CALL_complex128(DEFINE_GPU_SPECS);
+TF_CALL_uint32(DEFINE_GPU_SPECS)
 
 #undef DEFINE_GPU_SPECS
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -56,6 +56,8 @@ class Dataset : public DatasetBase {
 
   int64 Cardinality() const override { return sparse_tensor_.shape()[0]; }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -200,13 +202,13 @@ class Dataset : public DatasetBase {
     Tensor dense_shape_;
 
     mutex mu_;
-    sparse::GroupIterable group_iterable_ GUARDED_BY(mu_);
-    sparse::GroupIterable::IteratorStep iter_ GUARDED_BY(mu_);
-    int64 i_ GUARDED_BY(mu_) = 0;
+    sparse::GroupIterable group_iterable_ TF_GUARDED_BY(mu_);
+    sparse::GroupIterable::IteratorStep iter_ TF_GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_) = 0;
     const int64 kNextNonEmptyUnknown = -1;
-    int64 next_non_empty_i_ GUARDED_BY(mu_) = kNextNonEmptyUnknown;
-    Tensor next_indices_ GUARDED_BY(mu_);
-    Tensor next_values_ GUARDED_BY(mu_);
+    int64 next_non_empty_i_ TF_GUARDED_BY(mu_) = kNextNonEmptyUnknown;
+    Tensor next_indices_ TF_GUARDED_BY(mu_);
+    Tensor next_values_ TF_GUARDED_BY(mu_);
   };
 
   const sparse::SparseTensor sparse_tensor_;

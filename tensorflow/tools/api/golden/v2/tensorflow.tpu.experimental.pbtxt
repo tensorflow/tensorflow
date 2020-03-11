@@ -8,4 +8,8 @@ tf_module {
     name: "initialize_tpu_system"
     argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
+  member_method {
+    name: "shutdown_tpu_system"
+    argspec: "args=[\'cluster_resolver\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
 }

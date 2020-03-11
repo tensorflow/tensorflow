@@ -129,8 +129,6 @@ bool FastAreTensorProtosEqual(const TensorProto& lhs, const TensorProto& rhs) {
 }
 
 using TensorProtoHasher = std::function<uint64(const TensorProto&)>;
-using TensorProtosEquality =
-    std::function<bool(const TensorProto&, const TensorProto&)>;
 
 uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   if (a.has_tensor()) return tensor_hash(a.tensor());
@@ -150,8 +148,9 @@ uint64 AttrValueHash(const AttrValue& a, const TensorProtoHasher& tensor_hash) {
   return DeterministicProtoHash64(a);
 }
 
+template <typename TensorProtosEquality>
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b,
-                        const TensorProtosEquality& tensor_equality) {
+                        TensorProtosEquality tensor_equality) {
   if (a.type() != b.type()) {
     return false;
   } else if (a.type() != DT_INVALID && b.type() != DT_INVALID) {
@@ -210,7 +209,7 @@ string SummarizeTensor(const TensorProto& tensor_proto) {
   Tensor t;
   if (!t.FromProto(tensor_proto)) {
     return strings::StrCat(
-        "<Invalid TensorProto: ", ProtoShortDebugString(tensor_proto), ">");
+        "<Invalid TensorProto: ", tensor_proto.ShortDebugString(), ">");
   }
   return t.DebugString();
 }
@@ -482,6 +481,17 @@ DEFINE_SET_ATTR_VALUE_LIST(const std::vector<bool>&, b)
 DEFINE_SET_ATTR_VALUE_LIST(std::initializer_list<bool>, b)
 DEFINE_SET_ATTR_VALUE_BOTH(DataType, type)
 
+void SetAttrValue(const tstring& value, AttrValue* out) {
+  out->set_s(value.data(), value.size());
+}
+
+void SetAttrValue(gtl::ArraySlice<tstring> value, AttrValue* out) {
+  out->mutable_list()->Clear();
+  for (const auto& v : value) {
+    out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
 void SetAttrValue(StringPiece value, AttrValue* out) {
   out->set_s(value.data(), value.size());
 }
@@ -490,6 +500,13 @@ void SetAttrValue(const gtl::ArraySlice<StringPiece> value, AttrValue* out) {
   out->mutable_list()->Clear();  // Create list() even if value empty.
   for (const auto& v : value) {
     out->mutable_list()->add_s(v.data(), v.size());
+  }
+}
+
+void MoveAttrValue(std::vector<string>&& value, AttrValue* out) {
+  out->mutable_list()->Clear();  // Create list() even if value empty.
+  for (auto& v : value) {
+    out->mutable_list()->add_s(std::move(v));
   }
 }
 

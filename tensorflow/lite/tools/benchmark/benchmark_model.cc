@@ -18,22 +18,10 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
-
-namespace {
-void SleepForSeconds(double sleep_seconds) {
-  if (sleep_seconds <= 0.0) {
-    return;
-  }
-  // If requested, sleep between runs for an arbitrary amount of time.
-  // This can be helpful to determine the effect of mobile processor
-  // scaling and thermal throttling.
-  return tflite::profiling::time::SleepForMicros(
-      static_cast<uint64_t>(sleep_seconds * 1e6));
-}
-
-}  // namespace
 
 namespace tflite {
 namespace benchmark {
@@ -55,14 +43,14 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
 
 BenchmarkModel::BenchmarkModel() : params_(DefaultParams()) {}
 
-void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults &results) {
+void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   auto inference_us = results.inference_time_us();
   auto init_us = results.startup_latency_us();
   auto warmup_us = results.warmup_time_us();
   TFLITE_LOG(INFO) << "Average inference timings in us: "
                    << "Warmup: " << warmup_us.avg() << ", "
                    << "Init: " << init_us << ", "
-                   << "no stats: " << inference_us.avg();
+                   << "Inference: " << inference_us.avg();
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -118,12 +106,13 @@ void BenchmarkModel::LogParams() {
                    << params_.Get<float>("warmup_min_secs") << "]";
 }
 
-void BenchmarkModel::PrepareInputData() {}
+TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
 
-void BenchmarkModel::ResetInputsAndOutputs() {}
+TfLiteStatus BenchmarkModel::ResetInputsAndOutputs() { return kTfLiteOk; }
 
 Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
-                                  float max_secs, RunType run_type) {
+                                  float max_secs, RunType run_type,
+                                  TfLiteStatus* invoke_status) {
   Stat<int64_t> run_stats;
   TFLITE_LOG(INFO) << "Running benchmark for at least " << min_num_times
                    << " iterations and at least " << min_secs << " seconds but"
@@ -132,19 +121,24 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   int64_t min_finish_us = now_us + static_cast<int64_t>(min_secs * 1.e6f);
   int64_t max_finish_us = now_us + static_cast<int64_t>(max_secs * 1.e6f);
 
+  *invoke_status = kTfLiteOk;
   for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
                     now_us <= max_finish_us;
        run++) {
     ResetInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
-    RunImpl();
+    TfLiteStatus status = RunImpl();
     int64_t end_us = profiling::time::NowMicros();
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    SleepForSeconds(params_.Get<float>("run_delay"));
+    util::SleepForSeconds(params_.Get<float>("run_delay"));
     now_us = profiling::time::NowMicros();
+
+    if (status != kTfLiteOk) {
+      *invoke_status = status;
+    }
   }
 
   std::stringstream stream;
@@ -154,49 +148,76 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   return run_stats;
 }
 
-bool BenchmarkModel::ValidateParams() { return true; }
+TfLiteStatus BenchmarkModel::ValidateParams() { return kTfLiteOk; }
 
-void BenchmarkModel::Run(int argc, char **argv) {
-  if (!ParseFlags(argc, argv)) {
-    return;
-  }
-  Run();
+TfLiteStatus BenchmarkModel::Run(int argc, char** argv) {
+  TF_LITE_ENSURE_STATUS(ParseFlags(argc, argv));
+  return Run();
 }
 
-void BenchmarkModel::Run() {
-  ValidateParams();
+TfLiteStatus BenchmarkModel::Run() {
+  TF_LITE_ENSURE_STATUS(ValidateParams());
+
   LogParams();
 
+  const double model_size_mb = MayGetModelFileSize() / 1e6;
+  const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
-  Init();
+  TF_LITE_ENSURE_STATUS(Init());
+  const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
-  TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
-                   << "ms";
+  const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
 
-  PrepareInputData();
+  if (model_size_mb > 0) {
+    TFLITE_LOG(INFO) << "The input model file size (MB): " << model_size_mb;
+  }
+  TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
+                   << "ms.";
+
+  TF_LITE_ENSURE_STATUS(PrepareInputData());
+
+  TfLiteStatus status = kTfLiteOk;
   uint64_t input_bytes = ComputeInputBytes();
   listeners_.OnBenchmarkStart(params_);
-  Stat<int64_t> warmup_time_us = Run(params_.Get<int32_t>("warmup_runs"),
-                                     params_.Get<float>("warmup_min_secs"),
-                                     params_.Get<float>("max_secs"), WARMUP);
+  Stat<int64_t> warmup_time_us =
+      Run(params_.Get<int32_t>("warmup_runs"),
+          params_.Get<float>("warmup_min_secs"), params_.Get<float>("max_secs"),
+          WARMUP, &status);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+
   Stat<int64_t> inference_time_us =
       Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
-          params_.Get<float>("max_secs"), REGULAR);
-  listeners_.OnBenchmarkEnd(
-      {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
+          params_.Get<float>("max_secs"), REGULAR, &status);
+  const auto overall_mem_usage =
+      profiling::memory::GetMemoryUsage() - start_mem_usage;
+  listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
+                             warmup_time_us, inference_time_us, init_mem_usage,
+                             overall_mem_usage});
+
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
+
+  return status;
 }
 
-bool BenchmarkModel::ParseFlags(int argc, char **argv) {
+TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
-      Flags::Parse(&argc, const_cast<const char **>(argv), flag_list);
+      Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
-    return false;
+    return kTfLiteError;
   }
-  return true;
+  return kTfLiteOk;
 }
 
 }  // namespace benchmark

@@ -15,13 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 
+#include <cstddef>
 #include <unordered_map>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
-#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
-
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 
 namespace tflite {
 namespace gpu {
@@ -30,7 +30,8 @@ namespace metal {
 namespace {
 
 std::string GetElementwiseWithTwoInputsCode(int src_count,
-                                            OperationType op_type) {
+                                            OperationType op_type,
+                                            const float* scalar) {
   std::string code = R"(
     #include <metal_stdlib>
     using namespace metal;
@@ -50,33 +51,37 @@ std::string GetElementwiseWithTwoInputsCode(int src_count,
 
       int linear_index = (int(gid.z) * params.src_size.y + int(gid.y)) *
         params.src_size.x + int(gid.x);
-        )";
+      FLT4 src_0 = src_buffer0[linear_index];
+  )";
 
+  if (scalar == nullptr) {
+    code += "     FLT4 src_1 = src_buffer1[linear_index];";
+  } else {
+    code += "     FLT4 src_1 = FLT4(" + std::to_string(*scalar) + ");";
+  }
   switch (op_type) {
-    case OperationType::SUB: {
-      code +=
-          " FLT4 value = src_buffer0[linear_index] - "
-          "src_buffer1[linear_index];";
+    case OperationType::DIV: {
+      code += " FLT4 value = src_0 / src_1;";
       break;
     }
-    case OperationType::DIV: {
-      code +=
-          " FLT4 value = src_buffer0[linear_index] / "
-          "src_buffer1[linear_index];";
+    case OperationType::MAXIMUM: {
+      code += " FLT4 value = max(src_0, src_1);";
+      break;
+    }
+    case OperationType::MINIMUM: {
+      code += " FLT4 value = min(src_0, src_1);";
       break;
     }
     case OperationType::POW: {
-      code +=
-          " FLT4 value = pow(src_buffer0[linear_index], "
-          "src_buffer1[linear_index]);";
+      code += " FLT4 value = pow(src_0, src_1);";
       break;
     }
     case OperationType::SQUARED_DIFF: {
-      code += R"(
-     FLT4 src_0 = src_buffer0[linear_index];
-     FLT4 src_1 = src_buffer1[linear_index];
-     FLT4 value = (src_0 - src_1) * (src_0 - src_1);
-   )";
+      code += " FLT4 value = (src_0 - src_1) * (src_0 - src_1);";
+      break;
+    }
+    case OperationType::SUB: {
+      code += " FLT4 value = src_0 - src_1;";
       break;
     }
     default: {
@@ -93,12 +98,16 @@ std::string GetElementwiseWithTwoInputsCode(int src_count,
 
 std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
     int id, std::vector<ValueId> input_ids, ValueId output_id,
-    OperationType op_type) {
+    OperationType op_type, const ElementwiseAttributes* attr) {
+  const float* scalar = nullptr;
+  if (attr) {
+    scalar = absl::get_if<float>(&attr->param);
+  }
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
   desc->shader_source =
-      GetElementwiseWithTwoInputsCode(input_ids.size(), op_type);
+      GetElementwiseWithTwoInputsCode(input_ids.size(), op_type, scalar);
 
   for (int i = 0; i < input_ids.size(); ++i) {
     const std::string buffer_name =
@@ -116,7 +125,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
        [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_ids[0])->second;
          std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -141,7 +150,10 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithOneInput(
   const std::unordered_map<OperationType, std::string> functors{
       {OperationType::ABS, "abs(value)"},
       {OperationType::SIN, "sin(value)"},
+      {OperationType::HARD_SWISH,
+       "value * clamp(value / 6.0f + FLT4(0.5f), FLT4(0.0f), FLT4(1.0f))"},
       {OperationType::COS, "cos(value)"},
+      {OperationType::EXP, "exp(value)"},
       {OperationType::LOG, "log(value)"},
       {OperationType::SQRT, "sqrt(value)"},
       {OperationType::RSQRT, "1.0 / sqrt(value)"},

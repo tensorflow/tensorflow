@@ -16,11 +16,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
-#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/while_context.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -34,23 +37,7 @@ namespace tensorflow {
 
 const int Graph::kControlSlot = -1;
 
-struct NodeProperties {
- public:
-  NodeProperties(const OpDef* op_def, NodeDef node_def,
-                 const DataTypeSlice inputs, const DataTypeSlice outputs)
-      : op_def(op_def),
-        node_def(std::move(node_def)),
-        input_types(inputs.begin(), inputs.end()),
-        output_types(outputs.begin(), outputs.end()) {}
-
-  const OpDef* op_def;  // not owned
-  NodeDef node_def;
-  const DataTypeVector input_types;
-  const DataTypeVector output_types;
-};
-
 // Node
-
 #define REF_CLASS(key, value) \
   {key, value}, { "Ref" key, value }
 
@@ -85,18 +72,24 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveReduce", NC_COLLECTIVE},
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
+        {"CollectiveGather", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
         {"PartitionedCall", NC_PARTITIONED_CALL},
         {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+        {"SymbolicGradient", NC_SYMBOLIC_GRADIENT},
         {"If", NC_IF},
         {"StatelessIf", NC_IF},
-        // Not using the constants defined in FunctionLibraryDefinition for the
+        {"While", NC_WHILE},
+        {"StatelessWhile", NC_WHILE},
+        // Not using the constants defined in FunctionLibraryDefinition
+        // for the
         // 4 ops below because android inference library does not link
         // tf.function related files.
         {"_Arg", NC_ARG},
         {"_DeviceArg", NC_ARG},
         {"_Retval", NC_RETVAL},
         {"_DeviceRetval", NC_RETVAL},
+        {"_XlaMerge", NC_MERGE},
     });
 
 #undef REF_CLASS
@@ -133,7 +126,8 @@ Node::Node()
       while_ctx_(nullptr) {}
 
 void Node::Initialize(int id, int cost_id,
-                      std::shared_ptr<NodeProperties> props) {
+                      std::shared_ptr<NodeProperties> props,
+                      bool is_function_op) {
   DCHECK_EQ(id_, -1);
   DCHECK(in_edges_.empty());
   DCHECK(out_edges_.empty());
@@ -142,7 +136,11 @@ void Node::Initialize(int id, int cost_id,
 
   props_ = std::move(props);
   // Initialize the class_ based on the type string
-  class_ = GetNodeClassForOp(props_->node_def.op());
+  if (is_function_op) {
+    class_ = NC_FUNCTION_OP;
+  } else {
+    class_ = GetNodeClassForOp(props_->node_def.op());
+  }
 }
 
 void Node::Clear() {
@@ -386,8 +384,7 @@ Graph::Graph(const OpRegistryInterface* ops)
 Graph::Graph(const FunctionLibraryDefinition& flib_def)
     : Graph(flib_def.default_registry()) {
   // Need a new-enough consumer to support the functions we add to the graph.
-  if (flib_def.ToProto().function_size() > 0 &&
-      versions_->min_consumer() < 12) {
+  if (flib_def.num_functions() > 0 && versions_->min_consumer() < 12) {
     versions_->set_min_consumer(12);
   }
   Status s = ops_.AddLibrary(flib_def);
@@ -413,28 +410,31 @@ const VersionDef& Graph::versions() const { return *versions_; }
 void Graph::set_versions(const VersionDef& versions) { *versions_ = versions; }
 
 Node* Graph::AddNode(NodeDef node_def, Status* status) {
-  const OpDef* op_def;
-  status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
+  const OpRegistrationData* op_reg_data;
+  status->Update(ops_.LookUp(node_def.op(), &op_reg_data));
   if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;
   DataTypeVector outputs;
-  status->Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
+  status->Update(
+      InOutTypesForNode(node_def, op_reg_data->op_def, &inputs, &outputs));
   if (!status->ok()) {
     *status = AttachDef(*status, node_def);
     return nullptr;
   }
 
-  Node* node = AllocateNode(std::make_shared<NodeProperties>(
-                                op_def, std::move(node_def), inputs, outputs),
-                            nullptr);
+  Node* node = AllocateNode(
+      std::make_shared<NodeProperties>(&op_reg_data->op_def,
+                                       std::move(node_def), inputs, outputs),
+      nullptr, op_reg_data->is_function_op);
   return node;
 }
 
 Node* Graph::CopyNode(const Node* node) {
   DCHECK(!node->IsSource());
   DCHECK(!node->IsSink());
-  Node* copy = AllocateNode(node->props_, node);
+  Node* copy =
+      AllocateNode(node->props_, node, node->class_ == Node::NC_FUNCTION_OP);
   copy->set_assigned_device_name(node->assigned_device_name());
 
   // Since the OpDef of a function may be owned by the Graph that owns 'node',
@@ -592,7 +592,7 @@ Status Graph::UpdateEdge(Node* new_src, int new_src_index, Node* dst,
 }
 
 Status Graph::AddWhileInputHack(Node* new_src, int new_src_index, Node* dst) {
-  if (dst->type_string() != "While") {
+  if (!dst->IsWhileNode()) {
     return errors::Internal(
         "dst argument to AddWhileEdgeHack should be a While op, got: ",
         dst->DebugString());
@@ -674,12 +674,15 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
       if (edge->IsControlEdge()) {
         inputs.push_back(edge);
       } else {
+        DCHECK(edge->dst_input() < inputs.size())
+            << "Edge " << edge->DebugString()
+            << " is overflowing the expected number of inputs ("
+            << node->num_inputs() << ") for node " << node->DebugString();
         CHECK(inputs[edge->dst_input()] == nullptr)
-            << "Edge " << edge->src()->DebugString() << ":"
-            << edge->dst()->DebugString() << " with dst_input "
-            << edge->dst_input() << " and had pre-existing input edge "
-            << inputs[edge->dst_input()]->src()->DebugString() << ":"
-            << inputs[edge->dst_input()]->dst()->DebugString();
+            << "Edge " << edge->src()->name() << "->" << edge->dst()->name()
+            << " conflicts with pre-existing input edge "
+            << inputs[edge->dst_input()]->src()->name() << "->"
+            << inputs[edge->dst_input()]->dst()->name();
 
         inputs[edge->dst_input()] = edge;
       }
@@ -756,7 +759,7 @@ Status Graph::IsValidInputTensor(const Node* node, int idx) const {
 }
 
 Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
-                          const Node* cost_node) {
+                          const Node* cost_node, bool is_function_op) {
   Node* node = nullptr;
   if (free_nodes_.empty()) {
     node = new (arena_.Alloc(sizeof(Node))) Node;  // placement new
@@ -767,7 +770,7 @@ Node* Graph::AllocateNode(std::shared_ptr<NodeProperties> props,
   node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
-  node->Initialize(id, cost_id, std::move(props));
+  node->Initialize(id, cost_id, std::move(props), is_function_op);
   nodes_.push_back(node);
   ++num_nodes_;
   return node;

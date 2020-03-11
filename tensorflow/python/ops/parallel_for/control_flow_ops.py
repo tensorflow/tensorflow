@@ -22,8 +22,7 @@ from __future__ import print_function
 import functools
 
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
-from tensorflow.python.framework import dtypes
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -75,7 +74,7 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
                                                 len(fn_output)))
     outputs = []
     del is_none_list[:]
-    is_none_list.extend([x is None for x in fn_output])
+    is_none_list.extend(x is None for x in fn_output)
     for out, ta in zip(fn_output, ta_list):
       # TODO(agarwal): support returning Operation objects from loop_fn.
       if out is not None:
@@ -99,7 +98,12 @@ def for_loop(loop_fn, loop_fn_dtypes, iters, parallel_iterations=None):
 
   output = [None if is_none else ta.concat()
             for ta, is_none in zip(ta_list, is_none_list)]
-  return nest.pack_sequence_as(loop_fn_dtypes, output)
+  assert len(output) in (0, len(flat_loop_fn_dtypes))
+  if not output:
+    # This may happen for the case where iters == 0.
+    return None
+  else:
+    return nest.pack_sequence_as(loop_fn_dtypes, output)
 
 
 def _flatten_first_two_dims(x):
@@ -180,9 +184,21 @@ def pfor(loop_fn, iters, parallel_iterations=None):
   # Note that we wrap into a tf.function if in eager execution mode or under
   # XLA compilation. The latter is so that we don't compile operations like
   # tf.placeholder that are created by the loop body.
+  functions_run_eagerly = None
   if context.executing_eagerly() or _is_under_xla_context():
-    f = function.defun(f)
-  return f()
+    functions_run_eagerly = def_function.functions_run_eagerly()
+    if functions_run_eagerly:
+      logging.warning(
+          "It looks like tf.function behavior was disabled, perhaps using "
+          "tf.config.experimental_run_functions_eagerly. Vectorization "
+          "primitives (e.g. tf.vectorized_map) require tf.function to work. "
+          "These primitives will override the disable.")
+      def_function.run_functions_eagerly(False)
+    f = def_function.function(f)
+  outputs = f()
+  if functions_run_eagerly is not None:
+    def_function.run_functions_eagerly(functions_run_eagerly)
+  return outputs
 
 
 def _loop_fn_has_config(loop_fn):
@@ -205,11 +221,12 @@ def _loop_fn_has_config(loop_fn):
 
 def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   """Implementation of pfor."""
+  assert not context.executing_eagerly()
   loop_fn_has_config = _loop_fn_has_config(loop_fn)
   existing_ops = set(ops.get_default_graph().get_operations())
   # Run the loop body
   with ops.name_scope("loop_body"):
-    loop_var = array_ops.placeholder(dtypes.int32, shape=[])
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
     if loop_fn_has_config:
       if pfor_config is None:
         pfor_config = PForConfig()
@@ -306,42 +323,17 @@ def vectorized_map(fn, elems):
 
 
   This method works similar to tf.map_fn but is optimized to run much faster,
-  but possibly with a much larger memory footprint. The speedups are obtained by
+  possibly with a much larger memory footprint. The speedups are obtained by
   vectorization (see https://arxiv.org/pdf/1903.04243.pdf). The idea behind
   vectorization is to semantically launch all the invocations of `fn` in
   parallel and fuse corresponding operations across all these invocations. This
   fusion is done statically at graph generation time and the generated code is
   often similar in performance to a manually fused version.
 
-
-  For example, let's look at a method that calculates the outer product of a
-  matrix.
-
-  ```python
-  def outer_product(a):
-    return tf.tensordot(a, a, 0)
-
-  # outer_product was designed to not support batching.
-  c = outer_product(tf.ones((2, 3)))
-  # The shape is consistent
-  assert c.shape == (2, 3, 2, 3)
-  ```
-
-  Now suppose we want an efficient batched version of outer_product. We can
-  simply write:
-
-  ```python
-  batch_size = 100
-  a = tf.ones((batch_size, 32, 32))
-  c = tf.vectorized_map(outer_product, a)
-  assert c.shape == (batch_size, 32, 32, 32, 32)
-   ```
-
   Because `tf.vectorized_map` fully parallelizes the batch, this method will
   generally be significantly faster than using `tf.map_fn`, especially in eager
-  mode.
-
-  This is an experimental feature and currently has a lot of limitations:
+  mode. However this is an experimental feature and currently has a lot of
+  limitations:
     - There should be no data dependency between the different semantic
       invocations of `fn`, i.e. it should be safe to map the elements of the
       inputs in any order.
@@ -352,8 +344,42 @@ def vectorized_map(fn, elems):
       particular is not supported.
     - `fn` should return nested structure of Tensors or Operations. However
       if an Operation is returned, it should have zero outputs.
-    - The shape and dtype of `fn` outputs should not depend on the input
-      to `fn`.
+    - The shape and dtype of any intermediate or output tensors in the
+      computation of `fn` should not depend on the input to `fn`.
+
+  Examples:
+  ```python
+  def outer_product(a):
+    return tf.tensordot(a, a, 0)
+
+  batch_size = 100
+  a = tf.ones((batch_size, 32, 32))
+  c = tf.vectorized_map(outer_product, a)
+  assert c.shape == (batch_size, 32, 32, 32, 32)
+  ```
+
+  ```python
+  # Computing per-example gradients
+
+  batch_size = 10
+  num_features = 32
+  layer = tf.keras.layers.Dense(1)
+
+  def model_fn(arg):
+    with tf.GradientTape() as g:
+      inp, label = arg
+      inp = tf.expand_dims(inp, 0)
+      label = tf.expand_dims(label, 0)
+      prediction = layer(inp)
+      loss = tf.nn.l2_loss(label - prediction)
+    return g.gradient(loss, (layer.kernel, layer.bias))
+
+  inputs = tf.random.uniform([batch_size, num_features])
+  labels = tf.random.uniform([batch_size, 1])
+  per_example_gradients = tf.vectorized_map(model_fn, (inputs, labels))
+  assert per_example_gradients[0].shape == (batch_size, num_features, 1)
+  assert per_example_gradients[1].shape == (batch_size, 1)
+  ```
 
   Args:
     fn: The callable to be performed. It accepts one argument, which will have
@@ -372,5 +398,10 @@ def vectorized_map(fn, elems):
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
     return fn(gathered_elems)
-  batch_size = array_ops.shape(nest.flatten(elems)[0])[0]
+  batch_size = None
+  first_elem = ops.convert_to_tensor(nest.flatten(elems)[0])
+  if first_elem.shape.rank is not None:
+    batch_size = first_elem.shape.as_list()[0]
+  if batch_size is None:
+    batch_size = array_ops.shape(first_elem)[0]
   return pfor(loop_fn, batch_size)

@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,6 +25,8 @@ import shlex
 import subprocess
 import tempfile
 import time
+
+import six
 
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import gfile
@@ -118,12 +121,15 @@ def run_and_gather_logs(name, test_name, test_args,
     IOError: If there are problems gathering test log output from the test.
     MissingLogsError: If we couldn't find benchmark logs.
   """
-  if not (test_name and test_name.startswith("//") and ".." not in test_name and
-          not test_name.endswith(":") and not test_name.endswith(":all") and
-          not test_name.endswith("...") and len(test_name.split(":")) == 2):
+  if not (test_name and six.ensure_str(test_name).startswith("//") and
+          ".." not in test_name and not six.ensure_str(test_name).endswith(":")
+          and not six.ensure_str(test_name).endswith(":all") and
+          not six.ensure_str(test_name).endswith("...") and
+          len(six.ensure_str(test_name).split(":")) == 2):
     raise ValueError("Expected test_name parameter with a unique test, e.g.: "
                      "--test_name=//path/to:test")
-  test_executable = test_name.rstrip().strip("/").replace(":", "/")
+  test_executable = six.ensure_str(test_name.rstrip()).strip("/").replace(
+      ":", "/")
 
   if gfile.Exists(os.path.join("bazel-bin", test_executable)):
     # Running in standalone mode from core of the repository
@@ -136,20 +142,26 @@ def run_and_gather_logs(name, test_name, test_args,
   gpu_config = gpu_info_lib.gather_gpu_devices()
   if gpu_config:
     gpu_name = gpu_config[0].model
-    gpu_short_name_match = re.search(r"Tesla (K40|K80|P100|V100)", gpu_name)
+    gpu_short_name_match = re.search(r"Tesla (K40|K80|P100|V100)",
+                                     six.ensure_str(gpu_name))
     if gpu_short_name_match:
       gpu_short_name = gpu_short_name_match.group(0)
-      test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
+      test_adjusted_name = six.ensure_str(name) + "|" + gpu_short_name.replace(
+          " ", "_")
 
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = (test_adjusted_name.strip("/")
-                       .replace("|", "_").replace("/", "_").replace(":", "_"))
+  mangled_test_name = (
+      six.ensure_str(test_adjusted_name).strip("/").replace("|", "_").replace(
+          "/", "_").replace(":", "_"))
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 
   try:
     if not gfile.Exists(test_executable):
-      raise ValueError("Executable does not exist: %s" % test_executable)
+      test_executable_py3 = test_executable + ".python3"
+      if not gfile.Exists(test_executable_py3):
+        raise ValueError("Executable does not exist: %s" % test_executable)
+      test_executable = test_executable_py3
     test_args = shlex.split(test_args)
 
     # This key is defined in tf/core/util/reporter.h as

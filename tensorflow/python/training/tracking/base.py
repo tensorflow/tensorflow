@@ -31,7 +31,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops as io_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 
@@ -307,7 +306,7 @@ class CheckpointPosition(object):
         value_tensors[serialized_tensor.name] = array_ops.identity(value)
       return value_tensors
 
-  def _gather_ops_or_named_saveables(self):
+  def gather_ops_or_named_saveables(self):
     """Looks up or creates SaveableObjects which don't have cached ops."""
     saveables = self.trackable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
     # Name saveables based on the name this object had when it was checkpointed.
@@ -353,7 +352,6 @@ class CheckpointPosition(object):
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
           del saveables_cache[self.trackable]
-          break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
         # object has the attribute.
@@ -391,7 +389,7 @@ class CheckpointPosition(object):
       eagerly.
     """
     (restore_ops, tensor_saveables,
-     python_saveables) = self._gather_ops_or_named_saveables()
+     python_saveables) = self.gather_ops_or_named_saveables()
     restore_ops.extend(
         self._checkpoint.restore_saveables(tensor_saveables, python_saveables))
     return restore_ops
@@ -462,6 +460,38 @@ def no_automatic_dependency_tracking(method):
 
   return tf_decorator.make_decorator(
       target=method, decorator_func=_method_wrapper)
+
+
+@tf_contextlib.contextmanager
+def no_manual_dependency_tracking_scope(obj):
+  """A context that disables manual dependency tracking for the given `obj`.
+
+  Sometimes library methods might track objects on their own and we might want
+  to disable that and do the tracking on our own. One can then use this context
+  manager to disable the tracking the library method does and do your own
+  tracking.
+
+  For example:
+
+  class TestLayer(tf.keras.Layer):
+    def build():
+      with no_manual_dependency_tracking_scope(self):
+        var = self.add_variable("name1")  # Creates a var and doesn't track it
+      self._track_trackable("name2", var)  # We track variable with name `name2`
+
+  Args:
+    obj: A trackable object.
+
+  Yields:
+    a scope in which the object doesn't track dependencies manually.
+  """
+  # pylint: disable=protected-access
+  previous_value = getattr(obj, "_manual_tracking", True)
+  obj._manual_tracking = False
+  try:
+    yield
+  finally:
+    obj._manual_tracking = previous_value
 
 
 @tf_contextlib.contextmanager
@@ -791,6 +821,8 @@ class Trackable(object):
     if not isinstance(trackable, Trackable):
       raise TypeError(("Trackable._track_trackable() passed type %s, not a "
                        "Trackable.") % (type(trackable),))
+    if not getattr(self, "_manual_tracking", True):
+      return trackable
     new_reference = TrackableReference(name=name, ref=trackable)
     current_object = self._lookup_dependency(name)
     if (current_object is not None and current_object is not trackable):
@@ -858,13 +890,21 @@ class Trackable(object):
     # traversals will happen later).
     visit_queue = collections.deque([checkpoint_position])
     restore_ops = []
+    tensor_saveables = {}
+    python_saveables = []
     while visit_queue:
       current_position = visit_queue.popleft()
-      restore_ops.extend(
-          nest.flatten(current_position.trackable  # pylint: disable=protected-access
-                       ._single_restoration_from_checkpoint_position(
-                           checkpoint_position=current_position,
-                           visit_queue=visit_queue)))
+      new_restore_ops, new_tensor_saveables, new_python_saveables = (
+          current_position.trackable  # pylint: disable=protected-access
+          ._single_restoration_from_checkpoint_position(
+              checkpoint_position=current_position,
+              visit_queue=visit_queue))
+      restore_ops.extend(new_restore_ops)
+      tensor_saveables.update(new_tensor_saveables)
+      python_saveables.extend(new_python_saveables)
+    restore_ops.extend(
+        current_position.checkpoint.restore_saveables(
+            tensor_saveables, python_saveables))
     return restore_ops
 
   def _single_restoration_from_checkpoint_position(self, checkpoint_position,
@@ -876,10 +916,13 @@ class Trackable(object):
     # need to actually restore the object. However, we should pass the
     # restoration on to our dependencies.
     if checkpoint.restore_uid > self._self_update_uid:
-      restore_ops = checkpoint_position.restore_ops()
+      restore_ops, tensor_saveables, python_saveables = (
+          checkpoint_position.gather_ops_or_named_saveables())
       self._self_update_uid = checkpoint.restore_uid
     else:
       restore_ops = ()
+      tensor_saveables = {}
+      python_saveables = ()
     for child in checkpoint_position.object_proto.children:
       child_position = CheckpointPosition(
           checkpoint=checkpoint, proto_id=child.node_id)
@@ -896,7 +939,7 @@ class Trackable(object):
           # resolution order (shallowest paths first). The caller is responsible
           # for emptying visit_queue.
           visit_queue.append(child_position)
-    return restore_ops
+    return restore_ops, tensor_saveables, python_saveables
 
   def _gather_saveables_for_checkpoint(self):
     """Returns a dictionary of values to checkpoint with this object.

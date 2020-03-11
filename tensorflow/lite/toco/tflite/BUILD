@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -89,6 +90,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
@@ -108,9 +110,11 @@ tf_cc_test(
     ],
     deps = [
         ":export",
+        ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -143,6 +147,8 @@ cc_library(
         ":operator",
         "//tensorflow/lite/toco:model",
         "//tensorflow/lite/toco:tooling_util",
+        "//tensorflow/lite/tools/versioning",
+        "@com_google_absl//absl/strings",
     ],
 )
 

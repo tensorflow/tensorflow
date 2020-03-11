@@ -183,13 +183,22 @@ class Service : public ServiceInterface {
   const Backend& backend() const { return *execute_backend_; }
   Backend* mutable_backend() { return execute_backend_.get(); }
 
+  // Create a Hlo module config for the given program shape and arguments.
+  // aot_options is optional; if not given a default is used.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      absl::Span<const Shape* const> argument_shapes,
+      const ExecutionOptions* execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
+
  private:
   // A private overload for Service itself, used by other methods within this
   // class.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       absl::Span<const ShapedBuffer* const> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options,
+      const AotCompilationOptions* aot_options = nullptr);
 
   // Prepare the executors for executing parallel.
   StatusOr<std::vector<se::StreamExecutor*>> GetExecutors(
@@ -217,13 +226,6 @@ class Service : public ServiceInterface {
   ResolveAndValidateArguments(
       absl::Span<const GlobalDataHandle* const> arguments,
       absl::Span<se::StreamExecutor* const> stream_executors) const;
-
-  // Create a Hlo module config for the given program shape and arguments.
-  // execution_options is optional; if not given a default is used.
-  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
-      const ProgramShape& program_shape,
-      absl::Span<const Shape* const> argument_shapes,
-      const ExecutionOptions* execution_options);
 
   // Builds an Executable for the given parameters.
   //

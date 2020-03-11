@@ -40,10 +40,8 @@ def constant(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
   Example:
 
-  ```python
-  >>> ragged.constant([[1, 2], [3], [4, 5, 6]]).eval()
-  RaggedTensorValue(values=[1, 2, 3, 4, 5, 6], splits=[0, 2, 3, 6])
-  ```
+  >>> tf.ragged.constant([[1, 2], [3], [4, 5, 6]])
+  <tf.RaggedTensor [[1, 2], [3], [4, 5, 6]]>
 
   All scalar values in `pylist` must have the same nesting depth `K`, and the
   returned `RaggedTensor` will have rank `K`.  If `pylist` contains no scalar
@@ -98,10 +96,9 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
 
   Example:
 
-  ```python
-  >>> ragged.constant_value([[1, 2], [3], [4, 5, 6]])
-  RaggedTensorValue(values=[1, 2, 3, 4, 5, 6], splits=[0, 2, 3, 6])
-  ```
+  >>> tf.compat.v1.ragged.constant_value([[1, 2], [3], [4, 5, 6]])
+  tf.RaggedTensorValue(values=array([1, 2, 3, 4, 5, 6]),
+                       row_splits=array([0, 2, 3, 6]))
 
   All scalar values in `pylist` must have the same nesting depth `K`, and the
   returned `RaggedTensorValue` will have rank `K`.  If `pylist` contains no
@@ -133,6 +130,8 @@ def constant_value(pylist, dtype=None, ragged_rank=None, inner_shape=None,
     ValueError: If the scalar values in `pylist` have inconsistent nesting
       depth; or if ragged_rank or inner_shape are incompatible with `pylist`.
   """
+  if dtype is not None and isinstance(dtype, dtypes.DType):
+    dtype = dtype.as_numpy_dtype
   row_splits_dtype = dtypes.as_dtype(row_splits_dtype).as_numpy_dtype
   def _ragged_factory(values, row_splits):
     row_splits = np.array(row_splits, dtype=row_splits_dtype)
@@ -343,5 +342,5 @@ def placeholder(dtype, ragged_rank, value_shape=None, name=None):
     for i in reversed(range(ragged_rank)):
       row_splits = array_ops.placeholder(dtypes.int64, [None],
                                          "row_splits_%d" % i)
-      result = ragged_tensor.RaggedTensor(result, row_splits, internal=True)
+      result = ragged_tensor.RaggedTensor.from_row_splits(result, row_splits)
     return result

@@ -16,11 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PROFILING_PROFILE_SUMMARIZER_H_
 #define TENSORFLOW_LITE_PROFILING_PROFILE_SUMMARIZER_H_
 
+#include <functional>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/profiling/profile_buffer.h"
+#include "tensorflow/lite/profiling/profile_summary_formatter.h"
 
 namespace tflite {
 namespace profiling {
@@ -28,25 +31,46 @@ namespace profiling {
 // Creates a summary of operator invocations in the interpreter.
 class ProfileSummarizer {
  public:
-  ProfileSummarizer();
+  explicit ProfileSummarizer(
+      std::shared_ptr<ProfileSummaryFormatter> summary_formatter =
+          std::make_shared<ProfileSummaryDefaultFormatter>());
   virtual ~ProfileSummarizer() {}
 
   // Process profile events to update statistics for operator invocations.
   void ProcessProfiles(const std::vector<const ProfileEvent*>& profile_stats,
                        const tflite::Interpreter& interpreter);
 
-  // Returns a string detailing the accumulated runtime stats in a tab-separated
-  // format which can be pasted into a spreadsheet for further analysis.
-  std::string GetOutputString() const {
-    return stats_calculator_->GetOutputString();
+  // Returns a string detailing the accumulated runtime stats in the format of
+  // summary_formatter_.
+  std::string GetOutputString() {
+    return summary_formatter_->GetOutputString(stats_calculator_map_,
+                                               *delegate_stats_calculator_);
   }
 
-  std::string GetShortSummary() const {
-    return stats_calculator_->GetShortSummary();
+  std::string GetShortSummary() {
+    return summary_formatter_->GetShortSummary(stats_calculator_map_,
+                                               *delegate_stats_calculator_);
+  }
+
+  tensorflow::StatsCalculator* GetStatsCalculator(uint32_t subgraph_index);
+
+  bool HasProfiles() {
+    for (auto& stats_calc : stats_calculator_map_) {
+      auto subgraph_stats = stats_calc.second.get();
+      if (subgraph_stats->num_runs() >= 1) return true;
+    }
+    return false;
   }
 
  private:
-  std::unique_ptr<tensorflow::StatsCalculator> stats_calculator_;
+  // Map storing stats per subgraph.
+  std::map<uint32_t, std::unique_ptr<tensorflow::StatsCalculator>>
+      stats_calculator_map_;
+
+  std::unique_ptr<tensorflow::StatsCalculator> delegate_stats_calculator_;
+
+  // Summary formatter for customized output formats.
+  std::shared_ptr<ProfileSummaryFormatter> summary_formatter_;
 };
 
 }  // namespace profiling

@@ -16,9 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
 #include <iterator>
+#include <stack>
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape.h"
@@ -26,8 +28,14 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
 namespace {
+
+// The amount of shared memory a CUDA kernel can use.
+//
+// Stay on the conservative side, this is smaller than full 64kB, but allows
+// some extra space for cache.
+int64 kSharedMemoryBudgetInBytes = 40000;
+
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -39,6 +47,25 @@ void AppendParams(const HloInstruction& instr,
     }
   }
 }
+
+bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
+  CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
+  if (instr.opcode() == HloOpcode::kReduce &&
+      !IsReductionFromOrToContiguousDimensions(instr)) {
+    return true;
+  }
+  // Avoid fusing reduce-window when stride is less than window size to minimize
+  // the number of reads of the same elements.
+  if (instr.opcode() == HloOpcode::kReduceWindow) {
+    for (const auto& dim : instr.window().dimensions()) {
+      if (dim.size() > dim.stride()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
@@ -99,25 +126,25 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // sometimes referred to as "the real hero".
   auto get_real_hero =
       [&](const HloInstruction* instr) -> const HloInstruction* {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      auto fused_expression_root = instr->fused_expression_root();
-      if (instr->IsMultiOutputFusion()) {
-        // If possible, we want to pick a reduction-to-vector operand of the
-        // fusion root, because it has the most constraints.
-        for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionFromOrToContiguousDimensions(*inst)) {
-            return inst;
-          }
-        }
-        return fused_expression_root->operands()[0];
-      }
+    if (instr->opcode() != HloOpcode::kFusion) {
+      return instr;
+    }
+    auto fused_expression_root = instr->fused_expression_root();
+    if (!instr->IsMultiOutputFusion()) {
       return fused_expression_root;
     }
-    return instr;
+    // If possible, we want to pick a reduction-to-vector operand of the
+    // fusion root, because it has the most constraints.
+    for (const auto* inst : fused_expression_root->operands()) {
+      if (IsReductionFromOrToContiguousDimensions(*inst)) {
+        return inst;
+      }
+    }
+    return fused_expression_root->operands()[0];
   };
 
   // Multi-output fusion kernels share a common parallel loop. The loop
-  // dimenstions are determined by instruction shapes.
+  // dimensions are determined by instruction shapes.
   auto get_loop_shape = [&](const HloInstruction* element_instr) {
     // Special-case reduction-to-vector ops: The loop dimensions are determined
     // by the shape of the first operand.
@@ -133,16 +160,13 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // operand shape) and the reduction dimensions need to match.
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
-  // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
-      (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
-       instr_1->dimensions() != instr_2->dimensions())) {
+      !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
-  // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
-  return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
+  return ShapeUtil::EqualIgnoringElementType(get_loop_shape(instr_1),
                                              get_loop_shape(instr_2));
 }
 
@@ -202,19 +226,19 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
   if (!IsLoopFusible(producer) || !IsFusible(consumer)) {
     return false;
   }
-
   // Skip multiple output fusion. It's not yet supported.
   if (producer.IsMultiOutputFusion()) {
     return false;
   }
-
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(consumer) &&
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-
   // We can't fuse library calls, so if a user of such an op could become a
   // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
   // further rationale.
@@ -222,7 +246,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
       ImplementedAsLibraryCall(*producer.operand(0))) {
     return false;
   }
-
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -235,7 +258,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
     return ShapeUtil::IsEffectiveScalar(producer.shape()) &&
            consumer.opcode() == HloOpcode::kFusion;
   }
-
   return true;
 }
 
@@ -249,19 +271,49 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
   if (!IsLoopFusible(producer) || !IsFusibleAsMultiOutputFusionRoot(consumer)) {
     return false;
   }
-
+  if (CreatesNestedLoop(producer, consumer)) {
+    return false;
+  }
   if (!ShapesCompatibleForMultiOutputFusion(producer, consumer)) {
     return false;
   }
-
   if (!LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-
   return true;
 }
 
-// This function limits the maximum number of operands to a fusion.
+// Returns shared memory usage for a given instruction in bytes.
+static int64 SharedMemoryUsage(const HloInstruction& instr) {
+  // For now we are only fusing reductions.
+  if (instr.opcode() == HloOpcode::kReduce &&
+      IsReductionFromOrToContiguousDimensions(instr)) {
+    ReductionDimensions reduction_info =
+        GetReductionKindAndContiguousComponents(instr);
+    int64 primitive_size =
+        ShapeUtil::ByteSizeOfPrimitiveType(instr.shape().element_type());
+    if (reduction_info.is_row_reduction) {
+      // __shared__[32] is used for row reduction.
+      return 32 * primitive_size;
+    } else {
+      // __shared__[2][32][33] cache is used for column reduction ("2" comes
+      // from potential x-tiling).
+      return 2 * 32 * 33 * primitive_size;
+    }
+  } else if (instr.opcode() == HloOpcode::kFusion) {
+    int64 sum = 0;
+    for (const HloInstruction* operand :
+         instr.fused_expression_root()->operands()) {
+      sum += SharedMemoryUsage(*operand);
+    }
+    return sum;
+  }
+  // Other fused expressions for now don't need the shared memory budget.
+  return 0;
+}
+
+// This function limits the maximum number of operands to a fusion, and the
+// amount of shared memory which can be consumed by the fusion.
 //
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
 // exactly what that limit is hazy, as it depends on (among other things) how
@@ -281,6 +333,11 @@ bool IsProducerConsumerMultiOutputFusible(const HloInstruction& producer,
 // uses a lot of registers, thus limiting occupancy.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2) {
+  if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
+      kSharedMemoryBudgetInBytes) {
+    return true;
+  }
+
   // Compute the number of outputs of the (possibly multi-output) fusion node
   // we're considering creating.
   //
@@ -321,6 +378,71 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   operands.erase(&instr1);
   operands.erase(&instr2);
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
+}
+
+bool CreatesNestedLoop(const HloInstruction& producer,
+                       const HloInstruction& consumer) {
+  // If producer does not have an instruction that codegens a loop then there is
+  // nothing to do.
+  auto producer_has_loop_codegen = [&](const HloInstruction& instr) {
+    if (producer.opcode() != HloOpcode::kFusion) {
+      return IfFusedReadsElementsMultipleTimes(producer);
+    }
+    for (const auto& instr : producer.fused_instructions()) {
+      if (IfFusedReadsElementsMultipleTimes(*instr)) {
+        return true;
+      }
+    }
+    return false;
+  };
+  if (!producer_has_loop_codegen(producer)) {
+    return false;
+  }
+
+  // If consumer is a non-fusion instruction then we have to check if it
+  // generates a loop.
+  if (consumer.opcode() != HloOpcode::kFusion) {
+    return IfFusedReadsElementsMultipleTimes(consumer);
+  }
+
+  // If consumer is a fusion then we have to check if the output of producer is
+  // used directly or indirectly as an input to an HLO instruction that
+  // generates a loop, i.e. there is a path in the graph from an operand
+  // corresponding to the producer to an HLO instruction generating a loop in
+  // the consumer.
+  for (const HloInstruction* operand : consumer.operands()) {
+    if (operand != &producer) {
+      continue;
+    }
+
+    const HloInstruction* root =
+        consumer.fused_instructions_computation()->parameter_instruction(
+            consumer.operand_index(operand));
+
+    std::stack<const HloInstruction*> dfs;
+    dfs.push(root);
+    absl::flat_hash_set<const HloInstruction*> visited;
+    while (!dfs.empty()) {
+      const HloInstruction* cur = dfs.top();
+      dfs.pop();
+
+      if (visited.contains(cur)) {
+        continue;
+      }
+      visited.insert(cur);
+
+      if (IfFusedReadsElementsMultipleTimes(*cur)) {
+        return true;
+      }
+      for (const auto& user : cur->users()) {
+        if (visited.contains(user)) {
+          continue;
+        }
+        dfs.push(user);
+      }
+    }
+  }
+  return false;
 }
 
 bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {

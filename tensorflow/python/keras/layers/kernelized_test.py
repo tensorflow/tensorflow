@@ -27,11 +27,13 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.layers import kernelized as kernel_layers
 from tensorflow.python.keras.utils import kernelized_utils
 from tensorflow.python.ops import array_ops
@@ -141,32 +143,32 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters(
       ('gaussian', 'gaussian'), ('laplacian', 'laplacian'),
       ('other', init_ops.random_uniform_initializer))
-  @test_util.run_deprecated_v1
   def test_call_on_placeholder(self, initializer):
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5,
-        kernel_initializer=initializer,
-        name='random_fourier_features')
-    with self.assertRaisesRegexp(
-        ValueError, r'The last dimension of the inputs to '
-        '`RandomFourierFeatures` should be defined. Found `None`.'):
-      rff_layer(inputs)
+    with ops.Graph().as_default():
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5,
+          kernel_initializer=initializer,
+          name='random_fourier_features')
+      with self.assertRaisesRegexp(
+          ValueError, r'The last dimension of the inputs to '
+          '`RandomFourierFeatures` should be defined. Found `None`.'):
+        rff_layer(inputs)
 
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5,
-        kernel_initializer=initializer,
-        name='random_fourier_features')
-    with self.assertRaisesRegexp(
-        ValueError, r'The last dimension of the inputs to '
-        '`RandomFourierFeatures` should be defined. Found `None`.'):
-      rff_layer(inputs)
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5,
+          kernel_initializer=initializer,
+          name='random_fourier_features')
+      with self.assertRaisesRegexp(
+          ValueError, r'The last dimension of the inputs to '
+          '`RandomFourierFeatures` should be defined. Found `None`.'):
+        rff_layer(inputs)
 
-    inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3])
-    rff_layer = kernel_layers.RandomFourierFeatures(
-        output_dim=5, name='random_fourier_features')
-    rff_layer(inputs)
+      inputs = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3])
+      rff_layer = kernel_layers.RandomFourierFeatures(
+          output_dim=5, name='random_fourier_features')
+      rff_layer(inputs)
 
   @parameterized.named_parameters(('gaussian', 10, 'gaussian', 2.0),
                                   ('laplacian', 5, 'laplacian', None),
@@ -213,13 +215,15 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     if isinstance(initializer, init_ops.Initializer):
       expected_initializer = initializers.serialize(initializer)
 
+    expected_dtype = (
+        'float32' if base_layer_utils.v2_dtype_behavior_enabled() else None)
     expected_config = {
         'output_dim': output_dim,
         'kernel_initializer': expected_initializer,
         'scale': scale,
         'name': 'random_fourier_features',
         'trainable': trainable,
-        'dtype': None,
+        'dtype': expected_dtype,
     }
     self.assertLen(expected_config, len(rff_layer.get_config()))
     self.assertSameElements(

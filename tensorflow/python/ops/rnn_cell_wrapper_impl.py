@@ -194,6 +194,10 @@ class DropoutWrapperBase(object):
   def output_size(self):
     return self.cell.output_size
 
+  def build(self, inputs_shape):
+    self.cell.build(inputs_shape)
+    self.built = True
+
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self.cell.zero_state(batch_size, dtype)
@@ -206,7 +210,7 @@ class DropoutWrapperBase(object):
 
     # 0. if [keep_prob, 1.0) and 1. if [1.0, 1.0 + keep_prob)
     binary_tensor = math_ops.floor(random_tensor)
-    ret = math_ops.div(value, keep_prob) * binary_tensor
+    ret = math_ops.divide(value, keep_prob) * binary_tensor
     ret.set_shape(value.get_shape())
     return ret
 
@@ -381,9 +385,11 @@ class ResidualWrapperBase(object):
     if self._residual_fn is not None:
       function, function_type, function_module = _serialize_function_to_config(
           self._residual_fn)
-      config = {"residual_fn": function,
-                "residual_fn_type": function_type,
-                "residule_fn_module": function_module}
+      config = {
+          "residual_fn": function,
+          "residual_fn_type": function_type,
+          "residual_fn_module": function_module
+      }
     else:
       config = {}
     base_config = super(ResidualWrapperBase, self).get_config()
@@ -393,9 +399,10 @@ class ResidualWrapperBase(object):
   def from_config(cls, config, custom_objects=None):
     if "residual_fn" in config:
       config = config.copy()
-      residual_function = _parse_config_to_function(
-          config, custom_objects, "residual_fn", "residual_fn_type",
-          "residule_fn_module")
+      residual_function = _parse_config_to_function(config, custom_objects,
+                                                    "residual_fn",
+                                                    "residual_fn_type",
+                                                    "residual_fn_module")
       config["residual_fn"] = residual_function
     return super(ResidualWrapperBase, cls).from_config(
         config, custom_objects=custom_objects)

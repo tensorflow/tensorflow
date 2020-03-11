@@ -167,6 +167,16 @@ class StatefulScatterNdTest(test.TestCase):
       result = self.evaluate(scatter)
       self.assertAllClose(result, expected)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testString(self):
+    ref = variables.Variable(["qq", "ww", "ee", "rr", "", "", "", ""])
+    indices = constant_op.constant([[4], [3], [1], [7]])
+    updates = constant_op.constant(["aa", "dd", "cc", "bb"])
+    update = state_ops.scatter_nd_update(ref, indices, updates)
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllEqual(self.evaluate(update),
+                        [b"qq", b"cc", b"ee", b"dd", b"aa", b"", b"", b"bb"])
+
   @test_util.run_deprecated_v1
   def testSimpleResource(self):
     indices = constant_op.constant([[4], [3], [1], [7]], dtype=dtypes.int32)
@@ -647,7 +657,7 @@ class ScatterNdTest(test.TestCase):
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   @test_util.run_deprecated_v1
-  def testScatterNdRepatedIndicesAdd(self):
+  def testScatterNdRepeatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]

@@ -15,87 +15,56 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_TENSOR_HANDLE_DATA_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_EAGER_REMOTE_TENSOR_HANDLE_DATA_H_
 
-#include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
-#include "tensorflow/core/distributed_runtime/eager/eager_client.h"
+#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
 // Remote Tensor Handle: A handle to a Tensor on a remote host. Note that only
 // the shape is known.
-class RemoteTensorHandleData : public TensorHandleData {
+class RemoteTensorHandleData {
  public:
-  RemoteTensorHandleData(int64 op_id, int output_num, const TensorShape& shape,
-                         eager::EagerClient* eager_client, uint64 context_id,
+  // Constructor for lazy remote handles
+  RemoteTensorHandleData(int64 op_id, int output_num, uint64 context_view_id);
+  // Constructor for unshaped remote handles
+  RemoteTensorHandleData(int64 op_id, int output_num, const string& remote_task,
                          EagerContext* ctx);
-  ~RemoteTensorHandleData() override;
+  ~RemoteTensorHandleData();
 
   // A remote tensor handle does not have a Tensor object, hence it can only
   // support the shape requests.
-  Status Tensor(const tensorflow::Tensor** t) const override;
-  Status TensorValue(tensorflow::TensorValue* t) override;
-  Status Shape(TensorShape* shape) const override;
-  Status NumDims(int* num_dims) const override;
-  Status Dim(int dim_index, int64* dim) const override;
-  Status NumElements(int64* num_elements) const override;
+  Status Shape(TensorShape* shape) const;
+  Status NumDims(int* num_dims) const;
+  Status Dim(int dim_index, int64* dim) const;
+  Status NumElements(int64* num_elements) const;
 
-  string DebugString() const override;
+  bool IsReady() const;
+  Status SetShape(const TensorShape& shape);
+  void Poison(Status status);
+  Status IsPoisoned() const;
 
-  int64 op_id() const { return op_id_; }
-  int32 output_num() const { return output_num_; }
-
- private:
-  // IDs required when this class is representing a remote tensor handle.
-  const int64 op_id_;
-  const int32 output_num_;
-  const TensorShape shape_;
-  eager::EagerClient* eager_client_;
-  uint64 context_id_;
-  EagerContext* const ctx_;
-};
-
-// Async Remote Tensor Handle: A handle to a Tensor on a remote host. Once the
-// shape has been computed this is replaced with a remote tensor handle.
-class UnshapedRemoteTensorHandleData : public TensorHandleData {
- public:
-  UnshapedRemoteTensorHandleData(int64 op_id, int32 output_num,
-                                 eager::EagerClient* eager_client,
-                                 uint64 context_id, EagerContext* ctx);
-  ~UnshapedRemoteTensorHandleData() override;
-
-  // Unshaped remote tensor handles are not ready and hence cannot satisfy any
-  // of these requests.
-  Status Tensor(const tensorflow::Tensor** t) const override;
-  Status TensorValue(tensorflow::TensorValue* t) override;
-  Status Shape(TensorShape* shape) const override;
-  Status NumDims(int* num_dims) const override;
-  Status Dim(int dim_index, int64* dim) const override;
-  Status NumElements(int64* num_elements) const override;
-
-  string DebugString() const override;
+  string DebugString() const;
 
   int64 op_id() const { return op_id_; }
   int32 output_num() const { return output_num_; }
-  eager::EagerClient* eager_client() const { return eager_client_; }
-  uint64 context_id() const { return context_id_; }
-  EagerContext* ctx() const { return ctx_; }
-
-  // When constructed, UnshapedRemoteTensorHandleData owns the remote
-  // TensorHandle and should delete it by issuing an RPC. Once the remote
-  // shape has been learned, the ownership is transferred to
-  // RemoteTensorHandleData. This method must be called to let `this` know
-  // that it no longer owns the remote handle.
-  // TODO(iga): Add a factory method here that will create a new
-  // RemoteTensorHandleData from this and transfer ownership in the process.
-  void ReleaseRemoteTensorHandle() { delete_remote_tensor_ = false; }
+  uint64 context_view_id() const { return context_view_id_; }
 
  private:
+  Status WaitReady(const char* caller) const;
+
+  mutable mutex mu_;
+  bool is_ready_ TF_GUARDED_BY(mu_);
+  Status is_poisoned_ TF_GUARDED_BY(mu_);
+  TensorShape shape_ TF_GUARDED_BY(mu_);
+
   // IDs required when this class is representing a remote tensor handle.
   const int64 op_id_;
   const int32 output_num_;
-  bool delete_remote_tensor_;
-  eager::EagerClient* eager_client_;
+  string remote_task_;
   uint64 context_id_;
-  EagerContext* const ctx_;
+  uint64 context_view_id_;
+  EagerContext* ctx_;
 };
 
 }  // namespace tensorflow

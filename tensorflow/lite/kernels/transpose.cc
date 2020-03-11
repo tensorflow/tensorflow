@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
 #include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -29,6 +32,7 @@ namespace transpose {
 // This file has two implementations of Transpose.
 enum KernelType {
   kReference,
+  kGenericOptimized,
 };
 
 struct TransposeContext {
@@ -106,34 +110,37 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                   GetTensorShape(op_context.output),        \
                   GetTensorData<scalar>(op_context.output))
 
+  // Transpose kernel only does rearranging values not numeric evaluations on
+  // each cell. It's safe to implement per size of scalar type and this trick
+  // keeps the total code size in a reasonable range.
   switch (op_context.input->type) {
     case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, float);
-      }
-      break;
-    case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, uint8_t);
-      }
-      break;
-    case kTfLiteInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, int8_t);
-      }
-      break;
     case kTfLiteInt32:
-      if (kernel_type == kReference) {
+      if (kernel_type == kGenericOptimized) {
+        TF_LITE_TRANSPOSE(optimized_ops, int32_t);
+      } else {
         TF_LITE_TRANSPOSE(reference_ops, int32_t);
       }
       break;
-    case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_TRANSPOSE(reference_ops, int64_t);
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+      if (kernel_type == kGenericOptimized) {
+        TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+      } else {
+        TF_LITE_TRANSPOSE(reference_ops, int8_t);
       }
       break;
+    case kTfLiteInt64:
+      TF_LITE_TRANSPOSE(reference_ops, int64_t);
+      break;
     case kTfLiteBool:
-      if (kernel_type == kReference) {
+      if (sizeof(bool) == 1) {
+        if (kernel_type == kGenericOptimized) {
+          TF_LITE_TRANSPOSE(optimized_ops, int8_t);
+        } else {
+          TF_LITE_TRANSPOSE(reference_ops, int8_t);
+        }
+      } else {
         TF_LITE_TRANSPOSE(reference_ops, bool);
       }
       break;
@@ -156,7 +163,15 @@ TfLiteRegistration* Register_TRANSPOSE_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_TRANSPOSE() { return Register_TRANSPOSE_REF(); }
+TfLiteRegistration* Register_TRANSPOSE_GENERIC_OPTIMIZED() {
+  static TfLiteRegistration r = {nullptr, nullptr, transpose::Prepare,
+                                 transpose::Eval<transpose::kGenericOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_TRANSPOSE() {
+  return Register_TRANSPOSE_GENERIC_OPTIMIZED();
+}
 
 }  // namespace builtin
 }  // namespace ops

@@ -166,7 +166,7 @@ message MdlAdagradLightParameters {
   float initial_benefit = 15;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/AdadeltaOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
 message AdadeltaParameters {
   float rho = 1;
@@ -175,12 +175,66 @@ message AdadeltaParameters {
   float initial_update = 4;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/ProximalAdagradOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
   float initial_accumulator = 3;
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of online Yogi.
+message OnlineYogiParameters {
+  // The L1 regularization parameter (used analogously to the one in FTRL).
+  float l1 = 1;
+
+  // The L2 regularization parameter (used analogously to the one in FTRL).
+  float l2 = 2;
+
+  // \beta_2 from Algorithm 2 in the paper.
+  float beta2 = 3;
+
+  // Reserved ids corresponding to removed tanh activation.
+  reserved 6;  // sign
+  reserved 7;  // tanh
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of proximal Yogi.
+message ProximalYogiParameters {
+  // The L1 regularization parameter.
+  float l1 = 1;
+
+  // The L2 regularization parameter.
+  float l2 = 2;
+
+  // The exponential decay rate for the 1st moment estimates.
+  float beta1 = 3;
+
+  // The exponential decay rate for the 2nd moment estimates.
+  float beta2 = 4;
+
+  // A constant trading off adaptivity and noise.
+  float epsilon = 5;
+
+  // Reserved ids corresponding to removed tanh activation.
+  reserved 8;  // sign
+  reserved 9;  // tanh
 }
 
 // Status of using gradient accumulation (doing two passes over the input
@@ -230,6 +284,11 @@ message OptimizationParameters {
   // once per minibatch.
   float weight_decay_factor = 16;
 
+  // If true, the weight decay factor is multiplied by the current learning rate
+  // before use; this is to match the note in DecoupledWeightDecayExtension in
+  // weight_decay_optimizers.py.
+  bool multiply_weight_decay_factor_by_learning_rate = 22;
+
   // Status of using gradient accumulation (doing two passes over the input
   // gradients: one to accumulate them into a temporary array and another to
   // apply them using the actual optimization algorithm).
@@ -253,6 +312,8 @@ message OptimizationParameters {
     MdlAdagradLightParameters mdl_adagrad_light = 11;
     AdadeltaParameters adadelta = 12;
     ProximalAdagradParameters proximal_adagrad = 14;
+    OnlineYogiParameters online_yogi = 20;
+    ProximalYogiParameters proximal_yogi = 21;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

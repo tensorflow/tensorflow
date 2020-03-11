@@ -22,7 +22,6 @@ from tensorflow.python.data.util import random_seed as data_random_seed
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -67,16 +66,16 @@ class RandomSeedTest(test.TestCase):
 
     if not context.executing_eagerly():
       random_seed.set_random_seed(1)
-      tinput = (1, None)
-      toutput = (1, ops.get_default_graph()._last_id)  # pylint: disable=protected-access
-      random_seed.set_random_seed(tinput[0])
-      g_seed, op_seed = data_random_seed.get_seed(tinput[1])
-      g_seed = self.evaluate(g_seed)
-      op_seed = self.evaluate(op_seed)
-      msg = 'test_case = {0}, got {1}, want {2}'.format(1, (g_seed, op_seed),
-                                                        toutput)
-      self.assertEqual((g_seed, op_seed), toutput, msg=msg)
-      random_seed.set_random_seed(None)
+      for i in range(10):
+        tinput = (1, None)
+        toutput = (1, i)
+        random_seed.set_random_seed(tinput[0])
+        g_seed, op_seed = data_random_seed.get_seed(tinput[1])
+        g_seed = self.evaluate(g_seed)
+        op_seed = self.evaluate(op_seed)
+        msg = 'test_case = {0}, got {1}, want {2}'.format(
+            1, (g_seed, op_seed), toutput)
+        self.assertEqual((g_seed, op_seed), toutput, msg=msg)
 
 
 if __name__ == '__main__':

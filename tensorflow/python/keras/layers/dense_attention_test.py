@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core
@@ -119,6 +120,34 @@ class BaseDenseAttentionTest(test.TestCase):
     # expected100 = softmax(scores)[1, 0] * 2.6 = 2.6
     expected = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_shape_with_dropout(self):
+    # scores: Scores float tensor of shape `[batch_size, tq, tv]`.
+    # value: Value tensor of shape `[batch_size, tv, dim]`.
+    batch_size = 4
+    tq = 5
+    tv = 6
+    dim = 7
+    scores = np.ones((batch_size, tq, tv))
+    value = np.ones((batch_size, tv, dim))
+    actual = dense_attention.BaseDenseAttention(dropout=0.1)._apply_scores(
+        scores=scores, value=value, training=False)
+
+    # Expected Tensor of shape `[batch_size, tq, dim]`.
+    expected_shape = [batch_size, tq, dim]
+    self.assertAllEqual(expected_shape, array_ops.shape(actual))
+
+  def test_serialization(self):
+    # Test serialization with causal
+    layer = dense_attention.BaseDenseAttention(causal=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.causal, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.BaseDenseAttention.from_config(config)
+    self.assertEqual(new_layer.causal, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -428,6 +457,18 @@ class AttentionTest(test.TestCase):
     actual = attention_layer([q, v])
     self.assertAllClose([[[0], [1]]], actual)
 
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.Attention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.Attention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class AdditiveAttentionTest(test.TestCase):
@@ -661,6 +702,18 @@ class AdditiveAttentionTest(test.TestCase):
     # pylint:enable=line-too-long
     expected = np.array([[[1.15497245968], [0.]]], dtype=np.float32)
     self.assertAllClose(expected, actual)
+
+  def test_serialization(self):
+    # Test serialization with use_scale
+    layer = dense_attention.AdditiveAttention(use_scale=True)
+
+    config = keras.layers.serialize(layer)
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.use_scale, True)
+
+    config = layer.get_config()
+    new_layer = dense_attention.AdditiveAttention.from_config(config)
+    self.assertEqual(new_layer.use_scale, True)
 
 
 @test_util.run_all_in_graph_and_eager_modes

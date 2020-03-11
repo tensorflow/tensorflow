@@ -78,16 +78,16 @@ template <>
 int64 SparseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return Fingerprint64(values_.vec<string>().data()[start + n]);
+    return Fingerprint64(values_.vec<tstring>().data()[start + n]);
   return values_.vec<int64>().data()[start + n];
 }
 
 // InternalType is string or StringPiece when using StringCrosser.
 template <>
-string SparseTensorColumn<string>::Feature(int64 batch, int64 n) const {
+tstring SparseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
   const int64 start = feature_start_indices_[batch];
   if (DT_STRING == values_.dtype())
-    return values_.vec<string>().data()[start + n];
+    return values_.vec<tstring>().data()[start + n];
   return std::to_string(values_.vec<int64>().data()[start + n]);
 }
 
@@ -95,7 +95,7 @@ template <>
 StringPiece SparseTensorColumn<StringPiece>::Feature(int64 batch,
                                                      int64 n) const {
   const int64 start = feature_start_indices_[batch];
-  return values_.vec<string>().data()[start + n];
+  return values_.vec<tstring>().data()[start + n];
 }
 
 // A column that is backed by a dense tensor.
@@ -118,21 +118,21 @@ class DenseTensorColumn : public ColumnInterface<InternalType> {
 template <>
 int64 DenseTensorColumn<int64>::Feature(int64 batch, int64 n) const {
   if (DT_STRING == tensor_.dtype())
-    return Fingerprint64(tensor_.matrix<string>()(batch, n));
+    return Fingerprint64(tensor_.matrix<tstring>()(batch, n));
   return tensor_.matrix<int64>()(batch, n);
 }
 
 // Internal type is string or StringPiece when using StringCrosser.
 template <>
-string DenseTensorColumn<string>::Feature(int64 batch, int64 n) const {
-  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<string>()(batch, n);
+tstring DenseTensorColumn<tstring>::Feature(int64 batch, int64 n) const {
+  if (DT_STRING == tensor_.dtype()) return tensor_.matrix<tstring>()(batch, n);
   return std::to_string(tensor_.matrix<int64>()(batch, n));
 }
 
 template <>
 StringPiece DenseTensorColumn<StringPiece>::Feature(int64 batch,
                                                     int64 n) const {
-  return tensor_.matrix<string>()(batch, n);
+  return tensor_.matrix<tstring>()(batch, n);
 }
 
 // Updates Output tensors with sparse crosses.
@@ -275,7 +275,7 @@ struct CrossTraits;
 template <typename InternalType>
 struct CrossTraits<false, InternalType> {
   typedef StringCrosser<InternalType> Crosser;
-  typedef OutputUpdater<string> Updater;
+  typedef OutputUpdater<tstring> Updater;
 };
 
 template <>
@@ -308,8 +308,8 @@ class SparseCrossOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->input_list("dense_inputs", &dense_list_in));
 
-    ValidateInput(context, indices_list_in, values_list_in, shapes_list_in,
-                  dense_list_in);
+    OP_REQUIRES_OK(context, ValidateInput(indices_list_in, values_list_in,
+                                          shapes_list_in, dense_list_in));
 
     std::vector<std::unique_ptr<ColumnInterface<InternalType>>> columns =
         GenerateColumnsFromInput(indices_list_in, values_list_in,
@@ -322,8 +322,10 @@ class SparseCrossOp : public OpKernel {
     Tensor* shape_out;
     const int64 batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
     std::vector<int64> output_start_indices(batch_size);
-    CreateOutputTensors(columns, batch_size, context, &indices_out, &values_out,
-                        &shape_out, &output_start_indices);
+    OP_REQUIRES_OK(
+        context,
+        CreateOutputTensors(columns, batch_size, context, &indices_out,
+                            &values_out, &shape_out, &output_start_indices));
 
     typename CrossTraits<HASHED_OUTPUT, InternalType>::Updater updater(
         output_start_indices, indices_out, values_out);
@@ -348,83 +350,93 @@ class SparseCrossOp : public OpKernel {
 
  private:
   // Validates input tensors.
-  void ValidateInput(OpKernelContext* context,
-                     const OpInputList& indices_list_in,
-                     const OpInputList& values_list_in,
-                     const OpInputList& shapes_list_in,
-                     const OpInputList& dense_list_in) {
+  Status ValidateInput(const OpInputList& indices_list_in,
+                       const OpInputList& values_list_in,
+                       const OpInputList& shapes_list_in,
+                       const OpInputList& dense_list_in) {
     const auto size = indices_list_in.size();
     // Validates indices_list_in OpInputList.
     for (int i = 0; i < size; i++) {
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsMatrix(indices_list_in[i].shape()),
-          errors::InvalidArgument(
-              "Input indices should be a matrix but received shape ",
-              indices_list_in[i].shape().DebugString(), " at position ", i));
-      OP_REQUIRES(
-          context, indices_list_in[i].shape().dim_size(1) == 2,
-          errors::InvalidArgument("Expected D2 of index to be 2 got ",
-                                  indices_list_in[i].shape().dim_size(1),
-                                  " at position ", i));
+      if (!TensorShapeUtils::IsMatrix(indices_list_in[i].shape())) {
+        return errors::InvalidArgument(
+            "Input indices should be a matrix but received shape ",
+            indices_list_in[i].shape().DebugString(), " at position ", i);
+      }
+      if (indices_list_in[i].shape().dim_size(1) != 2) {
+        return errors::InvalidArgument("Expected D2 of index to be 2 got ",
+                                       indices_list_in[i].shape().dim_size(1),
+                                       " at position ", i);
+      }
     }
 
     // Validates values_list_in OpInputList.
-    OP_REQUIRES(
-        context, values_list_in.size() == size,
-        errors::InvalidArgument("Expected ", size, " input values, got ",
-                                values_list_in.size()));
+    if (values_list_in.size() != size) {
+      return errors::InvalidArgument("Expected ", size, " input values, got ",
+                                     values_list_in.size());
+    }
     for (int i = 0; i < size; i++) {
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsVector(values_list_in[i].shape()),
-          errors::InvalidArgument(
-              "Input values should be a std::vector but received shape ",
-              values_list_in[i].shape().DebugString(), " at position ", i));
-      OP_REQUIRES(
-          context,
-          indices_list_in[i].shape().dim_size(0) ==
-              values_list_in[i].shape().dim_size(0),
-          errors::InvalidArgument(
-              "Expected size of values to be ",
-              indices_list_in[i].shape().dim_size(0), " got ",
-              values_list_in[i].shape().dim_size(0), " at position ", i));
+      if (!TensorShapeUtils::IsVector(values_list_in[i].shape())) {
+        return errors::InvalidArgument(
+            "Input values should be a vector but received shape ",
+            values_list_in[i].shape().DebugString(), " at position ", i);
+      }
+      if (indices_list_in[i].shape().dim_size(0) !=
+          values_list_in[i].shape().dim_size(0)) {
+        return errors::InvalidArgument(
+            "Expected size of values to be ",
+            indices_list_in[i].shape().dim_size(0), " got ",
+            values_list_in[i].shape().dim_size(0), " at position ", i);
+      }
     }
 
     // Validates shapes_list_in OpInputList
-    OP_REQUIRES(
-        context, shapes_list_in.size() == size,
-        errors::InvalidArgument("Expected ", size, " input shapes, got ",
-                                shapes_list_in.size()));
-    const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+    if (shapes_list_in.size() != size) {
+      return errors::InvalidArgument("Expected ", size, " input shapes, got ",
+                                     shapes_list_in.size());
+    }
     for (int i = 0; i < size; i++) {
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsVector(shapes_list_in[i].shape()),
-          errors::InvalidArgument(
-              "Input shapes should be a std::vector but received shape ",
-              shapes_list_in[i].shape().DebugString(), " at position ", i));
+      if (!TensorShapeUtils::IsVector(shapes_list_in[i].shape())) {
+        return errors::InvalidArgument(
+            "Input shapes should be a vector but received shape ",
+            shapes_list_in[i].shape().DebugString(), " at position ", i);
+      }
 
-      OP_REQUIRES(
-          context, shapes_list_in[i].vec<int64>().size() == 2,
-          errors::InvalidArgument("shape should imply a 2D tensor, but got ",
-                                  shapes_list_in[i].shape().DebugString(),
-                                  " at position ", i));
-      OP_REQUIRES(context, shapes_list_in[i].vec<int64>()(0) == batch_size,
-                  errors::InvalidArgument(
-                      "Expected batch size ", batch_size, " got ",
-                      shapes_list_in[i].vec<int64>()(0), " at position ", i));
+      if (shapes_list_in[i].vec<int64>().size() != 2) {
+        return errors::InvalidArgument(
+            "shape should imply a 2D tensor, but got ",
+            shapes_list_in[i].shape().DebugString(), " at position ", i);
+      }
     }
 
     // Validates dense_list_in OpInputList
     for (int i = 0; i < dense_list_in.size(); ++i) {
-      OP_REQUIRES(
-          context, TensorShapeUtils::IsMatrix(dense_list_in[i].shape()),
-          errors::InvalidArgument(
-              "Dense inputs should be a matrix but received shape ",
-              dense_list_in[i].shape().DebugString(), " at position ", i));
-      OP_REQUIRES(context, dense_list_in[i].dim_size(0) == batch_size,
-                  errors::InvalidArgument("Expected batch size ", batch_size,
-                                          " got ", dense_list_in[i].dim_size(0),
-                                          " at dense tensor ", i));
+      if (!TensorShapeUtils::IsMatrix(dense_list_in[i].shape())) {
+        return errors::InvalidArgument(
+            "Dense inputs should be a matrix but received shape ",
+            dense_list_in[i].shape().DebugString(), " at position ", i);
+      }
     }
+
+    // Validates batch sizes.  (Note: we do this after validating the input
+    // shapes, because CalculateBatchSize() depends on inputs having valid
+    // shapes).
+    const auto batch_size = CalculateBatchSize(shapes_list_in, dense_list_in);
+    for (int i = 0; i < size; i++) {
+      if (shapes_list_in[i].vec<int64>()(0) != batch_size) {
+        return errors::InvalidArgument(
+            "Expected batch size ", batch_size, " got ",
+            shapes_list_in[i].vec<int64>()(0), " at position ", i);
+      }
+    }
+    for (int i = 0; i < dense_list_in.size(); ++i) {
+      if (dense_list_in[i].dim_size(0) != batch_size) {
+        return errors::InvalidArgument("Expected batch size ", batch_size,
+                                       " got ", dense_list_in[i].dim_size(0),
+                                       " at dense tensor ", i);
+      }
+    }
+
+    return Status::OK();
   }
 
   // Calculate the batch size from either the shapes input or the dense input.
@@ -500,7 +512,7 @@ class SparseCrossOp : public OpKernel {
   // the output SparseTensor.
   // It also output_start_indices which contains the start indices for each
   // input in the output SparseTensor.
-  void CreateOutputTensors(
+  Status CreateOutputTensors(
       const std::vector<std::unique_ptr<ColumnInterface<InternalType>>>&
           columns,
       int64 batch_size, OpKernelContext* context, Tensor** indices_out,
@@ -518,19 +530,19 @@ class SparseCrossOp : public OpKernel {
     }
 
     // Allocates tensors.
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(
-                       0, TensorShape({cross_count_total, 2}), indices_out));
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(1, TensorShape({cross_count_total}),
-                                            values_out));
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(2, TensorShape({2}), shape_out));
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        0, TensorShape({cross_count_total, 2}), indices_out));
+    TF_RETURN_IF_ERROR(context->allocate_output(
+        1, TensorShape({cross_count_total}), values_out));
+    TF_RETURN_IF_ERROR(
+        context->allocate_output(2, TensorShape({2}), shape_out));
 
     // Sets shape.
     auto shape_vec = (*shape_out)->vec<int64>();
     shape_vec(0) = batch_size;
     shape_vec(1) = max_cross_count;
+
+    return Status::OK();
   }
 
   // Returns number of crosses for a given batch_index
@@ -555,20 +567,20 @@ class SparseCrossOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("out_type")
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseCrossOp<false, StringPiece>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("out_type")
+                            .TypeConstraint<tstring>("out_type")
                             .TypeConstraint<int64>("internal_type"),
-                        SparseCrossOp<false, string>);
+                        SparseCrossOp<false, tstring>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<int64>("out_type")
-                            .TypeConstraint<string>("internal_type"),
+                            .TypeConstraint<tstring>("internal_type"),
                         SparseCrossOp<true, int64>);
 
 REGISTER_KERNEL_BUILDER(Name("SparseCross")

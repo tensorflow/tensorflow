@@ -15,9 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MUL_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_MUL_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/mul.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -28,7 +29,7 @@ namespace optimized_integer_ops {
 inline void MulElementwise(int size, const ArithmeticParams& params,
                            const int8* input1_data, const int8* input2_data,
                            int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("MulElementwiseInt8/8bit");
+  ruy::profiler::ScopeLabel label("MulElementwiseInt8/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
@@ -44,6 +45,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
       vdup_n_s8(params.quantized_activation_min);
   const auto output_activation_max_vector =
       vdup_n_s8(params.quantized_activation_max);
+  const int left_shift = std::max(0, params.output_shift);
+  const int right_shift = std::max(0, -params.output_shift);
+  const int32x4_t left_shift_vec = vdupq_n_s32(left_shift);
   for (; i <= size - 8; i += 8) {
     // We load / store 8 at a time, multiplying as two sets of 4 int32s.
     const auto input1_val_original = vld1_s8(input1_data + i);
@@ -61,14 +65,16 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     auto p1 = vmull_s16(input2_val_low, input1_val_low);
     auto p2 = vmull_s16(input2_val_high, input1_val_high);
 
+    p1 = vshlq_s32(p1, left_shift_vec);
+    p2 = vshlq_s32(p2, left_shift_vec);
     p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
     p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
-    p1 = RoundingDivideByPOT(p1, -params.output_shift);
-    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+    p1 = RoundingDivideByPOT(p1, right_shift);
+    p2 = RoundingDivideByPOT(p2, right_shift);
 
-    const auto p1_narrowed = vmovn_s32(p1);
-    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p1_narrowed = vqmovn_s32(p1);
+    const auto p2_narrowed = vqmovn_s32(p2);
     const auto p =
         vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
     const auto clamped =
@@ -83,9 +89,9 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -97,7 +103,7 @@ inline void MulElementwise(int size, const ArithmeticParams& params,
 inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
                                const int8 broadcast_value,
                                const int8* input2_data, int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadMulSimpleBroadcastInt8/8bit");
+  ruy::profiler::ScopeLabel label("BroadMulSimpleBroadcastInt8/8bit");
   const int16 input1_val = params.input1_offset + broadcast_value;
 
   int i = 0;
@@ -114,6 +120,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
       vdup_n_s8(params.quantized_activation_min);
   const auto output_activation_max_vector =
       vdup_n_s8(params.quantized_activation_max);
+  const int left_shift = std::max(0, params.output_shift);
+  const int right_shift = std::max(0, -params.output_shift);
+  const int32x4_t left_shift_vec = vdupq_n_s32(left_shift);
   for (; i <= size - 8; i += 8) {
     // We load / store 8 at a time, multiplying as two sets of 4 int32s.
     const auto input2_val_original = vld1_s8(input2_data + i);
@@ -126,14 +135,16 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
     auto p1 = vmull_n_s16(input2_val_low, input1_val);
     auto p2 = vmull_n_s16(input2_val_high, input1_val);
 
+    p1 = vshlq_s32(p1, left_shift_vec);
+    p2 = vshlq_s32(p2, left_shift_vec);
     p1 = vqrdmulhq_n_s32(p1, params.output_multiplier);
     p2 = vqrdmulhq_n_s32(p2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
-    p1 = RoundingDivideByPOT(p1, -params.output_shift);
-    p2 = RoundingDivideByPOT(p2, -params.output_shift);
+    p1 = RoundingDivideByPOT(p1, right_shift);
+    p2 = RoundingDivideByPOT(p2, right_shift);
 
-    const auto p1_narrowed = vmovn_s32(p1);
-    const auto p2_narrowed = vmovn_s32(p2);
+    const auto p1_narrowed = vqmovn_s32(p1);
+    const auto p2_narrowed = vqmovn_s32(p2);
     const auto p =
         vaddq_s16(vcombine_s16(p1_narrowed, p2_narrowed), output_offset_vector);
     const auto clamped =
@@ -147,9 +158,9 @@ inline void MulSimpleBroadcast(int size, const ArithmeticParams& params,
     const int32 input2_val = params.input2_offset + input2_data[i];
     const int32 unclamped_result =
         params.output_offset +
-        MultiplyByQuantizedMultiplierSmallerThanOneExp(input1_val * input2_val,
-                                                       params.output_multiplier,
-                                                       params.output_shift);
+        MultiplyByQuantizedMultiplier(input1_val * input2_val,
+                                      params.output_multiplier,
+                                      params.output_shift);
     const int32 clamped_output =
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, unclamped_result));
@@ -163,9 +174,9 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, int8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  gemmlowp::ScopedProfilingLabel label("MulInt8/8bit");
+  ruy::profiler::ScopeLabel label("MulInt8/8bit");
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   MulElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
@@ -177,7 +188,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
                                  const int8* unswitched_input2_data,
                                  const RuntimeShape& output_shape,
                                  int8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastMulFivefoldInt8/8bit");
+  ruy::profiler::ScopeLabel label("BroadcastMulFivefoldInt8/8bit");
 
   ArithmeticParams switched_params = unswitched_params;
   switched_params.input1_offset = unswitched_params.input2_offset;
@@ -239,6 +250,23 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
       input2_data_reset = input2_data_ptr;
     }
   }
+}
+
+inline void BroadcastMulDispatch(const ArithmeticParams& params,
+                                 const RuntimeShape& input1_shape,
+                                 const int8* input1_data,
+                                 const RuntimeShape& input2_shape,
+                                 const int8* input2_data,
+                                 const RuntimeShape& output_shape,
+                                 int8* output_data) {
+  if (params.broadcast_category == BroadcastableOpCategory::kGenericBroadcast) {
+    return reference_integer_ops::BroadcastMul4DSlow(
+        params, input1_shape, input1_data, input2_shape, input2_data,
+        output_shape, output_data);
+  }
+
+  BroadcastMulFivefold(params, input1_shape, input1_data, input2_shape,
+                       input2_data, output_shape, output_data);
 }
 
 }  // namespace optimized_integer_ops

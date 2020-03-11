@@ -7,6 +7,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -78,6 +79,10 @@ tf_class {
   }
   member {
     name: "output_shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "stateful"
     mtype: "<type \'property\'>"
   }
   member {

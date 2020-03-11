@@ -30,10 +30,14 @@ extern llvm::cl::opt<std::string> input_arrays;
 extern llvm::cl::opt<std::string> input_dtypes;
 extern llvm::cl::opt<std::string> input_shapes;
 extern llvm::cl::opt<std::string> output_arrays;
+extern llvm::cl::opt<std::string> control_output_arrays;
 extern llvm::cl::opt<std::string> inference_type;
 extern llvm::cl::opt<std::string> min_values;
 extern llvm::cl::opt<std::string> max_values;
 extern llvm::cl::opt<std::string> debug_info_file;
 extern llvm::cl::opt<bool> prune_unused_nodes;
+extern llvm::cl::opt<bool> convert_legacy_fed_inputs;
+extern llvm::cl::opt<bool> graph_as_function;
+extern llvm::cl::opt<bool> upgrade_legacy;
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_TF_MLIR_TRANSLATE_CL_H_

@@ -39,17 +39,27 @@ class MetaOptimizer : public GraphOptimizer {
 
   string name() const override { return "meta_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
-                  GraphDef* optimized_graph) override;
+                  GraphDef* optimized_graph) override {
+    GrapplerItem copy(item);
+    return OptimizeConsumeItem(cluster, std::move(copy), optimized_graph);
+  }
+
+  Status OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
+                             GraphDef* optimized_graph);
 
   void PrintResult();
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
-                const GraphDef& optimized_graph, double result) override;
+                const GraphDef& optimized_graph, double result) override {}
 
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
       const string& optimizer) const;
+
+  bool IsSingleThreadedExecutor() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
@@ -65,7 +75,7 @@ class MetaOptimizer : public GraphOptimizer {
   const RewriterConfig::CustomGraphOptimizer* GetCustomGraphOptimizerConfig(
       const string& name) const;
 
-  // Initialiaze active verifiers from the RewriterConfig toggles.
+  // Initialize active verifiers from the RewriterConfig toggles.
   void InitializeVerifiers(
       std::vector<std::unique_ptr<GraphVerifier>>* inter_optimizer_verifiers,
       std::vector<std::unique_ptr<GraphVerifier>>* post_optimization_verifiers)
@@ -73,7 +83,7 @@ class MetaOptimizer : public GraphOptimizer {
 
   // Run optimization pass over a single GrapplerItem. Meta optimizer might run
   // multiple such passes: 1) for the main graph 2) for the function library
-  Status OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
+  Status OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
                        GraphDef* optimized_graph);
 
   DeviceBase* const cpu_device_;  // may be NULL
@@ -107,7 +117,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg);
 // during constant folding; if NULL, a new device is created for doing constant
 // folding. For performance, it is recommended to pass in an existing cpu_device
 // when possible.
-Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
+Status RunMetaOptimizer(GrapplerItem&& item, const ConfigProto& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph);
 

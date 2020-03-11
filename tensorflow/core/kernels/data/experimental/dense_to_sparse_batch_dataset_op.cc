@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -122,6 +120,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
       return n / batch_size_ + (n % batch_size_ == 0 ? 0 : 1);
     }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -150,7 +152,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         return DatasetIterator<Dataset<T>>::dataset()->input_->MakeIterator(
-            ctx, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
+            ctx, this, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -302,7 +304,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const int64 batch_size_;
@@ -319,5 +321,6 @@ REGISTER_KERNEL_BUILDER(
     DenseToSparseBatchDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import operator
+
 import numpy as np
 
 from tensorflow.python import tf2

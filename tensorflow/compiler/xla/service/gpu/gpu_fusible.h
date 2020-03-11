@@ -37,7 +37,7 @@ bool IsLoopFusible(const HloInstruction& instr);
 
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
-// such situtations it is better not to fuse. Only input params with
+// such situations it is better not to fuse. Only input params with
 // maximum rank are considered. Params with smaller ranks will be broadcasted
 // and have not been observed to cause data locality issues.
 // TODO(b/111977086): Improve reduce emitters to remove this limitation.
@@ -63,9 +63,14 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion would be "too large" -- i.e., have more operands and
-// outputs than is allowed.
+// outputs than is allowed or occupy too much shared memory.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
                            const HloInstruction& instr2);
+
+// Check if fusing producer and consumer will generate a nested loop, e.g. both
+// producer and consumer are `reduce-window` HLO instructions.
+bool CreatesNestedLoop(const HloInstruction& producer,
+                       const HloInstruction& consumer);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.

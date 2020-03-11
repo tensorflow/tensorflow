@@ -81,7 +81,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in six.moves.builtins.__dict__.values():
+  if any(f is builtin for builtin in six.moves.builtins.__dict__.values()):
     return True
   elif isinstance(f, types.BuiltinFunctionType):
     return True
@@ -91,6 +91,26 @@ def isbuiltin(f):
     return True
   else:
     return False
+
+
+def isconstructor(cls):
+  """Returns True if the argument is an object constructor.
+
+  In general, any object of type class is a constructor, with the exception
+  of classes created using a callable metaclass.
+  See below for why a callable metaclass is not a trivial combination:
+  https://docs.python.org/2.7/reference/datamodel.html#customizing-class-creation
+
+  Args:
+    cls: Any
+  Returns:
+    Bool
+  """
+  return (
+      inspect.isclass(cls)
+      and not (issubclass(cls.__class__, type)
+               and hasattr(cls.__class__, '__call__')
+               and cls.__class__.__call__ is not type.__call__))
 
 
 def _fix_linecache_record(obj):
@@ -146,7 +166,11 @@ def getnamespace(f):
   freevars = six.get_function_code(f).co_freevars
   if freevars and closure:
     for name, cell in zip(freevars, closure):
-      namespace[name] = cell.cell_contents
+      try:
+        namespace[name] = cell.cell_contents
+      except ValueError:
+        # Cell contains undefined variable, omit it from the namespace.
+        pass
   return namespace
 
 
@@ -238,32 +262,6 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def istfmethodtarget(m):
-  """Tests whether an object is a `function.TfMethodTarget`."""
-  # See eager.function.TfMethodTarget for more details.
-  return (hasattr(m, '__self__') and
-          hasattr(m.__self__, 'weakrefself_target__') and
-          hasattr(m.__self__, 'weakrefself_func__') and
-          hasattr(m, '__module__') and
-          (m.__module__ != 'mock'))
-
-
-def getmethodself(m):
-  """An extended version of inspect.getmethodclass."""
-  if not hasattr(m, '__self__'):
-    return None
-  if m.__self__ is None:
-    return None
-
-  # A fallback allowing methods to be actually bound to a type different
-  # than __self__. This is useful when a strong reference from the method
-  # to the object is not desired, for example when caching is involved.
-  if istfmethodtarget(m):
-    return m.__self__.target
-
-  return m.__self__
-
-
 def getmethodclass(m):
   """Resolves a function's owner, e.g. a method's class.
 
@@ -294,15 +292,15 @@ def getmethodclass(m):
     if isinstance(m.__class__, six.class_types):
       return m.__class__
 
-  # Instance method and class methods: return the class of "self".
-  m_self = getmethodself(m)
+  # Instance and class: return the class of "self".
+  m_self = getattr(m, '__self__', None)
   if m_self is not None:
-    if tf_inspect.isclass(m_self):
+    if inspect.isclass(m_self):
       return m_self
     return m_self.__class__
 
   # Class, static and unbound methods: search all defined classes in any
-  # namespace. This is inefficient but more robust method.
+  # namespace. This is inefficient but more robust a method.
   owners = []
   caller_frame = tf_inspect.currentframe().f_back
   try:
@@ -351,4 +349,3 @@ def getfutureimports(entity):
     return tuple()
   return tuple(sorted(name for name, value in entity.__globals__.items()
                       if getattr(value, '__module__', None) == '__future__'))
-

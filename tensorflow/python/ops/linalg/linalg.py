@@ -29,6 +29,7 @@ from tensorflow.python.ops.linalg import solve_registrations as _solve_registrat
 from tensorflow.python.ops.linalg.linalg_impl import *
 from tensorflow.python.ops.linalg.linear_operator import *
 from tensorflow.python.ops.linalg.linear_operator_block_diag import *
+from tensorflow.python.ops.linalg.linear_operator_block_lower_triangular import *
 from tensorflow.python.ops.linalg.linear_operator_circulant import *
 from tensorflow.python.ops.linalg.linear_operator_composition import *
 from tensorflow.python.ops.linalg.linear_operator_diag import *
@@ -37,7 +38,9 @@ from tensorflow.python.ops.linalg.linear_operator_identity import *
 from tensorflow.python.ops.linalg.linear_operator_kronecker import *
 from tensorflow.python.ops.linalg.linear_operator_low_rank_update import *
 from tensorflow.python.ops.linalg.linear_operator_lower_triangular import *
+from tensorflow.python.ops.linalg.linear_operator_permutation import *
 from tensorflow.python.ops.linalg.linear_operator_toeplitz import *
+from tensorflow.python.ops.linalg.linear_operator_tridiag import *
 from tensorflow.python.ops.linalg.linear_operator_zeros import *
 # pylint: enable=wildcard-import
 

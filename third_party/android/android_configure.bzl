@@ -19,20 +19,20 @@ _ANDROID_SDK_API_VERSION = "ANDROID_SDK_API_LEVEL"
 _ANDROID_BUILD_TOOLS_VERSION = "ANDROID_BUILD_TOOLS_VERSION"
 
 _ANDROID_SDK_REPO_TEMPLATE = """
-  native.android_sdk_repository(
-      name="androidsdk",
-      path="%s",
-      api_level=%s,
-      build_tools_version="%s",
-  )
+    native.android_sdk_repository(
+        name="androidsdk",
+        path="%s",
+        api_level=%s,
+        build_tools_version="%s",
+    )
 """
 
 _ANDROID_NDK_REPO_TEMPLATE = """
-  native.android_ndk_repository(
-      name="androidndk",
-      path="%s",
-      api_level=%s,
-  )
+    native.android_ndk_repository(
+        name="androidndk",
+        path="%s",
+        api_level=%s,
+    )
 """
 
 def _android_autoconf_impl(repository_ctx):
@@ -45,7 +45,7 @@ def _android_autoconf_impl(repository_ctx):
     ndk_home = repository_ctx.os.environ.get(_ANDROID_NDK_HOME)
     ndk_api_level = repository_ctx.os.environ.get(_ANDROID_NDK_API_VERSION)
 
-    sdk_rule = "pass"
+    sdk_rule = ""
     if all([sdk_home, sdk_api_level, build_tools_version]):
         sdk_rule = _ANDROID_SDK_REPO_TEMPLATE % (
             sdk_home,
@@ -53,9 +53,12 @@ def _android_autoconf_impl(repository_ctx):
             build_tools_version,
         )
 
-    ndk_rule = "pass"
+    ndk_rule = ""
     if all([ndk_home, ndk_api_level]):
         ndk_rule = _ANDROID_NDK_REPO_TEMPLATE % (ndk_home, ndk_api_level)
+
+    if ndk_rule == "" and sdk_rule == "":
+        sdk_rule = "pass"
 
     repository_ctx.template(
         "BUILD",

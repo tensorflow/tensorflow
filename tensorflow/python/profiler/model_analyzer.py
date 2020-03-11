@@ -27,7 +27,7 @@ import six
 from google.protobuf import message
 from tensorflow.core.profiler import tfprof_options_pb2
 from tensorflow.core.profiler import tfprof_output_pb2
-from tensorflow.python import pywrap_tensorflow as print_mdl
+from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -282,7 +282,7 @@ class Profiler(object):
     Args:
       options: A dict of options. See ALL_ADVICE example above.
     Returns:
-      A Advise proto that conains the reports from all checkers.
+      An Advise proto that contains the reports from all checkers.
     """
     advise_pb = tfprof_output_pb2.AdviceProto()
     opts = _build_advisor_options(options)
@@ -315,7 +315,7 @@ def profile(graph=None,
   """Profile model.
 
     Tutorials and examples can be found in:
-    https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
+    https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/g3doc/python_api.md
 
   Args:
     graph: tf.Graph. If None and eager execution is not enabled, use

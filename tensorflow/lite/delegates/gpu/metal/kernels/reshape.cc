@@ -153,7 +153,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshape(int id, ValueId input_id,
              dst_dim.c,
              dst_dim.c * dst_dim.w,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -212,7 +212,7 @@ std::vector<ComputeTaskDescriptorPtr> Reshapex4(int id, ValueId input_id,
              0,  // dummy, for alignment
              0   // dummy, for alignment
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

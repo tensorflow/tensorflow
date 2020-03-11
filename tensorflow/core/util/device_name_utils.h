@@ -128,12 +128,9 @@ class DeviceNameUtils {
   static bool IsCompleteSpecification(const ParsedName& pattern,
                                       const ParsedName& name);
 
-  // True iff there exists any possible complete device name that is
-  // a specification of both "a" and "b".
-  static inline bool AreCompatibleDevNames(const ParsedName& a,
-                                           const ParsedName& b) {
-    return IsSpecification(a, b) || IsSpecification(b, a);
-  }
+  // True iff there exists any possible device name that is a specification of
+  // both "a" and "b".
+  static bool AreCompatibleDevNames(const ParsedName& a, const ParsedName& b);
 
   // Merges the device specifications in "*target" and "other", and
   // stores the result in "*target". Returns OK if "*target" and
@@ -152,6 +149,14 @@ class DeviceNameUtils {
   // same address space.
   static bool IsSameAddressSpace(StringPiece src, StringPiece dst);
   static bool IsSameAddressSpace(const ParsedName& src, const ParsedName& dst);
+
+  // Returns true iff devices identified by 'a' and 'b' are in different
+  // address space.
+  static bool IsDifferentAddressSpace(const ParsedName& a, const ParsedName& b);
+
+  // Returns the an address space specification containing only the
+  // job/replica/task of the given name.
+  static const ParsedName AddressSpace(const ParsedName& name);
 
   // Returns the local device given its "type" and "id".
   static string LocalName(StringPiece type, int id);

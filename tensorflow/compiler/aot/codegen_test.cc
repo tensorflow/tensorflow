@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/aot/codegen.h"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -139,14 +141,23 @@ TEST_F(ParseCppClassTest, ParseFail) {
 
 static void CompareWithGoldenFile(
     const string& tensorflow_relative_golden_file_name,
-    const string& expected_contents) {
+    const string& expected_contents, bool ignore_cr) {
+  // Get rid of all CR characters, we may be running under windows.
+  string sanitized_expected_contents(expected_contents);
+  if (ignore_cr) {
+    sanitized_expected_contents.erase(
+        std::remove(sanitized_expected_contents.begin(),
+                    sanitized_expected_contents.end(), '\r'),
+        sanitized_expected_contents.end());
+  }
+
   // To update the golden file, flip update_golden to true and run the
   // following:
   // bazel test --test_strategy=local \
   //   third_party/tensorflow/compiler/aot:codegen_test
   const bool update_golden = false;
-  const string golden_file_name = io::JoinPath(
-      testing::TensorFlowSrcRoot(), tensorflow_relative_golden_file_name);
+  string golden_file_name =
+      GetDataDependencyFilepath(tensorflow_relative_golden_file_name);
 
   if (update_golden) {
     TF_EXPECT_OK(
@@ -156,16 +167,21 @@ static void CompareWithGoldenFile(
   string golden_file_contents;
   TF_ASSERT_OK(ReadFileToString(Env::Default(), golden_file_name,
                                 &golden_file_contents));
+  if (ignore_cr) {
+    golden_file_contents.erase(std::remove(golden_file_contents.begin(),
+                                           golden_file_contents.end(), '\r'),
+                               golden_file_contents.end());
+  }
   EXPECT_EQ(golden_file_contents, expected_contents);
 }
 
 TEST(CodegenTest, Golden) {
   // Normally CpuCompiler::CpuCompiler does this, but in this test we've
   // bypassed the Cpu compiler so we have to do this manually.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
   LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
 
   CodegenOpts opts;
   opts.class_name = "MyClass";
@@ -201,10 +217,16 @@ TEST(CodegenTest, Golden) {
       {},
       {BufferInfo::MakeTempBuffer(1),
        BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
-       BufferInfo::MakeTempBuffer(2),
+       BufferInfo::MakeTempBuffer(1),
        BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
-       BufferInfo::MakeTempBuffer(3), BufferInfo::MakeTempBuffer(120)},
-      5, {}));
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/2),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/3),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/4),
+       BufferInfo::MakeTempBuffer(1), BufferInfo::MakeTempBuffer(120)},
+      11, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {
@@ -229,14 +251,18 @@ TEST(CodegenTest, Golden) {
   // The other fields in metadata_result are tested as part of the generated
   // header test.
 
-  CompareWithGoldenFile("compiler/aot/codegen_test_o.golden",
-                        metadata_result.object_file_data);
+  // This specific golden test checks a binary file. It can potentially run into
+  // issues due to ABIs not being stable, but has not so far.
+  // If we see any ABI issues, we should reconsider this specific test case.
+  CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_o.golden",
+                        metadata_result.object_file_data, false);
 
   string header;
   TF_ASSERT_OK(
       GenerateHeader(opts, config, compile_result, metadata_result, &header));
 
-  CompareWithGoldenFile("compiler/aot/codegen_test_h.golden", header);
+  CompareWithGoldenFile("tensorflow/compiler/aot/codegen_test_h.golden", header,
+                        true);
 }
 }  // namespace
 }  // namespace tfcompile

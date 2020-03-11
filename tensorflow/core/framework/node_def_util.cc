@@ -21,20 +21,24 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_def_util.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -96,8 +100,6 @@ string AttrSlice::DebugString() const {
   return absl::StrJoin(attr_key_vals, ", ");
 }
 
-string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
-
 string SummarizeNodeDef(const NodeDef& node_def) {
   string ret = strings::StrCat(errors::FormatNodeNameForError(node_def.name()),
                                " = ", node_def.op(), "[");
@@ -119,57 +121,20 @@ string SummarizeAttrs(const NodeDef& node_def) {
   return SummarizeAttrsHelper(node_def, node_def.device());
 }
 
-string FormatNodeForError(const NodeDebugInfo& debug_info) {
-  return debug_info.original_node_names.empty()
-             ? errors::FormatNodeNameForError(debug_info.name)
-             : errors::FormatNodeNamesForError(debug_info.original_node_names);
-}
-
-string FormatNodeForError(const Node& node) {
-  return FormatNodeForError(NodeDebugInfo(node));
-}
-
-string FormatNodeDefForError(const NodeDef& node_def) {
-  return FormatNodeForError(NodeDebugInfo(node_def));
-}
-
 string FormatNodeDefForError(
     StringPiece node_name, bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info) {
-  return FormatNodeForError(NodeDebugInfo(
-      node_name, has_experimental_debug_info, experimental_debug_info));
+  return !has_experimental_debug_info ||
+                 experimental_debug_info.original_node_names().empty()
+             ? errors::FormatNodeNameForError(string(node_name))
+             : errors::FormatNodeNamesForError(
+                   experimental_debug_info.original_node_names());
 }
 
-void GetMergedOriginalNodeNames(const NodeDebugInfo& from,
-                                const NodeDebugInfo& to,
-                                std::set<string>* names) {
-  if (!from.original_node_names.empty()) {
-    names->insert(from.original_node_names.begin(),
-                  from.original_node_names.end());
-  } else {
-    names->insert(from.name);
-  }
-  names->insert(to.original_node_names.begin(), to.original_node_names.end());
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, Node* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->set_original_node_names({names.begin(), names.end()});
-}
-
-void MergeDebugInfo(const NodeDebugInfo& from, NodeDef* to) {
-  std::set<string> names;
-  GetMergedOriginalNodeNames(from, NodeDebugInfo(*to), &names);
-  to->mutable_experimental_debug_info()->clear_original_node_names();
-  if (!names.empty()) {
-    *to->mutable_experimental_debug_info()->mutable_original_node_names() = {
-        names.begin(), names.end()};
-  }
-}
-
-void MergeDebugInfo(const NodeDef& from, NodeDef* to) {
-  MergeDebugInfo(NodeDebugInfo(from), to);
+string FormatNodeDefForError(const NodeDef& node_def) {
+  return FormatNodeDefForError(node_def.name(),
+                               node_def.has_experimental_debug_info(),
+                               node_def.experimental_debug_info());
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
@@ -243,6 +208,7 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     const AttrValue* attr_value;                                              \
     TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));                   \
     TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")")); \
+    value->reserve(attr_value->list().FIELD().size());                        \
     for (const auto& v : attr_value->list().FIELD()) {                        \
       __VA_ARGS__;                                                            \
       value->APPEND_OP(CAST);                                                 \
@@ -250,65 +216,95 @@ bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
     return Status::OK();                                                      \
   }
 
-#define DEFINE_GET_ATTR_SIMPLE(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...) \
-  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
-                         TYPE* value) {                                      \
-    const AttrValue* attr_value = attrs.Find(attr_name);                     \
-    if (attr_value == nullptr) {                                             \
-      return false;                                                          \
-    }                                                                        \
-    Status s = AttrValueHasType(*attr_value, ATTR_TYPE);                     \
-    if (!s.ok()) {                                                           \
-      return false;                                                          \
-    }                                                                        \
-    const auto& v = attr_value->FIELD();                                     \
-    __VA_ARGS__;                                                             \
-    *value = CAST;                                                           \
-    return true;                                                             \
-  }                                                                          \
-  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
-                         std::vector<TYPE>* value) {                         \
-    const AttrValue* attr_value = attrs.Find(attr_name);                     \
-    if (attr_value == nullptr) {                                             \
-      return false;                                                          \
-    }                                                                        \
-    Status s = AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")");         \
-    if (!s.ok()) {                                                           \
-      return false;                                                          \
-    }                                                                        \
-    for (const auto& v : attr_value->list().FIELD()) {                       \
-      __VA_ARGS__;                                                           \
-      value->APPEND_OP(CAST);                                                \
-    }                                                                        \
-    return true;                                                             \
+#define DEFINE_TRY_GET_ATTR(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...) \
+  bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,      \
+                      TYPE* value) {                                      \
+    const AttrValue* attr_value = attrs.Find(attr_name);                  \
+    if (attr_value == nullptr) {                                          \
+      return false;                                                       \
+    }                                                                     \
+    Status s = AttrValueHasType(*attr_value, ATTR_TYPE);                  \
+    if (!s.ok()) {                                                        \
+      return false;                                                       \
+    }                                                                     \
+    const auto& v = attr_value->FIELD();                                  \
+    __VA_ARGS__;                                                          \
+    *value = CAST;                                                        \
+    return true;                                                          \
+  }                                                                       \
+  bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,      \
+                      std::vector<TYPE>* value) {                         \
+    const AttrValue* attr_value = attrs.Find(attr_name);                  \
+    if (attr_value == nullptr) {                                          \
+      return false;                                                       \
+    }                                                                     \
+    Status s = AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")");      \
+    if (!s.ok()) {                                                        \
+      return false;                                                       \
+    }                                                                     \
+    value->reserve(attr_value->list().FIELD().size());                    \
+    for (const auto& v : attr_value->list().FIELD()) {                    \
+      __VA_ARGS__;                                                        \
+      value->APPEND_OP(CAST);                                             \
+    }                                                                     \
+    return true;                                                          \
   }
-
+DEFINE_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(tstring, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
-DEFINE_GET_ATTR_SIMPLE(string, s, "string", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(int64, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(
     int32, i, "int", emplace_back, static_cast<int32>(v),
     if (static_cast<int64>(static_cast<int32>(v)) != v) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ", v,
                                      " out of range for an int32");
     })
+DEFINE_TRY_GET_ATTR(
+    int32, i, "int", emplace_back, static_cast<int32>(v),
+    if (static_cast<int64>(static_cast<int32>(v)) != v) {
+      static int log_counter = 0;
+      if (log_counter < 10) {
+        log_counter++;
+        LOG(WARNING) << "Attr " << attr_name << " has value " << v
+                     << " out of range for an int32";
+      }
+      return false;
+    })
 DEFINE_GET_ATTR(float, f, "float", emplace_back, v, ;)
+DEFINE_TRY_GET_ATTR(float, f, "float", emplace_back, v, ;)
 // std::vector<bool> specialization does not have emplace_back until
 // c++14, so we have to use push_back (see
 // http://en.cppreference.com/w/cpp/container/vector/emplace_back)
 DEFINE_GET_ATTR(bool, b, "bool", push_back, v, ;)
+DEFINE_TRY_GET_ATTR(bool, b, "bool", push_back, v, ;)
 DEFINE_GET_ATTR(DataType, type, "type", emplace_back, static_cast<DataType>(v),
                 ;)
+DEFINE_TRY_GET_ATTR(DataType, type, "type", emplace_back,
+                    static_cast<DataType>(v),
+                    ;)
 DEFINE_GET_ATTR(TensorShapeProto, shape, "shape", emplace_back, v, ;)
 DEFINE_GET_ATTR(TensorShape, shape, "shape", emplace_back, TensorShape(v),
                 TF_RETURN_IF_ERROR(TensorShape::IsValidShape(v));)
+DEFINE_TRY_GET_ATTR(
+    TensorShape, shape, "shape", emplace_back, TensorShape(v),
+    if (!TensorShape::IsValidShape(v).ok()) {
+      static int log_counter = 0;
+      if (log_counter < 10) {
+        log_counter++;
+        LOG(WARNING) << "Attr " << attr_name << " has invalid shape value "
+                     << v.DebugString();
+      }
+      return false;
+    })
 DEFINE_GET_ATTR(PartialTensorShape, shape, "shape", emplace_back,
                 PartialTensorShape(v),
                 TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(v));)
 DEFINE_GET_ATTR(
     Tensor, tensor, "tensor", emplace_back, t, Tensor t; if (!t.FromProto(v)) {
       return errors::InvalidArgument("Attr ", attr_name, " has value ",
-                                     ProtoShortDebugString(v),
+                                     v.ShortDebugString(),
                                      " that can't be converted to a Tensor");
     })
 DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
@@ -332,6 +328,40 @@ const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name) {
   return attr_value->s();
 }
 
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const string*>* value) {
+  const AttrValue* attr_value = attrs.Find(attr_name);
+  if (attr_value == nullptr) {
+    return false;
+  }
+  Status s = AttrValueHasType(*attr_value, "list(string)");
+  if (!s.ok()) {
+    return false;
+  }
+  value->reserve(attr_value->list().s().size());
+  for (const auto& v : attr_value->list().s()) {
+    value->push_back(&v);
+  }
+  return true;
+}
+
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    std::vector<const TensorShapeProto*>* value) {
+  const AttrValue* attr_value = attrs.Find(attr_name);
+  if (attr_value == nullptr) {
+    return false;
+  }
+  Status s = AttrValueHasType(*attr_value, "list(shape)");
+  if (!s.ok()) {
+    return false;
+  }
+  value->reserve(attr_value->list().shape().size());
+  for (const auto& v : attr_value->list().shape()) {
+    value->push_back(&v);
+  }
+  return true;
+}
+
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    DataTypeVector* value) {
   const AttrValue* attr_value;
@@ -352,6 +382,20 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   return Status::OK();
 }
 
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const TensorProto** value) {
+  const AttrValue* attr_value = attrs.Find(attr_name);
+  if (attr_value == nullptr) {
+    return false;
+  }
+  Status s = AttrValueHasType(*attr_value, "tensor");
+  if (!s.ok()) {
+    return false;
+  }
+  *value = &attr_value->tensor();
+  return true;
+}
+
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    const NameAttrList** value) {
   const AttrValue* attr_value;
@@ -359,6 +403,27 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
   return Status::OK();
+}
+
+bool TryGetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                    const NameAttrList** value) {
+  const AttrValue* attr_value = attrs.Find(attr_name);
+  if (attr_value == nullptr) {
+    return false;
+  }
+  Status s = AttrValueHasType(*attr_value, "func");
+  if (!s.ok()) {
+    return false;
+  }
+  *value = &attr_value->func();
+  return true;
+}
+
+Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
+                   Padding* value) {
+  string str_value;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, attr_name, &str_value));
+  return GetPaddingFromString(str_value, value);
 }
 
 namespace {  // Helper for InOutTypesForNode().
@@ -390,7 +455,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
       }
     } else {
       return errors::InvalidArgument("Missing type or type_attr field in ",
-                                     ProtoShortDebugString(arg_def));
+                                     arg_def.ShortDebugString());
     }
   } else if (!arg_def.type_attr().empty()) {
     const AttrValue* attr_value;
@@ -408,7 +473,7 @@ Status AddArgToSig(const NodeDefOrAttrSlice& node_or_attrs,
     sig->push_back(arg_def.type());
   } else {
     return errors::InvalidArgument("No type fields in ",
-                                   ProtoShortDebugString(arg_def));
+                                   arg_def.ShortDebugString());
   }
   if (arg_def.is_ref()) {
     // For all types that were added by this function call, make them refs.
@@ -631,11 +696,6 @@ Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
   return Status::OK();
 }
 
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs) {
-  return NameRangesForNode(node.def(), op_def, inputs, outputs);
-}
-
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
   for (const auto& attr_def : op_def.attr()) {
     AttrSlice attrs(*node_def);
@@ -647,14 +707,25 @@ void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
 
 namespace {
 
+using ::tensorflow::tstring;
 using ::tensorflow::strings::Scanner;
 
-bool IsValidOpName(StringPiece sp) {
-  return Scanner(sp)
-      .One(Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+bool IsValidNodeName(StringPiece sp) {
+  Scanner scanner(sp);
+  scanner.One(Scanner::LETTER_DIGIT_DOT)
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scanner.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scanner.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another name/namespace, starting with a '>'
+    scanner.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 bool IsValidDataInputName(StringPiece sp) {
@@ -662,26 +733,46 @@ bool IsValidDataInputName(StringPiece sp) {
   Scanner scan(sp);
   scan.One(Scanner::LETTER_DIGIT_DOT)
       .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
-  if (scan.Peek() == ':') {
-    scan.OneLiteral(":");
-    if (scan.Peek() == '0') {
-      scan.OneLiteral("0");  // :0
+
+  while (true) {
+    if (!scan.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scan.empty())  // No error, but nothing left, good.
+      return true;
+
+    if (scan.Peek() == ':') {  // Absorb identifier after the colon
+      scan.OneLiteral(":");
+      if (scan.Peek() == '0') {
+        scan.OneLiteral("0");  // :0
+      } else {
+        scan.Many(Scanner::DIGIT);  // :[1-9][0-9]*
+      }
     } else {
-      scan.Many(Scanner::DIGIT);  // :[1-9][0-9]*
+      // Absorb another name/namespace, starting with a '>'
+      scan.One(Scanner::RANGLE)
+          .One(Scanner::LETTER_DIGIT_DOT)
+          .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
     }
   }
-  scan.Eos();
-
-  return scan.GetResult();
 }
 
 bool IsValidControlInputName(StringPiece sp) {
-  return Scanner(sp)
-      .OneLiteral("^")
+  Scanner scan(sp);
+  scan.OneLiteral("^")
       .One(Scanner::LETTER_DIGIT_DOT)
-      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE)
-      .Eos()
-      .GetResult();
+      .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+
+  while (true) {
+    if (!scan.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scan.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another name/namespace, starting with a '>'
+    scan.One(Scanner::RANGLE)
+        .One(Scanner::LETTER_DIGIT_DOT)
+        .Any(Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
+  }
 }
 
 }  // namespace
@@ -698,16 +789,16 @@ Status ValidateOpInput(const string& input_name, bool* is_control_input) {
   }
 }
 
-Status ValidateOpName(const string& op_name) {
-  if (IsValidOpName(op_name)) {
+Status ValidateNodeName(const string& node_name) {
+  if (IsValidNodeName(node_name)) {
     return Status::OK();
   } else {
-    return errors::InvalidArgument("Illegal op name '", op_name, "'");
+    return errors::InvalidArgument("Illegal op name '", node_name, "'");
   }
 }
 
 Status ValidateExternalNodeDefSyntax(const NodeDef& node_def) {
-  Status s = ValidateOpName(node_def.name());
+  Status s = ValidateNodeName(node_def.name());
   if (!s.ok()) {
     return AttachDef(s, node_def);
   }
@@ -743,14 +834,13 @@ Status AttachDef(const Status& status, const NodeDef& node_def,
   return ret;
 }
 
-Status AttachDef(const Status& status, const Node& node,
-                 bool allow_multiple_formatted_node) {
-  return AttachDef(status, node.def(), allow_multiple_formatted_node);
-}
-
 void AddNodeAttr(StringPiece name, const AttrValue& value, NodeDef* node_def) {
   node_def->mutable_attr()->insert(
       AttrValueMap::value_type(string(name), value));
+}
+
+void AddNodeAttr(StringPiece name, AttrValue&& value, NodeDef* node_def) {
+  (*node_def->mutable_attr())[string(name)] = std::move(value);
 }
 
 #define ADD_NODE_ATTR(T)                                           \

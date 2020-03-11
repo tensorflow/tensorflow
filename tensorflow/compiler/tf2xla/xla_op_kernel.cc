@@ -31,7 +31,7 @@ limitations under the License.
 namespace tensorflow {
 
 XlaOpKernelContext::XlaOpKernelContext(OpKernelContext* context)
-    : context_(context) {}
+    : context_(context), dynamic_dimension_is_minus_one_(false) {}
 
 bool XlaOpKernelContext::ValidateInputsAreSameShape(OpKernel* op) {
   return context_->ValidateInputsAreSameShape(op);
@@ -50,7 +50,8 @@ XlaCompiler* XlaOpKernelContext::compiler() const {
 }
 
 // Retrieves an XlaExpression that was allocated by a previous Op.
-static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
+const XlaExpression* XlaOpKernelContext::CastExpressionFromTensor(
+    const Tensor& tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
   CHECK(expression->kind() != XlaExpression::Kind::kInvalid)
@@ -59,8 +60,8 @@ static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
 }
 
 // Assigns an XlaExpression to a tensor on an XLA compilation device.
-static void AssignExpressionToTensor(Tensor* tensor,
-                                     const XlaExpression& value) {
+void XlaOpKernelContext::AssignExpressionToTensor(const XlaExpression& value,
+                                                  Tensor* tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor->tensor_data().data());
   CHECK(expression->kind() == XlaExpression::Kind::kInvalid)
@@ -166,7 +167,7 @@ Status XlaOpKernelContext::ConstantInputReshaped(
     xla::Literal* constant_literal) {
   XlaExpression e = InputExpression(index);
   xla::StatusOr<absl::optional<Tensor>> constant_or_status =
-      e.ResolveConstant(compiler()->client());
+      e.ResolveConstant(compiler()->client(), dynamic_dimension_is_minus_one_);
   if (!constant_or_status.ok()) {
     Status status = constant_or_status.status();
     errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
@@ -396,7 +397,8 @@ namespace {
 Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
                                const XlaOpKernelContext* ctx,
                                TensorShape* shape, xla::XlaOp* value) {
-  const XlaExpression* expression = CastExpressionFromTensor(tensor);
+  const XlaExpression* expression =
+      XlaOpKernelContext::CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
@@ -415,7 +417,8 @@ Status ReadVariableInputTensor(const Tensor& tensor, DataType type,
 
   TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
                       ctx->compiler()->options().shape_representation_fn(
-                          variable->shape(), variable->type()));
+                          variable->shape(), variable->type(),
+                          /*use_fast_memory=*/false));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(
       TensorShapeToXLAShape(variable->type(), variable->shape(), &xla_shape));
@@ -485,7 +488,8 @@ void XlaOpKernelContext::SetOutputExpression(int index,
       TF_ASSIGN_OR_RETURN(TensorShape shape, expression.GetShape());
       TF_RETURN_IF_ERROR(context_->allocate_output(index, shape, &output));
     }
-    AssignExpressionToTensor(context_->mutable_output(index), expression);
+    XlaOpKernelContext::AssignExpressionToTensor(
+        expression, context_->mutable_output(index));
     return Status::OK();
   }();
   if (!status.ok()) {
@@ -535,7 +539,8 @@ namespace {
 Status AssignVariableTensor(const Tensor& tensor, DataType type,
                             const XlaOpKernelContext* ctx, xla::XlaOp handle,
                             xla::XlaBuilder* builder) {
-  const XlaExpression* expression = CastExpressionFromTensor(tensor);
+  const XlaExpression* expression =
+      XlaOpKernelContext::CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
@@ -550,9 +555,10 @@ Status AssignVariableTensor(const Tensor& tensor, DataType type,
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
 
-  TF_ASSIGN_OR_RETURN(
-      xla::Shape representation_shape,
-      ctx->compiler()->options().shape_representation_fn(shape, type));
+  TF_ASSIGN_OR_RETURN(xla::Shape representation_shape,
+                      ctx->compiler()->options().shape_representation_fn(
+                          shape, type,
+                          /*use_fast_memory=*/false));
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(type, shape, &xla_shape));
   if (!xla::ShapeUtil::Compatible(xla_shape, representation_shape)) {

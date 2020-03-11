@@ -42,16 +42,75 @@ limitations under the License.
 
 namespace xla {
 
+// TODO(b/150633678): Both the ExecutionInput and ExecutionOutput need to be
+// revisited, with the execute APIs taking data structure which can better model
+// shareable buffers.
+class ExecutionInput {
+ public:
+  ExecutionInput() = default;
+  explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
+  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
+      : buffers_(std::move(buffers)) {}
+  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
+                 std::vector<ShapeIndex> owner_held_indices)
+      : buffers_(std::move(buffers)),
+        unowned_indices_(std::move(owner_held_indices)) {}
+  ExecutionInput(ExecutionInput&&) = default;
+
+  ~ExecutionInput() {
+    for (auto& index : unowned_indices_) {
+      auto buffer = buffers_.mutable_element(index)->Release();
+      if (buffer) {
+        buffer->Release();
+      }
+    }
+  }
+
+  ExecutionInput& operator=(ExecutionInput&&) = default;
+
+  const Shape& shape() const { return buffers_.shape(); }
+
+  void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
+    *buffers_.mutable_element(index) = std::move(buffer);
+  }
+
+  void SetUnownedBuffer(const ShapeIndex& index,
+                        MaybeOwningDeviceMemory buffer) {
+    *buffers_.mutable_element(index) = std::move(buffer);
+    unowned_indices_.push_back(index);
+  }
+
+  const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
+
+  ShapeTree<MaybeOwningDeviceMemory>* MutableBuffers() { return &buffers_; }
+
+  MaybeOwningDeviceMemory* MutableBuffer(const ShapeIndex& index) {
+    return buffers_.mutable_element(index);
+  }
+
+  const MaybeOwningDeviceMemory& Buffer(const ShapeIndex& index) const {
+    return buffers_.element(index);
+  }
+
+ private:
+  ShapeTree<MaybeOwningDeviceMemory> buffers_;
+  std::vector<ShapeIndex> unowned_indices_;
+};
+
 // ExecutionOutput encapsulates the output buffers of a execution and the
 // leftover buffers to be released by the caller.
 class ExecutionOutput {
  public:
+  explicit ExecutionOutput(ScopedShapedBuffer result)
+      : result_(std::move(result)) {}
   ExecutionOutput(ScopedShapedBuffer result,
-                  std::vector<se::OwningDeviceMemory> to_be_released,
-                  std::vector<ShapeIndex> aliased_indices)
+                  std::vector<se::OwningDeviceMemory> to_be_released)
       : result_(std::move(result)),
-        to_be_released_(std::move(to_be_released)),
-        aliased_indices_(std::move(aliased_indices)) {}
+        to_be_released_(std::move(to_be_released)) {}
+  ExecutionOutput(Shape on_host_shape, Shape on_device_shape,
+                  se::DeviceMemoryAllocator* allocator, int device_ordinal)
+      : result_(std::move(on_host_shape), std::move(on_device_shape), allocator,
+                device_ordinal) {}
   ExecutionOutput(ExecutionOutput&&) = default;
   ExecutionOutput& operator=(ExecutionOutput&&) = default;
 
@@ -64,6 +123,18 @@ class ExecutionOutput {
     }
   }
 
+  void AddAliasedIndex(ShapeIndex index) {
+    aliased_indices_.push_back(std::move(index));
+  }
+
+  void AddToBeReleased(se::OwningDeviceMemory mem) {
+    to_be_released_.push_back(std::move(mem));
+  }
+
+  void SetOutputShapeTable(se::OwningDeviceMemory output_shape_table) {
+    output_shape_table_ = std::move(output_shape_table);
+  }
+
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
   ExecutionOutput& Commit() {
@@ -73,9 +144,19 @@ class ExecutionOutput {
 
   const ScopedShapedBuffer& Result() const { return result_; }
 
+  ScopedShapedBuffer* MutableResult() { return &result_; }
+
+  const se::OwningDeviceMemory& ShapeTable() const {
+    return output_shape_table_;
+  }
+
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
+  }
+
+  se::OwningDeviceMemory ConsumeShapeTable() {
+    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
@@ -98,6 +179,10 @@ class ExecutionOutput {
   // the buffer, so we track the indices here, and unless the ExecutionOutput is
   // committed, we remove them from the result_ before destruction.
   std::vector<ShapeIndex> aliased_indices_;
+
+  // A shape table is a continuous region in memory that is used to hold the
+  // runtime dimension sizes of dynamic output shapes.
+  se::OwningDeviceMemory output_shape_table_;
 };
 
 // A given platform's compiler will produce an Executable -- this is a uniform
@@ -123,16 +208,10 @@ class Executable {
   // enabled.
   //
   // Returns a shaped buffer containing the result of the computation.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
-
-  // Same as ExecuteOnStream(), but this call is non-blocking and returns as
-  // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) = 0;
+      HloExecutionProfile* hlo_execution_profile);
 
   // Starts the given program executing on the given stream/executor.
   //
@@ -143,20 +222,31 @@ class Executable {
   //
   // If an input is donated to XLA but is not reused as output, it is returned
   // as an leftover buffer for the caller to release.
-  virtual StatusOr<ExecutionOutput> ExecuteOnStream(
+  //
+  // This call should be non-blocking and may return as soon as all of the
+  // operations are enqueued for launch on the stream. Note that some
+  // implementations may in fact block or may block in some circumstances (e.g.,
+  // when profiling); i.e., asynchronous is a "may" not a "must".
+  //
+  // If the hlo_execution_profile is provided as non-nullptr, profiling will be
+  // enabled. Note that profiling is tricky to use correctly, as the profiling
+  // objects (when they exist) must out-live the task.
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
-      HloExecutionProfile* hlo_execution_profile) {
-    return Unimplemented(
-        "MaybeOwningDeviceMemory version of overload is not implemented ");
-  }
+      absl::Span<const ShapedBuffer* const> arguments,
+      HloExecutionProfile* hlo_execution_profile);
+
+  // Same as ExecuteAsyncOnStream(), but blocks waiting for the computation to
+  // complete.
+  StatusOr<ExecutionOutput> ExecuteOnStream(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments,
+      HloExecutionProfile* hlo_execution_profile);
 
   virtual StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments) {
-    return Unimplemented(
-        "MaybeOwningDeviceMemory version of overload is not implemented ");
-  }
+      std::vector<ExecutionInput> arguments,
+      HloExecutionProfile* hlo_execution_profile) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
@@ -171,6 +261,7 @@ class Executable {
   // called explicitly for other (async, for example) variants after the stream
   // has completed.
   virtual Status PopulateExecutionProfile(
+      ExecutionProfile* execution_profile,
       HloExecutionProfile* hlo_execution_profile, se::Stream* stream) {
     return Status::OK();
   }
@@ -179,15 +270,16 @@ class Executable {
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
   // given ExecutionProfile if non-null.
   StatusOr<ScopedShapedBuffer> ExecuteOnStreamWrapper(
-      const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
+      const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
-  // Returns the ExecutionProfile from executing on the device. This includes
-  // the number of cycles taken for the computation or the compilation time.
-  ExecutionProfile execution_profile() const {
-    tensorflow::mutex_lock lock(mutex_);
-    return execution_profile_;
-  }
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      absl::Span<const ShapedBuffer* const> arguments);
+
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments);
 
   const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
@@ -219,30 +311,27 @@ class Executable {
     return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
-  // Returns the size of the executable in bytes. Returns -1 by default if the
-  // method is not overridden to support this kind of query.
-  virtual int64 SizeInBytes();
+  // Returns the size of the executable in bytes. Returns -1 if this query is
+  // not supported by the executable.
+  //
+  // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
+  virtual int64 SizeOfGeneratedCodeInBytes();
 
   // Dumping helpers.
-  void set_hlo_snapshot(std::unique_ptr<xla::HloSnapshot> hlo_snapshot) {
-    hlo_snapshot_ = std::move(hlo_snapshot);
+  void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
+    hlo_proto_ = std::move(hlo_proto);
   }
-  bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
-  HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
+  bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
+  HloProto const* hlo_proto() const { return hlo_proto_.get(); }
 
  protected:
-  mutable tensorflow::mutex mutex_;
-
-  // Execution profile data on the device.
-  ExecutionProfile execution_profile_ GUARDED_BY(mutex_);
-
   // HloModule this was compiled from. BufferAssignment keeps pointers to
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   const std::shared_ptr<HloModule> hlo_module_;
 
-  // HloSnapshot this was compiled from. Null if not dumping executions.
-  std::unique_ptr<HloSnapshot> hlo_snapshot_;
+  // The serialized HLO proto. Non-null only if dumping snapshots is enabled.
+  std::unique_ptr<HloProto const> hlo_proto_;
 
   // Execution count, used to generate a unique filename for each dumped
   // execution.

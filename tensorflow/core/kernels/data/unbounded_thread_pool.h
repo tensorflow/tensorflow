@@ -21,54 +21,42 @@ limitations under the License.
 
 #include "tensorflow/core/framework/thread_factory.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 namespace data {
 
 // An `UnboundedThreadPool` provides a mechanism for temporally multiplexing a
 // potentially large number of "logical" threads onto a smaller number of
-// "physical" threads. The multiplexing is achieved by maintaining an internal
-// pool of long-running "physical" threads that are used to execute the
-// "logical" threads.  Like a regular thread, a "logical" thread may block on
-// other threads, and the size of the pool will increase to ensure that progress
-// is made. This mechanism is recommended in situations where short-lived
-// threads are created repeatedly, to avoid the overhead and memory
-// fragmentation that can result from excessive thread creation.
-class UnboundedThreadPool {
+// "physical" threads. The multiplexing is achieved by using an
+// `UnboundedWorkQueue`.
+class UnboundedThreadPool : public thread::ThreadPoolInterface {
  public:
   UnboundedThreadPool(Env* env, const string& thread_name)
-      : env_(env), thread_name_(thread_name) {}
-  ~UnboundedThreadPool();
+      : unbounded_work_queue_(env, thread_name) {}
+  UnboundedThreadPool(Env* env, const string& thread_name,
+                      const ThreadOptions& thread_options)
+      : unbounded_work_queue_(env, thread_name, thread_options) {}
+  ~UnboundedThreadPool() override = default;
 
   // Returns an implementation of `ThreadFactory` that can be used to create
   // logical threads in this pool.
   std::shared_ptr<ThreadFactory> get_thread_factory();
 
-  // Returns the current number of threads in this pool.
-  size_t size();
+  void Schedule(std::function<void()> fn) override;
+  int NumThreads() const override;
+  int CurrentThreadId() const override;
 
  private:
   class LogicalThreadFactory;
   class LogicalThreadWrapper;
-  struct WorkItem {
-    std::function<void()> work_function;
-    std::shared_ptr<Notification> done_notification;
-  };
 
-  std::unique_ptr<Thread> RunOnPooledThread(std::function<void()> fn);
-  void PooledThreadFunc();
+  void ScheduleOnWorkQueue(std::function<void()> fn,
+                           std::shared_ptr<Notification> done);
 
-  Env* const env_;  // Not owned.
-  const string thread_name_;
-  mutex work_queue_mu_;
-  condition_variable work_queue_cv_ GUARDED_BY(work_queue_mu_);
-  size_t num_idle_threads_ GUARDED_BY(work_queue_mu_) = 0;
-  bool cancelled_ GUARDED_BY(work_queue_mu_) = false;
-  std::deque<WorkItem> work_queue_ GUARDED_BY(work_queue_mu_);
-  mutex thread_pool_mu_;
-  std::vector<std::unique_ptr<Thread>> thread_pool_ GUARDED_BY(thread_pool_mu_);
+  UnboundedWorkQueue unbounded_work_queue_;
 };
 
 }  // namespace data

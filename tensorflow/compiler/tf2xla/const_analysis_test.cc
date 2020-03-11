@@ -19,11 +19,14 @@ limitations under the License.
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -87,6 +90,59 @@ TEST(ConstAnalysisTest, TopologicalOrder) {
 
     EXPECT_EQ(const_args, std::vector<bool>({true, true, false}));
   }
+}
+
+void TestFunctionCall(bool is_stateful_partitioned_call) {
+  FunctionDef callee = FunctionDefHelper::Define(
+      "Callee", {"t:float", "shape:int32"}, {"result:float"}, {},
+      {{{"result"}, "Reshape", {"t", "shape"}, {{"T", DT_FLOAT}}}});
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = callee;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
+
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  auto arg0 = ops::_Arg(root.WithOpName("tensor"), DT_FLOAT, 0);
+  auto arg1 = ops::_Arg(root.WithOpName("shape"), DT_INT32, 1);
+
+  NameAttrList call_attrs;
+  call_attrs.set_name("Callee");
+  if (is_stateful_partitioned_call) {
+    ops::StatefulPartitionedCall b(root.WithOpName("Call"),
+                                   {Output(arg0), Output(arg1)}, {DT_FLOAT},
+                                   call_attrs);
+  } else {
+    ops::PartitionedCall b(root.WithOpName("Call"),
+                           {Output(arg0), Output(arg1)}, {DT_FLOAT},
+                           call_attrs);
+  }
+
+  Graph graph(&flib_def);
+  TF_ASSERT_OK(root.ToGraph(&graph));
+
+  OptimizerOptions opts;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(nullptr, Env::Default(),
+                                        /*config=*/nullptr,
+                                        TF_GRAPH_DEF_VERSION, &flib_def, opts));
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+
+  std::vector<bool> const_args(2, false);
+  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
+                                      /*compile_time_const_nodes=*/nullptr,
+                                      lib_runtime));
+
+  EXPECT_EQ(const_args, std::vector<bool>({false, true}));
+}
+
+TEST(ConstAnalysisTest, PartitionedCall) {
+  TestFunctionCall(/*is_stateful_partitioned_call=*/false);
+}
+
+TEST(ConstAnalysisTest, StatefulPartitionedCall) {
+  TestFunctionCall(/*is_stateful_partitioned_call=*/true);
 }
 
 TEST(ConstAnalysisTest, DontFollowControlDependencies) {

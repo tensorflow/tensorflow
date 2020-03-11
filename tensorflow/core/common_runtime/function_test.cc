@@ -90,21 +90,17 @@ class FunctionTest : public ::testing::Test {
     const int version = g->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
-    params.create_kernel = [this, version](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
-    };
+    params.create_kernel =
+        [this, version](const std::shared_ptr<const NodeProperties>& props,
+                        OpKernel** kernel) {
+          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
+                                       kernel);
+        };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
-    };
     Executor* exec;
-    TF_CHECK_OK(NewLocalExecutor(params, std::move(g), &exec));
+    TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
     exec_.reset(exec);
   }
 
@@ -162,10 +158,16 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     for (const auto& fdef : flib) *(proto.add_function()) = fdef;
     lib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), proto));
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts));
+        device_mgr_.get(), Env::Default(), &options.config,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
+        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+        /*session_metadata=*/nullptr,
+        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          *r = new IntraProcessRendezvous(device_mgr);
+          return Status::OK();
+        }));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -275,7 +277,6 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
       opts.runner = nullptr;
     }
     Notification done;
-    std::vector<Tensor> out;
     Status status;
     flr->Run(opts, handle, frame, [&status, &done](const Status& s) {
       status = s;
@@ -603,8 +604,7 @@ class DummyExecutorRegistrar {
 
  private:
   class Factory : public ExecutorFactory {
-    Status NewExecutor(const LocalExecutorParams& params,
-                       std::unique_ptr<const Graph> graph,
+    Status NewExecutor(const LocalExecutorParams& params, const Graph& graph,
                        std::unique_ptr<Executor>* out_executor) override {
       return errors::Internal("This is a dummy.");
     }
@@ -1313,7 +1313,7 @@ int GetConstantFoldingCounter() {
       return counter;
     }
   }
-  LOG(FATAL) << "Should have found a node that replcaed add";
+  LOG(FATAL) << "Should have found a node that replaced add";
 }
 
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
@@ -1515,13 +1515,21 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto two = ops::Const(s.WithOpName("two"), 2LL);
     auto scale = ops::Cast(s.WithOpName("scale"), two, DT_FLOAT);
     auto y = ops::Mul(s.WithOpName("y"), x, scale);
-    NameAttrList fn;
-    fn.set_name("Mul");
-    (*fn.mutable_attr())["T"].set_type(DT_FLOAT);
+    NameAttrList fn0;
+    fn0.set_name("Mul");
+    (*fn0.mutable_attr())["T"].set_type(DT_FLOAT);
     auto func1 = ops::SymbolicGradient(
         s.WithOpName("Func/_1"), std::initializer_list<Input>{x, scale, func0},
-        {DT_FLOAT, DT_FLOAT}, fn);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1[0], 0);
+        {DT_FLOAT, DT_FLOAT}, fn0);
+    NameAttrList fn1;
+    fn1.set_name("Cast");
+    (*fn1.mutable_attr())["SrcT"].set_type(DT_INT64);
+    (*fn1.mutable_attr())["DstT"].set_type(DT_FLOAT);
+    (*fn1.mutable_attr())["Truncate"].set_b(false);
+    auto func2 = ops::SymbolicGradient(
+        s.WithOpName("Func/_2"),
+        std::initializer_list<Input>{two, func1.output[1]}, {DT_INT64}, fn1);
+    auto func3 = ops::_Retval(s.WithOpName("Func/_3"), func1[0], 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1552,7 +1560,7 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
         ops::Sum(s.WithOpName("Func/_1/sum_gx"), func1_gx, func1_rx.r0);
     auto func1_dx =
         ops::Reshape(s.WithOpName("Func/_1/dx"), func1_sum_gx, func1_sx);
-    auto func2 = ops::_Retval(s.WithOpName("Func/_2"), func1_dx, 0);
+    auto func2 = ops::_Retval(s.WithOpName("Func/_3"), func1_dx, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
 
@@ -1755,20 +1763,23 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
         std::initializer_list<Input>{grad0_z, grad0_indices, func2},
         {DT_FLOAT, DT_INT32}, sum);
 
-    auto grad0_func2 = ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_r);
+    auto grad0_func2 =
+        ops::ZerosLike(s.WithOpName("grad0/Func/_2"), grad0_zero);
+    auto grad0_func3 = ops::ZerosLike(s.WithOpName("grad0/Func/_3"), grad0_r);
+    auto grad0_func4 = ops::ZerosLike(s.WithOpName("grad0/Func/_4"), grad0_one);
 
     NameAttrList add;
     add.set_name("Add");
     (*add.mutable_attr())["T"].set_type(DT_FLOAT);
-    auto grad0_func3 = ops::SymbolicGradient(
-        s.WithOpName("grad0/Func/_3"),
+    auto grad0_func5 = ops::SymbolicGradient(
+        s.WithOpName("grad0/Func/_5"),
         std::initializer_list<Input>{func0, func1, grad0_func1[0]},
         {DT_FLOAT, DT_FLOAT}, add);
 
     auto func3 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func3[0]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func5[0]);
     auto func4 =
-        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func3[1]);
+        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func5[1]);
     auto dx = ops::Identity(s.WithOpName("dx"), func3);
     auto dy = ops::Identity(s.WithOpName("dy"), func4);
     auto dx_retval = ops::_Retval(s.WithOpName("dx_RetVal"), dx, 0);
@@ -1844,22 +1855,83 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
+  opts.rendezvous = &rendezvous;
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
   opts.remote_execution = true;
   opts.source_device = "/job:localhost/replica:0/task:0/cpu:2";
   TF_CHECK_OK(Run(flr2_, handle, opts, {}, {&y}, true));
-  test::ExpectTensorEqual<string>(
+  test::ExpectTensorEqual<tstring>(
       y,
-      test::AsTensor<string>({"/job:localhost/replica:0/task:0/device:CPU:1"},
-                             TensorShape({})));
-  opts.rendezvous->Unref();
+      test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
+                              TensorShape({})));
+}
+
+class AreAllKernelsInlineOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->scalar<bool>()() = ctx->run_all_kernels_inline();
+  }
+};
+
+REGISTER_OP("AreAllKernelsInline").Output("result : bool").SetIsStateful();
+REGISTER_KERNEL_BUILDER(Name("AreAllKernelsInline").Device(DEVICE_CPU),
+                        AreAllKernelsInlineOp);
+
+TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
+  // Create a function "F" that includes an AreAllKernelsInline op, and a
+  // function "G" that calls "F".
+  auto f = FDH::Create(
+      // Name
+      "F",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = AreAllKernelsInline()
+       {{"y"}, "AreAllKernelsInline", {}, {}}},
+      {{"ret", "y:result:0"}});
+
+  auto g = FDH::Create(
+      // Name
+      "G",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = F()
+       {{"y"}, "F", {}, {}}},
+      {{"ret", "y:ret:0"}});
+
+  Init({f, g});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "G", {}, &handle));
+
+  // Test that the `run_all_kernels_inline` flag is inherited by the kernel
+  // running inside the called function.
+  for (bool inline_option : {false, true}) {
+    FunctionLibraryRuntime::Options opts;
+    opts.run_all_kernels_inline = inline_option;
+    Tensor result;
+    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}, true));
+    EXPECT_EQ(result.scalar<bool>()(), inline_option);
+  }
 }
 
 namespace {
@@ -2119,7 +2191,7 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
   }
 }
 
-TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
+TEST(OptimizationTest, RemoveListArrayConverter_WithControlDeps) {
   auto func = FDH::Create(
       // Name
       "Test",

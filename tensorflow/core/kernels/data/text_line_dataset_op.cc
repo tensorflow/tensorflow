@@ -70,6 +70,8 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status CheckExternalState() const override { return Status::OK(); }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -108,7 +110,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
                 line_contents.size());
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
-            out_tensors->back().scalar<string>()() = std::move(line_contents);
+            out_tensors->back().scalar<tstring>()() = std::move(line_contents);
             *end_of_sequence = false;
             return Status::OK();
           } else if (!errors::IsOutOfRange(s)) {
@@ -174,7 +176,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
 
    private:
     // Sets up reader streams to read from the file at `current_file_index_`.
-    Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (current_file_index_ >= dataset()->filenames_.size()) {
         return errors::InvalidArgument(
             "current_file_index_:", current_file_index_,
@@ -202,7 +204,7 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     }
 
     // Resets all reader streams.
-    void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetStreamsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       input_stream_.reset();
       zlib_input_stream_.reset();
       buffered_input_stream_.reset();
@@ -210,17 +212,18 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::unique_ptr<io::RandomAccessInputStream> input_stream_ GUARDED_BY(mu_);
-    std::unique_ptr<io::ZlibInputStream> zlib_input_stream_ GUARDED_BY(mu_);
+    std::unique_ptr<io::RandomAccessInputStream> input_stream_
+        TF_GUARDED_BY(mu_);
+    std::unique_ptr<io::ZlibInputStream> zlib_input_stream_ TF_GUARDED_BY(mu_);
     std::unique_ptr<io::BufferedInputStream> buffered_input_stream_
-        GUARDED_BY(mu_);
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+        TF_GUARDED_BY(mu_);
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_
-        GUARDED_BY(mu_);  // must outlive input_stream_
+        TF_GUARDED_BY(mu_);  // must outlive input_stream_
   };
 
   const std::vector<string> filenames_;
-  const string compression_type_;
+  const tstring compression_type_;
   const bool use_compression_;
   const io::ZlibCompressionOptions options_;
 };
@@ -236,9 +239,9 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, filenames_tensor->dims() <= 1,
       errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
-  string compression_type;
-  OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, kCompressionType,
-                                                  &compression_type));
+  tstring compression_type;
+  OP_REQUIRES_OK(ctx, ParseScalarArgument<tstring>(ctx, kCompressionType,
+                                                   &compression_type));
 
   int64 buffer_size = -1;
   OP_REQUIRES_OK(ctx,
@@ -266,7 +269,7 @@ void TextLineDatasetOp::MakeDataset(OpKernelContext* ctx,
   std::vector<string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
-    filenames.push_back(filenames_tensor->flat<string>()(i));
+    filenames.push_back(filenames_tensor->flat<tstring>()(i));
   }
 
   *output = new Dataset(ctx, std::move(filenames), compression_type,

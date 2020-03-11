@@ -63,7 +63,7 @@ class ExponentialOpTest(test.TestCase):
         else:
           np_ans = np_expm(inp)
       out = self.evaluate(tf_ans)
-      self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
+      self.assertAllClose(np_ans, out, rtol=1e-3, atol=1e-3)
 
   def _verifyExponentialReal(self, x):
     for np_type in [np.float32, np.float64]:

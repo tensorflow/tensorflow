@@ -30,10 +30,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-NodeDef ToNodeDef(const string& text) {
+std::shared_ptr<NodeProperties> ToNodeProperties(const string& text) {
   NodeDef node_def;
+  DataTypeVector dummy;
   EXPECT_TRUE(protobuf::TextFormat::MergeFromString(text, &node_def));
-  return node_def;
+  return std::make_shared<NodeProperties>(nullptr, std::move(node_def), dummy,
+                                          dummy);
 }
 
 // Create a FunctionDef that takes one resource and one regular param
@@ -71,10 +73,11 @@ class XlaKernelCreatorTest : public ::testing::Test {
     lib_def_ = absl::make_unique<FunctionLibraryDefinition>(
         OpRegistry::Global(), proto);
     OptimizerOptions opts;
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts,
+        /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
     flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
 
@@ -94,15 +97,17 @@ AttrValue BoolAttr(bool b) {
 
 TEST_F(XlaKernelCreatorTest, OneFloatOneResourceArgument) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(true);
+  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(true);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
-
-  Status status = xla_kernel_creator.CreateKernel(
-      flr_, ToNodeDef(R"pb(
+  auto callsite =
+      ToNodeProperties(R"pb(
         name: 'XTimesY' op: 'XTimesY' input: 'a' input: 'b'
-      )pb"),
-      &kernel_);
+      )pb");
+  (*(callsite->node_def.mutable_attr()))["_XlaMustCompile"] = BoolAttr(true);
+
+  // Note: need to set attribute on the created node.
+  Status status = xla_kernel_creator.CreateKernel(flr_, callsite, &kernel_);
   ASSERT_TRUE(status.ok()) << status.ToString();
 
   EXPECT_EQ("XTimesY", kernel_->name());
@@ -124,29 +129,31 @@ TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrNotSet) {
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
-  Status status = xla_kernel_creator.CreateKernel(flr_, ToNodeDef(R"proto(
-                                                    name: 'XTimesY'
-                                                    op: 'XTimesY'
-                                                    input: 'a'
-                                                    input: 'b'
-                                                  )proto"),
-                                                  &kernel_);
+  Status status =
+      xla_kernel_creator.CreateKernel(flr_, ToNodeProperties(R"proto(
+                                        name: 'XTimesY'
+                                        op: 'XTimesY'
+                                        input: 'a'
+                                        input: 'b'
+                                      )proto"),
+                                      &kernel_);
   EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
 }
 
 TEST_F(XlaKernelCreatorTest, FailsIfXlaCompileAttrIsSetToFalse) {
   FunctionDef fdef = XTimesY();
-  (*fdef.mutable_attr())["_XlaCompile"] = BoolAttr(false);
+  (*fdef.mutable_attr())["_XlaMustCompile"] = BoolAttr(false);
   Init({fdef});
   XlaKernelCreator xla_kernel_creator;
 
-  Status status = xla_kernel_creator.CreateKernel(flr_, ToNodeDef(R"proto(
-                                                    name: 'XTimesY'
-                                                    op: 'XTimesY'
-                                                    input: 'a'
-                                                    input: 'b'
-                                                  )proto"),
-                                                  &kernel_);
+  Status status =
+      xla_kernel_creator.CreateKernel(flr_, ToNodeProperties(R"proto(
+                                        name: 'XTimesY'
+                                        op: 'XTimesY'
+                                        input: 'a'
+                                        input: 'b'
+                                      )proto"),
+                                      &kernel_);
   EXPECT_TRUE(errors::IsInternal(status)) << status.ToString();
 }
 

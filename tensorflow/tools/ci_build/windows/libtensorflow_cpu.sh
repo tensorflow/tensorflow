@@ -36,7 +36,8 @@ run_configure_for_cpu_build
 # build_libtensorflow_tarball in ../builds/libtensorflow.sh
 # cannot be used on Windows since it relies on pkg_tar rules.
 # So we do something special here
-bazel --output_user_root=${TMPDIR} build -c opt --copt=/arch:AVX --announce_rc \
+bazel --output_user_root=${TMPDIR} build -c opt --copt=/arch:AVX --announce_rc --config=short_logs \
+  :LICENSE \
   tensorflow:tensorflow.dll \
   tensorflow:tensorflow_dll_import_lib \
   tensorflow/tools/lib_package:clicenses_generate \
@@ -51,7 +52,8 @@ mkdir -p ${DIR}
 cp bazel-bin/tensorflow/java/tensorflow_jni.dll ${DIR}/tensorflow_jni.dll
 zip -j ${DIR}/libtensorflow_jni-cpu-windows-$(uname -m).zip \
   ${DIR}/tensorflow_jni.dll \
-  bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/jni/LICENSE
+  bazel-bin/tensorflow/tools/lib_package/include/tensorflow/THIRD_PARTY_TF_JNI_LICENSES \
+  LICENSE
 rm -f ${DIR}/tensorflow_jni.dll
 
 # Zip up the .dll, LICENSE and include files for the C library.
@@ -59,15 +61,26 @@ mkdir -p ${DIR}/include/tensorflow/c
 mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/tensorflow.dll ${DIR}/lib/tensorflow.dll
-cp bazel-genfiles/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
-cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp bazel-bin/tensorflow/tensorflow.lib ${DIR}/lib/tensorflow.lib
+cp tensorflow/c/c_api.h \
+  tensorflow/c/tf_attrtype.h \
+  tensorflow/c/tf_datatype.h \
+  tensorflow/c/tf_status.h \
+  tensorflow/c/tf_tensor.h \
+  ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
-cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
+cp LICENSE ${DIR}/LICENSE
+cp bazel-bin/tensorflow/tools/lib_package/THIRD_PARTY_TF_C_LICENSES ${DIR}/
 cd ${DIR}
 zip libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
   lib/tensorflow.lib \
   include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
-  include/tensorflow/c/LICENSE
+  include/tensorflow/c/tf_attrtype.h \
+  include/tensorflow/c/tf_datatype.h \
+  include/tensorflow/c/tf_status.h \
+  include/tensorflow/c/tf_tensor.h \
+  LICENSE \
+  THIRD_PARTY_TF_C_LICENSES
 rm -rf lib include

@@ -142,7 +142,7 @@ TF_CALL_int64(DECLARE_TYPE);
 TF_CALL_half(DECLARE_TYPE);
 TF_CALL_complex64(DECLARE_TYPE);
 TF_CALL_complex128(DECLARE_TYPE);
-TF_CALL_string(DECLARE_TYPE);
+TF_CALL_tstring(DECLARE_TYPE);
 #undef DECLARE_TYPE
 
 #define DECLARE_DIM(T, NDIM)                           \
@@ -187,7 +187,7 @@ class TileOp : public OpKernel {
     const Tensor& multiples = context->input(1);
 
     OP_REQUIRES(
-        context, IsLegacyVector(multiples.shape()),
+        context, TensorShapeUtils::IsVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
                                 multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),
@@ -241,7 +241,7 @@ class TileOp : public OpKernel {
     TF_CALL_int16(HANDLE_TYPE_NAME);
     TF_CALL_int64(HANDLE_TYPE_NAME);
     TF_CALL_half(HANDLE_TYPE_NAME);
-    TF_CALL_string(HANDLE_TYPE_NAME);  // when DEVICE=CPUDevice.
+    TF_CALL_tstring(HANDLE_TYPE_NAME);  // when DEVICE=CPUDevice.
     TF_CALL_complex64(HANDLE_TYPE_NAME);
     TF_CALL_complex128(HANDLE_TYPE_NAME);
 
@@ -322,7 +322,7 @@ TF_CALL_int64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_half(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex64(HANDLE_TYPE_NAME_CPU);
 TF_CALL_complex128(HANDLE_TYPE_NAME_CPU);
-TF_CALL_string(HANDLE_TYPE_NAME_CPU);
+TF_CALL_tstring(HANDLE_TYPE_NAME_CPU);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_bool(HANDLE_TYPE_NAME_GPU);
@@ -361,7 +361,7 @@ class TileGradientOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& multiples = context->input(1);
     OP_REQUIRES(
-        context, IsLegacyVector(multiples.shape()),
+        context, TensorShapeUtils::IsVector(multiples.shape()),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
                                 multiples.shape().DebugString()));
     OP_REQUIRES(context, input.dims() == multiples.NumElements(),

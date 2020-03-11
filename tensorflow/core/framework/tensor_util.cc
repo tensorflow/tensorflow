@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -48,7 +49,7 @@ void DeepCopy(const Tensor& input, Tensor* output) {
              input_data.size());
     }
   } else if (input.dtype() == DT_STRING) {
-    output->unaligned_flat<string>() = input.unaligned_flat<string>();
+    output->unaligned_flat<tstring>() = input.unaligned_flat<tstring>();
   } else {
     CHECK_EQ(DT_VARIANT, input.dtype());
     output->unaligned_flat<Variant>() = input.unaligned_flat<Variant>();
@@ -98,12 +99,12 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
     if (dtype != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    string* to_strings =
-        reinterpret_cast<string*>(const_cast<char*>(to_data.data()));
+    tstring* to_strings =
+        reinterpret_cast<tstring*>(const_cast<char*>(to_data.data()));
 
     int64 offset = 0;
     for (const Tensor& tensor : tensors) {
-      auto from_strings = tensor.flat<string>();
+      auto from_strings = tensor.flat<tstring>();
       CHECK_LE(offset + tensor.NumElements(), result->NumElements());
       for (int i = 0; i < tensor.NumElements(); ++i) {
         to_strings[offset + i] = from_strings(i);
@@ -155,7 +156,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
     if (tensor.dtype() != DT_STRING) {
       return errors::Internal("Unexpected data type");
     }
-    auto from_strings = tensor.flat<string>();
+    auto from_strings = tensor.flat<tstring>();
 
     int64 offset = 0;
     for (int64 size : sizes) {
@@ -163,7 +164,7 @@ Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,
       shape.set_dim(0, size);
       result->emplace_back(tensor.dtype(), shape);
       Tensor& split = (*result)[result->size() - 1];
-      string* to_strings = reinterpret_cast<string*>(
+      tstring* to_strings = reinterpret_cast<tstring*>(
           const_cast<char*>(split.tensor_data().data()));
 
       CHECK_LE(offset + split.NumElements(), tensor.NumElements());
@@ -365,6 +366,23 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
 }
 
 #undef HANDLE_COMPRESS_CASE
+
+Status MakeShape(const Tensor& shape, TensorShape* out) {
+  if (!TensorShapeUtils::IsVector(shape.shape())) {
+    return errors::InvalidArgument(
+        "shape must be a vector of {int32,int64}, got shape ",
+        shape.shape().DebugString());
+  }
+  if (shape.dtype() == DataType::DT_INT32) {
+    auto vec = shape.flat<int32>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else if (shape.dtype() == DataType::DT_INT64) {
+    auto vec = shape.flat<int64>();
+    return TensorShapeUtils::MakeShape(vec.data(), vec.size(), out);
+  } else {
+    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
+  }
+}
 
 }  // namespace tensor
 }  // namespace tensorflow

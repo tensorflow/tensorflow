@@ -35,7 +35,8 @@ class ScopedAllocator {
   struct Field {
     int32 scope_id;
     size_t offset;
-    size_t bytes;
+    size_t bytes_requested;
+    size_t bytes_allocated;
   };
   // Field index that refers to backing tensor, not any aliased field.
   static const int32 kBackingIndex = -1;
@@ -50,7 +51,7 @@ class ScopedAllocator {
 
   // Automatically deletes when last use expires, or when
   // ScopedAllocatorContainer decides to delete.
-  ~ScopedAllocator() LOCKS_EXCLUDED(mu_);
+  ~ScopedAllocator() TF_LOCKS_EXCLUDED(mu_);
 
   // For debugging: returns true iff p is a pointer that could have
   // been returned by AllocateRaw.
@@ -65,8 +66,8 @@ class ScopedAllocator {
   friend class ScopedAllocatorInstance;
   // Only ScopedAllocatorInstances can call AllocateRaw and DeallocateRaw on a
   // ScopedAllocator
-  void* AllocateRaw(int32 field_index, size_t num_bytes) LOCKS_EXCLUDED(mu_);
-  void DeallocateRaw(void* p) LOCKS_EXCLUDED(mu_);
+  void* AllocateRaw(int32 field_index, size_t num_bytes) TF_LOCKS_EXCLUDED(mu_);
+  void DeallocateRaw(void* p) TF_LOCKS_EXCLUDED(mu_);
   Tensor backing_tensor_;
   TensorBuffer* tbuf_;
   int32 id_;
@@ -74,8 +75,8 @@ class ScopedAllocator {
   ScopedAllocatorContainer* container_;
   std::vector<Field> fields_;
   mutex mu_;
-  int32 expected_call_count_ GUARDED_BY(mu_);
-  int32 live_alloc_count_ GUARDED_BY(mu_);
+  int32 expected_call_count_ TF_GUARDED_BY(mu_);
+  int32 live_alloc_count_ TF_GUARDED_BY(mu_);
 };
 
 // An Allocator that will return a pointer into the backing buffer of
@@ -97,14 +98,14 @@ class ScopedAllocatorInstance : public Allocator {
   // When a ScopedAllocatorContainer "Drops" a scope_id, it calls DropFromTable
   // on the underlying ScopedAllocatorInstance.  If this instance has already
   // deallocated the tensor slice, we can safely delete this.
-  void DropFromTable() LOCKS_EXCLUDED(mu_);
+  void DropFromTable() TF_LOCKS_EXCLUDED(mu_);
   void* AllocateRaw(size_t alignment, size_t num_bytes)
-      LOCKS_EXCLUDED(mu_) override;
+      TF_LOCKS_EXCLUDED(mu_) override;
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocator_attr) override {
     return AllocateRaw(alignment, num_bytes);
   }
-  void DeallocateRaw(void* p) LOCKS_EXCLUDED(mu_) override;
+  void DeallocateRaw(void* p) TF_LOCKS_EXCLUDED(mu_) override;
   bool TracksAllocationSizes() const override { return false; }
   size_t RequestedSize(const void* ptr) const override { return 0; }
   size_t AllocatedSize(const void* ptr) const override { return 0; }
@@ -116,9 +117,9 @@ class ScopedAllocatorInstance : public Allocator {
   mutex mu_;
   ScopedAllocator* scoped_allocator_;
   int32 field_index_;
-  bool allocated_ GUARDED_BY(mu_);
-  bool deallocated_ GUARDED_BY(mu_);
-  bool in_table_ GUARDED_BY(mu_);
+  bool allocated_ TF_GUARDED_BY(mu_);
+  bool deallocated_ TF_GUARDED_BY(mu_);
+  bool in_table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

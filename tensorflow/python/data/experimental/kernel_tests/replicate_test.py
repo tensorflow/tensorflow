@@ -17,28 +17,28 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
+from absl.testing import parameterized
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.experimental.ops import distribute
+from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class LocalReplicateTest(test_base.DatasetTestBase):
+class LocalReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(LocalReplicateTest, self).__init__(methodName)
@@ -46,7 +46,8 @@ class LocalReplicateTest(test_base.DatasetTestBase):
     self._device1 = "/device:CPU:1"
     self._device2 = "/device:CPU:2"
 
-  @test_util.run_v1_only("V2 doesnt support multiple devices")
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
   def testBasic(self):
     with ops.device(self._device0):
       dataset0 = dataset_ops.Dataset.range(100)
@@ -55,31 +56,129 @@ class LocalReplicateTest(test_base.DatasetTestBase):
     dataset1 = replicated_ds[self._device1]
     dataset2 = replicated_ds[self._device2]
 
-    logging.info("Producing 0")
     with ops.device(self._device0):
       self.assertDatasetProduces(dataset0, range(100))
-    logging.info("Producing 1")
     with ops.device(self._device1):
       self.assertDatasetProduces(dataset1, range(100))
-    logging.info("Producing 2")
     with ops.device(self._device2):
       self.assertDatasetProduces(dataset2, range(100))
 
-  @test_util.run_v1_only("V2 doesnt support multiple devices")
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
   def testVariableInput(self):
     with ops.device(self._device0):
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       dataset0 = dataset_ops.Dataset.range(100).map(
           lambda _: counter_var.assign_add(1))
-    # We don't support stateful ops in functions as of now.
-    with self.assertRaises(errors.InvalidArgumentError):
+    replicated_ds = distribute.replicate(dataset0,
+                                         [self._device1, self._device2])
+    dataset1 = replicated_ds[self._device1]
+    dataset2 = replicated_ds[self._device2]
+    self.evaluate(counter_var.initializer)
+    with ops.device(self._device0):
+      self.assertDatasetProduces(
+          dataset0, range(1, 101), requires_initialization=True)
+    with ops.device(self._device1):
+      self.assertDatasetProduces(
+          dataset1, range(101, 201), requires_initialization=True)
+    with ops.device(self._device2):
+      self.assertDatasetProduces(
+          dataset2, range(201, 301), requires_initialization=True)
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  def testExternalStatePolicyIgnore(self):
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.IGNORE)
+      dataset0 = dataset0.with_options(opt)
+    replicated_ds = distribute.replicate(dataset0,
+                                         [self._device1, self._device2])
+    dataset1 = replicated_ds[self._device1]
+    dataset2 = replicated_ds[self._device2]
+
+    with ops.device(self._device0):
+      get_next0 = self.getNext(dataset0)
+    with ops.device(self._device1):
+      get_next1 = self.getNext(dataset1)
+    with ops.device(self._device2):
+      get_next2 = self.getNext(dataset2)
+
+    for _ in range(100):
+      self.evaluate(get_next0())
+      self.evaluate(get_next1())
+      self.evaluate(get_next2())
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  def testExternalStatePolicyWarn(self):
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.WARN)
+      dataset0 = dataset0.with_options(opt)
+    replicated_ds = distribute.replicate(dataset0,
+                                         [self._device1, self._device2])
+    dataset1 = replicated_ds[self._device1]
+    dataset2 = replicated_ds[self._device2]
+
+    with ops.device(self._device0):
+      get_next0 = self.getNext(dataset0)
+    with ops.device(self._device1):
+      get_next1 = self.getNext(dataset1)
+    with ops.device(self._device2):
+      get_next2 = self.getNext(dataset2)
+
+    for _ in range(100):
+      self.evaluate(get_next0())
+      self.evaluate(get_next1())
+      self.evaluate(get_next2())
+
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  def testExternalStatePolicyFail(self):
+    with ops.device(self._device0):
+      dataset0 = dataset_ops.Dataset.range(100).map(
+          lambda _: random_ops.random_uniform(  # pylint:disable=g-long-lambda
+              [],
+              minval=1,
+              maxval=10,
+              dtype=dtypes.float32))
+      opt = dataset_ops.Options()
+      opt.experimental_external_state_policy = (
+          distribute_options.ExternalStatePolicy.FAIL)
+      dataset0 = dataset0.with_options(opt)
+    with self.assertRaises(errors.FailedPreconditionError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
       dataset1 = replicated_ds[self._device1]
+      dataset2 = replicated_ds[self._device2]
+
+      with ops.device(self._device0):
+        get_next0 = self.getNext(dataset0)
       with ops.device(self._device1):
-        self.assertDatasetProduces(
-            dataset1, range(100), requires_initialization=True)
+        get_next1 = self.getNext(dataset1)
+      with ops.device(self._device2):
+        get_next2 = self.getNext(dataset2)
+
+      for _ in range(100):
+        self.evaluate(get_next0())
+        self.evaluate(get_next1())
+        self.evaluate(get_next2())
 
 
 JOB_NAME = "remote_device"
@@ -106,13 +205,12 @@ def _get_server_def(job_name, local_server_port, remote_server_addresses,
 
 
 # Pure eager mode test that sets up a cluster of processes.
-class RemoteReplicateTest(test_base.DatasetTestBase):
+class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(RemoteReplicateTest, self).__init__(methodName)
     self._cached_server1 = server_lib.Server.create_local_server()
     self._cached_server2 = server_lib.Server.create_local_server()
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
     self._cached_server1_target = self._cached_server1.target[len("grpc://"):]
     self._cached_server2_target = self._cached_server2.target[len("grpc://"):]
     self._device0 = "/job:%s/replica:0/task:0/device:CPU:0" % JOB_NAME
@@ -120,8 +218,9 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
     self._device2 = "/job:%s/replica:0/task:2/device:CPU:0" % JOB_NAME
 
   def setUp(self):
+    super(RemoteReplicateTest, self).setUp()
     # Start the local server.
-    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=_get_server_def(
             JOB_NAME,
@@ -131,7 +230,8 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
             ],
             task_index=0))
 
-  @test_util.run_v2_only
+  @combinations.generate(
+      combinations.combine(tf_api_version=[2], mode=["eager"]))
   def testBasic(self):
     with ops.device(self._device0):
       dataset0 = dataset_ops.Dataset.range(100)
@@ -146,7 +246,8 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
     with ops.device(self._device2):
       self.assertDatasetProduces(dataset2, range(100))
 
-  @test_util.run_v2_only
+  @combinations.generate(
+      combinations.combine(tf_api_version=[2], mode=["eager"]))
   def testMap(self):
     with ops.device(self._device0):
       dataset0 = dataset_ops.Dataset.range(100).map(lambda x: x * 2)
@@ -161,21 +262,30 @@ class RemoteReplicateTest(test_base.DatasetTestBase):
     with ops.device(self._device2):
       self.assertDatasetProduces(dataset2, range(0, 200, 2))
 
-  @test_util.run_v2_only
-  def testVariableInput(self):
+  # TODO(b/150821179): Re-enable this test.
+  @combinations.generate(
+      combinations.combine(tf_api_version=[2], mode=["eager"]))
+  def _testVariableInput(self):
     with ops.device(self._device0):
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       dataset0 = dataset_ops.Dataset.range(100).map(
           lambda _: counter_var.assign_add(1))
-    # We don't support stateful ops in functions as of now.
     with self.assertRaises(errors.InvalidArgumentError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
       dataset1 = replicated_ds[self._device1]
+      dataset2 = replicated_ds[self._device2]
+      with ops.device(self._device0):
+        get_next0 = self.getNext(dataset0)
       with ops.device(self._device1):
-        self.assertDatasetProduces(
-            dataset1, range(100), requires_initialization=True)
+        get_next1 = self.getNext(dataset1)
+      with ops.device(self._device2):
+        get_next2 = self.getNext(dataset2)
+      for _ in range(100):
+        self.evaluate(get_next0())
+        self.evaluate(get_next1())
+        self.evaluate(get_next2())
 
 
 if __name__ == "__main__":

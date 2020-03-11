@@ -24,20 +24,21 @@ from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
+from tensorflow.python.platform import device_context
 from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.deprecation import deprecated_argument_lookup
 from tensorflow.python.util.tf_export import tf_export
@@ -400,7 +401,7 @@ def compute_average_loss(per_example_loss,
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      return tf.compute_average_loss(
+      return tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
@@ -451,13 +452,13 @@ def scale_regularization_loss(regularization_loss):
           labels, predictions)
 
       # Compute loss that is scaled by sample_weight and by global batch size.
-      loss = tf.compute_average_loss(
+      loss = tf.nn.compute_average_loss(
           per_example_loss,
           sample_weight=sample_weight,
           global_batch_size=GLOBAL_BATCH_SIZE)
 
       # Add scaled regularization losses.
-      loss += tf.scale_regularization_loss(tf.nn.l2_loss(weights))
+      loss += tf.nn.scale_regularization_loss(tf.nn.l2_loss(weights))
       return loss
   ```
 
@@ -499,31 +500,8 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-def _swish_shape(op):
-  """Shape helper function for swish and _swish_grad function below."""
-  return [op.inputs[0].shape]
-
-
-@function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
-def _swish_grad(features, grad):
-  """Gradient of Swish function defined below."""
-  sigmoid_features = math_ops.sigmoid(features)
-  activation_grad = (
-      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-  return grad * activation_grad
-
-
-# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
-# for backprop, effectively doubling the tensor's memory consumption. We use a
-# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
-# during backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @tf_export("nn.swish")
-@function.Defun(
-    grad_func=_swish_grad,
-    shape_func=_swish_shape,
-    func_name="swish",
-    noinline=True)
+@custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -540,7 +518,22 @@ def swish(features):
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
-  return features * math_ops.sigmoid(features)
+
+  def grad(dy):
+    """Gradient for the Swish activation function"""
+    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+    # around for backprop, effectively doubling the tensor's memory consumption.
+    # We use a control dependency here so that sigmoid(features) is re-computed
+    # during backprop (the control dep prevents it being de-duped with the
+    # forward pass) and we can free the sigmoid(features) expression immediately
+    # after use during the forward pass.
+    with ops.control_dependencies([dy]):
+      sigmoid_features = math_ops.sigmoid(features)
+    activation_grad = (
+        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+    return dy * activation_grad
+
+  return features * math_ops.sigmoid(features), grad
 
 
 # pylint: disable=redefined-builtin
@@ -774,6 +767,21 @@ def depthwise_conv2d(input,
     if rate is None:
       rate = [1, 1]
 
+    # Use depthwise_conv2d_native if executing on TPU.
+    if device_context.enclosing_tpu_context() is not None:
+      if data_format == "NCHW":
+        dilations = [1, 1, rate[0], rate[1]]
+      else:
+        dilations = [1, rate[0], rate[1], 1]
+      return nn_ops.depthwise_conv2d_native(
+          input=input,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilations=dilations,
+          name=name)
+
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(
           input=input_converted,
@@ -926,7 +934,7 @@ def separable_conv2d(input,
       rate = [1, 1]
 
     # The layout of the ops in the graph are expected to be as follows:
-    # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
+    # depthwise_conv2d  // Conv2D op corresponding to native depthwise conv.
     # separable_conv2d  // Conv2D op corresponding to the pointwise conv.
 
     def op(input_converted, _, padding):
@@ -1287,7 +1295,7 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
     # The shape of the weights isn't necessarily the same as x's
     # shape, just broadcast-compatible with it -- so this expression
     # performs broadcasting to give a per-item weight, with the same
-    # shape as (freqency_weights * x). This avoids having to reason
+    # shape as (frequency_weights * x). This avoids having to reason
     # through all the broadcast logic to compute a correct
     # sum_of_weights.
     broadcasted_weights = frequency_weights + array_ops.zeros_like(x)
@@ -1367,7 +1375,7 @@ def batch_normalization(x,
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
       others which are being normalized over.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      `tf.nn.moments(..., keepdims=True)` during training, or running averages
       thereof during inference.
     * In the common case where the 'depth' dimension is the last dimension in
       the input tensor `x`, they may be one dimensional tensors of the same
@@ -1376,10 +1384,11 @@ def batch_normalization(x,
       fully-connected layers, and `[batch, height, width, depth]` for
       convolutions.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  See equation 11 in Algorithm 2 of source: 
+  [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
 
@@ -1396,6 +1405,12 @@ def batch_normalization(x,
 
   Returns:
     the normalized, scaled, offset tensor.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
@@ -1417,8 +1432,10 @@ def fused_batch_norm(
     epsilon=0.001,
     data_format="NHWC",
     is_training=True,
-    name=None):
+    name=None,
+    exponential_avg_factor=1.0):
   r"""Batch normalization.
+
 
   See Source: [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
@@ -1428,41 +1445,94 @@ def fused_batch_norm(
     x: Input `Tensor` of 4 dimensions.
     scale: A `Tensor` of 1 dimension for scaling.
     offset: A `Tensor` of 1 dimension for bias.
-    mean: A `Tensor` of 1 dimension for population mean used for inference.
-    variance: A `Tensor` of 1 dimension for population variance
-              used for inference.
+    mean: A `Tensor` of 1 dimension for population mean. The shape and meaning
+          of this argument depends on the value of is_training and
+          exponential_avg_factor as follows:
+          is_training==False (inference):
+            Mean must be a `Tensor` of the same shape as scale containing the
+            estimated population mean computed during training.
+          is_training==True and exponential_avg_factor == 1.0:
+            Mean must be None.
+          is_training==True and exponential_avg_factor != 1.0:
+            Mean must be a `Tensor` of the same shape as scale containing the
+            exponential running mean.
+    variance: A `Tensor` of 1 dimension for population variance. The shape and
+          meaning of this argument depends on the value of is_training and
+          exponential_avg_factor as follows:
+          is_training==False (inference):
+            Variance must be a `Tensor` of the same shape as scale containing
+            the estimated population variance computed during training.
+          is_training==True and exponential_avg_factor == 1.0:
+            Variance must be None.
+          is_training==True and exponential_avg_factor != 1.0:
+            Variance must be a `Tensor` of the same shape as scale containing
+            the exponential running variance.
     epsilon: A small float number added to the variance of x.
     data_format: The data format for x. Either "NHWC" (default) or "NCHW".
     is_training: A bool value to specify if the operation is used for
                  training or inference.
     name: A name for this operation (optional).
+    exponential_avg_factor: A float number (usually between 0 and 1) used
+                            for controlling the decay of the running
+                            population average of mean and variance.
+                            If set to 1.0, the current batch average is
+                            returned.
 
   Returns:
     y: A 4D Tensor for the normalized, scaled, offsetted x.
-    batch_mean: A 1D Tensor for the mean of x.
-    batch_var: A 1D Tensor for the variance of x.
+    running_mean: A 1D Tensor for the exponential running mean of x.
+                  The output value is (1 - exponential_avg_factor) * mean +
+                  exponential_avg_factor * batch_mean), where batch_mean
+                  is the mean of the current batch in x.
+    running_var: A 1D Tensor for the exponential running variance
+                 The output value is (1 - exponential_avg_factor) * variance +
+                 exponential_avg_factor * batch_variance), where batch_variance
+                 is the variance of the current batch in x.
 
-  Raises:
-    ValueError: If mean or variance is not None when is_training is True.
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
+  if is_training and exponential_avg_factor == 1.0:
+    if (mean is not None) or (variance is not None):
+      raise ValueError("Both 'mean' and 'variance' must be None when "
+                       "is_training is True and "
+                       "exponential_avg_factor == 1.0.")
+  else:
+    if (mean is None) or (variance is None):
+      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                       "is_training is False or "
+                       "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")
-  if is_training:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None "
-                       "if is_training is True.")
   if mean is None:
     mean = constant_op.constant([])
   if variance is None:
     variance = constant_op.constant([])
+
   # Set a minimum epsilon to 1.001e-5, which is a requirement by CUDNN to
   # prevent exception (see cudnn.h).
   min_epsilon = 1.001e-5
   epsilon = epsilon if epsilon > min_epsilon else min_epsilon
 
-  if compat.forward_compatible(2019, 6, 6):
-    y, batch_mean, batch_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+  if compat.forward_compatible(2020, 3, 6):
+    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
+        x,
+        scale,
+        offset,
+        mean,
+        variance,
+        epsilon=epsilon,
+        exponential_avg_factor=exponential_avg_factor,
+        data_format=data_format,
+        is_training=is_training,
+        name=name)
+    return y, running_mean, running_var
+  else:
+    y, running_mean, running_var, _, _, _ = gen_nn_ops.fused_batch_norm_v3(
         x,
         scale,
         offset,
@@ -1472,23 +1542,7 @@ def fused_batch_norm(
         data_format=data_format,
         is_training=is_training,
         name=name)
-    return y, batch_mean, batch_var
-
-  if x.dtype == dtypes.float16 or x.dtype == dtypes.bfloat16:
-    fused_batch_norm_func = gen_nn_ops.fused_batch_norm_v2
-  else:
-    fused_batch_norm_func = gen_nn_ops._fused_batch_norm  # pylint: disable=protected-access
-  y, batch_mean, batch_var, _, _ = fused_batch_norm_func(
-      x,
-      scale,
-      offset,
-      mean,
-      variance,
-      epsilon=epsilon,
-      data_format=data_format,
-      is_training=is_training,
-      name=name)
-  return y, batch_mean, batch_var
+    return y, running_mean, running_var
 
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
@@ -1530,6 +1584,12 @@ def batch_norm_with_global_normalization(t=None,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   t = deprecated_argument_lookup("input", input, "t", t)
   m = deprecated_argument_lookup("mean", mean, "m", m)
@@ -1572,6 +1632,11 @@ def batch_norm_with_global_normalization_v2(input,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   return batch_norm_with_global_normalization(t=input,
                                               m=mean,
@@ -1901,12 +1966,6 @@ def nce_loss(weights,
              name="nce_loss"):
   """Computes and returns the noise-contrastive estimation training loss.
 
-  See [Noise-contrastive estimation: A new estimation principle for
-  unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-  Also see our [Candidate Sampling Algorithms
-  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
   A common use case is to use this method for training, and calculate the full
   sigmoid loss for evaluation or inference. In this case, you must set
   `partition_strategy="div"` for the two losses to be consistent, as in the
@@ -1966,9 +2025,9 @@ def nce_loss(weights,
     remove_accidental_hits:  A `bool`.  Whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  If set to
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
-        learning to generate log-odds instead of log probabilities.  See
-        our [Candidate Sampling Algorithms Reference]
-        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
+        learning to generate log-odds instead of log probabilities. See
+        our Candidate Sampling Algorithms Reference
+        ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -1977,6 +2036,12 @@ def nce_loss(weights,
 
   Returns:
     A `batch_size` 1-D tensor of per-example NCE losses.
+
+  References:
+    Noise-contrastive estimation - A new estimation principle for unnormalized
+    statistical models:
+      [Gutmann et al., 2010](http://proceedings.mlr.press/v9/gutmann10a)
+      ([pdf](http://proceedings.mlr.press/v9/gutmann10a/gutmann10a.pdf))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,
@@ -2133,11 +2198,9 @@ def sampled_softmax_loss(weights,
         logits=logits)
   ```
 
-  See our [Candidate Sampling Algorithms Reference]
-  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
-  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
-  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
+  See our Candidate Sampling Algorithms Reference
+  ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
+  Also see Section 3 of (Jean et al., 2014) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
@@ -2168,6 +2231,11 @@ def sampled_softmax_loss(weights,
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
+  References:
+    On Using Very Large Target Vocabulary for Neural Machine Translation:
+      [Jean et al., 2014]
+      (https://aclanthology.coli.uni-saarland.de/papers/P15-1001/p15-1001)
+      ([pdf](http://aclweb.org/anthology/P15-1001))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,

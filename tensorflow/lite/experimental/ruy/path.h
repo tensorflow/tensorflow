@@ -51,6 +51,11 @@ namespace ruy {
 // given base architecture (such as ARM). Higher values of this enum correspond
 // to "better" code paths within a given base architecture for which Ruy has
 // optimized code paths.
+//
+// Values are reused across architectures.
+// Rationale: Scale better to N architectures, it is good to have small values
+// both for the compile-time logic to select paths, and when manually spelling
+// out Path values, such as when invoking a test or benchmark.
 enum class Path : std::uint8_t {
   // This is a special null value, representing the absence of any path.
   kNone = 0,
@@ -66,11 +71,39 @@ enum class Path : std::uint8_t {
   //
   // This is intended for testing/development.
   kStandardCpp = 0x2,
+
+#if RUY_PLATFORM(ARM)
+  // ARM architectures.
+  //
   // Optimized path using a widely available subset of ARM NEON instructions.
   kNeon = 0x4,
   // Optimized path making use of ARM NEON dot product instructions that are
   // available on newer ARM cores.
   kNeonDotprod = 0x8,
+#endif  // RUY_PLATFORM(ARM)
+
+#if RUY_PLATFORM(X86)
+  // x86 architectures.
+  //
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder.
+  // Optimization is not finished. In particular the dimensions of the kernel
+  // blocks can be changed as desired.
+  //
+  // Optimized for SSE 4.2.
+  kSse42 = 0x4,
+  // Optimized for AVX2.
+  kAvx2 = 0x8,
+  // Optimized for AVX-512.
+  kAvx512 = 0x10,
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder.
+  // Optimization is not finished. In particular the dimensions of the kernel
+  // blocks can be changed as desired.
+  //
+  // Optimized for AVX-VNNI.
+  kAvxVnni = 0x20,
+#endif  // RUY_PLATFORM(X86)
 };
 
 inline constexpr Path operator|(Path p, Path q) {
@@ -104,6 +137,10 @@ constexpr Path kAllPaths =
     Path::kReference | Path::kStandardCpp | Path::kNeon | Path::kNeonDotprod;
 #elif RUY_PLATFORM(NEON_32)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
+#elif RUY_PLATFORM(X86)
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp |
+                           Path::kSse42 | Path::kAvx2 | Path::kAvx512 |
+                           Path::kAvxVnni;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif
@@ -111,6 +148,10 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 // We don't know how to do runtime dotprod detection outside of linux for now.
 #if RUY_PLATFORM(NEON)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
+#elif RUY_PLATFORM(X86)
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp |
+                           Path::kSse42 | Path::kAvx2 | Path::kAvx512 |
+                           Path::kAvxVnni;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif

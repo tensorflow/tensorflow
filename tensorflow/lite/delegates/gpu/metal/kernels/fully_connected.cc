@@ -123,8 +123,8 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  int gpu_type = GetAppleSocVersion();
-  bool shared = gpu_type == 7 || gpu_type == 8;
+  auto gpu_type = GetGpuType();
+  bool shared = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8;
   desc->shader_source =
       GetFullyConnectedCode(shared, attr.weights.shape.i, attr.weights.shape.o);
 
@@ -159,15 +159,12 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(attr.bias.data)
-                    : VectorFloatToHalf(attr.bias.data);
   desc->immutable_buffers = {
-      {"device FLT4* const matrix", filters},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const matrix",
+       GetByteBufferConverted(filters_reordered, options.storage_precision)},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
+                                     attr.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -180,7 +177,7 @@ std::vector<ComputeTaskDescriptorPtr> FullyConnected(
              static_cast<uint32_t>(attr.weights.shape.o),
              static_cast<uint32_t>(0),
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

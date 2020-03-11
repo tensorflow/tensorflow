@@ -76,6 +76,12 @@ REGISTER_OP("TestStringOutput")
     .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("Namespace>TestStringOutput")
+    .Input("input: float")
+    .Output("output1: float")
+    .Output("output2: string")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("TestAttr")
     .Output("out: T")
     .Attr("T: {float, double}")
@@ -96,13 +102,13 @@ class KernelLabelOp : public OpKernel {
                    ctx->allocate_output("result", TensorShape({}), &output));
     switch (KL) {
       case DEFAULT_LABEL:
-        output->scalar<string>()() = "My label is: default";
+        output->scalar<tstring>()() = "My label is: default";
         break;
       case OVERLOAD_1_LABEL:
-        output->scalar<string>()() = "My label is: overload_1";
+        output->scalar<tstring>()() = "My label is: overload_1";
         break;
       case OVERLOAD_2_LABEL:
-        output->scalar<string>()() = "My label is: overload_2";
+        output->scalar<tstring>()() = "My label is: overload_2";
         break;
     }
   }
@@ -592,7 +598,7 @@ REGISTER_OP("NInTwoTypeVariables")
 REGISTER_OP("InPolymorphicTwice")
     .Input("a: N * T")
     .Input("b: M * T")
-    .Attr("T: type")
+    .Attr("T: type = DT_INT32")
     .Attr("N: int >= 0")
     .Attr("M: int >= 0")
     .SetShapeFn(shape_inference::UnknownShape);
@@ -676,7 +682,7 @@ class DevicePlacementOp : public OpKernel {
     Tensor* output;
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("device", TensorShape({}), &output));
-    output->scalar<string>()() = ctx->device()->name();
+    output->scalar<tstring>()() = ctx->device()->name();
   }
 };
 
@@ -684,4 +690,29 @@ REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_CPU),
                         DevicePlacementOp);
 REGISTER_KERNEL_BUILDER(Name("DevicePlacementOp").Device(DEVICE_GPU),
                         DevicePlacementOp);
+
+// An op which returns the dtype of the tensor it was passed in. It expects
+// DT_UINT8.
+REGISTER_OP("DtypeWithDefaultOp")
+    .Input("in: T")
+    .Attr("T: type = DT_UINT8")
+    .Output("dtype: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+class DTypeWithDefaultOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& input = ctx->input(0);
+    Tensor* output;
+    OP_REQUIRES_OK(ctx,
+                   ctx->allocate_output("dtype", TensorShape({}), &output));
+    output->scalar<tstring>()() = tensorflow::DataTypeString(input.dtype());
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("DtypeWithDefaultOp").Device(DEVICE_CPU),
+                        DTypeWithDefaultOp);
 }  // end namespace tensorflow

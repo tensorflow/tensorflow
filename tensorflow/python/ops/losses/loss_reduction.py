@@ -28,10 +28,10 @@ class ReductionV2(object):
      used with `tf.distribute.Strategy`, outside of built-in training loops such
      as `tf.keras` `compile` and `fit`, we expect reduction value to be
      `SUM` or `NONE`. Using `AUTO` in that case will raise an error.
-  * `NONE`: Un-reduced weighted losses with the same shape as input. When this
-    reduction type used with built-in Keras training loops like
-    `fit`/`evaluate`, the unreduced vector loss is passed to the optimizer but
-    the reported loss will be a scalar value.
+  * `NONE`: Weighted losses with one dimension reduced (axis=-1, or axis
+     specified by loss function). When this reduction type used with built-in
+     Keras training loops like `fit`/`evaluate`, the unreduced vector loss is
+     passed to the optimizer but the reported loss will be a scalar value.
   * `SUM`: Scalar sum of weighted losses.
   * `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
      This reduction type is not supported when used with
@@ -42,15 +42,15 @@ class ReductionV2(object):
      ```
      with strategy.scope():
        loss_obj = tf.keras.losses.CategoricalCrossentropy(
-           reduction=tf.keras.losses.Reduction.None)
+           reduction=tf.keras.losses.Reduction.NONE)
        ....
        loss = tf.reduce_sum(loss_object(labels, predictions)) *
            (1. / global_batch_size)
      ```
 
-     Please see
-     https://www.tensorflow.org/alpha/tutorials/distribute/training_loops for
-     more details on this.
+  Please see the
+  [custom training guide](https://www.tensorflow.org/tutorials/distribute/custom_training)  # pylint: disable=line-too-long
+  for more details on this.
   """
 
   AUTO = 'auto'

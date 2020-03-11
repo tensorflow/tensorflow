@@ -34,10 +34,14 @@ tf_cc_test(
     size = "small",
     srcs = ["backwards_compatibility_test.cc"],
     data = [
-        ":ops_history.v0.pbtxt",
-        ":ops_history.v1.pbtxt",
-        ":ops_history.v2.pbtxt",
         "//tensorflow/core:ops/ops.pbtxt",
+    ] + glob([
+        "ops_history_v*/*.pbtxt",
+        "ops_history.v*.pbtxt",
+    ]),
+    tags = [
+        "no_oss",  # TODO(b/150030420): Reenable when fix lands.
+        "notap",  # TODO(b/150030420): Reenable when fix lands.
     ],
     deps = [
         ":op_compatibility_lib",

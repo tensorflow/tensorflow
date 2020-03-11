@@ -31,7 +31,7 @@ limitations under the License.
 #include "third_party/cub/warp/warp_reduce.cuh"
 #include "third_party/gpus/cuda/include/cuComplex.h"
 #elif TENSORFLOW_USE_ROCM
-#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#include "rocm/include/hipcub/hipcub.hpp"
 #endif
 #include "tensorflow/core/kernels/reduction_ops.h"
 #include "tensorflow/core/lib/core/bits.h"
@@ -494,7 +494,8 @@ __device__ __inline__ T ComputeSum(IN_T in_, const int plane,
 }
 
 template <typename IN_T, typename Op>
-__global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
+__global__ void ColumnReduceInToTempKernel(void* __restrict__ temp,
+                                           int temp_in_offset,
                                            int temp_out_offset, IN_T in,
                                            int num_planes, int num_rows,
                                            int num_cols, Op op) {
@@ -524,9 +525,10 @@ __global__ void ColumnReduceInToTempKernel(void* temp, int temp_in_offset,
 }
 
 template <typename T, typename OUT_T, typename Op>
-__global__ void ColumnReduceTempToOutKernel(void* temp, int temp_in_offset,
-                                            T in, OUT_T out, int num_planes,
-                                            int num_rows, int num_cols, Op op) {
+__global__ void ColumnReduceTempToOutKernel(void* __restrict__ temp,
+                                            int temp_in_offset, T in, OUT_T out,
+                                            int num_planes, int num_rows,
+                                            int num_cols, Op op) {
   typedef typename std::iterator_traits<T>::value_type value_type;
   value_type* t = (value_type*)temp;
   const int tid = threadIdx.x;

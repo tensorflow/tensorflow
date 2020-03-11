@@ -70,14 +70,17 @@ struct ParameterComparator {
   bool operator()(int32_t value) const {
     return value == absl::get<int32_t>(a.value);
   }
+
   bool operator()(const int2& value) const {
     auto v = absl::get<int2>(a.value);
     return value.x == v.x && value.y == v.y;
   }
+
   bool operator()(const int4& value) const {
     auto v = absl::get<int4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
+
   bool operator()(const std::vector<int2>& value) const {
     auto v = absl::get<std::vector<int2>>(a.value);
     if (v.size() != value.size()) {
@@ -90,24 +93,43 @@ struct ParameterComparator {
     }
     return true;
   }
+
   bool operator()(uint32_t value) const {
     return value == absl::get<uint32_t>(a.value);
   }
+
   bool operator()(const uint4& value) const {
     auto v = absl::get<uint4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
+
   bool operator()(float value) const {
     return value == absl::get<float>(a.value);
   }
+
   bool operator()(float2 value) const {
     auto v = absl::get<float2>(a.value);
     return value.x == v.x && value.y == v.y;
   }
+
   bool operator()(const float4& value) const {
     auto v = absl::get<float4>(a.value);
     return value.x == v.x && value.y == v.y && value.z == v.z && value.w == v.w;
   }
+
+  bool operator()(const std::vector<float4>& value) const {
+    auto v = absl::get<std::vector<float4>>(a.value);
+    if (v.size() != value.size()) {
+      return false;
+    }
+    for (int i = 0; i < v.size(); ++i) {
+      if (v[i].x != value[i].x || v[i].y != value[i].y) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   Variable a;
 };
 
@@ -154,7 +176,7 @@ TEST(Smoke, Read) {
   std::vector<Object> objects;
   objects.push_back(MakeReadonlyBuffer(std::vector<float>{1, 2, 3, 4}));
   objects.push_back(Object{AccessType::WRITE, DataType::FLOAT32,
-                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100});
+                           ObjectType::TEXTURE, 5, uint3(1, 2, 3), 100u});
   objects.push_back(Object{AccessType::READ_WRITE, DataType::INT8,
                            ObjectType::BUFFER, 6, uint2(2, 1),
                            std::vector<uint8_t>{7, 9}});

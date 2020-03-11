@@ -29,12 +29,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/tensor_slice_reader.h"
 
 namespace tensorflow {
@@ -65,12 +67,13 @@ TEST_F(SaveOpTest, Simple) {
 
   MakeOp();
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({14}),
-                   [&tensornames](int x) -> string { return tensornames[x]; });
+  AddInput<tstring>(TensorShape({14}), [&tensornames](int x) -> tstring {
+    return tensornames[x];
+  });
 
   // Add a 1-d bool tensor
   AddInput<bool>(TensorShape({2}), [](int x) -> bool { return x != 0; });
@@ -108,8 +111,8 @@ TEST_F(SaveOpTest, Simple) {
   AddInput<int64>(TensorShape({9}), [](int x) -> int64 { return x - 9; });
 
   // Add a 1-d string tensor
-  AddInput<string>(TensorShape({2}),
-                   [](int x) -> string { return x ? "yes" : "no"; });
+  AddInput<tstring>(TensorShape({2}),
+                    [](int x) -> tstring { return x ? "yes" : "no"; });
 
   // Add a 2-d complex64 tensor
   AddInput<complex64>(TensorShape({2, 3}), [](int x) -> complex64 {
@@ -328,7 +331,7 @@ TEST_F(SaveOpTest, Simple) {
 
     // We expect the tensor value to be correct.
     TensorSlice s = TensorSlice::ParseOrDie("-");
-    string data[2];
+    tstring data[2];
     EXPECT_TRUE(reader.CopySliceData("tensor_string", s, data));
     EXPECT_EQ("no", data[0]);
     EXPECT_EQ("yes", data[1]);
@@ -425,15 +428,16 @@ TEST_F(SaveSlicesOpTest, Slices) {
 
   MakeOp();
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({5}),
-                   [&tensornames](int x) -> string { return tensornames[x]; });
+  AddInput<tstring>(TensorShape({5}), [&tensornames](int x) -> tstring {
+    return tensornames[x];
+  });
 
   // Add the tensor shapes and slices
-  AddInput<string>(TensorShape({5}), [&tensorshapes](int x) -> string {
+  AddInput<tstring>(TensorShape({5}), [&tensorshapes](int x) -> tstring {
     return tensorshapes[x];
   });
 
@@ -577,15 +581,16 @@ TEST_F(SaveOpSlices2Test, TwoSlices) {
 
   MakeOp();
   // Add a file name
-  AddInput<string>(TensorShape({}),
-                   [&filename](int x) -> string { return filename; });
+  AddInput<tstring>(TensorShape({}),
+                    [&filename](int x) -> tstring { return filename; });
 
   // Add the tensor names
-  AddInput<string>(TensorShape({3}),
-                   [&tensornames](int x) -> string { return tensornames[x]; });
+  AddInput<tstring>(TensorShape({3}), [&tensornames](int x) -> tstring {
+    return tensornames[x];
+  });
 
   // Add the tensor shapes and slices
-  AddInput<string>(TensorShape({3}), [&tensorshapes](int x) -> string {
+  AddInput<tstring>(TensorShape({3}), [&tensorshapes](int x) -> tstring {
     return tensorshapes[x];
   });
 
@@ -666,10 +671,10 @@ static void BM_LargeTensorWrite(int iters, int num_elements) {
   tensor.flat<float>().setZero();
 
   // Builds the graph.
-  const string temp_filename =
+  const tstring temp_filename =
       io::JoinPath(testing::TmpDir(), "benchmark_checkpoint");
   auto root = Scope::NewRootScope().ExitOnError();
-  const string tensor_name = "my_tensor";
+  const tstring tensor_name = "my_tensor";
   ops::Save(root, temp_filename, {tensor_name}, {{tensor}});
 
   // Disables optimizations.

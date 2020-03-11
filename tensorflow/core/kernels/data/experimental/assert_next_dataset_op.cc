@@ -22,6 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 
 /* static */ constexpr const char* const AssertNextDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AssertNextDatasetOp::kDatasetType;
@@ -32,7 +33,7 @@ namespace data {
 class AssertNextDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, const DatasetBase* input,
-          const std::vector<string>& transformations,
+          const std::vector<tstring>& transformations,
           const DataTypeVector& output_types,
           const std::vector<PartialTensorShape>& output_shapes)
       : DatasetBase(DatasetContext(ctx)),
@@ -61,6 +62,10 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
   }
 
   int64 Cardinality() const override { return input_->Cardinality(); }
+
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
+  }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -98,7 +103,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
               tokens[n - 2 - i], " transformation instead.");
         }
       }
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -130,7 +135,7 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
   };
 
   const DatasetBase* input_;
-  const std::vector<string> transformations_;
+  const std::vector<tstring> transformations_;
   const DataTypeVector output_types_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
@@ -143,9 +148,9 @@ AssertNextDatasetOp::AssertNextDatasetOp(OpKernelConstruction* ctx)
 
 void AssertNextDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                       DatasetBase** output) {
-  std::vector<string> transformations;
-  OP_REQUIRES_OK(ctx, ParseVectorArgument<string>(ctx, kTransformations,
-                                                  &transformations));
+  std::vector<tstring> transformations;
+  OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kTransformations,
+                                                   &transformations));
   *output =
       new Dataset(ctx, input, transformations, output_types_, output_shapes_);
 }
@@ -158,5 +163,6 @@ REGISTER_KERNEL_BUILDER(
     AssertNextDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

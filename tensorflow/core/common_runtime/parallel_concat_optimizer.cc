@@ -55,8 +55,8 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         NodeDebugInfo debug_info(*n);
         NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
         node_builder.Device(n->requested_device());
-        string colo;
-        if (GetNodeAttr(n_attrs, "_class", &colo).ok()) {
+        const string& colo = GetNodeAttrString(n_attrs, "_class");
+        if (!colo.empty()) {
           node_builder.Attr("_class", colo);
         }
         return node_builder;
@@ -117,7 +117,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 };
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       ParallelConcatRemovePass);
 
 }  // namespace

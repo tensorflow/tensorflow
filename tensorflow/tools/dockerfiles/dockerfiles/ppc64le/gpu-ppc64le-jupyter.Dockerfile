@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,21 +22,29 @@
 ARG UBUNTU_VERSION=18.04
 
 ARG ARCH=
-ARG CUDA=10.0
+ARG CUDA=10.1
 FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
 # ARCH and CUDA are specified again because the FROM directive resets ARGs
 # (but their default value is retained if set previously)
 ARG ARCH
 ARG CUDA
-ARG CUDNN=7.4.1.5-1
+ARG CUDNN=7.6.4.38-1
+ARG CUDNN_MAJOR_VERSION=7
+ARG LIB_DIR_PREFIX=x86_64
+ARG LIBNVINFER=6.0.1-1
+ARG LIBNVINFER_MAJOR_VERSION=6
 
-# Needed for string substitution 
+# Needed for string substitution
 SHELL ["/bin/bash", "-c"]
 # Pick up some TF dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
         build-essential \
         cuda-command-line-tools-${CUDA/./-} \
-        cuda-cublas-${CUDA/./-} \
+        # There appears to be a regression in libcublas10=10.2.2.89-1 which
+        # prevents cublas from initializing in TF. See
+        # https://github.com/tensorflow/tensorflow/issues/9489#issuecomment-562394257
+        libcublas10=10.2.1.243-1 \ 
+        cuda-nvrtc-${CUDA/./-} \
         cuda-cufft-${CUDA/./-} \
         cuda-curand-${CUDA/./-} \
         cuda-cusolver-${CUDA/./-} \
@@ -50,17 +58,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         software-properties-common \
         unzip
 
-RUN [ ${ARCH} = ppc64le ] || (apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1804-5.0.2-ga-cuda${CUDA} \
-        && apt-get update \
-        && apt-get install -y --no-install-recommends libnvinfer5=5.0.2-1+cuda${CUDA} \
+# Install TensorRT if not building for PowerPC
+RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
+        apt-get install -y --no-install-recommends libnvinfer${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
+        libnvinfer-plugin${LIBNVINFER_MAJOR_VERSION}=${LIBNVINFER}+cuda${CUDA} \
         && apt-get clean \
-        && rm -rf /var/lib/apt/lists/*)
+        && rm -rf /var/lib/apt/lists/*; }
 
 # For CUDA profiling, TensorFlow requires CUPTI.
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:/usr/local/cuda/lib64:$LD_LIBRARY_PATH
 
+# Link the libcuda stub to the location where tensorflow is searching for it and reconfigure
+# dynamic linker run-time bindings
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 \
+    && echo "/usr/local/cuda/lib64/stubs" > /etc/ld.so.conf.d/z-cuda-stubs.conf \
+    && ldconfig
+
 ARG USE_PYTHON_3_NOT_2
+# TODO(angerson) Completely remove Python 2 support
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -77,7 +92,7 @@ RUN ${PIP} --no-cache-dir install --upgrade \
     setuptools
 
 # Some TF tools expect a "python" binary
-RUN ln -s $(which ${PYTHON}) /usr/local/bin/python 
+RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 
 # Options:
 #   tensorflow
@@ -85,7 +100,7 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 #   tf-nightly
 #   tf-nightly-gpu
 ARG TF_PACKAGE=tensorflow
-RUN apt-get update && apt-get install -y wget libhdf5-dev
+RUN apt-get update && apt-get install -y curl libhdf5-dev wget
 RUN ${PIP} install --global-option=build_ext \
             --global-option=-I/usr/include/hdf5/serial/ \
             --global-option=-L/usr/lib/powerpc64le-linux-gnu/hdf5/serial \
@@ -112,15 +127,23 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+# Pin ipykernel and nbformat; see https://github.com/ipython/ipykernel/issues/422
+RUN if [[ "${USE_PYTHON_3_NOT_2}" == "1" ]]; then ${PIP} install ipykernel==5.1.1 nbformat==4.4.0; fi
 RUN ${PIP} install jupyter_http_over_ws
 RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local
 RUN apt-get install -y --no-install-recommends wget
+# some examples require git to fetch dependencies
+RUN apt-get install -y --no-install-recommends git
 WORKDIR /tf/tensorflow-tutorials
-RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_classification.ipynb
-RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/basic_text_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/overfit_and_underfit.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/regression.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/save_and_load.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/text_classification.ipynb
+RUN wget https://raw.githubusercontent.com/tensorflow/docs/master/site/en/tutorials/keras/text_classification_with_hub.ipynb
 COPY readme-for-jupyter.md README.md
 RUN apt-get autoremove -y && apt-get remove -y wget
 WORKDIR /tf

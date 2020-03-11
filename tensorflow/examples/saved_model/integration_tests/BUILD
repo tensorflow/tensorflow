@@ -53,13 +53,6 @@ cuda_py_test(
     srcs = [
         "saved_model_test.py",
     ],
-    additional_deps = [
-        ":distribution_strategy_utils",
-        ":integration_scripts",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python/distribute:combinations",
-    ],
     shard_count = 4,
     tags = [
         "no_pip",  # b/131697937 and b/132196869
@@ -67,7 +60,13 @@ cuda_py_test(
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
     ],
-    xla_enable_strict_auto_jit = True,
+    deps = [
+        ":distribution_strategy_utils",
+        ":integration_scripts",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python/distribute:combinations",
+        "@absl_py//absl/testing:parameterized",
+    ],
 )
 
 # b/132234211: Target added to support internal test target that runs the test

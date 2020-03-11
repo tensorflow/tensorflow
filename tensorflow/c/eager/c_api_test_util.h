@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_C_EAGER_C_API_TEST_UTIL_H_
 
 #include "tensorflow/c/eager/c_api.h"
-
 #include "tensorflow/core/platform/types.h"
 
 // Return a tensor handle containing a float scalar
@@ -34,11 +33,17 @@ TFE_TensorHandle* DoubleTestMatrixTensorHandle();
 // Return a tensor handle containing a 2x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle();
 
+// Return a tensor handle containing a 100x100 matrix of floats
+TFE_TensorHandle* TestMatrixTensorHandle100x100();
+
 // Return a tensor handle containing a 3x2 matrix of doubles
 TFE_TensorHandle* DoubleTestMatrixTensorHandle3X2();
 
 // Return a tensor handle containing a 3x2 matrix of floats
 TFE_TensorHandle* TestMatrixTensorHandle3X2();
+
+// Return an add op multiplying `a` by `b`.
+TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);
 
 // Return a matmul op multiplying `a` by `b`.
 TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b);

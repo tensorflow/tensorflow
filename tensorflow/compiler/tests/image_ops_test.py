@@ -35,7 +35,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
-def GenerateNumpyRandomRGB(shape):
+def _generate_numpy_random_rgb(shape):
   # Only generate floating points that are fractions like n / 256, since they
   # are RGB pixels. Some low-precision floating point types in this test can't
   # handle arbitrary precision floating points well.
@@ -51,7 +51,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
     shape = (batch_size, 2, 7, 3)
 
     for nptype in self.float_types:
-      inp = GenerateNumpyRandomRGB(shape).astype(nptype)
+      inp = _generate_numpy_random_rgb(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
       with self.session() as sess:
@@ -89,7 +89,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
   def testRGBToHSVNumpy(self):
     """Tests the RGB to HSV conversion matches a reference implementation."""
     for nptype in self.float_types:
-      rgb_flat = GenerateNumpyRandomRGB((64, 3)).astype(nptype)
+      rgb_flat = _generate_numpy_random_rgb((64, 3)).astype(nptype)
       rgb_np = rgb_flat.reshape(4, 4, 4, 3)
       hsv_np = np.array([
           colorsys.rgb_to_hsv(
@@ -514,6 +514,34 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
                           dtype=np.float32))
 
+  def testBFloat16(self):
+    img = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],
+                   dtype=dtypes.bfloat16.as_numpy_dtype)
+    self._assertForwardOpMatchesExpected(img, [4, 4], expected=np.array(
+        [[1, 2, 2, 3], [4, 5, 5, 6], [4, 5, 5, 6], [7, 8, 8, 9]],
+        dtype=np.float32))
+
+  def testAlignCorners3x3To12x12_uint8(self):
+    # TODO(b/72099414): enable the test for TPU when the issue is fixed.
+    if (self.device not in ["XLA_GPU", "XLA_CPU"]):
+      return
+    # Ensure that resize with convolution works on XLA/GPU for integer types
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.uint8), [12, 12],
+        expected=np.array([[1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
+                          dtype=np.uint8))
+
 
 class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
 
@@ -569,12 +597,17 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
       ("256x256To299x299", 256, 256, 299, 299),
       ("512x512To299x299", 512, 512, 299, 299),
       ("224x224To224x224", 224, 224, 224, 224),
+      ("224x224To224x224-bfloat", 224, 224, 224, 224,
+       dtypes.bfloat16.as_numpy_dtype),
       # This test is disabled because it is very slow. It is slow because
       # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
       # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
   )
 
-  def test(self, src_y, src_x, dst_y, dst_x):
+  def test(self, src_y, src_x, dst_y, dst_x, dtype=np.float32):
+    if test.is_built_with_rocm():
+      self.skipTest("Disabled on ROCm, because it runs out of memory")
+
     max_y = max(src_y - 1, 1) * (dst_y - 1) + 1
     max_x = max(src_x - 1, 1) * (dst_x - 1) + 1
 
@@ -589,7 +622,7 @@ class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
     ]
 
     self._assertForwardOpMatchesExpected(
-        np.array(input_data, dtype=np.float32), [dst_y, dst_x],
+        np.array(input_data, dtype=dtype), [dst_y, dst_x],
         expected=np.array(result, dtype=np.float32),
         large_tolerance=True)
 

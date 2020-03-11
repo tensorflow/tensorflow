@@ -55,9 +55,19 @@ class WindowDataset : public DatasetBase {
     return allocated_bytes;
   }
 
+  int64 TotalBytes() const override {
+    int64 total_bytes = 0;
+    for (auto& element : elements_) {
+      total_bytes += GetTotalBytes(element);
+    }
+    return total_bytes;
+  }
+
   int64 Cardinality() const override { return elements_.size(); }
 
   string DebugString() const override { return kWindowDataset; }
+
+  Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
   // TODO(b/110981596): Support checkpointing.
@@ -103,7 +113,7 @@ class WindowDataset : public DatasetBase {
     }
 
     mutex mu_;
-    size_t i_ GUARDED_BY(mu_) = 0;
+    size_t i_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const std::vector<std::vector<Tensor>> elements_;

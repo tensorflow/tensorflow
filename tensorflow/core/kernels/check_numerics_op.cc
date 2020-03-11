@@ -31,7 +31,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
@@ -50,9 +50,24 @@ struct CheckNumericsLaunch {
 extern template struct CheckNumericsLaunch<Eigen::half>;
 extern template struct CheckNumericsLaunch<float>;
 extern template struct CheckNumericsLaunch<double>;
+
+template <typename T>
+struct CheckNumericsLaunchV2 {
+  void Run(const GPUDevice& d, const T* data, int size,
+           int abnormal_detected[3]);
+};
+
+extern template struct CheckNumericsLaunchV2<Eigen::half>;
+extern template struct CheckNumericsLaunchV2<float>;
+extern template struct CheckNumericsLaunchV2<double>;
 #endif
 
 namespace {
+
+const int kInfBit = 0x01;
+const int kNaNBit = 0x02;
+const int kNegativeInfBit = 0x04;
+const int kPositiveInfBit = 0x08;
 
 template <typename Device, typename T>
 class CheckNumericsOp;
@@ -77,30 +92,11 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     const T* data = in.data();
     const int64 size = in.size();
     // Check to see if any element of the tensor is NaN or Inf.
-    int fp_props =
-        std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
-          int result = x;
-          if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
-            // Do nothing: common case
-          } else if (Eigen::numext::isinf(y)) {
-            result |= kInfBit;
-          } else if (Eigen::numext::isnan(y)) {
-            result |= kNaNBit;
-          }
-          return result;
-        });
+    int fp_props = std::accumulate(
+        data, data + size, 0,
+        [this](const int x, const T& y) { return checkFloatingElement(x, y); });
     if (fp_props != 0) {
-      string status;
-      if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
-        status = "Inf and NaN";
-      } else {
-        if (fp_props & kInfBit) {
-          status = "Inf";
-        }
-        if (fp_props & kNaNBit) {
-          status = "NaN";
-        }
-      }
+      const string& status = getErrorString(fp_props);
       if (!status.empty()) {
         context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
                                                    status, " values"));
@@ -108,10 +104,86 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     }
   }
 
+ protected:
+  virtual int checkFloatingElement(const int x, const T& y) {
+    int result = x;
+    if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+      // Do nothing: common case.
+    } else {
+      if (Eigen::numext::isinf(y)) {
+        result |= kInfBit;
+      } else if (Eigen::numext::isnan(y)) {
+        result |= kNaNBit;
+      }
+    }
+    return result;
+  }
+
+  virtual const string getErrorString(const int fp_props) {
+    string status;
+    if ((fp_props & kInfBit) && (fp_props & kNaNBit)) {
+      status = "Inf and NaN";
+    } else {
+      if (fp_props & kInfBit) {
+        status = "Inf";
+      }
+      if (fp_props & kNaNBit) {
+        status = "NaN";
+      }
+    }
+    return status;
+  }
+
  private:
   string message_;
-  static const int kInfBit = 0x01;
-  static const int kNaNBit = 0x02;
+};
+
+template <typename Device, typename T>
+class CheckNumericsV2Op;
+
+// Partial specialization for CPU: v2.
+// The v2 op differs from the v1 in that it distinguishes -inf and +inf.
+template <typename T>
+class CheckNumericsV2Op<CPUDevice, T> : public CheckNumericsOp<CPUDevice, T> {
+ public:
+  explicit CheckNumericsV2Op(OpKernelConstruction* context)
+      : CheckNumericsOp<CPUDevice, T>(context) {}
+
+ protected:
+  int checkFloatingElement(const int x, const T& y) override {
+    int result = x;
+    if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
+      // Do nothing: common case.
+    } else {
+      if (Eigen::numext::isinf(y)) {
+        result |= y < static_cast<T>(0.) ? kNegativeInfBit : kPositiveInfBit;
+      } else if (Eigen::numext::isnan(y)) {
+        result |= kNaNBit;
+      }
+    }
+    return result;
+  }
+
+  const string getErrorString(const int fp_props) override {
+    std::vector<string> anomalies;
+    if (fp_props & kNegativeInfBit) {
+      anomalies.push_back("-Inf");
+    }
+    if (fp_props & kPositiveInfBit) {
+      anomalies.push_back("+Inf");
+    }
+    if (fp_props & kNaNBit) {
+      anomalies.push_back("NaN");
+    }
+    if (anomalies.size() == 3) {
+      return strings::StrCat(anomalies[0], ", ", anomalies[1], ", and ",
+                             anomalies[2]);
+    } else if (anomalies.size() == 2) {
+      return strings::StrCat(anomalies[0], " and ", anomalies[1]);
+    } else {
+      return anomalies[0];
+    }
+  }
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -138,8 +210,8 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
     auto input = context->input(0).flat<T>();
 
     // Allocate and initialize the elements to hold the check results
-    const int abnormal_detected_size = 2;
     Tensor abnormal_detected;
+    const int abnormal_detected_size = getAnomalyIndicatorSize();
     OP_REQUIRES_OK(context, context->allocate_temp(
                                 DT_INT32, TensorShape({abnormal_detected_size}),
                                 &abnormal_detected));
@@ -156,8 +228,8 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
 
     // Call the GPU kernels for the numerical checks
     const Device& d = context->eigen_device<Device>();
-    CheckNumericsLaunch<T>().Run(d, input.data(), input.size(),
-                                 abnormal_detected.flat<int>().data());
+    RunKernel(d, input.data(), input.size(),
+              abnormal_detected.flat<int>().data());
 
     // Copy the results from device to host
     AllocatorAttributes attr;
@@ -190,42 +262,97 @@ class CheckNumericsOp<GPUDevice, T> : public AsyncOpKernel {
       se::rocm::ScopedActivateExecutorContext scoped_activation{
           stream->parent()};
 #endif
-      auto abnormal_detected_host_flat = abnormal_detected_host.flat<int>();
-      int is_nan = abnormal_detected_host_flat(0);
-      int is_inf = abnormal_detected_host_flat(1);
+      TTypes<const int>::Vec abnormal_detected_host_flat =
+          abnormal_detected_host.flat<int>();
       abnormal_detected_ref.Unref();
-      if (is_nan || is_inf) {
-        string status;
-        LOG(ERROR) << "abnormal_detected_host @"
-                   << abnormal_detected_host_flat.data() << " = {" << is_nan
-                   << ", " << is_inf << "} " << message_;
-
-        // Results should always be 1 or 0.  If we see anything else then
-        // there has been some GPU memory corruption.
-        CHECK_GE(is_nan, 0);
-        CHECK_GE(is_inf, 0);
-        CHECK_LE(is_nan, 1);
-        CHECK_LE(is_inf, 1);
-
-        if (is_nan && is_inf) {
-          status = "Inf and NaN";
-        } else if (is_nan) {
-          status = "NaN";
-        } else if (is_inf) {
-          status = "Inf";
-        }
-        context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
-                                                   status, " values"));
-      }
+      checkForAnomalies(context, abnormal_detected_host_flat);
       done();
     };
     context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
         stream, std::move(check_cb));
   }
 
- private:
+ protected:
+  virtual int getAnomalyIndicatorSize() { return 2; }
+
+  virtual void RunKernel(const GPUDevice& d, const T* data, int size,
+                         int* abnormal_detected) {
+    CheckNumericsLaunch<T>().Run(d, data, size, abnormal_detected);
+  }
+
+  virtual void checkForAnomalies(
+      OpKernelContext* context,
+      const TTypes<const int>::Vec& abnormality_indicators) {
+    const int is_nan = abnormality_indicators(0);
+    const int is_inf = abnormality_indicators(1);
+    if (is_nan || is_inf) {
+      LOG(ERROR) << "abnormal_detected_host @" << abnormality_indicators.data()
+                 << " = {" << is_nan << ", " << is_inf << "} " << message_;
+
+      string anomalies;
+      if (is_nan && is_inf) {
+        anomalies = "Inf and NaN";
+      } else if (is_nan) {
+        anomalies = "NaN";
+      } else if (is_inf) {
+        anomalies = "Inf";
+      }
+      context->SetStatus(errors::InvalidArgument(message_, " : Tensor had ",
+                                                 anomalies, " values"));
+    }
+  }
+
   string message_;
 };
+
+template <typename T>
+class CheckNumericsV2Op<GPUDevice, T> : public CheckNumericsOp<GPUDevice, T> {
+ public:
+  CheckNumericsV2Op(OpKernelConstruction* context)
+      : CheckNumericsOp<GPUDevice, T>(context) {}
+
+ protected:
+  int getAnomalyIndicatorSize() override { return 3; }
+
+  void RunKernel(const GPUDevice& d, const T* data, int size,
+                 int* abnormal_detected) override {
+    CheckNumericsLaunchV2<T>().Run(d, data, size, abnormal_detected);
+  }
+
+  void checkForAnomalies(
+      OpKernelContext* context,
+      const TTypes<const int>::Vec& abnormality_indicators) override {
+    const int is_nan = abnormality_indicators(0);
+    const int is_negative_inf = abnormality_indicators(1);
+    const int is_positive_inf = abnormality_indicators(2);
+    if (is_negative_inf || is_positive_inf || is_nan) {
+      std::vector<string> anomalies;
+      if (is_negative_inf) {
+        anomalies.push_back("-Inf");
+      }
+      if (is_positive_inf) {
+        anomalies.push_back("+Inf");
+      }
+      if (is_nan) {
+        anomalies.push_back("NaN");
+      }
+      string all_anomalies;
+      if (anomalies.size() == 3) {
+        all_anomalies = strings::StrCat(anomalies[0], ", ", anomalies[1],
+                                        ", and ", anomalies[2]);
+      } else if (anomalies.size() == 2) {
+        all_anomalies = strings::StrCat(anomalies[0], " and ", anomalies[1]);
+      } else {
+        all_anomalies = anomalies[0];
+      }
+      context->SetStatus(errors::InvalidArgument(
+          this->message_, " : Tensor had ", all_anomalies, " values"));
+    }
+  }
+
+  static const int abnormal_detected_size = 3;
+};
+
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace
@@ -239,6 +366,15 @@ TF_CALL_bfloat16(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 
+#define REGISTER_V2_CPU_KERNEL(T)                                        \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("CheckNumericsV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      CheckNumericsV2Op<CPUDevice, T>);
+TF_CALL_half(REGISTER_V2_CPU_KERNEL);
+TF_CALL_bfloat16(REGISTER_V2_CPU_KERNEL);
+TF_CALL_float(REGISTER_V2_CPU_KERNEL);
+TF_CALL_double(REGISTER_V2_CPU_KERNEL);
+
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
@@ -249,6 +385,16 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("CheckNumerics").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     CheckNumericsOp<GPUDevice, double>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumericsV2").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    CheckNumericsV2Op<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumericsV2").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    CheckNumericsV2Op<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("CheckNumericsV2").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    CheckNumericsV2Op<GPUDevice, double>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

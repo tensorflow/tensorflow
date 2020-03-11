@@ -637,19 +637,6 @@ class CopyRemover {
     DCHECK(src != nullptr);
     DCHECK(dest != nullptr);
 
-    auto is_live_range_before = [this](const ValueNode& a, const ValueNode& b) {
-      VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
-      if (LiveRangeBefore(a, b)) {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is before " << b.value->ToShortString();
-        return true;
-      } else {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is not before " << b.value->ToShortString();
-        return false;
-      }
-    };
-
     VLOG(3) << copy->name() << " copies value " << src->value->ToShortString();
     VLOG(3) << "Source buffer values: " << ValueListToString(src);
     VLOG(3) << "Dest buffer values: " << ValueListToString(dest);
@@ -715,7 +702,10 @@ class CopyRemover {
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
         // Live range of 'from' value (s_x) must be before 'next_dest' (d_1);
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
+          VLOG(2) << "Not removing the copy: live range of "
+                  << src->value->ToShortString() << " is not before "
+                  << next_dest->value->ToShortString();
           return false;
         }
       }
@@ -725,7 +715,10 @@ class CopyRemover {
         // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
         ValueNode* last_dest = dest->prev;
         DCHECK(IsTail(*last_dest));
-        if (!is_live_range_before(*last_dest, *next_src)) {
+        if (!LiveRangeBefore(*last_dest, *next_src)) {
+          VLOG(2) << "Not removing the copy: live range of "
+                  << last_dest->value->ToShortString() << " is not before "
+                  << next_src->value->ToShortString();
           return false;
         }
       }
@@ -754,14 +747,20 @@ class CopyRemover {
       DCHECK(prev_dest != nullptr);
       ValueNode* first_src = src->next;
       DCHECK(IsHead(*first_src));
-      if (!is_live_range_before(*prev_dest, *first_src)) {
+      if (!LiveRangeBefore(*prev_dest, *first_src)) {
         // Live range of value d_{y-1} is not before s_0.
+        VLOG(2) << "Not removing the copy: live range of "
+                << prev_dest->value->ToShortString() << " is not before "
+                << first_src->value->ToShortString();
         return false;
       }
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
           // Live range of value s_n is not before d_{y+1}.
+          VLOG(2) << "Not removing the copy: live range of "
+                  << src->value->ToShortString() << " is not before "
+                  << next_dest->value->ToShortString();
           return false;
         }
       }
@@ -829,19 +828,30 @@ class CopyRemover {
   // We cannot use LiveRangeStrictlyBefore because HloValue::uses() is not
   // updated as copies are removed.
   bool LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
-    if (a.uses.empty()) {
-      VLOG(2) << "Empty uses for " << *a.value;
-      return ordering_.IsDefinedBefore(*a.value, *b.value);
-    }
-    for (const HloUse* use : a.uses) {
-      VLOG(2) << "Checking use " << *use << " against " << *b.value;
-      if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
-        VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
-        return false;
+    VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
+    bool is_live_range_before = [&] {
+      if (a.uses.empty()) {
+        VLOG(2) << "Empty uses for " << *a.value;
+        return ordering_.IsDefinedBefore(*a.value, *b.value);
       }
-      VLOG(2) << "Use " << *use << " is before " << *b.value;
+      for (const HloUse* use : a.uses) {
+        VLOG(3) << "Checking use " << *use << " against " << *b.value;
+        if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
+          VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
+          return false;
+        }
+        VLOG(3) << "Use " << *use << " is before " << *b.value;
+      }
+      return true;
+    }();
+    if (is_live_range_before) {
+      VLOG(2) << "  Live range of " << a.value->ToShortString() << " is before "
+              << b.value->ToShortString();
+    } else {
+      VLOG(2) << "  Live range of " << a.value->ToShortString()
+              << " is not before " << b.value->ToShortString();
     }
-    return true;
+    return is_live_range_before;
   }
 
   // Returns whether 'node' is the last node in its list.
@@ -965,8 +975,9 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
       } else if (instruction->opcode() == HloOpcode::kConditional) {
@@ -1033,15 +1044,31 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     HloInstruction* root = computation->root_instruction();
 
     // Mark nondistinct/ambiguous indices.
-    absl::flat_hash_set<const HloBuffer*> seen;
+    absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
           for (const HloBuffer* buffer : buffers_at_index) {
-            buffer_seen_before |= !seen.insert(buffer).second;
+            buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
+
+          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+              computation == module->entry_computation() &&
+              module->input_output_alias_config().OutputHasAlias(index) &&
+              buffers_at_index.size() == 1) {
+            absl::optional<HloInputOutputAliasConfig::Alias> alias =
+                module->input_output_alias_config().GetAliasedParameter(index);
+            CHECK(alias) << "Alias does not exist";
+            const ShapeIndex& other_index = seen[buffers_at_index[0]];
+            VLOG(2) << "Output indices " << index.ToString() << " and "
+                    << other_index.ToString() << " are both aliased to "
+                    << alias->parameter_number << " copying " << other_index;
+            add_index_to_copy(root, other_index);
+            return;
+          }
+
           if (buffers_at_index.size() > 1 ||
               (buffer_seen_before && policy.copy_root_replicated_buffers)) {
             VLOG(2) << "Index " << index << " of computation "
@@ -1087,6 +1114,18 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
+static int64 GetNumExistingCopies(const HloModule* module) {
+  int64 num_existing_copies = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
+        ++num_existing_copies;
+      }
+    }
+  }
+  return num_existing_copies;
+}
+
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1102,13 +1141,24 @@ Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
   }
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCopy &&
-          copy_remover.TryElideCopy(instruction)) {
-        TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
-        TF_RETURN_IF_ERROR(
-            instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+
+  int64 num_existing_copies = GetNumExistingCopies(module);
+  bool changed = true;
+  int64 num_iterations = -1;
+  while (changed) {
+    CHECK_LE(++num_iterations, num_existing_copies);
+    changed = false;
+    VLOG(2) << "Running fixpoint iteration " << num_iterations
+            << " of copy elision";
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCopy &&
+            copy_remover.TryElideCopy(instruction)) {
+          changed = true;
+          TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
+          TF_RETURN_IF_ERROR(
+              instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+        }
       }
     }
   }
@@ -1146,17 +1196,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         "Call graph must be flattened before copy insertion.");
   }
 
-  int64 num_existing_copies = 0;
-  if (VLOG_IS_ON(1)) {
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCopy) {
-          ++num_existing_copies;
-        }
-      }
-    }
-  }
-
   TF_RETURN_IF_ERROR(AddCopiesToResolveInterference(module));
 
   // Simplify the tuple structures introduced by the deep copies. This should be
@@ -1175,7 +1214,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
       RemoveUnnecessaryCopies(DependencyHloOrdering(module), module));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
-
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
   DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
                                    *module);
@@ -1192,33 +1230,11 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         }
       }
     }
-    VLOG(1) << "Num copies before copy-insertion: " << num_existing_copies;
+    VLOG(1) << "Num copies before copy-insertion: "
+            << GetNumExistingCopies(module);
     VLOG(1) << "Num copies after copy-insertion: " << num_total_copies;
   }
 
   return true;
 }
-
-namespace {
-
-bool IsWhileBody(const HloComputation* computation,
-                 const CallGraph& call_graph) {
-  const CallGraphNode& node = call_graph.GetNode(computation);
-
-  if (node.context() == CallContext::kSequential &&
-      !node.caller_callsites().empty()) {
-    // Callgraph should be flattened so sequential context computations can
-    // have at most one caller.
-    CHECK_EQ(node.caller_callsites().size(), 1);
-    const HloInstruction* calling_instruction =
-        node.caller_callsites()[0].instruction();
-    if (calling_instruction->opcode() == HloOpcode::kWhile &&
-        calling_instruction->while_body() == node.computation()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
 }  // namespace xla

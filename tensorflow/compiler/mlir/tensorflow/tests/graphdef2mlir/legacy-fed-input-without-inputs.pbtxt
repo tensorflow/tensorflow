@@ -1,0 +1,34 @@
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-data-types=DT_FLOAT -tf-input-shapes='' -tf-output-arrays=input -tf-convert-legacy-fed-inputs -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=input -tf-input-shapes='' -tf-output-arrays=input -tf-convert-legacy-fed-inputs -o - | FileCheck --check-prefix=NODATATYPE %s
+
+# Verify that invalid LegacyFedInput ops without any inputs are replaced with
+# Placeholder ops.
+
+# CHECK: func @main(%arg0: tensor<f32>)
+# CHECK-NOT: LegacyFedInput
+
+# If input data type isn't specified, uses the one in the graph
+# NODATATYPE: func @main(%arg0: tensor<f32>)
+# NODATATYPE-NOT: LegacyFedInput
+
+node {
+  name: "input"
+  op: "LegacyFedInput"
+  attr {
+    key: "input_def"
+    value {
+      s: "name: \"batch_1\"\n[dist_belief.ImageInputDef.ext] {\n  num_rows: 128\n  num_cols: 128\n  mean_value: 128\n  std_value: 128\n  colorspace: RGB\n}\n"
+    }
+  }
+  attr {
+    key: "output_types"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+versions {
+  producer: 27
+}

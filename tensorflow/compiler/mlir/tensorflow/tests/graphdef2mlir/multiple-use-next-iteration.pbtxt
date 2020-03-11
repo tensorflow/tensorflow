@@ -1,5 +1,13 @@
 # RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
+# Verify that a NextIteration node feeding two different merge nodes is properly
+# Imported.
+
+# CHECK-LABEL: func @main()
+# CHECK:         %[[NEXTITERATION:[a-z_0-9]+]], {{.*}} = tf_executor.NextIteration.Source
+# CHECK:         tf_executor.Merge {{.*}}, %[[NEXTITERATION]]
+# CHECK:         tf_executor.Merge {{.*}}, %[[NEXTITERATION]]
+
 node {
   name: "Const"
   op: "Const"
@@ -137,14 +145,3 @@ versions {
   producer: 62
 }
 
-# CHECK:      func @main() {
-# CHECK-NEXT:   %0:2 = "_tf.NextIteration.source"() {T = "tfdtype$DT_INT32", device = "", name = "NextIteration"} : () -> (tensor<*xi32>, !_tf.control)
-# CHECK-NEXT:   %1:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Add/y", value = dense<1> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
-# CHECK-NEXT:   %2:2 = "_tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<0> : tensor<i32>} : () -> (tensor<i32>, !_tf.control)
-# CHECK-NEXT:   %3:2 = "_tf.Enter"(%2#0) {T = "tfdtype$DT_INT32", device = "", frame_name = "while_context", is_constant = false, name = "Enter", parallel_iterations = 10 : i64} : (tensor<i32>) -> (tensor<*xi32>, !_tf.control)
-# CHECK-NEXT:   %4:3 = "_tf.Merge"(%3#0, %0#0) {N = 2 : i64, T = "tfdtype$DT_INT32", device = "", name = "Merge"} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<i32>, !_tf.control)
-# CHECK-NEXT:   %5:2 = "_tf.Add"(%4#0, %1#0) {T = "tfdtype$DT_INT32", device = "", name = "Add"} : (tensor<*xi32>, tensor<i32>) -> (tensor<*xi32>, !_tf.control)
-# CHECK-NEXT:   %6 = "_tf.NextIteration.sink"(%5#0) {T = "tfdtype$DT_INT32", device = "", name = "NextIteration"} : (tensor<*xi32>) -> !_tf.control
-# CHECK-NEXT:   %7:3 = "_tf.Merge"(%3#0, %0#0) {N = 2 : i64, T = "tfdtype$DT_INT32", device = "", name = "Use_NextIteration_Again"} : (tensor<*xi32>, tensor<*xi32>) -> (tensor<*xi32>, tensor<i32>, !_tf.control)
-# CHECK-NEXT:   return
-# CHECK-NEXT: }

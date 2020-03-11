@@ -14,7 +14,7 @@
 # ==============================================================================
 """Control Flow Operations.
 
-See the [autograph](https://www.tensorflow.org/guide/autographs) guide.
+See the [autograph](https://www.tensorflow.org/guide/autograph) guide.
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
@@ -482,6 +482,12 @@ def _get_shape_invariant(var, shape=None):
 
   elif shape is None:
     return var.shape
+  elif isinstance(shape, tensor_spec.TensorSpec):
+    if var.dtype != shape.dtype:
+      raise TypeError("TensorSpec %r is not compatible with %r" % (shape, var))
+    return shape.shape
+  elif isinstance(shape, type_spec.TypeSpec):
+    raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
   else:
     return shape
 
@@ -497,11 +503,16 @@ def _shape_invariant_to_type_spec(var, shape):
   Returns:
     A `TypeSpec` for `var`, consistent with the given shape.
   """
-  if isinstance(shape, type_spec.TypeSpec):
+  if shape is None:
+    return type_spec.type_spec_from_value(var)
+  elif isinstance(shape, type_spec.TypeSpec):
+    if not shape.is_compatible_with(var):
+      raise TypeError("TypeSpec %r is not compatible with %r" % (shape, var))
     return shape
   elif not isinstance(shape, tensor_shape.TensorShape):
-    raise TypeError("Expected shape to be a TypeSpec or TensorShape, got %r"
-                    % shape)
+    raise TypeError(
+        "Expected shape to be a TypeSpec, TensorShape or None, got %r for"
+        " value %r" % (shape, var))
 
   if isinstance(var, ops.Tensor):
     return tensor_spec.TensorSpec(shape, var.dtype)
@@ -562,7 +573,7 @@ def _EnforceShapeInvariant(merge_var, next_var):
 
   Raises:
     ValueError: If any tensor in `merge_var` has a more specific shape than
-      its correspnding tensor in `next_var`.
+      its corresponding tensor in `next_var`.
   """
   if isinstance(merge_var, ops.Tensor):
     m_shape = merge_var.get_shape()
@@ -741,25 +752,16 @@ class ControlFlowContext(object):
   def ExitResult(self, result):
     """Make a list of tensors available in the outer context."""
     if self._outer_context:
-      nest.map_structure(
-          lambda x: self._outer_context.AddName(x.name),
-          result,
-          expand_composites=True)
+      def fn(x):
+        self._outer_context.AddName(x.name)
+        return x
+      nest.map_structure(fn, result, expand_composites=True)
 
   def GetWhileContext(self):
     """Return the while context containing this context."""
     if self._outer_context:
       return self._outer_context.GetWhileContext()
     return None
-
-  def _IsInOuterContext(self, op):
-    op_ctxt = util.GetOutputContext(op)
-    outer_ctxt = self.outer_context
-    while outer_ctxt != op_ctxt:
-      if outer_ctxt is None:
-        return False
-      outer_ctxt = outer_ctxt.outer_context
-    return True
 
   def _RemoveExternalControlEdges(self, op):
     """Remove any external control dependency on this op."""
@@ -1068,7 +1070,7 @@ class CondContext(ControlFlowContext):
       with ops.control_dependencies(new_summaries):
         if original_result is None:
           return no_op(), None
-        else:
+        elif not isinstance(original_result, ops.Operation):
           original_result = nest.map_structure(
               array_ops.identity, original_result, expand_composites=True)
     if original_result is None:
@@ -2273,9 +2275,22 @@ class WhileContext(ControlFlowContext):
       for x in xs:
         inp_op = x.op.inputs[0].op
         control_inputs = graph._control_dependencies_for_inputs([inp_op])
-        outer_control_inputs = [
-            op for op in control_inputs if self._IsInOuterContext(op)
-        ]
+        outer_control_inputs = []
+        for op in control_inputs:
+          # We need to keep control inputs that are in any ancestor
+          # ControlFlowContext, and within outer WhileContext.
+          keep_as_control_input = True
+          op_ctxt = util.GetOutputContext(op)
+          outer_ctxt = self.outer_context
+          outer_while_context = (None if outer_ctxt is None else
+                                 outer_ctxt.GetWhileContext())
+          while outer_ctxt != op_ctxt:
+            if outer_ctxt is None or outer_ctxt == outer_while_context:
+              keep_as_control_input = False
+              break
+            outer_ctxt = outer_ctxt.outer_context
+          if keep_as_control_input:
+            outer_control_inputs.append(op)
         x.op._set_control_flow_context(self)
         x.op._add_control_inputs(outer_control_inputs)
         graph._record_op_seen_by_control_dependencies(x.op)
@@ -2288,6 +2303,15 @@ class WhileContext(ControlFlowContext):
 # @TODO(b/133606651) Replace "shape_invariants" with "loop_vars_signature".
 # pylint: disable=redefined-outer-name
 @tf_export("while_loop", v1=[])
+@deprecation.deprecated_arg_values(
+    None,
+    """back_prop=False is deprecated. Consider using tf.stop_gradient instead.
+Instead of:
+results = tf.while_loop(c, b, vars, back_prop=False)
+Use:
+results = tf.nest.map_structure(tf.stop_gradient, tf.while_loop(c, b, vars))""",
+    warn_once=True,
+    back_prop=False)
 def while_loop_v2(cond,
                   body,
                   loop_vars,
@@ -2365,7 +2389,8 @@ def while_loop_v2(cond,
     shape_invariants: The shape invariants for the loop variables.
     parallel_iterations: The number of iterations allowed to run in parallel. It
       must be a positive integer.
-    back_prop: Whether backprop is enabled for this while loop.
+    back_prop: (optional) Deprecated. False disables support for back
+      propagation. Prefer using `tf.stop_gradient` instead.
     swap_memory: Whether GPU-CPU memory swap is enabled for this loop.
     maximum_iterations: Optional maximum number of iterations of the while loop
       to run.  If provided, the `cond` output is AND-ed with an additional
@@ -2386,7 +2411,7 @@ def while_loop_v2(cond,
   ```python
   i = tf.constant(0)
   c = lambda i: tf.less(i, 10)
-  b = lambda i: tf.add(i, 1)
+  b = lambda i: (tf.add(i, 1), )
   r = tf.while_loop(c, b, [i])
   ```
 
@@ -2640,6 +2665,13 @@ def while_loop(cond,
   ```
 
   """
+  if not callable(cond):
+    raise TypeError("cond must be callable.")
+  if not callable(body):
+    raise TypeError("body must be callable.")
+  if parallel_iterations < 1:
+    raise TypeError("parallel_iterations must be a positive integer.")
+
   # Always enable control flow v2 if building a function, regardless of toggle.
   executing_eagerly = context.executing_eagerly()
   if (util.EnableControlFlowV2(ops.get_default_graph()) and
@@ -2652,18 +2684,12 @@ def while_loop(cond,
         parallel_iterations=parallel_iterations,
         maximum_iterations=maximum_iterations,
         name=name,
-        return_same_structure=return_same_structure)
+        return_same_structure=return_same_structure,
+        back_prop=back_prop)
 
   with ops.name_scope(name, "while", loop_vars):
     if not loop_vars:
       raise ValueError("No loop variables provided")
-    if not callable(cond):
-      raise TypeError("cond must be callable.")
-    if not callable(body):
-      raise TypeError("body must be callable.")
-    if parallel_iterations < 1:
-      raise TypeError("parallel_iterations must be a positive integer.")
-
     try_to_pack = (len(loop_vars) == 1 and not return_same_structure)
     if maximum_iterations is not None:
       maximum_iterations = ops.convert_to_tensor(
@@ -3256,7 +3282,7 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
   branch_fns = _indexed_case_verify_and_canonicalize_args(
       branch_fns, default, branch_index)
   with ops.name_scope(name, "case", [branch_index]):
-    if context.executing_eagerly():
+    if context.executing_eagerly() and not hasattr(branch_index, "graph"):
       branch_index = array_ops.where(
           math_ops.less(branch_index, 0)
           | math_ops.greater_equal(branch_index, len(branch_fns)),
@@ -3265,7 +3291,111 @@ def _indexed_case_helper(branch_fns, default, branch_index, name):
     return cond_v2.indexed_case(branch_index, branch_fns)
 
 
-@tf_export("case")
+@tf_export("case", v1=[])
+def case_v2(pred_fn_pairs,
+            default=None,
+            exclusive=False,
+            strict=False,
+            name="case"):
+  """Create a case operation.
+
+  See also `tf.switch_case`.
+
+  The `pred_fn_pairs` parameter is a list of pairs of size N.
+  Each pair contains a boolean scalar tensor and a python callable that
+  creates the tensors to be returned if the boolean evaluates to True.
+  `default` is a callable generating a list of tensors. All the callables
+  in `pred_fn_pairs` as well as `default` (if provided) should return the same
+  number and types of tensors.
+
+  If `exclusive==True`, all predicates are evaluated, and an exception is
+  thrown if more than one of the predicates evaluates to `True`.
+  If `exclusive==False`, execution stops at the first predicate which
+  evaluates to True, and the tensors generated by the corresponding function
+  are returned immediately. If none of the predicates evaluate to True, this
+  operation returns the tensors generated by `default`.
+
+  `tf.case` supports nested structures as implemented in
+  `tf.contrib.framework.nest`. All of the callables must return the same
+  (possibly nested) value structure of lists, tuples, and/or named tuples.
+  Singleton lists and tuples form the only exceptions to this: when returned by
+  a callable, they are implicitly unpacked to single values. This
+  behavior is disabled by passing `strict=True`.
+
+  @compatibility(v2)
+  `pred_fn_pairs` could be a dictionary in v1. However, tf.Tensor and
+  tf.Variable are no longer hashable in v2, so cannot be used as a key for a
+  dictionary.  Please use a list or a tuple instead.
+  @end_compatibility
+
+
+  **Example 1:**
+
+  Pseudocode:
+
+  ```
+  if (x < y) return 17;
+  else return 23;
+  ```
+
+  Expressions:
+
+  ```python
+  f1 = lambda: tf.constant(17)
+  f2 = lambda: tf.constant(23)
+  r = tf.case([(tf.less(x, y), f1)], default=f2)
+  ```
+
+  **Example 2:**
+
+  Pseudocode:
+
+  ```
+  if (x < y && x > z) raise OpError("Only one predicate may evaluate to True");
+  if (x < y) return 17;
+  else if (x > z) return 23;
+  else return -1;
+  ```
+
+  Expressions:
+
+  ```python
+  def f1(): return tf.constant(17)
+  def f2(): return tf.constant(23)
+  def f3(): return tf.constant(-1)
+  r = tf.case([(tf.less(x, y), f1), (tf.greater(x, z), f2)],
+           default=f3, exclusive=True)
+  ```
+
+  Args:
+    pred_fn_pairs: List of pairs of a boolean scalar tensor and a callable which
+      returns a list of tensors.
+    default: Optional callable that returns a list of tensors.
+    exclusive: True iff at most one predicate is allowed to evaluate to `True`.
+    strict: A boolean that enables/disables 'strict' mode; see above.
+    name: A name for this operation (optional).
+
+  Returns:
+    The tensors returned by the first pair whose predicate evaluated to True, or
+    those returned by `default` if none does.
+
+  Raises:
+    TypeError: If `pred_fn_pairs` is not a list/tuple.
+    TypeError: If `pred_fn_pairs` is a list but does not contain 2-tuples.
+    TypeError: If `fns[i]` is not callable for any i, or `default` is not
+               callable.
+  """
+  return _case_helper(
+      cond,
+      pred_fn_pairs,
+      default,
+      exclusive,
+      name,
+      allow_python_preds=False,
+      strict=strict)
+
+
+@tf_export(v1=["case"])
 def case(pred_fn_pairs,
          default=None,
          exclusive=False,
@@ -3387,7 +3517,7 @@ def switch_case(branch_index,
   statement than `tf.case`, which is more like an if/elif/elif/else chain.
 
   The `branch_fns` parameter is either a dict from `int` to callables, or list
-  of (`int, callable) pairs, or simply a list of callables (in which case the
+  of (`int`, callable) pairs, or simply a list of callables (in which case the
   index is implicitly the key). The `branch_index` `Tensor` is used to select an
   element in `branch_fns` with matching `int` key, falling back to `default`
   if none match, or `max(keys)` if no `default` is provided. The keys must form
@@ -3428,7 +3558,7 @@ def switch_case(branch_index,
     branch_index: An int Tensor specifying which of `branch_fns` should be
       executed.
     branch_fns: A `dict` mapping `int`s to callables, or a `list` of
-      (`int, callable) pairs, or simply a list of callables (in which case the
+      (`int`, callable) pairs, or simply a list of callables (in which case the
       index serves as the key). Each callable must return a matching structure
       of tensors.
     default: Optional callable that returns a structure of tensors.

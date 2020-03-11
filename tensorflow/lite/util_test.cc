@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/lite/util.h"
+
 #include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-
-#include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/util.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace {
@@ -49,6 +50,44 @@ TEST(UtilTest, IsFlexOp) {
   EXPECT_FALSE(IsFlexOp("OpFlex"));
   EXPECT_FALSE(IsFlexOp(nullptr));
   EXPECT_FALSE(IsFlexOp(""));
+}
+
+TEST(EqualArrayAndTfLiteIntArray, TestWithTFLiteArrayEmpty) {
+  int input[] = {1, 2, 3, 4};
+  EXPECT_FALSE(EqualArrayAndTfLiteIntArray(nullptr, 4, input));
+}
+
+TEST(EqualArrayAndTfLiteIntArray, TestWithTFLiteArrayWrongSize) {
+  int input[] = {1, 2, 3, 4};
+  TfLiteIntArray* output = ConvertArrayToTfLiteIntArray(4, input);
+  EXPECT_FALSE(EqualArrayAndTfLiteIntArray(output, 3, input));
+  free(output);
+}
+
+TEST(EqualArrayAndTfLiteIntArray, TestMismatch) {
+  int input[] = {1, 2, 3, 4};
+  TfLiteIntArray* output = ConvertVectorToTfLiteIntArray({1, 2, 2, 4});
+  EXPECT_FALSE(EqualArrayAndTfLiteIntArray(output, 4, input));
+  free(output);
+}
+
+TEST(EqualArrayAndTfLiteIntArray, TestMatch) {
+  int input[] = {1, 2, 3, 4};
+  TfLiteIntArray* output = ConvertArrayToTfLiteIntArray(4, input);
+  EXPECT_TRUE(EqualArrayAndTfLiteIntArray(output, 4, input));
+  free(output);
+}
+
+TEST(CombineHashes, TestHashOutputsEquals) {
+  size_t output1 = CombineHashes({1, 2, 3, 4});
+  size_t output2 = CombineHashes({1, 2, 3, 4});
+  EXPECT_EQ(output1, output2);
+}
+
+TEST(CombineHashes, TestHashOutputsDifferent) {
+  size_t output1 = CombineHashes({1, 2, 3, 4});
+  size_t output2 = CombineHashes({1, 2, 2, 4});
+  EXPECT_NE(output1, output2);
 }
 
 }  // namespace

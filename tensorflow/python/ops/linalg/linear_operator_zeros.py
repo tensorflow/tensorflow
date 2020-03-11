@@ -277,10 +277,10 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
     #   Also, the final dimension of 'x' can have any shape.
     #   Therefore, the final two dimensions of special_shape are 1's.
     special_shape = self.batch_shape.concatenate([1, 1])
-    bshape = array_ops.broadcast_static_shape(x.get_shape(), special_shape)
+    bshape = array_ops.broadcast_static_shape(x.shape, special_shape)
     if special_shape.is_fully_defined():
       # bshape.is_fully_defined iff special_shape.is_fully_defined.
-      if bshape == x.get_shape():
+      if bshape == x.shape:
         return x
       # Use the built in broadcasting of addition.
       zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
@@ -454,3 +454,6 @@ class LinearOperatorZeros(linear_operator.LinearOperator):
            [self._min_matrix_dim_tensor()]], axis=0)
 
     return array_ops.zeros(shape=d_shape, dtype=self.dtype)
+
+  def _eigvals(self):
+    return self._zeros_diag()

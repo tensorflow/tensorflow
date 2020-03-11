@@ -298,14 +298,14 @@ class DeviceFinder {
   std::vector<DeviceNameUtils::ParsedName> filters_;
 
   mutex mu_;
-  int num_pending_ GUARDED_BY(mu_);
+  int num_pending_ TF_GUARDED_BY(mu_);
   condition_variable pending_zero_;
-  std::vector<Device*> found_ GUARDED_BY(mu_);
+  std::vector<Device*> found_ TF_GUARDED_BY(mu_);
   // List of targets to be contacted by this DeviceFinder. The
   // respective `bool` in `seen_targets_` indicates whether we have
   // heard from this target or not.
   std::vector<string> targets_;
-  std::vector<bool> seen_targets_ GUARDED_BY(mu_);
+  std::vector<bool> seen_targets_ TF_GUARDED_BY(mu_);
   Status status_;
 
   void WhenFound(int target_index, const Status& s,
@@ -689,13 +689,11 @@ void Master::MakeCallable(const MakeCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->MakeCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->MakeCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
@@ -712,13 +710,11 @@ void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, opts, req, resp](MyClosure done) {
-        Status s = session->RunCallable(opts, *req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, opts, req, resp, done = std::move(done)]() {
+    Status s = session->RunCallable(opts, *req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::ReleaseCallable(const ReleaseCallableRequest* req,
@@ -729,13 +725,11 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->ReleaseCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->ReleaseCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 }  // end namespace tensorflow

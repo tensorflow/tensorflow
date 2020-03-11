@@ -53,7 +53,7 @@ class TraverseTest(test.TestCase):
     variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
     self.assertSetEqual(
         set(["MapDataset", "RangeDataset"]),
-        set([x.name for x in variant_tensor_ops]))
+        set(x.name for x in variant_tensor_ops))
 
   @test_util.run_deprecated_v1
   def testConcat(self):
@@ -63,7 +63,7 @@ class TraverseTest(test.TestCase):
     variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
     self.assertSetEqual(
         set(["ConcatenateDataset", "RangeDataset", "RangeDataset_1"]),
-        set([x.name for x in variant_tensor_ops]))
+        set(x.name for x in variant_tensor_ops))
 
   @test_util.run_deprecated_v1
   def testZip(self):
@@ -73,7 +73,7 @@ class TraverseTest(test.TestCase):
     variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
     self.assertSetEqual(
         set(["ZipDataset", "RangeDataset", "RangeDataset_1"]),
-        set([x.name for x in variant_tensor_ops]))
+        set(x.name for x in variant_tensor_ops))
 
   @test_util.run_deprecated_v1
   def testMultipleVariantTensors(self):
@@ -82,7 +82,7 @@ class TraverseTest(test.TestCase):
     variant_tensor_ops = traverse.obtain_all_variant_tensor_ops(ds)
     self.assertSetEqual(
         set(["RangeDataset", "ModelDataset", "PrefetchDataset"]),
-        set([x.name for x in variant_tensor_ops]))
+        set(x.name for x in variant_tensor_ops))
 
   @test_util.run_deprecated_v1
   def testFlatMap(self):
@@ -102,7 +102,7 @@ class TraverseTest(test.TestCase):
         set([
             "FlatMapDataset", "PrefetchDataset", "RepeatDataset",
             "RangeDataset", "RangeDataset_1"
-        ]), set([x.name for x in variant_tensor_ops]))
+        ]), set(x.name for x in variant_tensor_ops))
 
 
 if __name__ == "__main__":

@@ -79,7 +79,7 @@ class CustomCallTest : public HloTestBase {
 };
 
 XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
@@ -94,7 +94,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
 }
 
 XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   Array2D<float> array(2, 2);
@@ -115,7 +115,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
 }
 
 XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
@@ -139,7 +139,7 @@ XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
 }
 
 XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =
@@ -164,7 +164,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =

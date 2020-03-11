@@ -1,8 +1,8 @@
 load(
     "@com_google_protobuf//:protobuf.bzl",
+    "cc_proto_library",
     "proto_gen",
     "py_proto_library",
-    "cc_proto_library",
 )
 
 licenses(["notice"])
@@ -31,7 +31,6 @@ HEADERS = [
     "google/protobuf/io/zero_copy_stream.h",
     "google/protobuf/io/zero_copy_stream_impl_lite.h",
     "google/protobuf/map.h",
-    "google/protobuf/port_def.inc",
     "google/protobuf/repeated_field.h",
     "google/protobuf/text_format.h",
     "google/protobuf/timestamp.pb.h",

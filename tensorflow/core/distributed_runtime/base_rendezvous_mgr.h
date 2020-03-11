@@ -103,7 +103,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
   const WorkerEnv* const worker_env_;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 
   BaseRemoteRendezvous* FindOrCreate(int64 step_id);
 
@@ -160,7 +160,7 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
                             DeviceNameUtils::ParsedName dst);
 
   // If aborted, aborts "call". Otherwise, adds "call" into active_.
-  void RegisterCall(BaseRecvTensorCall* call);
+  void RegisterCall(BaseRecvTensorCall* call, const Rendezvous::Args& args);
 
   // Removes "call" from active_ if "call" is in active_.
   void DeregisterCall(BaseRecvTensorCall* call);
@@ -177,11 +177,14 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
  private:
   Rendezvous* local_;  // Owns a Ref on this object.
 
-  mutable mutex mu_;
+  // Guards mutable state that is read-mostly after this rendezvous is
+  // initialized.
+  mutable mutex init_mu_;
 
   // Status given by StartAbort() if any.
-  Status status_ GUARDED_BY(mu_);
-  WorkerSession* session_ GUARDED_BY(mu_);  // Not owned.
+  Status status_ TF_GUARDED_BY(init_mu_);
+
+  WorkerSession* session_ TF_GUARDED_BY(init_mu_);  // Not owned.
 
   // Data structures to handle calls when partially initialized.
   struct DeferredCall {
@@ -190,12 +193,16 @@ class BaseRemoteRendezvous : public RemoteRendezvous {
 
     DeferredCall(const ParsedKey& parsed, DoneCallback done);
   };
-  std::vector<DeferredCall> deferred_calls_ GUARDED_BY(mu_);
+  std::vector<DeferredCall> deferred_calls_ TF_GUARDED_BY(init_mu_);
+
+  typedef std::function<void()> InactiveCallback;
 
   // Active outstanding RecvTensor calls.
-  gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
+  mutex active_mu_;
+  std::unordered_map<BaseRecvTensorCall*, InactiveCallback> active_
+      TF_GUARDED_BY(active_mu_);
 
-  bool is_initialized_locked() SHARED_LOCKS_REQUIRED(mu_) {
+  bool is_initialized_locked() TF_SHARED_LOCKS_REQUIRED(init_mu_) {
     return session_ != nullptr;
   }
 

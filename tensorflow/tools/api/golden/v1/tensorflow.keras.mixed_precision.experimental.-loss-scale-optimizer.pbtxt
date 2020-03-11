@@ -26,7 +26,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'opt\', \'loss_scale\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'optimizer\', \'loss_scale\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "add_slot"
@@ -38,7 +38,7 @@ tf_class {
   }
   member_method {
     name: "apply_gradients"
-    argspec: "args=[\'self\', \'grads_and_vars\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'grads_and_vars\', \'name\', \'all_reduce_sum_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
   }
   member_method {
     name: "from_config"

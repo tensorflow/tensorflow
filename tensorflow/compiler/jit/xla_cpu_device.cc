@@ -36,8 +36,13 @@ class XlaCpuDeviceFactory : public DeviceFactory {
 };
 
 Status XlaCpuDeviceFactory::ListPhysicalDevices(std::vector<string>* devices) {
-  devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
+  XlaDeviceFlags* flags = GetXlaDeviceFlags();
+  if (!flags->tf_xla_enable_xla_devices) {
+    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    return Status::OK();
+  }
 
+  devices->push_back(absl::StrCat("/physical_device:", DEVICE_XLA_CPU, ":0"));
   return Status::OK();
 }
 
@@ -45,6 +50,10 @@ Status XlaCpuDeviceFactory::CreateDevices(
     const SessionOptions& session_options, const string& name_prefix,
     std::vector<std::unique_ptr<Device>>* devices) {
   XlaDeviceFlags* flags = GetXlaDeviceFlags();
+  if (!flags->tf_xla_enable_xla_devices) {
+    LOG(INFO) << "Not creating XLA devices, tf_xla_enable_xla_devices not set";
+    return Status::OK();
+  }
   bool compile_on_demand = flags->tf_xla_compile_on_demand;
 
   XlaOpRegistry::DeviceRegistration registration;
@@ -98,10 +107,10 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_CPU, XlaCpuDeviceFactory);
 
 // Kernel registrations
 
-constexpr std::array<DataType, 14> kAllXlaCpuTypes = {
-    {DT_UINT8, DT_QUINT8, DT_INT8, DT_QINT8, DT_INT32, DT_QINT32, DT_INT64,
-     DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128, DT_BOOL,
-     DT_BFLOAT16}};
+constexpr std::array<DataType, 16> kAllXlaCpuTypes = {
+    {DT_UINT8, DT_QUINT8, DT_UINT16, DT_INT8, DT_QINT8, DT_INT16, DT_INT32,
+     DT_QINT32, DT_INT64, DT_HALF, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64,
+     DT_COMPLEX128, DT_BOOL, DT_BFLOAT16}};
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_CPU, XlaLocalLaunchOp, kAllXlaCpuTypes);
 REGISTER_XLA_COMPILE_KERNEL(DEVICE_XLA_CPU, XlaCompileOp, kAllXlaCpuTypes);

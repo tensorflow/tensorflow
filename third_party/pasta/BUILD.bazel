@@ -21,6 +21,7 @@ py_library(
         "base/ast_utils.py",
         "base/codegen.py",
         "base/formatting.py",
+        "base/fstring_utils.py",
         "base/scope.py",
         "base/test_utils.py",
         "base/token_generator.py",

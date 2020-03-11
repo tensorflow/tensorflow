@@ -3,7 +3,7 @@ load(
     "docker_toolchain_autoconfig",
 )
 
-def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, build_bazel_src = False):
+def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = None, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None, build_bazel_src = False, sysroot = None):
     base = "@%s//image" % os
     config_repos = [
         "local_config_python",
@@ -40,7 +40,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
         ]
         env.update({
             "TF_NEED_CUDA": "1",
-            "TF_CUDA_CLANG": "1" if compiler == "clang" else "0",
+            "TF_CUDA_CLANG": "1" if compiler.endswith("clang") else "0",
             "TF_CUDA_COMPUTE_CAPABILITIES": "3.0,6.0",
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
@@ -49,8 +49,10 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
             "TF_NEED_TENSORRT": "1",
             "TF_TENSORRT_VERSION": tensorrt_version,
             "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
-            "GCC_HOST_COMPILER_PATH": compiler if compiler != "clang" else "",
+            "GCC_HOST_COMPILER_PATH": compiler if not compiler.endswith("clang") else "",
             "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",
+            "CLANG_CUDA_COMPILER_PATH": compiler if compiler.endswith("clang") else "",
+            "TF_SYSROOT": sysroot if sysroot else "",
         })
 
     if rocm_version != None:
@@ -70,7 +72,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, os, rocm_version = No
     docker_toolchain_autoconfig(
         name = name,
         base = base,
-        bazel_version = "0.24.1",
+        bazel_version = "1.2.1",
         build_bazel_src = build_bazel_src,
         config_repos = config_repos,
         env = env,

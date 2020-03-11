@@ -35,9 +35,9 @@ Example:
 
   session = tf.compat.v1.Session()
 
-  graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
+  graphdef_to_convert = tf.lite.experimental.convert_op_hints_to_stubs(session)
   tflite_graph = tf.compat.v1.lite.toco_convert(
-      graphdef_to_convert, [image], [output])
+      graphdef_to_convert, [image], [output], allow_custom_ops=True)
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
@@ -60,7 +60,9 @@ Once you have built your whole tensorflow graph, you can run it and train it
 as usual, but after you have done that, you need to convert the graph into
 a form that replaces these subgraphs wrapped in identities to stub ops. These
 ops don't actually exist in the normal TensorFlow runtime, but will be
-understood by toco later.
+understood by toco later. The generated TensorFlow Lite flatbuffer file will
+contain a custom operator called "cool_activation". Developer needs to implement
+and register this operator in TensorFlow Lite in order to do inference.
 """
 
 # TODO(aselle): Make this use generic graph transformations.
@@ -79,7 +81,9 @@ import six as _six
 from tensorflow.core.framework import attr_value_pb2 as _attr_value_pb2
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.core.framework import node_def_pb2 as _node_def_pb2
+from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.framework import tensor_util as _tensor_util
 # TODO(aselle): publicize these apis if we continue to use these.
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
@@ -583,7 +587,7 @@ class _LiteAggregateOperand(_LiteOperand):
 
     In particular, if you have 4 inputs to a hint stub, this will be the
     node that you can use as an output. I.e. you have 4 timesteps from a
-    static rnn, then a fused UnidriecitonalLSTM will expect 1 input with
+    static rnn, then a fused UnidirectionalLSTM will expect 1 input with
     all 4 time steps. So here we make a pack and return the output name of
     that pack.
 
@@ -854,7 +858,7 @@ def _find_children_hints(call, graph_def):
     if n in reachable_by_output:
       if n not in reachable_by_input and n not in output_nodes_set:
         # special handle for while loop function def.
-        if node.op == "While":
+        if node.op == "While" or node.op == "StatelessWhile":
           body_name = node.attr["body"].func.name
           inputs_outside_loop = node.input
           for function_def in graph_def.library.function:
@@ -996,10 +1000,26 @@ def _convert_single_op_hint_to_stub(call,
   # Delegate to each operand to produce the proper new input for this stub node.
   # In particular, an aggregate input will now be a Pack of some previously
   # non-fused things.
-  for input_index in sorted_input_indices:
-    inputs = call.inputs[input_index]
-    input_name = inputs.aggregate_and_return_name_for_input(out)
-    new_node.input.append(input_name)
+
+  optional_input_node = _node_def_pb2.NodeDef()
+  optional_input_node.name = "Const" + str(_uuid.uuid1().hex)
+  optional_input_node.op = "Const"
+  optional_input_node.attr["dtype"].CopyFrom(
+      _attr_value_pb2.AttrValue(type=_dtypes.float32.as_datatype_enum))
+  optional_input_node.attr["value"].CopyFrom(
+      _attr_value_pb2.AttrValue(
+          tensor=_tensor_util.make_tensor_proto([-1], _dtypes.float32, [1])))
+  out.node.extend([optional_input_node])
+
+  max_index = max(sorted_input_indices) + 1
+  for cur_index in range(max_index):
+    if cur_index in sorted_input_indices:
+      inputs = call.inputs[cur_index]
+      input_name = inputs.aggregate_and_return_name_for_input(out)
+      new_node.input.append(input_name)
+    else:
+      new_node.input.append(optional_input_node.name)
+
   new_node.attr[OpHint.TFLITE_INPUT_INDICES].list.i.extend(sorted_input_indices)
 
   # Create the function
@@ -1010,11 +1030,15 @@ def _convert_single_op_hint_to_stub(call,
   # Now call each output argument to give them a chance to make the proper
   # output type and add it to our new_node.
   output_dtypes = []
-  for output_index in sorted_output_indices:
-    output = call.outputs[output_index]
-    output_dtype = (
-        output.aggregate_and_return_name_for_output(new_node.name, output_index,
-                                                    out))
+  max_output_index = max(sorted_output_indices) + 1
+  for cur_index in range(max_output_index):
+    if cur_index in sorted_output_indices:
+      output = call.outputs[cur_index]
+      output_dtype = (
+          output.aggregate_and_return_name_for_output(new_node.name, cur_index,
+                                                      out))
+    else:
+      output_dtype = optional_input_node.attr["type"].i
     output_dtypes.append(output_dtype)
   new_node.attr["_output_types"].list.type[:] = output_dtypes
   # TODO(aselle): what is right here?
@@ -1258,6 +1282,18 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
+def is_ophint_converted(graph_def):
+  if graph_def is None:
+    raise ValueError("Must provide the graph_def.")
+  ophint_converted = False
+  for node in graph_def.node:
+    attr = node.attr
+    if OpHint.FUNCTION_INPUT_INDEX_ATTR in attr:
+      ophint_converted = True
+      break
+  return ophint_converted
+
+
 @_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
@@ -1291,7 +1327,10 @@ def convert_op_hints_to_stubs(session=None,
 
 
 _allowed_symbols = [
-    "OpHint", "convert_op_hints_to_stubs", "convert_op_hints_to_stubs_new",
-    "find_all_hinted_output_nodes"
+    "OpHint",
+    "convert_op_hints_to_stubs",
+    "convert_op_hints_to_stubs_new",
+    "find_all_hinted_output_nodes",
+    "is_ophint_converted",
 ]
 remove_undocumented(__name__, _allowed_symbols)

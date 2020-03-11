@@ -18,9 +18,11 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -147,9 +149,10 @@ class ScopedDeviceMemory {
 // Type alias for compatibility with the previous managed memory implementation.
 using OwningDeviceMemory = ScopedDeviceMemory<uint8>;
 
-// Interface for device memory allocators used within the XLA service. An
-// allocator is responsible for allocating memory on all devices of a particular
-// platform.
+// Memory allocator interface for the device.
+//
+// Intended usage is through Allocate() functions which return an owning smart
+// pointer.
 class DeviceMemoryAllocator {
  public:
   // Parameter platform indicates which platform the allocator allocates memory
@@ -167,26 +170,40 @@ class DeviceMemoryAllocator {
   // fails, the allocation should return immediately without retrying.  An
   // example use case is optional scratch spaces where a failure has only
   // performance impact.
-  virtual port::StatusOr<OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) = 0;
+  virtual port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal,
+                                                      uint64 size,
+                                                      bool retry_on_failure,
+                                                      int64 memory_space) = 0;
 
-  // Two-arg version of Allocate(), which sets retry-on-failure to true.
+  // Two-arg version of Allocate(), which sets retry-on-failure to true and
+  // memory_space to default (0).
   //
   // (We don't simply use a default argument on the virtual Allocate function
   // because default args on virtual functions are disallowed by the Google
   // style guide.)
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size) {
-    return Allocate(device_ordinal, size, /*retry_on_failure=*/true);
+    return Allocate(device_ordinal, size, /*retry_on_failure=*/true,
+                    /*memory_space=*/0);
+  }
+
+  // Three-arg version of Allocate(), which sets memory_space to default (0).
+  port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                              bool retry_on_failure) {
+    return Allocate(device_ordinal, size, retry_on_failure,
+                    /*memory_space=*/0);
   }
 
   // Typed version of the allocation, returning typed memory.
   template <typename ElemT>
   port::StatusOr<ScopedDeviceMemory<ElemT>> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure = true) {
-    return Allocate(device_ordinal, size, retry_on_failure);
+      int device_ordinal, uint64 size, bool retry_on_failure = true,
+      int64 memory_space = 0) {
+    return Allocate(device_ordinal, size, retry_on_failure, memory_space);
   }
 
-  // Must be a nop for null pointers.
+  // Must be a nop for null pointers. Should not be used.
+  //
+  // TODO(cheshire): Add deprecation notice.
   virtual port::Status Deallocate(int device_ordinal, DeviceMemoryBase mem) = 0;
 
   // Return the platform that the allocator allocates memory on.
@@ -194,7 +211,13 @@ class DeviceMemoryAllocator {
 
   // Can we call Deallocate() as soon as a computation has been scheduled on
   // a stream, or do we have to wait for the computation to complete first?
-  virtual bool AllowsAsynchronousDeallocation() const = 0;
+  virtual bool AllowsAsynchronousDeallocation() const { return false; }
+
+  // Returns a stream pointer on which it is always safe to access memory
+  // allocated by this allocator. It is not necessary to use the returned stream
+  // though, as clients may have additional information letting them safely use
+  // a different stream.
+  virtual port::StatusOr<Stream *> GetStream(int device_ordinal) = 0;
 
  protected:
   const Platform* platform_;
@@ -216,7 +239,8 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
       absl::Span<StreamExecutor *const> stream_executors);
 
   port::StatusOr<OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
-                                              bool retry_on_failure) override;
+                                              bool retry_on_failure,
+                                              int64 memory_space) override;
 
   // Pull in two-arg overload that sets retry_on_failure to true.
   using DeviceMemoryAllocator::Allocate;
@@ -225,12 +249,22 @@ class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
 
   bool AllowsAsynchronousDeallocation() const override;
 
- private:
-  port::StatusOr<StreamExecutor*> GetStreamExecutor(int device_ordinal);
+  // Gets-or-creates a stream for a given `device_ordinal` from an appropriate
+  // stream executor.
+  port::StatusOr<Stream *> GetStream(int device_ordinal) override;
 
+  // Gets the stream executor for given device ordinal.
+  port::StatusOr<StreamExecutor *> GetStreamExecutor(int device_ordinal) const;
+
+ private:
   // Available stream executors. Each stream executor has a different device
   // ordinal.
   std::vector<StreamExecutor *> stream_executors_;
+
+  absl::Mutex mutex_;
+
+  // Cache of streams for GetStream.
+  std::map<int, Stream> streams_ TF_GUARDED_BY(mutex_);
 };
 
 template <typename ElemT>

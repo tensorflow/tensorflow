@@ -33,10 +33,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
+#include "tensorflow/core/kernels/stateless_random_ops.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/bcast.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -86,7 +88,7 @@ double binomial_inversion(double count, double prob,
   return num_geom;
 }
 
-double stirling_approx_tail(double k) {
+inline double stirling_approx_tail(double k) {
   static double kTailValues[] = {0.0810614667953272,  0.0413406959554092,
                                  0.0276779256849983,  0.02079067210376509,
                                  0.0166446911898211,  0.0138761288230707,
@@ -96,13 +98,13 @@ double stirling_approx_tail(double k) {
     return kTailValues[static_cast<int>(k)];
   }
   double kp1sq = (k + 1) * (k + 1);
-  return (1 / 12 - (1 / 360 + 1 / 1260 / kp1sq) / kp1sq) / (k + 1);
+  return (1.0 / 12 - (1.0 / 360 - 1.0 / 1260 / kp1sq) / kp1sq) / (k + 1);
 }
 
 // We use a transformation-rejection algorithm from
 // pairs of uniform random variables due to Hormann.
 // https://www.tandfonline.com/doi/abs/10.1080/00949659308811496
-double btrs(double count, double prob, random::PhiloxRandom* gen) {
+inline double btrs(double count, double prob, random::PhiloxRandom* gen) {
   using Eigen::numext::abs;
   using Eigen::numext::floor;
   using Eigen::numext::log;
@@ -118,6 +120,9 @@ double btrs(double count, double prob, random::PhiloxRandom* gen) {
   const double c = count * prob + 0.5;
   const double v_r = 0.92 - 4.2 / b;
   const double r = prob / (1 - prob);
+
+  const double alpha = (2.83 + 5.1 / b) * stddev;
+  const double m = floor((count + 1) * prob);
 
   Uniform uniform;
   typename Uniform::ResultType uniform_result;
@@ -143,8 +148,6 @@ double btrs(double count, double prob, random::PhiloxRandom* gen) {
       continue;
     }
 
-    double alpha = (2.83 + 5.1 / b) * stddev;
-    double m = floor((count + 1) * prob);
     // This deviates from Hormann's BRTS algorithm, as there is a log missing.
     // For all (u, v) pairs outside of the bounding box, this calculates the
     // transformed-reject ratio.
@@ -169,66 +172,83 @@ template <typename T, typename U>
 struct RandomBinomialFunctor<CPUDevice, T, U> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d, int64 num_batches,
                   int64 samples_per_batch, int64 num_elements,
-                  typename TTypes<T>::ConstFlat counts,
+                  const BCast& bcast, typename TTypes<T>::ConstFlat counts,
                   typename TTypes<T>::ConstFlat probs,
                   const random::PhiloxRandom& gen,
                   typename TTypes<U>::Flat output) {
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
 
-    auto DoWork = [samples_per_batch, num_elements, &counts, &probs, &gen,
-                   &output](int start_batch, int limit_batch) {
-      // Capturing "gen" by-value would only make a copy for the _shared_
-      // lambda.  Since we want to let each worker have its own copy, we pass
-      // "gen" by reference and explicitly do a copy assignment here.
-      random::PhiloxRandom gen_copy = gen;
-      // Skip takes units of 128 bytes.  +3 is so rounding doesn't lead to
-      // us using the same state in different batches.
-      // The sample from each iteration uses 2 random numbers.
-      gen_copy.Skip(start_batch * 2 * 3 * (samples_per_batch + 3) / 4);
-
+    // The output layout is [B1, ... Bk, H1, ... Hm]. We have [B1, ... Bk] for
+    // the sample shape and [H1, ... Hm] for the batch shape of the samples.
+    // We have B1 * ... * Bk samples per batch member we need.
+    auto DoWork = [num_batches, samples_per_batch, &bcast, &counts, &probs,
+                   &gen, &output](int start_output, int limit_output) {
       // Vectorized intermediate calculations for uniform rejection sampling.
       // We always generate at most 4 samples.
       Eigen::array<T, 4> z;
       Eigen::array<T, 4> g;
+      const bool should_bcast = bcast.IsBroadcastingRequired();
+      const auto& counts_batch_indices = bcast.x_batch_indices();
+      const auto& probs_batch_indices = bcast.y_batch_indices();
+      auto output_flat = output.data();
 
-      for (int64 b = start_batch; b < limit_batch; ++b) {
-        // We are passed a flat array for each of the parameter tensors.
-        // The input is either a scalar broadcasted to all batches or a vector
-        // with length num_batches, but the scalar becomes an array of length 1.
-        T count = counts((counts.dimension(0) == 1) ? 0 : b);
-        T prob = probs((probs.dimension(0) == 1) ? 0 : b);
-
-        // The last batch can be short, if we adjusted num_batches and
-        // samples_per_batch.
-        const int64 limit_sample =
-            std::min((b + 1) * samples_per_batch, num_elements);
-        int64 sample = b * samples_per_batch;
+      // We partition work across batches (count, prob) and then across samples
+      // per batch member, to avoid extra work.
+      for (int64 output_idx = start_output; output_idx < limit_output;
+           // output_idx is incremented with the inner loops below.
+      ) {
+        int64 batch_idx = output_idx / samples_per_batch;
+        U* const output_batch_offset = output_flat + batch_idx;
+        // Generate batch counts from BCast, as it has the right indices to loop
+        // over.
+        T count, prob;
+        if (should_bcast) {
+          count = counts(counts_batch_indices[batch_idx]);
+          prob = probs(probs_batch_indices[batch_idx]);
+        } else {
+          count = counts(batch_idx);
+          prob = probs(batch_idx);
+        }
 
         // Calculate normalized samples, then convert them.
         // Determine the method to use.
         double dcount = static_cast<double>(count);
         if (dcount <= 0.0 || prob <= T(0.0)) {
-          while (sample < limit_sample) {
-            output(sample) = static_cast<U>(0.0);
-            sample++;
+          for (int64 sample_idx = output_idx % samples_per_batch;
+               sample_idx < samples_per_batch && output_idx < limit_output;
+               ++sample_idx, ++output_idx) {
+            output_batch_offset[sample_idx * num_batches] = static_cast<U>(0.0);
           }
         } else if (prob >= T(1.0)) {
-          while (sample < limit_sample) {
-            output(sample) = static_cast<U>(dcount);
-            sample++;
+          for (int64 sample_idx = output_idx % samples_per_batch;
+               sample_idx < samples_per_batch && output_idx < limit_output;
+               ++sample_idx, ++output_idx) {
+            output_batch_offset[sample_idx * num_batches] =
+                static_cast<U>(dcount);
           }
         } else if (prob <= T(0.5)) {
           double dp = static_cast<double>(prob);
           if (count * prob >= T(10)) {
-            while (sample < limit_sample) {
-              output(sample) = static_cast<U>(btrs(dcount, dp, &gen_copy));
-              sample++;
+            for (int64 sample_idx = output_idx % samples_per_batch;
+                 sample_idx < samples_per_batch && output_idx < limit_output;
+                 ++sample_idx, ++output_idx) {
+              random::PhiloxRandom gen_copy = gen;
+              gen_copy.Skip(256 * output_idx);
+              output_batch_offset[sample_idx * num_batches] =
+                  static_cast<U>(btrs(dcount, dp, &gen_copy));
             }
           } else {
-            while (sample < limit_sample) {
-              output(sample) =
+            for (int64 sample_idx = output_idx % samples_per_batch;
+                 sample_idx < samples_per_batch && output_idx < limit_output;
+                 ++sample_idx, ++output_idx) {
+              random::PhiloxRandom gen_copy = gen;
+              // For binomial inversion, we have mean <= 10, variance <= 10.
+              // This means on average we need at most 10 number of samples,
+              // and for 10 standard deviations, we need 42 samples. We reserve
+              // that much.
+              gen_copy.Skip(42 * output_idx);
+              output_batch_offset[sample_idx * num_batches] =
                   static_cast<U>(binomial_inversion(dcount, dp, &gen_copy));
-              sample++;
             }
           }
         } else if (prob > T(0.5)) {
@@ -236,45 +256,41 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
           double dcount = static_cast<double>(count);
           double dq = static_cast<double>(q);
           if (count * q >= T(10)) {
-            while (sample < limit_sample) {
-              output(sample) =
+            for (int64 sample_idx = output_idx % samples_per_batch;
+                 sample_idx < samples_per_batch && output_idx < limit_output;
+                 ++sample_idx, ++output_idx) {
+              random::PhiloxRandom gen_copy = gen;
+              gen_copy.Skip(256 * output_idx);
+              output_batch_offset[sample_idx * num_batches] =
                   static_cast<U>(dcount - btrs(dcount, dq, &gen_copy));
-              sample++;
             }
           } else {
-            while (sample < limit_sample) {
-              output(sample) = static_cast<U>(
+            for (int64 sample_idx = output_idx % samples_per_batch;
+                 sample_idx < samples_per_batch && output_idx < limit_output;
+                 ++sample_idx, ++output_idx) {
+              random::PhiloxRandom gen_copy = gen;
+              // For binomial inversion, we have mean <= 10, variance <= 10.
+              // This means on average we need at most 10 number of samples,
+              // and for 10 standard deviations, we need 42 samples. We reserve
+              // that much.
+              gen_copy.Skip(42 * output_idx);
+              output_batch_offset[sample_idx * num_batches] = static_cast<U>(
                   dcount - binomial_inversion(dcount, dq, &gen_copy));
-              sample++;
             }
           }
         } else {  // prob is NaN
           // TODO(srvasude): What should happen if prob is NaN but the output
           // type is an integer (which doesn't have a sentinel for NaN)?  Fail
           // the whole batch sample?  Return a specialized sentinel like -1?
-          while (sample < limit_sample) {
-            output(sample) = static_cast<U>(NAN);
-            sample++;
+          for (int64 sample_idx = output_idx % samples_per_batch;
+               sample_idx < samples_per_batch && output_idx < limit_output;
+               ++sample_idx, ++output_idx) {
+            output_batch_offset[sample_idx * num_batches] = static_cast<U>(NAN);
           }
         }
       }
     };
 
-    const int64 batch_init_cost =
-        // normMin, normMax
-        (Eigen::TensorOpCost::AddCost<T>() +
-         Eigen::TensorOpCost::MulCost<T>()) *
-            2
-        // sqrtFactor
-        + Eigen::TensorOpCost::AddCost<T>() +
-        Eigen::TensorOpCost::MulCost<T>() +
-        Eigen::internal::functor_traits<
-            Eigen::internal::scalar_sqrt_op<T>>::Cost
-        // cutoff
-        + Eigen::TensorOpCost::MulCost<T>() * 4 +
-        Eigen::internal::functor_traits<Eigen::internal::scalar_exp_op<T>>::Cost
-        // diff
-        + Eigen::TensorOpCost::AddCost<T>();
     // This will depend on count * p (or count * q).
     // For n * p < 10, on average, O(n * p) calls to uniform are
     // needed, with that
@@ -290,17 +306,15 @@ struct RandomBinomialFunctor<CPUDevice, T, U> {
     // 2 uniform generations along with 5 other ops at 3-6 cycles each.
     // ~15 / .89 = ~16
     //
-    // In total this should be ~529 + 2 * Uniform::kElementCost.
+    // In total this (rate >= 10) should be ~329 + 2 * Uniform::kElementCost.
     // We assume that half the tensor has rate < 10, so on average 6
     // uniform's
     // will be needed. We will upper bound the other op cost by the one for
     // rate > 10.
-    static const int kElementCost = 529 + 6 * Uniform::kElementCost +
+    static const int kElementCost = 329 + 6 * Uniform::kElementCost +
                                     6 * random::PhiloxRandom::kElementCost;
-    // Assume we use uniform sampling, and accept the 2nd sample on average.
-    const int64 batch_cost = batch_init_cost + kElementCost * samples_per_batch;
-    Shard(worker_threads.num_threads, worker_threads.workers, num_batches,
-          batch_cost, DoWork);
+    Shard(worker_threads.num_threads, worker_threads.workers, num_elements,
+          kElementCost, DoWork);
   }
 };
 
@@ -324,72 +338,60 @@ class RandomBinomialOp : public OpKernel {
     const Tensor& counts_tensor = ctx->input(3);
     const Tensor& probs_tensor = ctx->input(4);
 
+    tensorflow::BCast bcast(counts_tensor.shape().dim_sizes(),
+                            probs_tensor.shape().dim_sizes(),
+                            /*fewer_dims_optimization=*/false,
+                            /*return_flattened_batch_indices=*/true);
+    OP_REQUIRES(ctx, bcast.IsValid(),
+                errors::InvalidArgument(
+                    "counts and probs must have compatible batch dimensions: ",
+                    counts_tensor.shape().DebugString(), " vs. ",
+                    probs_tensor.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+        errors::InvalidArgument("Input shape should be a vector, got shape: ",
+                                shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                (shape_tensor.dtype() == DataType::DT_INT32 ||
+                 shape_tensor.dtype() == DataType::DT_INT64),
+                errors::InvalidArgument(
+                    "Input shape should have dtype {int32, int64}."));
+
+    // Let's check that the shape tensor dominates the broadcasted tensor.
+    TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
+    TensorShape output_shape;
+    if (shape_tensor.dtype() == DataType::DT_INT32) {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
+                                                      &output_shape));
+    } else {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
+                                                      &output_shape));
+    }
+    OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
+                errors::InvalidArgument(
+                    "Shape passed in must end with broadcasted shape."));
+    // Now that we have a guarantee, we can get the additional dimensions added
+    // by sampling.
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
                 errors::InvalidArgument("algorithm must be of shape [], not ",
                                         alg_tensor.shape().DebugString()));
     Algorithm alg = alg_tensor.flat<Algorithm>()(0);
 
-    OP_REQUIRES(
-        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
-        errors::InvalidArgument("Input shape should be a vector, got shape: ",
-                                shape_tensor.shape().DebugString()));
-    int32 num_batches = shape_tensor.flat<int32>()(0);
-
-    int32 samples_per_batch = 1;
-    const int32 num_dims = shape_tensor.dim_size(0);
-    for (int32 i = 1; i < num_dims; i++) {
+    int64 samples_per_batch = 1;
+    const int64 num_sample_dims =
+        (shape_tensor.dim_size(0) - bcast.output_shape().size());
+    for (int64 i = 0; i < num_sample_dims; ++i) {
       samples_per_batch *= shape_tensor.flat<int32>()(i);
     }
-    const int32 num_elements = num_batches * samples_per_batch;
-
-    // Allocate the output before fudging num_batches and samples_per_batch.
-    auto shape_vec = shape_tensor.flat<int32>();
-    TensorShape tensor_shape;
-    OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(
-                            shape_vec.data(), shape_vec.size(), &tensor_shape));
-    Tensor* samples_tensor;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, tensor_shape, &samples_tensor));
-
-    // Parameters must be 0-d or 1-d.
-    OP_REQUIRES(ctx, counts_tensor.dims() <= 1,
-                errors::InvalidArgument(
-                    "Input counts should be a scalar or vector, got shape: ",
-                    counts_tensor.shape().DebugString()));
-    OP_REQUIRES(ctx, probs_tensor.dims() <= 1,
-                errors::InvalidArgument(
-                    "Input probs should be a scalar or vector, got shape: ",
-                    probs_tensor.shape().DebugString()));
-
-    if ((counts_tensor.dims() == 0 || counts_tensor.dim_size(0) == 1) &&
-        (probs_tensor.dims() == 0 || probs_tensor.dim_size(0) == 1)) {
-      // All batches have the same parameters, so we can update the batch size
-      // to a reasonable value to improve parallelism (ensure enough batches,
-      // and no very small batches which have high overhead).
-      int32 size = num_batches * samples_per_batch;
-      int32 adjusted_samples = kDesiredBatchSize;
-      // Ensure adjusted_batches * adjusted_samples >= size.
-      int32 adjusted_batches = Eigen::divup(size, adjusted_samples);
-      num_batches = adjusted_batches;
-      samples_per_batch = adjusted_samples;
-    } else {
-      // Parameters must be broadcastable to the shape [num_batches].
-      OP_REQUIRES(
-          ctx,
-          TensorShapeUtils::IsScalar(counts_tensor.shape()) ||
-              counts_tensor.dim_size(0) == 1 ||
-              counts_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
-              "Input counts should have length 1 or shape[0], got shape: ",
-              counts_tensor.shape().DebugString()));
-      OP_REQUIRES(
-          ctx,
-          TensorShapeUtils::IsScalar(probs_tensor.shape()) ||
-              probs_tensor.dim_size(0) == 1 ||
-              probs_tensor.dim_size(0) == num_batches,
-          errors::InvalidArgument(
-              "Input probs should have length 1 or shape[0], got shape: ",
-              probs_tensor.shape().DebugString()));
+    int64 num_batches = 1;
+    for (int64 i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
+      num_batches *= shape_tensor.flat<int32>()(i);
     }
+    const int64 num_elements = num_batches * samples_per_batch;
+
+    Tensor* samples_tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));
+
     core::RefCountPtr<Var> var;
     OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &var));
 
@@ -415,7 +417,6 @@ class RandomBinomialOp : public OpKernel {
                     "For Philox algorithm, the size of state must be at least ",
                     PHILOX_MIN_STATE_SIZE, "; got ", var_tensor_flat.size()));
 
-    // Each worker has the fudge factor for samples_per_batch, so use it here.
     OP_REQUIRES_OK(ctx, PrepareToUpdateVariable<Device, StateElementType>(
                             ctx, var_tensor, var->copy_on_read_mode.load()));
     auto var_data = var_tensor_flat.data();
@@ -425,27 +426,123 @@ class RandomBinomialOp : public OpKernel {
 
     auto binomial_functor = functor::RandomBinomialFunctor<Device, T, U>();
     binomial_functor(ctx, ctx->eigen_device<Device>(), num_batches,
-                     samples_per_batch, num_elements, counts_tensor.flat<T>(),
-                     probs_tensor.flat<T>(), philox, samples_tensor->flat<U>());
+                     samples_per_batch, num_elements, bcast,
+                     counts_tensor.flat<T>(), probs_tensor.flat<T>(), philox,
+                     samples_tensor->flat<U>());
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(RandomBinomialOp);
 };
 
+// Samples from a binomial distribution, using the given parameters.
+template <typename Device, typename T, typename U>
+class StatelessRandomBinomialOp : public OpKernel {
+  // Reshape batches so each batch is this size if possible.
+  static const int32 kDesiredBatchSize = 100;
+
+ public:
+  explicit StatelessRandomBinomialOp(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& shape_tensor = ctx->input(0);
+    const Tensor& seed_tensor = ctx->input(1);
+    const Tensor& counts_tensor = ctx->input(2);
+    const Tensor& probs_tensor = ctx->input(3);
+
+    OP_REQUIRES(ctx, seed_tensor.dims() == 1 && seed_tensor.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_tensor.shape().DebugString()));
+
+    tensorflow::BCast bcast(counts_tensor.shape().dim_sizes(),
+                            probs_tensor.shape().dim_sizes(),
+                            /*fewer_dims_optimization=*/false,
+                            /*return_flattened_batch_indices=*/true);
+    OP_REQUIRES(ctx, bcast.IsValid(),
+                errors::InvalidArgument(
+                    "counts and probs must have compatible batch dimensions: ",
+                    counts_tensor.shape().DebugString(), " vs. ",
+                    probs_tensor.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(shape_tensor.shape()),
+        errors::InvalidArgument("Input shape should be a vector, got shape: ",
+                                shape_tensor.shape().DebugString()));
+    OP_REQUIRES(ctx,
+                (shape_tensor.dtype() == DataType::DT_INT32 ||
+                 shape_tensor.dtype() == DataType::DT_INT64),
+                errors::InvalidArgument(
+                    "Input shape should have dtype {int32, int64}."));
+
+    // Let's check that the shape tensor dominates the broadcasted tensor.
+    TensorShape bcast_shape = BCast::ToShape(bcast.output_shape());
+    TensorShape output_shape;
+    if (shape_tensor.dtype() == DataType::DT_INT32) {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int32>(),
+                                                      &output_shape));
+    } else {
+      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(shape_tensor.vec<int64>(),
+                                                      &output_shape));
+    }
+    OP_REQUIRES(ctx, TensorShapeUtils::EndsWith(output_shape, bcast_shape),
+                errors::InvalidArgument(
+                    "Shape passed in must end with broadcasted shape."));
+    // Now that we have a guarantee, we can get the additional dimensions added
+    // by sampling.
+    int64 samples_per_batch = 1;
+    const int64 num_sample_dims =
+        (shape_tensor.dim_size(0) - bcast.output_shape().size());
+    for (int64 i = 0; i < num_sample_dims; ++i) {
+      samples_per_batch *= shape_tensor.flat<int32>()(i);
+    }
+    int64 num_batches = 1;
+    for (int64 i = num_sample_dims; i < shape_tensor.dim_size(0); ++i) {
+      num_batches *= shape_tensor.flat<int32>()(i);
+    }
+    const int64 num_elements = num_batches * samples_per_batch;
+
+    Tensor* samples_tensor;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &samples_tensor));
+    if (output_shape.num_elements() == 0) return;
+
+    random::PhiloxRandom::Key key;
+    random::PhiloxRandom::ResultType counter;
+    OP_REQUIRES_OK(ctx, GenerateKey(seed_tensor, &key, &counter));
+
+    auto philox = random::PhiloxRandom(counter, key);
+    auto binomial_functor = functor::RandomBinomialFunctor<Device, T, U>();
+    binomial_functor(ctx, ctx->eigen_device<Device>(), num_batches,
+                     samples_per_batch, num_elements, bcast,
+                     counts_tensor.flat<T>(), probs_tensor.flat<T>(), philox,
+                     samples_tensor->flat<U>());
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(StatelessRandomBinomialOp);
+};
+
 }  // namespace
 
-#define REGISTER(RTYPE, TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(Name("StatefulRandomBinomial")      \
-                              .Device(DEVICE_CPU)             \
-                              .HostMemory("resource")         \
-                              .HostMemory("algorithm")        \
-                              .HostMemory("shape")            \
-                              .HostMemory("counts")           \
-                              .HostMemory("probs")            \
-                              .TypeConstraint<RTYPE>("dtype") \
-                              .TypeConstraint<TYPE>("T"),     \
-                          RandomBinomialOp<CPUDevice, TYPE, RTYPE>)
+#define REGISTER(RTYPE, TYPE)                                        \
+  REGISTER_KERNEL_BUILDER(Name("StatefulRandomBinomial")             \
+                              .Device(DEVICE_CPU)                    \
+                              .HostMemory("resource")                \
+                              .HostMemory("algorithm")               \
+                              .HostMemory("shape")                   \
+                              .HostMemory("counts")                  \
+                              .HostMemory("probs")                   \
+                              .TypeConstraint<RTYPE>("dtype")        \
+                              .TypeConstraint<TYPE>("T"),            \
+                          RandomBinomialOp<CPUDevice, TYPE, RTYPE>); \
+  REGISTER_KERNEL_BUILDER(Name("StatelessRandomBinomial")            \
+                              .Device(DEVICE_CPU)                    \
+                              .HostMemory("shape")                   \
+                              .HostMemory("seed")                    \
+                              .HostMemory("counts")                  \
+                              .HostMemory("probs")                   \
+                              .TypeConstraint<RTYPE>("dtype")        \
+                              .TypeConstraint<TYPE>("T"),            \
+                          StatelessRandomBinomialOp<CPUDevice, TYPE, RTYPE>)
 
 #define REGISTER_ALL(RTYPE)     \
   REGISTER(RTYPE, Eigen::half); \

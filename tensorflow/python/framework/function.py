@@ -27,7 +27,7 @@ import hashlib
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
-from tensorflow.python import pywrap_tensorflow as c_api
+from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import dtypes
@@ -290,7 +290,7 @@ class _DefinedFunction(object):
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
 
-    # Get the innermost device if possbile.
+    # Get the innermost device if possible.
     self._caller_device = device_funcs[-1] if device_funcs else None
 
     # Cached OpDef for this function. When C API is enabled, this is
@@ -724,6 +724,11 @@ class _FuncGraph(ops.Graph):
 
   # pylint: disable=g-doc-return-or-yield
 
+  @property
+  def outer_graph(self):
+    """The graph active when this _FuncGraph was created."""
+    return self._outer_graph
+
   @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
@@ -799,22 +804,43 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
+  def _create_op_internal(
+      self,
+      op_type,
+      inputs,
+      dtypes=None,  # pylint: disable=redefined-outer-name
+      input_types=None,
+      name=None,
+      attrs=None,
+      op_def=None,
+      compute_device=True):
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs,
-                                             dtypes=dtypes, **kwargs)
+    return super(_FuncGraph, self)._create_op_internal(
+        op_type,
+        inputs,
+        dtypes=dtypes,
+        input_types=input_types,
+        name=name,
+        attrs=attrs,
+        op_def=op_def,
+        compute_device=compute_device)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
-    if tensor in self._captured:
+    if tensor.ref() in self._captured:
       # Captured already.
-      return self._captured[tensor]
+      return self._captured[tensor.ref()]
     elif self._capture_by_value:
       return self._add_tensor_and_parents(tensor)
     else:
       return self._capture_tensor_as_extra_input(tensor, name)
+
+  @property
+  def captures(self):
+    """Pairs of tensors and captured tensor."""
+    return [(k.deref(), v) for k, v in self._captured.items()]
 
   def _capture_tensor_as_extra_input(self, tensor, name=None):
     # Substitute with a placeholder.
@@ -838,7 +864,7 @@ class _FuncGraph(ops.Graph):
                                   compat.as_bytes(handle_data))
     # pylint: enable=protected-access
     self.inputs.append(ph)
-    self._captured[tensor] = ph
+    self._captured[tensor.ref()] = ph
     self.extra_args.append(ph)
     if _is_guaranteed_const(tensor):
       with ops.control_dependencies(None):
@@ -863,7 +889,7 @@ class _FuncGraph(ops.Graph):
 
     captured_inputs = [self._add_tensor_and_parents(x) for x in op.inputs]
 
-    captured_op = self.create_op(
+    captured_op = self._create_op_internal(
         op.type,
         captured_inputs, [o.dtype for o in op.outputs],
         name=op.name,
@@ -871,7 +897,7 @@ class _FuncGraph(ops.Graph):
         op_def=op_def)
 
     for t, captured_t in zip(op.outputs, captured_op.outputs):
-      self._captured[t] = captured_t
+      self._captured[t.ref()] = captured_t
 
     return captured_op
 
@@ -1057,7 +1083,7 @@ def _call(sig, *inputs, **kwargs):
     name = func_name
   attrs = _parse_kwargs_as_attrs(func_name, **kwargs)
   output_types = [dtypes.DType(x.type) for x in sig.output_arg]
-  op = g.create_op(
+  op = g._create_op_internal(  # pylint: disable=protected-access
       func_name, list(inputs), output_types, name=name, attrs=attrs, op_def=sig)
   if op.outputs:
     if len(op.outputs) == 1:
@@ -1186,6 +1212,15 @@ def _get_experimental_kwarg_as_attr(attr_name, value):
                      (attr_name, type(value)))
 
 
+def _get_kwarg_as_str_attr(attr_name, value):
+  """Creates an AttrValue for a python object."""
+  if isinstance(value, str):
+    return attr_value_pb2.AttrValue(s=compat.as_bytes(value))
+  else:
+    raise ValueError("Unsupported attribute type for %s with type %s" %
+                     (attr_name, type(value)))
+
+
 def _parse_kwargs_as_attrs(func_name, **kwargs):
   """Parses **kwargs into a node's attributes."""
   attrs = {}
@@ -1218,7 +1253,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
     if key.startswith("experimental_"):
       attrs[key] = _get_experimental_kwarg_as_attr(key, kwargs[key])
       del kwargs[key]
-
+    # Support for https://github.com/tensorflow/community/pull/113/files.
+    elif key == "_implements" or key == "_reference":
+      attrs[key] = _get_kwarg_as_str_attr(key, kwargs[key])
+      del kwargs[key]
   if kwargs:
     raise ValueError("Unknown keyword arguments: %s" % kwargs.keys())
   return attrs
@@ -1274,7 +1312,7 @@ def get_extra_args():
 def _type_list_to_str(types):
   if any(_ not in _DTYPE_TO_STR for _ in types):
     raise ValueError("Unsupported dtypes: %s" % types)
-  return "".join([_DTYPE_TO_STR[_] for _ in types])
+  return "".join(_DTYPE_TO_STR[_] for _ in types)
 
 
 # NOTE: The list needs to be extended when more data types are added.

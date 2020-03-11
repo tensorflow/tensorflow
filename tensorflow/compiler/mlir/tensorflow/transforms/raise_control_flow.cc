@@ -22,9 +22,9 @@ limitations under the License.
 // eliminating control dependencies, and results in the code being in the
 // canonical TensorFlow dialect.
 
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/control_flow_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -100,7 +100,7 @@ void RaiseTFControlFlow::rewriteOps() {
       // aren't necessary any more since the order within a block encodes the
       // same information.
       for (auto &operand : op.getOpOperands()) {
-        if (!operand.get()->getType().isa<TFControlType>())
+        if (!operand.get().getType().isa<TFControlType>())
           result.operands.push_back(operand.get());
 
         // Drop all operands from the old operation, eliminating any
@@ -110,14 +110,14 @@ void RaiseTFControlFlow::rewriteOps() {
 
       // Add a result type for each non-control result we find.
       bool sawControlResult = false;
-      for (auto *opResult : op.getResults()) {
-        if (opResult->getType().isa<TFControlType>()) {
+      for (auto opResult : op.getResults()) {
+        if (opResult.getType().isa<TFControlType>()) {
           sawControlResult = true;
         } else {
           // We assume all control inputs are at the end of the result list.
           assert(!sawControlResult && "all control results must be last");
           (void)sawControlResult;
-          result.types.push_back(opResult->getType());
+          result.types.push_back(opResult.getType());
         }
       }
 
@@ -129,7 +129,7 @@ void RaiseTFControlFlow::rewriteOps() {
       // We know that all the control results are last, so we can just rewrite
       // the first results.
       for (unsigned i = 0, e = result.types.size(); i != e; ++i)
-        op.getResult(i)->replaceAllUsesWith(replacement->getResult(i));
+        op.getResult(i).replaceAllUsesWith(replacement->getResult(i));
     }
   }
 
@@ -145,8 +145,8 @@ void RaiseTFControlFlow::rewriteOps() {
 
 }  // namespace
 
-FunctionPassBase *CreateRaiseTFControlFlowPass() {
-  return new RaiseTFControlFlow();
+std::unique_ptr<OpPassBase<FuncOp>> CreateRaiseTFControlFlowPass() {
+  return std::make_unique<RaiseTFControlFlow>();
 }
 
 static PassRegistration<RaiseTFControlFlow> pass(

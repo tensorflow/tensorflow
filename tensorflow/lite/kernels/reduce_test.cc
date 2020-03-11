@@ -256,7 +256,6 @@ TEST(ConstFloatMeanOpTest, KeepDims) {
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({10.5, 12.5, 14.5})));
 }
-
 // Uses a set of reduction conditions that trigger the specialized 4D version
 // of Mean.
 TEST(ConstFloatMeanOpTest, KeepDims4DMean) {
@@ -288,18 +287,21 @@ TEST(ConstFloatMeanOpTest, KeepDims4DMeanUInt8) {
 
 TEST(ConstFloatMeanOpTest, KeepDims4DMeanLargeDepthUInt8) {
   float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
-  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
-                             0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9,
-                             0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3,
-                             0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
-  MeanOpConstModel m({TensorType_UINT8, {1, 2, 2, 9}, -1.0, 1.0},
+  std::vector<float> data = {
+      0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1, 0.1, 0.1, 0.1, 0.4, 0.2, 0.2,
+      0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3, 0.3, 0.1, 0.2,
+      0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+      0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7,
+      0.1, 0.1, 0.3, 0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_UINT8, {1, 2, 2, 18}, -1.0, 1.0},
                      {TensorType_UINT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
   m.QuantizeAndPopulate<uint8_t>(m.Input(), data);
   m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 9}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 18}));
   EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
               ElementsAreArray(ArrayFloatNear(
-                  {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
+                  {0.5, 0.55, 0.25, 0.35, 0.45, 0.5, 0.25, 0.3, 0.2, 0.2, 0.1,
+                   0.15, 0.35, 0.3, 0.15, 0.2, 0.6, 0.65},
                   kQuantizedTolerance)));
 }
 
@@ -325,6 +327,16 @@ TEST(ConstFloatMeanOpTest, Scalar) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.27})));
+}
+
+TEST(ConstFloatMeanOpTest, ScalarAxis) {
+  std::vector<float> data = {4., 2.};
+  MeanOpConstModel m({TensorType_FLOAT32, {2}}, {TensorType_FLOAT32, {1}}, {},
+                     {0}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({3.})));
 }
 
 TEST(DynamicFloatMeanOpTest, NotKeepDims) {
@@ -370,7 +382,6 @@ TEST(DynamicFloatMeanOpTest, Scale) {
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({9.527})));
 }
 
-
 TEST(ConstUint8MeanOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<float> data = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
@@ -395,6 +406,31 @@ TEST(ConstUint8MeanOpTest, KeepDims) {
   EXPECT_THAT(
       m.GetDequantizedOutput<uint8_t>(),
       ElementsAreArray(ArrayFloatNear({0.3, 0.35, 0.55}, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, NonSpecialAxisSameScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {105.0, 71.0, 233.0, 92.0, 227.0, 11.0, 14.0, 43.0};
+  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, 0.0, 255.0},
+                     {TensorType_INT8, {1, 2, 4}, 0.0, 255.0}, {1}, {1}, false);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 4}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(data, kQuantizedTolerance)));
+}
+
+TEST(ConstInt8MeanOpTest, NonSpecialAxisNonSameScale) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8};
+  MeanOpConstModel m({TensorType_INT8, {1, 1, 2, 4}, -1.0, 1.0},
+                     {TensorType_INT8, {1, 2}, -5.0, 5.0}, {2}, {1, 3}, false);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2}));
+  EXPECT_THAT(
+      m.GetDequantizedOutput<int8_t>(),
+      ElementsAreArray(ArrayFloatNear({0.25, 0.65}, kQuantizedTolerance)));
 }
 
 TEST(ConstInt8MeanOpTest, QuantizedSameScale) {
@@ -428,6 +464,26 @@ TEST(ConstInt8MeanOpTest, QuantizedDifferentScale) {
   EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear(
                   {0.35, 0.325, 0.2, 0.35, 0.375, 0.325, 0.225, 0.45, 0.425},
+                  kQuantizedTolerance)));
+}
+
+TEST(ConstFloatMeanOpTest, KeepDims4DMeanLargeDepthInt8) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {
+      0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1, 0.1, 0.1, 0.1, 0.4, 0.2, 0.2,
+      0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3, 0.3, 0.1, 0.2,
+      0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+      0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7,
+      0.1, 0.1, 0.3, 0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 18}, -1.0, 1.0},
+                     {TensorType_INT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 18}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.5, 0.55, 0.25, 0.35, 0.45, 0.5, 0.25, 0.3, 0.2, 0.2, 0.1,
+                   0.15, 0.35, 0.3, 0.15, 0.2, 0.6, 0.65},
                   kQuantizedTolerance)));
 }
 
@@ -542,6 +598,16 @@ TEST(ConstFloatSumOpTest, Scalar) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), IsEmpty());
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({17.})));
+}
+
+TEST(ConstFloatSumOpTest, ScalarAxis) {
+  std::vector<float> data = {17., 21., 4.};
+  SumOpConstModel m({TensorType_FLOAT32, {3}}, {TensorType_FLOAT32, {1}}, {},
+                    {0}, true);
+  m.SetInput(data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
+  EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({42.})));
 }
 
 TEST(DynamicFloatSumOpTest, KeepDims) {

@@ -167,12 +167,12 @@ class SymbolicGradientBuilder {
 
   // A vector of output endpoints which represents backpropagated
   // gradients
-  typedef std::vector<NodeOut> BackpropedGradients;
+  typedef std::vector<NodeOut> BackproppedGradients;
 
   // backprops_ is a map from a node output to its accumulated
   // gradients.  When a node output has accumulated all its
   // gradients, we add a node which sums them up.
-  std::unordered_map<NodeOut, BackpropedGradients, NodeOutHash, NodeOutEq>
+  std::unordered_map<NodeOut, BackproppedGradients, NodeOutHash, NodeOutEq>
       backprops_;
 
   // pending[i] is count-down counter for i-th node's expected
@@ -254,30 +254,35 @@ void SymbolicGradientBuilder::InitBackprop() {
     backprops_.clear();
     std::unordered_set<Node*> visited;
     std::deque<Node*> queue;
-    for (const NodeOut& nout : x_node_outputs_) {
+    for (const NodeOut& nout : y_node_outputs_) {
       queue.push_back(nout.node);
       visited.insert(nout.node);
     }
 
     // Going forward to figure out which endpoints need backprop-ed.
     // A node's endpoints need to be backprop-ed only if one of the
-    // arg node can reach the node via data edges.
+    // return nodes can reach backwards to the node via data edges.
     while (!queue.empty()) {
       Node* n = queue.front();
       queue.pop_front();
       for (int i = 0; i < n->num_outputs(); ++i) {
         backprops_[{n, i}].clear();
       }
-      int num_expected_backprops = 0;
-      for (const Edge* e : n->out_edges()) {
+      for (const Edge* e : n->in_edges()) {
         if (e->IsControlEdge()) continue;
-        ++num_expected_backprops;
-        if (visited.find(e->dst()) == visited.end()) {
-          queue.push_back(e->dst());
-          visited.insert(e->dst());
+        pending_[e->src()->id()]++;
+        if (visited.find(e->src()) == visited.end()) {
+          queue.push_back(e->src());
+          visited.insert(e->src());
         }
       }
-      pending_[n->id()] = num_expected_backprops;
+    }
+
+    // Create entries in backprops_ for all x_node_outputs_, because they will
+    // not be added in above loop if they are not reverse reachable from
+    // y_node_outputs_.
+    for (const NodeOut& nout : x_node_outputs_) {
+      backprops_[{nout.node, nout.index}].clear();
     }
   }
 

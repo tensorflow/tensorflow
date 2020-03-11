@@ -74,7 +74,7 @@ GraphMgr::Item::~Item() {
   for (const auto& unit : this->units) {
     CHECK_NOTNULL(unit.device);
     if (!graph_mgr->skip_cost_models_) {
-      graph_mgr->cost_model_manager_.RemoveCostModelForGraph(unit.graph);
+      graph_mgr->cost_model_manager_.RemoveCostModelForGraph(unit.graph.get());
     }
     delete unit.root;
     unit.device->op_segment()->RemoveHold(this->session);
@@ -121,13 +121,11 @@ Status GraphMgr::DecorateAndPublishGraphForDebug(
 //
 // "executors" are filled with one executor per device if success and
 // the caller takes the ownership of returned executors.
-Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
-                          WorkerSession* session,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          int64 collective_graph_key,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          Item* item) {
+Status GraphMgr::InitItem(
+    const string& handle, const GraphDef& gdef, WorkerSession* session,
+    const GraphOptions& graph_options, const DebugOptions& debug_options,
+    const ConfigProto& config_proto, int64 collective_graph_key,
+    DistributedFunctionLibraryRuntime* cluster_flr, Item* item) {
   item->session = handle;
   item->collective_graph_key = collective_graph_key;
   item->lib_def.reset(
@@ -135,22 +133,28 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
 
   TF_RETURN_IF_ERROR(ValidateGraphDefForDevices(gdef));
 
-  if (gdef.versions().producer() >= 5) {
-    // Validate the graph: we assume that merging two valid graphs
-    // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *item->lib_def));
-  }
+  // We don't explicitly Validate the graph def because ConvertGraphDefToGraph
+  // does that below.
 
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
-      device_mgr_, worker_env_->env, gdef.versions().producer(),
-      item->lib_def.get(), graph_options.optimizer_options(),
-      worker_env_->compute_pool, cluster_flr));
+      device_mgr_, worker_env_->env, /*config=*/&config_proto,
+      gdef.versions().producer(), item->lib_def.get(),
+      graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
+      /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+      [this, session](const int64 step_id, const DeviceMgr*,
+                      Rendezvous** r) -> Status {
+        auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
+        TF_RETURN_IF_ERROR(remote_r->Initialize(session));
+        *r = remote_r;
+        return Status::OK();
+      }));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = true;
+  opts.validate_nodes = true;
   TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, gdef, &graph));
 
   // Splits "graph" into multiple subgraphs by device names.
@@ -179,14 +183,14 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
   }
 
   std::unordered_map<string, std::unique_ptr<Graph>> partition_graphs;
-  for (const auto& partition : partitions) {
+  for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(new Graph(OpRegistry::Global()));
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.
     device_opts.allow_internal_ops = true;
     device_opts.expect_device_spec = true;
-    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(device_opts, partition.second,
-                                              device_graph.get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+        device_opts, std::move(partition.second), device_graph.get()));
     partition_graphs.emplace(partition.first, std::move(device_graph));
   }
 
@@ -236,35 +240,29 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
     // Construct the root executor for the subgraph.
     params.device = unit->device;
     params.function_library = lib;
-    params.create_kernel = [handle, lib, opseg](const NodeDef& ndef,
-                                                OpKernel** kernel) {
-      // NOTE(mrry): We must not share function kernels (implemented
-      // using `CallOp`) between subgraphs, because `CallOp::handle_`
-      // is tied to a particular subgraph. Even if the function itself
-      // is stateful, the `CallOp` that invokes it is not.
-      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
-        return lib->CreateKernel(ndef, kernel);
-      }
-      auto create_fn = [lib, &ndef](OpKernel** kernel) {
-        return lib->CreateKernel(ndef, kernel);
-      };
-      // Kernels created for subgraph nodes need to be cached.  On
-      // cache miss, create_fn() is invoked to create a kernel based
-      // on the function library here + global op registry.
-      return opseg->FindOrCreate(handle, ndef.name(), kernel, create_fn);
-    };
+    params.create_kernel =
+        [handle, lib, opseg](const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+          // NOTE(mrry): We must not share function kernels (implemented
+          // using `CallOp`) between subgraphs, because `CallOp::handle_`
+          // is tied to a particular subgraph. Even if the function itself
+          // is stateful, the `CallOp` that invokes it is not.
+          if (!OpSegment::ShouldOwnKernel(lib, props->node_def.op())) {
+            return lib->CreateKernel(props, kernel);
+          }
+          auto create_fn = [lib, &props](OpKernel** kernel) {
+            return lib->CreateKernel(props, kernel);
+          };
+          // Kernels created for subgraph nodes need to be cached.  On
+          // cache miss, create_fn() is invoked to create a kernel based
+          // on the function library here + global op registry.
+          return opseg->FindOrCreate(handle, props->node_def.name(), kernel,
+                                     create_fn);
+        };
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string())) {
         delete kernel;
       }
-    };
-    params.rendezvous_factory = [this, session](const int64 step_id,
-                                                const DeviceMgr*,
-                                                Rendezvous** r) -> Status {
-      auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
-      TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-      *r = remote_r;
-      return Status::OK();
     };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
@@ -279,27 +277,24 @@ Status GraphMgr::InitItem(const string& handle, const GraphDef& gdef,
     TF_RETURN_IF_ERROR(
         EnsureMemoryTypes(DeviceType(unit->device->device_type()),
                           unit->device->name(), subgraph.get()));
-    unit->graph = subgraph.get();
+    unit->graph = std::move(subgraph);
     unit->build_cost_model = graph_options.build_cost_model();
     if (unit->build_cost_model > 0) {
       skip_cost_models_ = false;
     }
-    TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, std::move(subgraph), &unit->root));
+    TF_RETURN_IF_ERROR(NewLocalExecutor(params, *unit->graph, &unit->root));
   }
   return Status::OK();
 }
 
-Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
-                          WorkerSession* session,
-                          const GraphOptions& graph_options,
-                          const DebugOptions& debug_options,
-                          int64 collective_graph_key,
-                          DistributedFunctionLibraryRuntime* cluster_flr,
-                          string* graph_handle) {
+Status GraphMgr::Register(
+    const string& handle, const GraphDef& gdef, WorkerSession* session,
+    const GraphOptions& graph_options, const DebugOptions& debug_options,
+    const ConfigProto& config_proto, int64 collective_graph_key,
+    DistributedFunctionLibraryRuntime* cluster_flr, string* graph_handle) {
   Item* item = new Item;
   Status s = InitItem(handle, gdef, session, graph_options, debug_options,
-                      collective_graph_key, cluster_flr, item);
+                      config_proto, collective_graph_key, cluster_flr, item);
   if (!s.ok()) {
     item->Unref();
     return s;
@@ -308,7 +303,8 @@ Status GraphMgr::Register(const string& handle, const GraphDef& gdef,
   // Inserts one item into table_.
   {
     mutex_lock l(mu_);
-    *graph_handle = strings::Printf("%016llx", ++next_id_);
+    *graph_handle =
+        strings::Printf("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }
@@ -418,9 +414,9 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
   const uint64 start_time_usecs = Env::Default()->NowMicros();
-  string session_id_meta = strings::StrCat("RunGraph #id=", step_id, "#");
-  auto* activity = new profiler::TraceMe(absl::string_view(session_id_meta),
-                                         profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [step_id] { return absl::StrCat("RunGraph#id=", step_id, "#"); },
+      profiler::TraceMeLevel::kInfo);
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -434,7 +430,6 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (item == nullptr) {
     done(errors::Aborted("Graph handle is not found: ", handle));
-    delete activity;
     return;
   }
 
@@ -475,26 +470,30 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
 
   if (!s.ok()) {
     done(s);
-    delete activity;
     delete ce_handle;
     item->Unref();
     rendezvous->Unref();
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager, session,
-                         [item, rendezvous, ce_handle, done, start_time_usecs,
-                          input_size, activity](const Status& s) {
-                           done(s);
-                           metrics::RecordGraphInputTensors(input_size);
-                           metrics::UpdateGraphExecTime(
-                               Env::Default()->NowMicros() - start_time_usecs);
-                           rendezvous->Unref();
-                           item->Unref();
-                           delete activity;
-                           delete ce_handle;
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager, session,
+      [item, rendezvous, ce_handle, done, start_time_usecs, input_size,
+       step_id](const Status& s) {
+        profiler::TraceMe activity(
+            [step_id] {
+              return absl::StrCat("RunGraphDone#id=", step_id, "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        done(s);
+        metrics::RecordGraphInputTensors(input_size);
+        metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
+                                     start_time_usecs);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(
@@ -554,14 +553,14 @@ void GraphMgr::BuildCostModel(Item* item, StepStatsCollector* collector,
     std::unordered_map<string, const Graph*> device_to_graph;
     for (const auto& unit : item->units) {
       if (unit.build_cost_model > 0) {
-        device_to_graph[unit.device->name()] = unit.graph;
+        device_to_graph[unit.device->name()] = unit.graph.get();
       }
     }
     collector->BuildCostModel(&cost_model_manager_, device_to_graph);
 
     if (cost_graph != nullptr) {
       for (const auto& unit : item->units) {
-        cost_model_manager_.AddToCostGraphDef(unit.graph, cost_graph)
+        cost_model_manager_.AddToCostGraphDef(unit.graph.get(), cost_graph)
             .IgnoreError();
       }
     }

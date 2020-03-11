@@ -219,9 +219,10 @@ class CheckpointingTests(test.TestCase):
     on_create_model = MyModel()
     on_create_optimizer = adam.AdamOptimizer(
         0.001,
-        # Preserve beta1_power and beta2_power when appying gradients so we can
+        # Preserve beta1_power and beta2_power when applying gradients so we can
         # test that they've been restored correctly.
-        beta1=1.0, beta2=1.0)
+        beta1=1.0,
+        beta2=1.0)
     on_create_root = trackable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
@@ -758,10 +759,10 @@ class TemplateTests(test.TestCase):
 
     save_template = template.make_template("s1", _templated)
     v1_save, _, v2_save, manual_scope, manual_scope_v = save_template()
-    six.assertCountEqual(
-        self,
-        [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
-        trackable_utils.list_objects(save_template))
+    six.assertCountEqual(self, [
+        id(obj) for obj in
+        [v1_save, v2_save, manual_scope, manual_scope_v, save_template]
+    ], [id(obj) for obj in trackable_utils.list_objects(save_template)])
     manual_dep, = manual_scope._checkpoint_dependencies
     self.assertEqual("in_manual_scope", manual_dep.name)
     self.assertIs(manual_scope_v, manual_dep.ref)

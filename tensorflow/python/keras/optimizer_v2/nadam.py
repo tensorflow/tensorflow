@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -59,6 +60,8 @@ class Nadam(optimizer_v2.OptimizerV2):
   References
     See [Dozat, T., 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
   """
+
+  _HAS_ALL_REDUCE_SUM_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -109,7 +112,8 @@ class Nadam(optimizer_v2.OptimizerV2):
           shape=[],
           dtype=var_dtype,
           initializer='ones',
-          trainable=False)
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
       self._weights.append(self._m_cache)
     # Separate for-loops to respect the ordering of slot variables from v1.
     for var in var_list:
@@ -142,12 +146,11 @@ class Nadam(optimizer_v2.OptimizerV2):
     apply_state[(var_device, var_dtype)] = dict(
         lr_t=lr_t,
         neg_lr_t=-lr_t,
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
+        epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
         beta_1_t=beta_1_t,
         beta_2_t=beta_2_t,
         m_t=m_t,
         m_t_1=m_t_1,
-
         one_minus_beta_1_t=1 - beta_1_t,
         one_minus_beta_2_t=1 - beta_2_t,
         one_minus_m_t=1. - m_t,

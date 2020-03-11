@@ -20,10 +20,10 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -52,6 +53,26 @@ static bool IsOk(const Status& s) {
   if (s.ok()) return true;
   VLOG(2) << s.error_message();
   return false;
+}
+
+// Update node_def's device attribute (if any) to use a local device, that is
+// /job:localhost/replica:0/task:0/{DEVICE_TYPE}:{DEVICE_ID}.
+// This is because EvaluateOperation only has access to local devices but the
+// given node may carry a device assignment to a remote device. In that case,
+// evaluation would fail even if we have a device of same type locally. By
+// altering device assignment to a local one, we could successfully evaluate in
+// that case.
+void ForceUseLocalhostDevice(NodeDef* node_def) {
+  DeviceNameUtils::ParsedName parsed_name;
+
+  if (!DeviceNameUtils::ParseFullName(node_def->device(), &parsed_name)) return;
+
+  if (parsed_name.has_job) parsed_name.job = "localhost";
+  if (parsed_name.has_replica) parsed_name.replica = 0;
+  if (parsed_name.has_task) parsed_name.task = 0;
+
+  *node_def->mutable_device() =
+      DeviceNameUtils::ParsedNameToString(parsed_name);
 }
 
 mlir::LogicalResult EvaluateOperation(
@@ -76,11 +97,15 @@ mlir::LogicalResult EvaluateOperation(
   // Builds TF operation and sets all the attributes.
   std::string node_name = "unnamed";
   if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    node_name = attr.getValue();
+    node_name = std::string(attr.getValue());
   }
-  auto node_def_or = ConvertTFDialectOpToNodeDef(inst, node_name.c_str());
+  auto node_def_or = ConvertTFDialectOpToNodeDef(
+      inst, node_name.c_str(), /*ignore_unregistered_attrs=*/true);
   RETURN_FAILURE_IF_ERROR(node_def_or.status());
   const auto& node_def = node_def_or.ValueOrDie();
+
+  ForceUseLocalhostDevice(node_def.get());
+
   TFE_Op* op = TFE_NewOp(context, node_def->op().c_str(), status);
   RETURN_FAILURE_IF_ERROR(status);
   auto clean_op = MakeCleanup([op] { TFE_DeleteOp(op); });
@@ -97,7 +122,7 @@ mlir::LogicalResult EvaluateOperation(
   for (const auto operand : operands) {
     Tensor tensor;
     RETURN_FAILURE_IF_ERROR(ConvertToTensor(operand, &tensor));
-    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, status);
+    TF_Tensor* tf_tensor = TF_TensorFromTensor(tensor, &status->status);
     RETURN_FAILURE_IF_ERROR(status);
     auto clean_tensor =
         MakeCleanup([tf_tensor] { TF_DeleteTensor(tf_tensor); });

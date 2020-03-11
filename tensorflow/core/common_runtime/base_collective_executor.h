@@ -142,6 +142,10 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                                client_locality, done);
   }
 
+  void RunClosure(std::function<void()> closure) override {
+    remote_access_->RunClosure(std::move(closure));
+  }
+
   // If we need to enforce an ordering on any portion of collective
   // implementation, and the ordering is encoded via attribute on the collective
   // op, this function will block until all dependencies for this collective
@@ -150,7 +154,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   // Record that this collective has completed the portion of the implementation
   // that needs to be ordered wrt other collectives, to unblock any of its
   // dependent ops.
-  void Launched(const CollectiveParams& col_params) override;
+  void UnblockDependencies(const CollectiveParams& col_params) override;
 
  protected:
   const int64 step_id_;
@@ -161,14 +165,14 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   condition_variable launch_cv_;
   // collective instance key -> number of local devices for which NCCL ops have
   // been launched.
-  std::unordered_map<int32, int32> launched_ GUARDED_BY(launch_mu_);
+  std::unordered_map<int32, int32> launched_ TF_GUARDED_BY(launch_mu_);
 
  private:
   Status CreateCollective(const CollectiveParams& col_params,
                           CollectiveImplementationInterface** col_impl);
   // Check if all ops on which this collective depends on have launched.
   bool CheckDependencies(const CollectiveParams& col_params)
-      EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
 };
 
 }  // namespace tensorflow

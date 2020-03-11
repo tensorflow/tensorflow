@@ -166,7 +166,7 @@ void DoRoll(const OpKernelContext* context, const int64 num_elements,
   };
   // Shard
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-  // 15 - expiramentally determined with float and bool types
+  // 15 - experimentally determined with float and bool types
   const int cost_per_element = 15 * sizeof(T);  // rough estimate
   Shard(worker_threads->num_threads, worker_threads->workers, num_elements,
         cost_per_element, std::move(work));
@@ -210,11 +210,11 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
     out_ptr += start;
 
     // array of indices for each dimension
-    // indicies = [i, j, k, l, m, n]
-    gtl::InlinedVector<int, 4> indicies(num_dims);
+    // indices = [i, j, k, l, m, n]
+    gtl::InlinedVector<int, 4> indices(num_dims);
     // the offset needed to make all inner non-shifting dimensions become 0
     int64 remainder_offset = 0;
-    // initialize indicies
+    // initialize indices
     for (int i = 0; i < num_dims; i++) {
       // stride is the number of indices over in the flattened tensor
       // you need to skip in order to make it over to an adjacent element
@@ -222,7 +222,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
       const int64 stride = dim_range[i] / dim_size[i];
       const int shift = dim_size[i] - threshold[i];
       const int indx = (start / stride) % dim_size[i];
-      indicies[i] = indx;
+      indices[i] = indx;
       // calculate dimension index after the shift
       int out_indx = (indx + shift) % dim_size[i];
       if (i > isd) {
@@ -233,7 +233,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
       out_ptr += (out_indx - indx) * stride;
     }
     // set trailing zeroes for indices after the inner shifted dimension
-    for (int i = num_dims - 1; i > isd; i--) indicies[i] = 0;
+    for (int i = num_dims - 1; i > isd; i--) indices[i] = 0;
 
     // the number of indices in the isd dimension the next group will skip
     // to make it to the next threshold or end point
@@ -241,11 +241,11 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
     // the size of the next group
     int64 group_size = 0;
     // initialize isd_indx_skip and group_size
-    if (indicies[isd] < threshold[isd]) {
-      isd_indx_skip = threshold[isd] - indicies[isd];
+    if (indices[isd] < threshold[isd]) {
+      isd_indx_skip = threshold[isd] - indices[isd];
       group_size = isd_indx_skip * isd_stride + remainder_offset;
     } else {
-      isd_indx_skip = dim_size[isd] - indicies[isd];
+      isd_indx_skip = dim_size[isd] - indices[isd];
       group_size = isd_indx_skip * isd_stride + remainder_offset;
     }
 
@@ -265,13 +265,13 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
       // all dimensions to the left increment by 1 when a digit is carried
       // all dimensions to the right remain set to 0
       //            +1 +1 +1 +isd_indx_skip
-      // indicies = [i, j, k, l, 0, 0]
+      // indices = [i, j, k, l, 0, 0]
       //                      ^isd
       for (int j = isd; j >= 0; j--) {
         int inc = 1;
         if (j == isd) inc = isd_indx_skip;
-        const int indx = (indicies[j] + inc) % dim_size[j];
-        indicies[j] = indx;
+        const int indx = (indices[j] + inc) % dim_size[j];
+        indices[j] = indx;
         if (indx != 0) {
           if (indx == threshold[j]) {
             out_ptr -= dim_range[j];  // now wraps around
@@ -283,11 +283,11 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
       }
 
       // set isd_indx_skip and group_size for next iteration
-      if (indicies[isd] < threshold[isd]) {
-        isd_indx_skip = threshold[isd] - indicies[isd];
+      if (indices[isd] < threshold[isd]) {
+        isd_indx_skip = threshold[isd] - indices[isd];
         group_size = isd_indx_skip * isd_stride;
       } else {
-        isd_indx_skip = dim_size[isd] - indicies[isd];
+        isd_indx_skip = dim_size[isd] - indices[isd];
         group_size = isd_indx_skip * isd_stride;
       }
     }
@@ -296,7 +296,7 @@ void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
   auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
   const int64 ave_group_size = dim_range[isd] / 2;
   const int total_work = 2 * num_elements / std::max<int>(dim_range[isd], 1);
-  // 25000 - expiramentally determined with float and bool types
+  // 25000 - experimentally determined with float and bool types
   const int cost_per_group = 25000 * sizeof(T) * ave_group_size;
   Shard(worker_threads->num_threads, worker_threads->workers, total_work,
         cost_per_group, std::move(work));
@@ -360,7 +360,7 @@ struct Roll<CPUDevice, T> {
 TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_KERNEL(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_GPU)                \
@@ -400,7 +400,8 @@ TF_CALL_int64(REGISTER_KERNEL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 TF_CALL_complex64(REGISTER_KERNEL);
 TF_CALL_complex128(REGISTER_KERNEL);
+TF_CALL_uint32(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

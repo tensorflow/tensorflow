@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -466,8 +466,8 @@ Status GetFeedShapeAndTypeFromAttribute(const NodeDef& node,
 
   // All the node types handled here have their output datatype set in
   // either attribute 'dtype' or 'T'.
-  if (!GetNodeAttr(node, "dtype", type).ok() &&
-      !GetNodeAttr(node, "T", type).ok()) {
+  if (!TryGetNodeAttr(node, "dtype", type) &&
+      !TryGetNodeAttr(node, "T", type)) {
     return errors::InvalidArgument(
         "Could not determine output type for feed node: ", node.name(),
         " of type ", node.op());
@@ -610,12 +610,12 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   Placer placer(new_graph.get(), "", flib_def_.get(), device_set_,
-                /* default_device= */ nullptr,
+                /* default_local_device= */ nullptr,
                 session_options_ == nullptr ||
                     session_options_->config.allow_soft_placement(),
                 session_options_ != nullptr &&
                     session_options_->config.log_device_placement());
-  // TODO(mrry): Consider making the Placer cancelable.
+  // TODO(mrry): Consider making the Placer cancellable.
   TF_RETURN_IF_ERROR(placer.Run());
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -732,8 +732,9 @@ Status GraphExecutionState::OptimizeGraph(
     }
     grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
-    TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-        item, session_options_->config, cpu_device, &cluster, &new_graph));
+    TF_RETURN_IF_ERROR(
+        grappler::RunMetaOptimizer(std::move(item), session_options_->config,
+                                   cpu_device, &cluster, &new_graph));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's
@@ -757,8 +758,8 @@ Status GraphExecutionState::OptimizeGraph(
 
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
-    TF_RETURN_IF_ERROR(
-        ConvertGraphDefToGraph(opts, new_graph, optimized_graph->get()));
+    TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, std::move(new_graph),
+                                              optimized_graph->get()));
     // The graph conversion sets the requested device names but not the
     // assigned device names. However, since at this point the graph is placed
     // TF expects an assigned device name for every node. Therefore we copy
@@ -848,7 +849,8 @@ Status GraphExecutionState::BuildGraph(const BuildGraphOptions& options,
           for (const NodeDef& ndef : fdef->node_def()) {
             if (ndef.op() == "CollectiveReduce" ||
                 ndef.op() == "CollectiveBcastSend" ||
-                ndef.op() == "CollectiveBcastRecv") {
+                ndef.op() == "CollectiveBcastRecv" ||
+                ndef.op() == "CollectiveGather") {
               int32 instance_key;
               TF_RETURN_IF_ERROR(
                   GetNodeAttr(ndef, "instance_key", &instance_key));

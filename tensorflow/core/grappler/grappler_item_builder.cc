@@ -211,7 +211,12 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   // in order to get the correct session options and environment, and performing
   // the correct optimizations.
 
-  if (!cfg.apply_optimizations && !cfg.erase_noinline_attributes) {
+  // Return input as is if no graph-modifying config is set.
+  if (!cfg.apply_optimizations && !cfg.inline_functions &&
+      !cfg.erase_noinline_attributes) {
+    if (output_graph_def != &graph_def_arg) {
+      *output_graph_def = graph_def_arg;
+    }
     return Status::OK();
   }
 
@@ -239,7 +244,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       options, "/job:localhost/replica:0/task:0", &devices));
   Device* cpu_device = devices[0].get();
-  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(std::move(devices)));
+  auto dvc_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              graph_def.library());
   Env* env = Env::Default();
@@ -256,7 +261,7 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
 
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
+      new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env, &options.config,
                                         graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
   FunctionLibraryRuntime* flr = pflr->GetFLR(cpu_device->name());
@@ -267,8 +272,8 @@ Status RuntimeGraphOptimizer(const GraphDef& graph_def_arg,
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
 
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(
+      graph_ctor_opts, std::move(graph_def), graphptr.get()));
 
   // Optimize the graph.
   ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
@@ -474,22 +479,29 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       const CollectionDef& collection =
           meta_graph.collection_def().at("saved_model_assets");
       const auto& any_assets = collection.any_list().value();
-      for (const auto& any_asset : any_assets) {
-        AssetFileDef asset_file_def;
-        if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
-                 .ok()) {
-          LOG(ERROR) << "Failed to parse AssetFile.";
-          continue;
+      if (!any_assets.empty()) {
+#ifndef TENSORFLOW_LITE_PROTOS
+        for (const auto& any_asset : any_assets) {
+          AssetFileDef asset_file_def;
+          if (!ParseAny(any_asset, &asset_file_def, "tensorflow.AssetFileDef")
+                   .ok()) {
+            LOG(ERROR) << "Failed to parse AssetFile.";
+            continue;
+          }
+          string asset_filepath = io::JoinPath(cfg.assets_directory_override,
+                                               asset_file_def.filename());
+          if (!FilesExist({asset_filepath}, nullptr)) {
+            LOG(ERROR) << "Can't access one or more of the asset files "
+                       << asset_filepath << ", skipping this input";
+            return nullptr;
+          }
+          asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
+              asset_filepath;
         }
-        string asset_filepath = io::JoinPath(cfg.assets_directory_override,
-                                             asset_file_def.filename());
-        if (!FilesExist({asset_filepath}, nullptr)) {
-          LOG(ERROR) << "Can't access one or more of the asset files "
-                     << asset_filepath << ", skipping this input";
-          return nullptr;
-        }
-        asset_node_to_value[NodeName(asset_file_def.tensor_info().name())] =
-            asset_filepath;
+#else
+        LOG(ERROR) << "Can't parse AssetFileDef on mobile.";
+        return nullptr;
+#endif  // TENSORFLOW_LITE_PROTOS
       }
     }
   } else if (meta_graph.collection_def().count("asset_filepaths") > 0) {

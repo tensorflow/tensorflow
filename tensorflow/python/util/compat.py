@@ -12,14 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functions for Python 2 vs. 3 compatibility.
+"""Compatibility functions.
 
-## Conversion routines
-In addition to the functions below, `as_str` converts an object to a `str`.
+The `tf.compat` module contains two sets of compatibility functions.
+
+## Tensorflow 1.x and 2.x APIs
+
+The `compat.v1` and `compat.v2` submodules provide a complete copy of both the
+`v1` and `v2` APIs for backwards and forwards compatibility across TensorFlow
+versions 1.x and 2.x. See the
+[migration guide](https://www.tensorflow.org/guide/migrate) for details.
+
+## Utilities for writing compatible code
+
+Aside from the `compat.v1` and `compat.v2` submodules, `tf.compat` also contains
+a set of helper functions for writing code that works in both:
+
+* TensorFlow 1.x and 2.x
+* Python 2 and 3
 
 
-## Types
-The compatibility module also provides the following types:
+## Type collections
+
+The compatibility module also provides the following aliases for common
+sets of python types:
 
 * `bytes_or_text_types`
 * `complex_types`
@@ -37,6 +53,12 @@ import numpy as _np
 import six as _six
 
 from tensorflow.python.util.tf_export import tf_export
+
+try:
+  # This import only works on python 3.3 and above.
+  import collections.abc as collections_abc  # pylint: disable=unused-import
+except ImportError:
+  import collections as collections_abc  # pylint: disable=unused-import
 
 
 def as_bytes(bytes_or_text, encoding='utf-8'):
@@ -89,15 +111,15 @@ def as_text(bytes_or_text, encoding='utf-8'):
     raise TypeError('Expected binary or unicode string, got %r' % bytes_or_text)
 
 
-# Convert an object to a `str` in both Python 2 and 3.
-if _six.PY2:
-  as_str = as_bytes
-  tf_export('compat.as_bytes', 'compat.as_str')(as_bytes)
-  tf_export('compat.as_text')(as_text)
-else:
-  as_str = as_text
-  tf_export('compat.as_bytes')(as_bytes)
-  tf_export('compat.as_text', 'compat.as_str')(as_text)
+def as_str(bytes_or_text, encoding='utf-8'):
+  if _six.PY2:
+    return as_bytes(bytes_or_text, encoding)
+  else:
+    return as_text(bytes_or_text, encoding)
+
+tf_export('compat.as_text')(as_text)
+tf_export('compat.as_bytes')(as_bytes)
+tf_export('compat.as_str')(as_str)
 
 
 @tf_export('compat.as_str_any')
@@ -137,18 +159,18 @@ def path_to_str(path):
     `os.PathLike` object
 
   Examples:
-  ```python3
-  >>> tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
+  ```python
+  $ tf.compat.path_to_str('C:\XYZ\tensorflow\./.././tensorflow')
   'C:\XYZ\tensorflow\./.././tensorflow' # Windows OS
-  >>> tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
+  $ tf.compat.path_to_str(Path('C:\XYZ\tensorflow\./.././tensorflow'))
   'C:\XYZ\tensorflow\..\tensorflow' # Windows OS
-  >>> tf.compat.path_to_str(Path('./corpus'))
+  $ tf.compat.path_to_str(Path('./corpus'))
   'corpus' # Linux OS
-  >>> tf.compat.path_to_str('./.././Corpus')
+  $ tf.compat.path_to_str('./.././Corpus')
   './.././Corpus' # Linux OS
-  >>> tf.compat.path_to_str(Path('./.././Corpus'))
+  $ tf.compat.path_to_str(Path('./.././Corpus'))
   '../Corpus' # Linux OS
-  >>> tf.compat.path_to_str(Path('./..////../'))
+  $ tf.compat.path_to_str(Path('./..////../'))
   '../..' # Linux OS
 
   ```

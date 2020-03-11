@@ -113,11 +113,10 @@ __global__ void ResizeBilinearKernel_faster(
 }
 
 template <typename T>
-__global__ void ResizeBilinearKernel(const int32 nthreads, const T* images,
-                                     float height_scale, float width_scale,
-                                     int batch, int in_height, int in_width,
-                                     int channels, int out_height,
-                                     int out_width, float* output) {
+__global__ void ResizeBilinearKernel(
+    const int32 nthreads, const T* __restrict__ images, float height_scale,
+    float width_scale, int batch, int in_height, int in_width, int channels,
+    int out_height, int out_width, float* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = c + channels * (x + out_width * (y + out_height * b))
     int idx = out_idx;
@@ -165,10 +164,13 @@ __global__ void ResizeBilinearKernel(const int32 nthreads, const T* images,
 }
 
 template <typename T>
-__global__ void ResizeBilinearGradKernel(
-    const int32 nthreads, const float* input_grad, float height_scale,
-    float width_scale, int batch, int original_height, int original_width,
-    int channels, int resized_height, int resized_width, T* output_grad) {
+__global__ void ResizeBilinearGradKernel(const int32 nthreads,
+                                         const float* __restrict__ input_grad,
+                                         float height_scale, float width_scale,
+                                         int batch, int original_height,
+                                         int original_width, int channels,
+                                         int resized_height, int resized_width,
+                                         T* __restrict__ output_grad) {
   GPU_1D_KERNEL_LOOP(in_idx, nthreads) {
     // in_idx = c + channels * (x + resized_width * (y + resized_height * b))
     int idx = in_idx;
@@ -227,12 +229,10 @@ __global__ void ResizeBilinearGradKernel(
 }
 
 template <typename T>
-__global__ void LegacyResizeBilinearKernel(const int32 nthreads,
-                                           const T* images, float height_scale,
-                                           float width_scale, int batch,
-                                           int in_height, int in_width,
-                                           int channels, int out_height,
-                                           int out_width, float* output) {
+__global__ void LegacyResizeBilinearKernel(
+    const int32 nthreads, const T* __restrict__ images, float height_scale,
+    float width_scale, int batch, int in_height, int in_width, int channels,
+    int out_height, int out_width, float* __restrict__ output) {
   GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = c + channels * (x + out_width * (y + out_height * b))
     int idx = out_idx;
@@ -280,9 +280,10 @@ __global__ void LegacyResizeBilinearKernel(const int32 nthreads,
 
 template <typename T>
 __global__ void LegacyResizeBilinearGradKernel(
-    const int32 nthreads, const float* input_grad, float height_scale,
-    float width_scale, int batch, int original_height, int original_width,
-    int channels, int resized_height, int resized_width, T* output_grad) {
+    const int32 nthreads, const float* __restrict__ input_grad,
+    float height_scale, float width_scale, int batch, int original_height,
+    int original_width, int channels, int resized_height, int resized_width,
+    T* __restrict__ output_grad) {
   GPU_1D_KERNEL_LOOP(in_idx, nthreads) {
     // in_idx = c + channels * (x + resized_width * (y + resized_height * b))
     int idx = in_idx;

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
 #include "tensorflow/compiler/xrt/xrt_memory_manager.h"
+#include "tensorflow/compiler/xrt/xrt_metrics.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/compiler/xrt/xrt_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/timed.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
@@ -248,6 +250,7 @@ void XRTExecuteOp::ComputeAsync(OpKernelContext* context, DoneCallback done) {
 
 Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));
@@ -260,23 +263,20 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTExecutionConfig config_proto;
   TF_RET_CHECK(
-      config_proto.ParseFromString(execution_config.scalar<string>()()));
+      ParseFromTString(execution_config.scalar<tstring>()(), &config_proto));
 
   int core_index_in_replica = config_proto.core_index_in_replica();
   TF_RET_CHECK(core_index_in_replica == 0);
   bool release_inputs = config_proto.release_input_handles();
   bool release_compilation = config_proto.release_compilation_handle();
 
-  XRTCompilationCache* cache;
-  TF_RETURN_IF_ERROR(rm->Lookup<XRTCompilationCache>(
-      rm->default_container(), kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
-
+  TF_ASSIGN_OR_RETURN(
+      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
   TF_RETURN_IF_ERROR(
-      XRTGenericDeviceAccessor::InitScopedRef(context, 0, &device_ref));
+      XRTGenericDeviceAccessor::InitScopedRef(context, &device_ref));
 
   int rng_seed = config_proto.rng_seed();
   if (rng_seed == 0) {
@@ -336,6 +336,7 @@ void XRTExecuteChainedOp::ComputeAsync(OpKernelContext* context,
 
 Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   VLOG(1) << "XRTExecuteChainedOp::Compute";
+  auto timed = monitoring::MakeTimed(xrt_metrics::GetExecuteChainedCell());
   ResourceMgr* rm;
   TF_RETURN_IF_ERROR(
       XRTGenericDeviceAccessor::GetResourceManager(context, &rm));
@@ -343,23 +344,20 @@ Status XRTExecuteChainedOp::DoWork(OpKernelContext* context) {
   const Tensor& execution_plan = context->input(0);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_plan.shape()));
   xrt::XRTChainedExecutePlan plan;
-  TF_RET_CHECK(plan.ParseFromString(execution_plan.scalar<string>()()));
+  TF_RET_CHECK(ParseFromTString(execution_plan.scalar<tstring>()(), &plan));
 
   const Tensor& execution_config = context->input(1);
   TF_RET_CHECK(TensorShapeUtils::IsScalar(execution_config.shape()));
   xrt::XRTChainedExecuteConfig config;
-  TF_RET_CHECK(config.ParseFromString(execution_config.scalar<string>()()));
+  TF_RET_CHECK(ParseFromTString(execution_config.scalar<tstring>()(), &config));
 
-  XRTCompilationCache* cache;
-  TF_RETURN_IF_ERROR(rm->Lookup<XRTCompilationCache>(
-      rm->default_container(), kXRTCompilationCacheResourceName, &cache));
-  core::ScopedUnref cache_unref(cache);
-
+  TF_ASSIGN_OR_RETURN(
+      auto cache, GetOrCreateCompilationCache(rm, /*max_number_of_entries=*/0));
   // We are guaranteed that the underlying device object won't be deleted out
   // from under us, while the ScopedRef is live.
   class XRTGenericDeviceAccessor::ScopedRef device_ref;
   TF_RETURN_IF_ERROR(
-      XRTGenericDeviceAccessor::InitScopedRef(context, 0, &device_ref));
+      XRTGenericDeviceAccessor::InitScopedRef(context, &device_ref));
 
   int rng_seed = config.rng_seed();
   if (rng_seed == 0) {

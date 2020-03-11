@@ -264,7 +264,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride1x1(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 std::string GetKernelDepthWiseConv3x3Stride2() {
@@ -459,7 +459,7 @@ static std::vector<uint8_t> GetUniformBufferDepthWiseConv3x3Stride2(
       0,  // dummy, for alignment
       0,  // dummy, for alignment
   };
-  return VectorToUint8Vector(uniform_params);
+  return GetByteBuffer(uniform_params);
 }
 
 }  // namespace
@@ -480,7 +480,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
     struct uniforms {
       int4 stride;
       int4 padding;
-      int4 dillation;
+      int4 dilation;
       int4 size;
       int4 channel_multiplier;
     };
@@ -499,7 +499,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
 
       for(int ky = 0; ky < kernel_y; ++ky) {
         for(int kx = 0; kx < kernel_x; ++kx) {
-          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dillation.xy -
+          int2 coords  = int2(gid.xy) * params.stride.xy + int2(kx, ky) * params.dilation.xy -
             params.padding.xy;
           const bool outside = coords.x < 0 || coords.y < 0 ||
             coords.x >= params.size.x || coords.y >= params.size.y;
@@ -566,16 +566,14 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
         return out_shape;
       }};
 
-  std::vector<float> filters_reordered = ConvertToPIOHW4(attr.weights);
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(attr.bias.data)
-                    : VectorFloatToHalf(attr.bias.data);
+  const int output_channels_count = attr.weights.shape.i * attr.weights.shape.o;
   desc->immutable_buffers = {
-      {"device FLT4* const filters", filters},
-      {"device FLT4* const biases", biases},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(ConvertToPIOHW4(attr.weights),
+                              options.storage_precision)},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(attr.bias.data, options.storage_precision,
+                                     output_channels_count)},
   };
 
   desc->uniform_buffers = {
@@ -605,7 +603,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
              0,
              0,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -644,12 +642,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride1x1(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {
@@ -711,12 +706,9 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride2(
 
   // For this operation we keep weights and biases in one buffer
   auto weights_reordered = ReorderWeightsDepthWiseConv3x3Stride2(attr);
-  auto weights =
-      options.storage_precision == metal::RuntimeOptions::Precision::FP32
-          ? VectorToUint8Vector(weights_reordered)
-          : VectorFloatToHalf(weights_reordered);
   desc->immutable_buffers = {
-      {"device FLT4* const filters", weights},
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
   };
 
   desc->uniform_buffers = {

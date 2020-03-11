@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -27,8 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -37,7 +37,6 @@ namespace grappler {
 
 namespace {
 
-using ::absl::StrCat;
 using ::tensorflow::strings::HumanReadableNumBytes;
 
 constexpr char kAttrInputSrc[] = "input_source_";
@@ -92,20 +91,21 @@ struct RecvNodeDescriptorEqual {
 void UpdateDeviceAnnotationState(const NodeDef* node,
                                  const NodeState& node_state,
                                  DeviceState* device) {
-  bool annotated = node->attr().count(kExecutionCount) > 0;
-  int64 execution_count = annotated ? node->attr().at(kExecutionCount).i() : 1;
+  if (node->attr().count(kOutputShapes) == 0) return;
 
-  if (annotated) {
-    auto& shape_annotation_stats = device->shape_annotation_stats;
-    shape_annotation_stats.num_ops_annotated += 1;
-    shape_annotation_stats.num_ops_executed += execution_count;
-    shape_annotation_stats.num_ops_executed_more_than_once +=
-        execution_count > 1 ? 1 : 0;
-    shape_annotation_stats.num_ops_with_incompatible_shapes +=
-        node_state.shape_incompatible ? 1 : 0;
-    shape_annotation_stats.num_ops_with_dynamic_shapes +=
-        (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
-  }
+  int64 execution_count = node->attr().count(kExecutionCount) == 0
+                              ? 1
+                              : node->attr().at(kExecutionCount).i();
+
+  auto& shape_annotation_stats = device->shape_annotation_stats;
+  shape_annotation_stats.num_ops_annotated += 1;
+  shape_annotation_stats.num_ops_executed += execution_count;
+  shape_annotation_stats.num_ops_executed_more_than_once +=
+      execution_count > 1 ? 1 : 0;
+  shape_annotation_stats.num_ops_with_incompatible_shapes +=
+      node_state.shape_incompatible ? 1 : 0;
+  shape_annotation_stats.num_ops_with_dynamic_shapes +=
+      (execution_count > 1 && node->attr().count(kOutputSame) == 0) ? 1 : 0;
 }
 
 }  // namespace
@@ -183,17 +183,23 @@ void HeapReadyManager::DrainWaitingQueue() {
   waiting_queue_.clear();
 }
 
+bool FirstReadyCmp(
+    const std::unordered_map<const NodeDef*, NodeState>* node_map,
+    const NodeDef* a, const NodeDef* b) {
+  if (node_map->at(a).time_ready == node_map->at(b).time_ready) {
+    // Use Node name as tie-breaker for deterministic node scheduling.
+    return a->name().compare(b->name()) > 0;
+  } else {
+    // Note: we need a node with minimum time_ready, not maximum; hence, using
+    // a > b for comparison function.
+    return node_map->at(a).time_ready > node_map->at(b).time_ready;
+  }
+}
+
 std::function<bool(const NodeDef*, const NodeDef*)>
 FirstReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    if (node_map_->at(a).time_ready == node_map_->at(b).time_ready) {
-      // Use Node name as tie-breaker for deterministic node scheduling.
-      return a->name().compare(b->name()) > 0;
-    } else {
-      // Note: we need a node with minimum time_ready, not maximum; hence, using
-      // a > b for comparison function.
-      return node_map_->at(a).time_ready > node_map_->at(b).time_ready;
-    }
+    return FirstReadyCmp(node_map_, a, b);
   };
   return greater;
 }
@@ -201,22 +207,27 @@ FirstReadyManager::Greater() {
 std::function<bool(const NodeDef*, const NodeDef*)>
 PriorityReadyManager::Greater() {
   auto greater = [this](const NodeDef* a, const NodeDef* b) -> bool {
-    return node_priority_.at(a->name()) > node_priority_.at(b->name());
+    auto pri_a = node_priority_.at(a->name());
+    auto pri_b = node_priority_.at(b->name());
+    if (pri_a == pri_b) {
+      // Fallback to default (FirstReady) behaviour.
+      return FirstReadyCmp(node_map_, a, b);
+    }
+    return pri_a > pri_b;
   };
   return greater;
 }
 
+void PriorityReadyManager::AddNode(const NodeDef* node) {
+  if (node_priority_.count(node->name()) == 0) {
+    VLOG(3) << "Priority of node " << node->name() << " not found.";
+    node_priority_[node->name()] = 0;
+  }
+  HeapReadyManager::AddNode(node);
+}
+
 Status PriorityReadyManager::SetPriority(
     const std::unordered_map<string, int>& node_priority) {
-  // Checks each node has a unique priority.
-  std::unordered_set<int> priorities;
-  for (const auto& it : node_priority_) {
-    if (priorities.find(it.second) != priorities.end()) {
-      return errors::InvalidArgument("Non-unique priority found");
-    }
-    priorities.insert(it.second);
-  }
-
   node_priority_ = node_priority;
   return Status::OK();
 }
@@ -251,7 +262,7 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
   // FirstReady for _Send and _Recv (separately),
   // Globally (among the LIFO-selected ops from each device and _Send and
   // _Recv) FirstReady,
-  // Priorty order: _Send, _Recv, and then the rest, if time_ready is equal.
+  // Priority order: _Send, _Recv, and then the rest, if time_ready is equal.
   std::vector<std::pair<const NodeDef*, Costs::Duration>> candidates;
   for (auto& ops_lifo : ops_lifo_map_) {
     if (!ops_lifo.second.Empty()) {
@@ -283,7 +294,7 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
             // Both are normal ops; use node name as tie breaker.
             return a.first->name().compare(b.first->name()) < 0;
           } else {
-            // Priortize by op type: _Send, _Recv, and normap ops.
+            // Prioritize by op type: _Send, _Recv, and normap ops.
             return a_score > b_score;
           }
         } else {
@@ -395,23 +406,18 @@ Status VirtualScheduler::Init(const GrapplerItem* item) {
 
   // Get the nodes that would run to output fetch_nodes.
   bool ill_formed = false;
+  std::unordered_map<string, const NodeDef*> name_to_node;
   const std::vector<const NodeDef*> fetch_fanin_nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes, &ill_formed);
+      ComputeTransitiveFanin(graph, fetch_nodes, &name_to_node, &ill_formed);
   if (ill_formed) {
     return errors::InvalidArgument(
         "Ill formed graph or invalid set of fetch nodes specified");
   }
 
-  // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
-  // ComputeTransitiveFanin().
   // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
   // from the fetch nodes are scheduled. So the scheduled nodes should be
   // exactly the same as those executed for real. One possible discrepancy could
   // be the control flow nodes, where tf only executes one path.
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : fetch_fanin_nodes) {
-    name_to_node[node->name()] = node;
-  }
 
   // Traverses the graph to record _Send nodes.
   // TODO(dyoon): Instead of identifying _Send node here manually, add _Send
@@ -599,15 +605,15 @@ string VirtualScheduler::DeviceName(const NodeDef* node) const {
 string VirtualScheduler::SanitizedDeviceName(const NodeDef* node) const {
   // Replace the ":" characters that may be present in the device name with "_".
   // This makes it possible to then use the resulting string in a node name.
-  return str_util::StringReplace(placer_->get_canonical_device_name(*node), ":",
-                                 "_", true);
+  return absl::StrReplaceAll(placer_->get_canonical_device_name(*node),
+                             {{":", "_"}});
 }
 
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
   CHECK(!initialized_) << "ChannelDeviceName is called after Init().";
-  return StrCat(kChannelDevice, "_from_", SanitizedDeviceName(from), "_to_",
-                SanitizedDeviceName(to));
+  return absl::StrCat(kChannelDevice, "_from_", SanitizedDeviceName(from),
+                      "_to_", SanitizedDeviceName(to));
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
@@ -629,9 +635,9 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
   auto input_node_port_num = NodePosition(input_name);
   string src_name;
   if (input_node_port_num >= 0) {
-    src_name = StrCat(from->name(), "_", input_node_port_num);
+    src_name = absl::StrCat(from->name(), "_", input_node_port_num);
   } else {
-    src_name = StrCat(from->name(), "_minus1");
+    src_name = absl::StrCat(from->name(), "_minus1");
   }
 
   // _Send op.
@@ -819,8 +825,10 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
                                    ? 1
                                    : node->attr().at(kExecutionCount).i();
 
-  Costs total_node_costs =
-      MultiplyCosts(node_costs, node_state.execution_count);
+  node_state.node_costs = node_costs;
+  // TotalNodeCosts() Should be called after node_costs and execution_count.
+  Costs total_node_costs = node_state.TotalNodeCosts();
+
   graph_costs_ = CombineCosts(graph_costs_, total_node_costs);
   const string& op_name = node->op();
 
@@ -958,11 +966,10 @@ Costs VirtualScheduler::Summary() const {
         op_cost_pair.second.intermediate_memory_time.count();
     const bool is_op_cost_accurate = !op_cost_pair.second.inaccurate;
     if (cost) {  // Skip printing out zero-cost ops.
-      VLOG(1) << strings::Printf(
-          " + %30s : %c %10lld / %10lld / %10lld / %10lld", op.c_str(),
-          (is_op_cost_accurate ? ' ' : '~'), static_cast<int64>(cost),
-          static_cast<int64>(compute_cost), static_cast<int64>(memory_cost),
-          static_cast<int64>(intermediate_memory_cost));
+      VLOG(1) << absl::StrFormat(" + %30s : %c %10d / %10d / %10d / %10d", op,
+                                 (is_op_cost_accurate ? ' ' : '~'), cost,
+                                 compute_cost, memory_cost,
+                                 intermediate_memory_cost);
     }
   }
 
@@ -982,7 +989,7 @@ Costs VirtualScheduler::Summary() const {
     std::map<string, int64> op_to_memory;
     // First profile only persistent memory usage.
     int64 persistent_memory_usage = 0;
-    std::set<string> persisent_ops;
+    std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
@@ -990,7 +997,7 @@ Costs VirtualScheduler::Summary() const {
           CalculateOutputSize(node_map_.at(node).output_properties, port);
       persistent_memory_usage += output_size;
       op_to_memory[node->op()] += output_size;
-      persisent_ops.insert(node->op());
+      persistent_ops.insert(node->op());
     }
     int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
@@ -1063,16 +1070,13 @@ Costs VirtualScheduler::Summary() const {
                                : 0.0;
       if (cost || mem_usage_percent > 1.0) {
         // Print out only non-zero cost ops or ops with > 1% memory usage.
-        VLOG(1) << strings::Printf(
-                       " + %30s : %c %10lld / %10lld / %10lld / %10lld",
-                       op.c_str(), (is_op_cost_accurate ? ' ' : '~'),
-                       static_cast<int64>(cost),
-                       static_cast<int64>(compute_cost),
-                       static_cast<int64>(memory_cost),
-                       static_cast<int64>(intermediate_memory_cost))
+        VLOG(1) << absl::StrFormat(
+                       " + %30s : %c %10d / %10d / %10d / %10d", op.c_str(),
+                       (is_op_cost_accurate ? ' ' : '~'), cost, compute_cost,
+                       memory_cost, intermediate_memory_cost)
                 << " (" << HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
-                << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
+                << (persistent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }
 
@@ -1140,8 +1144,23 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
         tensor_descr->mutable_allocation_description()->set_allocated_bytes(
             tensor_size);
       }
-      node_stats->set_timeline_label(node_def->op());
+      if (node_def->op() != "HloGenericOp") {
+        node_stats->set_timeline_label(node_def->op());
+      } else {
+        // For HloGenericOp, display hlo_opcode as timeline label.
+        string timeline_label;
+        if (node_def->attr().count("hlo_opcode") > 0) {
+          absl::StrAppend(&timeline_label,
+                          node_def->attr().at("hlo_opcode").s());
+        }
+        if (node_def->attr().count("_hlo_metadata_op_type") > 0) {
+          absl::StrAppend(&timeline_label, "/",
+                          node_def->attr().at("_hlo_metadata_op_type").s());
+        }
+        node_stats->set_timeline_label(timeline_label);
+      }
       node_stats->set_node_name(node_def->name());
+      // Timestamps in microseconds (can be used by timeline_server).
       node_stats->set_op_start_rel_micros(0);
       node_stats->set_all_start_micros(
           nodestate.time_scheduled.asMicroSeconds().count());
@@ -1151,6 +1170,14 @@ void VirtualScheduler::GenerateRunMetadata(RunMetadata* metadata) {
       node_stats->set_all_end_rel_micros(
           nodestate.time_finished.asMicroSeconds().count() -
           nodestate.time_scheduled.asMicroSeconds().count());
+      // Timestamps in nanoseconds (can be used by xprof trace).
+      node_stats->set_op_start_rel_nanos(0);
+      node_stats->set_all_start_nanos(nodestate.time_scheduled.count());
+      node_stats->set_op_end_rel_nanos(nodestate.time_finished.count() -
+                                       nodestate.time_scheduled.count());
+      node_stats->set_all_end_rel_nanos(nodestate.time_finished.count() -
+                                        nodestate.time_scheduled.count());
+
       auto* mem_stats = node_stats->mutable_memory_stats();
       // VirtualScheduler does not specify scratch pad memory usage.
       mem_stats->set_temp_memory_size(0);

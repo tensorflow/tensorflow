@@ -33,7 +33,7 @@ def _load_random_data(num_train_and_test):
 
 def load_reshaped_data(use_fashion_mnist=False, fake_tiny_data=False):
   """Returns MNIST or Fashion MNIST or fake train and test data."""
-  load = ((lambda: _load_random_data([16, 128])) if fake_tiny_data else
+  load = ((lambda: _load_random_data([128, 128])) if fake_tiny_data else
           tf.keras.datasets.fashion_mnist.load_data if use_fashion_mnist else
           tf.keras.datasets.mnist.load_data)
   (x_train, y_train), (x_test, y_test) = load()

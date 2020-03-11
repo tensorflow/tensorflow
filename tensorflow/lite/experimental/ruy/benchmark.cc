@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 
@@ -59,40 +60,67 @@ std::vector<std::unique_ptr<TestResult<DstScalar>>> BenchmarkRCC(
   return std::move(test_set.results);
 }
 
+std::vector<int> ParseCommaSeparatedInts(
+    const std::string& comma_separated_ints) {
+  std::vector<int> result;
+  for (std::size_t pos = 0; pos < comma_separated_ints.size();) {
+    std::size_t delim_pos = comma_separated_ints.find(',', pos);
+    if (delim_pos == std::string::npos) {
+      delim_pos = comma_separated_ints.size();
+    }
+    result.push_back(
+        std::stoi(comma_separated_ints.substr(pos, delim_pos - pos)));
+    pos = delim_pos + 1;
+  }
+  return result;
+}
+
 void Benchmark() {
   const bool symm_lhs = std::is_floating_point<LhsScalar>::value ||
                         GetBoolEnvVarOrFalse("SYMM_LHS");
   const bool symm_rhs = std::is_floating_point<RhsScalar>::value ||
                         GetBoolEnvVarOrFalse("SYMM_RHS");
-  const bool benchmark_cubic = GetBoolEnvVarOrFalse("RUY_BENCHMARK_CUBIC");
+  const bool benchmark_cubic = GetBoolEnvVarOrFalse("RUY_BENCHMARK_CUBIC") ||
+                               GetBoolEnvVarOrFalse("RUY_BENCHMARK_CUBIC_LIST");
+  const int explicit_rows = GetIntEnvVarOrZero("ROWS");
+  const int explicit_cols = GetIntEnvVarOrZero("COLS");
+  const int explicit_depth = GetIntEnvVarOrZero("DEPTH");
+
   std::vector<BenchmarkShape> shapes;
+
   if (benchmark_cubic) {
-#ifdef _WIN32
-    _putenv_s("QUICK_BENCHMARK", "1");
-#else
-    setenv("QUICK_BENCHMARK", "1", 0);
-#endif
     std::vector<int> sizes;
-    for (int i = 16; i <= 4096; i *= 2) {
-      sizes.push_back(i);
-      if (i < 4096) {
-        sizes.push_back(i * 3 / 2);
+    const char* benchmark_cubic_list_env = getenv("RUY_BENCHMARK_CUBIC_LIST");
+    if (benchmark_cubic_list_env) {
+      sizes = ParseCommaSeparatedInts(benchmark_cubic_list_env);
+    } else {
+      // Often 8 is used for this multiplier, but to check teeny sizes one can
+      // use 1.
+      static constexpr int cubic_size_multiplier = 8;
+      for (int i = 2 * cubic_size_multiplier;
+           i <= (512 * cubic_size_multiplier); i *= 2) {
+        sizes.push_back(i);
+        if (i < (512 * cubic_size_multiplier)) {
+          sizes.push_back(i * 3 / 2);
+        }
       }
     }
     for (int i : sizes) {
       BenchmarkShape shape;
-      shape.rows = i;
-      shape.cols = i;
-      shape.depth = i;
+      // Even in cubic mode, one may still override an individual dimension
+      // to allow testing a batch of rectangular sizes.
+      shape.rows = explicit_rows ? explicit_rows : i;
+      shape.cols = explicit_cols ? explicit_cols : i;
+      shape.depth = explicit_depth ? explicit_depth : i;
       shape.symm_lhs = symm_lhs;
       shape.symm_rhs = symm_rhs;
       shapes.push_back(shape);
     }
   } else {
     BenchmarkShape shape;
-    shape.rows = GetIntEnvVarOrZero("ROWS");
-    shape.cols = GetIntEnvVarOrZero("COLS");
-    shape.depth = GetIntEnvVarOrZero("DEPTH");
+    shape.rows = explicit_rows;
+    shape.cols = explicit_cols;
+    shape.depth = explicit_depth;
     if (!shape.rows || !shape.depth || !shape.cols) {
       fprintf(stderr,
               "Please specify positive sizes with these env vars: ROWS, DEPTH, "
@@ -111,7 +139,16 @@ void Benchmark() {
       if (benchmark_cubic) {
         printf("size");
         for (const auto& result : results) {
-          printf(",%s", PathName(*result).c_str());
+          if (results.size() > 1) {
+            printf(",%s:Gop/s", PathName(*result).c_str());
+          } else {
+            printf(",Gop/s");
+          }
+          if (GetBoolEnvVarOrFalse("RUY_BENCHMARK_PMU")) {
+            printf(
+                ",l1_refill,l2_refill,l3_refill,l1tlb_refill,l2tlb_refill,"
+                "mispred,frontend_stall,backend_stall");
+          }
         }
         printf("\n");
       } else {

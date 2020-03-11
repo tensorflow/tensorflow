@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -132,7 +133,7 @@ static void BM_Unique_STRING(int iters, int dim) {
                   .Attr("T", DT_STRING)
                   .Finalize(g, &node));
 
-  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(string));
+  testing::BytesProcessed(static_cast<int64>(iters) * dim * sizeof(tstring));
   testing::UseRealTime();
   testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);

@@ -17,10 +17,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/lib/core/coding.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/platform/stringpiece.h"
 
 #if defined(TENSORFLOW_PROTOBUF_USES_CORD)
 #include "strings/cord_varint.h"
@@ -33,7 +33,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, string* out) {
   out->assign(src.data(), src.size());
 }
 
-void EncodeStringList(const string* strings, int64 n, string* out) {
+void EncodeStringList(const tstring* strings, int64 n, string* out) {
   out->clear();
   for (int i = 0; i < n; ++i) {
     core::PutVarint32(out, strings[i].size());
@@ -43,7 +43,7 @@ void EncodeStringList(const string* strings, int64 n, string* out) {
   }
 }
 
-bool DecodeStringList(const string& src, string* strings, int64 n) {
+bool DecodeStringList(const string& src, tstring* strings, int64 n) {
   std::vector<uint32> sizes(n);
   StringPiece reader(src);
   int64 tot = 0;
@@ -55,7 +55,7 @@ bool DecodeStringList(const string& src, string* strings, int64 n) {
     return false;
   }
 
-  string* data = strings;
+  tstring* data = strings;
   for (int64 i = 0; i < n; ++i, ++data) {
     auto size = sizes[i];
     if (size > reader.size()) {
@@ -144,7 +144,7 @@ void AssignRefCounted(StringPiece src, core::RefCounted* obj, Cord* out) {
                             cleanup);
 }
 
-void EncodeStringList(const string* strings, int64 n, Cord* out) {
+void EncodeStringList(const tstring* strings, int64 n, Cord* out) {
   out->Clear();
   for (int i = 0; i < n; ++i) {
     ::strings::CordAppendVarint(strings[i].size(), out);
@@ -173,6 +173,29 @@ bool DecodeStringList(const Cord& src, string* strings, int64 n) {
     }
     gtl::STLStringResizeUninitialized(data, size);
     reader.ReadN(size, gtl::string_as_array(data));
+  }
+  return true;
+}
+
+bool DecodeStringList(const Cord& src, tstring* strings, int64 n) {
+  std::vector<uint32> sizes(n);
+  CordReader reader(src);
+  int64 tot = 0;
+  for (auto& v : sizes) {
+    if (!::strings::CordReaderReadVarint(&reader, &v)) return false;
+    tot += v;
+  }
+  if (tot != reader.Available()) {
+    return false;
+  }
+  tstring* data = strings;
+  for (int i = 0; i < n; ++i, ++data) {
+    auto size = sizes[i];
+    if (size > reader.Available()) {
+      return false;
+    }
+    data->resize_uninitialized(size);
+    reader.ReadN(size, data->data());
   }
   return true;
 }

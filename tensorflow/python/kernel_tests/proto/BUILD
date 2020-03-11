@@ -2,34 +2,36 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-# Placeholder for Google-internal load statements.
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["LICENSE"])
+exports_files([
+    "LICENSE",
+    "test_example.proto",
+])
 
 tf_py_test(
     name = "decode_proto_op_test",
     size = "small",
     srcs = ["decode_proto_op_test.py"],
-    additional_deps = [
-        ":decode_proto_op_test_base",
-        ":py_test_deps",
-        "//tensorflow/python:proto_ops",
-    ],
     data = if_static(
         [],
         otherwise = [":libtestexample.so"],
     ),
+    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
+    ],
+    deps = [
+        ":decode_proto_op_test_base",
+        ":py_test_deps",
+        "//tensorflow/python:proto_ops",
     ],
 )
 
@@ -37,18 +39,19 @@ tf_py_test(
     name = "encode_proto_op_test",
     size = "small",
     srcs = ["encode_proto_op_test.py"],
-    additional_deps = [
-        ":encode_proto_op_test_base",
-        ":py_test_deps",
-        "//tensorflow/python:proto_ops",
-    ],
     data = if_static(
         [],
         otherwise = [":libtestexample.so"],
     ),
+    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
+    ],
+    deps = [
+        ":encode_proto_op_test_base",
+        ":py_test_deps",
+        "//tensorflow/python:proto_ops",
     ],
 )
 
@@ -119,12 +122,13 @@ tf_py_test(
     name = "descriptor_source_test",
     size = "small",
     srcs = ["descriptor_source_test.py"],
-    additional_deps = [
-        ":descriptor_source_test_base",
-        "//tensorflow/python:proto_ops",
-        "//tensorflow/python:client_testlib",
-    ],
+    python_version = "PY3",
     tags = [
         "no_pip",
+    ],
+    deps = [
+        ":descriptor_source_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:proto_ops",
     ],
 )

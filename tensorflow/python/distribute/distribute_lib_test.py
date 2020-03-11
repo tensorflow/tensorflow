@@ -21,14 +21,15 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import reduce_util
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -67,10 +68,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def __init__(self, distribute):
     super(_TestExtended, self).__init__(distribute)
-    device_map = values.ReplicaDeviceMap(["/device:CPU:0"])
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    self._input_workers = input_lib.InputWorkers(device_map,
-                                                 worker_device_pairs)
+    self._input_workers = input_lib.InputWorkers(worker_device_pairs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
@@ -78,7 +77,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       return fn(*args, **kwargs)
 
-  def _create_variable(self, next_creator, *args, **kwargs):
+  def _create_variable(self, next_creator, **kwargs):
     return _get_test_variable(kwargs["name"], kwargs["synchronization"],
                               kwargs["aggregation"])
 
@@ -96,8 +95,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations):
-    del reduce_op, destinations
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
@@ -358,7 +357,7 @@ class TestStrategyTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(1.).repeat()
     dist.extended.experimental_run_steps_on_iterator(
         lambda _, inputs: all_inputs.append(self.evaluate(inputs)),
-        dataset.make_one_shot_iterator())
+        dataset_ops.make_one_shot_iterator(dataset))
     self.assertEqual(all_inputs, [1.])
 
   @_run_in_and_out_of_scope
@@ -388,11 +387,39 @@ class TestStrategyTest(test.TestCase):
     dist.extended.update(v, assign_fn, (t,))
 
   @_run_in_and_out_of_scope
+  def testUpdateAutoGraph(self, dist):
+    with dist.scope():
+      v = variables.Variable(1.)
+    t = constant_op.constant(2.)
+
+    def assign_fn(unused_vv, unused_tt):
+      self.assertTrue(converter_testing.is_inside_generated_code())
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      dist.extended.update(v, assign_fn, (t,))
+
+    test_fn()
+
+  @_run_in_and_out_of_scope
   def testUpdateNonSlot(self, dist):
     t = constant_op.constant(2.)
     update_calls = []
     dist.extended.update_non_slot(t, lambda: update_calls.append(1))
     self.assertEqual(len(update_calls), 1)
+
+  @_run_in_and_out_of_scope
+  def testUpdateNonSlotAutoGraph(self, dist):
+    t = constant_op.constant(2.)
+
+    def update_fn():
+      self.assertTrue(converter_testing.is_inside_generated_code())
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      dist.extended.update_non_slot(t, update_fn)
+
+    test_fn()
 
 
 # _TestStrategy2 is like _TestStrategy, except it doesn't change variable
@@ -405,8 +432,8 @@ class _TestStrategy2(distribute_lib.Strategy):
 
 class _TestExtended2(_TestExtended):
 
-  def _create_variable(self, next_creator, *args, **kwargs):
-    return next_creator(*args, **kwargs)
+  def _create_variable(self, next_creator, **kwargs):
+    return next_creator(**kwargs)
 
 
 class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
@@ -427,6 +454,20 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertIs(ds_context._get_default_replica_context(), replica_ctx)
     self.assertEqual("foo_bar", replica_ctx.merge_call(merge_fn, args=("bar",)))
     _assert_in_default_state(self)
+
+  def testMergeCallAutoGraph(self):
+    _assert_in_default_state(self)
+
+    def merge_fn(_, s):
+      self.assertTrue(converter_testing.is_inside_generated_code())
+      return s
+
+    @def_function.function  # AutoGraph is default-on only within tf.function
+    def test_fn():
+      replica_ctx = ds_context.get_replica_context()
+      replica_ctx.merge_call(merge_fn, args=("bar",))
+
+    test_fn()
 
   def testScopeMostlyNoOp(self):
     _assert_in_default_state(self)
@@ -521,6 +562,18 @@ class InputContextTest(test.TestCase):
     self.assertEqual(2, input_context.get_per_replica_batch_size(12))
     with self.assertRaises(ValueError):
       input_context.get_per_replica_batch_size(13)
+
+  def testStr(self):
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=1, input_pipeline_id=0, num_replicas_in_sync=42)
+    self.assertEqual(
+        "tf.distribute.InputContext(input pipeline id 0, total: 1)",
+        str(input_context))
+    input_context = distribute_lib.InputContext(
+        num_input_pipelines=3, input_pipeline_id=1, num_replicas_in_sync=42)
+    self.assertEqual(
+        "tf.distribute.InputContext(input pipeline id 1, total: 3)",
+        str(input_context))
 
 
 if __name__ == "__main__":

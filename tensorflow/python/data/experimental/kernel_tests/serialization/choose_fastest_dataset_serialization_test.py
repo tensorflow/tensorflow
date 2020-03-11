@@ -12,20 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the ZipDataset serialization."""
+"""Tests for the ChooseFastestDataset serialization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class ChooseFastestDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     num_outputs = 10
     batch_size = 2
@@ -38,7 +44,7 @@ class ChooseFastestDatasetSerializationTest(
           dataset.batch(batch_size).map(map_fn)
       ])
 
-    self.run_core_tests(build_ds, None, num_outputs // 2)
+    self.run_core_tests(build_ds, num_outputs // 2)
 
 
 if __name__ == "__main__":

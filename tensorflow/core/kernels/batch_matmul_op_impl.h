@@ -217,7 +217,9 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
     const int64 small_dim = std::min(
         std::min(in_x.dim_size(1), in_x.dim_size(2)), out->dim_size(2));
-    const int64 kMaxCostOuterParallelism = 128 * 128 * 256;  // heuristic.
+    // NOTE(nikhilsarda): This heuristic is optimal in benchmarks as of
+    // Jan 21, 2020.
+    const int64 kMaxCostOuterParallelism = 128 * 128;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
     if (small_dim > 1 &&
         (batch_size == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
@@ -265,10 +267,10 @@ class BlasScratchAllocator : public se::ScratchAllocator {
 
   BlasScratchAllocator(OpKernelContext* context) : context_(context) {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override { return -1; }
+  int64 GetMemoryLimitInBytes() override { return -1; }
 
   se::port::StatusOr<DeviceMemoryBytes> AllocateBytes(
-      Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
 
     Status allocation_status(context_->allocate_temp(

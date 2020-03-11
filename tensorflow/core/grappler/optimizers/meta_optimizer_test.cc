@@ -46,6 +46,7 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   TestOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
@@ -102,6 +103,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   string name() const override {
     return "grappler_item_properties_accumulator";
   }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -684,6 +686,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
  public:
   SleepingOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -719,12 +722,13 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
 
   GraphDef output;
+  GraphDef original = item.graph;
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // Make sure the graph was reverted to the original regardless of when the
   // optimizer timed out.
-  CompareGraphs(item.graph, output);
+  CompareGraphs(original, output);
 }
 
 TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
@@ -741,11 +745,12 @@ TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
 
   GraphDef output;
+  const int original_node_size = item.graph.node_size();
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
   // The meta optimizer should manage to finish one iteration.
-  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
+  EXPECT_EQ(original_node_size + 1, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
@@ -761,11 +766,12 @@ TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   rewriter_config.set_meta_optimizer_timeout_ms(2500);
   rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   GraphDef output;
+  const int original_node_size = item.graph.node_size();
   const Status status =
-      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+      RunMetaOptimizer(std::move(item), config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
   // The meta optimizer should manage to finish two iterations.
-  EXPECT_EQ(item.graph.node_size() + 2, output.node_size());
+  EXPECT_EQ(original_node_size + 2, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
@@ -980,23 +986,27 @@ TEST_F(MetaOptimizerTest, CompressConstants) {
   GraphDef output;
   TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
 
-  {
-    ASSERT_EQ(output.node_size(), 2);
-    const NodeDef& node = output.node(0);
-    EXPECT_EQ(node.name(), "zeros");
-    EXPECT_EQ(node.op(), "Const");
-    const TensorProto& zeroes_t = node.attr().at("value").tensor();
-    EXPECT_EQ(zeroes_t.float_val_size(), 1);
-    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+  bool found_zeros = false;
+  bool found_host_ones = false;
+  ASSERT_EQ(output.node_size(), 2);
+  for (const auto& node : output.node()) {
+    if (node.name() == "zeros") {
+      found_zeros = true;
+      EXPECT_EQ(node.op(), "Const");
+      const TensorProto& zeroes_t = node.attr().at("value").tensor();
+      EXPECT_EQ(zeroes_t.float_val_size(), 1);
+      EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+    } else if (node.name() == "host_ones") {
+      found_host_ones = true;
+      EXPECT_EQ(node.op(), "HostConst");
+      const TensorProto& ones_t = node.attr().at("value").tensor();
+      EXPECT_EQ(ones_t.float_val_size(), 1);
+      EXPECT_EQ(ones_t.float_val(0), 1.0f);
+    }
   }
-  {
-    const NodeDef& node = output.node(1);
-    EXPECT_EQ(node.name(), "host_ones");
-    EXPECT_EQ(node.op(), "HostConst");
-    const TensorProto& ones_t = node.attr().at("value").tensor();
-    EXPECT_EQ(ones_t.float_val_size(), 1);
-    EXPECT_EQ(ones_t.float_val(0), 1.0f);
-  }
+
+  EXPECT_TRUE(found_zeros);
+  EXPECT_TRUE(found_host_ones);
 
   auto tensors = EvaluateNodes(output, item.fetch, {});
   ASSERT_EQ(tensors.size(), 2);

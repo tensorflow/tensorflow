@@ -1382,6 +1382,7 @@ static void PackRhsHelper(int iters,
                           int input_depth,
                           /* Filter (kernel) dimensions: */
                           int filter_count, int filter_cols, int filter_rows,
+                          Eigen::PaddingType padding,
                           /* Input strides: */
                           int col_strides, int row_strides,
                           /* Patch inflate strides: */
@@ -1472,6 +1473,10 @@ static void PackRhsHelper(int iters,
   std::vector<Evaluator> evaluators;
   std::vector<InputMapper> input_mappers;
 
+  inputs.reserve(num_inputs);
+  evaluators.reserve(num_inputs);
+  input_mappers.reserve(num_inputs);
+
   for (int i = 0; i < num_inputs; ++i) {
     inputs.emplace_back(input_dims);
     inputs[i].setRandom();
@@ -1485,14 +1490,27 @@ static void PackRhsHelper(int iters,
         row_strides, col_strides,                            //
         /*in_row_strides=*/1, /*in_col_strides=*/1,          //
         patch_row_inflate_stride, patch_col_inflate_stride,  //
-        Eigen::PADDING_SAME, /*padding_value=*/0.0);
+        padding, /*padding_value=*/0.0);
 
     // 2. Reshape extracted patches into "virtual" 2d tensor.
-    // NOTE: This is valid for PADDING_SAME only.
     Index input_rows_eff = (input_rows - 1) * patch_row_inflate_stride + 1;
     Index input_cols_eff = (input_cols - 1) * patch_col_inflate_stride + 1;
-    Index output_rows = input_rows_eff / row_strides;
-    Index output_cols = input_cols_eff / col_strides;
+
+    Index output_rows = 0;
+    Index output_cols = 0;
+
+    if (padding == Eigen::PADDING_SAME) {
+      output_rows = input_rows_eff / row_strides;
+      output_cols = input_cols_eff / col_strides;
+    } else if (padding == Eigen::PADDING_VALID) {
+      output_rows =
+          numext::ceil((input_rows_eff - filter_rows + 1.f) / row_strides);
+      output_cols =
+          numext::ceil((input_cols_eff - filter_cols + 1.f) / col_strides);
+    } else {
+      eigen_assert(false && "not supported");
+    }
+
     NewDimension reshape_dims;
     reshape_dims[0] = input_depth * filter_rows * filter_cols;    // patch size
     reshape_dims[1] = output_rows * output_cols * input_batches;  // num_patches
@@ -1557,7 +1575,7 @@ static void PackRhsHelper(int iters,
   tensorflow::testing::SetLabel(
       absl::StrCat("patch: ", patch_rows, "x", patch_cols, " D", patch_depth,
                    "; num_patches=", num_patches, " patch_size=", patch_size,
-                   " num_inputs=", num_inputs));
+                   " num_inputs=", num_inputs, " padding=", padding));
 }
 
 template <typename T>
@@ -1664,6 +1682,10 @@ static void PackLhsHelper(int iters,
   std::vector<Evaluator> evaluators;
   std::vector<InputMapper> input_mappers;
 
+  filters.reserve(num_filters);
+  evaluators.reserve(num_filters);
+  input_mappers.reserve(num_filters);
+
   for (int i = 0; i < num_filters; ++i) {
     filters.emplace_back(filter_dims);
     filters[i].setRandom();
@@ -1747,24 +1769,24 @@ static void PackLhsHelper(int iters,
 
 #define BM_CONCAT(a, b) a##b
 
-#define BM_RHS_NAME(prefix, T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, \
-                    BC)                                                      \
-  BM_CONCAT(                                                                 \
-      BM_##prefix##_##T##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW,    \
-      _s##SH##x##SW##_is##ISH##x##ISW##_B##BR##x##BC)
+#define BM_RHS_NAME(prefix, T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, ISW, \
+                    BR, BC)                                                   \
+  BM_CONCAT(                                                                  \
+      BM_##prefix##_##T##_##N##_##H##x##W##_IC##C##_FC##FC##_##FH##x##FW,     \
+      _##PAD##_s##SH##x##SW##_is##ISH##x##ISW##_B##BR##x##BC)
 
-#define BM_PackRhs(T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, BC)        \
-  static void BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, ISH,     \
-                          ISW, BR, BC)(int iters) {                            \
-    PackRhsHelper<T>(iters, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW, BR, BC); \
-  }                                                                            \
-  BENCHMARK(BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, SH, SW, ISH, ISW,  \
-                        BR, BC))
+#define BM_PackRhs(T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, ISW, BR, BC)  \
+  static void BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, PAD, SH, SW,    \
+                          ISH, ISW, BR, BC)(int iters) {                      \
+    PackRhsHelper<T>(iters, N, H, W, C, FC, FH, FW, PADDING_##PAD, SH, SW,    \
+                     ISH, ISW, BR, BC);                                       \
+  }                                                                           \
+  BENCHMARK(BM_RHS_NAME(PackRhs, T, N, H, W, C, FC, FH, FW, PAD, SH, SW, ISH, \
+                        ISW, BR, BC))
 
 // Number of input channel (input depth) it equal to the number of patch
 // channels (patch depth).
 
-// NOTE: This is the most common case in Tensorflow models.
 // Fast path: input channel dimension is the multiple of the packet size.
 BM_PackRhs(/*type*/ float,                 //
            /*batch*/ 32,                   //
@@ -1772,6 +1794,7 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 32,                //
            /*num_filters*/ 64,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1782,6 +1805,29 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 32,                //
            /*num_filters*/ 64,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 32,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
            /*stride*/ 2, 2,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1793,6 +1839,7 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 30,                //
            /*num_filters*/ 64,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1803,6 +1850,29 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 30,                //
            /*num_filters*/ 64,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 30,                //
+           /*num_filters*/ 64,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
            /*stride*/ 2, 2,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1814,6 +1884,7 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 4,                 //
            /*num_filters*/ 16,             //
            /*filter*/ 8, 8,                //
+           /*padding*/ SAME,               //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1824,6 +1895,29 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 4,                 //
            /*num_filters*/ 16,             //
            /*filter*/ 8, 8,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 2, 4,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 256, 56);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 256, 256,             //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 8, 8,                //
+           /*padding*/ VALID,              //
            /*stride*/ 2, 4,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);
@@ -1835,6 +1929,19 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 4,                 //
            /*num_filters*/ 16,             //
            /*filter*/ 3, 3,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+// Short and wide block with small input channel dimension.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ VALID,              //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 36, 432);
@@ -1845,9 +1952,33 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 4,                 //
            /*num_filters*/ 16,             //
            /*filter*/ 3, 3,                //
+           /*padding*/ SAME,               //
            /*stride*/ 2, 2,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 36, 432);
+
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 64, 64,               //
+           /*channels*/ 4,                 //
+           /*num_filters*/ 16,             //
+           /*filter*/ 3, 3,                //
+           /*padding*/ VALID,              //
+           /*stride*/ 2, 2,                //
+           /*patch inflate stride*/ 1, 1,  //
+           /*block*/ 36, 432);
+
+// Non standard patches with inflated strides.
+BM_PackRhs(/*type*/ float,                 //
+           /*batch*/ 32,                   //
+           /*image*/ 32, 32,               //
+           /*channels*/ 96,                //
+           /*num_filters*/ 96,             //
+           /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
+           /*stride*/ 1, 1,                //
+           /*patch inflate stride*/ 2, 2,  //
+           /*block*/ 272, 240);
 
 BM_PackRhs(/*type*/ float,                 //
            /*batch*/ 32,                   //
@@ -1855,6 +1986,7 @@ BM_PackRhs(/*type*/ float,                 //
            /*channels*/ 96,                //
            /*num_filters*/ 96,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ VALID,              //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 2, 2,  //
            /*block*/ 272, 240);
@@ -1867,6 +1999,7 @@ BM_PackRhs(/*type*/ qint8,                 //
            /*channels*/ 32,                //
            /*num_filters*/ 64,             //
            /*filter*/ 5, 5,                //
+           /*padding*/ SAME,               //
            /*stride*/ 1, 1,                //
            /*patch inflate stride*/ 1, 1,  //
            /*block*/ 256, 56);

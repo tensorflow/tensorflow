@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.platform import test
@@ -43,14 +43,14 @@ class ConversionOptionsTest(converter_testing.TestCase):
     '''
     opts_packed = templates.replace(template, opts_ast=opts_ast)
 
-    reparsed, _, _ = compiler.ast_to_object(opts_packed)
+    reparsed, _, _ = loader.load_ast(opts_packed)
     reparsed.__dict__['ag__'] = self.make_fake_mod(
         'fake_ag', converter.ConversionOptions, converter.Feature)
 
     reparsed_opts = reparsed.test_fn()
 
     self.assertEqual(opts.recursive, reparsed_opts.recursive)
-    self.assertEqual(opts.force_conversion, reparsed_opts.force_conversion)
+    self.assertEqual(opts.user_requested, False)
     self.assertEqual(
         opts.internal_convert_user_code,
         reparsed_opts.internal_convert_user_code)

@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
@@ -36,16 +37,24 @@ struct ProfileEvent {
   using EventType = tflite::Profiler::EventType;
 
   // Label of the event. This usually describes the event.
-  const char* tag;
+  std::string tag;
   // Timestamp in microseconds when the event began.
   uint64_t begin_timestamp_us;
   // Timestamp in microseconds when the event ended.
   uint64_t end_timestamp_us;
+
+  // The memory usage when the event begins.
+  memory::MemoryUsage begin_mem_usage;
+  // The memory usage when the event ends.
+  memory::MemoryUsage end_mem_usage;
+
   // The field containing the type of event. This must be one of the event types
   // in EventType.
   EventType event_type;
   // Extra data describing the details of the event.
   uint32_t event_metadata;
+  // The index of subgraph where an event came from.
+  uint32_t event_subgraph_index;
 };
 
 // A ring buffer of profile events.
@@ -60,20 +69,25 @@ class ProfileBuffer {
   // buffer is disabled this has no affect.
   // The tag of the event should remain valid till the buffer is valid.
   uint32_t BeginEvent(const char* tag, ProfileEvent::EventType event_type,
-                      uint32_t event_metadata) {
+                      uint32_t event_metadata, uint32_t event_subgraph_index) {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
     uint64_t timestamp = time::NowMicros();
     int index = current_index_ % event_buffer_.size();
     if (current_index_ != 0 && index == 0) {
-      fprintf(stderr, "Warning: ProfileBuffer wrapping.\n");
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+      return current_index_;
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
+    event_buffer_[index].event_subgraph_index = event_subgraph_index;
     event_buffer_[index].event_metadata = event_metadata;
     event_buffer_[index].begin_timestamp_us = timestamp;
     event_buffer_[index].end_timestamp_us = 0;
+    if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[index].begin_mem_usage = memory::GetMemoryUsage();
+    }
     current_index_++;
     return index;
   }
@@ -98,6 +112,30 @@ class ProfileBuffer {
 
     int event_index = event_handle % max_size;
     event_buffer_[event_index].end_timestamp_us = time::NowMicros();
+    if (event_buffer_[event_index].event_type !=
+        Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
+    }
+  }
+
+  void AddEvent(const char* tag, ProfileEvent::EventType event_type,
+                uint32_t event_metadata, uint64_t start, uint64_t end,
+                uint32_t event_subgraph_index) {
+    if (!enabled_) {
+      return;
+    }
+    const int index = current_index_ % event_buffer_.size();
+    if (current_index_ != 0 && index == 0) {
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
+      return;
+    }
+    event_buffer_[index].tag = tag;
+    event_buffer_[index].event_type = event_type;
+    event_buffer_[index].event_subgraph_index = event_subgraph_index;
+    event_buffer_[index].event_metadata = event_metadata;
+    event_buffer_[index].begin_timestamp_us = start;
+    event_buffer_[index].end_timestamp_us = end;
+    current_index_++;
   }
 
   // Returns the size of the buffer.

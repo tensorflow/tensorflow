@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xrt/xrt_refptr.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 
@@ -171,11 +173,11 @@ class XRTCompilationCache : public ResourceBase {
   // last reference to entry is released, entry is removed from cache_.
   void DiscardEntryRef(CompiledSubgraph* entry);
   void DiscardEntryRefLocked(CompiledSubgraph* entry)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Marks the oldest unmarked entry for eviction. Requires that there is at
   // least one such entry.
-  void MarkOldestEntryForEviction() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void MarkOldestEntryForEviction() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Updates datastructures to indicate that entry, which had been marked for
   // eviction, has been looked up. This is called by CompileIfKeyAbsent when an
@@ -193,7 +195,7 @@ class XRTCompilationCache : public ResourceBase {
   // is never marked for eviction, so an entry larger than the max cache entries
   // will remain in the cache until it is replaced by something else.
   void LookupEntryMarkedForEviction(CompiledSubgraph* entry)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Creates a new entry by running initialize_program and places it in the
   // cache to be looked up by key. The new entry is in the 'marked for eviction'
@@ -204,7 +206,7 @@ class XRTCompilationCache : public ResourceBase {
   CompiledSubgraph* InitializeEntry(
       const string& key,
       const std::function<Status(std::unique_ptr<xla::LocalExecutable>*)>&
-          initialize_program) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+          initialize_program) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // The maximum number of entries that are stored in the cache before entries
   // are marked for eviction.
@@ -212,24 +214,33 @@ class XRTCompilationCache : public ResourceBase {
 
   mutable absl::Mutex mu_;
   // The total number of entries that are stored and not marked for eviction.
-  int cache_entries_ GUARDED_BY(mu_) = 0;
+  int cache_entries_ TF_GUARDED_BY(mu_) = 0;
   // The total number of entries that are marked for eviction.
-  int marked_for_eviction_entries_ GUARDED_BY(mu_) = 0;
+  int marked_for_eviction_entries_ TF_GUARDED_BY(mu_) = 0;
   // The value to assign to the last_use field of the next entry that is looked
   // up.
-  int64 use_counter_ GUARDED_BY(mu_) = 0;
+  int64 use_counter_ TF_GUARDED_BY(mu_) = 0;
   // All the executables that can be looked up in the cache index by key. An
   // entry is marked for eviction iff it is present in cache_ and not in
   // entries_by_last_use_.
-  std::unordered_map<string, CompiledSubgraph*> cache_ GUARDED_BY(mu_);
+  std::unordered_map<string, CompiledSubgraph*> cache_ TF_GUARDED_BY(mu_);
   // All the executable entries that can be looked up in the cache indexed by
   // uid.
-  std::unordered_map<int64, CompiledSubgraph*> entries_by_uid_ GUARDED_BY(mu_);
+  std::unordered_map<int64, CompiledSubgraph*> entries_by_uid_
+      TF_GUARDED_BY(mu_);
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in
   // entries_by_last_use_ then the entry has been marked for eviction.
-  std::map<int64, CompiledSubgraph*> entries_by_last_use_ GUARDED_BY(mu_);
+  std::map<int64, CompiledSubgraph*> entries_by_last_use_ TF_GUARDED_BY(mu_);
 };
+
+// Looks up or create an XRTCompilationCache object within the given resource
+// manager, under the default container. The max_number_of_entries sets the
+// maximum number of entries within the cache (which will be LRU-evicted).
+// If max_number_of_entries is set to sero, the size of the cache will be
+// configured using the TF_XRT_COMPILATION_CACHE_SIZE environment variable.
+xla::StatusOr<RefPtr<XRTCompilationCache>> GetOrCreateCompilationCache(
+    ResourceMgr* rm, int64 max_number_of_entries);
 
 }  // namespace tensorflow
 

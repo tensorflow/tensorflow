@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow as tf_wrap
+from tensorflow.python import _pywrap_model_analyzer as tf_wrap
 
 
 def GenerateModelReport(metagraph, assume_valid_feeds=True, debug=False):
@@ -32,7 +32,5 @@ def GenerateModelReport(metagraph, assume_valid_feeds=True, debug=False):
   Returns:
     A string containing the report.
   """
-  ret_from_swig = tf_wrap.GenerateModelReport(metagraph.SerializeToString(),
-                                              assume_valid_feeds, debug)
-
-  return ret_from_swig
+  return tf_wrap.GenerateModelReport(
+      metagraph.SerializeToString(), assume_valid_feeds, debug)

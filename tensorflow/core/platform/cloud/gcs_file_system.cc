@@ -27,22 +27,21 @@ limitations under the License.
 #endif
 #include "absl/base/macros.h"
 #include "include/json/json.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
 #include "tensorflow/core/platform/cloud/ram_file_block_cache.h"
-#include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/cloud/time_util.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/retrying_utils.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
 #ifdef _WIN32
@@ -127,25 +126,10 @@ constexpr char kInitialTokens[] = "GCS_INITIAL_TOKENS";
 constexpr char kAllowedBucketLocations[] = "GCS_ALLOWED_BUCKET_LOCATIONS";
 // When this value is passed as an allowed location detects the zone tensorflow
 // is running in and restricts to buckets in that region.
-constexpr char kDetectZoneSentinalValue[] = "auto";
+constexpr char kDetectZoneSentinelValue[] = "auto";
 
-// TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
-#ifndef _WIN32
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  int fd = mkstemp(buffer);
-  if (fd < 0) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-  close(fd);
-#else
-  char buffer[] = "/tmp/gcs_filesystem_XXXXXX";
-  char* ret = _mktemp(buffer);
-  if (ret == nullptr) {
-    return errors::Internal("Failed to create a temporary file.");
-  }
-#endif
-  *filename = buffer;
+  *filename = io::GetTempFilename("");
   return Status::OK();
 }
 
@@ -373,7 +357,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
  private:
   Status FillBuffer(uint64 start) const
-      EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
     buffer_start_ = start;
     buffer_.resize(buffer_size_);
     StringPiece str_piece;
@@ -397,9 +381,9 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
   mutable mutex buffer_mutex_;
 
   // Offset of buffer from start of the file.
-  mutable uint64 buffer_start_ GUARDED_BY(buffer_mutex_);
+  mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
 
-  mutable string buffer_ GUARDED_BY(buffer_mutex_);
+  mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };
 
 /// \brief GCS-based implementation of a writeable file.
@@ -430,7 +414,7 @@ class GcsWritableFile : public WritableFile {
   /// \brief Constructs the writable file in append mode.
   ///
   /// tmp_content_filename should contain a path of an existing temporary file
-  /// with the content to be appended. The class takes onwnership of the
+  /// with the content to be appended. The class takes ownership of the
   /// specified tmp file and deletes it on close.
   GcsWritableFile(const string& bucket, const string& object,
                   GcsFileSystem* filesystem, const string& tmp_content_filename,
@@ -624,17 +608,31 @@ class GcsWritableFile : public WritableFile {
       StringPiece range_piece(received_range);
       absl::ConsumePrefix(&range_piece,
                           "bytes=");  // May or may not be present.
-      std::vector<int64> range_parts;
-      if (!str_util::SplitAndParseAsInts(range_piece, '-', &range_parts) ||
-          range_parts.size() != 2) {
+
+      auto return_error = [this](string error_message) {
         return errors::Internal("Unexpected response from GCS when writing ",
-                                GetGcsPath(), ": Range header '",
-                                received_range, "' could not be parsed.");
+                                GetGcsPath(), ": ", error_message);
+      };
+
+      std::vector<string> range_strs = str_util::Split(range_piece, '-');
+      std::vector<int64> range_parts;
+      for (const string& range_str : range_strs) {
+        int64 tmp;
+        if (strings::safe_strto64(range_str, &tmp)) {
+          range_parts.push_back(tmp);
+        } else {
+          return return_error("Range header '" + received_range +
+                              "' could not be parsed.");
+        }
       }
+      if (range_parts.size() != 2) {
+        return return_error("Range header '" + received_range +
+                            "' could not be parsed.");
+      }
+
       if (range_parts[0] != 0) {
-        return errors::Internal("Unexpected response from GCS when writing to ",
-                                GetGcsPath(), ": the returned range '",
-                                received_range, "' does not start at zero.");
+        return return_error("The returned range '" + received_range +
+                            "' does not start at zero.");
       }
       // If GCS returned "Range: 0-10", this means 11 bytes were uploaded.
       *uploaded = range_parts[1] + 1;
@@ -1237,7 +1235,7 @@ Status GcsFileSystem::CheckBucketLocationConstraint(const string& bucket) {
   }
 
   // Avoid calling external API's in the constructor
-  if (allowed_locations_.erase(kDetectZoneSentinalValue) == 1) {
+  if (allowed_locations_.erase(kDetectZoneSentinelValue) == 1) {
     string zone;
     TF_RETURN_IF_ERROR(zone_provider_->GetZone(&zone));
     allowed_locations_.insert(ZoneToRegion(&zone));
@@ -1732,6 +1730,17 @@ void GcsFileSystem::SetStats(GcsStatsInterface* stats) {
   stats_->Configure(this, &throttle_, file_block_cache_.get());
 }
 
+void GcsFileSystem::SetCacheStats(FileBlockCacheStatsInterface* cache_stats) {
+  tf_shared_lock l(block_cache_lock_);
+  if (file_block_cache_ == nullptr) {
+    LOG(ERROR) << "Tried to set cache stats of non-initialized file block "
+                  "cache object. This may result in not exporting the intended "
+                  "monitoring data";
+    return;
+  }
+  file_block_cache_->SetStats(cache_stats);
+}
+
 void GcsFileSystem::SetAuthProvider(
     std::unique_ptr<AuthProvider> auth_provider) {
   mutex_lock l(mu_);
@@ -1775,5 +1784,11 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 
 }  // namespace tensorflow
 
+// The TPU_GCS_FS option sets a TPU-on-GCS optimized file system that allows
+// TPU pods to function more optimally. When TPU_GCS_FS is enabled then
+// gcs_file_system will not be registered as a file system since the
+// tpu_gcs_file_system is going to take over its responsibilities. The tpu file
+// system is a child of gcs file system with TPU-pod on GCS optimizations.
+// This option is set ON/OFF in the GCP TPU tensorflow config.
 // Initialize gcs_file_system
 REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

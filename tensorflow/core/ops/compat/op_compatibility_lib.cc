@@ -27,10 +27,75 @@ limitations under the License.
 
 namespace tensorflow {
 
+static string OpsHistoryDirectory(const string& ops_prefix,
+                                  const string& history_version) {
+  return io::JoinPath(ops_prefix,
+                      strings::StrCat("compat/ops_history_", history_version));
+}
+
 static string OpsHistoryFile(const string& ops_prefix,
                              const string& history_version) {
   return io::JoinPath(ops_prefix, strings::StrCat("compat/ops_history.",
                                                   history_version, ".pbtxt"));
+}
+
+static string FileNameFromOpName(const string& op_name) {
+  return strings::StrCat(op_name, ".pbtxt");
+}
+
+static void AddNewOpToHistory(const OpDef& op,
+                              OpCompatibilityLib::OpHistory* out_op_history) {
+  if (out_op_history != nullptr) {
+    out_op_history->emplace_back(FileNameFromOpName(op.name()), OpList());
+    *out_op_history->back().second.add_op() = op;
+  }
+}
+
+static Status ReadOpHistory(Env* env, const string& file,
+                            const string& directory,
+                            OpCompatibilityLib::OpHistory* out) {
+  // Read op history form `directory` if it exists there.
+  std::vector<string> matching_files;
+  Status status = env->GetMatchingPaths(io::JoinPath(directory, "*.pbtxt"),
+                                        &matching_files);
+  if (status.ok() && !matching_files.empty()) {
+    printf("Reading op history from %s/*.pbtxt...\n", directory.c_str());
+    std::sort(matching_files.begin(), matching_files.end());
+    for (const string& full_file : matching_files) {
+      string op_history_str;
+      TF_RETURN_IF_ERROR(ReadFileToString(env, full_file, &op_history_str));
+      OpList in_op_history;
+      protobuf::TextFormat::ParseFromString(op_history_str, &in_op_history);
+      const string file_tail = FileNameFromOpName(in_op_history.op(0).name());
+      const string expected = io::JoinPath(directory, file_tail);
+      if (full_file != expected) {
+        return errors::Internal("Expected file paths to match but '", full_file,
+                                "' != '", expected, "'");
+      }
+      out->emplace_back(file_tail, in_op_history);
+    }
+  } else {  // Otherwise, fall back to reading op history from `file`.
+    printf("Reading op history from %s...\n", file.c_str());
+    string op_history_str;
+    TF_RETURN_IF_ERROR(ReadFileToString(env, file, &op_history_str));
+    OpList in_op_history;
+    protobuf::TextFormat::ParseFromString(op_history_str, &in_op_history);
+    // Convert from a linear OpList to OpHistory format with one OpList per
+    // unique op name.
+    int start = 0;
+    while (start < in_op_history.op_size()) {
+      int end = start + 1;
+      while (end < in_op_history.op_size() &&
+             in_op_history.op(start).name() == in_op_history.op(end).name()) {
+        ++end;
+      }
+      AddNewOpToHistory(in_op_history.op(start), out);
+      for (++start; start < end; ++start) {
+        *out->back().second.add_op() = in_op_history.op(start);
+      }
+    }
+  }
+  return Status::OK();
 }
 
 OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix,
@@ -38,6 +103,7 @@ OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix,
                                        const std::set<string>* stable_ops)
     : ops_file_(io::JoinPath(ops_prefix, "ops.pbtxt")),
       op_history_file_(OpsHistoryFile(ops_prefix, history_version)),
+      op_history_directory_(OpsHistoryDirectory(ops_prefix, history_version)),
       stable_ops_(stable_ops) {
   // Get the sorted list of all registered OpDefs.
   printf("Getting all registered ops...\n");
@@ -46,7 +112,7 @@ OpCompatibilityLib::OpCompatibilityLib(const string& ops_prefix,
 
 Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
                                               int* added_ops,
-                                              OpList* out_op_history) {
+                                              OpHistory* out_op_history) {
   *changed_ops = 0;
   *added_ops = 0;
 
@@ -78,104 +144,90 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     }
   }
 
-  OpList in_op_history;
-  {  // Read op history.
-    printf("Reading op history from %s...\n", op_history_file_.c_str());
-    string op_history_str;
-    TF_RETURN_IF_ERROR(
-        ReadFileToString(env, op_history_file_, &op_history_str));
-    protobuf::TextFormat::ParseFromString(op_history_str, &in_op_history);
-  }
+  OpHistory in_op_history;
+  TF_RETURN_IF_ERROR(ReadOpHistory(env, op_history_file_, op_history_directory_,
+                                   &in_op_history));
 
   int cur = 0;
-  int start = 0;
+  int hist = 0;
 
   printf("Verifying updates are compatible...\n");
-  // Note: Op history is in (alphabetical, oldest-first) order.
-  while (cur < op_list_.op_size() && start < in_op_history.op_size()) {
-    const string& op_name = op_list_.op(cur).name();
-    if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
+  // Note: Op history is one OpList per unique op name in alphabetical order.
+  // Within the OplList it has versions in oldest-first order.
+  while (cur < op_list_.op_size() && hist < in_op_history.size()) {
+    const OpDef& cur_op = op_list_.op(cur);
+    const string& cur_op_name = cur_op.name();
+    const OpList& history_op_list = in_op_history[hist].second;
+    const string& history_op_name = history_op_list.op(0).name();
+    if (stable_ops_ != nullptr && stable_ops_->count(cur_op_name) == 0) {
       // Ignore unstable op.
       for (++cur; cur < op_list_.op_size(); ++cur) {
-        if (op_list_.op(cur).name() != op_name) break;
+        if (op_list_.op(cur).name() != cur_op_name) break;
       }
-    } else if (op_name < in_op_history.op(start).name()) {
+    } else if (cur_op_name < history_op_name) {
       // New op: add it.
-      if (out_op_history != nullptr) {
-        *out_op_history->add_op() = op_list_.op(cur);
-      }
+      AddNewOpToHistory(cur_op, out_op_history);
       ++*added_ops;
       ++cur;
-    } else if (op_name > in_op_history.op(start).name()) {
+    } else if (cur_op_name > history_op_name) {
       if (stable_ops_ != nullptr) {
         // Okay to remove ops from the history that have been made unstable.
-        for (++start; start < in_op_history.op_size(); ++start) {
-          if (op_name <= in_op_history.op(start).name()) break;
-        }
+        ++hist;
       } else {
         // Op removed: error.
         return errors::InvalidArgument("Error, removed op: ",
-                                       SummarizeOpDef(in_op_history.op(start)));
+                                       SummarizeOpDef(history_op_list.op(0)));
       }
     } else {
       // Op match.
-
-      // Find all historical version of this op.
-      int end = start + 1;
-      for (; end < in_op_history.op_size(); ++end) {
-        if (in_op_history.op(end).name() != op_name) break;
-      }
-
       if (out_op_history != nullptr) {
         // Copy from in_op_history to *out_op_history.
-        for (int i = start; i < end; ++i) {
-          *out_op_history->add_op() = in_op_history.op(i);
-        }
+        out_op_history->push_back(in_op_history[hist]);
       }
 
+      const int end = history_op_list.op_size();
       // Is the last op in the history the same as the current op?
       // Compare using their serialized representations.
       string history_str, cur_str;
-      in_op_history.op(end - 1).SerializeToString(&history_str);
-      op_list_.op(cur).SerializeToString(&cur_str);
+      history_op_list.op(end - 1).SerializeToString(&history_str);
+      cur_op.SerializeToString(&cur_str);
 
       if (history_str != cur_str) {
         // Op changed, verify the change is compatible.
-        for (int i = start; i < end; ++i) {
-          TF_RETURN_IF_ERROR(
-              OpDefCompatible(in_op_history.op(i), op_list_.op(cur)));
+        for (int i = 0; i < end; ++i) {
+          TF_RETURN_IF_ERROR(OpDefCompatible(history_op_list.op(i), cur_op));
         }
 
-        // Verify default value of attrs has not been added/removed/modified
+        // Verify default value of attrs has not been removed or modified
         // as compared to only the last historical version.
-        TF_RETURN_IF_ERROR(OpDefAttrDefaultsUnchanged(in_op_history.op(end - 1),
-                                                      op_list_.op(cur)));
+        TF_RETURN_IF_ERROR(
+            OpDefAttrDefaultsUnchanged(history_op_list.op(end - 1), cur_op));
 
-        // Check that attrs missing from in_op_history.op(start) don't
-        // change their defaults.
-        if (start < end - 1) {
+        // Check that attrs missing from history_op_list.op(0) don't change
+        // their defaults.
+        if (end > 1) {
           TF_RETURN_IF_ERROR(OpDefAddedDefaultsUnchanged(
-              in_op_history.op(start), in_op_history.op(end - 1),
-              op_list_.op(cur)));
+              history_op_list.op(0), history_op_list.op(end - 1), cur_op));
         }
 
         // Compatible! Add changed op to the end of the history.
         if (out_op_history != nullptr) {
-          *out_op_history->add_op() = op_list_.op(cur);
+          *out_op_history->back().second.add_op() = cur_op;
         }
         ++*changed_ops;
       }
 
       // Advance past this op.
-      start = end;
+      ++hist;
       ++cur;
     }
   }
 
   // Error if missing ops.
-  if (stable_ops_ == nullptr && start < in_op_history.op_size()) {
-    return errors::InvalidArgument("Error, removed op: ",
-                                   SummarizeOpDef(in_op_history.op(start)));
+  if (stable_ops_ == nullptr && hist < in_op_history.size()) {
+    return errors::InvalidArgument(
+        "Error, removed op: ",
+        SummarizeOpDef(in_op_history[hist].second.op(0)));
   }
 
   // Add remaining new ops.
@@ -184,9 +236,7 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
     if (stable_ops_ != nullptr && stable_ops_->count(op_name) == 0) {
       // Ignore unstable op.
     } else {
-      if (out_op_history) {
-        *out_op_history->add_op() = op_list_.op(cur);
-      }
+      AddNewOpToHistory(op_list_.op(cur), out_op_history);
       ++*added_ops;
     }
   }

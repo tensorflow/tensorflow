@@ -112,7 +112,7 @@ class GrpcSession : public Session {
   void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
   // Allows subclasses to customize Session creation.
   void SetHandleAndGraphVersion(string handle, int64 graph_version)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   const SessionOptions options_;
@@ -120,12 +120,14 @@ class GrpcSession : public Session {
   mutex mu_;
 
   // handle_ returned by the master to identify this session.
-  string handle_ GUARDED_BY(mu_);
+  string handle_ TF_GUARDED_BY(mu_);
 
   // The current version of the graph.
-  int64 current_graph_version_ GUARDED_BY(mu_);
+  int64 current_graph_version_ TF_GUARDED_BY(mu_);
 
-  Status Handle(string* out_handle) LOCKS_EXCLUDED(mu_);
+  bool is_local_ = false;
+
+  Status Handle(string* out_handle) TF_LOCKS_EXCLUDED(mu_);
 
   Status RunHelper(const RunOptions& run_options,
                    const std::vector<std::pair<string, Tensor> >& inputs,

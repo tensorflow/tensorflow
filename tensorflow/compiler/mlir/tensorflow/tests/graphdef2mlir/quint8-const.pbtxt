@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - -mlir-print-debuginfo | FileCheck %s
 
 node {
   name: "Quantized_Constant"
@@ -27,6 +27,6 @@ versions {
   producer: 70
 }
 
-# CHECK: "_tf.Const"()
-# CHECK-SAME: name = "Quantized_Constant"
+# CHECK: tf.Const
 # CHECK-SAME: value = opaque<"tf", "{{0[xX][0-9a-fA-F]*}}"> : tensor<!tf.quint8>
+# CHECK-SAME: loc("Quantized_Constant")

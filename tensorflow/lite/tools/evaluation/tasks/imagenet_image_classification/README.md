@@ -105,7 +105,13 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
 
 ## Downloading ILSVRC
 
@@ -125,7 +131,7 @@ the following steps:
 ILSVRC_2012_DEVKIT_DIR=[set to path to ILSVRC 2012 devkit]
 VALIDATION_LABELS=[set to  path to output]
 
-python tensorflow/lite/tools/accuracy/ilsvrc/generate_validation_labels.py \
+python third_party/tensorflow/lite/tools/accuracy/ilsvrc/generate_validation_labels.py \
 --ilsvrc_devkit_dir=${ILSVRC_2012_DEVKIT_DIR} \
 --validation_labels_output=${VALIDATION_LABELS}
 ```
@@ -142,10 +148,8 @@ for configuring NDK and SDK.
 
 ```
 bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
+  --config=android_arm64 \
+  --cxxopt='--std=c++17' \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval
 ```
 
@@ -191,7 +195,7 @@ adb push ${MODEL_LABELS_TXT} /data/local/tmp/model_output_labels.txt
 (8) Run the binary.
 
 ```
-adb shell /data/local/tmp/imagenet_accuracy_eval \
+adb shell /data/local/tmp/run_eval \
   --model_file=/data/local/tmp/mobilenet_quant_v1_224.tflite \
   --ground_truth_images_path=/data/local/tmp/ilsvrc_images \
   --ground_truth_labels=/data/local/tmp/ilsvrc_validation_labels.txt \
@@ -206,7 +210,6 @@ adb shell /data/local/tmp/imagenet_accuracy_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/imagenet_image_classification:run_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

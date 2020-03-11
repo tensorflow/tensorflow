@@ -41,31 +41,28 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
   def _save_model(self, model, saved_dir):
     keras_saved_model.export_saved_model(model, saved_dir, serving_only=True)
 
-  def _load_and_run_model(self, distribution, saved_dir, predict_dataset,
-                          output_name):
+  def _load_and_run_model(self,
+                          distribution,
+                          saved_dir,
+                          predict_dataset,
+                          output_name='output_1'):
     return test_base.load_and_run_with_saved_model_api(distribution, saved_dir,
                                                        predict_dataset,
                                                        output_name)
 
   @combinations.generate(test_base.simple_models_with_strategies())
   def test_save_no_strategy_restore_strategy(self, model_and_input,
-                                             distribution, run_distributed):
-    self.run_test_save_no_strategy_restore_strategy(model_and_input,
-                                                    distribution,
-                                                    run_distributed)
+                                             distribution):
+    self.run_test_save_no_strategy_restore_strategy(
+        model_and_input, distribution)
 
   @combinations.generate(
       combinations.times(test_base.simple_models_with_strategies(),
                          combinations.combine(save_in_scope=[True, False])))
   def test_save_strategy_restore_no_strategy(self, model_and_input,
-                                             distribution, save_in_scope,
-                                             run_distributed):
-    if save_in_scope:
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
-    self.run_test_save_strategy_restore_no_strategy(model_and_input,
-                                                    distribution, save_in_scope,
-                                                    run_distributed)
+                                             distribution, save_in_scope):
+    self.run_test_save_strategy_restore_no_strategy(
+        model_and_input, distribution, save_in_scope)
 
   @combinations.generate(
       combinations.times(test_base.simple_models_with_strategy_pairs(),
@@ -73,14 +70,11 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
   def test_save_strategy_restore_strategy(self, model_and_input,
                                           distribution_for_saving,
                                           distribution_for_restoring,
-                                          save_in_scope, run_distributed):
-    if save_in_scope:
-      self.skipTest(('Saving model within tf.distribute.Strategy scope is not ',
-                     'supported.'))
+                                          save_in_scope):
     self.run_test_save_strategy_restore_strategy(model_and_input,
                                                  distribution_for_saving,
                                                  distribution_for_restoring,
-                                                 save_in_scope, run_distributed)
+                                                 save_in_scope)
 
 
 if __name__ == '__main__':

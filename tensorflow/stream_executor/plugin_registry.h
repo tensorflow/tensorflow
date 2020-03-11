@@ -62,13 +62,13 @@ class PluginRegistry {
   // with that platform (but execution should be otherwise unaffected).
   template <typename FactoryT>
   port::Status RegisterFactory(Platform::Id platform_id, PluginId plugin_id,
-                               const string& name, FactoryT factory);
+                               const std::string& name, FactoryT factory);
 
   // Registers the specified factory as usable by _all_ platform types.
   // Reports errors just as RegisterFactory.
   template <typename FactoryT>
   port::Status RegisterFactoryForAllPlatforms(PluginId plugin_id,
-                                              const string& name,
+                                              const std::string& name,
                                               FactoryT factory);
 
   // TODO(b/22689637): Setter for temporary mapping until all users are using
@@ -122,7 +122,7 @@ class PluginRegistry {
   // Actually performs the work of registration.
   template <typename FactoryT>
   port::Status RegisterFactoryInternal(PluginId plugin_id,
-                                       const string& plugin_name,
+                                       const std::string& plugin_name,
                                        FactoryT factory,
                                        std::map<PluginId, FactoryT>* factories);
 
@@ -155,18 +155,22 @@ class PluginRegistry {
   std::map<Platform::Id, DefaultFactories> default_factories_;
 
   // Lookup table for plugin names.
-  std::map<PluginId, string> plugin_names_;
+  std::map<PluginId, std::string> plugin_names_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
 
 // Explicit specializations are defined in plugin_registry.cc.
-#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                       \
-  template <>                                                              \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
-      Platform::Id platform_id, PluginId plugin_id);                       \
-  template <>                                                              \
-  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory( \
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
+  template <>                                                                 \
+  port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, PluginId plugin_id, const std::string& name,  \
+      PluginRegistry::FACTORY_TYPE factory);                                  \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      Platform::Id platform_id, PluginId plugin_id);                          \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
       PlatformKind platform_kind, PluginId plugin_id)
 
 DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);

@@ -64,7 +64,8 @@ class HloInputOutputAliasConfig {
   // Sets up alias config from `output_index` to `param_index` at
   // `param_number`.
   Status SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                    const ShapeIndex& param_index, AliasKind kind);
+                    const ShapeIndex& param_index,
+                    AliasKind kind = AliasKind::kUserAlias);
 
   // Returns the kind of alias for the given parameter number and parameter
   // index. If no alias exists, AliasKind::kNoAlias is returned.
@@ -81,8 +82,8 @@ class HloInputOutputAliasConfig {
   // Checks whether the provided output index has already been aliased.
   bool OutputHasAlias(const ShapeIndex& output_index) const;
 
-  // (De)Serializes an HloInputOutoutAliasConfig to/from an
-  // HloInputOutoutAliasProto.
+  // (De)Serializes an HloInputOutputAliasConfig to/from an
+  // HloInputOutputAliasProto.
   HloInputOutputAliasProto ToProto() const;
 
   static StatusOr<HloInputOutputAliasConfig> CreateFromProto(
@@ -116,6 +117,9 @@ class HloInputOutputAliasConfig {
                 std::function<int64(const Shape&)> size_func_) const;
 
   Status ForEachAliasWithStatus(AliasFnWithStatus fn) const;
+
+  // Returns the shape of the output of the alias config.
+  const Shape& shape() const;
 
   string ToString() const;
 

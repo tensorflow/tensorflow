@@ -46,12 +46,11 @@ class ResizeNearestNeighborOpTest(test.TestCase):
     for nptype in self.TYPES:
       x = np.arange(0, 4).reshape(in_shape).astype(nptype)
 
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resize_out = image_ops.resize_nearest_neighbor(input_tensor,
+                                                     out_shape[1:3])
       with self.cached_session(use_gpu=True):
-        input_tensor = constant_op.constant(x, shape=in_shape)
-        resize_out = image_ops.resize_nearest_neighbor(input_tensor,
-                                                       out_shape[1:3])
         self.assertEqual(out_shape, list(resize_out.get_shape()))
-
         resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
@@ -119,11 +118,10 @@ class ResizeBilinearOpTest(test.TestCase):
 
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
+    input_tensor = constant_op.constant(x, shape=in_shape)
+    resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
     with self.cached_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
       self.assertEqual(out_shape, list(resize_out.get_shape()))
-
       resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
@@ -210,12 +208,11 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resize_out = image_ops.resize_bicubic(
+          input_tensor, out_shape[1:3], align_corners=align_corners)
       with self.cached_session():
-        input_tensor = constant_op.constant(x, shape=in_shape)
-        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
-                                              align_corners=align_corners)
         self.assertEqual(out_shape, list(resize_out.get_shape()))
-
         resize_out = self.evaluate(resize_out)
         self.assertEqual(out_shape, list(resize_out.shape))
 
@@ -243,10 +240,10 @@ class ResizeBicubicOpTest(test.TestCase):
     x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
 
     for align_corners in [True, False]:
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resize_out = image_ops.resize_bicubic(
+          input_tensor, out_shape[1:3], align_corners=align_corners)
       with self.cached_session():
-        input_tensor = constant_op.constant(x, shape=in_shape)
-        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
-                                              align_corners=align_corners)
         err = gradient_checker.compute_gradient_error(
             input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
       self.assertLess(err, 1e-3)
@@ -258,9 +255,9 @@ class ResizeBicubicOpTest(test.TestCase):
 
     x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
 
+    input_tensor = constant_op.constant(x, shape=in_shape)
+    resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
     with self.cached_session():
-      input_tensor = constant_op.constant(x, shape=in_shape)
-      resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
       grad = gradients_impl.gradients(input_tensor, [resize_out])
       self.assertEqual([None], grad)
 
@@ -349,16 +346,12 @@ class CropAndResizeOpTest(test.TestCase):
     boxes = np.array([[0, 0, 1, 1], [.1, .2, .7, .8]], dtype=np.float32)
     box_ind = np.array([0, 1], dtype=np.int32)
 
+    crops = image_ops.crop_and_resize(
+        constant_op.constant(image, shape=image_shape),
+        constant_op.constant(boxes, shape=[num_boxes, 4]),
+        constant_op.constant(box_ind, shape=[num_boxes]),
+        constant_op.constant(crop_size, shape=[2]))
     with self.session(use_gpu=True) as sess:
-      crops = image_ops.crop_and_resize(
-          constant_op.constant(
-              image, shape=image_shape),
-          constant_op.constant(
-              boxes, shape=[num_boxes, 4]),
-          constant_op.constant(
-              box_ind, shape=[num_boxes]),
-          constant_op.constant(
-              crop_size, shape=[2]))
       self.assertEqual(crops_shape, list(crops.get_shape()))
       crops = self.evaluate(crops)
       self.assertEqual(crops_shape, list(crops.shape))
@@ -472,12 +465,11 @@ class RGBToHSVOpTest(test.TestCase):
 
     for nptype in self.TYPES:
       x = np.random.randint(0, high=255, size=[2, 20, 30, 3]).astype(nptype)
+      rgb_input_tensor = constant_op.constant(x, shape=in_shape)
+      hsv_out = gen_image_ops.rgb_to_hsv(rgb_input_tensor)
       with self.cached_session(use_gpu=True):
-        rgb_input_tensor = constant_op.constant(x, shape=in_shape)
-        hsv_out = gen_image_ops.rgb_to_hsv(rgb_input_tensor)
         self.assertEqual(out_shape, list(hsv_out.get_shape()))
-
-        hsv_out = self.evaluate(hsv_out)
+      hsv_out = self.evaluate(hsv_out)
       self.assertEqual(out_shape, list(hsv_out.shape))
 
   def testRGBToHSVGradSimpleCase(self):

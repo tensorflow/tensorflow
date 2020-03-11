@@ -29,6 +29,9 @@ namespace {
 
 constexpr int64 kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMillis;
 
+// Default share of available RAM that can be used by model's internal buffers.
+constexpr double kRamBudgetShare = 0.5;
+
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ModelDatasetOp(OpKernelConstruction* ctx)
@@ -47,22 +50,25 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, cpu_budget_ > 0,
                 errors::InvalidArgument("CPU budget must be positive but is ",
                                         cpu_budget_, "."));
+    ram_budget_ = kRamBudgetShare * port::AvailableRam();
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input, algorithm_, cpu_budget_);
+    *output = new Dataset(ctx, input, algorithm_, cpu_budget_, ram_budget_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input,
-            model::AutotuneAlgorithm algorithm, int64 cpu_budget)
+            model::AutotuneAlgorithm algorithm, int64 cpu_budget,
+            int64 ram_budget)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           algorithm_(algorithm),
-          cpu_budget_(cpu_budget) {
+          cpu_budget_(cpu_budget),
+          ram_budget_(ram_budget) {
       input_->Ref();
     }
 
@@ -84,6 +90,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override { return "ModelDatasetOp::Dataset"; }
 
     int64 Cardinality() const override { return input_->Cardinality(); }
+
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
@@ -118,7 +128,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         IteratorContext::Params params(ctx);
         params.model = model_;
         return dataset()->input_->MakeIterator(
-            IteratorContext(std::move(params)), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), this, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -156,7 +166,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
@@ -169,8 +179,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
-        int64 current_time_ms =
-            ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+        int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
         while (true) {
           {
             mutex_lock l(mu_);
@@ -181,19 +190,19 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                              current_time_ms;
               VLOG(2) << "Waiting for " << wait_ms << " ms.";
               cond_var_.wait_for(l, std::chrono::milliseconds(wait_ms));
-              current_time_ms =
-                  ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+              current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
             }
             if (cancelled_) return;
           }
-          model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_);
+          model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_,
+                           dataset()->ram_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
           if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
             optimization_period_ms = std::min(optimization_period_ms << 1,
                                               kOptimizationPeriodThresholdMs);
           }
-          current_time_ms = ctx->env()->NowMicros() / EnvTime::kMillisToMicros;
+          current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
           last_optimization_ms = current_time_ms;
         }
       }
@@ -201,18 +210,20 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       condition_variable cond_var_;
       std::shared_ptr<model::Model> model_;
-      std::unique_ptr<Thread> optimize_thread_ GUARDED_BY(mu_);
-      bool cancelled_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<Thread> optimize_thread_ TF_GUARDED_BY(mu_);
+      bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::unique_ptr<IteratorBase> input_impl_;
     };
 
     const DatasetBase* input_;
     const model::AutotuneAlgorithm algorithm_;
     const int64 cpu_budget_;
+    const int64 ram_budget_;
   };
 
   model::AutotuneAlgorithm algorithm_;
   int64 cpu_budget_;
+  int64 ram_budget_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),

@@ -51,6 +51,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/resource_variable_ops.h"
+
 #include <memory>
 #include <vector>
 
@@ -60,17 +62,18 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
-#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -102,7 +105,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
   } else if (ctx->op_device_context() != nullptr) {
     // TODO(apassos): remove the down_cast by just returning Device* from
     // OpKernelContext
-    Device* device = static_cast<Device*>(ctx->device());
+    Device* device = down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
         t, device, output, [&n, &status](const Status& s) {
           status = s;
@@ -188,11 +191,11 @@ void ReadVariablesOp::Compute(OpKernelContext* ctx) {
     }
   }
 
-  OP_REQUIRES(
-      ctx, uninitialized_vars.empty(),
-      errors::InvalidArgument("In ReadVariableOp the following variables were "
-                              "found uninitialized: ",
-                              absl::StrJoin(uninitialized_vars, ", ")));
+  OP_REQUIRES(ctx, uninitialized_vars.empty(),
+              errors::FailedPrecondition(
+                  "In ReadVariablesOp the following variables were "
+                  "found uninitialized: ",
+                  absl::StrJoin(uninitialized_vars, ", ")));
 
   for (size_t i = 0; i < dtypes_.size(); ++i) {
     // We're acquiring a reference to the underlying buffer while
@@ -226,10 +229,25 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("allowed_devices", &allowed_devices_));
+
+  is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
+
+  if (!is_anonymous_) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                                   &resource_, attr));
+    resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+        context, container_, name_,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
+  }
 }
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
-  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+  if (is_anonymous_) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     Tensor handle;
@@ -237,23 +255,10 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
     ctx->set_output(0, handle);
   } else {
-    if (!initialized_.load()) {
-      mutex_lock ml(mutex_);
-      // Checking again to see if another thread has initialized the resource.
-      if (!initialized_.load()) {
-        AllocatorAttributes attr;
-        attr.set_on_host(true);
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                               &resource_, attr));
-        resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
-            ctx, container_, name_,
-            std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
-        initialized_.store(true);
-      }
-    }
     ctx->set_output(0, resource_);
   }
 }
@@ -626,30 +631,6 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
- private:
-  int32 batch_dims_ = 0;
-
-  // Add the batch offset derrived from params to each batch of indices.
-  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
-  // If indexing into a params dimension of size 4, then the indices will become
-  // [0, 1, 2, 4, 5, 6]
-  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
-    int64 batch_size = 1;  // The size of all batch dimensions.
-    for (int idx = 0; idx < batch_dims_; ++idx) {
-      batch_size *= params.dim_size(idx);
-    }
-
-    auto indices_flat = indices->flat<Index>();
-    int64 const index_inner_size = indices->NumElements() / batch_size;
-    int64 const batch_offset = params.dim_size(batch_dims_);
-    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
-         ++batch_idx) {
-      for (int64 idx = 0; idx < index_inner_size; ++idx) {
-        indices_flat(dest_idx++) += batch_offset * batch_idx;
-      }
-    }
-  }
-
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
@@ -741,6 +722,30 @@ class ResourceGatherOp : public OpKernel {
               indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
     }
   }
+
+ private:
+  // Add the batch offset derived from params to each batch of indices.
+  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
+  // If indexing into a params dimension of size 4, then the indices will become
+  // [0, 1, 2, 4, 5, 6]
+  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
+    int64 batch_size = 1;  // The size of all batch dimensions.
+    for (int idx = 0; idx < batch_dims_; ++idx) {
+      batch_size *= params.dim_size(idx);
+    }
+
+    auto indices_flat = indices->flat<Index>();
+    int64 const index_inner_size = indices->NumElements() / batch_size;
+    int64 const batch_offset = params.dim_size(batch_dims_);
+    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
+         ++batch_idx) {
+      for (int64 idx = 0; idx < index_inner_size; ++idx) {
+        indices_flat(dest_idx++) += batch_offset * batch_idx;
+      }
+    }
+  }
+
+  int32 batch_dims_ = 0;
 };
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \
@@ -765,7 +770,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_int64(REGISTER_GATHER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
@@ -849,13 +855,38 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ResourceScatterUpdateOp : public OpKernel {
  public:
-  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
+    // We use the same kernel for many operations.
+    // Each operation has a different set of attributes defined in its nodes.
+    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    if (!s.ok()) {
+      use_exclusive_lock_ = false;
+    }
+  }
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
-    tf_shared_lock ml(*v->mu());
+    const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
+                                  c->input_dtype(0) == DT_STRING ||
+                                  c->input_dtype(0) == DT_VARIANT;
+    if (is_non_pod_dtype || use_exclusive_lock_) {
+      mutex_lock ml(*v->mu());
+      DoCompute(c);
+    } else {
+      // For POD dtypes, we can safely run the update without the mutex.
+      tf_shared_lock ml(*v->mu());
+      DoCompute(c);
+    }
+  }
+
+ private:
+  bool use_exclusive_lock_;
+
+  void DoCompute(OpKernelContext* c) {
+    core::RefCountPtr<Var> v;
+    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);
@@ -950,7 +981,7 @@ class ResourceScatterUpdateOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHMETIC_CPU);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_MINMAX_CPU);
 
-REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+REGISTER_SCATTER_KERNEL(tstring, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);
 REGISTER_SCATTER_KERNEL(bool, CPU, "ResourceScatterUpdate",
                         scatter_op::UpdateOp::ASSIGN);

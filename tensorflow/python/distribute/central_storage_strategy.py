@@ -24,7 +24,7 @@ from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("distribute.experimental.CentralStorageStrategy", v1=[])
+@tf_export('distribute.experimental.CentralStorageStrategy', v1=[])
 class CentralStorageStrategy(distribute_lib.Strategy):
   """A one-machine strategy that puts all variables on a single device.
 
@@ -67,6 +67,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       variables on. The default one is CPU or GPU if there is only one.
     """
     super(CentralStorageStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell('V2').set(
+        'CentralStorageStrategy')
 
   @classmethod
   def _from_num_gpus(cls, num_gpus):
@@ -159,7 +161,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     """
     return super(CentralStorageStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):  # pylint: disable=useless-super-delegation
+  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `CentralStorageStrategy`, `fn` is  called on each of the compute
@@ -169,12 +171,14 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Return value from running `fn`.
     """
-    return super(CentralStorageStrategy, self).experimental_run_v2(fn, args,
-                                                                   kwargs)
+    return super(CentralStorageStrategy,
+                 self).experimental_run_v2(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.
@@ -243,7 +247,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     return super(CentralStorageStrategy, self).reduce(reduce_op, value, axis)
 
 
-@tf_export(v1=["distribute.experimental.CentralStorageStrategy"])  # pylint: disable=missing-docstring
+@tf_export(v1=['distribute.experimental.CentralStorageStrategy'])  # pylint: disable=missing-docstring
 class CentralStorageStrategyV1(distribute_lib.StrategyV1):
 
   __doc__ = CentralStorageStrategy.__doc__
@@ -254,4 +258,7 @@ class CentralStorageStrategyV1(distribute_lib.StrategyV1):
             self,
             compute_devices=compute_devices,
             parameter_device=parameter_device))
+    distribute_lib.distribution_strategy_gauge.get_cell('V1').set(
+        'CentralStorageStrategy')
+
   __init__.__doc__ = CentralStorageStrategy.__init__.__doc__

@@ -105,56 +105,12 @@ template struct FusedBatchNormFreezeGrad<GPUDevice, float, float>;
 template struct FusedBatchNormFreezeGrad<GPUDevice, Eigen::half, float>;
 
 template <class T>
-__global__ void VarianceToInvVarianceKernel(int nthreads, const T* input,
-                                            double epsilon, T* output) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    output[index] = rsqrt(input[index] + T(epsilon));
-  }
-}
-
-template <class T>
-void VarianceToInvVariance<T>::operator()(const Eigen::GpuDevice& d,
-                                          const T* variance, double epsilon,
-                                          int channels, T* inv_variance) {
-  GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
-  TF_CHECK_OK(GpuLaunchKernel(VarianceToInvVarianceKernel<T>,
-                              config.block_count, config.thread_per_block, 0,
-                              d.stream(), config.virtual_thread_count, variance,
-                              epsilon, inv_variance));
-}
-
-template <class T>
-__global__ void InvVarianceToVarianceKernel(int nthreads, double epsilon,
-                                            int sample_size, T* variance) {
-  GPU_1D_KERNEL_LOOP(index, nthreads) {
-    T inv_var = variance[index];
-    T var = __fdividef(1, inv_var * inv_var) - T(epsilon);
-    // This is for Bessel's correction
-    var *= T(sample_size) / T((sample_size > 1) ? sample_size - 1 : 1);
-    variance[index] = (var > 0) ? var : 0;
-  }
-}
-
-template <class T>
-void InvVarianceToVariance<T>::operator()(const Eigen::GpuDevice& d,
-                                          double epsilon, int sample_size,
-                                          int channels, T* variance) {
-  GpuLaunchConfig config = GetGpuLaunchConfig(channels, d);
-  TF_CHECK_OK(GpuLaunchKernel(InvVarianceToVarianceKernel<T>,
-                              config.block_count, config.thread_per_block, 0,
-                              d.stream(), config.virtual_thread_count, epsilon,
-                              sample_size, variance));
-}
-
-template <class T>
 void SetNanFunctor<T>::operator()(const Eigen::GpuDevice& d,
                                   typename TTypes<T>::Flat out) {
   To32Bit(out).device(d) =
       To32Bit(out).constant(Eigen::NumTraits<T>::quiet_NaN());
 }
 
-template class VarianceToInvVariance<float>;
-template class InvVarianceToVariance<float>;
 template class SetNanFunctor<float>;
 
 // -------------------------------------------------------------------------- //
@@ -172,9 +128,13 @@ struct FusedBatchNormInferenceKernel {
                 "Unsupported data format");
 
   __device__ static void run(int32 count, int32 channels_size,
-                             int32 inner_dim_size, const T* in, const U* scale,
-                             const U* offset, const U* mean, const U* var,
-                             const T* side_input, float epsilon, T* out) {
+                             int32 inner_dim_size, const T* __restrict__ in,
+                             const U* __restrict__ scale,
+                             const U* __restrict__ offset,
+                             const U* __restrict__ mean,
+                             const U* __restrict__ var,
+                             const T* __restrict__ side_input, float epsilon,
+                             T* __restrict__ out) {
     int32 index = blockIdx.x * blockDim.x + threadIdx.x;
     const int32 total_device_threads = gridDim.x * blockDim.x;
 
@@ -225,9 +185,13 @@ struct FusedBatchNormInferenceKernel<Eigen::half, float, tensor_format,
                                     /*is_generic_kernel=*/true>;
 
   __device__ static void run(int32 count, int32 channels_size,
-                             int32 inner_dim_size, const T* in, const U* scale,
-                             const U* offset, const U* mean, const U* var,
-                             const T* side_input, float epsilon, T* out) {
+                             int32 inner_dim_size, const T* __restrict__ in,
+                             const U* __restrict__ scale,
+                             const U* __restrict__ offset,
+                             const U* __restrict__ mean,
+                             const U* __restrict__ var,
+                             const T* __restrict__ side_input, float epsilon,
+                             T* __restrict__ out) {
     // Old GPUs do not have (or have very slow) fp16 arithmetic.
 #if __CUDA_ARCH__ >= 610
     int32 index = blockIdx.x * blockDim.x + threadIdx.x;

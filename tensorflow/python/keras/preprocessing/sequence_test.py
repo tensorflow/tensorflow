@@ -22,7 +22,7 @@ from math import ceil
 
 import numpy as np
 
-from tensorflow.python import keras
+from tensorflow.python.keras.preprocessing import sequence as preprocessing_sequence
 from tensorflow.python.platform import test
 
 
@@ -32,65 +32,65 @@ class TestSequence(test.TestCase):
     a = [[1], [1, 2], [1, 2, 3]]
 
     # test padding
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, padding='pre')
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, padding='pre')
     self.assertAllClose(b, [[0, 0, 1], [0, 1, 2], [1, 2, 3]])
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, padding='post')
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, padding='post')
     self.assertAllClose(b, [[1, 0, 0], [1, 2, 0], [1, 2, 3]])
 
     # test truncating
-    b = keras.preprocessing.sequence.pad_sequences(
+    b = preprocessing_sequence.pad_sequences(
         a, maxlen=2, truncating='pre')
     self.assertAllClose(b, [[0, 1], [1, 2], [2, 3]])
-    b = keras.preprocessing.sequence.pad_sequences(
+    b = preprocessing_sequence.pad_sequences(
         a, maxlen=2, truncating='post')
     self.assertAllClose(b, [[0, 1], [1, 2], [1, 2]])
 
     # test value
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, value=1)
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, value=1)
     self.assertAllClose(b, [[1, 1, 1], [1, 1, 2], [1, 2, 3]])
 
   def test_pad_sequences_vector(self):
     a = [[[1, 1]], [[2, 1], [2, 2]], [[3, 1], [3, 2], [3, 3]]]
 
     # test padding
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, padding='pre')
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, padding='pre')
     self.assertAllClose(b, [[[0, 0], [0, 0], [1, 1]], [[0, 0], [2, 1], [2, 2]],
                             [[3, 1], [3, 2], [3, 3]]])
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, padding='post')
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, padding='post')
     self.assertAllClose(b, [[[1, 1], [0, 0], [0, 0]], [[2, 1], [2, 2], [0, 0]],
                             [[3, 1], [3, 2], [3, 3]]])
 
     # test truncating
-    b = keras.preprocessing.sequence.pad_sequences(
+    b = preprocessing_sequence.pad_sequences(
         a, maxlen=2, truncating='pre')
     self.assertAllClose(b, [[[0, 0], [1, 1]], [[2, 1], [2, 2]], [[3, 2], [3,
                                                                           3]]])
 
-    b = keras.preprocessing.sequence.pad_sequences(
+    b = preprocessing_sequence.pad_sequences(
         a, maxlen=2, truncating='post')
     self.assertAllClose(b, [[[0, 0], [1, 1]], [[2, 1], [2, 2]], [[3, 1], [3,
                                                                           2]]])
 
     # test value
-    b = keras.preprocessing.sequence.pad_sequences(a, maxlen=3, value=1)
+    b = preprocessing_sequence.pad_sequences(a, maxlen=3, value=1)
     self.assertAllClose(b, [[[1, 1], [1, 1], [1, 1]], [[1, 1], [2, 1], [2, 2]],
                             [[3, 1], [3, 2], [3, 3]]])
 
   def test_make_sampling_table(self):
-    a = keras.preprocessing.sequence.make_sampling_table(3)
+    a = preprocessing_sequence.make_sampling_table(3)
     self.assertAllClose(
         a, np.asarray([0.00315225, 0.00315225, 0.00547597]), rtol=.1)
 
   def test_skipgrams(self):
     # test with no window size and binary labels
-    couples, labels = keras.preprocessing.sequence.skipgrams(
+    couples, labels = preprocessing_sequence.skipgrams(
         np.arange(3), vocabulary_size=3)
     for couple in couples:
       self.assertIn(couple[0], [0, 1, 2])
       self.assertIn(couple[1], [0, 1, 2])
 
     # test window size and categorical labels
-    couples, labels = keras.preprocessing.sequence.skipgrams(
+    couples, labels = preprocessing_sequence.skipgrams(
         np.arange(5), vocabulary_size=5, window_size=1, categorical=True)
     for couple in couples:
       self.assertLessEqual(couple[0] - couple[1], 3)
@@ -100,7 +100,7 @@ class TestSequence(test.TestCase):
   def test_remove_long_seq(self):
     a = [[[1, 1]], [[2, 1], [2, 2]], [[3, 1], [3, 2], [3, 3]]]
 
-    new_seq, new_label = keras.preprocessing.sequence._remove_long_seq(
+    new_seq, new_label = preprocessing_sequence._remove_long_seq(
         maxlen=3, seq=a, label=['a', 'b', ['c', 'd']])
     self.assertEqual(new_seq, [[[1, 1]], [[2, 1], [2, 2]]])
     self.assertEqual(new_label, ['a', 'b'])
@@ -109,7 +109,7 @@ class TestSequence(test.TestCase):
     data = np.array([[i] for i in range(50)])
     targets = np.array([[i] for i in range(50)])
 
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data, targets, length=10, sampling_rate=2, batch_size=2)
     self.assertEqual(len(data_gen), 20)
     self.assertAllClose(data_gen[0][0],
@@ -121,7 +121,7 @@ class TestSequence(test.TestCase):
                                                                [9], [11]]]))
     self.assertAllClose(data_gen[1][1], np.array([[12], [13]]))
 
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data, targets, length=10, sampling_rate=2, reverse=True, batch_size=2)
     self.assertEqual(len(data_gen), 20)
     self.assertAllClose(data_gen[0][0],
@@ -129,7 +129,7 @@ class TestSequence(test.TestCase):
                                                               [3], [1]]]))
     self.assertAllClose(data_gen[0][1], np.array([[10], [11]]))
 
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data, targets, length=10, sampling_rate=2, shuffle=True, batch_size=1)
     batch = data_gen[0]
     r = batch[1][0][0]
@@ -140,7 +140,7 @@ class TestSequence(test.TestCase):
         [r],
     ]))
 
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data, targets, length=10, sampling_rate=2, stride=2, batch_size=2)
     self.assertEqual(len(data_gen), 10)
     self.assertAllClose(data_gen[1][0],
@@ -148,7 +148,7 @@ class TestSequence(test.TestCase):
                                                                 [12], [14]]]))
     self.assertAllClose(data_gen[1][1], np.array([[14], [16]]))
 
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data,
         targets,
         length=10,
@@ -164,7 +164,7 @@ class TestSequence(test.TestCase):
 
     data = np.array([np.random.random_sample((1, 2, 3, 4)) for i in range(50)])
     targets = np.array([np.random.random_sample((3, 2, 1)) for i in range(50)])
-    data_gen = keras.preprocessing.sequence.TimeseriesGenerator(
+    data_gen = preprocessing_sequence.TimeseriesGenerator(
         data,
         targets,
         length=10,
@@ -181,7 +181,7 @@ class TestSequence(test.TestCase):
     self.assertAllClose(data_gen[0][1], np.array([targets[20], targets[21]]))
 
     with self.assertRaises(ValueError) as context:
-      keras.preprocessing.sequence.TimeseriesGenerator(data, targets, length=50)
+      preprocessing_sequence.TimeseriesGenerator(data, targets, length=50)
     error = str(context.exception)
     self.assertIn('`start_index+length=50 > end_index=49` is disallowed', error)
 
@@ -189,7 +189,7 @@ class TestSequence(test.TestCase):
     x = np.array([[i] for i in range(10)])
 
     for length in range(3, 10):
-      g = keras.preprocessing.sequence.TimeseriesGenerator(
+      g = preprocessing_sequence.TimeseriesGenerator(
           x, x, length=length, batch_size=1)
       expected = max(0, len(x) - length)
       actual = len(g)
@@ -211,7 +211,7 @@ class TestSequence(test.TestCase):
 
     for stride, length, batch_size, shuffle in zip(strides, lengths,
                                                    batch_sizes, shuffles):
-      g = keras.preprocessing.sequence.TimeseriesGenerator(
+      g = preprocessing_sequence.TimeseriesGenerator(
           x,
           x,
           length=length,

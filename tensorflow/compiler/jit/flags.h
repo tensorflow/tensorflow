@@ -55,6 +55,9 @@ struct MarkForCompilationPassFlags {
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
 
+  // If non-empty, limit XLA clustering to the following TF operations.
+  string tf_xla_ops_to_cluster;
+
   // Dump graphs during XLA compilation.
   bool tf_xla_clustering_debug;
 
@@ -84,6 +87,9 @@ struct XlaDeviceFlags {
   // Enabling this mode by a legacy flag is a temporary mechanism. When this
   // feature is battle-tested, we will switch this to be a session option.
   bool tf_xla_compile_on_demand;
+
+  // Enables "XLA" devices if this flag is set.
+  bool tf_xla_enable_xla_devices;
 };
 
 // Flags common to the _Xla* ops and their kernels.
@@ -102,6 +108,14 @@ struct BuildXlaOpsPassFlags {
   // If true then insert Print nodes to print out values produced by XLA
   // clusters.  Useful for debugging.
   bool tf_xla_print_cluster_outputs;
+
+  // If true, insert CheckNumerics nodes for every floating point typed input to
+  // an XLA cluster.
+  bool tf_xla_check_cluster_input_numerics;
+
+  // If true, insert CheckNumerics nodes for every floating point typed output
+  // from an XLA cluster.
+  bool tf_xla_check_cluster_output_numerics;
 
   // Disables all constant folding. The primary use for this is for testing to
   // guarantee that tests are run on XLA and not on TF's CPU implementation.
@@ -140,6 +154,15 @@ GetIntroduceFloatingPointJitterPassFlags();
 // Has the side-effect of parsing TF_XLA_FLAGS if that hasn't happened yet.
 void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
+
+// Makes all future calls to `IsXlaEnabled()` return `true`.
+//
+// Should only be called when XLA is linked in.
+void SetXlaIsEnabled();
+
+// Returns whether XLA is enabled.
+bool IsXlaEnabled();
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

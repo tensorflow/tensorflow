@@ -20,10 +20,13 @@ limitations under the License.
 
 #include <tuple>
 #include <unordered_map>
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 
@@ -50,18 +53,19 @@ class DnnScratchAllocator : public se::ScratchAllocator {
   virtual ~DnnScratchAllocator() {}
   DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return memory_limit_;
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size < 0) {
       return se::port::Status{se::port::error::INVALID_ARGUMENT,
                               "Requested negative byte size!"};
     }
     if (byte_size > memory_limit_) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return se::port::Status{se::port::error::UNAVAILABLE,
+                              absl::StrCat("Requested memory size (", byte_size,
+                                           ") exceeds the max memory limit (",
+                                           memory_limit_, ").")};
     }
     AllocationAttributes allocation_attr;
     allocation_attr.no_retry_on_failure = true;
@@ -69,7 +73,10 @@ class DnnScratchAllocator : public se::ScratchAllocator {
         DT_UINT8, TensorShape({byte_size}), &temporary_memory,
         AllocatorAttributes(), allocation_attr));
     if (!allocation_status.ok()) {
-      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+      return se::port::Status{
+          se::port::error::UNAVAILABLE,
+          absl::StrCat("Failed to allocate the requested memory size (",
+                       byte_size, ").")};
     }
     // Hold the reference of the allocated tensors until the end of the
     // allocator.
@@ -97,7 +104,7 @@ class ConvParameters {
                  TensorFormat data_format, int64 out_depths,
                  const SpatialArray& filter, const SpatialArray& dilation,
                  const SpatialArray& stride, const SpatialArray& padding,
-                 DataType dtype, int device_id)
+                 DataType dtype, int device_id, int group_count = 1)
       : batch_(batch),
         in_depths_(in_depths),
         out_depths_(out_depths),
@@ -108,7 +115,8 @@ class ConvParameters {
         stride_(CheckSpatialArraySize(stride)),
         padding_(CheckSpatialArraySize(padding)),
         dtype_(dtype),
-        device_id_(device_id) {
+        device_id_(device_id),
+        group_count_(group_count) {
     hash_code_ = batch;
     hash_code_ = Hash64Combine(hash_code_, in_depths);
     for (int64 val : in) hash_code_ = Hash64Combine(hash_code_, val);
@@ -120,7 +128,9 @@ class ConvParameters {
     for (int64 val : padding) hash_code_ = Hash64Combine(hash_code_, val);
     hash_code_ = Hash64Combine(hash_code_, dtype);
     hash_code_ = Hash64Combine(hash_code_, device_id);
+    hash_code_ = Hash64Combine(hash_code_, group_count);
   }
+
   bool operator==(const ConvParameters& other) const {
     return this->get_data_as_tuple() == other.get_data_as_tuple();
   }
@@ -142,7 +152,8 @@ class ConvParameters {
         "(", str_util::Join(stride_, ", "), "), ",
         "(", str_util::Join(padding_, ", "), "), ",
         dtype_, ", ",
-        device_id_);
+        device_id_,
+        group_count_);
     // clang-format on
   }
 
@@ -166,12 +177,12 @@ class ConvParameters {
  protected:
   using ParameterDataType =
       std::tuple<int64, int64, SpatialArray, TensorFormat, int64, SpatialArray,
-                 SpatialArray, SpatialArray, SpatialArray, DataType, int>;
+                 SpatialArray, SpatialArray, SpatialArray, DataType, int, int>;
 
   ParameterDataType get_data_as_tuple() const {
     return std::make_tuple(batch_, in_depths_, in_, data_format_, out_depths_,
                            filter_, dilation_, stride_, padding_, dtype_,
-                           device_id_);
+                           device_id_, group_count_);
   }
 
   uint64 hash_code_;
@@ -208,6 +219,7 @@ class ConvParameters {
   SpatialArray padding_;
   DataType dtype_;
   int device_id_;
+  int group_count_;
 };
 
 typedef Eigen::GpuDevice GPUDevice;

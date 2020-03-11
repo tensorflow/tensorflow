@@ -58,13 +58,14 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
         sig, attrs, options, lib_def, g, send_keys, recv_keys);
   }
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def,
-                     test::function::Attrs attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* local_handle) {
-    return cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
-                                     local_handle);
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def,
+                   test::function::Attrs attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* local_handle,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options,
+                              local_handle, done);
   }
 
   Status InstantiateAndRun(
@@ -73,13 +74,21 @@ class ClusterFunctionLibraryRuntimeTest : public ::testing::Test {
       const FunctionLibraryRuntime::InstantiateOptions& options,
       const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::LocalHandle handle;
-    TF_RETURN_IF_ERROR(cluster_flr_->Instantiate(function_name, lib_def, attrs,
-                                                 options, &handle));
+    Status status;
+    Notification instantiate_done;
+    cluster_flr_->Instantiate(function_name, lib_def, attrs, options, &handle,
+                              [&status, &instantiate_done](const Status& s) {
+                                status = s;
+                                instantiate_done.Notify();
+                              });
+    instantiate_done.WaitForNotification();
+    if (!status.ok()) {
+      return status;
+    }
 
     Notification done;
     FunctionLibraryRuntime::Options opts;
     std::vector<Tensor> out;
-    Status status;
     cluster_flr_->Run(opts, handle, args, &out,
                       [&status, &done](const Status& s) {
                         status = s;

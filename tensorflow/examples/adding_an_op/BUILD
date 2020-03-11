@@ -2,9 +2,9 @@
 # Code examples referenced by adding_an_op
 
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
@@ -70,7 +70,7 @@ py_test(
     name = "zero_out_1_test",
     size = "small",
     srcs = ["zero_out_1_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -86,7 +86,7 @@ py_test(
     name = "zero_out_2_test",
     size = "small",
     srcs = ["zero_out_2_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -103,7 +103,7 @@ py_test(
     name = "zero_out_3_test",
     size = "small",
     srcs = ["zero_out_3_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -133,8 +133,8 @@ py_test(
     name = "cuda_op_test",
     size = "small",
     srcs = ["cuda_op_test.py"],
-    exec_compatible_with = tf_exec_compatible_with({"tags": tf_cuda_tests_tags()}),
-    python_version = "PY2",
+    exec_properties = tf_exec_properties({"tags": tf_cuda_tests_tags()}),
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = tf_cuda_tests_tags() + [
         "notap",
@@ -150,7 +150,7 @@ py_test(
     name = "fact_test",
     size = "small",
     srcs = ["fact_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
 )

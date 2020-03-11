@@ -18,9 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import json
-import os
-
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.training import server_lib
@@ -56,7 +53,10 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   It checks:
   0) None of `cluster_spec`, `task_type`, and `task_id` is `None`.
   1) task type is one of "chief", "worker" or "evaluator".
-  2) whether there is such a task type as `task_type` in the `cluster_spec`.
+  2) whether there is such a task type as `task_type` in the `cluster_spec`. The
+     only exception is `evaluator`. In other words, it is still a valid
+     configuration when `task_type` is `evaluator` but it doesn't appear in
+     `cluster_spec`. This is to be compatible with `TF_CONFIG` in Estimator.
   3) whether there is at most one "chief" job.
   4) whether there is at most one "evaluator" job.
   5) whether the `task_id` is smaller than the number of tasks for that
@@ -79,7 +79,7 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
         "Unrecognized task_type: %r, valid task types are: \"chief\", "
         "\"worker\", \"evaluator\" and \"ps\"." % task_type)
 
-  if task_type and task_type not in cluster_spec:
+  if task_type and task_type not in cluster_spec and task_type != "evaluator":
     raise ValueError("`task_type` %r not found in cluster_spec." % task_type)
 
   if len(cluster_spec.get("chief", [])) > 1:
@@ -88,7 +88,8 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
   if len(cluster_spec.get("evaluator", [])) > 1:
     raise ValueError("There must be at most one 'evaluator' job.")
 
-  if task_id >= len(cluster_spec[task_type]):
+  # The `evaluator` job is allowed to be missing in `cluster_spec`.
+  if task_type in cluster_spec and task_id >= len(cluster_spec[task_type]):
     raise ValueError(
         "The `task_id` %d exceeds the maximum id of %s." % (task_id, task_type))
 
@@ -226,21 +227,15 @@ def id_in_cluster(cluster_spec, task_type, task_id):
   raise ValueError("There is no id for task_type %r" % task_type)
 
 
-def in_multi_worker_mode():
-  """Whether the program is operating in Multi-Worker setting."""
-  # TODO(rchao): Consider a warning if user uses multiple `model` method
-  # calls in multi-worker setting.
-  tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
-  cluster_spec = server_lib.ClusterSpec(tf_config.get("cluster", {}))
-  return tf_config and "master" not in cluster_spec.jobs
-
-
 def should_save_checkpoint():
   """Returns whether the current worker should save checkpoints.
 
   In multi-worker training, if saving checkpoint is requested by user, or needed
   for fault-tolerance, the cluster should save checkpoint but not necessarily
   every worker in the cluster should.
+
+  TODO(rchao): Consider generalizing this util to be `should_save_file` as there
+  can be other files to save such as summary.
 
   Returns:
       Whether this particular worker in the cluster should save checkpoints.

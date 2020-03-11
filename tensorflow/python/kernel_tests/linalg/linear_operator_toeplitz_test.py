@@ -22,10 +22,12 @@ import contextlib
 import numpy as np
 import scipy.linalg
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import spectral_ops_test_util
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.ops.linalg import linear_operator_toeplitz
@@ -36,6 +38,7 @@ linalg = linalg_lib
 _to_complex = linear_operator_toeplitz._to_complex
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorToeplitzTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -45,27 +48,26 @@ class LinearOperatorToeplitzTest(
     """We overwrite the FFT operation mapping for testing."""
     with test.TestCase._constrain_devices_and_set_default(
         self, sess, use_gpu, force_gpu) as sess:
-      with spectral_ops_test_util.fft_kernel_label_map():
-        yield sess
+      yield sess
 
   def setUp(self):
     # TODO(srvasude): Lower these tolerances once specialized solve and
     # determinants are implemented.
-    self._atol[dtypes.float32] = 1e-3
-    self._rtol[dtypes.float32] = 1e-3
-    self._atol[dtypes.float64] = 1e-10
-    self._rtol[dtypes.float64] = 1e-10
-    self._atol[dtypes.complex64] = 1e-3
-    self._rtol[dtypes.complex64] = 1e-3
-    self._atol[dtypes.complex128] = 1e-10
-    self._rtol[dtypes.complex128] = 1e-10
+    self._atol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.float32] = 1e-4
+    self._atol[dtypes.float64] = 1e-9
+    self._rtol[dtypes.float64] = 1e-9
+    self._atol[dtypes.complex64] = 1e-4
+    self._rtol[dtypes.complex64] = 1e-4
+    self._atol[dtypes.complex128] = 1e-9
+    self._rtol[dtypes.complex128] = 1e-9
 
   @staticmethod
-  def tests_to_skip():
+  def skip_these_tests():
     # Skip solve tests, as these could have better stability
     # (currently exercises the base class).
     # TODO(srvasude): Enable these when solve is implemented.
-    return ["cholesky", "inverse", "solve", "solve_with_broadcast"]
+    return ["cholesky", "cond", "inverse", "solve", "solve_with_broadcast"]
 
   @staticmethod
   def operator_shapes_infos():
@@ -136,6 +138,25 @@ class LinearOperatorToeplitzTest(
 
     with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., [1.])
+
+  def test_tape_safe(self):
+    col = variables_module.Variable([1.])
+    row = variables_module.Variable([1.])
+    operator = linear_operator_toeplitz.LinearOperatorToeplitz(
+        col, row, is_self_adjoint=True, is_positive_definite=True)
+    self.check_tape_safe(
+        operator,
+        skip_options=[
+            # .diag_part, .trace depend only on `col`, so test explicitly below.
+            linear_operator_test_util.CheckTapeSafeSkipOptions.DIAG_PART,
+            linear_operator_test_util.CheckTapeSafeSkipOptions.TRACE,
+        ])
+
+    with backprop.GradientTape() as tape:
+      self.assertIsNotNone(tape.gradient(operator.diag_part(), col))
+
+    with backprop.GradientTape() as tape:
+      self.assertIsNotNone(tape.gradient(operator.trace(), col))
 
 
 if __name__ == "__main__":

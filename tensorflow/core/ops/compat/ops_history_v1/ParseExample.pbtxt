@@ -1,0 +1,82 @@
+op {
+  name: "ParseExample"
+  input_arg {
+    name: "serialized"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "sparse_keys"
+    type: DT_STRING
+    number_attr: "Nsparse"
+  }
+  input_arg {
+    name: "dense_keys"
+    type: DT_STRING
+    number_attr: "Ndense"
+  }
+  input_arg {
+    name: "dense_defaults"
+    type_list_attr: "Tdense"
+  }
+  output_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+    number_attr: "Nsparse"
+  }
+  output_arg {
+    name: "sparse_values"
+    type_list_attr: "sparse_types"
+  }
+  output_arg {
+    name: "sparse_shapes"
+    type: DT_INT64
+    number_attr: "Nsparse"
+  }
+  output_arg {
+    name: "dense_values"
+    type_list_attr: "Tdense"
+  }
+  attr {
+    name: "Nsparse"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "Ndense"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "sparse_types"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "Tdense"
+    type: "list(type)"
+    has_minimum: true
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+        type: DT_STRING
+      }
+    }
+  }
+  attr {
+    name: "dense_shapes"
+    type: "list(shape)"
+    has_minimum: true
+  }
+}

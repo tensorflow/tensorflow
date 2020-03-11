@@ -272,8 +272,7 @@ port::Status ROCMFftPlan::Initialize(
       // TODO(yangzihao): refactor this code and the one with the same function
       // in the batch mode.
       if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
+        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
         if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
           LOG(ERROR) << "failed to allocate work area.";
           return allocated.status();
@@ -299,14 +298,14 @@ port::Status ROCMFftPlan::Initialize(
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to create rocFFT bacthed plan."};
+                            "Failed to create rocFFT batched plan."};
       }
     } else {
       auto ret = wrap::hipfftCreate(parent, &plan_);
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to create rocFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to create rocFFT bacthed plan."};
+                            "Failed to create rocFFT batched plan."};
       }
       ret = wrap::hipfftSetAutoAllocation(parent, plan_, 0);
       if (ret != HIPFFT_SUCCESS) {
@@ -314,7 +313,7 @@ port::Status ROCMFftPlan::Initialize(
                    << ret;
         return port::Status{
             port::error::INTERNAL,
-            "Failed to set auto allocation for rocFFT bacthed plan."};
+            "Failed to set auto allocation for rocFFT batched plan."};
       }
       size_t size_in_bytes;
       ret = wrap::hipfftMakePlanMany(
@@ -325,11 +324,10 @@ port::Status ROCMFftPlan::Initialize(
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to make rocFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to make rocFFT bacthed plan."};
+                            "Failed to make rocFFT batched plan."};
       }
       if (size_in_bytes != 0) {
-        auto allocated =
-            scratch_allocator->AllocateBytes(stream, size_in_bytes);
+        auto allocated = scratch_allocator->AllocateBytes(size_in_bytes);
         if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
           LOG(ERROR) << "failed to allocate work area.";
           return allocated.status();
@@ -340,7 +338,7 @@ port::Status ROCMFftPlan::Initialize(
       if (ret != HIPFFT_SUCCESS) {
         LOG(ERROR) << "failed to set work area for rocFFT batched plan:" << ret;
         return port::Status{port::error::INTERNAL,
-                            "Failed to set work area for rocFFT bacthed plan."};
+                            "Failed to set work area for rocFFT batched plan."};
       }
     }
   }

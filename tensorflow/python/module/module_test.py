@@ -26,6 +26,7 @@ from absl.testing import parameterized
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -46,7 +47,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     self.assertEqual(mod.name_scope.name, "simple/")
 
   def test_construct_in_scope(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     self.assertEqual(mod.name, "bar")
     self.assertEqual(mod.name_scope.name, "foo/bar/")
@@ -87,7 +88,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     self.assertEqual(mod.alternative_forward(), mod.name_scope.name)
 
   def test_patched_callable(self):
-    with ops.name_scope("foo"):
+    with ops.name_scope("foo", skip_on_eager=False):
       mod = module.Module(name="bar")
     mod.foo = get_name_scope
     # `foo` is not a method so we do not re-enter the name scope.
@@ -151,7 +152,7 @@ class TestModuleNaming(test_util.TensorFlowTestCase):
     with self.assertRaises(ErrorModuleError):
       # If super ctor is not called then the name scope isn't opened. We need to
       # ensure that this doesn't trigger an exception (e.g. the metaclass trying
-      # to __exit__ a non-existant name scope).
+      # to __exit__ a non-existent name scope).
       ErrorModule(call_super=False)
 
     self.assertEqual("", get_name_scope())
@@ -247,15 +248,10 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
   def test_supports_distributed_variables(self):
-    device_map = distributed_values.SingleDeviceMap("/CPU:0")
     mirrored = distributed_values.MirroredVariable(
-        None, device_map, [variables.Variable(1.)],
-        variables.VariableAggregation.SUM)
-    tpu = distributed_values.TPUMirroredVariable(
-        strategy=None,
-        device_map=device_map,
-        values=[variables.Variable(42.)],
-        aggregation=None)
+        None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
+    tpu = tpu_values.TPUMirroredVariable(
+        strategy=None, values=[variables.Variable(42.)], aggregation=None)
     aggregating = distributed_values.AggregatingVariable(
         strategy=None, v=variables.Variable(1.), aggregation=None)
 
@@ -286,8 +282,8 @@ class ForwardMethodsTest(test_util.TensorFlowTestCase):
 
   def testFunctionType(self):
     mod = ModuleWithFunctionAnnotatedCall()
-    self.assertTrue(isinstance(mod.forward, def_function.Function))
-    self.assertTrue(isinstance(mod.forward_ag, def_function.Function))
+    self.assertIsInstance(mod.forward, def_function.Function)
+    self.assertIsInstance(mod.forward_ag, def_function.Function)
 
   def testEntersNameScope_call(self):
     mod = ModuleWithFunctionAnnotatedCall()
@@ -320,7 +316,7 @@ class AbcTest(test_util.TensorFlowTestCase):
 
 
 def get_name_scope():
-  with ops.name_scope("x") as ns:
+  with ops.name_scope("x", skip_on_eager=False) as ns:
     ns = "/".join(ns.split("/")[:-2])
     return ns + "/" if ns else ""
 
@@ -409,7 +405,7 @@ class ModuleOverridingNameScope(ReturnsNameScopeModule):
 
   @property
   def name_scope(self):
-    return ops.name_scope("yolo/")
+    return ops.name_scope("yolo/", skip_on_eager=False)
 
 
 class ModuleWithFunctionAnnotatedCall(module.Module):
@@ -524,10 +520,10 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
 
     variable_list = m.variables
     self.assertLen(variable_list, 4)
-    self.assertEqual(variable_list[0], m.a.kernel)
-    self.assertEqual(variable_list[1], m.a.bias)
-    self.assertEqual(variable_list[2], m.b.kernel)
-    self.assertEqual(variable_list[3], m.b.bias)
+    self.assertIs(variable_list[0], m.a.kernel)
+    self.assertIs(variable_list[1], m.a.bias)
+    self.assertIs(variable_list[2], m.b.kernel)
+    self.assertIs(variable_list[3], m.b.bias)
 
   def test_model_discover_submodule(self):
     m = models.Sequential(layers=[layers.Dense(1),
@@ -536,6 +532,29 @@ class FlattenTest(parameterized.TestCase, test_util.TensorFlowTestCase):
     self.assertEqual(m.submodules, (m.layers[0], m.layers[1]))
     m(layers.Input((1,)))
     self.assertLen(m.variables, 4)
+
+  def test_model_wrapped_in_module_discovers_submodules(self):
+    linear = models.Sequential([layers.Dense(units=1, input_shape=[1])])
+    linear.compile(optimizer="sgd", loss="mean_squared_error")
+    m = module.Module()
+    m.l = linear
+    self.assertNotEmpty(m.submodules)
+    self.assertLen(m.variables, 2)
+
+  def test_raises_error_with_path(self):
+    if six.PY2:
+      class NonOrderable(object):
+        __lt__ = None
+
+      non_orderable = NonOrderable
+    else:
+      non_orderable = object
+
+    m = module.Module()
+    m.layers = {non_orderable(): None, non_orderable(): None}
+    with self.assertRaisesRegexp(ValueError,
+                                 "Error processing property 'layers'"):
+      m.variables  # pylint: disable=pointless-statement
 
 
 class LayerModule(module.Module):

@@ -35,9 +35,11 @@ import inspect as _inspect
 import logging as _logging
 import os as _os
 import site as _site
+import six as _six
 import sys as _sys
 
 from tensorflow.python.tools import module_util as _module_util
+from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
 # API IMPORTS PLACEHOLDER
 
@@ -56,10 +58,10 @@ elif _tf_api_dir not in __path__:
   __path__.append(_tf_api_dir)
 
 # Hook external TensorFlow modules.
-
 # Import compat before trying to import summary from tensorboard, so that
-# reexport_tf_summary can get compat from sys.modules
-_current_module.compat.v2.compat.v1 = _current_module.compat.v1
+# reexport_tf_summary can get compat from sys.modules. Only needed if using
+# lazy loading.
+_current_module.compat.v2  # pylint: disable=pointless-statement
 try:
   from tensorboard.summary._tf import summary
   _current_module.__path__ = (
@@ -69,26 +71,34 @@ except ImportError:
   _logging.warning(
       "Limited tf.summary API due to missing TensorBoard installation.")
 
-try:
-  from tensorflow_estimator.python.estimator.api._v2 import estimator
-  _current_module.__path__ = (
-      [_module_util.get_parent_dir(estimator)] + _current_module.__path__)
-  setattr(_current_module, "estimator", estimator)
-except ImportError:
-  pass
+# Lazy-load estimator.
+_estimator_module = "tensorflow_estimator.python.estimator.api._v2.estimator"
+estimator = _LazyLoader("estimator", globals(), _estimator_module)
+_module_dir = _module_util.get_parent_dir_for_name(_estimator_module)
+if _module_dir:
+  _current_module.__path__ = [_module_dir] + _current_module.__path__
+setattr(_current_module, "estimator", estimator)
 
 try:
-  from tensorflow.python.keras.api._v2 import keras
+  from .python.keras.api._v2 import keras
   _current_module.__path__ = (
       [_module_util.get_parent_dir(keras)] + _current_module.__path__)
   setattr(_current_module, "keras", keras)
 except ImportError:
   pass
 
+# Explicitly import lazy-loaded modules to support autocompletion.
+# pylint: disable=g-import-not-at-top
+if not _six.PY2:
+  import typing as _typing
+  if _typing.TYPE_CHECKING:
+    from tensorflow_estimator.python.estimator.api._v2 import estimator
+# pylint: enable=g-import-not-at-top
 
 # Enable TF2 behaviors
 from tensorflow.python.compat import v2_compat as _compat  # pylint: disable=g-import-not-at-top
 _compat.enable_v2_behavior()
+_major_api_version = 2
 
 
 # Load all plugin libraries from site-packages/tensorflow-plugins if we are
@@ -119,30 +129,17 @@ def _running_from_pip_package():
       _current_file_location.startswith(dir_) for dir_ in _site_packages_dirs)
 
 if _running_from_pip_package():
-  for s in _site_packages_dirs:
-    # TODO(gunan): Add sanity checks to loaded modules here.
-    plugin_dir = _os.path.join(s, 'tensorflow-plugins')
-    if _fi.file_exists(plugin_dir):
-      _ll.load_library(plugin_dir)
+  # TODO(gunan): Add sanity checks to loaded modules here.
+  for _s in _site_packages_dirs:
+    # Load first party dynamic kernels.
+    _main_dir = _os.path.join(_s, 'tensorflow_core/core/kernels')
+    if _fi.file_exists(_main_dir):
+      _ll.load_library(_main_dir)
 
-# These symbols appear because we import the python package which
-# in turn imports from tensorflow.core and tensorflow.python. They
-# must come from this module. So python adds these symbols for the
-# resolution to succeed.
-# pylint: disable=undefined-variable
-try:
-  del python
-except NameError:
-  pass
-try:
-  del core
-except NameError:
-  pass
-try:
-  del compiler
-except NameError:
-  pass
-# pylint: enable=undefined-variable
+    # Load third party dynamic kernels.
+    _plugin_dir = _os.path.join(_s, 'tensorflow-plugins')
+    if _fi.file_exists(_plugin_dir):
+      _ll.load_library(_plugin_dir)
 
 # Add module aliases
 if hasattr(_current_module, 'keras'):
@@ -155,3 +152,5 @@ if hasattr(_current_module, 'keras'):
   setattr(_current_module, "optimizers", optimizers)
   setattr(_current_module, "initializers", initializers)
 # pylint: enable=undefined-variable
+
+# __all__ PLACEHOLDER

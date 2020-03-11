@@ -20,14 +20,13 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include <numeric>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -35,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -62,7 +62,7 @@ class SparseToDense : public OpKernel {
     // output_shape
     const Tensor& output_shape = c->input(1);
     OP_REQUIRES(
-        c, IsLegacyVector(output_shape.shape()),
+        c, TensorShapeUtils::IsVector(output_shape.shape()),
         errors::InvalidArgument("output_shape should be a vector, got shape ",
                                 output_shape.shape().DebugString()));
     OP_REQUIRES(c, output_shape.NumElements() == num_dims,
@@ -93,36 +93,44 @@ class SparseToDense : public OpKernel {
     Tensor* output = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_tensor_shape, &output));
 
-    TensorShape ix_shape({num_elems, num_dims});
-    Tensor indices_shaped(DT_INT64, ix_shape);
-    if (indices.dtype() == DT_INT64) {
-      CHECK(indices_shaped.CopyFrom(indices, ix_shape));
+    const Tensor* indices_shaped;
+    std::unique_ptr<Tensor> indices_shaped_holder;
+    if (indices.dtype() == DT_INT64 && indices.dims() == 2) {
+      indices_shaped = &indices;
     } else {
-      indices_shaped.matrix<int64>() =
-          indices.shaped<Index, 2>(ix_shape.dim_sizes()).template cast<int64>();
+      TensorShape ix_shape({num_elems, num_dims});
+      indices_shaped_holder = MakeUnique<Tensor>(DT_INT64, ix_shape);
+      indices_shaped = indices_shaped_holder.get();
+      if (indices.dtype() == DT_INT64) {
+        CHECK(indices_shaped_holder->CopyFrom(indices, ix_shape));
+      } else {
+        indices_shaped_holder->matrix<int64>() =
+            indices.shaped<Index, 2>(ix_shape.dim_sizes())
+                .template cast<int64>();
+      }
     }
 
     // If we received a scalar, we'll need to create a new
     // tensor with copies of the values as a vec.
-    // TODO(ebrevdo): find a way to avoid this temp allocation.
-    Tensor sparse_values_b;
+    const Tensor* sparse_values_b;
+    std::unique_ptr<Tensor> sparse_values_b_holder;
 
     if (TensorShapeUtils::IsScalar(sparse_values.shape())) {
-      OP_REQUIRES_OK(
-          c, c->allocate_temp(DataTypeToEnum<T>::value,
-                              TensorShape({num_elems}), &sparse_values_b));
-      sparse_values_b.vec<T>().setConstant(sparse_values.scalar<T>()());
+      sparse_values_b_holder = MakeUnique<Tensor>(DataTypeToEnum<T>::value,
+                                                  TensorShape({num_elems}));
+      sparse_values_b = sparse_values_b_holder.get();
+      sparse_values_b_holder->vec<T>().setConstant(sparse_values.scalar<T>()());
     } else {
-      sparse_values_b = sparse_values;
+      sparse_values_b = &sparse_values;
     }
 
     // Assume SparseTensor is lexicographically sorted.
     gtl::InlinedVector<int64, 8> order(output->shape().dims());
     std::iota(order.begin(), order.end(), 0);
     sparse::SparseTensor st;
-    OP_REQUIRES_OK(c,
-                   sparse::SparseTensor::Create(indices_shaped, sparse_values_b,
-                                                output->shape(), order, &st));
+    OP_REQUIRES_OK(
+        c, sparse::SparseTensor::Create(*indices_shaped, *sparse_values_b,
+                                        output->shape(), order, &st));
 
     if (validate_indices_) {
       OP_REQUIRES_OK(c, st.IndicesValid());
@@ -152,7 +160,7 @@ class SparseToDense : public OpKernel {
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS_ALL);
 REGISTER_KERNELS_ALL(bool);
-REGISTER_KERNELS_ALL(string);
+REGISTER_KERNELS_ALL(tstring);
 
 #undef REGISTER_KERNELS_ALL
 #undef REGISTER_KERNELS

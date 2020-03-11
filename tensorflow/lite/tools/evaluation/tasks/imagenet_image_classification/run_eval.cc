@@ -17,7 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
@@ -38,6 +38,7 @@ constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDelegateFlag[] = "delegate";
 constexpr char kNnapiDelegate[] = "nnapi";
 constexpr char kGpuDelegate[] = "gpu";
+constexpr char kHexagonDelegate[] = "hexagon";
 
 template <typename T>
 std::vector<T> GetFirstN(const std::vector<T>& v, int n) {
@@ -62,6 +63,8 @@ bool EvaluateModel(const std::string& model_file_path,
     inference_params->set_delegate(TfliteInferenceParams::NNAPI);
   } else if (delegate == kGpuDelegate) {
     inference_params->set_delegate(TfliteInferenceParams::GPU);
+  } else if (delegate == kHexagonDelegate) {
+    inference_params->set_delegate(TfliteInferenceParams::HEXAGON);
   }
   classification_params->mutable_topk_accuracy_eval_params()->set_k(10);
 
@@ -70,8 +73,13 @@ bool EvaluateModel(const std::string& model_file_path,
   eval.SetAllLabels(model_labels);
   if (eval.Init() != kTfLiteOk) return false;
 
-  for (const auto& image_label : image_labels) {
-    eval.SetInputs(image_label.image, image_label.label);
+  const int step = image_labels.size() / 100;
+  for (int i = 0; i < image_labels.size(); ++i) {
+    if (step > 1 && i % step == 0) {
+      LOG(INFO) << "Evaluated: " << i / step << "%";
+    }
+
+    eval.SetInputs(image_labels[i].image, image_labels[i].label);
     if (eval.Run() != kTfLiteOk) return false;
   }
 

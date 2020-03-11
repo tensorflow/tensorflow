@@ -27,6 +27,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import util as trackable_util
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
@@ -214,7 +215,7 @@ def make_template_internal(name_,
   if context.executing_eagerly():
     if unique_name_ is not None:
       raise ValueError(
-          "unique_name_ cannot be used when eager exeuction is enabled.")
+          "unique_name_ cannot be used when eager execution is enabled.")
     return EagerTemplate(
         name_,
         func_,
@@ -617,8 +618,9 @@ class EagerTemplate(Template):
           raise ValueError(
               "Trainable variable created when calling a template "
               "after the first time, perhaps you used tf.Variable "
-              "when you meant tf.get_variable: %s" %
-              list(set(trainable_variables) - set(trainable_at_start)))
+              "when you meant tf.get_variable: %s" % list(
+                  object_identity.ObjectIdentitySet(trainable_variables) -
+                  object_identity.ObjectIdentitySet(trainable_at_start)))
 
         # Non-trainable tracking variables are a legitimate reason why a new
         # variable would be created, but it is a relatively advanced use-case,
@@ -629,7 +631,9 @@ class EagerTemplate(Template):
               "New variables created when calling a template after "
               "the first time, perhaps you used tf.Variable when you "
               "meant tf.get_variable: %s",
-              list(set(variables) - set(vars_at_start)))
+              list(
+                  object_identity.ObjectIdentitySet(variables) -
+                  object_identity.ObjectIdentitySet(vars_at_start)))
       else:
         self._variables_created = True
       return result

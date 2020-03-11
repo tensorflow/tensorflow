@@ -18,9 +18,10 @@ limitations under the License.
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/framework/op_def.pb_text.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -183,12 +184,12 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                            \
-  do {                                                                 \
-    if (!(EXPR)) {                                                     \
-      return errors::InvalidArgument(                                  \
-          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
-    }                                                                  \
+#define VALIDATE(EXPR, ...)                                        \
+  do {                                                             \
+    if (!(EXPR)) {                                                 \
+      return errors::InvalidArgument(                              \
+          __VA_ARGS__, "; in OpDef: ", op_def.ShortDebugString()); \
+    }                                                              \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
@@ -248,16 +249,29 @@ static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
   return Status::OK();
 }
 
-Status ValidateOpDef(const OpDef& op_def) {
+bool IsValidOpName(StringPiece sp) {
   using ::tensorflow::strings::Scanner;
 
+  Scanner scanner(sp);
+  scanner.One(Scanner::UPPERLETTER).Any(Scanner::LETTER_DIGIT_UNDERSCORE);
+
+  while (true) {
+    if (!scanner.GetResult())  // Some error in previous iteration.
+      return false;
+    if (scanner.empty())  // No error, but nothing left, good.
+      return true;
+
+    // Absorb another name/namespace, starting with a '>'
+    scanner.One(Scanner::RANGLE)
+        .One(Scanner::UPPERLETTER)
+        .Any(Scanner::LETTER_DIGIT_UNDERSCORE);
+  }
+}
+
+Status ValidateOpDef(const OpDef& op_def) {
   if (!absl::StartsWith(op_def.name(), "_")) {
-    VALIDATE(Scanner(op_def.name())
-                 .One(Scanner::UPPERLETTER)
-                 .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
-                 .Eos()
-                 .GetResult(),
-             "Invalid name: ", op_def.name(), " (Did you use CamelCase?)");
+    VALIDATE(IsValidOpName(op_def.name()), "Invalid name: ", op_def.name(),
+             " (Did you use CamelCase?)");
   }
 
   std::set<string> names;  // for detecting duplicate names
@@ -720,10 +734,13 @@ Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op) {
     const OpDef::AttrDef* new_attr =
         gtl::FindPtrOrNull(new_attrs, old_attr.name());
     if (new_attr == nullptr) continue;
-    if (old_attr.has_default_value() != new_attr->has_default_value()) {
+    if (new_attr->has_default_value() && !old_attr.has_default_value()) {
+      continue;  // Adding new default values is safe.
+    }
+    if (old_attr.has_default_value() && !new_attr->has_default_value()) {
       return errors::InvalidArgument(
-          "Attr '", old_attr.name(), "' has added/removed it's default; ",
-          "from ", DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
+          "Attr '", old_attr.name(), "' has removed it's default; ", "from ",
+          DefaultAttrStr(old_attr), " to ", DefaultAttrStr(*new_attr));
     }
     if (old_attr.has_default_value() &&
         !AreAttrValuesEqual(old_attr.default_value(),

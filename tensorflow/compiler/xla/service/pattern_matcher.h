@@ -73,7 +73,7 @@ namespace xla {
 //     - EqualTo
 //     - CompatibleTo
 //     - IsScalar/IsEffectiveScalar/IsArray/IsTuple
-//     - IsDenseArray/IsSparseArray
+//     - IsDenseArray
 //     - WithLayout: layout shape's layout matches the given pattern (e.g.
 //       Layout().WithDenseFormat())
 //     - WithLayoutEqualTo: shape's layout equals the argument (i.e. another
@@ -87,7 +87,7 @@ namespace xla {
 //
 //  Layout():
 //     - EqualTo
-//     - WithDenseFormat/WithSparseFormat
+//     - WithDenseFormat
 //
 // Op(), Shape(), and Layout() may be passed an argument of type
 // HloInstruction**, Shape**, or Layout**, respectively, or const versions of
@@ -455,9 +455,9 @@ class LayoutPattern {
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const
       -> LayoutPattern<LayoutType,
-                       decltype(AllOf<Layout>(std::declval<Impl>(),
-                                              std::move(new_impl)))> {
-    auto new_allof = AllOf<Layout>(impl_, std::move(new_impl));
+                       decltype(AllOf<::xla::Layout>(std::declval<Impl>(),
+                                                     std::move(new_impl)))> {
+    auto new_allof = AllOf<::xla::Layout>(impl_, std::move(new_impl));
     return LayoutPattern<LayoutType, decltype(new_allof)>(std::move(new_allof),
                                                           matched_layout_);
   }
@@ -504,12 +504,6 @@ class LayoutPattern {
   constexpr auto WithDenseFormat() const
       -> decltype(this->AppendImpl(LayoutPatternFormatImpl(DENSE))) {
     return AppendImpl(LayoutPatternFormatImpl(DENSE));
-  }
-
-  // Modifies the pattern to match only if the layout has a sparse format.
-  constexpr auto WithSparseFormat() const
-      -> decltype(this->AppendImpl(LayoutPatternFormatImpl(SPARSE))) {
-    return AppendImpl(LayoutPatternFormatImpl(SPARSE));
   }
 
  private:
@@ -869,7 +863,7 @@ class ShapePatternLayoutImpl {
            layout_.Match(&shape->layout(), option);
   }
 
-  bool Match(Shape* shape, MatchOption option) const {
+  bool Match(::xla::Shape* shape, MatchOption option) const {
     if (!LayoutUtil::HasLayout(*shape)) {
       EXPLAIN << "Shape does not have a layout";
       return false;
@@ -916,10 +910,10 @@ class ShapePatternSubshapeImpl {
   }
 
  private:
-  Shape* GetSubshape(Shape* shape) const {
+  ::xla::Shape* GetSubshape(::xla::Shape* shape) const {
     return ShapeUtil::GetMutableSubshape(shape, index_);
   }
-  const Shape* GetSubshape(const Shape* shape) const {
+  const ::xla::Shape* GetSubshape(const ::xla::Shape* shape) const {
     return &ShapeUtil::GetSubshape(*shape, index_);
   }
 
@@ -946,9 +940,10 @@ class ShapePattern {
  private:
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const
-      -> ShapePattern<ShapeType, decltype(AllOf<Shape>(std::declval<Impl>(),
-                                                       std::move(new_impl)))> {
-    auto new_all_of = AllOf<Shape>(impl_, std::move(new_impl));
+      -> ShapePattern<ShapeType,
+                      decltype(AllOf<::xla::Shape>(std::declval<Impl>(),
+                                                   std::move(new_impl)))> {
+    auto new_all_of = AllOf<::xla::Shape>(impl_, std::move(new_impl));
     return ShapePattern<ShapeType, decltype(new_all_of)>(std::move(new_all_of),
                                                          matched_shape_);
   }
@@ -1059,11 +1054,6 @@ class ShapePattern {
     return WithLayout(Layout().WithDenseFormat());
   }
 
-  constexpr auto IsSparseArray() const
-      -> decltype(this->WithLayout(Layout().WithSparseFormat())) {
-    return WithLayout(Layout().WithSparseFormat());
-  }
-
   // Modifies the pattern to match only if the shape has a subshape that matches
   // the given pattern.
   template <typename SubshapeType, typename SubshapeImpl>
@@ -1077,7 +1067,7 @@ class ShapePattern {
   }
 
   ShapePattern<ShapeType,
-               AllOfPattern<Shape, Impl,
+               AllOfPattern<::xla::Shape, Impl,
                             ShapePatternSubshapeImpl<
                                 const ::xla::Shape,
                                 AllOfPattern<::xla::Shape, ShapePatternBaseImpl,
@@ -1090,7 +1080,7 @@ class ShapePattern {
   }
 
   ShapePattern<ShapeType,
-               AllOfPattern<Shape, Impl,
+               AllOfPattern<::xla::Shape, Impl,
                             ShapePatternSubshapeImpl<
                                 const ::xla::Shape,
                                 AllOfPattern<::xla::Shape, ShapePatternBaseImpl,
@@ -1385,11 +1375,11 @@ class HloInstructionPatternBinaryOperandsAnyOrderImpl {
       const HloInstructionPattern<OperandType2, OperandImpl2>& op2)
       : op1_(op1), op2_(op2) {}
 
-  bool Match(HloInstruction* inst, MatchOption option) const {
+  bool Match(::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
   }
 
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return MatchImpl(inst, option);
   }
 
@@ -1663,7 +1653,7 @@ class HloInstructionPatternOneUseOrUserImpl {
 class HloInstructionPatternOneUseImpl
     : public HloInstructionPatternOneUseOrUserImpl {
  public:
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     if (!MatchOneUser(inst, option)) {
       return false;
     }
@@ -1688,7 +1678,7 @@ class HloInstructionPatternOneUseImpl
 class HloInstructionPatternOneUserImpl
     : public HloInstructionPatternOneUseOrUserImpl {
  public:
-  bool Match(const HloInstruction* inst, MatchOption option) const {
+  bool Match(const ::xla::HloInstruction* inst, MatchOption option) const {
     return MatchOneUser(inst, option);
   }
 
@@ -1779,30 +1769,19 @@ class HloConstantScalarImpl {
       return true;
     }
 
-    // Check that literal == static_cast<LitearlTy>(val) and
-    // val == static_cast<ValTy>(literal).  This is sufficient to ensure that
-    // the two constant scalars are actually "equal".
-    auto val_literal = LiteralUtil::CreateR0(*val_);
-    auto literal_r0_or = const_inst->literal().Reshape({});
-    auto val_as_literal_ty_or =
-        val_literal.Convert(const_inst->shape().element_type());
-    if (!literal_r0_or.ok() || !val_as_literal_ty_or.ok()) {
-      EXPLAIN << "could not construct relevant Literals (how did this happen?)";
+    auto const_inst_scalar_or = const_inst->literal().Reshape({});
+    if (!const_inst_scalar_or.ok()) {
+      EXPLAIN << "could not convert matched literal to effective scalar";
       return false;
     }
-    auto literal_r0 = std::move(literal_r0_or).ValueOrDie();
-    auto val_as_literal_ty = std::move(val_as_literal_ty_or).ValueOrDie();
-    auto literal_r0_as_val_ty_or =
-        literal_r0.Convert(val_literal.shape().element_type());
-    bool rv = literal_r0_as_val_ty_or.ok() &&  //
-              literal_r0_as_val_ty_or.ValueOrDie() == val_literal &&
-              literal_r0 == val_as_literal_ty;
-    if (!rv) {
+    Literal const_inst_scalar = std::move(const_inst_scalar_or).ValueOrDie();
+    if (!const_inst_scalar.IsEqualAt({}, *val_)) {
       EXPLAIN << "HloInstruction's constant value "
-              << literal_r0.ToStringWithoutShape()
+              << const_inst_scalar.ToStringWithoutShape()
               << " did not match expected value " << *val_;
+      return false;
     }
-    return rv;
+    return true;
   }
 
   absl::optional<ScalarTy> val_;
@@ -1815,9 +1794,9 @@ class HloInstructionPattern {
  private:
   template <typename NewImpl>
   auto AppendImpl(NewImpl new_impl) const -> HloInstructionPattern<
-      HloInstructionType, decltype(AllOf<HloInstruction>(
+      HloInstructionType, decltype(AllOf<::xla::HloInstruction>(
                               std::declval<Impl>(), std::move(new_impl)))> {
-    auto new_allof = AllOf<HloInstruction>(impl_, std::move(new_impl));
+    auto new_allof = AllOf<::xla::HloInstruction>(impl_, std::move(new_impl));
     return HloInstructionPattern<HloInstructionType, decltype(new_allof)>(
         std::move(new_allof), matched_inst_);
   }

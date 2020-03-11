@@ -18,10 +18,12 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace tensorflow {
 
@@ -38,7 +40,8 @@ string MakeUniqueFilename(string name) {
   // Remove illegal characters from `name`.
   for (int i = 0; i < name.size(); ++i) {
     char ch = name[i];
-    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?') {
+    if (ch == '/' || ch == '[' || ch == ']' || ch == '*' || ch == '?' ||
+        ch == '\\') {
       name[i] = '_';
     }
   }
@@ -77,31 +80,48 @@ template <class T>
 string WriteTextProtoToUniqueFile(Env* env, const string& name,
                                   const char* proto_type, T& proto,
                                   const string& dirname) {
-  const char* dir = nullptr;
+  string dir;
   if (!dirname.empty()) {
-    dir = dirname.c_str();
+    dir = dirname;
   } else {
-    dir = getenv("TF_DUMP_GRAPH_PREFIX");
+    const char* prefix = getenv("TF_DUMP_GRAPH_PREFIX");
+    if (prefix != nullptr) dir = prefix;
   }
-  if (!dir) {
+  if (dir.empty()) {
     LOG(WARNING)
         << "Failed to dump " << name << " because dump location is not "
         << " specified through either TF_DUMP_GRAPH_PREFIX environment "
         << "variable or function argument.";
     return "(TF_DUMP_GRAPH_PREFIX not specified)";
   }
-  Status status = env->RecursivelyCreateDir(dir);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to create " << dir << " for dumping " << proto_type
-                 << ": " << status;
-    return "(unavailable)";
+
+  if (absl::EqualsIgnoreCase(dir, "sponge") ||
+      absl::EqualsIgnoreCase(dir, "test_undeclared_outputs_dir")) {
+    if (!io::GetTestUndeclaredOutputsDir(&dir)) {
+      LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge, but "
+                      "TEST_UNDECLARED_OUTPUT_DIRS is not set, dumping to log";
+      dir = "-";
+    }
   }
-  string filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
-  status = WriteToFile(filepath, proto);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath
-                 << " : " << status;
-    return "(unavailable)";
+
+  string filepath = "NULL";
+  if (dir == "-") {
+    LOG(INFO) << proto.DebugString();
+    filepath = "LOG(INFO)";
+  } else {
+    Status status = env->RecursivelyCreateDir(dir);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to create " << dir << " for dumping "
+                   << proto_type << ": " << status;
+      return "(unavailable)";
+    }
+    filepath = io::JoinPath(dir, MakeUniqueFilename(name));
+    status = WriteToFile(filepath, proto);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to dump " << proto_type
+                   << " to file: " << filepath << " : " << status;
+      return "(unavailable)";
+    }
   }
   LOG(INFO) << "Dumped " << proto_type << " to " << filepath;
   return filepath;

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
@@ -56,18 +57,13 @@ void CollectiveParamResolverLocal::CompleteGroupAsync(
 }
 
 namespace {
-string GetCollectiveName(const CollectiveParams* cp, bool nccl) {
+const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
   switch (cp->instance.type) {
     case BROADCAST_COLLECTIVE:
       return "HierarchicalTreeBroadcast";
 
-    case REDUCTION_COLLECTIVE: {
-      if (nccl) {
-        return "NcclReduce";
-      } else {
-        return "RingReduce";
-      }
-    }
+    case REDUCTION_COLLECTIVE:
+      return nccl ? "NcclReduce" : "RingReduce";
 
     case GATHER_COLLECTIVE:
       return "RingGather";
@@ -96,15 +92,22 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 
       // Initialize group runtime details.
       CollectiveImplementationInterface* col_impl;
-      // TODO(b/128853131,b/132707282): Remove NCCL special case when we have
-      // NCCL implementations for all collectives.
-      status = CollectiveRegistry::LookupParamResolverInstance(
-          nccl_ ? "NcclReduce" : GetCollectiveName(cp, /*nccl=*/false),
-          &col_impl);
+      // Try to lookup a NCCL collective kernel.  This will return error status
+      // if `NcclReduce` kernel is not present in the registry, e.g. on an
+      // environment that does not support NCCL.
+      status = CollectiveRegistry::LookupParamResolverInstance("NcclReduce",
+                                                               &col_impl);
+      if (!status.ok()) {
+        // Fallback to non-NCCL collective.
+        status = CollectiveRegistry::LookupParamResolverInstance(
+            GetCollectiveName(cp, /*nccl=*/false), &col_impl);
+      }
       if (status.ok()) {
         status = col_impl->InitializeCollectiveGroupRuntimeDetails(
             &gr->group.runtime_details);
-      } else {
+      }
+
+      if (!status.ok()) {
         done(status, gr);
         return;
       }
@@ -121,28 +124,34 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
   }
   {
     mutex_lock gr_lock(gr->mu);
-    if (!gr->device_set.empty()) {
+    // If there is ever an error associated with a group key, we store the error
+    // status and invoke all waiting and future callbacks with this error
+    // status.
+    VLOG(2) << "gr device_type=" << gr->group.device_type
+            << " cp device_type=" << cp->group.device_type
+            << " current device=" << device;
+    if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
-        status = errors::Internal(
+        gr->status = errors::Internal(
             "Collective Op ", cp->name, " is assigned to device ", device,
             " with type ", cp->group.device_type.type_string(),
             " and group_key ", cp->group.group_key, " but that group has type ",
             gr->group.device_type.type_string());
       } else if (cp->group.group_size != gr->group.group_size) {
-        status = errors::Internal(
+        gr->status = errors::Internal(
             "Collective Op ", cp->name, " has group_size ",
-            cp->group.group_size, " and group_key", cp->group.group_key,
+            cp->group.group_size, " and group_key ", cp->group.group_key,
             " but that group has size ", gr->group.group_size);
       }
     }
-    if (status.ok()) {
+    if (gr->status.ok()) {
       // Insert device if not already present.
       auto it = gr->device_set.find(device);
       if (it == gr->device_set.end()) {
         if (gr->device_set.size() == gr->group.group_size) {
           // The group is already full.
-          status = errors::Internal(
+          gr->status = errors::Internal(
               "Collective Op ", cp->name, " is assigned to device ", device,
               " and group_key ", cp->group.group_key,
               " but that group doesn't contain that device.");
@@ -173,7 +182,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       }
     }
 
-    if (status.ok()) {
+    if (gr->status.ok()) {
       cp->group.runtime_details = gr->group.runtime_details;
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
@@ -184,14 +193,17 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
         return;
       }
       CHECK_EQ(gr->device_set.size(), gr->group.group_size);
-      if (!gr->waiting.empty()) {
-        std::swap(to_be_called, gr->waiting);
-      }
     }
+    // At this point, we either have a full group, or an error status.  Ensure
+    // that all callbacks are invoked with the appropriate status.
+    if (!gr->waiting.empty()) {
+      std::swap(to_be_called, gr->waiting);
+    }
+    status = gr->status;
   }
   done(status, gr);
   for (int i = 0; i < to_be_called.size(); ++i) {
-    to_be_called[i](Status::OK());
+    to_be_called[i](status);
   }
 }
 
@@ -227,17 +239,20 @@ GlobalDeviceMap BuildDevRecs(const CollInstanceParams& ip,
 }
 
 bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
-  std::vector<int32> gpu_ring_order_vec;
-  if (!str_util::SplitAndParseAsInts(gpu_ring_order_str, ',',
-                                     &gpu_ring_order_vec)) {
-    return false;
-  }
-  if (gpu_ring_order_vec.size() != tdm->size()) return false;
+  std::vector<string> split_gpu_ring_order_str =
+      str_util::Split(gpu_ring_order_str, ',');
+  if (split_gpu_ring_order_str.size() != tdm->size()) return false;
+
   // gpu id -> local rank
   gtl::FlatMap<int32, int32> gpu_ranks;
-  for (int32 rank = 0; rank < static_cast<int32>(gpu_ring_order_vec.size());
-       ++rank) {
-    gpu_ranks[gpu_ring_order_vec[rank]] = rank;
+  for (int32 rank = 0;
+       rank < static_cast<int32>(split_gpu_ring_order_str.size()); ++rank) {
+    int32 tmp;
+    if (strings::safe_strto32(split_gpu_ring_order_str[rank], &tmp)) {
+      gpu_ranks[tmp] = rank;
+    } else {
+      return false;
+    }
   }
 
   for (auto& tdm_it : *tdm) {
@@ -492,7 +507,7 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
       ir->shared.instance.task_names,    // NOLINT
       attributes,
       [this, gr, cp, ir, attributes, done](const Status& s)
-          EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
+          TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
             // Then we recover the lock in the callback thread that will hold it
             // through the rest of the call chain.  Signal the cv now, any
             // waiting threads will wake only when out_mu is released later.
@@ -592,7 +607,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
 
 void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const InstanceRecCallback& done) NO_THREAD_SAFETY_ANALYSIS {
+    const InstanceRecCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
   // This function serves merely to make a function call that should
   // be thread/mutex safe but violates the simple model applied by
   // static analysis, so we turn off analysis only within this
@@ -615,7 +630,7 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
   ir->known.resize(cp->group.group_size, false);
   InitInstanceSharedParams(
       gr, cp, ir,
-      [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
+      [this, ir, done](const Status& s) TF_UNLOCK_FUNCTION(ir->out_mu) {
         DCHECK(ir->out_mu_available);
         ir->status.Update(s);
         ir->out_mu.unlock();
@@ -668,7 +683,18 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
 // implementation.  The ideal way would depend upon the topology and link
 // strength before picking a particular implementation.
 void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
-  cp->instance.impl_details.collective_name = GetCollectiveName(cp, nccl_);
+  // We use the NCCL implementation if this is an environment which supports
+  // NCCL, i.e. `LookupParamResolverInstance` for `NcclReduce` returns OK, and
+  // also if indicated either in `ConfigProto` or `communication_hint`.
+  //
+  // After enough testing, we may simplify this logic to use NCCL whenever
+  // available.
+  CollectiveImplementationInterface* col_impl;
+  bool use_nccl =
+      (nccl_ || cp->instance.impl_details.communication_hint == "nccl") &&
+      CollectiveRegistry::LookupParamResolverInstance("NcclReduce", &col_impl)
+          .ok();
+  cp->instance.impl_details.collective_name = GetCollectiveName(cp, use_nccl);
   VLOG(1) << "AssignCollectiveType "
           << cp->instance.impl_details.collective_name;
 }
@@ -702,12 +728,23 @@ void CollectiveParamResolverLocal::CompleteInstanceLocal(
 void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     const string& device, const GroupRec* gr, CollectiveParams* cp,
     InstanceRec* ir, bool is_source, const StatusCallback& done) {
+  auto expected_shape = cp->instance.shape;
   // Populate the fields common across instance.
   {
     mutex_lock l(ir->out_mu);
     ir->WaitForOutMu(l);
     // custom operator= does a deep copy.
     cp->instance = ir->shared.instance;
+  }
+  if (expected_shape != cp->instance.shape) {
+    done(errors::InvalidArgument(
+        "Shape mismatch in the collective instance ", cp->instance.instance_key,
+        ". Op at device ", device, " expected shape ",
+        expected_shape.DebugString(), " but another member in the group ",
+        "expected shape ", cp->instance.shape.DebugString(), ". This is likely",
+        " due to different input shapes at different members of the collective",
+        " op."));
+    return;
   }
   // Populate the fields common across task.
   AssignCollectiveType(cp);

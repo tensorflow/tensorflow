@@ -333,10 +333,10 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     #   Also, the final dimension of 'x' can have any shape.
     #   Therefore, the final two dimensions of special_shape are 1's.
     special_shape = self.batch_shape.concatenate([1, 1])
-    bshape = array_ops.broadcast_static_shape(x.get_shape(), special_shape)
+    bshape = array_ops.broadcast_static_shape(x.shape, special_shape)
     if special_shape.is_fully_defined():
       # bshape.is_fully_defined iff special_shape.is_fully_defined.
-      if bshape == x.get_shape():
+      if bshape == x.shape:
         return x
       # Use the built in broadcasting of addition.
       zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
@@ -398,6 +398,12 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       mat_diag = array_ops.matrix_diag_part(mat)
       new_diag = 1 + mat_diag
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag()
+
+  def _cond(self):
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
 
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
@@ -628,7 +634,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
     matrix_shape = tensor_shape.TensorShape((self._num_rows_static,
                                              self._num_rows_static))
 
-    batch_shape = self.multiplier.get_shape()
+    batch_shape = self.multiplier.shape
     return batch_shape.concatenate(matrix_shape)
 
   def _shape_tensor(self):
@@ -723,6 +729,17 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       new_diag = multiplier_vector + mat_diag
 
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
+
+  def _cond(self):
+    # Condition number for a scalar time identity matrix is one, except when the
+    # scalar is zero.
+    return array_ops.where_v2(
+        math_ops.equal(self._multiplier, 0.),
+        math_ops.cast(np.nan, dtype=self.dtype),
+        math_ops.cast(1., dtype=self.dtype))
 
   @property
   def multiplier(self):

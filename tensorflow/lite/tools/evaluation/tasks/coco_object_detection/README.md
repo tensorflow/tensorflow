@@ -127,7 +127,13 @@ The following optional parameters can be used to modify the inference runtime:
 
 *   `delegate`: `string` \
     If provided, tries to use the specified delegate for accuracy evaluation.
-    Valid values: "nnapi", "gpu".
+    Valid values: "nnapi", "gpu", "hexagon".
+
+    NOTE: Please refer to the
+    [Hexagon delegate documentation](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/performance/hexagon_delegate.md)
+    for instructions on how to set it up for the Hexagon delegate. The tool
+    assumes that `libhexagon_interface.so` and Qualcomm libraries lie in
+    `/data/local/tmp`.
 
 ### Debug Mode
 
@@ -197,10 +203,8 @@ for configuring NDK and SDK.
 
 ```
 bazel build -c opt \
-  --config=android_arm \
-  --cxxopt='--std=c++11' \
-  --copt=-D__ANDROID_TYPES_FULL__ \
-  --copt=-DSUPPORT_SELECTIVE_REGISTRATION \
+  --config=android_arm64 \
+  --cxxopt='--std=c++17' \
   //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval
 ```
 
@@ -208,7 +212,7 @@ bazel build -c opt \
 directory if required):
 
 ```
-adb push bazel-bin/tensorflow/lite/tools/evaluation/tasks/coco_object_detection/run_eval /data/local/tmp
+adb push bazel-bin/third_party/tensorflow/lite/tools/evaluation/tasks/coco_object_detection/run_eval /data/local/tmp
 ```
 
 (3) Make the binary executable.
@@ -258,7 +262,6 @@ Optionally, you could also pass in the `--num_interpreter_threads` &
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/evaluation/tasks/coco_object_detection:run_eval \
   --model_file=/path/to/ssd_mobilenet_v1_float.tflite \

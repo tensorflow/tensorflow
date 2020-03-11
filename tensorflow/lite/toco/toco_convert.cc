@@ -74,12 +74,17 @@ void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
 tensorflow::Status Convert(const string& graph_def_contents,
                            const TocoFlags& toco_flags,
                            const ModelFlags& model_flags,
-                           string* output_file_contents) {
+                           string* output_file_contents,
+                           int64* arithmetic_ops_count = nullptr) {
   std::unique_ptr<Model> model =
       Import(toco_flags, model_flags, graph_def_contents);
   TF_RETURN_IF_ERROR(TransformWithStatus(toco_flags, model.get()));
-  return Export(toco_flags, *model, toco_flags.allow_custom_ops(),
-                output_file_contents);
+  TF_RETURN_IF_ERROR(Export(toco_flags, *model, toco_flags.allow_custom_ops(),
+                            output_file_contents));
+  if (arithmetic_ops_count != nullptr) {
+    *arithmetic_ops_count = model->ArithmeticOpsCount();
+  }
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,

@@ -15,9 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/ruy/blocking_counter.h"
 
-#include <condition_variable>  // NOLINT(build/c++11)
-#include <mutex>               // NOLINT(build/c++11)
-
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/wait.h"
 
@@ -46,7 +43,7 @@ void BlockingCounter::Wait() {
   const auto& condition = [this]() {
     return count_.load(std::memory_order_acquire) == 0;
   };
-  WaitUntil(condition, &count_cond_, &count_mutex_);
+  ruy::Wait(condition, &count_cond_, &count_mutex_);
 }
 
 }  // namespace ruy

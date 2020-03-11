@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -39,21 +40,6 @@ namespace {
 Status Instantiate(FunctionLibraryRuntime* lib, const NameAttrList& func,
                    FunctionLibraryRuntime::Handle* handle) {
   return lib->Instantiate(func.name(), AttrSlice(&func.attr()), handle);
-}
-
-template <typename To, typename From>  // use like this: down_cast<T*>(foo);
-inline To down_cast(From* f) {         // so we only accept pointers
-  static_assert(
-      (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
-      "target type not derived from source type");
-
-  // We skip the assert and hence the dynamic_cast if RTTI is disabled.
-#if !defined(__GNUC__) || defined(__GXX_RTTI)
-  // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
-  assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
-#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
-
-  return static_cast<To>(f);
 }
 
 // If "t" is a scalar of a supported type, returns t != 0 in "*v".
@@ -82,7 +68,7 @@ Status ToBool(gtl::ArraySlice<Tensor> t, bool* v) {
         *v = t[0].scalar<bool>()();
         break;
       case DT_STRING:
-        *v = !t[0].scalar<string>()().empty();
+        *v = !t[0].scalar<tstring>()().empty();
         break;
       default:
         return errors::InvalidArgument(DataTypeString(t[0].dtype()),
@@ -121,6 +107,7 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
     opts->stats_collector = ctx->stats_collector();
   }
   opts->runner = ctx->runner();
+  opts->run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts->step_container = ctx->step_container();
 }
 
@@ -509,6 +496,20 @@ REGISTER_KERNEL_BUILDER(Name("While").Device(DEVICE_GPU), WhileOp);
 
 REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_CPU), WhileOp);
 REGISTER_KERNEL_BUILDER(Name("StatelessWhile").Device(DEVICE_GPU), WhileOp);
+
+class ToBoolOp : public OpKernel {
+ public:
+  explicit ToBoolOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) override {
+    bool b;
+    OP_REQUIRES_OK(ctx, ToBool({ctx->input(0)}, &b));
+    Tensor* out;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &out));
+    out->scalar<bool>()() = b;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(Name("ToBool").Device(DEVICE_CPU), ToBoolOp);
 
 Status GetScalar(OpKernelContext* ctx, int index, int32* value,
                  const char* label) {

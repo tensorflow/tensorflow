@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_BLOCK_MAP_H_
 
-#include <cstdint>
+#include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/side_pair.h"
 
 namespace ruy {
 
@@ -26,9 +27,9 @@ enum class BlockMapTraversalOrder {
   // Fractal Z-order curve, https://en.wikipedia.org/wiki/Z-order_curve
   kFractalZ,
   // Variant of Z-order doing a U instead of a Z.
-  kFractalU
-  // TODO(benoitjacob) add Hilbert curve order. More complex decoding might be
-  // worth it.
+  kFractalU,
+  // Hilbert curve, https://en.wikipedia.org/wiki/Hilbert_curve
+  kFractalHilbert
 };
 
 // A BlockMap describes a tiling of a matrix, typically the destination matrix
@@ -51,11 +52,11 @@ enum class BlockMapTraversalOrder {
 // GetBlockByIndex to get the corresponding block, then GetBlockMatrixCoords
 // to find the actual row and column numbers of this block.
 //
-// There are two nested levels of subdivision. On a high level, the matrix is
-// tiled into a square NxN grid where N is a power of to, specifically:
+// There are two nested levels of subdivision. On a local level, the matrix is
+// tiled into a square NxN grid where N is a power of two, specifically:
 //   N = 2^num_blocks_base_log2.
 //
-// At a smaller scale, within each of these blocks, there may be one further
+// At a larger scale, around these blocks, there may be one further
 // level of subdivision, in only one dimension: either along rows or along
 // columns. That is used to handle arbitrarily rectangular matrices. The
 // aforementioned high-level block grid is square, so it does not readily fit
@@ -79,63 +80,67 @@ enum class BlockMapTraversalOrder {
 // will only allow that to happen in the last position along each axis, so
 // as to minimize the overhead incurred onto the matrix multiplication kernels.
 struct BlockMap {
+  // The number of threads to use (to distribute the blocks to).
+  int thread_count;
   // The order in which to traverse the matrix of which this BlockMap represents
   // a tiling (hereafter "the matrix").
   BlockMapTraversalOrder traversal_order;
-  // The number of rows in the matrix.
-  int rows;
-  // The number of columns in the matrix.
-  int cols;
+  // The dimensions of the block_map, that is, of the destination
+  // matrix rounded up to next multiples of kernel_dims.
+  SidePair<int> dims;
   // Log2 of the minimum number of subdivisions of the grid along either axis.
   int num_blocks_base_log2;
-  // Log2 of the additional subdivision of the rows axis.
-  int rows_rectangularness_log2;
-  // Log2 of the additional subdivision of the columns axis.
-  int cols_rectangularness_log2;
-  // Requested alignment of the subdivions grid along the rows axis.
-  int kernel_rows;
-  // Requested alignment of the subdivions grid along the columns axis.
-  int kernel_cols;
-  // Internal helper. Minimum number of rows in each block.
-  std::uint16_t smallr;
-  // Internal helper. Minimum number of columns in each block.
-  std::uint16_t smallc;
-  // Internal helper. Number of rows that would be missed at the end if
-  // all blocks had exactly `smallr` rows.
-  std::uint16_t missr;
-  // Internal helper. Number of columns that would be missed at the end if
-  // all blocks had exactly `smallc` columns.
-  std::uint16_t missc;
+  // Log2 of the additional subdivision of the rows/columns axis.
+  SidePair<int> rectangularness_log2;
+  // Requested alignment of the subdivisions of the grid along the rows/columns
+  // axis.
+  SidePair<int> kernel_dims;
+  // Internal helper. Minimum number of rows/columns in each block.
+  SidePair<int> small_block_dims;
+  // Internal helper. Number of blocks along each dimension that need to have
+  // their size in that dimension be given by (small_block_dims + kernel_dims)
+  // instead of just small_block_dims.
+  SidePair<int> large_blocks;
 };
+
+// Returns the traversal order to be used for the given matrix multiplication
+// parameters.
+BlockMapTraversalOrder GetTraversalOrder(int rows, int cols, int depth,
+                                         int lhs_scalar_size,
+                                         int rhs_scalar_size,
+                                         int local_data_cache_size,
+                                         int shared_data_cache_size);
 
 // Create a BlockMap suitable for tiling the destination matrix in a
 // matrix multiplication with the given parameters.
 void MakeBlockMap(int rows, int cols, int depth, int kernel_rows,
                   int kernel_cols, int lhs_scalar_size, int rhs_scalar_size,
-                  int cache_friendly_traversal_threshold, BlockMap* block_map);
+                  int tentative_thread_count, Path path,
+                  int local_data_cache_size, int shared_data_cache_size,
+                  BlockMap* block_map);
 
-// Maps an integer index to a (block_r, block_c) block position in the grid.
-void GetBlockByIndex(const BlockMap& block_map, std::uint32_t index,
-                     std::uint16_t* block_r, std::uint16_t* block_c);
+// Maps an integer index to a block position in the grid.
+void GetBlockByIndex(const BlockMap& block_map, int index,
+                     SidePair<int>* block);
 
-// Given a (block_r, block_c) block position in the grid, returns its actual
+// Given a block position in the grid, returns its actual
+// position in the matrix that the BlockMap refers to in the dimension
+// referred to by `side`: along rows if side==kLhs, along columns if
+// side==kRhs.
+void GetBlockMatrixCoords(Side side, const BlockMap& block_map, int block,
+                          int* start, int* end);
+
+// Given a block position in the grid, returns its actual
 // position in the matrix that the BlockMap refers to in terms of
-// actual row/column indices: starting at row start_r and column start_c,
-// ending at row (end_r - 1) and column (end_c - 1).
-void GetBlockMatrixCoords(const BlockMap& block_map, std::uint16_t block_r,
-                          std::uint16_t block_c, int* start_r, int* start_c,
-                          int* end_r, int* end_c);
+// actual row/column indices.
+void GetBlockMatrixCoords(const BlockMap& block_map, const SidePair<int>& block,
+                          SidePair<int>* start, SidePair<int>* end);
 
-// Returns the number of grid subdivisions along the rows dimension.
-inline std::uint16_t NumBlocksOfRows(const BlockMap& block_map) {
+// Returns the number of grid subdivisions along the rows dimension (if
+// side == kLhs) or columns dimension (if side == kRhs).
+inline int NumBlocksPerSide(Side side, const BlockMap& block_map) {
   return 1 << (block_map.num_blocks_base_log2 +
-               block_map.rows_rectangularness_log2);
-}
-
-// Returns the number of grid subdivisions along the columns dimension.
-inline std::uint16_t NumBlocksOfCols(const BlockMap& block_map) {
-  return 1 << (block_map.num_blocks_base_log2 +
-               block_map.cols_rectangularness_log2);
+               block_map.rectangularness_log2[side]);
 }
 
 // Returns the overall number of blocks in
@@ -145,10 +150,10 @@ inline std::uint16_t NumBlocksOfCols(const BlockMap& block_map) {
 // Note that it is always true that
 //   NumBlocks == NumBlocksOfRows * NumBlocksOfCols
 // because either rows_rectangularness_log2 or cols_rectangularness_log2 is 0.
-inline std::uint32_t NumBlocks(const BlockMap& block_map) {
+inline int NumBlocks(const BlockMap& block_map) {
   return 1 << (2 * block_map.num_blocks_base_log2 +
-               block_map.rows_rectangularness_log2 +
-               block_map.cols_rectangularness_log2);
+               block_map.rectangularness_log2[Side::kLhs] +
+               block_map.rectangularness_log2[Side::kRhs]);
 }
 
 }  // namespace ruy

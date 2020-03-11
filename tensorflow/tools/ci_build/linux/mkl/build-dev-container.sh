@@ -58,8 +58,12 @@ BUILD_AVX2_CONTAINERS=${BUILD_AVX2_CONTAINERS:-no}
 BUILD_SKX_CONTAINERS=${BUILD_SKX_CONTAINERS:-no}
 BUILD_CLX_CONTAINERS=${BUILD_CLX_CONTAINERS:-no}
 CONTAINER_PORT=${TF_DOCKER_BUILD_PORT:-8888}
-BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-no}
+BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS:-yes}
+BUILD_TF_BFLOAT16_CONTAINERS=${BUILD_TF_BFLOAT16_CONTAINERS:-no}
 ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD:-no}
+BAZEL_VERSION=${BAZEL_VERSION}
+BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS:-no}
+ENABLE_DNNL1=${ENABLE_DNNL1:-no}
 
 debug "ROOT_CONTAINER=${ROOT_CONTAINER}"
 debug "TF_ROOT_CONTAINER_TAG=${TF_ROOT_CONTAINER_TAG}"
@@ -72,8 +76,12 @@ debug "BUILD_AVX2_CONTAINERS=${BUILD_AVX2_CONTAINERS}"
 debug "BUILD_SKX_CONTAINERS=${BUILD_SKX_CONTAINERS}"
 debug "BUILD_CLX_CONTAINERS=${BUILD_CLX_CONTAINERS}"
 debug "BUILD_TF_V2_CONTAINERS=${BUILD_TF_V2_CONTAINERS}"
+debug "BUILD_TF_BFLOAT16_CONTAINERS=${BUILD_TF_BFLOAT16_CONTAINERS}"
 debug "ENABLE_SECURE_BUILD=${ENABLE_SECURE_BUILD}"
 debug "TMP_DIR=${TMP_DIR}"
+debug "BAZEL_VERSION=${BAZEL_VERSION}"
+debug "BUILD_PY2_CONTAINERS=${BUILD_PY2_CONTAINERS}"
+debug "ENABLE_DNNL1=${ENABLE_DNNL1}"
 
 function build_container()
 {
@@ -103,9 +111,24 @@ function build_container()
     TF_DOCKER_BUILD_ARGS+=("--build-arg CONFIG_V2_DISABLE=--disable-v2")
   fi
 
+  #Add build arg for bfloat16 build
+  if [[ ${BUILD_TF_BFLOAT16_CONTAINERS} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg CONFIG_BFLOAT16_BUILD=--enable-bfloat16")
+  fi
+
   #Add build arg for Secure Build
   if [[ ${ENABLE_SECURE_BUILD} == "yes" ]]; then
     TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_SECURE_BUILD=--secure-build")
+  fi
+
+  # Add build arg for DNNL1
+  if [[ ${ENABLE_DNNL1} == "yes" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg ENABLE_DNNL1=--enable-dnnl1")
+  fi
+
+  # BAZEL Version
+  if [[ ${BAZEL_VERSION} != "" ]]; then
+    TF_DOCKER_BUILD_ARGS+=("--build-arg BAZEL_VERSION=${BAZEL_VERSION}")
   fi
 
   # Perform docker build
@@ -155,9 +178,11 @@ function test_container()
   debug "ID of the running docker container: ${CONTAINER_ID}"
 
   debug "Performing basic sanity checks on the running container..."
-  TEST_CMD=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
-  debug "Running test command: ${TEST_CMD}"
-  if [ "${TEST_CMD}" = "True" ] ; then
+  TEST_CMD_1=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import _pywrap_util_port; print(_pywrap_util_port.IsMklEnabled())'")
+  # Make TEST_CMD backward compatible with older code
+  TEST_CMD_2=$(${DOCKER_BINARY} exec ${CONTAINER_ID} bash -c "${PYTHON} -c 'from tensorflow.python import pywrap_tensorflow; print(pywrap_tensorflow.IsMklEnabled())'")
+
+  if [ "${TEST_CMD_1}" = "True" -o "${TEST_CMD_2}" = "True" ] ; then
       echo "PASS: MKL enabled test in ${TEMP_IMAGE_NAME}"
   else
       die "FAIL: MKL enabled test in ${TEMP_IMAGE_NAME}"
@@ -224,7 +249,11 @@ function tag_container()
   debug "Successfully tagged docker image: ${FINAL_IMG}"
 }
 
-PYTHON_VERSIONS=("python" "python3")
+PYTHON_VERSIONS=("python3")
+if [[ ${BUILD_PY2_CONTAINERS} == "yes" ]]; then
+  PYTHON_VERSIONS+=("python")
+fi
+
 PLATFORMS=()
 if [[ ${BUILD_AVX_CONTAINERS} == "yes" ]]; then
   PLATFORMS+=("sandybridge")
@@ -286,4 +315,3 @@ do
       tag_container "${TEMP_IMAGE_NAME}" "${FINAL_IMAGE_NAME}:${FINAL_TAG}"
   done
 done
-

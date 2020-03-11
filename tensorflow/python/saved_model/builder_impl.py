@@ -46,10 +46,10 @@ from tensorflow.python.util.tf_export import tf_export
 class _SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 
-  The `SavedModelBuilder` class provides functionality to build a `SavedModel`
-  protocol buffer. Specifically, this allows multiple meta graphs to be saved as
-  part of a single language-neutral `SavedModel`, while sharing variables and
-  assets.
+  The `SavedModelBuilder` class provides the functionality to build a 
+  `SavedModel` protocol buffer. Specifically, this allows multiple meta
+  graphs to be saved as part of a single language-neutral `SavedModel`,
+  while sharing variables and assets.
 
   To build a SavedModel, the first meta graph must be saved with variables.
   Subsequent meta graphs will simply be saved with their graph definitions. If
@@ -155,14 +155,14 @@ class _SavedModelBuilder(object):
   def _validate_tensor_info(self, tensor_info):
     """Validates the `TensorInfo` proto.
 
-    Checks if the `encoding` (`name` or `coo_sparse`) and `dtype` fields exist
-    and are non-empty.
+    Checks if the `encoding` (`name` or `coo_sparse` or `type_spec`) and
+    `dtype` fields exist and are non-empty.
 
     Args:
       tensor_info: `TensorInfo` protocol buffer to validate.
 
     Raises:
-      AssertionError: If the `name` or `dtype` fields of the supplied
+      AssertionError: If the `encoding` or `dtype` fields of the supplied
           `TensorInfo` proto are not populated.
     """
     if tensor_info is None:
@@ -175,7 +175,10 @@ class _SavedModelBuilder(object):
           "All TensorInfo protos used in the SignatureDefs must have one of "
           "the 'encoding' fields (e.g., name or coo_sparse) set: %s"
           % tensor_info)
-    if tensor_info.dtype is types_pb2.DT_INVALID:
+    if tensor_info.WhichOneof("encoding") == "composite_tensor":
+      for component in tensor_info.composite_tensor.components:
+        self._validate_tensor_info(component)
+    elif tensor_info.dtype == types_pb2.DT_INVALID:
       raise AssertionError(
           "All TensorInfo protos used in the SignatureDefs must have the dtype "
           "field set: %s" % tensor_info)
@@ -186,7 +189,7 @@ class _SavedModelBuilder(object):
     Validation of entries in the signature def map includes ensuring that the
     `name` and `dtype` fields of the TensorInfo protos of the `inputs` and
     `outputs` of each `SignatureDef` are populated. Also ensures that reserved
-    SigantureDef keys for the initialization and train ops are not used.
+    SignatureDef keys for the initialization and train ops are not used.
 
     Args:
       signature_def_map: The map of signature defs to be validated.
@@ -393,7 +396,7 @@ class _SavedModelBuilder(object):
     """Writes a `SavedModel` protocol buffer to disk.
 
     The function writes the SavedModel protocol buffer to the export directory
-    in serialized format.
+    in a serialized format.
 
     Args:
       as_text: Writes the SavedModel protocol buffer in text format to
@@ -418,7 +421,8 @@ class _SavedModelBuilder(object):
       path = os.path.join(
           compat.as_bytes(self._export_dir),
           compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
-      file_io.write_string_to_file(path, self._saved_model.SerializeToString())
+      file_io.write_string_to_file(
+          path, self._saved_model.SerializeToString(deterministic=True))
     tf_logging.info("SavedModel written to: %s", compat.as_text(path))
 
     return path
@@ -468,7 +472,7 @@ class SavedModelBuilder(_SavedModelBuilder):
         op will be added to the graph.
 
     Raises:
-      TypeError: if main op is provided but is not of type `Operation`.
+      TypeError: If the main op is provided but is not of type `Operation`.
       ValueError: if the Graph already contains an init op.
     """
     if main_op is None:
@@ -621,7 +625,7 @@ def _maybe_save_assets(write_fn, assets_to_add=None):
   """Saves assets to the meta graph.
 
   Args:
-    write_fn: A function callback that writes asset into meta graph.
+    write_fn: A function callback that writes assets into meta graph.
     assets_to_add: The list where the asset paths are setup.
 
   Returns:

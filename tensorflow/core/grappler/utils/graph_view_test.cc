@@ -1894,6 +1894,7 @@ TEST_F(MutationTest, ConsecutiveMutations) {
 constexpr char kMatchingFiles[] = "MatchingFiles";
 
 TEST_F(MutationTest, OpWithUnsupportedDevice) {
+  GTEST_SKIP() << "Reenable once offline optimization tests enable CUDA.";
   auto test_graph = []() {
     return GDef({NDef("a", kMatchingFiles, {}, {}, kDeviceCPU0)},
                 /*funcs=*/{});
@@ -1930,6 +1931,7 @@ TEST_F(MutationTest, OpWithUnsupportedDevice) {
 }
 
 TEST_F(MutationTest, OpMissingAttribute) {
+  GTEST_SKIP() << "Reenable once offline optimization tests enable CUDA.";
   auto test_graph = []() {
     return GDef({NDef("a", kIdentity, {}, {{"T", DT_FLOAT}}, kDeviceGPU0)},
                 /*funcs=*/{});
@@ -2413,8 +2415,28 @@ static void BM_MutableGraphViewConstruction(int iters, int num_nodes,
                                               num_edges_per_node);
 }
 
+static void BM_MutableGraphViewClearAttrs(int iters, int num_nodes,
+                                          int num_edges_per_node) {
+  testing::StopTiming();
+  GraphDef graph_def = test::CreateGraphDef(num_nodes, num_edges_per_node);
+
+  Status s;
+  MutableGraphView graph_view(&graph_def, &s);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    utils::Mutation* mutation = graph_view.GetMutationBuilder();
+    for (int j = 0; j < num_nodes; ++j) {
+      mutation->RemoveNodeAttr(graph_view.GetNode(j), "_some_random_attr");
+    }
+    s = mutation->Apply();
+  }
+  testing::StopTiming();
+}
+
 RUN_NUM_NODE_NUM_EDGE_BENCHMARK(BM_GraphViewConstruction);
 RUN_NUM_NODE_NUM_EDGE_BENCHMARK(BM_MutableGraphViewConstruction);
+RUN_NUM_NODE_NUM_EDGE_BENCHMARK(BM_MutableGraphViewClearAttrs);
 
 #define RUN_NUM_NODE_BENCHMARK(name) \
   BENCHMARK(name)                    \

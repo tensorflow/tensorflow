@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
 }
 
 std::unique_ptr<SequenceTransformation> NewRemoveDegenerateUpsampling() {
-  auto type = ToString(OperationType::UPSAMPLE_2D);
+  auto type = ToString(OperationType::RESIZE);
   return absl::make_unique<RemoveOperation>(
       [type](GraphFloat32* graph, Node* node) {
         if (node->operation.type != type) {
@@ -108,6 +108,13 @@ class RemoveIdentityReshape : public NodeTransformation {
         absl::any_cast<const ReshapeAttributes&>(node->operation.attributes);
     if (input_shape != reshape_attr.new_shape) {
       return {TransformStatus::SKIPPED, ""};
+    }
+    auto output = graph->FindOutputs(node->id)[0];
+    const auto& graph_outputs = graph->outputs();
+    if (std::find(graph_outputs.begin(), graph_outputs.end(), output) !=
+        graph_outputs.end()) {
+      return {TransformStatus::SKIPPED,
+              "Can not apply transformation when node output is graph output"};
     }
     Status status = RemoveOneInputOneOutputNode(graph, node);
     if (!status.ok()) {

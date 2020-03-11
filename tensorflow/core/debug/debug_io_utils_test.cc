@@ -47,8 +47,8 @@ class DebugIOUtilsTest : public ::testing::Test {
     tensor_a_->flat<float>()(3) = 0.0;
 
     tensor_b_.reset(new Tensor(DT_STRING, TensorShape{2}));
-    tensor_b_->flat<string>()(0) = "corge";
-    tensor_b_->flat<string>()(1) = "garply";
+    tensor_b_->flat<tstring>()(0) = "corge";
+    tensor_b_->flat<tstring>()(1) = "garply";
   }
 
   Env* env_;
@@ -182,8 +182,8 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   // Verify tensor shape and value.
   ASSERT_EQ(tensor_b_->shape(), b_prime.shape());
-  for (int i = 0; i < b_prime.flat<string>().size(); ++i) {
-    ASSERT_EQ(tensor_b_->flat<string>()(i), b_prime.flat<string>()(i));
+  for (int i = 0; i < b_prime.flat<tstring>().size(); ++i) {
+    ASSERT_EQ(tensor_b_->flat<tstring>()(i), b_prime.flat<tstring>()(i));
   }
 
   // Tear down temporary file and directories.
@@ -357,11 +357,11 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   const string dump_root_base = testing::TmpDir();
 
   mutex mu;
-  std::vector<string> dump_roots GUARDED_BY(mu);
-  std::vector<string> dump_file_paths GUARDED_BY(mu);
+  std::vector<string> dump_roots TF_GUARDED_BY(mu);
+  std::vector<string> dump_file_paths TF_GUARDED_BY(mu);
 
-  int dump_count GUARDED_BY(mu) = 0;
-  int done_count GUARDED_BY(mu) = 0;
+  int dump_count TF_GUARDED_BY(mu) = 0;
+  int done_count TF_GUARDED_BY(mu) = 0;
   Notification all_done;
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,

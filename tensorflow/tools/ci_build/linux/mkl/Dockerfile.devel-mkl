@@ -10,8 +10,19 @@ ARG PYTHON="python"
 ARG WHL_DIR="/tmp/pip"
 ARG PIP="pip"
 ARG TARGET_PLATFORM="haswell"
-ARG CONFIG_V2_DISABLE="--disable-v2"
+ARG CONFIG_V2_DISABLE=""
+ARG CONFIG_BFLOAT16_BUILD=""
 ARG ENABLE_SECURE_BUILD
+ARG BAZEL_VERSION=""
+ARG ENABLE_DNNL1=""
+
+# Upgrade Bazel version if argument is passed
+RUN if [ "${BAZEL_VERSION}" != "" ]; then \
+        curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        chmod +x bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+        rm -rf bazel-$BAZEL_VERSION-installer-linux-x86_64.sh; \
+    fi
 
 # Download and build TensorFlow from the latest sources found in the root container
 # make sure that if they pass in a tag, that it is loaded or we'll get an error
@@ -29,7 +40,7 @@ ENV CI_BUILD_PYTHON ${PYTHON}
 # compiler flags based on parameters
 ADD set-build-env.py .
 RUN ${PYTHON} set-build-env.py -p ${TARGET_PLATFORM} -f /root/.mkl.bazelrc \
-    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD}
+    ${CONFIG_V2_DISABLE} ${ENABLE_SECURE_BUILD} ${CONFIG_BFLOAT16_BUILD} ${ENABLE_DNNL1}
 
 # Pull the compiler flags we just wrote into root user's .bazelrc file
 RUN echo "import /root/.mkl.bazelrc" >>/root/.bazelrc
@@ -50,4 +61,3 @@ EXPOSE 6006
 EXPOSE 8888
 
 WORKDIR /root
-

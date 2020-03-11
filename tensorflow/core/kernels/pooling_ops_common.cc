@@ -16,7 +16,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 
@@ -132,20 +134,6 @@ TensorShape PoolParameters::forward_output_shape() {
 }
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                         \
-  template <>                                                       \
-  void TransformDepth<GPUDevice, T, Eigen::DenseIndex>::operator()( \
-      const GPUDevice& d, typename TTypes<T, 4>::ConstTensor in,    \
-      const Eigen::DSizes<Eigen::DenseIndex, 4>& shuffle,           \
-      typename TTypes<T, 4>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, Eigen::DenseIndex>;
-
-TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC)
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
 
 template <typename T>
 void DnnPoolingOp<T>::Compute(OpKernelContext* context,
@@ -317,6 +305,7 @@ void DnnPoolingGradOp<T>::Compute(
     return;
   }
 
+#if CUDNN_VERSION < 7300
   /// For now, cudnn does not support NHWC format, so we need to convert it
   /// to NCHW before calling cudnn. We need to get rid of this once it is done
   Tensor transformed_input;
@@ -382,6 +371,40 @@ void DnnPoolingGradOp<T>::Compute(
         context->eigen_device<Device>(), out_backprop.tensor<T, 4>(),
         transformed_output_backprop.tensor<T, 4>());
   }
+  se::dnn::DataLayout data_layout = se::dnn::DataLayout::kBatchDepthYX;
+#else
+  Tensor transformed_input;
+  if (!tensor_in) {
+    OP_REQUIRES_OK(context,
+                   context->allocate_temp(DataTypeToEnum<T>::value,
+                                          tensor_in_shape, &transformed_input));
+  } else {
+    transformed_input = *tensor_in;
+  }
+  Tensor transformed_output;
+  if (!tensor_out) {
+    OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<T>::value,
+                                                   out_backprop.shape(),
+                                                   &transformed_output));
+  } else {
+    transformed_output = *tensor_out;
+  }
+  Tensor transformed_input_backprop = *input_backprop;
+  Tensor transformed_output_backprop = out_backprop;
+  se::dnn::DataLayout data_layout;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      data_layout = se::dnn::DataLayout::kBatchYXDepth;
+      break;
+    case FORMAT_NCHW:
+      data_layout = se::dnn::DataLayout::kBatchDepthYX;
+      break;
+    default:
+      OP_REQUIRES(context, false,
+                  errors::InvalidArgument("Unsupported format: ",
+                                          ToString(data_format)));
+  }
+#endif  // CUDNN_VERSION < 7300
 
   /// Get ready to call cudnn
   se::dnn::PoolingDescriptor pooling_desc;
@@ -399,14 +422,14 @@ void DnnPoolingGradOp<T>::Compute(
       .set_height(params.out_height)
       .set_width(params.out_width)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(data_layout);
 
   se::dnn::BatchDescriptor orig_input_desc;
   orig_input_desc.set_count(params.tensor_in_batch)
       .set_height(params.tensor_in_rows)
       .set_width(params.tensor_in_cols)
       .set_feature_map_count(params.depth)
-      .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+      .set_layout(data_layout);
 
   auto orig_output_data =
       AsDeviceMemory(transformed_output.template flat<T>().data(),
@@ -449,6 +472,7 @@ void DnnPoolingGradOp<T>::Compute(
   OP_REQUIRES(context, status,
               errors::Internal("dnn PoolBackward launch failed"));
 
+#if CUDNN_VERSION < 7300
   if (data_format == FORMAT_NHWC) {
     /// Transform the output data from NCHW back to NHWC.
     auto toConstTensor = [](const Tensor& x) -> const Tensor { return x; };
@@ -457,6 +481,7 @@ void DnnPoolingGradOp<T>::Compute(
         toConstTensor(transformed_input_backprop).template tensor<T, 4>(),
         input_backprop->tensor<T, 4>());
   }
+#endif  // CUDNN_VERSION < 7300
 }
 
 #define DEFINE_DNN_OPS(T)         \

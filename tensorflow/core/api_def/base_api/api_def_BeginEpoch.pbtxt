@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "BeginEpoch"
+  visibility: HIDDEN
+  summary: "Begins a tf.data service dataset epoch."
+}

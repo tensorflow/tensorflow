@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <limits>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -65,7 +64,7 @@ inline void Add(const ArithmeticParams& params,
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
+      MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
   const int32_t int8_max_value = std::numeric_limits<int8_t>::max();
   TFLITE_DCHECK_GE(params.input1_offset, -1 * int8_max_value);
@@ -82,7 +81,6 @@ inline void BroadcastAdd4DSlow(const ArithmeticParams& params,
                                const int8_t* input2_data,
                                const RuntimeShape& output_shape,
                                int8_t* output_data) {
-  gemmlowp::ScopedProfilingLabel label("BroadcastAdd4DSlow/int8");
   NdArrayDesc<4> desc1;
   NdArrayDesc<4> desc2;
   NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,

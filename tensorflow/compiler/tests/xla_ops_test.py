@@ -27,6 +27,7 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
@@ -406,8 +407,11 @@ class XlaOpsShapeInferenceTest(xla_test.XLATestCase, parameterized.TestCase):
     dim_nums.rhs_batch_dimensions.append(0)
 
     c = xla.dot_general(a, b, dim_nums)
-    self.assertEqual(c.shape, tensor_shape.TensorShape([1, 3, 3, 1]))
+    self.assertEqual(c.shape, tensor_shape.TensorShape([4, 1, 3, 3, 1]))
 
 
 if __name__ == '__main__':
+  # This test is using Tensorflow sessions which are not compatible with eager
+  # mode.
+  ops.disable_eager_execution()
   googletest.main()

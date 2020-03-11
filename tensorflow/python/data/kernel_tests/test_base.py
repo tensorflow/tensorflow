@@ -19,37 +19,52 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
+def default_test_combinations():
+  """Returns the default test combinations for tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode=["eager", "graph"])
+
+
+def eager_only_combinations():
+  """Returns the default test combinations for eager mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="eager")
+
+
+def graph_only_combinations():
+  """Returns the default test combinations for graph mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="graph")
+
+
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
-  @classmethod
-  def setUpClass(cls):
-    if tf2.enabled():
-      dataset_ops.Dataset = dataset_ops.DatasetV2
-    else:
-      dataset_ops.Dataset = dataset_ops.DatasetV1
-
   def assert_op_cancelled(self, op):
-    with self.assertRaisesRegexp(errors.CancelledError, "was cancelled"):
+    with self.assertRaises(errors.CancelledError):
       self.evaluate(op)
 
   def assertValuesEqual(self, expected, actual):
     """Asserts that two values are equal."""
-    if sparse_tensor.is_sparse(expected):
+    if isinstance(expected, dict):
+      self.assertItemsEqual(list(expected.keys()), list(actual.keys()))
+      for k in expected.keys():
+        self.assertValuesEqual(expected[k], actual[k])
+    elif sparse_tensor.is_sparse(expected):
       self.assertAllEqual(expected.indices, actual.indices)
       self.assertAllEqual(expected.values, actual.values)
       self.assertAllEqual(expected.dense_shape, actual.dense_shape)
@@ -87,7 +102,10 @@ class DatasetTestBase(test.TestCase):
         else:
           return r
       return _wrapper
-    if context.executing_eagerly():
+
+    # Create an anonymous iterator if we are in eager-mode or are graph inside
+    # of a tf.function.
+    if context.executing_eagerly() or ops.inside_function():
       iterator = iter(dataset)
       return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:
@@ -111,6 +129,17 @@ class DatasetTestBase(test.TestCase):
       for result_value, expected_value in zip(
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         self.assertValuesEqual(expected_value, result_value)
+
+  def getDatasetOutput(self, dataset, requires_initialization=False):
+    get_next = self.getNext(
+        dataset, requires_initialization=requires_initialization)
+    results = []
+    while True:
+      try:
+        results.append(self.evaluate(get_next()))
+      except errors.OutOfRangeError:
+        break
+    return results
 
   def assertDatasetProduces(self,
                             dataset,
@@ -139,7 +168,7 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
-        to 2.
+        to 1.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
       expected_error_iter: How many times to iterate before expecting an error,
@@ -248,6 +277,14 @@ class DatasetTestBase(test.TestCase):
               for substructure in dataset_structure
           ]))
 
+  def graphRoundTrip(self, dataset, allow_stateful=False):
+    """Converts a dataset to a graph and back."""
+    graph = gen_dataset_ops.dataset_to_graph(
+        dataset._variant_tensor, allow_stateful=allow_stateful)  # pylint: disable=protected-access
+    return dataset_ops.from_variant(
+        gen_experimental_dataset_ops.dataset_from_graph(graph),
+        dataset.element_spec)
+
   def structuredElement(self, element_structure, shape=None,
                         dtype=dtypes.int64):
     """Returns an element with the given structure."""
@@ -260,3 +297,34 @@ class DatasetTestBase(test.TestCase):
           self.structuredElement(substructure, shape, dtype)
           for substructure in element_structure
       ])
+
+  def checkDeterminism(self, dataset_fn, expect_determinism, expected_elements):
+    """Tests whether a dataset produces its elements deterministically.
+
+    `dataset_fn` takes a delay_ms argument, which tells it how long to delay
+    production of the first dataset element. This gives us a way to trigger
+    out-of-order production of dataset elements.
+
+    Args:
+      dataset_fn: A function taking a delay_ms argument.
+      expect_determinism: Whether to expect deterministic ordering.
+      expected_elements: The elements expected to be produced by the dataset,
+        assuming the dataset produces elements in deterministic order.
+    """
+    if expect_determinism:
+      dataset = dataset_fn(100)
+      actual = self.getDatasetOutput(dataset)
+      self.assertAllEqual(expected_elements, actual)
+      return
+
+    # We consider the test a success if it succeeds under any delay_ms. The
+    # delay_ms needed to observe non-deterministic ordering varies across
+    # test machines. Usually 10 or 100 milliseconds is enough, but on slow
+    # machines it could take longer.
+    for delay_ms in [10, 100, 1000, 20000]:
+      dataset = dataset_fn(delay_ms)
+      actual = self.getDatasetOutput(dataset)
+      self.assertCountEqual(expected_elements, actual)
+      if actual[0] != expected_elements[0]:
+        return
+    self.fail("Failed to observe nondeterministic ordering")

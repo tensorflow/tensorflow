@@ -82,6 +82,12 @@ LaunchDimensions CalculateLaunchDimensions(
   // TODO(jlebar): Investigate this further, and tune this heuristic so we can
   // run faster on the few benchmarks where smaller block size helps.
   int64 threads_per_block = ThreadsPerBlockLimit(device_desc);
+  // We unroll kernels to make use of vectorized loads/stores. This means we
+  // need more registers to hold intermediate values. Reduce the number of
+  // blocks per thread to increase the number of registers available to ptxas.
+  // Make sure we still have a multiple of 32.
+  threads_per_block =
+      RoundUpToNearest(threads_per_block / unroll_factor, int64{32});
   if (num_elements < threads_per_block) {
     threads_per_block = num_elements;
     VLOG(2) << "Update # of threads per block to the element count ("

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_TEST_UTILS_H_
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
@@ -27,9 +28,9 @@ namespace grappler {
 
 class ArithmeticOptimizerTest : public GrapplerTest {
  protected:
-  // Optimize a graph using ArithmeticOptimizer and prune all the nodes that no
+  // Optimize a graph using optimizer and prune all the nodes that no
   // longer have any output consumers.
-  void OptimizeAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  void OptimizeAndPrune(GraphOptimizer* optimizer, GrapplerItem* item,
                         GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
@@ -37,8 +38,23 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
   }
 
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
-  void OptimizeTwice(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  // Run optimizer twice to make sure the rewrite is idempotent.
+  void DedupAndOptimizeTwiceAndPrune(GraphOptimizer* optimizer,
+                                     GrapplerItem* item, GraphDef* output) {
+    TF_EXPECT_OK(CommonSubgraphElimination().Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
+  }
+
+  // Run optimizer twice to make sure the rewrite is idempotent.
+  void OptimizeTwice(GraphOptimizer* optimizer, GrapplerItem* item,
                      GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
@@ -46,9 +62,9 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
   }
 
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
+  // Run optimizer twice to make sure the rewrite is idempotent.
   // Optionally run a constant folding pass before pruning.
-  void OptimizeTwiceAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  void OptimizeTwiceAndPrune(GraphOptimizer* optimizer, GrapplerItem* item,
                              GraphDef* output, bool const_folding = false) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
 
@@ -66,37 +82,6 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     item->graph.Swap(output);
     output->Clear();
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
-  }
-
-  // TODO(ezhulenev): Make private. After migration to stages each test
-  // should explicitly enable required optimization for tests isolation
-  void DisableAllStages(ArithmeticOptimizer* optimizer) {
-    ArithmeticOptimizer::ArithmeticOptimizerOptions options;
-    options.dedup_computations = false;
-    options.combine_add_to_addn = false;
-    options.convert_sqrt_div_to_rsqrt_mul = false;
-    options.convert_pow = false;
-    options.convert_log1p = false;
-    options.optimize_max_or_min_of_monotonic = false;
-    options.fold_conjugate_into_transpose = false;
-    options.fold_multiply_into_conv = false;
-    options.fold_transpose_into_matmul = false;
-    options.hoist_common_factor_out_of_aggregation = false;
-    options.hoist_cwise_unary_chains = false;
-    options.minimize_broadcasts = false;
-    options.remove_identity_transpose = false;
-    options.remove_involution = false;
-    options.remove_idempotent = false;
-    options.remove_redundant_bitcast = false;
-    options.remove_redundant_cast = false;
-    options.remove_redundant_reshape = false;
-    options.remove_negation = false;
-    options.remove_logical_not = false;
-    options.reorder_cast_like_and_value_preserving = false;
-    options.replace_mul_with_square = false;
-    options.simplify_aggregation = false;
-    options.unary_ops_composition = false;
-    optimizer->options_ = options;
   }
 
   void DisableAddToAddNCombining(ArithmeticOptimizer* optimizer) {
@@ -233,10 +218,39 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.unary_ops_composition = true;
   }
 
-  void EnableOnlyRemoveStackStridedSliceSameAxis(
-      ArithmeticOptimizer* optimizer) {
+  void EnableOnlyRemoveStackSliceSameAxis(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.remove_stack_strided_slice_same_axis = true;
+    optimizer->options_.remove_stack_slice_same_axis = true;
+  }
+
+ private:
+  void DisableAllStages(ArithmeticOptimizer* optimizer) {
+    ArithmeticOptimizer::ArithmeticOptimizerOptions options;
+    options.dedup_computations = false;
+    options.combine_add_to_addn = false;
+    options.convert_sqrt_div_to_rsqrt_mul = false;
+    options.convert_pow = false;
+    options.convert_log1p = false;
+    options.optimize_max_or_min_of_monotonic = false;
+    options.fold_conjugate_into_transpose = false;
+    options.fold_multiply_into_conv = false;
+    options.fold_transpose_into_matmul = false;
+    options.hoist_common_factor_out_of_aggregation = false;
+    options.hoist_cwise_unary_chains = false;
+    options.minimize_broadcasts = false;
+    options.remove_identity_transpose = false;
+    options.remove_involution = false;
+    options.remove_idempotent = false;
+    options.remove_redundant_bitcast = false;
+    options.remove_redundant_cast = false;
+    options.remove_redundant_reshape = false;
+    options.remove_negation = false;
+    options.remove_logical_not = false;
+    options.reorder_cast_like_and_value_preserving = false;
+    options.replace_mul_with_square = false;
+    options.simplify_aggregation = false;
+    options.unary_ops_composition = false;
+    optimizer->options_ = options;
   }
 };
 

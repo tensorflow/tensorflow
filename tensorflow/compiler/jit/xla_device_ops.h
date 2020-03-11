@@ -191,7 +191,7 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNextAsOptional").Device(DEVICE),    \
                           data::IteratorGetNextAsOptionalOp);                  \
   REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE),          \
-                          data::IteratorGetNextSyncOp);                        \
+                          data::IteratorGetNextOp);                            \
   REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle")                       \
                               .Device(DEVICE)                                  \
                               .HostMemory("string_handle"),                    \
@@ -212,11 +212,11 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kArgOp)              \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
-                              .TypeConstraint<string>("T"),                    \
+                              .TypeConstraint<tstring>("T"),                   \
                           ArgOp);                                              \
   REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kRetOp)              \
                               .Device(DEVICE)                                  \
-                              .TypeConstraint<string>("T")                     \
+                              .TypeConstraint<tstring>("T")                    \
                               .HostMemory("input"),                            \
                           RetvalOp);
 

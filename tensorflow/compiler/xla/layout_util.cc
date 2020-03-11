@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 
 #include <stddef.h>
+
 #include <algorithm>
 #include <functional>
 #include <random>
@@ -41,7 +42,8 @@ namespace {
 
 // Internal helper for GetDefaultLayoutForShape and SetToDefaultLayout. Sets
 // minor_to_major to the value that represents the default layout.
-void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
+template <typename T>
+void SetDefaultLayoutToContainer(T* minor_to_major) {
   // The default XLA layout is major-to-minor (dim 0 is major).
   // For more information on XLA layouts, see:
   // https://www.tensorflow.org/performance/xla/shapes
@@ -64,7 +66,7 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
   for (Tile tile : tiles) {
     for (int64 dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+        LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
                       "it's negative. Value is "
                    << dim;
       }
@@ -92,20 +94,13 @@ void SetDefaultLayoutToContainer(std::vector<int64>* minor_to_major) {
   return layout;
 }
 
-/* static */ Layout LayoutUtil::MakeSparseLayout(int64 max_sparse_elements) {
-  Layout layout;
-  layout.set_format(SPARSE);
-  layout.set_max_sparse_elements(max_sparse_elements);
-  return layout;
-}
-
 namespace {
 
 // Internal helper that creates a default layout for an array of the given rank.
 Layout CreateDefaultLayoutForRank(int64 rank) {
   Layout layout;
   layout.set_format(DENSE);
-  std::vector<int64>* minor_to_major = layout.mutable_minor_to_major();
+  auto* minor_to_major = layout.mutable_minor_to_major();
   minor_to_major->resize(rank, 0);
   SetDefaultLayoutToContainer(minor_to_major);
   return layout;
@@ -291,19 +286,6 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
                         layout.minor_to_major().end(), std::greater<int64>());
 }
 
-/* static */ bool LayoutUtil::IsSparseArray(const Shape& shape) {
-  return shape.IsArray() && shape.has_layout() && IsSparse(shape.layout());
-}
-
-/* static */ bool LayoutUtil::IsSparse(const Layout& layout) {
-  return layout.format() == SPARSE;
-}
-
-/* static */ int64 LayoutUtil::MaxSparseElements(const Layout& layout) {
-  CHECK(IsSparse(layout));
-  return layout.max_sparse_elements();
-}
-
 /* static */ bool LayoutUtil::HasLayout(const Shape& shape) {
   if (shape.IsTuple()) {
     // Tuple shape: all subshapes must have a layout.
@@ -459,8 +441,6 @@ Status LayoutUtil::CopyLayoutBetweenShapes(const Shape& src, Shape* dst) {
   for (int64 minor_to_major : layout.minor_to_major()) {
     hash_value = Hash64Combine(hash_value, hash<int64>()(minor_to_major));
   }
-  hash_value = Hash64Combine(hash_value, layout.max_sparse_elements());
-
   for (Tile tile : layout.tiles()) {
     for (int64 tile_dim : tile.dimensions()) {
       hash_value = Hash64Combine(hash_value, hash<int64>()(tile_dim));

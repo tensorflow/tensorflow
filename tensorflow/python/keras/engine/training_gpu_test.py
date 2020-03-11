@@ -46,7 +46,7 @@ class TrainingGPUTest(test.TestCase):
       if loss_name == 'sparse_categorical_crossentropy':
         loss = lambda y_true, y_pred: K.sparse_categorical_crossentropy(  # pylint: disable=g-long-lambda
             y_true, y_pred, axis=axis)
-        num_channels = np.amax(target) + 1
+        num_channels = int(np.amax(target) + 1)
         activation = 'softmax'
       elif loss_name == 'categorical_crossentropy':
         loss = lambda y_true, y_pred: K.categorical_crossentropy(  # pylint: disable=g-long-lambda
@@ -57,6 +57,7 @@ class TrainingGPUTest(test.TestCase):
         loss = lambda y_true, y_pred: K.binary_crossentropy(y_true, y_pred)  # pylint: disable=unnecessary-lambda
         num_channels = target.shape[axis]
         activation = 'sigmoid'
+
       predictions = Conv2D(num_channels,
                            1,
                            activation=activation,

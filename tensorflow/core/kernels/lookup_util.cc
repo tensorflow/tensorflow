@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/lookup_util.h"
 
+#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -238,7 +240,7 @@ class TextFileLineIterator
         tensor->flat<double>()(0) = value;
       } break;
       case DT_STRING:
-        tensor->flat<string>()(0) = token;
+        tensor->flat<tstring>()(0) = token;
         break;
       default:
         valid_ = false;
@@ -251,7 +253,7 @@ class TextFileLineIterator
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
 };
 
-Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
+Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
                       string* container, string* table_handle) {
   {
     mutex* mu;
@@ -264,7 +266,7 @@ Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
           "Lookup table handle must be scalar, but had shape: ",
           tensor.shape().DebugString());
     }
-    auto h = tensor.flat<string>();
+    auto h = tensor.flat<tstring>();
     *container = h(0);
     *table_handle = h(1);
   }
@@ -273,25 +275,35 @@ Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
 
 }  // namespace
 
-Status GetLookupTable(const string& input_name, OpKernelContext* ctx,
-                      LookupInterface** table) {
+Status GetResourceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                              LookupInterface** table) {
+  const Tensor* handle_tensor;
+  TF_RETURN_IF_ERROR(ctx->input(input_name, &handle_tensor));
+  const ResourceHandle& handle = handle_tensor->scalar<ResourceHandle>()();
+  return LookupResource(ctx, handle, table);
+}
+
+Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                               LookupInterface** table) {
   string container;
   string table_handle;
+  TF_RETURN_IF_ERROR(
+      GetTableHandle(input_name, ctx, &container, &table_handle));
+  return ctx->resource_manager()->Lookup(container, table_handle, table);
+}
+
+Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                      LookupInterface** table) {
   DataType handle_dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &handle_dtype));
   if (handle_dtype == DT_RESOURCE) {
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(HandleFromInput(ctx, input_name, &handle));
-    return LookupResource(ctx, handle, table);
+    return GetResourceLookupTable(input_name, ctx, table);
   } else {
-    TF_RETURN_IF_ERROR(
-        GetTableHandle(input_name, ctx, &container, &table_handle));
-    return ctx->resource_manager()->Lookup(container, table_handle, table);
+    return GetReferenceLookupTable(input_name, ctx, table);
   }
 }
 
-Status GetInitializableLookupTable(const string& input_name,
-                                   OpKernelContext* ctx,
+Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
                                    InitializableLookupTable** table) {
   LookupInterface* lookup_table;
   DataType handle_dtype;
@@ -375,6 +387,106 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
     LOG(INFO) << "Table trying to initialize from file " << filename
               << " is already initialized.";
+    return Status::OK();
+  }
+  return s;
+}
+
+class DatasetIterator : public InitializableLookupTable::InitTableIterator {
+ public:
+  explicit DatasetIterator(DatasetBase* dataset) : dataset_(dataset) {}
+
+  ~DatasetIterator() override {}
+
+  Status Init(OpKernelContext* ctx) {
+    IteratorContext::Params params(ctx);
+    function_handle_cache_ =
+        absl::make_unique<data::FunctionHandleCache>(params.flr);
+    params.function_handle_cache = function_handle_cache_.get();
+    params.resource_mgr = &resource_mgr_;
+    cancellation_manager_ =
+        absl::make_unique<CancellationManager>(ctx->cancellation_manager());
+    params.cancellation_manager = cancellation_manager_.get();
+    iterator_ctx_ = absl::make_unique<IteratorContext>(std::move(params));
+    TF_RETURN_IF_ERROR(dataset_->MakeIterator(iterator_ctx_.get(), nullptr,
+                                              "LookupTable", &iterator_));
+    Next();
+    return Status::OK();
+  }
+
+  void Next() override {
+    bool end_of_input;
+    tensors_.clear();
+    status_ = iterator_->GetNext(iterator_ctx_.get(), &tensors_, &end_of_input);
+    if (status_.ok() && end_of_input) {
+      status_ = errors::OutOfRange("end of iterator");
+    }
+  }
+
+  bool Valid() const override { return status_.ok(); }
+
+  const Tensor& keys() const override { return tensors_[0]; }
+
+  const Tensor& values() const override { return tensors_[1]; }
+
+  Status status() const override { return status_; }
+
+  int64 total_size() const override {
+    int64 size = dataset_->Cardinality();
+    if (size < 0) {
+      return 0;
+    }
+    return size;
+  }
+
+ private:
+  DatasetBase* dataset_;  // not owned.
+  std::unique_ptr<IteratorContext> iterator_ctx_;
+  std::unique_ptr<data::FunctionHandleCache> function_handle_cache_;
+  ResourceMgr resource_mgr_;
+  std::unique_ptr<CancellationManager> cancellation_manager_;
+  std::unique_ptr<IteratorBase> iterator_;
+  std::vector<Tensor> tensors_;
+  Status status_;
+};
+
+Status InitializeTableFromDataset(OpKernelContext* ctx,
+                                  data::DatasetBase* dataset,
+                                  InitializableLookupTable* table) {
+  // Assert that the dataset types match up to that expected in the table.
+  const auto& dataset_types = dataset->output_dtypes();
+  if (dataset_types.size() != 2) {
+    return errors::InvalidArgument("Dataset should have two output types only");
+  }
+  if (dataset_types[0] != table->key_dtype()) {
+    return errors::InvalidArgument("Key dtype expected: ", table->key_dtype(),
+                                   " but obtained: ", dataset_types[0],
+                                   " from the dataset");
+  }
+  if (dataset_types[1] != table->value_dtype()) {
+    return errors::InvalidArgument(
+        "Value dtype expected: ", table->value_dtype(),
+        " but obtained: ", dataset_types[1], " from the dataset");
+  }
+  // Assert that the dataset output shapes are scalars.
+  const auto& dataset_shapes = dataset->output_shapes();
+  if (dataset_shapes.size() != 2) {
+    return errors::InvalidArgument(
+        "Dataset should have two output shapes only");
+  }
+  if (!dataset_shapes[0].IsCompatibleWith(PartialTensorShape({}))) {
+    return errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                   dataset_shapes[0].DebugString());
+  }
+  if (!dataset_shapes[1].IsCompatibleWith(PartialTensorShape({}))) {
+    return errors::InvalidArgument("Expected scalar for key. Obtained: ",
+                                   dataset_shapes[1].DebugString());
+  }
+  DatasetIterator iter(dataset);
+  TF_RETURN_IF_ERROR(iter.Init(ctx));
+  Status s = table->Initialize(iter);
+  if (errors::IsFailedPrecondition(s) && table->is_initialized()) {
+    LOG(INFO) << "Table already initialized from dataset.";
     return Status::OK();
   }
   return s;

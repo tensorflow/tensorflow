@@ -29,10 +29,12 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_bitwise_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.ragged import ragged_dispatch
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
@@ -56,6 +58,7 @@ UNARY_FLOAT_OPS = [
     math_ops.digamma,
     math_ops.erf,
     math_ops.erfc,
+    math_ops.erfinv,
     math_ops.exp,
     math_ops.expm1,
     math_ops.floor,
@@ -67,6 +70,7 @@ UNARY_FLOAT_OPS = [
     math_ops.log,
     math_ops.log1p,
     math_ops.log_sigmoid,
+    math_ops.ndtri,
     math_ops.negative,
     math_ops.real,
     math_ops.reciprocal,
@@ -135,14 +139,15 @@ BINARY_INT_OPS = [
 ]
 
 
+# pylint: disable=g-complex-comprehension
 @test_util.run_all_in_graph_and_eager_modes
 class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
                                parameterized.TestCase):
 
   def assertSameShape(self, x, y):
     """Checks that x and y have the same shape (including ragged shapes)."""
-    if isinstance(x, ragged_tensor.RaggedTensor):
-      self.assertIsInstance(y, ragged_tensor.RaggedTensor)
+    if ragged_tensor.is_ragged(x):
+      self.assertTrue(ragged_tensor.is_ragged(y))
       self.assertEqual(x.ragged_rank, y.ragged_rank)
       for (x_splits, y_splits) in zip(x.nested_row_splits, y.nested_row_splits):
         self.assertAllEqual(x_splits, y_splits)
@@ -230,18 +235,17 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       ]
       )  # pyformat: disable
   def testUnaryElementwiseOp(self, x, op=math_ops.abs, **extra_args):
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
     result = op(x, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
     expected_flat_values = array_ops.reshape(op(dense_x, **extra_args), [-1])
 
     # Check that the result has the expected shape.
     self.assertSameShape(x, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -346,8 +350,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       )  # pyformat: disable
   def testBinaryElementwiseOp(self, x, y, op=math_ops.add, **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', ())
-    x = ragged_tensor.convert_to_tensor_or_ragged_tensor(x)
-    y = ragged_tensor.convert_to_tensor_or_ragged_tensor(y)
     if 'x' in use_kwargs and 'y' in use_kwargs:
       result = op(x=x, y=y, **extra_args)
     elif 'y' in use_kwargs:
@@ -356,8 +358,8 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
       result = op(x, y, **extra_args)
 
     # Run the wrapped op on the dense values, for comparison.
-    dense_x = x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-    dense_y = y.flat_values if isinstance(y, ragged_tensor.RaggedTensor) else y
+    dense_x = x.flat_values if ragged_tensor.is_ragged(x) else x
+    dense_y = y.flat_values if ragged_tensor.is_ragged(y) else y
     expected_flat_values = array_ops.reshape(
         op(dense_x, dense_y, **extra_args), [-1])
 
@@ -365,7 +367,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(y, result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -411,9 +413,6 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testListValuedElementwiseOp(self, inputs, op=math_ops.add_n,
                                   **extra_args):
     use_kwargs = extra_args.pop('use_kwargs', False)
-    inputs = [
-        ragged_tensor.convert_to_tensor_or_ragged_tensor(x) for x in inputs
-    ]
     if use_kwargs:
       result = op(inputs=inputs, **extra_args)
     else:
@@ -421,8 +420,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
 
     # Run the wrapped op on the dense values, for comparison.
     dense_inputs = [
-        x.flat_values if isinstance(x, ragged_tensor.RaggedTensor) else x
-        for x in inputs
+        x.flat_values if ragged_tensor.is_ragged(x) else x for x in inputs
     ]
     expected_flat_values = array_ops.reshape(
         op(dense_inputs, **extra_args), [-1])
@@ -431,7 +429,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
     self.assertSameShape(inputs[0], result)
 
     # Check that the result has the expected (flattened) values.
-    if isinstance(result, ragged_tensor.RaggedTensor):
+    if ragged_tensor.is_ragged(result):
       result_flat_values = array_ops.reshape(result.flat_values, [-1])
     else:
       result_flat_values = array_ops.reshape(result, [-1])
@@ -472,7 +470,7 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
   def testElementwiseOpShapeMismatch(self):
     x = ragged_factory_ops.constant([[1, 2, 3], [4, 5]])
     y = ragged_factory_ops.constant([[1, 2, 3], [4, 5, 6]])
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaises((ValueError, errors.InvalidArgumentError)):
       self.evaluate(math_ops.add(x, y))
 
   def testBinaryOpSparseAndRagged(self):
@@ -536,6 +534,20 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'indices': [[0, 1], [1, 0], [0, 0]]
           },
           expected=ragged_factory_ops.constant_value([8, 9, 7])),
+      dict(
+          op=array_ops.one_hot,
+          kwargs={
+              'indices':
+                  ragged_factory_ops.constant_value([[1, 2, 3], [0]],
+                                                    dtype=np.int32),
+              'depth':
+                  4,
+              'axis':
+                  -1
+          },
+          expected=ragged_factory_ops.constant_value(
+              [[[0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]], [[1, 0, 0, 0]]],
+              ragged_rank=1)),
       dict(
           op=array_ops.stack,
           args=([
@@ -673,6 +685,25 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
           },
           expected=[True, True]),
       dict(
+          op=string_ops.reduce_join,
+          kwargs={
+              'inputs':
+                  ragged_factory_ops.constant_value([[
+                      b'this', b'is', b'a', b'test', b'for', b'ragged',
+                      b'tensors'
+                  ], [b'please', b'do', b'not', b'panic', b'!']]),
+              'axis':
+                  0,
+              'keepdims':
+                  False,
+              'separator':
+                  ''
+          },
+          expected=[
+              b'thisplease', b'isdo', b'anot', b'testpanic', b'for!', b'ragged',
+              b'tensors'
+          ]),
+      dict(
           op=math_ops.reduce_all,
           kwargs={
               'input_tensor':
@@ -708,11 +739,108 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase,
               'axis': [0]
           },
           expected=ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]])),
+      dict(
+          op=data_flow_ops.dynamic_partition,
+          kwargs={
+              'data': ragged_factory_ops.constant_value([[1], [2, 3, 4], [5]]),
+              'partitions': [2, 1, 1],
+              'num_partitions': 3
+          },
+          expected=[
+              ragged_factory_ops.constant_value([], ragged_rank=1),
+              ragged_factory_ops.constant_value([[2, 3, 4], [5]]),
+              ragged_factory_ops.constant_value([[1]])
+          ],
+          result_is_list=True),
+      dict(
+          op=array_ops.reverse,
+          kwargs={
+              'tensor': ragged_factory_ops.constant_value([[1, 2, 3], [4, 5]]),
+              'axis': [0, -1]
+          },
+          expected=ragged_factory_ops.constant_value([[5, 4], [3, 2, 1]]))
   ])
-  def testRaggedDispatch(self, op, expected, args=(), kwargs=None):
+  def testRaggedDispatch(self, op, expected, args=(), result_is_list=False,
+                         kwargs=None):
     if kwargs is None: kwargs = {}
     result = op(*args, **kwargs)
-    self.assertAllEqual(result, expected)
+    if result_is_list:
+      self.assertLen(result, len(expected))
+      for (r, e) in zip(result, expected):
+        self.assertAllEqual(r, e)
+    else:
+      self.assertAllEqual(result, expected)
+
+  def testUnaryElementwiseOpsPreserveUniformRowLength(self):
+    # Unary elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        array_ops.zeros_like(rt).uniform_row_length)
+
+    # Unary-list elementwise op
+    rt = ragged_tensor.RaggedTensor.from_uniform_row_length(
+        ragged_factory_ops.constant([[1, 2], [3]]),
+        uniform_row_length=2)
+    self.assertAllEqual(rt.uniform_row_length,
+                        math_ops.add_n([rt, rt]).uniform_row_length)
+
+  def test_ragged_op_list(self):
+    # Ops that should be listed as supported in both v1 and v2.
+    supported_ops = [
+        'bitwise.bitwise_and', 'bitwise.bitwise_or', 'bitwise.bitwise_xor',
+        'bitwise.invert', 'bitwise.left_shift', 'bitwise.right_shift',
+        'clip_by_value', 'concat', 'debugging.check_numerics', 'cast',
+        'dtypes.complex', 'dtypes.saturate_cast', 'expand_dims', 'gather_nd',
+        'gather', 'identity', 'io.decode_base64', 'io.decode_compressed',
+        'io.encode_base64', 'math.abs', 'math.acos', 'math.acosh', 'math.add_n',
+        'math.add', 'math.angle', 'math.asin', 'math.asinh', 'math.atan2',
+        'math.atan', 'math.atanh', 'math.ceil', 'math.conj', 'math.cos',
+        'math.cosh', 'math.digamma', 'math.divide_no_nan', 'math.divide',
+        'math.equal', 'math.erf', 'math.erfc', 'math.exp', 'math.expm1',
+        'math.floor', 'math.floordiv', 'math.floormod', 'math.greater_equal',
+        'math.greater', 'math.imag', 'math.is_finite', 'math.is_inf',
+        'math.is_nan', 'math.less_equal', 'math.less', 'math.lgamma',
+        'math.log1p', 'math.log_sigmoid', 'math.log', 'math.logical_and',
+        'math.logical_not', 'math.logical_or', 'math.logical_xor',
+        'math.maximum', 'math.minimum', 'math.multiply', 'math.negative',
+        'math.not_equal', 'math.pow', 'math.real', 'math.reciprocal',
+        'math.reduce_any', 'math.reduce_max', 'math.reduce_mean',
+        'math.reduce_min', 'math.reduce_prod', 'math.reduce_sum', 'math.rint',
+        'math.round', 'math.rsqrt', 'math.sign', 'math.sin', 'math.sinh',
+        'math.sqrt', 'math.square', 'math.squared_difference', 'math.subtract',
+        'math.tan', 'math.truediv', 'math.unsorted_segment_max',
+        'math.unsorted_segment_mean', 'math.unsorted_segment_min',
+        'math.unsorted_segment_prod', 'math.unsorted_segment_sqrt_n',
+        'math.unsorted_segment_sum', 'one_hot', 'ones_like', 'rank', 'realdiv',
+        'reduce_all', 'size', 'squeeze', 'stack', 'strings.as_string',
+        'strings.join', 'strings.length', 'strings.reduce_join',
+        'strings.regex_full_match', 'strings.regex_replace', 'strings.strip',
+        'strings.substr', 'strings.to_hash_bucket_fast',
+        'strings.to_hash_bucket_strong', 'strings.to_hash_bucket',
+        'strings.to_number', 'strings.unicode_script', 'tile', 'truncatediv',
+        'truncatemod', 'zeros_like', 'dynamic_partition', 'reverse'
+    ]
+
+    # Ops that should be listed as supported in v1 only.
+    # TODO(edloper): Add a dispatch for where_v2.
+    supported_ops_v1 = ['batch_gather', 'where']
+
+    # Ops that should be listed as supported in v2 only.
+    supported_ops_v2 = []
+
+    v1_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=1)
+    for element in supported_ops + supported_ops_v1:
+      self.assertIn(element, v1_ragged_ops)
+    for element in supported_ops_v2:
+      self.assertNotIn(element, v1_ragged_ops)
+
+    v2_ragged_ops = ragged_dispatch.ragged_op_list(tf_version=2)
+    for element in supported_ops + supported_ops_v2:
+      self.assertIn(element, v2_ragged_ops)
+    for element in supported_ops_v1:
+      self.assertNotIn(element, v2_ragged_ops)
 
 
 if __name__ == '__main__':

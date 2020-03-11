@@ -46,7 +46,7 @@ enum class ObjectType : int {
   BUFFER = 2,
 };
 
-using ObjectSize = absl::variant<uint32_t, uint2, uint3>;
+using ObjectSize = absl::variant<size_t, uint2, uint3>;
 
 // An object represents a reference to or pre-defined constant OpenGL Buffer or
 // Texture. NodeShader is supposed to set all fields but leave binding = 0

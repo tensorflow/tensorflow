@@ -44,10 +44,10 @@ import sys
 
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
 import input_data
 import models
 from tensorflow.python.framework import graph_util
+from tensorflow.python.ops import gen_audio_ops as audio_ops
 
 # If it's available, load the specialized feature generator. If this doesn't
 # work, try building with bazel instead of running the Python script directly.
@@ -90,13 +90,14 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       window_stride_ms, feature_bin_count, preprocess)
   runtime_settings = {'clip_stride_ms': clip_stride_ms}
 
-  wav_data_placeholder = tf.placeholder(tf.string, [], name='wav_data')
-  decoded_sample_data = contrib_audio.decode_wav(
+  wav_data_placeholder = tf.compat.v1.placeholder(tf.string, [],
+                                                  name='wav_data')
+  decoded_sample_data = tf.audio.decode_wav(
       wav_data_placeholder,
       desired_channels=1,
       desired_samples=model_settings['desired_samples'],
       name='decoded_sample_data')
-  spectrogram = contrib_audio.audio_spectrogram(
+  spectrogram = audio_ops.audio_spectrogram(
       decoded_sample_data.audio,
       window_size=model_settings['window_size_samples'],
       stride=model_settings['window_stride_samples'],
@@ -104,13 +105,13 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
   if preprocess == 'average':
     fingerprint_input = tf.nn.pool(
-        tf.expand_dims(spectrogram, -1),
+        input=tf.expand_dims(spectrogram, -1),
         window_shape=[1, model_settings['average_window_width']],
         strides=[1, model_settings['average_window_width']],
         pooling_type='AVG',
         padding='SAME')
   elif preprocess == 'mfcc':
-    fingerprint_input = contrib_audio.mfcc(
+    fingerprint_input = audio_ops.mfcc(
         spectrogram,
         sample_rate,
         dct_coefficient_count=model_settings['fingerprint_width'])
@@ -153,9 +154,19 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
 
 
 def main(_):
+  if FLAGS.quantize:
+    try:
+      _ = tf.contrib
+    except AttributeError as e:
+      msg = e.args[0]
+      msg += ('\n\n The --quantize option still requires contrib, which is not '
+              'part of TensorFlow 2.0. Please install a previous version:'
+              '\n    `pip install tensorflow<=1.15`')
+      e.args = (msg,)
+      raise e
 
   # Create the model and load its weights.
-  sess = tf.InteractiveSession()
+  sess = tf.compat.v1.InteractiveSession()
   create_inference_graph(
       FLAGS.wanted_words, FLAGS.sample_rate, FLAGS.clip_duration_ms,
       FLAGS.clip_stride_ms, FLAGS.window_size_ms, FLAGS.window_stride_ms,
@@ -167,12 +178,12 @@ def main(_):
   # Turn all the variables into inline constants inside the graph and save it.
   frozen_graph_def = graph_util.convert_variables_to_constants(
       sess, sess.graph_def, ['labels_softmax'])
-  tf.train.write_graph(
+  tf.io.write_graph(
       frozen_graph_def,
       os.path.dirname(FLAGS.output_file),
       os.path.basename(FLAGS.output_file),
       as_text=False)
-  tf.logging.info('Saved frozen graph to %s', FLAGS.output_file)
+  tf.compat.v1.logging.info('Saved frozen graph to %s', FLAGS.output_file)
 
 
 if __name__ == '__main__':
@@ -236,4 +247,4 @@ if __name__ == '__main__':
       default='mfcc',
       help='Spectrogram processing mode. Can be "mfcc" or "average"')
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

@@ -1,0 +1,68 @@
+op {
+  graph_op_name: "SparseMatrixMatMul"
+  visibility: HIDDEN
+  in_arg {
+    name: "a"
+    description: "A CSRSparseMatrix."
+  }
+  in_arg {
+    name: "b"
+    description: "A dense tensor."
+  }
+  out_arg {
+    name: "output"
+    description: "A dense output tensor."
+  }
+  attr {
+    name: "transpose_a"
+    description: "Indicates whether `a` should be transposed."
+  }
+  attr {
+    name: "transpose_b"
+    description: "Indicates whether `b` should be transposed."
+  }
+  attr {
+    name: "adjoint_a"
+    description: "Indicates whether `a` should be conjugate-transposed."
+  }
+  attr {
+    name: "adjoint_b"
+    description: "Indicates whether `b` should be conjugate-transposed."
+  }
+  attr {
+    name: "transpose_output"
+    description: "Transposes the product of `a` and `b`."
+  }
+  attr {
+    name: "conjugate_output"
+    description: "Conjugates the product of `a` and `b`."
+  }
+  summary: "Matrix-multiplies a sparse matrix with a dense matrix."
+  description: <<END
+Returns a dense matrix.
+For inputs A and B, where A is CSR and B is dense; this op returns a dense C;
+
+If transpose_output is false, returns:
+```
+  C = A . B
+```
+
+If transpose_output is `true`, returns:
+```
+  C = transpose(A . B) = transpose(B) . transpose(A)
+```
+where the transposition is performed along the two innermost (matrix)
+dimensions.
+
+If conjugate_output is `true`, returns:
+```
+  C = conjugate(A . B) = conjugate(A) . conjugate(B)
+```
+
+If both conjugate_output and transpose_output are `true`, returns:
+```
+  C = conjugate(transpose(A . B)) = conjugate(transpose(B)) .
+                                    conjugate(transpose(A))
+```
+END
+}

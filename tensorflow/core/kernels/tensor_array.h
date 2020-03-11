@@ -46,7 +46,7 @@ Status AddToTensor(OpKernelContext* ctx, Tensor* sum, const Tensor* current,
   return errors::InvalidArgument(
       "tensor_array::AddToTensor type not supported: ",
       DataTypeString(DataTypeToEnum<T>::value));
-};
+}
 
 #define TENSOR_ARRAY_WRITE_OR_ADD(Device, T)                         \
   template <>                                                        \
@@ -74,7 +74,7 @@ Status TensorSetZero(OpKernelContext* ctx, Tensor* value) {
   return errors::InvalidArgument(
       "tensor_array::TensorSetZero type not supported: ",
       DataTypeString(DataTypeToEnum<T>::value));
-};
+}
 
 #define TENSOR_ARRAY_SET_ZERO(Device, T) \
   template <>                            \
@@ -347,25 +347,26 @@ class TensorArray : public ResourceBase {
   Tensor* handle() { return &handle_; }
 
   ResourceHandle resource_handle(OpKernelContext* ctx) {
-    return MakePerStepResourceHandle<TensorArray>(ctx, key_);
+    return ctx->step_container()->MakeResourceHandle<TensorArray>(
+        key_, *ctx->device());
   }
 
  private:
   Status LockedWrite(OpKernelContext* ctx, const int32 index,
-                     PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                     PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
   Status LockedWriteOrAggregate(OpKernelContext* ctx, const int32 index,
                                 PersistentTensor* value)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   template <typename Device, typename T>
   Status LockedRead(OpKernelContext* ctx, const int32 index,
-                    PersistentTensor* value) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                    PersistentTensor* value) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status LockedReturnIfClosed() const EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status LockedReturnIfClosed() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (closed_) {
-      return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+      return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                      " has already been closed.");
     }
     return Status::OK();
@@ -379,7 +380,7 @@ class TensorArray : public ResourceBase {
   mutable mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
-  bool closed_ GUARDED_BY(mu_);
+  bool closed_ TF_GUARDED_BY(mu_);
 
   // Writes are allowed to grow the array.
   bool dynamic_size_;
@@ -390,7 +391,7 @@ class TensorArray : public ResourceBase {
 
   // If multiple Writes were attempted (e.g. via attribute
   // multiple_writes_aggregate), then gradients are disallowed.
-  bool gradients_disallowed_ GUARDED_BY(mu_);
+  bool gradients_disallowed_ TF_GUARDED_BY(mu_);
 
   // After a read at an index, clear away its PersistentTensor to
   // release memory.
@@ -405,7 +406,7 @@ class TensorArray : public ResourceBase {
 
   // The shape of each element in the TensorArray, may be partially known or not
   // known at all.
-  PartialTensorShape element_shape_ GUARDED_BY(mu_);
+  PartialTensorShape element_shape_ TF_GUARDED_BY(mu_);
 
   // Whether all elements in the TensorArray have identical shapes.
   // This allows certain behaviors, like dynamically checking for
@@ -436,7 +437,7 @@ class TensorArray : public ResourceBase {
     bool local_copy;
   };
   // The list of underlying PersistentTensors and states.
-  std::vector<TensorAndState> tensors_ GUARDED_BY(mu_);
+  std::vector<TensorAndState> tensors_ TF_GUARDED_BY(mu_);
 };
 
 template <typename Device, typename T>
@@ -447,7 +448,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
   size_t index_size = static_cast<size_t>(index);
   if (index < 0 || (!dynamic_size_ && index_size >= tensors_.size())) {
     return errors::InvalidArgument(
-        "TensorArray ", handle_.vec<string>()(1), ": Tried to write to index ",
+        "TensorArray ", handle_.vec<tstring>()(1), ": Tried to write to index ",
         index, " but array is not resizeable and size is: ", tensors_.size());
   }
   if (dynamic_size_) {
@@ -464,14 +465,14 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
   Tensor* value_t = value->AccessTensor(ctx);
   if (value_t->dtype() != dtype_) {
     return errors::InvalidArgument(
-        "TensorArray ", handle_.vec<string>()(1),
+        "TensorArray ", handle_.vec<tstring>()(1),
         ": Could not write to TensorArray index ", index,
         " because the value dtype is ", DataTypeString(value_t->dtype()),
         " but TensorArray dtype is ", DataTypeString(dtype_), ".");
   }
   if (!element_shape_.IsCompatibleWith(value_t->shape())) {
     return errors::InvalidArgument(
-        "TensorArray ", handle_.vec<string>()(1),
+        "TensorArray ", handle_.vec<tstring>()(1),
         ": Could not write to TensorArray index ", index,
         " because the value shape is ", value_t->shape().DebugString(),
         " which is incompatible with the TensorArray's inferred element "
@@ -482,13 +483,13 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
   }
 
   if (t.read) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+    return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                    ": Could not write to TensorArray index ",
                                    index, " because it has already been read.");
   }
 
   if (!multiple_writes_aggregate_ && t.written) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+    return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                    ": Could not write to TensorArray index ",
                                    index,
                                    " because it has already been written to.");
@@ -500,7 +501,7 @@ Status TensorArray::LockedWriteOrAggregate(OpKernelContext* ctx,
     // Check that value_t shape matches t.shape
     if (value_t->shape() != t.shape) {
       return errors::InvalidArgument(
-          "TensorArray ", handle_.vec<string>()(1),
+          "TensorArray ", handle_.vec<tstring>()(1),
           ": Could not aggregate to TensorArray index ", index,
           " because the existing shape is ", t.shape.DebugString(),
           " but the new input shape is ", value_t->shape().DebugString(), ".");
@@ -568,7 +569,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
       element_shape = tensors_[index].shape;
     } else if (!element_shape_.IsFullyDefined()) {
       return errors::InvalidArgument(
-          "TensorArray ", handle_.vec<string>()(1),
+          "TensorArray ", handle_.vec<tstring>()(1),
           ": Could not read from TensorArray index ", index,
           ".  Furthermore, the element shape is not fully defined: ",
           element_shape_.DebugString(),
@@ -598,7 +599,7 @@ Status TensorArray::LockedRead(OpKernelContext* ctx, const int32 index,
   TensorAndState& t = tensors_[index];
 
   if (t.cleared) {
-    return errors::InvalidArgument("TensorArray ", handle_.vec<string>()(1),
+    return errors::InvalidArgument("TensorArray ", handle_.vec<tstring>()(1),
                                    ": Could not read index ", index,
                                    " twice because it was cleared after a "
                                    "previous read (perhaps try setting "

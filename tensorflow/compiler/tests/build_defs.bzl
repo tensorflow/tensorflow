@@ -1,16 +1,17 @@
 """Build rules for Tensorflow/XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
-    "tf_exec_compatible_with",
+    "tf_exec_properties",
 )
 
 def all_backends():
     b = ["cpu"] + plugins.keys()
-    if cuda_is_configured():
+    if cuda_is_configured() or rocm_is_configured():
         return b + ["gpu"]
     else:
         return b
@@ -112,7 +113,7 @@ def tf_xla_py_test(
             data = data + backend_data,
             deps = deps + backend_deps,
             tags = test_tags,
-            exec_compatible_with = tf_exec_compatible_with({"tags": test_tags}),
+            exec_properties = tf_exec_properties({"tags": test_tags}),
             **kwargs
         )
         test_names.append(test_name)

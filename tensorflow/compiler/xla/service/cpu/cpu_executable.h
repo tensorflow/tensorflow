@@ -55,14 +55,10 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
+      std::vector<ExecutionInput> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -86,16 +82,6 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
-  // This is for sharing the code between ExecuteOnStream and
-  // ExecuteAsyncOnStream.
-  //
-  // Notice that it's tricky to use correctly, as the profile object (when it
-  // exists) must out-live the task.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
-
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
   //
@@ -110,11 +96,14 @@ class CpuExecutable : public Executable {
   //    allocated by this routine.  This routine allocates buffers for temporary
   //    storage and the live-out buffer into which the computation writes it
   //    result.
-  StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
-                     std::vector<se::OwningDeviceMemory>>>
+  //
+  //  - buffers_to_free: buffers whose ownership was donated by the caller that
+  //    are to be freed by the caller.
+  StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
+                      std::vector<se::OwningDeviceMemory>,
+                      std::vector<se::OwningDeviceMemory>>>
   CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
-                    int device_ordinal,
-                    absl::Span<const ShapedBuffer* const> arguments);
+                    int device_ordinal, std::vector<ExecutionInput> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.

@@ -47,6 +47,10 @@ class TestCollectiveExecutor : public CollectiveExecutor {
                   const StatusCallback& done) override {
     done(errors::Internal("Unimplemented"));
   }
+
+  void RunClosure(std::function<void()>) override {
+    LOG(FATAL) << "Unimplemented";
+  }
 };
 
 class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
@@ -110,7 +114,7 @@ class TestCollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
   void RetireStepId(int64 graph_key, int64 step_id) override {}
 
   mutex mu_;
-  gtl::FlatMap<int64, CollectiveExecutor*> table_ GUARDED_BY(mu_);
+  gtl::FlatMap<int64, CollectiveExecutor*> table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

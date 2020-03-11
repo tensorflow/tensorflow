@@ -124,19 +124,20 @@ class SkipgramOp : public OpKernel {
   int sentence_index_ = 0;
 
   mutex mu_;
-  random::PhiloxRandom philox_ GUARDED_BY(mu_);
-  random::SimplePhilox rng_ GUARDED_BY(mu_);
-  int32 current_epoch_ GUARDED_BY(mu_) = -1;
-  int64 total_words_processed_ GUARDED_BY(mu_) = 0;
-  int32 example_pos_ GUARDED_BY(mu_);
-  int32 label_pos_ GUARDED_BY(mu_);
-  int32 label_limit_ GUARDED_BY(mu_);
+  random::PhiloxRandom philox_ TF_GUARDED_BY(mu_);
+  random::SimplePhilox rng_ TF_GUARDED_BY(mu_);
+  int32 current_epoch_ TF_GUARDED_BY(mu_) = -1;
+  int64 total_words_processed_ TF_GUARDED_BY(mu_) = 0;
+  int32 example_pos_ TF_GUARDED_BY(mu_);
+  int32 label_pos_ TF_GUARDED_BY(mu_);
+  int32 label_limit_ TF_GUARDED_BY(mu_);
 
   // {example_pos_, label_pos_} is the cursor for the next example.
   // example_pos_ wraps around at the end of corpus_. For each
   // example, we randomly generate [label_pos_, label_limit) for
   // labels.
-  void NextExample(int32* example, int32* label) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void NextExample(int32* example, int32* label)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     while (true) {
       if (label_pos_ >= label_limit_) {
         ++total_words_processed_;
@@ -209,14 +210,14 @@ class SkipgramOp : public OpKernel {
     vocab_size_ = static_cast<int32>(1 + ordered.size());
     Tensor word(DT_STRING, TensorShape({vocab_size_}));
     Tensor freq(DT_INT32, TensorShape({vocab_size_}));
-    word.flat<string>()(0) = "UNK";
+    word.flat<tstring>()(0) = "UNK";
     static const int32 kUnkId = 0;
     std::unordered_map<string, int32> word_id;
     int64 total_counted = 0;
     for (std::size_t i = 0; i < ordered.size(); ++i) {
       const auto& w = ordered[i].first;
       auto id = i + 1;
-      word.flat<string>()(id) = w;
+      word.flat<tstring>()(id) = w;
       auto word_count = ordered[i].second;
       freq.flat<int32>()(id) = word_count;
       total_counted += word_count;

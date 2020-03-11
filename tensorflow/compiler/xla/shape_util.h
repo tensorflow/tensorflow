@@ -192,10 +192,7 @@ class ShapeUtil {
   };
 
   // Returns the number of elements are contained within the provided shape;
-  // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
-  // may not actually be able to store this number of elements. See
-  // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
-  // elements that can be stored in a sparse shape.
+  // e.g. for rank 0 (scalars) the result is always 1.
   // Precondition: shape.IsArray()
   static int64 ElementsIn(const Shape& shape);
 
@@ -228,19 +225,11 @@ class ShapeUtil {
                                          int64 pointer_size);
 
   // Returns the number of bytes required for the elements in an allocation of
-  // `shape`, which must be an array shape. The return value does not include
-  // the bytes needed to store sparse indices. Dense shapes use a separate
+  // `shape`, which must be an array shape. Shapes use a separate
   // memory location for each element, and so for these shapes,
-  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. For dense shapes, this
-  // size also includes padding if present in the layout. For sparse shapes,
-  // `ByteSizeOf(shape) == ByteSizeOfElements(shape) +
-  // ByteSizeOfSparseindices(shape)`.
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. This
+  // size also includes padding if present in the layout.
   static int64 ByteSizeOfElements(const Shape& shape);
-
-  // Returns the number of bytes required for the sparse indices in an
-  // allocation of shape. The shape must be an array shape. The return value
-  // does not include the bytes needed to store sparse indices.
-  static int64 ByteSizeOfSparseIndices(const Shape& shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -280,7 +269,6 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
-    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -303,6 +291,9 @@ class ShapeUtil {
 
   // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but does not compare the element type.
+  static bool EqualIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
@@ -362,6 +353,14 @@ class ShapeUtil {
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
 
+  // Update a subshape of a tuple.
+  static void UpdateTupleShape(const Shape& shape, int64 index,
+                               Shape* tuple_shape);
+
+  // Update the dynamic dimension for a shape. This shape can be a nested tuple.
+  static void UpdateDynamicDimension(Shape* shape, ShapeIndexView index,
+                                     int64 dim, bool is_dynamic);
+
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
 
@@ -377,6 +376,9 @@ class ShapeUtil {
   // dimensions.
   static Shape MakeShape(PrimitiveType element_type,
                          absl::Span<const int64> dimensions);
+
+  // Make a scalar shape with given primitive type.
+  static Shape MakeScalarShape(PrimitiveType element_type);
 
   // Constructs a new shape with the given element type and sequence of
   // potentially dynamic dimensions. The argument 'dynamic_dimensions' indicates
@@ -414,9 +416,8 @@ class ShapeUtil {
                                    int64 element_size_in_bits = 0,
                                    int64 memory_space = 0);
 
-  static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
-                                         absl::Span<const int64> dimensions,
-                                         int64 max_sparse_elements);
+  // Returns the same shape except with all dimensions set to be static.
+  static Shape MakeShapeWithStaticDimensions(const Shape& shape);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
@@ -734,6 +735,21 @@ class ShapeUtil {
 
   // Compute a hash for `shape`.
   static size_t Hash(const Shape& shape);
+
+  // About 0-2-1 transpose:
+  //
+  // If a shape can be viewed as three logical components 0-1-2 in the order of
+  // major to minor, a 0-2-1-transpose changes the order of such logical
+  // components to 0-2-1. We call the shape being transposed the input shape and
+  // the transposed shape the output shape. The logical view of the input/output
+  // shapes for the transpose are called the 0-1-2/0-2-1 shapes or the
+  // normalized shapes. The original input/output shapes are called unnormalized
+  // shapes.
+  //
+  // If `b` is a 0-2-1 transpose of `a` in 0-1-2, return the dimensions for the
+  // normalized shape of `b` or the 0-2-1 shape.
+  static absl::optional<std::vector<int64>> FindTranspose021(const Shape& a,
+                                                             const Shape& b);
 
  private:
   // Validates the shape size is sane. This makes sure it's safe to do

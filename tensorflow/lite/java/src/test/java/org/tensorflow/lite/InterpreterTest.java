@@ -21,7 +21,7 @@ import static org.junit.Assert.fail;
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.FloatBuffer;
+import java.nio.DoubleBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.Test;
@@ -37,12 +37,16 @@ public final class InterpreterTest {
       "tensorflow/lite/testdata/multi_add.bin";
   private static final String FLEX_MODEL_PATH =
       "tensorflow/lite/testdata/multi_add_flex.bin";
+  private static final String UNKNOWN_DIMS_MODEL_PATH =
+      "tensorflow/lite/java/src/testdata/add_unknown_dimensions.bin";
 
   private static final ByteBuffer MODEL_BUFFER = TestUtils.getTestFileAsBuffer(MODEL_PATH);
   private static final ByteBuffer MULTIPLE_INPUTS_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(MULTIPLE_INPUTS_MODEL_PATH);
   private static final ByteBuffer FLEX_MODEL_BUFFER =
       TestUtils.getTestFileAsBuffer(FLEX_MODEL_PATH);
+  private static final ByteBuffer UNKNOWN_DIMS_MODEL_PATH_BUFFER =
+      TestUtils.getTestFileAsBuffer(UNKNOWN_DIMS_MODEL_PATH);
 
   @Test
   public void testInterpreter() throws Exception {
@@ -219,6 +223,30 @@ public final class InterpreterTest {
   }
 
   @Test
+  public void testUnknownDims() {
+    try (Interpreter interpreter = new Interpreter(UNKNOWN_DIMS_MODEL_PATH_BUFFER)) {
+      int[] inputDims = {1, 1, 3, 3};
+      int[] inputDimsSignature = {1, -1, 3, 3};
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
+
+      // Set the dimension of the unknown dimension to the expected dimension and ensure shape
+      // signature doesn't change.
+      inputDims[1] = 3;
+      interpreter.resizeInput(0, inputDims);
+      assertThat(interpreter.getInputTensor(0).shape()).isEqualTo(inputDims);
+      assertThat(interpreter.getInputTensor(0).shapeSignature()).isEqualTo(inputDimsSignature);
+
+      ByteBuffer input =
+          ByteBuffer.allocateDirect(1 * 3 * 3 * 3 * 4).order(ByteOrder.nativeOrder());
+      ByteBuffer output =
+          ByteBuffer.allocateDirect(1 * 3 * 3 * 3 * 4).order(ByteOrder.nativeOrder());
+      interpreter.run(input, output);
+      assertThat(interpreter.getOutputTensor(0).shape()).isEqualTo(inputDims);
+    }
+  }
+
+  @Test
   public void testRunWithWrongInputType() {
     Interpreter interpreter = new Interpreter(MODEL_BUFFER);
     int[] oneD = {4, 3, 9};
@@ -242,10 +270,10 @@ public final class InterpreterTest {
 
   @Test
   public void testRunWithUnsupportedInputType() {
-    FloatBuffer floatBuffer = FloatBuffer.allocate(10);
+    DoubleBuffer doubleBuffer = DoubleBuffer.allocate(10);
     float[][][][] parsedOutputs = new float[2][8][8][3];
     try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
-      interpreter.run(floatBuffer, parsedOutputs);
+      interpreter.run(doubleBuffer, parsedOutputs);
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("DataType error: cannot resolve DataType of");
@@ -476,6 +504,23 @@ public final class InterpreterTest {
       fail();
     } catch (IllegalArgumentException e) {
       assertThat(e).hasMessageThat().contains("Internal error: Invalid handle to delegate");
+    }
+  }
+
+  @Test
+  public void testResetVariableTensors() throws Exception {
+    float[][][][] inputs = new float[2][8][8][3];
+    float[][][][] parsedOutputs = new float[2][8][8][3];
+
+    // Smoke test to ensure resetting variables at various times in a simple graph doesn't fail.
+    // TODO(b/138197256): Test with model that has variables.
+    try (Interpreter interpreter = new Interpreter(MODEL_BUFFER)) {
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
+
+      interpreter.resetVariableTensors();
+      interpreter.resetVariableTensors();
+      interpreter.run(inputs, parsedOutputs);
     }
   }
 

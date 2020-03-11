@@ -84,6 +84,34 @@ Status MatrixSolveShapeFn(InferenceContext* c, bool square) {
   return Status::OK();
 }
 
+// The first input is [...,M,M] and second input is [...,M,N].
+// Output is [...,M,N].
+Status MatrixTriangularSolveShapeFn(InferenceContext* c) {
+  ShapeHandle lhs;
+  ShapeHandle rhs;
+  TF_RETURN_IF_ERROR(MakeBatchSquareMatrix(c, c->input(0), &lhs));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  ShapeHandle output_batch_shape;
+  // Make the common batch subshape.
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, lhs_batch_shape, rhs_batch_shape, true, &output_batch_shape));
+  DimensionHandle m;
+  // lhs and rhs have the same value for m to be compatible.
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(lhs, -1), c->Dim(rhs, -2), &m));
+
+  ShapeHandle out;
+  // Build final shape (batch_shape + m + n) in <out>.
+  TF_RETURN_IF_ERROR(
+      c->Concatenate(output_batch_shape, c->Matrix(m, c->Dim(rhs, -1)), &out));
+  c->set_output(0, out);
+  return Status::OK();
+}
+
 // Input is [...,N,N]. Outputs are:
 //   [...,N];[0], if compute_v is false,
 //   [...,N];[...,N,N], if compute_v is true.
@@ -383,6 +411,15 @@ REGISTER_OP("SelfAdjointEig")
       return Status::OK();
     });
 
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
 REGISTER_OP("SelfAdjointEigV2")
     .Input("input: T")
     .Output("e: T")
@@ -417,7 +454,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Attr("adjoint: bool = False")
     .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
-      return MatrixSolveShapeFn(c, true /* square (*/);
+      return MatrixTriangularSolveShapeFn(c);
     });
 
 REGISTER_OP("MatrixSolveLs")

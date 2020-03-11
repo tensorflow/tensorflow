@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <jni.h>
 
-#include "tensorflow/lite/delegates/gpu/gl_delegate.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,31 +23,21 @@ extern "C" {
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_createDelegate(
     JNIEnv* env, jclass clazz, jboolean precision_loss_allowed,
-    jboolean dynamic_batch_enabled, jint preferred_gl_object_type) {
-  TfLiteGpuDelegateOptions options;
-  options.metadata = nullptr;
-  options.compile_options.precision_loss_allowed =
-      precision_loss_allowed == JNI_TRUE ? 1 : 0;
-  options.compile_options.preferred_gl_object_type =
-      static_cast<int32_t>(preferred_gl_object_type);
-  options.compile_options.dynamic_batch_enabled =
-      dynamic_batch_enabled == JNI_TRUE ? 1 : 0;
-  return reinterpret_cast<jlong>(TfLiteGpuDelegateCreate(&options));
+    jint inference_preference) {
+  TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
+  if (precision_loss_allowed == JNI_TRUE) {
+    options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+    options.inference_priority2 =
+        TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+    options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+  }
+  options.inference_preference = static_cast<int32_t>(inference_preference);
+  return reinterpret_cast<jlong>(TfLiteGpuDelegateV2Create(&options));
 }
 
 JNIEXPORT void JNICALL Java_org_tensorflow_lite_gpu_GpuDelegate_deleteDelegate(
     JNIEnv* env, jclass clazz, jlong delegate) {
-  TfLiteGpuDelegateDelete(reinterpret_cast<TfLiteDelegate*>(delegate));
-}
-
-JNIEXPORT jboolean JNICALL
-Java_org_tensorflow_lite_gpu_GpuDelegate_bindGlBufferToTensor(
-    JNIEnv* env, jclass clazz, jlong delegate, jint tensor_index, jint ssbo) {
-  return TfLiteGpuDelegateBindBufferToTensor(
-             reinterpret_cast<TfLiteDelegate*>(delegate),
-             static_cast<GLuint>(ssbo), static_cast<int>(tensor_index))
-             ? JNI_TRUE
-             : JNI_FALSE;
+  TfLiteGpuDelegateV2Delete(reinterpret_cast<TfLiteDelegate*>(delegate));
 }
 
 #ifdef __cplusplus

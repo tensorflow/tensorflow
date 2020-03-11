@@ -40,7 +40,8 @@ class TestBFloat16Support : public BFloat16Support {
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kReduce ||
         hlo.opcode() == HloOpcode::kTuple ||
-        hlo.opcode() == HloOpcode::kGetTupleElement) {
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kAllToAll) {
       return true;
     }
     if (hlo.opcode() == HloOpcode::kDot) {
@@ -54,7 +55,8 @@ class TestBFloat16Support : public BFloat16Support {
     if (hlo.opcode() == HloOpcode::kAdd || hlo.opcode() == HloOpcode::kReduce ||
         hlo.opcode() == HloOpcode::kSubtract ||
         hlo.opcode() == HloOpcode::kDot || hlo.opcode() == HloOpcode::kTuple ||
-        hlo.opcode() == HloOpcode::kGetTupleElement) {
+        hlo.opcode() == HloOpcode::kGetTupleElement ||
+        hlo.opcode() == HloOpcode::kAllToAll) {
       return true;
     }
     return false;
@@ -257,18 +259,77 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
   HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
       ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
       /*replica_groups=*/{},
-      /*channel_id=*/absl::nullopt));
-  HloInstruction* gte = builder.AddInstruction(
+      /*constrain_layout=*/false,
+      /*channel_id=*/absl::nullopt,
+      /*use_global_device_ids=*/false));
+  builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
 
-  EXPECT_EQ(computation->root_instruction(), gte);
-  EXPECT_EQ(gte->shape().element_type(), BF16);
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
   EXPECT_EQ(crs->operand(1)->shape().element_type(), F32);
   EXPECT_EQ(ShapeUtil::GetSubshape(crs->shape(), {1}).element_type(), F32);
+}
+
+TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToBF16) {
+  auto module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "a"));
+
+  std::vector<ReplicaGroup> replica_groups(1);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(1);
+  HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
+      ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), {a, a},
+      replica_groups, absl::nullopt));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module.get()));
+
+  EXPECT_EQ(computation->root_instruction(), a2a);
+  EXPECT_EQ(ShapeUtil::GetSubshape(a2a->shape(), {0}).element_type(), BF16);
+  EXPECT_EQ(ShapeUtil::GetSubshape(a2a->shape(), {1}).element_type(), BF16);
+  EXPECT_EQ(a2a->operand(0)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(a2a->operand(0)->shape().element_type(), BF16);
+  EXPECT_EQ(a2a->operand(1)->opcode(), HloOpcode::kConvert);
+  EXPECT_EQ(a2a->operand(1)->shape().element_type(), BF16);
+}
+
+TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllToAllToF32) {
+  auto module = CreateNewVerifiedModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  Shape f32_shape = ShapeUtil::MakeShape(F32, {2, 4});
+  Shape bf16_shape = ShapeUtil::MakeShape(BF16, {2, 4});
+
+  HloInstruction* a = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32_shape, "a"));
+
+  std::vector<ReplicaGroup> replica_groups(1);
+  replica_groups[0].add_replica_ids(0);
+  replica_groups[0].add_replica_ids(1);
+  HloInstruction* a2a = builder.AddInstruction(HloInstruction::CreateAllToAll(
+      ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}), {a, a},
+      replica_groups, absl::nullopt));
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_TRUE(Normalize(module.get()));
+
+  EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(ShapeUtil::GetSubshape(a2a->shape(), {0}).element_type(), F32);
+  EXPECT_EQ(ShapeUtil::GetSubshape(a2a->shape(), {1}).element_type(), F32);
+  EXPECT_EQ(a2a->operand(0)->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(a2a->operand(0)->shape().element_type(), F32);
+  EXPECT_EQ(a2a->operand(1)->opcode(), HloOpcode::kParameter);
+  EXPECT_EQ(a2a->operand(1)->shape().element_type(), F32);
 }
 
 TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
@@ -288,15 +349,14 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
       MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
                   {key, value}, 0, /*is_stable=*/false, &builder,
                   module.get()));
-  HloInstruction* gte = builder.AddInstruction(
+  builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_TRUE(Normalize(module.get()));
 
-  EXPECT_EQ(computation->root_instruction(), gte);
-  EXPECT_EQ(gte->shape().element_type(), BF16);
+  EXPECT_EQ(computation->root_instruction()->shape().element_type(), BF16);
   EXPECT_EQ(sort->operand(0)->shape().element_type(), F32);
   EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
 }

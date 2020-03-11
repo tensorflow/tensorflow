@@ -24,8 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
@@ -46,6 +44,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -399,7 +398,7 @@ class _SparseMetaData(object):
     """
     self._sparse = sparse
     self._map_op = map_op
-    self._rank = tensor_shape.Dimension(rank)
+    self._rank = tensor_shape.as_dimension(rank)
 
   def __eq__(self, other):
     if self.sparse != other.sparse:
@@ -600,7 +599,7 @@ def _store_sparse_tensors_join(tensor_list_list, enqueue_many, keep_input):
 
 def _restore_sparse_tensors(stored_list, sparse_info_list):
   """Restore SparseTensors after dequeue in batch, batch_join, etc."""
-  received_sequence = isinstance(stored_list, collections.Sequence)
+  received_sequence = isinstance(stored_list, collections_abc.Sequence)
   if not received_sequence:
     stored_list = (stored_list,)
   tensors = [

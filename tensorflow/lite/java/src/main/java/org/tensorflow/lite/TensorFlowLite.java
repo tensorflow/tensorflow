@@ -18,8 +18,22 @@ package org.tensorflow.lite;
 /** Static utility methods loading the TensorFlowLite runtime. */
 public final class TensorFlowLite {
 
-  private static final String PRIMARY_LIBNAME = "tensorflowlite_jni";
-  private static final String FALLBACK_LIBNAME = "tensorflowlite_flex_jni";
+  private static final String LIBNAME = "tensorflowlite_jni";
+
+  private static final Throwable LOAD_LIBRARY_EXCEPTION;
+  private static volatile boolean isInit = false;
+
+  static {
+    // Attempt to load the default native libraries. If unavailable, cache the exception; the client
+    // may choose to link the native deps into their own custom native library.
+    Throwable loadLibraryException = null;
+    try {
+      System.loadLibrary(LIBNAME);
+    } catch (UnsatisfiedLinkError e) {
+      loadLibraryException = e;
+    }
+    LOAD_LIBRARY_EXCEPTION = loadLibraryException;
+  }
 
   private TensorFlowLite() {}
 
@@ -34,42 +48,44 @@ public final class TensorFlowLite {
   }
 
   /** Returns the version of the underlying TensorFlowLite runtime. */
-  public static native String runtimeVersion();
+  public static String runtimeVersion() {
+    init();
+    return nativeRuntimeVersion();
+  }
 
   /** Returns the version of the underlying TensorFlowLite model schema. */
-  public static native String schemaVersion();
-
-  /**
-   * Initialize tensorflow's libraries. This will throw an exception if used when TensorFlow isn't
-   * linked in.
-   */
-  static native void initTensorFlow();
-
-  /**
-   * Load the TensorFlowLite runtime C library.
-   */
-  static boolean init() {
-    Throwable primaryLibException;
-    try {
-      System.loadLibrary(PRIMARY_LIBNAME);
-      return true;
-    } catch (UnsatisfiedLinkError e) {
-      primaryLibException = e;
-    }
-
-    try {
-      System.loadLibrary(FALLBACK_LIBNAME);
-      return true;
-    } catch (UnsatisfiedLinkError e) {
-      // If the fallback fails, log the error for the primary load instead.
-      System.err.println(
-          "TensorFlowLite: failed to load native library: " + primaryLibException.getMessage());
-    }
-
-    return false;
-  }
-
-  static {
+  public static String schemaVersion() {
     init();
+    return nativeSchemaVersion();
   }
+
+  /**
+   * Ensure the TensorFlowLite native library has been loaded.
+   *
+   * <p>If unsuccessful, throws an UnsatisfiedLinkError with the appropriate error message.
+   */
+  public static void init() {
+    if (isInit) {
+      return;
+    }
+
+    try {
+      // Try to invoke a native method (the method itself doesn't really matter) to ensure that
+      // native libs are available.
+      nativeRuntimeVersion();
+      isInit = true;
+    } catch (UnsatisfiedLinkError e) {
+      // Prefer logging the original library loading exception if native methods are unavailable.
+      Throwable exceptionToLog = LOAD_LIBRARY_EXCEPTION != null ? LOAD_LIBRARY_EXCEPTION : e;
+      throw new UnsatisfiedLinkError(
+          "Failed to load native TensorFlow Lite methods. Check "
+              + "that the correct native libraries are present, and, if using "
+              + "a custom native library, have been properly loaded via System.loadLibrary():\n  "
+              + exceptionToLog);
+    }
+  }
+
+  public static native String nativeRuntimeVersion();
+
+  public static native String nativeSchemaVersion();
 }

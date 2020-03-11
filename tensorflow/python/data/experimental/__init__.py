@@ -22,6 +22,7 @@ removing existing functionality.
 
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
+@@AutoShardPolicy
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
@@ -44,11 +45,13 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@TensorStructure
 @@ThreadingOptions
 
+@@assert_cardinality
 @@bucket_by_sequence_length
 @@bytes_produced_stats
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
+@@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@from_variant
@@ -86,14 +89,17 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
+from tensorflow.python.data.experimental.ops.cardinality import assert_cardinality
 from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors

@@ -195,6 +195,31 @@ body: A function that takes a list of tensors and returns another
       by T.
 )doc");
 
+Status WhileShapeInferenceFn(shape_inference::InferenceContext* c) {
+  std::vector<PartialTensorShape> output_shapes;
+  TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+  // If `output_shapes` attr is set use that as the shapes of the outputs
+  // else use the input shapes.
+  if (!output_shapes.empty()) {
+    if (output_shapes.size() != c->num_outputs()) {
+      return errors::InvalidArgument(
+          "`output_shapes` must be the same length as num outputs (",
+          output_shapes.size(), " vs. ", c->num_outputs());
+    }
+    for (size_t i = 0; i < output_shapes.size(); ++i) {
+      shape_inference::ShapeHandle output_shape_handle;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+          output_shapes[i], &output_shape_handle));
+      c->set_output(static_cast<int>(i), output_shape_handle);
+    }
+  } else {
+    for (int i = 0; i < c->num_outputs(); ++i) {
+      c->set_output(i, c->input(i));
+    }
+  }
+  return Status::OK();
+}
+
 REGISTER_OP("While")
     .Input("input: T")
     .Output("output: T")
@@ -204,30 +229,7 @@ REGISTER_OP("While")
     .Attr("output_shapes: list(shape) = []")
     .Attr("parallel_iterations: int = 10")
     .SetIsStateful()
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      std::vector<PartialTensorShape> output_shapes;
-      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-      // If `output_shapes` attr is set use that as the shapes of the outputs
-      // else use the input shapes.
-      if (!output_shapes.empty()) {
-        if (output_shapes.size() != c->num_outputs()) {
-          return errors::InvalidArgument(
-              "`output_shapes` must be the same length as num outputs (",
-              output_shapes.size(), " vs. ", c->num_outputs());
-        }
-        for (size_t i = 0; i < output_shapes.size(); ++i) {
-          shape_inference::ShapeHandle output_shape_handle;
-          TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
-              output_shapes[i], &output_shape_handle));
-          c->set_output(static_cast<int>(i), output_shape_handle);
-        }
-      } else {
-        for (int i = 0; i < c->num_outputs(); ++i) {
-          c->set_output(i, c->input(i));
-        }
-      }
-      return Status::OK();
-    });
+    .SetShapeFn(WhileShapeInferenceFn);
 
 REGISTER_OP("StatelessWhile")
     .Input("input: T")
@@ -235,12 +237,15 @@ REGISTER_OP("StatelessWhile")
     .Attr("T: list(type) >= 0")
     .Attr("cond: func")
     .Attr("body: func")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      for (int i = 0; i < c->num_outputs(); ++i) {
-        c->set_output(i, c->input(i));
-      }
-      return Status::OK();
-    });
+    .Attr("output_shapes: list(shape) = []")
+    .Attr("parallel_iterations: int = 10")
+    .SetShapeFn(WhileShapeInferenceFn);
+
+REGISTER_OP("ToBool")
+    .Input("input: T")
+    .Output("output: bool")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("For")
     .Input("start: int32")

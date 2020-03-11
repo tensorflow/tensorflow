@@ -90,12 +90,21 @@ keras_export("keras.initializers.he_normal", v1=[])(
     init_ops_v2.he_normal)
 keras_export("keras.initializers.he_uniform", v1=[])(
     init_ops_v2.he_uniform)
-keras_export("keras.initializers.RandomNormal", v1=[])(
-    init_ops_v2.RandomNormal)
-keras_export("keras.initializers.RandomUniform", v1=[])(
-    init_ops_v2.RandomUniform)
-keras_export("keras.initializers.TruncatedNormal", v1=[])(
-    init_ops_v2.TruncatedNormal)
+keras_export(
+    "keras.initializers.RandomNormal",
+    "keras.initializers.random_normal",
+    v1=[])(
+        init_ops_v2.RandomNormal)
+keras_export(
+    "keras.initializers.RandomUniform",
+    "keras.initializers.random_uniform",
+    v1=[])(
+        init_ops_v2.RandomUniform)
+keras_export(
+    "keras.initializers.TruncatedNormal",
+    "keras.initializers.truncated_normal",
+    v1=[])(
+        init_ops_v2.TruncatedNormal)
 # pylint: enable=bad-continuation
 
-keras_export(v1=["keras.backend.name_scope"])(ops.name_scope)
+keras_export(v1=["keras.backend.name_scope"])(ops.name_scope_v1)

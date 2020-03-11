@@ -31,10 +31,10 @@ namespace {
 // Returns a vector of StringPieces which are valid as long as input `str`
 // is valid.
 // Note: The single character delimiter is a common case and is implemented as
-// a series of finds in the input string, making it much more effcient than
+// a series of finds in the input string, making it much more efficient than
 // SplitOnCharSet.
 template <typename Predicate>
-std::vector<StringPiece> SplitOnChar(const string& str, const char delim,
+std::vector<StringPiece> SplitOnChar(const tstring& str, const char delim,
                                      Predicate p) {
   std::vector<StringPiece> result;
   StringPiece text(str);
@@ -58,8 +58,8 @@ std::vector<StringPiece> SplitOnChar(const string& str, const char delim,
 // is valid.
 // Based on str_util::Split.
 template <typename Predicate>
-std::vector<StringPiece> SplitOnCharSet(const string& str,
-                                        const string& delim_set, Predicate p) {
+std::vector<StringPiece> SplitOnCharSet(const tstring& str,
+                                        const tstring& delim_set, Predicate p) {
   std::vector<StringPiece> result;
   StringPiece text(str);
   StringPiece delims(delim_set);
@@ -80,7 +80,7 @@ std::vector<StringPiece> SplitOnCharSet(const string& str,
 // Returns a vector of StringPieces which are valid as long as input `str`
 // is valid.
 template <typename Predicate>
-std::vector<StringPiece> Split(const string& str, const string& delimiter,
+std::vector<StringPiece> Split(const tstring& str, const tstring& delimiter,
                                Predicate predicate) {
   if (str.empty()) {
     return std::vector<StringPiece>();
@@ -99,7 +99,7 @@ std::vector<StringPiece> Split(const string& str, const string& delimiter,
   return SplitOnCharSet(str, delimiter, predicate);
 }
 
-std::vector<StringPiece> SplitV2(const string& str, StringPiece sep,
+std::vector<StringPiece> SplitV2(const tstring& str, StringPiece sep,
                                  int maxsplit) {
   // This SplitV2 method matches the behavior of python's str.split:
   //   If sep is given, consecutive delimiters are not grouped together
@@ -178,7 +178,7 @@ class StringSplitOp : public OpKernel {
                 errors::InvalidArgument("input must be a vector, got shape: ",
                                         input_tensor->shape().DebugString()));
 
-    const auto input_vec = input_tensor->vec<string>();
+    const auto input_vec = input_tensor->vec<tstring>();
     const int64 batch_size = input_vec.dimension(0);
 
     const Tensor* delimiter_tensor;
@@ -187,8 +187,8 @@ class StringSplitOp : public OpKernel {
         ctx, TensorShapeUtils::IsScalar(delimiter_tensor->shape()),
         errors::InvalidArgument("delimiter must be a scalar, got shape: ",
                                 delimiter_tensor->shape().DebugString()));
-    const auto delimiter_vec = delimiter_tensor->flat<string>();
-    const string& delimiter = delimiter_vec(0);
+    const auto delimiter_vec = delimiter_tensor->flat<tstring>();
+    const tstring& delimiter = delimiter_vec(0);
     // Empty delimiter means split the input character by character.
     std::vector<StringPiece> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
@@ -220,7 +220,7 @@ class StringSplitOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
     auto sp_indices = sp_indices_t->matrix<int64>();
-    auto sp_tokens = sp_tokens_t->vec<string>();
+    auto sp_tokens = sp_tokens_t->vec<tstring>();
     auto sp_shape = sp_shape_t->vec<int64>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;
@@ -253,7 +253,7 @@ class StringSplitV2Op : public OpKernel {
                 errors::InvalidArgument("input must be a vector, got shape: ",
                                         input_tensor->shape().DebugString()));
 
-    const auto input_vec = input_tensor->vec<string>();
+    const auto input_vec = input_tensor->vec<tstring>();
     const int64 batch_size = input_vec.dimension(0);
 
     const Tensor* sep_tensor;
@@ -261,7 +261,7 @@ class StringSplitV2Op : public OpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(sep_tensor->shape()),
                 errors::InvalidArgument("sep must be a scalar, got shape: ",
                                         sep_tensor->shape().DebugString()));
-    const auto sep_vec = sep_tensor->flat<string>();
+    const auto sep_vec = sep_tensor->flat<tstring>();
     StringPiece sep(sep_vec(0));
     std::vector<StringPiece> tokens;
     // Guess that we'll be unpacking a handful of tokens per example.
@@ -290,7 +290,7 @@ class StringSplitV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(2, TensorShape({2}), &sp_shape_t));
 
     auto sp_indices = sp_indices_t->matrix<int64>();
-    auto sp_tokens = sp_tokens_t->vec<string>();
+    auto sp_tokens = sp_tokens_t->vec<tstring>();
     auto sp_shape = sp_shape_t->vec<int64>();
     sp_shape(0) = batch_size;
     sp_shape(1) = max_num_entries;

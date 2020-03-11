@@ -520,7 +520,8 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
                saver=None,
                checkpoint_basename="model.ckpt",
                scaffold=None,
-               listeners=None):
+               listeners=None,
+               save_graph_def=True):
     """Initializes a `CheckpointSaverHook`.
 
     Args:
@@ -533,6 +534,10 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
       listeners: List of `CheckpointSaverListener` subclass instances. Used for
         callbacks that run immediately before or after this hook saves the
         checkpoint.
+      save_graph_def: Whether to save the GraphDef and MetaGraphDef to
+        `checkpoint_dir`. The GraphDef is saved after the session is created as
+        `graph.pbtxt`. MetaGraphDefs are saved out for every checkpoint as
+        `model.ckpt-*.meta`.
 
     Raises:
       ValueError: One of `save_steps` or `save_secs` should be set.
@@ -549,6 +554,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
         every_secs=save_secs, every_steps=save_steps)
     self._listeners = listeners or []
     self._steps_per_run = 1
+    self._save_graph_def = save_graph_def
 
   def _set_steps_per_run(self, steps_per_run):
     self._steps_per_run = steps_per_run
@@ -564,12 +570,13 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def after_create_session(self, session, coord):
     global_step = session.run(self._global_step_tensor)
-    # We do write graph and saver_def at the first call of before_run.
-    # We cannot do this in begin, since we let other hooks to change graph and
-    # add variables in begin. Graph is finalized after all begin calls.
-    training_util.write_graph(
-        ops.get_default_graph().as_graph_def(add_shapes=True),
-        self._checkpoint_dir, "graph.pbtxt")
+    if self._save_graph_def:
+      # We do write graph and saver_def at the first call of before_run.
+      # We cannot do this in begin, since we let other hooks to change graph and
+      # add variables in begin. Graph is finalized after all begin calls.
+      training_util.write_graph(
+          ops.get_default_graph().as_graph_def(add_shapes=True),
+          self._checkpoint_dir, "graph.pbtxt")
     saver_def = self._get_saver().saver_def if self._get_saver() else None
     graph = ops.get_default_graph()
     meta_graph_def = meta_graph.create_meta_graph_def(
@@ -603,17 +610,20 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
 
   def _save(self, session, step):
     """Saves the latest checkpoint, returns should_stop."""
-    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
-
+    logging.info("Calling checkpoint listeners before saving checkpoint %d...",
+                 step)
     for l in self._listeners:
       l.before_save(session, step)
 
-    self._get_saver().save(session, self._save_path, global_step=step)
+    logging.info("Saving checkpoints for %d into %s.", step, self._save_path)
+    self._get_saver().save(session, self._save_path, global_step=step,
+                           write_meta_graph=self._save_graph_def)
     self._summary_writer.add_session_log(
         SessionLog(
             status=SessionLog.CHECKPOINT, checkpoint_path=self._save_path),
         step)
-
+    logging.info("Calling checkpoint listeners after saving checkpoint %d...",
+                 step)
     should_stop = False
     for l in self._listeners:
       if l.after_save(session, step):

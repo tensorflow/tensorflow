@@ -42,6 +42,16 @@ struct GraphConstructorOptions {
   //
   // TODO(zhifengc): if possible, consider removing this option.
   bool expect_device_spec = false;
+
+  // If true, validates that nodes being converted have all expected attrs
+  // set and no unknown attrs set by calling ValidateNodeDef().
+  // Setting validate_nodes without add_default_attributes, will fail if
+  // the GraphDef does not have all required attributes set.
+  bool validate_nodes = false;
+
+  // If true, GraphConstructor will add attributes with their default
+  // value to the Node when they are missing from the NodeDef.
+  bool add_default_attributes = true;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);

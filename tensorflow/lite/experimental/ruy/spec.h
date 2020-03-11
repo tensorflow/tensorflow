@@ -16,10 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_SPEC_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_SPEC_H_
 
-#include <cstdint>
 #include <limits>
 #include <type_traits>
 
+#include "tensorflow/lite/experimental/ruy/cpu_cache_size.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 
 namespace ruy {
@@ -102,19 +102,15 @@ struct BasicSpec {
   // Used for testing of various kernel layouts.
   using StandardCppKernelLhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
   using StandardCppKernelRhsLayout = FixedKernelLayout<Order::kColMajor, 1, 1>;
-  // The value and even the meaning of this value are empirically
-  // determined. Coarsely speaking, it's compared with the size of source
-  // LHS and RHS operands to determine whether they are big enough to be worth
-  // traversing in a more complicated "cache friendly" order. The current
-  // value is roughly the minimum size of a L1 cache on any CPU that we
-  // currently care about, e.g. ARM Cortex-A53. But we honestly don't even know
-  // the precise extent to which this should be related to L1 cache size.
-  //
-  // A lower value is not necessarily 'safer' from a cache-friendliness
-  // perspective: it means switching sooner (at smaller sizes) to more
-  // complicated traversal orders, which might be adversarial to the CPU's
-  // auto-prefetching or to the TLB.
-  static int cache_friendly_traversal_threshold() { return 32 * 1024; }
+  // Returns (a reasonable estimate of) the local CPU cache size.
+  // See ruy::LocalDataCacheSize() which returns some coarse, sane default for
+  // each CPU architecture.
+  // This may be overridden, either to provide more accurate/runtime values,
+  // or to test with other values to let testcases have more coverage.
+  static int local_data_cache_size() { return LocalDataCacheSize(); }
+  // Same as local_data_cache_size but for the total data cache size accessible
+  // to each CPU core. See ruy::SharedDataCacheSize().
+  static int shared_data_cache_size() { return SharedDataCacheSize(); }
 };
 
 }  // namespace ruy

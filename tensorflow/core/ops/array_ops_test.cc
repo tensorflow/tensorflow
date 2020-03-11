@@ -192,14 +192,14 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
   std::vector<
-      std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>
+      std::unique_ptr<std::vector<std::pair<PartialTensorShape, DataType>>>>
       handle_data;
   handle_data.emplace_back(
-      new std::vector<std::pair<TensorShapeProto, DataType>>{
-          {TensorShapeProto(), DT_BOOL}});
-  shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
-                                      op_reg_data->op_def, {TensorShapeProto()},
-                                      {}, {}, handle_data);
+      new std::vector<std::pair<PartialTensorShape, DataType>>(
+          {{PartialTensorShape(), DT_BOOL}}));
+  shape_inference::InferenceContext c(
+      TF_GRAPH_DEF_VERSION, op.node_def, op_reg_data->op_def,
+      {PartialTensorShape()}, {}, {}, handle_data);
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
@@ -385,10 +385,7 @@ TEST(ArrayOpsTest, Unique_ShapeFn) {
   ShapeInferenceTestOp op("Unique");
   INFER_OK(op, "?", "[?];in0");
   INFER_OK(op, "[5]", "[?];in0");
-  INFER_ERROR(
-      "Shape must be rank 1 but is rank 5 for '' (op: '') with input shapes: "
-      "[1,2,3,?,5].",
-      op, "[1,2,3,?,5]");
+  INFER_ERROR("Shape must be rank 1 but is rank 5", op, "[1,2,3,?,5]");
 }
 
 TEST(ArrayOpsTest, UniqueWithCounts_ShapeFn) {
@@ -1310,12 +1307,24 @@ TEST(ArrayOpsTest, ExtractImagePatchesShapeTest) {
 
 TEST(ArrayOpsTest, QuantizeAndDequantizeV2_ShapeFn) {
   ShapeInferenceTestOp op("QuantizeAndDequantizeV2");
+  op.input_tensors.resize(3);
+  TF_ASSERT_OK(NodeDefBuilder("test", "QuantizeAndDequantizeV2")
+                   .Input("input", 0, DT_FLOAT)
+                   .Input("input_min", 1, DT_FLOAT)
+                   .Input("input_max", 2, DT_FLOAT)
+                   .Attr("signed_input", true)
+                   .Attr("num_bits", 8)
+                   .Attr("range_given", false)
+                   .Attr("narrow_range", false)
+                   .Attr("axis", -1)
+                   .Finalize(&op.node_def));
   INFER_OK(op, "?;?;?", "in0");
   INFER_OK(op, "[];?;?", "in0");
   INFER_OK(op, "[1,2,?,4,5];?;?", "in0");
 
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[]");
-  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[];[1]");
+  INFER_ERROR("Shapes must be equal rank, but are 1 and 0", op,
+              "[1,2,?,4,5];[];[1]");
   INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[1,2,?,4,5];[1];[1]");
 }
 
@@ -1350,7 +1359,7 @@ TEST(ArrayOpsTest, SpaceToBatch_ShapeFn) {
   INFER_ERROR("Dimension size must be evenly divisible by 2 but is 13", op,
               "[1,10,10,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   paddings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &paddings;
   INFER_ERROR("cannot be negative", op, "[1,10,10,3];[2,2]");
@@ -1470,7 +1479,7 @@ TEST(ArrayOpsTest, BatchToSpace_ShapeFn) {
   INFER_ERROR("Negative dimension size caused by subtracting", op,
               "[4,8,8,3];[2,2]");
 
-  // Negative paddsings
+  // Negative paddings
   croppings = test::AsTensor<int32>({1, -2, 3, 4}, {{2, 2}});
   op.input_tensors[1] = &croppings;
   INFER_ERROR("cannot be negative", op, "[4,8,8,3];[2,2]");
@@ -1682,7 +1691,16 @@ TEST(ArrayOpsTest, StridedSliceGrad_ShapeFn) {
 TEST(ArrayOpsTest, UnchangedWithQuantizationScalars_ShapeFn) {
   for (const char* op_name : {"Dequantize", "FakeQuantWithMinMaxVars"}) {
     ShapeInferenceTestOp op(op_name);
-
+    if (op_name[0] == 'D') {
+      TF_ASSERT_OK(NodeDefBuilder("test", "Dequantize")
+                       .Input("input", 0, DT_QINT8)
+                       .Input("input_min", 1, DT_FLOAT)
+                       .Input("input_max", 2, DT_FLOAT)
+                       .Attr("T", DataTypeToEnum<qint8>::v())
+                       .Attr("mode", "SCALED")
+                       .Attr("axis", -1)
+                       .Finalize(&op.node_def));
+    }
     INFER_OK(op, "?;?;?", "in0");
     INFER_OK(op, "[1,?,3];[];[]", "in0");
 

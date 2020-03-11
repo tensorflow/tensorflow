@@ -26,6 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 static const double kPercentile = 90.0;
@@ -53,6 +54,8 @@ class WrapperDataset : public DatasetBase {
   }
 
   string DebugString() const override { return "WrapperDataset"; }
+
+  Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -241,6 +244,13 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       return static_cast<double>(n) * ratio_numerator_ / ratio_denominator_;
     }
 
+    Status CheckExternalState() const override {
+      for (const auto& captured_func : captured_funcs_) {
+        TF_RETURN_IF_ERROR(captured_func->CheckExternalState());
+      }
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -323,7 +333,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
-            dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+            dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
 
         for (int i = 0; i < dataset()->captured_funcs_.size(); ++i) {
           TF_RETURN_IF_ERROR(dataset()->captured_funcs_[i]->Instantiate(
@@ -430,11 +440,11 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextFromExperiment(IteratorContext* ctx,
                                    std::vector<Tensor>* out_tensors,
                                    bool* end_of_sequence)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
-        int64 start = ctx->env()->NowNanos();
+        int64 start = EnvTime::NowNanos();
         Status s =
             current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
 
@@ -442,7 +452,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           // Ignore the first experiment when benchmarking. It may be an outlier
           // due to session set up time and other overheads.
           histograms_[branch_index_].Add(
-              static_cast<double>(ctx->env()->NowNanos() - start));
+              static_cast<double>(EnvTime::NowNanos() - start));
         }
         return s;
       }
@@ -450,7 +460,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // Select the fastest input to use based on the histograms of timings
       // of the completed iterations. The input with the best 90th percentile
       // iteration time is selected.
-      void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SelectFastestInputIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
         VLOG(2) << "90.0 percentile iteration time:";
@@ -471,7 +481,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
 
       Status MakeCurrentIterator(IteratorContext* ctx, int64 branch_index,
                                  bool is_experiment)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index, 0);
         DCHECK_LT(branch_index, histograms_.size());
 
@@ -507,7 +517,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
             temp_dataset, wrapper_dataset_tensor_.get()));
 
         TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
-            ctx, {*wrapper_dataset_tensor_}, branch_index,
+            ctx, this, {*wrapper_dataset_tensor_}, branch_index,
             *instantiated_captured_funcs_[branch_index], prefix(),
             &current_iterator_));
 
@@ -515,19 +525,19 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       std::vector<std::unique_ptr<InstantiatedCapturedFunction>>
-          instantiated_captured_funcs_ GUARDED_BY(mu_);
+          instantiated_captured_funcs_ TF_GUARDED_BY(mu_);
 
       // For tracking the time taken for each input's iterations.
-      std::vector<histogram::Histogram> histograms_ GUARDED_BY(mu_);
+      std::vector<histogram::Histogram> histograms_ TF_GUARDED_BY(mu_);
       int64 fastest_index_ = -1;
       std::unique_ptr<Tensor> wrapper_dataset_tensor_;
       std::unique_ptr<IteratorBase> current_iterator_;
 
       // Keeps track of which (branch, experiment) the next iteration is on.
-      int64 branch_index_ GUARDED_BY(mu_) = 0;
-      int64 experiment_counter_ GUARDED_BY(mu_) = 0;
+      int64 branch_index_ TF_GUARDED_BY(mu_) = 0;
+      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
     };  // class Iterator
 
     const DatasetBase* const input_;
@@ -553,5 +563,6 @@ REGISTER_KERNEL_BUILDER(Name("ChooseFastestBranchDataset").Device(DEVICE_CPU),
                         ChooseFastestBranchDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

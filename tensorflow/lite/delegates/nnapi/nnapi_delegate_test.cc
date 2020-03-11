@@ -17,9 +17,10 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
@@ -253,6 +254,32 @@ TEST(NNAPIDelegate, StatefulDelegateWithAcceleratorName) {
   FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {1, 2, 2, 1}},
                     {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
+}
+
+// Sanity check for the state-ful NNAPI delegate with invalid accelerator_name
+// specified.
+TEST(NNAPIDelegate, StatefulDelegateWithInvalidAcceleratorName) {
+  if (!NnApiImplementation()->ANeuralNetworksDevice_getName) {
+    GTEST_SKIP();
+  }
+  testing::internal::CaptureStderr();
+  StatefulNnApiDelegate::Options options;
+  options.execution_preference =
+      StatefulNnApiDelegate::Options::ExecutionPreference::kLowPower;
+  options.accelerator_name = "foo";
+
+  FloatAddOpModel m(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {1, 2, 2, 1}},
+                    {TensorType_FLOAT32, {}}, ActivationFunctionType_NONE);
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              testing::HasSubstr(
+                  "Could not find the specified NNAPI accelerator: foo"));
+
+  // Execution should fall back to the default CPU path.
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
@@ -1868,7 +1895,7 @@ class BaseActivationsOpModel : public SingleOpModelWithNNAPI {
  public:
   // Most activations don't take any options, so this constructor works for
   // them.
-  BaseActivationsOpModel(BuiltinOperator type, TensorData input) {
+  BaseActivationsOpModel(BuiltinOperator type, const TensorData& input) {
     input_ = AddInput(input);
     if (input.type == TensorType_UINT8) {
       output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
@@ -3004,19 +3031,19 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     PopulateTensor(projection_bias_, f);
   }
 
-  void SetInputLayerNormCoefficients(std::vector<float> f) {
+  void SetInputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(input_layer_norm_coefficients_, f);
   }
 
-  void SetForgetLayerNormCoefficients(std::vector<float> f) {
+  void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(forget_layer_norm_coefficients_, f);
   }
 
-  void SetCellLayerNormCoefficients(std::vector<float> f) {
+  void SetCellLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(cell_layer_norm_coefficients_, f);
   }
 
-  void SetOutputLayerNormCoefficients(std::vector<float> f) {
+  void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(output_layer_norm_coefficients_, f);
   }
 

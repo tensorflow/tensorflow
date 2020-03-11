@@ -30,6 +30,11 @@ class WhitelistedStatefulOpRegistry {
     return Status::OK();
   }
 
+  Status Remove(string op_name) {
+    op_names_.erase(op_name);
+    return Status::OK();
+  }
+
   bool Contains(const string& op_name) { return op_names_.count(op_name); }
 
   static WhitelistedStatefulOpRegistry* Global() {
@@ -57,7 +62,7 @@ class WhitelistedStatefulOpRegistry {
 // Note that the state of the whitelisted ops inside functions will not be
 // saved during checkpointing, hence this should only be used if the op is
 // marked stateful for reasons like to avoid constant folding during graph
-// optimiztion but is not stateful.
+// optimization but is not stateful.
 // If possible, try to remove the stateful flag on the op first.
 // Example usage:
 //

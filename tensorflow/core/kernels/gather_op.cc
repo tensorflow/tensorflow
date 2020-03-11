@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/gather_functor.h"
+#include "tensorflow/core/kernels/gather_functor_batched.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
@@ -94,10 +95,10 @@ class GatherOp : public OpKernel {
       if (!axis_is_set) axis = batch_dims_;
 
       OP_REQUIRES(
-          c, batch_dims_ >= -indices.dims() && batch_dims_ < indices.dims(),
+          c, batch_dims_ >= -indices.dims() && batch_dims_ <= indices.dims(),
           errors::InvalidArgument("Expected batch_dims in the range [",
                                   -indices.dims(), ", ", indices.dims(),
-                                  "), but got ", batch_dims_));
+                                  "], but got ", batch_dims_));
 
       OP_REQUIRES(c, batch_dims_ < params.dims(),
                   errors::InvalidArgument("batch_dims (", batch_dims_,
@@ -108,6 +109,13 @@ class GatherOp : public OpKernel {
                   errors::InvalidArgument("batch_dims (", batch_dims_,
                                           ") must be less than or equal to ",
                                           "axis (", axis, ")."));
+      for (int i = 0; i < batch_dims_; ++i) {
+        OP_REQUIRES(c, params.dim_size(i) == indices.dim_size(i),
+                    errors::InvalidArgument(
+                        "params.shape[", i, "]: ", params.dim_size(i),
+                        " should be equal to indices.shape[", i,
+                        "]: ", indices.dim_size(i)));
+      }
     }
 
     // Check that we have enough index space
@@ -123,16 +131,22 @@ class GatherOp : public OpKernel {
     // The result shape is params.shape[:axis] + indices.shape[batch_dims:] +
     // params.shape[axis + 1:].
     TensorShape result_shape;
+    int64 batch_size = 1;
     int64 outer_size = 1;
     int64 inner_size = 1;
-    for (int i = 0; i < axis; i++) {
+
+    for (int i = 0; i < batch_dims_; ++i) {
+      result_shape.AddDim(params.dim_size(i));
+      batch_size *= params.dim_size(i);
+    }
+    for (int i = batch_dims_; i < axis; ++i) {
       result_shape.AddDim(params.dim_size(i));
       outer_size *= params.dim_size(i);
     }
     for (int i = batch_dims_; i < indices.dims(); ++i) {
       result_shape.AddDim(indices.dim_size(i));
     }
-    for (int i = axis + 1; i < params.dims(); i++) {
+    for (int i = axis + 1; i < params.dims(); ++i) {
       result_shape.AddDim(params.dim_size(i));
       inner_size *= params.dim_size(i);
     }
@@ -141,65 +155,34 @@ class GatherOp : public OpKernel {
     OP_REQUIRES_OK(c, c->allocate_output(0, result_shape, &out));
     if (N == 0) return;
 
+    int64 bad_i = -1;
+    auto indices_flat = indices.flat<Index>();
     if (batch_dims_ > 0) {
-      // TODO(virimia): Switch to transpose / gather with axis=0 / transpose
-      // on GPU, to avoid launching a lot of small kernels.
+      auto params_flat = params.shaped<T, 4>(
+          {batch_size, outer_size, gather_dim_size, inner_size});
+      auto out_flat = out->shaped<T, 4>(
+          {batch_size, outer_size, N / batch_size, inner_size});
 
-      // To avoid copying params (by transposing), run gather for each batch.
-      int64 batch_size = 1;
-      for (int i = 0; i < batch_dims_; ++i) {
-        batch_size *= params.dim_size(i);
-      }
-      outer_size /= batch_size;
-      auto batched_params =
-          params.shaped<T, 2>({batch_size, params.NumElements() / batch_size});
-      auto batched_indices =
-          indices.shaped<Index, 2>({batch_size, N / batch_size});
-      auto batched_out =
-          out->shaped<T, 2>({batch_size, out->NumElements() / batch_size});
-
-      // TODO(virimia): Investigate the best performance, when the number of
-      // batches is large, between parallel vs sequential runs.
-      for (int64 batch = 0; batch < batch_size; ++batch) {
-        auto params_flat = typename TTypes<T, 3>::ConstTensor(
-            &batched_params(batch, 0), static_cast<IndexType>(outer_size),
-            static_cast<IndexType>(gather_dim_size),
-            static_cast<IndexType>(inner_size));
-        auto indices_flat = typename TTypes<Index>::ConstFlat(
-            &batched_indices(batch, 0), batched_indices.dimension(1));
-        auto out_flat = typename TTypes<T, 3>::Tensor(
-            &batched_out(batch, 0), static_cast<IndexType>(outer_size),
-            static_cast<IndexType>(N), static_cast<IndexType>(inner_size));
-
-        functor::GatherFunctor<Device, T, Index> functor;
-        const int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
-
-        OP_REQUIRES(
-            c, bad_i < 0,
-            errors::InvalidArgument(
-                "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-                indices_flat(bad_i), " is not in [0, ", gather_dim_size, ")"));
-      }
+      functor::GatherFunctorBatched<Device, T, Index> functor;
+      bad_i = functor(c, params_flat, indices_flat, out_flat);
     } else {
       auto params_flat =
           params.shaped<T, 3>({outer_size, gather_dim_size, inner_size});
-      auto indices_flat = indices.flat<Index>();
       auto out_flat = out->shaped<T, 3>({outer_size, N, inner_size});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      const int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
-
-      OP_REQUIRES(
-          c, bad_i < 0,
-          errors::InvalidArgument(
-              "indices", SliceDebugString(indices.shape(), bad_i), " = ",
-              indices_flat(bad_i), " is not in [0, ", gather_dim_size, ")"));
+      bad_i = functor(c, params_flat, indices_flat, out_flat);
     }
+    OP_REQUIRES(
+        c, bad_i < 0,
+        errors::InvalidArgument(
+            "indices", SliceDebugString(indices.shape(), bad_i), " = ",
+            indices_flat(bad_i), " is not in [0, ", gather_dim_size, ")"));
   }
 
  private:
   // The number of batch dimensions, as passed in the batch_dims attribute.
-  // It must be less than rank(indices).
+  // It must be less than or equal to rank(indices).
   int32 batch_dims_ = 0;
 };
 

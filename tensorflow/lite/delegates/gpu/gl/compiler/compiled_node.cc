@@ -42,7 +42,7 @@ Status MergeCode(CompiledNodeAttributes* attr,
   RETURN_IF_ERROR(Rename(
       [&](absl::string_view name) -> std::string {
         std::string n(name.begin(), name.end());
-        // if a name is unique, then keep it as is. Otherwise append an unique
+        // if a name is unique, then keep it as is. Otherwise append a unique
         // index.
         if (known_names.find(n) == known_names.end()) {
           return n;

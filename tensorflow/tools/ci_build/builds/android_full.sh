@@ -41,21 +41,20 @@ for CPU in ${CPUS//,/ }
 do
     echo "========== Building native libs for Android ${CPU} =========="
     bazel build --config=monolithic --cpu=${CPU} \
-        --compilation_mode=opt --cxxopt=-std=c++11 \
+        --compilation_mode=opt --cxxopt=-std=c++14 \
         --crosstool_top=//external:android/crosstool \
         --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
         //tensorflow/core:android_tensorflow_lib \
-        //tensorflow/contrib/android:libtensorflow_inference.so \
+        //tensorflow/tools/android/inference_interface:libtensorflow_inference.so \
         //tensorflow/examples/android:libtensorflow_demo.so \
         //tensorflow/tools/benchmark:benchmark_model
 
-    copy_lib bazel-bin/tensorflow/core/libandroid_tensorflow_lib.lo
-    copy_lib bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so
+    copy_lib bazel-bin/tensorflow/tools/android/inference_interface/libtensorflow_inference.so
     copy_lib bazel-bin/tensorflow/examples/android/libtensorflow_demo.so
     copy_lib bazel-bin/tensorflow/tools/benchmark/benchmark_model
 
     mkdir -p ${AAR_LIB_TMP}/jni/${CPU}
-    cp bazel-bin/tensorflow/contrib/android/libtensorflow_inference.so ${AAR_LIB_TMP}/jni/${CPU}
+    cp bazel-bin/tensorflow/tools/android/inference_interface/libtensorflow_inference.so ${AAR_LIB_TMP}/jni/${CPU}
 done
 
 # Build Jar and also demo containing native libs for all architectures.
@@ -64,17 +63,18 @@ done
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
-    --compilation_mode=opt --cxxopt=-std=c++11 \
+    --compilation_mode=opt --cxxopt=-std=c++14 \
+    --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
-    //tensorflow/contrib/android:android_tensorflow_inference_java \
-    //tensorflow/contrib/android:android_tensorflow_inference_java.aar \
+    //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java \
+    //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java.aar \
     //tensorflow/examples/android:tensorflow_demo
 
 echo "Copying demo, AAR and Jar to ${OUT_DIR}"
 cp bazel-bin/tensorflow/examples/android/tensorflow_demo.apk \
-    bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
+    bazel-bin/tensorflow/tools/android/inference_interface/libandroid_tensorflow_inference_java.jar ${OUT_DIR}
 
-cp bazel-bin/tensorflow/contrib/android/android_tensorflow_inference_java.aar \
+cp bazel-bin/tensorflow/tools/android/inference_interface/android_tensorflow_inference_java.aar \
    ${OUT_DIR}/tensorflow.aar
 
 # TODO(andrewharp): build native libs into AAR directly once

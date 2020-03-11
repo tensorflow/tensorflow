@@ -16,14 +16,17 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace {
 // The list of all registered `XlaActivityListener`s.
 struct XlaActivityListenerList {
   absl::Mutex mutex;
-  std::vector<std::unique_ptr<XlaActivityListener>> listeners GUARDED_BY(mutex);
+  std::vector<std::unique_ptr<XlaActivityListener>> listeners
+      TF_GUARDED_BY(mutex);
 };
 
 void FlushAllListeners();
@@ -71,6 +74,21 @@ Status BroadcastXlaActivity(
   });
 }
 
+Status BroadcastOptimizationRemark(XlaOptimizationRemark optimization_remark) {
+  VLOG(2) << "OptimizationRemark: " << optimization_remark.DebugString();
+  return ForEachListener([&](XlaActivityListener* listener) {
+    return listener->Listen(optimization_remark);
+  });
+}
+
+Status BroadcastOptimizationRemark(
+    XlaOptimizationRemark::Warning optimization_warning,
+    string debug_information) {
+  XlaOptimizationRemark remark;
+  remark.set_warning(optimization_warning);
+  remark.set_debug_information(std::move(debug_information));
+  return BroadcastOptimizationRemark(std::move(remark));
+}
 void RegisterXlaActivityListener(
     std::unique_ptr<XlaActivityListener> listener) {
   XlaActivityListenerList* listener_list = GetXlaActivityListenerList();

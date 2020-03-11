@@ -36,15 +36,13 @@ versions {
   min_consumer: 12
 }
 
-# CHECK:       func @main() {
-# CHECK-NEXT:    %0 = "_tf.foo0"() {device = "", name = "unnamed"} : () -> !_tf.control
-# CHECK-NEXT:    %1 = "_tf.bar0"() {device = "", name = "unnamed1"} : () -> !_tf.control
-# CHECK-NEXT:    return
-# CHECK-NEXT:  }
-# CHECK:  func @foo0() {
-# CHECK-NEXT:    %0 = "_tf.bar0"() {device = "", name = "unnamed"} : () -> !_tf.control
-# CHECK-NEXT:    return
-# CHECK-NEXT:  }
-# CHECK:  func @bar0() {
-# CHECK-NEXT:    return
-# CHECK-NEXT:  }
+# Verify that functions from the library are properly imported.
+
+# CHECK-LABEL:  func @main() {
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @foo0}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
+
+# CHECK-LABEL:  func @foo0() {
+# CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, f = @bar0}
+
+# CHECK-LABEL:  func @bar0() {

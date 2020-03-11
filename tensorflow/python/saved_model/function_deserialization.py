@@ -22,13 +22,13 @@ import collections
 import re
 
 from tensorflow.core.framework import function_pb2
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
@@ -60,9 +60,11 @@ def _call_concrete_function(function, inputs):
     The structured function output.
   """
   expected_structure = function.graph.structured_input_signature
-  flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  flatten_inputs = nest.flatten_up_to(
+      expected_structure, inputs, expand_composites=True)
+  flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
-  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+  for arg, expected in zip(flatten_inputs, flatten_expected):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
@@ -75,7 +77,7 @@ def _call_concrete_function(function, inputs):
 def _try_convert_to_tensor_spec(arg, dtype_hint):
   """Returns None or TensorSpec obtained if `arg` is converted to tensor."""
   try:
-    # Note: try conversion in a FuncGraph to avoid poluting current context.
+    # Note: try conversion in a FuncGraph to avoid polluting current context.
     with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
       result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
       return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
@@ -111,9 +113,11 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
         return False
       if not expected.shape.is_compatible_with(arg.shape):
         return False
-    else:
-      if arg != expected:
-        return False
+    elif isinstance(expected, type_spec.TypeSpec):
+      return expected.is_compatible_with(arg)
+    elif (_is_tensor(arg) and
+          id(arg) != id(expected)) or (not _is_tensor(arg) and arg != expected):
+      return False
   return True
 
 
@@ -239,8 +243,7 @@ def recreate_function(saved_function, concrete_functions):
 
     def _pretty_format_positional(positional):
       return "Positional arguments ({} total):\n    * {}".format(
-          len(positional),
-          "\n    * ".join([str(a) for a in positional]))
+          len(positional), "\n    * ".join(str(a) for a in positional))
 
     for index, function_name in enumerate(saved_function.concrete_functions):
       concrete_function = concrete_functions[function_name]
@@ -281,7 +284,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise a unique name is generated.
+      names. Otherwise, a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
@@ -292,6 +295,20 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   """
   library_function_names = set(fdef.signature.name for fdef in library.function)
   functions = {}
+  renamed_functions = {}
+
+  # Our graph building code currently requires functions to be registered with
+  # some tf.Graph in order to import functions using the
+  # op-name-is-function-name calling convention. To avoid leaking memory into
+  # the global default graph when executing eagerly, we create a temporary
+  # Graph.
+  #
+  # TODO(allenl): Make this Graph creation unnecessary when executing eagerly by
+  # fixing function_def_to_graph_def.
+  if ops.executing_eagerly_outside_functions():
+    graph = ops.Graph()
+  else:
+    graph = ops.get_default_graph()
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
@@ -303,23 +320,36 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(
-        copy, copy_functions=False)
+    with graph.as_default():
+      func_graph = function_def_lib.function_def_to_graph(copy)
+    _restore_gradient_functions(func_graph, renamed_functions)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
     func = function_lib.ConcreteFunction(func_graph)
-    func.add_to_graph()
-    if context.executing_eagerly():
-      func.add_to_graph(ops.get_default_graph())
+    func.add_to_graph(graph)
 
     functions[fdef.signature.name] = func
-
-    # Also register the gradients in the current root context.
-    with ops.init_scope():
-      func._register_gradient()  # pylint: disable=protected-access
+    renamed_functions[func.name] = func
+    if any(op.type == "TRTEngineOp" for op in func_graph.get_operations()):
+      # TODO(b/150708051): Remove this hack once TensorRT SavedModel integration
+      # is fixed. Currently it's leaking memory to maintain bug compatibility
+      # with previous behavior.
+      func.add_to_graph(ops.get_default_graph())
 
   return functions
+
+
+def _restore_gradient_functions(func_graph, renamed_functions):
+  """Populate function op's _gradient_function with default gradient."""
+  for op in func_graph.get_operations():
+    # TODO(andresp): This code assumes that the gradient registered for this
+    # function call is the default gradient for the function and not a custom
+    # one.
+    if op.type in ["StatefulPartitionedCall", "PartitionedCall"]:
+      function = renamed_functions[compat.as_bytes(
+          op.node_def.attr["f"].func.name)]
+      op._gradient_function = function._get_gradient_function()  # pylint: disable=protected-access
 
 
 def _sort_function_defs(library, library_function_names):
@@ -357,18 +387,11 @@ def _sort_function_defs(library, library_function_names):
 
 def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
   """Replace functions calls and shared names in `node_def`."""
-  if "_gradient_op_type" in node_def.attr:
-    if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
-      # TODO(andresp): This code assumes that the gradient registered for this
-      # function call is the default gradient for the function and not a
-      # custom one.
-      fname = node_def.attr["f"].func.name
-      node_def.attr["_gradient_op_type"].s = compat.as_bytes(
-          functions[fname]._gradient_name)  # pylint: disable=protected-access
-    else:
-      logging.warning("Importing a function (%s) with ops with custom "
-                      "gradients. Will likely fail if a gradient is "
-                      "requested.", debug_name)
+  if ("_gradient_op_type" in node_def.attr and
+      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():
@@ -439,11 +462,15 @@ def _list_function_deps(fdef, library_function_names):
   return deps
 
 
+_FUNCTION_WRAPPER_NAME_REGEX = r"^%s(.*)_\d+$" % (function_lib._INFERENCE_PREFIX
+                                                 )  # pylint:disable=protected-access
+
+
 def _clean_function_name(name):
   """Vanity function to keep the function names comprehensible."""
   # Note: each time a function is wrapped into `function_lib.ConcreteFunction`
   # its name becomes "__inference_<orig>_xyz".
-  match = re.search(r"^__inference_(.*)_\d+$", name)
+  match = re.search(_FUNCTION_WRAPPER_NAME_REGEX, name)
   if match:
     return match.group(1)
   else:

@@ -47,7 +47,8 @@ namespace tensorflow {
 namespace {
 
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 inline bool IsNextIteration(const NodeDef& node_def) {
@@ -188,6 +189,8 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
                     opts.get_incarnation(edge->src()->assigned_device_name())));
   builder->Attr("recv_device", edge->dst()->assigned_device_name());
   builder->Attr("client_terminated", false);
+  builder->Attr("_src", edge->src()->name());
+  builder->Attr("_dst", edge->dst()->name());
 }
 
 NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,
@@ -947,13 +950,13 @@ void SetIncarnation(const PartitionOptions& opts, NodeDef* ndef) {
     // Not related to send/recv.
     return;
   }
-  string send_device;
-  if (!GetNodeAttr(*ndef, "send_device", &send_device).ok()) {
+  const string& send_device = GetNodeAttrString(*ndef, "send_device");
+  if (send_device.empty()) {
     // No known send_device. The runtime will detect it later.
     return;
   }
   int64 incarnation = PartitionOptions::kIllegalIncarnation;
-  if (!GetNodeAttr(*ndef, "send_device_incarnation", &incarnation).ok() ||
+  if (!TryGetNodeAttr(*ndef, "send_device_incarnation", &incarnation) ||
       (incarnation == PartitionOptions::kIllegalIncarnation)) {
     incarnation = opts.get_incarnation(send_device);
     SetAttrValue(incarnation,

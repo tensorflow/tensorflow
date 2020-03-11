@@ -20,10 +20,10 @@ limitations under the License.
 namespace toco {
 namespace tflite {
 
-// Get the minimum TF Lite runtime required to run a model. Each operator in
-// the model will have its own minimum requirement of a runtime, and the model's
-// minimum requirement of runtime is defined as the maximum of all the
-// operators' minimum runtime.
+// Get the minimum TF Lite runtime required to run a model. Each built-in
+// operator in the model will have its own minimum requirement of a runtime, and
+// the model's minimum requirement of runtime is defined as the maximum of all
+// the built-in operators' minimum runtime.
 std::string GetMinimumRuntimeVersionForModel(const Model& model);
 
 }  // namespace tflite

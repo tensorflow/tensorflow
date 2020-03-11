@@ -134,14 +134,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   std::vector<llvm_ir::IrArray> ConstructIrArrayForOutputs(
       const HloInstruction& hlo);
 
-  // A convenient helper for calling BufferAssignment::GetUniqueSlice.
-  BufferAllocation::Slice GetAllocationSlice(
-      const HloInstruction& hlo, const ShapeIndex& index = {}) const {
-    return ir_emitter_context_->buffer_assignment()
-        .GetUniqueSlice(&hlo, index)
-        .ConsumeValueOrDie();
-  }
-
   // Emit a singlethreaded or multithreaded loop that computes every element in
   // the result of the given HLO instruction. This produces a series of nested
   // loops (e.g. one for each dimension of the `hlo`'s shape). The body of the
@@ -185,7 +177,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
-      HloInstruction* fusion) {
+      const HloInstruction* fusion) {
     return [=]() {
       std::vector<llvm_ir::IrArray> ir_arrays;
       ir_arrays.reserve(fusion->operand_count());

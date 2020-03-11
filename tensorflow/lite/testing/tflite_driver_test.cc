@@ -24,7 +24,7 @@ namespace {
 using ::testing::ElementsAre;
 
 TEST(TfliteDriverTest, SimpleTest) {
-  std::unique_ptr<TestRunner> runner(new TfLiteDriver(/*use_nnapi=*/false));
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver());
 
   runner->SetModelBaseDir("tensorflow/lite");
   runner->LoadModel("testdata/multi_add.bin");
@@ -60,7 +60,8 @@ TEST(TfliteDriverTest, SimpleTest) {
 
 TEST(TfliteDriverTest, SingleAddOpTest) {
   std::unique_ptr<TestRunner> runner(new TfLiteDriver(
-      /*use_nnapi*/ false, /*delegate*/ "", /*reference_kernel*/ true));
+      /*delegate_type=*/TfLiteDriver::DelegateType::kNone,
+      /*reference_kernel=*/true));
 
   runner->SetModelBaseDir("tensorflow/lite");
   runner->LoadModel("testdata/multi_add.bin");
@@ -95,7 +96,7 @@ TEST(TfliteDriverTest, SingleAddOpTest) {
 }
 
 TEST(TfliteDriverTest, AddQuantizedInt8Test) {
-  std::unique_ptr<TestRunner> runner(new TfLiteDriver(/*use_nnapi=*/false));
+  std::unique_ptr<TestRunner> runner(new TfLiteDriver());
 
   runner->SetModelBaseDir("tensorflow/lite");
   runner->LoadModel("testdata/add_quantized_int8.bin");
@@ -111,7 +112,7 @@ TEST(TfliteDriverTest, AddQuantizedInt8Test) {
 
   runner->SetInput(1, "1,1,1,1");
 
-  runner->SetExpectation(2, "3,3,3,3");
+  runner->SetExpectation(2, "0.0117,0.0117,0.0117,0.0117");
 
   runner->Invoke();
   ASSERT_TRUE(runner->IsValid());

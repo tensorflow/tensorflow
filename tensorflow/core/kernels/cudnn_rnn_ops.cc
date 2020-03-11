@@ -363,12 +363,11 @@ class CudnnRnnAllocatorInTemp : public ScratchAllocator {
 
   explicit CudnnRnnAllocatorInTemp(OpKernelContext* context)
       : context_(context) {}
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     Tensor temporary_memory;
     const DataType tf_data_type = ToTFDataType<T>::value;
     int64 allocate_count =
@@ -409,11 +408,10 @@ class CudnnRnnAllocatorInOutput : public ScratchAllocator {
   ~CudnnRnnAllocatorInOutput() override {}
   CudnnRnnAllocatorInOutput(OpKernelContext* context, int output_index)
       : context_(context), output_index_(output_index) {}
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     CHECK(total_byte_size_ == 0)
         << "Reserve space allocator can only be called once";
     int64 allocate_count =
@@ -449,12 +447,11 @@ class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
 
   ~CudnnRNNPersistentSpaceAllocator() override {}
 
-  int64 GetMemoryLimitInBytes(Stream* stream) override {
+  int64 GetMemoryLimitInBytes() override {
     return std::numeric_limits<int64>::max();
   }
 
-  StatusOr<DeviceMemory<uint8>> AllocateBytes(Stream* stream,
-                                              int64 byte_size) override {
+  StatusOr<DeviceMemory<uint8>> AllocateBytes(int64 byte_size) override {
     if (total_byte_size_ != 0) {
       return Status(error::FAILED_PRECONDITION,
                     "Persistent space allocator can only be called once");
@@ -944,6 +941,20 @@ void RestoreParams(const OpInputList params_input,
   }
 }
 
+bool ShouldUsePaddedIO(const Tensor* sequence_lengths,
+                       const CudnnRnnModelShapes& model_shapes,
+                       bool time_major) {
+  auto seq_array = sequence_lengths->template flat<int>().data();
+  bool all_max_seq_length = true;
+  for (int i = 0; i < model_shapes.batch_size; i++) {
+    if (seq_array[i] != model_shapes.max_seq_length) {
+      all_max_seq_length = false;
+      break;
+    }
+  }
+  return !(time_major && all_max_seq_length);
+}
+
 }  // namespace
 
 // Note: all following kernels depend on a RnnDescriptor instance, which
@@ -1027,7 +1038,7 @@ class CudnnRNNKernelCommon : public OpKernel {
         num_layers, h_num_units, input_size, /*cell_size=*/c_num_units,
         /*batch_size=*/0, input_mode, rnn_direction_mode(), rnn_mode(),
         ToDataType<T>::value, algo_config, dropout(), seed(),
-        /* state_allocator=*/nullptr);
+        /* state_allocator=*/nullptr, /*use_padded_io=*/false);
     if (!rnn_desc_s.ok()) {
       return FromExecutorStatus(rnn_desc_s);
     }
@@ -1041,14 +1052,16 @@ class CudnnRNNKernelCommon : public OpKernel {
                              const RnnInputMode& input_mode,
                              const AlgorithmConfig& algo_config,
                              ScratchAllocator* dropout_state_allocator,
-                             std::unique_ptr<RnnDescriptor>* rnn_desc) {
+                             std::unique_ptr<RnnDescriptor>* rnn_desc,
+                             bool use_padded_io) {
     StreamExecutor* executor = context->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<T>::value;
     auto rnn_desc_s = executor->createRnnDescriptor(
         model_shapes.num_layers, model_shapes.num_units,
         model_shapes.input_size, model_shapes.cell_num_units,
         model_shapes.batch_size, input_mode, rnn_direction_mode(), rnn_mode(),
-        data_type, algo_config, dropout(), seed(), dropout_state_allocator);
+        data_type, algo_config, dropout(), seed(), dropout_state_allocator,
+        use_padded_io);
     TF_RETURN_IF_ERROR(rnn_desc_s.status());
 
     *rnn_desc = rnn_desc_s.ConsumeValueOrDie();
@@ -1065,17 +1078,17 @@ class CudnnRNNKernelCommon : public OpKernel {
                                 const CudnnRnnModelShapes& model_shapes,
                                 const RnnInputMode& input_mode,
                                 const AlgorithmConfig& algo_config,
-                                RnnStateCache* cache,
-                                RnnDescriptor** rnn_desc) {
+                                RnnStateCache* cache, RnnDescriptor** rnn_desc,
+                                bool use_padded_io) {
     auto key = std::make_pair(model_shapes, algo_config.algorithm());
     RnnScratchSpace& rnn_state = (*cache)[key];
     if (rnn_state.rnn_desc == nullptr || ResetRndGenState()) {
       CudnnRNNPersistentSpaceAllocator* dropout_state_allocator =
           new CudnnRNNPersistentSpaceAllocator(context);
       rnn_state.dropout_state_allocator.reset(dropout_state_allocator);
-      Status status =
-          CreateRnnDescriptor<T>(context, model_shapes, input_mode, algo_config,
-                                 dropout_state_allocator, &rnn_state.rnn_desc);
+      Status status = CreateRnnDescriptor<T>(
+          context, model_shapes, input_mode, algo_config,
+          dropout_state_allocator, &rnn_state.rnn_desc, use_padded_io);
       TF_RETURN_IF_ERROR(status);
     }
     *rnn_desc = rnn_state.rnn_desc.get();
@@ -1444,11 +1457,14 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* params = nullptr;
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
+    bool use_padded_io = false;
     if (var_seq_lengths) {
       OP_REQUIRES_OK(context, ExtractForwardInput(
                                   context, model_types(), time_major, &input,
                                   &input_h, &input_c, &params,
                                   &sequence_lengths, num_proj, &model_shapes));
+      use_padded_io =
+          ShouldUsePaddedIO(sequence_lengths, model_shapes, time_major);
     } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
@@ -1488,10 +1504,10 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     {
       mutex_lock l(mu_);
       RnnDescriptor* rnn_desc_ptr = nullptr;
-      OP_REQUIRES_OK(
-          context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
-                                             *output_algo_config,
-                                             &rnn_state_cache_, &rnn_desc_ptr));
+      OP_REQUIRES_OK(context,
+                     GetCachedRnnDescriptor<T>(
+                         context, model_shapes, input_mode, *output_algo_config,
+                         &rnn_state_cache_, &rnn_desc_ptr, use_padded_io));
       launch_status = DoForward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
           input_c, params, is_training_, output, output_h, output_c,
@@ -1549,7 +1565,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
   mutex mu_;
   bool is_training_;
-  RnnStateCache rnn_state_cache_ GUARDED_BY(mu_);
+  RnnStateCache rnn_state_cache_ TF_GUARDED_BY(mu_);
 };
 
 #define REGISTER_GPU(T)                                           \
@@ -1690,7 +1706,8 @@ class CudnnRNNForwardOpV2<GPUDevice, T>
       CudnnRnnAllocatorInTemp<uint8> dropout_state_allocator(context);
       if (!this->template CreateRnnDescriptor<T>(
                    context, model_shapes, input_mode, AlgorithmConfig(algo),
-                   &dropout_state_allocator, &rnn_desc)
+                   &dropout_state_allocator, &rnn_desc,
+                   /*use_padded_io=*/false)
                .ok()) {
         continue;
       }
@@ -1840,11 +1857,14 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     const Tensor* params = nullptr;
     const Tensor* sequence_lengths = nullptr;
     CudnnRnnModelShapes model_shapes;
+    bool use_padded_io = false;
     if (var_seq_lengths) {
       OP_REQUIRES_OK(context, ExtractForwardInput(
                                   context, model_types(), time_major, &input,
                                   &input_h, &input_c, &params,
                                   &sequence_lengths, num_proj, &model_shapes));
+      use_padded_io =
+          ShouldUsePaddedIO(sequence_lengths, model_shapes, time_major);
     } else {
       OP_REQUIRES_OK(context,
                      ExtractForwardInput(context, model_types(), time_major,
@@ -1890,7 +1910,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
       OP_REQUIRES_OK(
           context, GetCachedRnnDescriptor<T>(context, model_shapes, input_mode,
                                              algo_config, &rnn_state_cache_,
-                                             &rnn_desc_ptr));
+                                             &rnn_desc_ptr, use_padded_io));
       launch_status = DoBackward<T>(
           context, *rnn_desc_ptr, model_types(), model_shapes, input, input_h,
           input_c, params, output, output_h, output_c, output_backprop,
@@ -1912,7 +1932,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
 
  private:
   mutex mu_;
-  RnnStateCache rnn_state_cache_ GUARDED_BY(mu_);
+  RnnStateCache rnn_state_cache_ TF_GUARDED_BY(mu_);
 
   Status ExtractBackwardInputs(
       OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,

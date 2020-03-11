@@ -142,6 +142,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   Tensor TempChunk(int i) const override {
     AllocationAttributes empty;
+    MEMDEBUG_CACHE_OP("CollectiveAdapterImpl::TempChunk");
     return Tensor(allocator_, dt_, {ChunkElts(i)}, empty);
   }
 
@@ -159,11 +160,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
                            ")");
   }
 
-  Tensor Scalar(int v) const override {
-    Tensor t(dt_, TensorShape({}));
-    t.scalar<T>()() = v;
-    return t;
-  }
+  Tensor Scalar(int v) const override { return Tensor(static_cast<T>(v)); }
 
   Tensor Scalar(Allocator* a, const AllocationAttributes& attr) const override {
     Tensor t(a, dt_, TensorShape({}), attr);
@@ -187,6 +184,10 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                          Allocator* allocator,
                                          bool align_chunks) {
   switch (output->dtype()) {
+    case DT_HALF:
+      return new CollectiveAdapterImpl<Eigen::half>(output, num_chunks,
+                                                    allocator, align_chunks);
+      break;
     case DT_FLOAT:
       return new CollectiveAdapterImpl<float>(output, num_chunks, allocator,
                                               align_chunks);
@@ -204,7 +205,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
                                               align_chunks);
       break;
     default:
-      LOG(FATAL) << "Unsupported type " << output->dtype()
+      LOG(FATAL) << "Unsupported type " << DataTypeString(output->dtype())
                  << " to MakeCollectiveAdapter";
       return nullptr;
   }
@@ -213,7 +214,7 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 BaseCollectiveExecutor::~BaseCollectiveExecutor() {}
 
 void BaseCollectiveExecutor::StartAbort(const Status& s) {
-  LOG(WARNING) << "BaseCollectiveExecutor::StartAbort " << s;
+  VLOG(1) << "BaseCollectiveExecutor::StartAbort " << s;
   remote_access_->StartAbort(s);
 }
 
@@ -262,15 +263,13 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
     delete col_impl;
     return;
   }
-  // Run in an I/O thread, so as not to starve the executor threads.
-  // TODO(b/80529858): Instead of forking every per-device Collective
-  // Op off into its own thread, consider queuing them on a
-  // fixed-size thread-pool dedicated to running CollectiveOps.
-  SchedClosure([col_impl, col_ctx, done_safe, ctx]() {
+  // Run on an unbounded work queue that can handle blocking work so as to not
+  // starve executor threads.
+  remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     profiler::TraceMe activity(
         [&] {
-          return strings::StrCat(ctx->op_kernel().name(), ":",
-                                 ctx->op_kernel().type_string(),
+          return strings::StrCat(ctx->op_kernel().name_view(), ":",
+                                 ctx->op_kernel().type_string_view(),
                                  "#id=", ctx->step_id(), "#");
         },
         profiler::TraceMeLevel::kInfo);
@@ -292,29 +291,42 @@ void BaseCollectiveExecutor::CompleteParamsAsync(
 Status BaseCollectiveExecutor::CreateCollective(
     const CollectiveParams& col_params,
     CollectiveImplementationInterface** col_impl) {
+  VLOG(2) << "CreateCollective type "
+          << DataTypeString(col_params.instance.data_type) << " name "
+          << col_params.instance.impl_details.collective_name;
   *col_impl = nullptr;
-  Status status;
   switch (col_params.instance.data_type) {
-    case DT_INT32:
-      if (col_params.group.device_type == DEVICE_GPU) {
-        status = errors::Internal(
-            "CollectiveImplementation does not support datatype DT_INT32 on "
-            "DEVICE_GPU");
+    case DT_BOOL:
+      if (col_params.instance.type == BROADCAST_COLLECTIVE) {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      } else {
+        return errors::Internal(
+            "No collective other than broadcast supports DT_BOOL");
       }
-      TF_FALLTHROUGH_INTENDED;
+    case DT_INT32:
+      if (col_params.group.device_type == DEVICE_GPU &&
+          col_params.instance.type == REDUCTION_COLLECTIVE) {
+        // TODO(b/139421603): enable int32 all-reduce on GPU.
+        return errors::Internal(
+            "Collective all-reduce does not support datatype DT_INT32 on "
+            "DEVICE_GPU");
+      } else {
+        return CollectiveRegistry::Lookup(
+            col_params.instance.impl_details.collective_name, col_impl);
+      }
+    case DT_HALF:
     case DT_FLOAT:
     case DT_DOUBLE:
     case DT_INT64: {
-      status = CollectiveRegistry::Lookup(
+      return CollectiveRegistry::Lookup(
           col_params.instance.impl_details.collective_name, col_impl);
-      break;
     }
     default:
-      status = errors::Internal(
+      return errors::Internal(
           "CollectiveImplementation does not support datatype ",
-          col_params.instance.data_type);
+          DataTypeString(col_params.instance.data_type));
   }
-  return status;
 }
 
 bool BaseCollectiveExecutor::CheckDependencies(
@@ -339,7 +351,8 @@ void BaseCollectiveExecutor::WaitForDependencies(
   VLOG(1) << "Unblocking collective " << col_params.ToString();
 }
 
-void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+void BaseCollectiveExecutor::UnblockDependencies(
+    const CollectiveParams& col_params) {
   mutex_lock l(launch_mu_);
   if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
     const string& task_name =

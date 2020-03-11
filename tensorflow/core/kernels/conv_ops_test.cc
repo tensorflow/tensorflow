@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -1001,6 +1002,10 @@ class FusedConv2DWithBatchNormOpTest : public FusedConv2DOpTest<T> {};
 TYPED_TEST_SUITE_P(FusedConv2DWithBiasOpTest);
 TYPED_TEST_SUITE_P(FusedConv2DWithBatchNormOpTest);
 
+// ROCm does not yet support the _FusedConv2D op,
+// Therefore disable tests that check _FusedConv2D, when building with ROCm
+
+#ifndef TENSORFLOW_USE_ROCM
 // -------------------------------------------------------------------------- //
 // Conv2D + BiasAdd + {Activation}                                            //
 // -------------------------------------------------------------------------- //
@@ -1165,4 +1170,5 @@ using FusedBatchNormDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_SUITE_P(Test, FusedConv2DWithBatchNormOpTest,
                                FusedBatchNormDataTypes);
 
+#endif  // TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

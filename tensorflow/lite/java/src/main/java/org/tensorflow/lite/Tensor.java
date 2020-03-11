@@ -16,8 +16,12 @@ limitations under the License.
 package org.tensorflow.lite;
 
 import java.lang.reflect.Array;
+import java.nio.Buffer;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.FloatBuffer;
+import java.nio.IntBuffer;
+import java.nio.LongBuffer;
 import java.util.Arrays;
 
 /**
@@ -32,11 +36,53 @@ public final class Tensor {
   /**
    * Creates a Tensor wrapper from the provided interpreter instance and tensor index.
    *
-   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided
-   * native interpreter is valid until the tensor is closed.
+   * <p>The caller is responsible for closing the created wrapper, and ensuring the provided native
+   * interpreter is valid until the tensor is closed.
    */
   static Tensor fromIndex(long nativeInterpreterHandle, int tensorIndex) {
     return new Tensor(create(nativeInterpreterHandle, tensorIndex));
+  }
+
+  /**
+   * Quantization parameters that corresponds to the table, {@code QuantizationParameters}, in the
+   * <a
+   * href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs">TFLite
+   * Model schema file.</a>
+   *
+   * <p>Since per-channel quantization does not apply to input and output tensors, {@code scale} and
+   * {@code zero_point} are both single values instead of arrays.
+   *
+   * <p>For tensor that are not quantized, the values of scale and zero_point are both 0.
+   *
+   * <p>Given a quantized value q, the corresponding float value f should be: <br>
+   * f = scale * (q - zero_point) <br>
+   */
+  public static class QuantizationParams {
+    /** The scale value used in quantization. */
+    private final float scale;
+    /** The zero point value used in quantization. */
+    private final int zeroPoint;
+
+    /**
+     * Creates a {@link QuantizationParams} with {@code scale} and {@code zero_point}.
+     *
+     * @param scale The scale value used in quantization.
+     * @param zeroPoint The zero point value used in quantization.
+     */
+    public QuantizationParams(final float scale, final int zeroPoint) {
+      this.scale = scale;
+      this.zeroPoint = zeroPoint;
+    }
+
+    /** Returns the scale value. */
+    public float getScale() {
+      return scale;
+    }
+
+    /** Returns the zero point value. */
+    public int getZeroPoint() {
+      return zeroPoint;
+    }
   }
 
   /** Disposes of any resources used by the Tensor wrapper. */
@@ -81,12 +127,43 @@ public final class Tensor {
   }
 
   /**
+   * Returns the original <a
+   * href="https://www.tensorflow.org/resources/dims_types.html#shape">shape</a> of the Tensor,
+   * i.e., the sizes of each dimension - before any resizing was performed. Unknown dimensions are
+   * designated with a value of -1.
+   *
+   * @return an array where the i-th element is the size of the i-th dimension of the tensor.
+   */
+  public int[] shapeSignature() {
+    return shapeSignatureCopy;
+  }
+
+  /**
    * Returns the (global) index of the tensor within the owning {@link Interpreter}.
    *
    * @hide
    */
   public int index() {
     return index(nativeHandle);
+  }
+
+  /**
+   * Returns the name of the tensor within the owning {@link Interpreter}.
+   *
+   * @hide
+   */
+  public String name() {
+    return name(nativeHandle);
+  }
+
+  /**
+   * Returns the quantization parameters of the tensor within the owning {@link Interpreter}.
+   *
+   * <p>Only quantized tensors have valid {@code QuantizationParameters}. For tensor that are not
+   * quantized, the values of scale and zero_point are both 0.
+   */
+  public QuantizationParams quantizationParams() {
+    return quantizationParamsCopy;
   }
 
   /**
@@ -108,18 +185,47 @@ public final class Tensor {
           "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
     }
     throwIfDataIsIncompatible(src);
-    if (isByteBuffer(src)) {
+    if (isBuffer(src)) {
+      setTo((Buffer) src);
+    } else {
+      writeMultiDimensionalArray(nativeHandle, src);
+    }
+  }
+
+  private void setTo(Buffer src) {
+    // Note that we attempt to use zero-copy optimization for direct, native-ordered buffers.
+    // There are no base Buffer#order() or Buffer#put() methods, so again we have to ugly cast.
+    if (src instanceof ByteBuffer) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
-      // For direct ByteBuffer instances we support zero-copy. Note that this assumes the caller
-      // retains ownership of the source buffer until inference has completed.
       if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
-        writeDirectBuffer(nativeHandle, srcBuffer);
+        writeDirectBuffer(nativeHandle, src);
       } else {
         buffer().put(srcBuffer);
       }
-      return;
+    } else if (src instanceof LongBuffer) {
+      LongBuffer srcBuffer = (LongBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asLongBuffer().put(srcBuffer);
+      }
+    } else if (src instanceof FloatBuffer) {
+      FloatBuffer srcBuffer = (FloatBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asFloatBuffer().put(srcBuffer);
+      }
+    } else if (src instanceof IntBuffer) {
+      IntBuffer srcBuffer = (IntBuffer) src;
+      if (srcBuffer.isDirect() && srcBuffer.order() == ByteOrder.nativeOrder()) {
+        writeDirectBuffer(nativeHandle, src);
+      } else {
+        buffer().asIntBuffer().put(srcBuffer);
+      }
+    } else {
+      throw new IllegalArgumentException("Unexpected input buffer type: " + src);
     }
-    writeMultiDimensionalArray(nativeHandle, src);
   }
 
   /**
@@ -139,13 +245,27 @@ public final class Tensor {
           "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
     }
     throwIfDataIsIncompatible(dst);
-    if (dst instanceof ByteBuffer) {
-      ByteBuffer dstByteBuffer = (ByteBuffer) dst;
-      dstByteBuffer.put(buffer());
-      return dst;
+    if (isBuffer(dst)) {
+      copyTo((Buffer) dst);
+    } else {
+      readMultiDimensionalArray(nativeHandle, dst);
     }
-    readMultiDimensionalArray(nativeHandle, dst);
     return dst;
+  }
+
+  private void copyTo(Buffer dst) {
+    // There is no base Buffer#put() method, so we have to ugly cast.
+    if (dst instanceof ByteBuffer) {
+      ((ByteBuffer) dst).put(buffer());
+    } else if (dst instanceof FloatBuffer) {
+      ((FloatBuffer) dst).put(buffer().asFloatBuffer());
+    } else if (dst instanceof LongBuffer) {
+      ((LongBuffer) dst).put(buffer().asLongBuffer());
+    } else if (dst instanceof IntBuffer) {
+      ((IntBuffer) dst).put(buffer().asIntBuffer());
+    } else {
+      throw new IllegalArgumentException("Unexpected output buffer type: " + dst);
+    }
   }
 
   /** Returns the provided buffer's shape if specified and different from this Tensor's shape. */
@@ -155,8 +275,8 @@ public final class Tensor {
       return null;
     }
     // Implicit resizes based on ByteBuffer capacity isn't supported, so short-circuit that path.
-    // The ByteBuffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
-    if (isByteBuffer(input)) {
+    // The Buffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
+    if (isBuffer(input)) {
       return null;
     }
     throwIfTypeIsIncompatible(input);
@@ -183,13 +303,13 @@ public final class Tensor {
       while (c.isArray()) {
         c = c.getComponentType();
       }
-      if (float.class.equals(c)) {
+      if (float.class.equals(c) || o instanceof FloatBuffer) {
         return DataType.FLOAT32;
-      } else if (int.class.equals(c)) {
+      } else if (int.class.equals(c) || o instanceof IntBuffer) {
         return DataType.INT32;
       } else if (byte.class.equals(c)) {
         return DataType.UINT8;
-      } else if (long.class.equals(c)) {
+      } else if (long.class.equals(c) || o instanceof LongBuffer) {
         return DataType.INT64;
       } else if (String.class.equals(c)) {
         return DataType.STRING;
@@ -255,7 +375,13 @@ public final class Tensor {
       return;
     }
     DataType oType = dataTypeOf(o);
+
     if (oType != dtype) {
+      // INT8 and UINT8 have the same string name, "byte"
+      if (oType.toStringName().equals(dtype.toStringName())) {
+        return;
+      }
+
       throw new IllegalArgumentException(
           String.format(
               "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
@@ -265,14 +391,18 @@ public final class Tensor {
   }
 
   private void throwIfShapeIsIncompatible(Object o) {
-    if (isByteBuffer(o)) {
-      ByteBuffer oBuffer = (ByteBuffer) o;
-      if (oBuffer.capacity() != numBytes()) {
+    if (isBuffer(o)) {
+      Buffer oBuffer = (Buffer) o;
+      int bytes = numBytes();
+      // Note that we allow the client to provide a ByteBuffer even for non-byte Tensors.
+      // In such cases, we only care that the raw byte capacity matches the tensor byte capacity.
+      int oBytes = isByteBuffer(o) ? oBuffer.capacity() : oBuffer.capacity() * dtype.byteSize();
+      if (bytes != oBytes) {
         throw new IllegalArgumentException(
             String.format(
                 "Cannot convert between a TensorFlowLite buffer with %d bytes and a "
-                    + "ByteBuffer with %d bytes.",
-                numBytes(), oBuffer.capacity()));
+                    + "Java Buffer with %d bytes.",
+                bytes, oBytes));
       }
       return;
     }
@@ -286,6 +416,10 @@ public final class Tensor {
     }
   }
 
+  private static boolean isBuffer(Object o) {
+    return o instanceof Buffer;
+  }
+
   private static boolean isByteBuffer(Object o) {
     return o instanceof ByteBuffer;
   }
@@ -293,11 +427,17 @@ public final class Tensor {
   private long nativeHandle;
   private final DataType dtype;
   private int[] shapeCopy;
+  private final int[] shapeSignatureCopy;
+  private final QuantizationParams quantizationParamsCopy;
 
   private Tensor(long nativeHandle) {
     this.nativeHandle = nativeHandle;
     this.dtype = DataType.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
+    this.shapeSignatureCopy = shapeSignature(nativeHandle);
+    this.quantizationParamsCopy =
+        new QuantizationParams(
+            quantizationScale(nativeHandle), quantizationZeroPoint(nativeHandle));
   }
 
   private ByteBuffer buffer() {
@@ -310,11 +450,13 @@ public final class Tensor {
 
   private static native ByteBuffer buffer(long handle);
 
-  private static native void writeDirectBuffer(long handle, ByteBuffer src);
+  private static native void writeDirectBuffer(long handle, Buffer src);
 
   private static native int dtype(long handle);
 
   private static native int[] shape(long handle);
+
+  private static native int[] shapeSignature(long handle);
 
   private static native int numBytes(long handle);
 
@@ -326,7 +468,9 @@ public final class Tensor {
 
   private static native int index(long handle);
 
-  static {
-    TensorFlowLite.init();
-  }
+  private static native String name(long handle);
+
+  private static native float quantizationScale(long handle);
+
+  private static native int quantizationZeroPoint(long handle);
 }

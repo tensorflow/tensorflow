@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import execution_callbacks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -33,8 +33,6 @@ from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
-
-RAISE = execution_callbacks.ExecutionCallback.RAISE
 
 
 class SquaredDifferenceOpTest(test.TestCase):
@@ -191,6 +189,144 @@ class ProdGradientTest(test.TestCase):
             inputs, inputs.get_shape().as_list(),
             outputs, outputs.get_shape().as_list())
         self.assertLess(error, 1e-4)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class EuclideanNormGradientTest(test.TestCase):
+
+  def testBasic(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([3], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
+  def testNegative(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([-3], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
+  def testKeepdims(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([3], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
+  def testGradientChain(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([3], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x) * 5, [x])
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
+  def testTwoElements(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([3, -4], dtype=dtype)
+      grad = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grad)
+      self.assertLess(err, 1e-3)
+
+  def testNegativeZero(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([1.0, -0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x)
+
+      dx = tape.gradient(y, x)
+      dx_answer = constant_op.constant([1.0, -0.0], dtype=dtype)
+      self.assertAllClose(dx, dx_answer)
+      self.assertAllClose(1.0 / dx, 1.0 / dx_answer)
+
+  def testZeros(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([0.0, -0.0], dtype=dtype)
+
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        y = math_ops.reduce_euclidean_norm(x)
+
+      dx = tape.gradient(y, x)
+      dx_answer = constant_op.constant(
+          [float("NaN"), float("NaN")], dtype=dtype)
+      self.assertAllClose(dx, dx_answer)
+
+  def test2D_1(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[-3, 5], [7, 11]], dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 1e-3)
+
+  def test2D_2(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[-3, 5], [7, 11]], dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 0), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 1e-3)
+
+  def test2D_3(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[-3, 5], [7, 11]], dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 1), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 1e-3)
+
+  def test2D_4(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[3], [4]], dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 1), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 1e-3)
+
+  def test3D_1(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[[-3, 5], [7, 11]], [[13, 17], [19, 23]]],
+                               dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          math_ops.reduce_euclidean_norm, [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 2e-3)
+
+  def test3D_2(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[[-3, 5], [7, 11]], [[13, 17], [19, 23]]],
+                               dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 0), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 2e-3)
+
+  def test3D_3(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[[-3, 5], [7, 11]], [[13, 17], [19, 23]]],
+                               dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 1), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 3e-3)
+
+  def test3D_4(self):
+    for dtype in [dtypes.float32, dtypes.float64]:
+      x = constant_op.constant([[[-3, 5], [7, 11]], [[13, 17], [19, 23]]],
+                               dtype=dtype)
+      grads = gradient_checker_v2.compute_gradient(
+          lambda x: math_ops.reduce_euclidean_norm(x, 2), [x])
+      err = gradient_checker_v2.max_error(*grads)
+      self.assertLess(err, 2e-3)
 
 
 class SegmentMinOrMaxGradientTest(test.TestCase):
@@ -353,6 +489,56 @@ class XlogyTest(test.TestCase):
       self.assertAllClose(zero, xlogy_ygrad)
 
 
+class Xlog1pyTest(test.TestCase):
+
+  def _xlog1py_gradients(self, x, y):
+    xlog1py_xgrad = self.evaluate(
+        gradients.gradients(math_ops.xlog1py(x, y), x)[0])
+    xlog1py_ygrad = self.evaluate(
+        gradients.gradients(math_ops.xlog1py(x, y), y)[0])
+    return xlog1py_xgrad, xlog1py_ygrad
+
+  @test_util.run_deprecated_v1
+  def testNonZeroValuesGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      xlog1py_expected_xgrad = self.evaluate(math_ops.log1p(y))
+      xlog1py_expected_ygrad = self.evaluate(x / (1. + y))
+      self.assertAllClose(xlog1py_expected_xgrad, xlog1py_xgrad)
+      self.assertAllClose(xlog1py_expected_ygrad, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testZeroXGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(3.1, dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlog1py_xgrad)
+      self.assertAllClose(zero, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testNegOneYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0.1, dtype=dtype)
+      y = constant_op.constant(-1., dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      self.assertAllClose(-np.inf, xlog1py_xgrad)
+      self.assertAllClose(np.inf, xlog1py_ygrad)
+
+  @test_util.run_deprecated_v1
+  def testZeroXNegOneYGrad(self):
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      x = constant_op.constant(0., dtype=dtype)
+      y = constant_op.constant(-1., dtype=dtype)
+      xlog1py_xgrad, xlog1py_ygrad = self._xlog1py_gradients(x, y)
+      zero = self.evaluate(x)
+      self.assertAllClose(zero, xlog1py_xgrad)
+      self.assertAllClose(zero, xlog1py_ygrad)
+
+
 class XdivyTest(test.TestCase):
 
   def _xdivy_gradients(self, x, y):
@@ -413,13 +599,16 @@ class PowGradTest(test.TestCase):
     self.assertAllClose([-2., 0., 2.], g)
 
   def test_zero_grad_tape(self):
-    with execution_callbacks.errstate(inf_or_nan=RAISE):
+    try:
+      check_numerics_callback.enable_check_numerics()
       x = constant_op.constant([-1, 0., 1.])
       with backprop.GradientTape() as tape:
         tape.watch(x)
         g = tape.gradient(math_ops.pow(x, 2), x)
       g = self.evaluate(g)
       self.assertAllClose([-2., 0., 2.], g)
+    finally:
+      check_numerics_callback.disable_check_numerics()
 
 
 @test_util.run_all_in_graph_and_eager_modes

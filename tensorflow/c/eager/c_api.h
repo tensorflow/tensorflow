@@ -77,7 +77,7 @@ typedef enum TFE_ContextDevicePlacementPolicy {
 // LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
 
 // Sets the default execution mode (sync/async). Note that this can be
-// overridden per thread using TFE_ContextSetAsyncForThread.
+// overridden per thread using TFE_ContextSetExecutorForThread.
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
                                                       unsigned char enable);
 
@@ -89,6 +89,9 @@ TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
 // "Context" under which operations/functions are executed. It encapsulates
 // things like the available devices, resource manager etc.
+// TFE_Context must outlive all tensor handles created using it. In other
+// words, TFE_DeleteContext() must be called after all tensor handles have
+// been deleted (with TFE_DeleteTensorHandle).
 //
 // TODO(ashankar): Merge with TF_Session?
 typedef struct TFE_Context TFE_Context;
@@ -115,11 +118,6 @@ TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalDevicePlacementPolicy(
 TF_CAPI_EXPORT extern TFE_ContextDevicePlacementPolicy
 TFE_ContextGetDevicePlacementPolicy(TFE_Context* ctx);
 
-// Overrides the execution mode (sync/async) for the current thread.
-TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context* ctx,
-                                                        unsigned char enable,
-                                                        TF_Status* status);
-
 // A tensorflow.ServerDef specifies remote workers (in addition to the current
 // workers name). Operations created on this context can then be executed on
 // any of these remote workers by setting an appropriate device.
@@ -131,25 +129,6 @@ TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
                                                    const void* proto,
                                                    size_t proto_len,
                                                    TF_Status* status);
-
-// Causes the calling thread to block till all ops dispatched in async mode
-// have been executed. Note that "execution" here refers to kernel execution /
-// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
-// that lower level device queues (like GPU streams) have been flushed.
-//
-// This call may not block for execution of ops enqueued concurrently with this
-// call.
-TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context*,
-                                                TF_Status* status);
-
-// When an error happens, any pending operations are discarded and newly issued
-// ops return an error. This call clears the error state and re-enables
-// execution of newly issued ops.
-//
-// Note that outputs of discarded ops remain in a corrupt state and should not
-// be used for future calls.
-// TODO(agarwal): mark the affected handles and raise errors if they are used.
-TF_CAPI_EXPORT extern void TFE_ContextAsyncClearError(TFE_Context*);
 
 // A handle to a tensor on a device.
 //
@@ -227,14 +206,14 @@ typedef struct TFE_TensorDebugInfo TFE_TensorDebugInfo;
 // error and nullptr is returned. This function can block till the operation
 // that produces `handle` has completed.
 TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
-    TFE_TensorHandle* handle, TF_Status* status);
+    TFE_TensorHandle* h, TF_Status* status);
 
 // Deletes `debug_info`.
 TF_CAPI_EXPORT extern void TFE_DeleteTensorDebugInfo(
     TFE_TensorDebugInfo* debug_info);
 
 // Returns the number of dimensions used to represent the tensor on its device.
-// The number of dimensions used to reprensent the tensor on device can be
+// The number of dimensions used to represent the tensor on device can be
 // different from the number returned by TFE_TensorHandleNumDims.
 // The return value was current at the time of TFE_TensorDebugInfo creation.
 TF_CAPI_EXPORT extern int TFE_TensorDebugInfoOnDeviceNumDims(

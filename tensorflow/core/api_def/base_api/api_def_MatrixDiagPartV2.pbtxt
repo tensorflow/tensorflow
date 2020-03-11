@@ -40,8 +40,8 @@ If `num_diags == 1`, the output tensor is of rank `r - 1` with shape
 
 ```
 diagonal[i, j, ..., l, n]
-  = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
-    0                             ; otherwise.
+  = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+    padding_value                 ; otherwise.
 ```
 where `y = max(-k[1], 0)`, `x = max(k[1], 0)`.
 
@@ -50,8 +50,8 @@ Otherwise, the output tensor has rank `r` with dimensions
 
 ```
 diagonal[i, j, ..., l, m, n]
-  = input[i, j, ..., l, n+y, n+x] ; when 0 <= n-y < M and 0 <= n-x < N,
-    0                             ; otherwise.
+  = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
+    padding_value                 ; otherwise.
 ```
 where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
 
@@ -85,8 +85,8 @@ tf.matrix_diag_part(input, k = (-1, 1))
         [5, 2, 7],
         [1, 6, 0]]]
 
-# Padding = 9
-tf.matrix_diag_part(input, k = (1, 3), padding = 9)
+# Padding value = 9
+tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
   ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
         [3, 8, 9],
         [2, 7, 6]],

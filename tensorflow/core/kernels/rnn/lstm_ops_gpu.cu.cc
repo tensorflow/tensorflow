@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -81,8 +81,8 @@ namespace {
 // Launch with blocks of (batch x 32)
 //
 // TODO(b/67600500): Try making 'use_peephole' a template parameter.
-template <typename T, bool use_peephole>
-__global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
+template <typename T, bool use_peephole, GateLayout gate_layout>
+__global__ void lstm_gates(const T* gates, const T* b, const T* cs_prev,
                            const T* wci, const T* wcf, const T* wco, T* o, T* h,
                            T* ci, T* cs, T* co, T* i, T* f,
                            const float forget_bias, const float cell_clip,
@@ -98,7 +98,7 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   // The following code assumes the input arrays are of the following
   // shapes and interpretations.
   //
-  // 1) 'icfo' is a matrix such that,
+  // 1) 'gates' is a matrix such that,
   //
   //   cell_size  cell_size  cell_size  cell_size
   //  +----------+----------+----------+----------+
@@ -107,7 +107,8 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
   //  |          |          |          |          |
   //  +----------+----------+----------+----------+
   //
-  // 'gid' is the index assigned to this thread for 'icfo' in the 'i' submatrix.
+  // 'gid' is the index assigned to this thread for 'gates' in the 'i'
+  // submatrix.
   //
   // 2) 'b' is a vector such that,
   //
@@ -146,23 +147,27 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
 
   T i_local;
   if (use_peephole) {
-    i_local = sigmoid_op(icfo[0 * cell_size + gid] + b[0 * cell_size + act_id] +
-                         cs_prev[cid] * wci[act_id]);
+    i_local =
+        sigmoid_op(gates[0 * cell_size + gid] + b[0 * cell_size + act_id] +
+                   cs_prev[cid] * wci[act_id]);
   } else {
-    i_local = sigmoid_op(icfo[0 * cell_size + gid] + b[0 * cell_size + act_id]);
+    i_local =
+        sigmoid_op(gates[0 * cell_size + gid] + b[0 * cell_size + act_id]);
   }
   i[cid] = i_local;
 
-  const T ci_local =
-      tanh_op(icfo[1 * cell_size + gid] + b[1 * cell_size + act_id]);
+  const int c_offset = gate_c_offset(gate_layout, cell_size);
+  const int f_offset = gate_f_offset(gate_layout, cell_size);
+
+  const T ci_local = tanh_op(gates[c_offset + gid] + b[c_offset + act_id]);
   ci[cid] = ci_local;
 
   T f_local;
   if (use_peephole) {
-    f_local = sigmoid_op(icfo[2 * cell_size + gid] + b[2 * cell_size + act_id] +
+    f_local = sigmoid_op(gates[f_offset + gid] + b[f_offset + act_id] +
                          forget_bias_t + cs_prev[cid] * wcf[act_id]);
   } else {
-    f_local = sigmoid_op(icfo[2 * cell_size + gid] + b[2 * cell_size + act_id] +
+    f_local = sigmoid_op(gates[f_offset + gid] + b[f_offset + act_id] +
                          forget_bias_t);
   }
   f[cid] = f_local;
@@ -178,10 +183,11 @@ __global__ void lstm_gates(const T* icfo, const T* b, const T* cs_prev,
 
   T o_local;
   if (use_peephole) {
-    o_local = sigmoid_op(icfo[3 * cell_size + gid] + b[3 * cell_size + act_id] +
-                         cs_local * wco[act_id]);
+    o_local = sigmoid_op(gates[3 * cell_size + gid] +
+                         b[3 * cell_size + act_id] + cs_local * wco[act_id]);
   } else {
-    o_local = sigmoid_op(icfo[3 * cell_size + gid] + b[3 * cell_size + act_id]);
+    o_local =
+        sigmoid_op(gates[3 * cell_size + gid] + b[3 * cell_size + act_id]);
   }
   o[cid] = o_local;
 
@@ -217,7 +223,7 @@ __global__ void concat_xh(T* xh, const T* x, const T* h_prev,
   }
 }
 
-template <typename T>
+template <typename T, GateLayout gate_layout>
 void LSTMBlockCellFpropWithCUDA(
     OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,
     const float cell_clip, bool use_peephole, typename TTypes<T>::ConstMatrix x,
@@ -228,7 +234,7 @@ void LSTMBlockCellFpropWithCUDA(
     typename TTypes<T>::Matrix xh, typename TTypes<T>::Matrix i,
     typename TTypes<T>::Matrix cs, typename TTypes<T>::Matrix f,
     typename TTypes<T>::Matrix o, typename TTypes<T>::Matrix ci,
-    typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix icfo,
+    typename TTypes<T>::Matrix co, typename TTypes<T>::Matrix gates,
     typename TTypes<T>::Matrix h, int batch_size, int cell_size,
     int input_size) {
   const auto& cu_stream = GetGpuStream(ctx);
@@ -249,7 +255,7 @@ void LSTMBlockCellFpropWithCUDA(
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
   TensorBlasGemm<GPUDevice, T, true /* USE_CUBLAS */>::compute(
       ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
-      w, typename gemm_compute_type<T>::type(0.f), icfo);
+      w, typename gemm_compute_type<T>::type(0.f), gates);
 
   // Add bias, apply non-linearities and gating.
   //
@@ -262,20 +268,22 @@ void LSTMBlockCellFpropWithCUDA(
 
   if (use_peephole) {
     TF_CHECK_OK(GpuLaunchKernel(
-        lstm_gates<T, true>, grid_dim_2d, block_dim_2d, 0, cu_stream,
-        icfo.data(), b.data(), cs_prev.data(), wci.data(), wcf.data(),
-        wco.data(), o.data(), h.data(), ci.data(), cs.data(), co.data(),
-        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size));
+        lstm_gates<T, true, gate_layout>, grid_dim_2d, block_dim_2d, 0,
+        cu_stream, gates.data(), b.data(), cs_prev.data(), wci.data(),
+        wcf.data(), wco.data(), o.data(), h.data(), ci.data(), cs.data(),
+        co.data(), i.data(), f.data(), forget_bias, cell_clip, batch_size,
+        cell_size));
   } else {
     TF_CHECK_OK(GpuLaunchKernel(
-        lstm_gates<T, false>, grid_dim_2d, block_dim_2d, 0, cu_stream,
-        icfo.data(), b.data(), cs_prev.data(), wci.data(), wcf.data(),
-        wco.data(), o.data(), h.data(), ci.data(), cs.data(), co.data(),
-        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size));
+        lstm_gates<T, false, gate_layout>, grid_dim_2d, block_dim_2d, 0,
+        cu_stream, gates.data(), b.data(), cs_prev.data(), wci.data(),
+        wcf.data(), wco.data(), o.data(), h.data(), ci.data(), cs.data(),
+        co.data(), i.data(), f.data(), forget_bias, cell_clip, batch_size,
+        cell_size));
   }
 }
 
-template <typename T>
+template <typename T, GateLayout gate_layout>
 __global__ void lstm_gates_bprop(
     const T* cs_prev,  // [batch_size, cell_size]
     const T* h_prev,   // [batch_size, cell_size]
@@ -297,7 +305,7 @@ __global__ void lstm_gates_bprop(
     T* dci,            // [batch_size, cell_size]
     T* df,             // [batch_size, cell_size]
     T* di,             // [batch_size, cell_size]
-    T* dicfo,          // [input_size + cell_size, 4 * cell_size]
+    T* dgates,         // [input_size + cell_size, 4 * cell_size]
     T* cs_prev_grad,   // [batch_size, cell_size]
     const int batch_size, const int cell_size, const bool use_peephole) {
   const int batch_id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -341,10 +349,10 @@ __global__ void lstm_gates_bprop(
   const T di_local = i_local * (one - i_local) * dcs_local * ci_local;
   di[cid] = di_local;
 
-  dicfo[gid + 0 * cell_size] = di_local;
-  dicfo[gid + 1 * cell_size] = dci_local;
-  dicfo[gid + 2 * cell_size] = df_local;
-  dicfo[gid + 3 * cell_size] = do_local;
+  dgates[gid + 0 * cell_size] = di_local;
+  dgates[gid + gate_c_offset(gate_layout, cell_size)] = dci_local;
+  dgates[gid + gate_f_offset(gate_layout, cell_size)] = df_local;
+  dgates[gid + 3 * cell_size] = do_local;
 
   cs_prev_grad[cid] = dcs_local * f_local;
   if (use_peephole) {
@@ -352,7 +360,7 @@ __global__ void lstm_gates_bprop(
   }
 }
 
-template <typename T>
+template <typename T, GateLayout gate_layout>
 void LSTMBlockCellBpropWithCUDA(
     OpKernelContext* ctx, const GPUDevice& d, typename TTypes<T>::ConstMatrix x,
     typename TTypes<T>::ConstMatrix cs_prev,
@@ -366,7 +374,7 @@ void LSTMBlockCellBpropWithCUDA(
     typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,
     typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,
     typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,
-    typename TTypes<T>::Matrix dicfo, typename TTypes<T>::Matrix cs_prev_grad,
+    typename TTypes<T>::Matrix dgates, typename TTypes<T>::Matrix cs_prev_grad,
     typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,
     typename TTypes<T>::Vec wco_grad, const int batch_size, const int cell_size,
     const bool use_peephole) {
@@ -377,11 +385,11 @@ void LSTMBlockCellBpropWithCUDA(
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 
   TF_CHECK_OK(GpuLaunchKernel(
-      lstm_gates_bprop<T>, grid_dim_2d, block_dim_2d, 0, cu_stream,
+      lstm_gates_bprop<T, gate_layout>, grid_dim_2d, block_dim_2d, 0, cu_stream,
       cs_prev.data(), h_prev.data(), w.data(), wci.data(), wcf.data(),
       wco.data(), b.data(), i.data(), cs.data(), f.data(), o.data(), ci.data(),
       co.data(), cs_grad.data(), h_grad.data(), do_.data(), dcs.data(),
-      dci.data(), df.data(), di.data(), dicfo.data(), cs_prev_grad.data(),
+      dci.data(), df.data(), di.data(), dgates.data(), cs_prev_grad.data(),
       batch_size, cell_size, use_peephole));
 
   if (use_peephole) {
@@ -398,66 +406,75 @@ void LSTMBlockCellBpropWithCUDA(
 
 }  // namespace
 
-#define DEFINE_GPU_SPECS(T)                                                    \
-  template struct TensorZero<GPUDevice, T>;                                    \
-  template struct TensorUnalignedZero<GPUDevice, T>;                           \
-  template struct TensorCopy<GPUDevice, T>;                                    \
-  template struct TensorCopyUnaligned<GPUDevice, T>;                           \
-  template struct TensorCopyToUnaligned<GPUDevice, T>;                         \
-  template struct TensorAdd<GPUDevice, T>;                                     \
-  template <>                                                                  \
-  void LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */>::operator()(    \
-      OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,       \
-      const float cell_clip, bool use_peephole,                                \
-      typename TTypes<T>::ConstMatrix x,                                       \
-      typename TTypes<T>::ConstMatrix cs_prev,                                 \
-      typename TTypes<T>::ConstMatrix h_prev,                                  \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,           \
-      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,             \
-      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,              \
-      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,            \
-      typename TTypes<T>::Matrix icfo, typename TTypes<T>::Matrix h) {         \
-    LSTMBlockCellFpropWithCUDA<T>(ctx, d, forget_bias, cell_clip,              \
-                                  use_peephole, x, cs_prev, h_prev, w, wci,    \
-                                  wcf, wco, b, xh, i, cs, f, o, ci, co, icfo,  \
-                                  h, batch_size_, cell_size_, input_size_);    \
-  }                                                                            \
-  template <>                                                                  \
-  void LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */>::operator()(    \
-      OpKernelContext* ctx, const GPUDevice& d, bool use_peephole,             \
-      typename TTypes<T>::ConstMatrix x,                                       \
-      typename TTypes<T>::ConstMatrix cs_prev,                                 \
-      typename TTypes<T>::ConstMatrix h_prev,                                  \
-      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,     \
-      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,      \
-      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,       \
-      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,   \
-      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,   \
-      typename TTypes<T>::ConstMatrix co,                                      \
-      typename TTypes<T>::ConstMatrix cs_grad,                                 \
-      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_,  \
-      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,          \
-      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,            \
-      typename TTypes<T>::Matrix dicfo,                                        \
-      typename TTypes<T>::Matrix cs_prev_grad,                                 \
-      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,      \
-      typename TTypes<T>::Vec wco_grad) {                                      \
-    LSTMBlockCellBpropWithCUDA<T>(                                             \
-        ctx, d, x, cs_prev, h_prev, w, wci, wcf, wco, b, i, cs, f, o, ci, co,  \
-        cs_grad, h_grad, do_, dcs, dci, df, di, dicfo, cs_prev_grad, wci_grad, \
-        wcf_grad, wco_grad, batch_size_, cell_size_, use_peephole);            \
-  }                                                                            \
-  template struct LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */>;     \
-  template struct LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */>;     \
-  template struct BlockLSTMBprop<GPUDevice, T, true /* USE_CUBLAS */>;
+#define DECLARE_GPU_FBPROP(T, GATE_LAYOUT)                                    \
+  template <>                                                                 \
+  void LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */, GATE_LAYOUT>:: \
+  operator()(                                                                 \
+      OpKernelContext* ctx, const GPUDevice& d, const float forget_bias,      \
+      const float cell_clip, bool use_peephole,                               \
+      typename TTypes<T>::ConstMatrix x,                                      \
+      typename TTypes<T>::ConstMatrix cs_prev,                                \
+      typename TTypes<T>::ConstMatrix h_prev,                                 \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,    \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,     \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::Matrix xh,          \
+      typename TTypes<T>::Matrix i, typename TTypes<T>::Matrix cs,            \
+      typename TTypes<T>::Matrix f, typename TTypes<T>::Matrix o,             \
+      typename TTypes<T>::Matrix ci, typename TTypes<T>::Matrix co,           \
+      typename TTypes<T>::Matrix gates, typename TTypes<T>::Matrix h) {       \
+    LSTMBlockCellFpropWithCUDA<T, GATE_LAYOUT>(                               \
+        ctx, d, forget_bias, cell_clip, use_peephole, x, cs_prev, h_prev, w,  \
+        wci, wcf, wco, b, xh, i, cs, f, o, ci, co, gates, h, batch_size_,     \
+        cell_size_, input_size_);                                             \
+  }                                                                           \
+  template <>                                                                 \
+  void LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */, GATE_LAYOUT>:: \
+  operator()(                                                                 \
+      OpKernelContext* ctx, const GPUDevice& d, bool use_peephole,            \
+      typename TTypes<T>::ConstMatrix x,                                      \
+      typename TTypes<T>::ConstMatrix cs_prev,                                \
+      typename TTypes<T>::ConstMatrix h_prev,                                 \
+      typename TTypes<T>::ConstMatrix w, typename TTypes<T>::ConstVec wci,    \
+      typename TTypes<T>::ConstVec wcf, typename TTypes<T>::ConstVec wco,     \
+      typename TTypes<T>::ConstVec b, typename TTypes<T>::ConstMatrix i,      \
+      typename TTypes<T>::ConstMatrix cs, typename TTypes<T>::ConstMatrix f,  \
+      typename TTypes<T>::ConstMatrix o, typename TTypes<T>::ConstMatrix ci,  \
+      typename TTypes<T>::ConstMatrix co,                                     \
+      typename TTypes<T>::ConstMatrix cs_grad,                                \
+      typename TTypes<T>::ConstMatrix h_grad, typename TTypes<T>::Matrix do_, \
+      typename TTypes<T>::Matrix dcs, typename TTypes<T>::Matrix dci,         \
+      typename TTypes<T>::Matrix df, typename TTypes<T>::Matrix di,           \
+      typename TTypes<T>::Matrix dgates,                                      \
+      typename TTypes<T>::Matrix cs_prev_grad,                                \
+      typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,     \
+      typename TTypes<T>::Vec wco_grad) {                                     \
+    LSTMBlockCellBpropWithCUDA<T, GATE_LAYOUT>(                               \
+        ctx, d, x, cs_prev, h_prev, w, wci, wcf, wco, b, i, cs, f, o, ci, co, \
+        cs_grad, h_grad, do_, dcs, dci, df, di, dgates, cs_prev_grad,         \
+        wci_grad, wcf_grad, wco_grad, batch_size_, cell_size_, use_peephole); \
+  }                                                                           \
+  template struct LSTMBlockCellFprop<GPUDevice, T, true /* USE_CUBLAS */,     \
+                                     GATE_LAYOUT>;                            \
+  template struct LSTMBlockCellBprop<GPUDevice, T, true /* USE_CUBLAS */,     \
+                                     GATE_LAYOUT>;                            \
+  template struct BlockLSTMBprop<GPUDevice, T, true /* USE_CUBLAS */,         \
+                                 GATE_LAYOUT>;
 
-DEFINE_GPU_SPECS(float);
-DEFINE_GPU_SPECS(Eigen::half);
-// DEFINE_GPU_SPECS(double);
-#undef DEFINE_GPU_SPECS
+#define DECLARE_GPU_SPECS(T)                           \
+  template struct TensorZero<GPUDevice, T>;            \
+  template struct TensorUnalignedZero<GPUDevice, T>;   \
+  template struct TensorCopy<GPUDevice, T>;            \
+  template struct TensorCopyUnaligned<GPUDevice, T>;   \
+  template struct TensorCopyToUnaligned<GPUDevice, T>; \
+  template struct TensorAdd<GPUDevice, T>;             \
+                                                       \
+  DECLARE_GPU_FBPROP(T, ICFO);                         \
+  DECLARE_GPU_FBPROP(T, IFCO);
 
+DECLARE_GPU_SPECS(Eigen::half);
+DECLARE_GPU_SPECS(float);
+#undef DECLARE_GPU_SPECS
+#undef DECLARE_GPU_FBPROP
 }  // end namespace functor
 }  // end namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

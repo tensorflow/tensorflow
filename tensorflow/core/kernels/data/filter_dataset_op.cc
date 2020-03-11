@@ -75,6 +75,11 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
+  }
+
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
                             DatasetGraphDefBuilder* b,
@@ -106,7 +111,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(
-          dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
+          dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_));
       return dataset()->captured_func_->Instantiate(
           ctx, &instantiated_captured_func_);
     }
@@ -190,6 +195,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(mu_);
       if (input_impl_)
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -219,9 +225,9 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 filtered_elements_ GUARDED_BY(mu_);
-    int64 dropped_elements_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 filtered_elements_ TF_GUARDED_BY(mu_);
+    int64 dropped_elements_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 

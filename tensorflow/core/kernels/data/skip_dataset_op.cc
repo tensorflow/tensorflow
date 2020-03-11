@@ -72,7 +72,11 @@ class SkipDatasetOp::Dataset : public DatasetBase {
     if (n == kInfiniteCardinality || n == kUnknownCardinality) {
       return n;
     }
-    return count_ < 0 ? 0 : std::max(0LL, n - count_);
+    return count_ < 0 ? 0 : std::max(int64{0}, n - count_);
+  }
+
+  Status CheckExternalState() const override {
+    return input_->CheckExternalState();
   }
 
  protected:
@@ -122,7 +126,7 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params), i_(0) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -193,8 +197,8 @@ class SkipDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   const int64 count_;

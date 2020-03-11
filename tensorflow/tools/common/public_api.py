@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,8 @@ from __future__ import print_function
 
 import re
 
+import six
+
 from tensorflow.python.util import tf_inspect
 
 
@@ -40,6 +43,11 @@ class PublicAPIVisitor(object):
 
     # Modules/classes we want to suppress entirely.
     self._private_map = {
+        'tf': [
+            'compiler',
+            'core',
+            'python',
+        ],
         # Some implementations have this internal module that we shouldn't
         # expose.
         'tf.flags': ['cpp_flags'],
@@ -50,8 +58,6 @@ class PublicAPIVisitor(object):
     # Each entry maps a module path to a name to ignore in traversal.
     self._do_not_descend_map = {
         'tf': [
-            'compiler',
-            'core',
             'examples',
             'flags',  # Don't add flags
             # TODO(drpng): This can be removed once sealed off.
@@ -60,7 +66,6 @@ class PublicAPIVisitor(object):
             'pywrap_tensorflow',
             # TODO(drpng): This can be removed once sealed.
             'user_ops',
-            'python',
             'tools',
             'tensorboard',
         ],
@@ -106,9 +111,9 @@ class PublicAPIVisitor(object):
     """Return whether a name is private."""
     # TODO(wicke): Find out what names to exclude.
     del obj  # Unused.
-    return ((path in self._private_map and
-             name in self._private_map[path]) or
-            (name.startswith('_') and not re.match('__.*__$', name) or
+    return ((path in self._private_map and name in self._private_map[path]) or
+            (six.ensure_str(name).startswith('_') and
+             not re.match('__.*__$', six.ensure_str(name)) or
              name in ['__base__', '__class__']))
 
   def _do_not_descend(self, path, name):
@@ -120,7 +125,8 @@ class PublicAPIVisitor(object):
     """Visitor interface, see `traverse` for details."""
 
     # Avoid long waits in cases of pretty unambiguous failure.
-    if tf_inspect.ismodule(parent) and len(path.split('.')) > 10:
+    if tf_inspect.ismodule(parent) and len(
+        six.ensure_str(path).split('.')) > 10:
       raise RuntimeError('Modules nested too deep:\n%s.%s\n\nThis is likely a '
                          'problem with an accidental public import.' %
                          (self._root_name, path))

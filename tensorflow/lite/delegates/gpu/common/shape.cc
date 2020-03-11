@@ -62,6 +62,8 @@ std::string ToString(Axis axis) {
       return "width";
     case Axis::VALUE:
       return "value";
+    case Axis::DEPTH:
+      return "depth";
     case Axis::UNKNOWN:
       return "unknown";
   }
@@ -76,10 +78,14 @@ std::string ToString(Layout layout) {
       return "linear";
     case Layout::HW:
       return "hw";
+    case Layout::HWD:
+      return "hwd";
     case Layout::CHW:
       return "chw";
     case Layout::HWC:
       return "hwc";
+    case Layout::HWDC:
+      return "hwdc";
     case Layout::OHWI:
       return "ohwi";
     case Layout::IHWO:
@@ -90,6 +96,10 @@ std::string ToString(Layout layout) {
       return "iohw";
     case Layout::BHWC:
       return "bhwc";
+    case Layout::BHWDC:
+      return "bhwdc";
+    case Layout::OHWDI:
+      return "ohwi";
     case Layout::UNKNOWN:
       return "unknown";
   }
@@ -104,21 +114,15 @@ int GetAxisIndex(Layout layout, Axis axis) {
   return DispatchByLayout(layout, GetIndexByAxisFunc{axis});
 }
 
+bool HasAxis(Layout layout, Axis axis) {
+  return GetAxisIndex(layout, axis) >= 0;
+}
+
 int Size(Layout layout) { return DispatchByLayout(layout, NumAxisFunc()); }
 
 std::string ToString(const Shape& s) {
   return absl::StrCat("{", ToString(s.layout), ", {",
                       absl::StrJoin(s.dimensions, ", "), "}}");
-}
-
-template <>
-int64_t StrongShape<Layout::OHWI>::LinearIndex(
-    const std::array<int32_t, 4>& coordinates) const {
-  int64_t index = coordinates[0];
-  index = index * StrongShape::get(1) + coordinates[1];
-  index = index * StrongShape::get(2) + coordinates[2];
-  index = index * StrongShape::get(3) + coordinates[3];
-  return index;
 }
 
 }  // namespace gpu

@@ -71,7 +71,7 @@ tflite_model = converter.convert()  # You got a tflite model!
 +          tf.lite.experimental.nn.TFLiteLSTMCell(
                self.num_lstm_units, forget_bias=0))
      # Weights and biases for output softmax layer.
-     out_weights = tf.Variable(tf.random_normal([self.units, self.num_class]))
+     out_weights = tf.Variable(tf.random.normal([self.units, self.num_class]))
 @@ -67,7 +67,7 @@ class MnistLstmModel(object):
      lstm_cells = tf.nn.rnn_cell.MultiRNNCell(lstm_layers)
      # Note here, we use `tf.lite.experimental.nn.dynamic_rnn` and `time_major`
@@ -170,7 +170,7 @@ class MnistLstmModel(object):
           tf.lite.experimental.nn.TFLiteLSTMCell(
               self.num_lstm_units, forget_bias=0))
     # Weights and biases for output softmax layer.
-    out_weights = tf.Variable(tf.random_normal([self.units, self.num_class]))
+    out_weights = tf.Variable(tf.random.normal([self.units, self.num_class]))
     out_bias = tf.Variable(tf.zeros([self.num_class]))
 
     # Transpose input x to make it time major.
@@ -316,7 +316,7 @@ def run_main(_):
       '--use_post_training_quantize',
       action='store_true',
       default=True,
-      help='Whether or not to use post_training_quatize.')
+      help='Whether or not to use post_training_quantize.')
   parsed_flags, _ = parser.parse_known_args()
   train_and_export(parsed_flags)
 

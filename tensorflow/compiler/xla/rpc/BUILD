@@ -1,8 +1,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library_cc",
+)
+load(
     "//tensorflow/compiler/xla:xla.bzl",
-    "xla_proto_library",
     "xla_py_grpc_library",
 )
 
@@ -11,14 +14,17 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
-    use_grpc_plugin = True,
-    visibility = ["//visibility:public"],
-    deps = [
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    protodeps = [
         "//tensorflow/compiler/xla:xla_proto",
     ],
+    use_grpc_namespace = True,
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -26,9 +32,9 @@ cc_library(
     srcs = ["grpc_stub.cc"],
     hdrs = ["grpc_stub.h"],
     deps = [
-        ":xla_service_proto",
+        ":xla_service_proto_cc",
         "//tensorflow/compiler/xla:service_interface",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
@@ -81,7 +87,7 @@ cc_library(
     srcs = ["grpc_service.cc"],
     hdrs = ["grpc_service.h"],
     deps = [
-        ":xla_service_proto",
+        ":xla_service_proto_cc",
         "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",

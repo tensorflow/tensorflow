@@ -60,7 +60,8 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
 #include <farmhash.h>
@@ -121,6 +122,8 @@ int RunningSignBit(const TfLiteTensor* input, const TfLiteTensor* weight,
   const size_t key_bytes = sizeof(float) + input_item_bytes;
   std::unique_ptr<char[]> key(new char[key_bytes]);
 
+  const float* weight_ptr = GetTensorData<float>(weight);
+
   for (int i = 0; i < SizeOfDimension(input, 0); ++i) {
     // Create running hash id and value for current dimension.
     memcpy(key.get(), &seed, seed_size);
@@ -129,10 +132,10 @@ int RunningSignBit(const TfLiteTensor* input, const TfLiteTensor* weight,
     int64_t hash_signature = ::util::Fingerprint64(key.get(), key_bytes);
     double running_value = static_cast<double>(hash_signature);
     input_ptr += input_item_bytes;
-    if (weight == nullptr) {
+    if (weight_ptr == nullptr) {
       score += running_value;
     } else {
-      score += weight->data.f[i] * running_value;
+      score += weight_ptr[i] * running_value;
     }
   }
 
@@ -146,7 +149,7 @@ void SparseLshProjection(const TfLiteTensor* hash, const TfLiteTensor* input,
   for (int i = 0; i < num_hash; i++) {
     int32_t hash_signature = 0;
     for (int j = 0; j < num_bits; j++) {
-      float seed = hash->data.f[i * num_bits + j];
+      float seed = GetTensorData<float>(hash)[i * num_bits + j];
       int bit = RunningSignBit(input, weight, seed);
       hash_signature = (hash_signature << 1) | bit;
     }
@@ -160,7 +163,7 @@ void DenseLshProjection(const TfLiteTensor* hash, const TfLiteTensor* input,
   int num_bits = SizeOfDimension(hash, 1);
   for (int i = 0; i < num_hash; i++) {
     for (int j = 0; j < num_bits; j++) {
-      float seed = hash->data.f[i * num_bits + j];
+      float seed = GetTensorData<float>(hash)[i * num_bits + j];
       int bit = RunningSignBit(input, weight, seed);
       *out_buf++ = bit;
     }

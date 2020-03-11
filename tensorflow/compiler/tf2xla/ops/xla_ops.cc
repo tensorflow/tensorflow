@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -83,7 +84,7 @@ lower: a boolean specifies whether the calculation is done with the lower
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  been argued that approximately logN sweeps are needed in practice (Ref: Golub &
   van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -115,7 +116,7 @@ a: the input tensor.
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  been argued that approximately log(min (M, N)) sweeps are needed in practice
   (Ref: Golub & van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -251,6 +252,9 @@ REGISTER_OP("XlaDot")
       // the result dimensions in order, rhs dimensions followed by lhs
       // dimensions except the contracted and batch dimensions.
       std::vector<shape_inference::DimensionHandle> output_dims;
+      for (int64 lhs_dim : dimension_numbers.lhs_batch_dimensions()) {
+        output_dims.emplace_back(c->Dim(lhs_shape_handle, lhs_dim));
+      }
       const int32 lhs_rank = c->Rank(lhs_shape_handle);
       for (int64 i = 0; i < lhs_rank; ++i) {
         if (absl::c_linear_search(
@@ -606,7 +610,7 @@ REGISTER_OP("XlaDequantize")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Takes the packed uint32 input and unpacks the input to uint8 to do
-Dequantization on deivce.
+Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
 output: Output tensors whose types is bloat16. If transpose_output is true,
@@ -624,82 +628,33 @@ REGISTER_OP("XlaEinsum")
     .Input("b: T")
     .Output("product: T")
     .Attr("equation: string")
-    .Attr("T: {bfloat16, float}")
+    .Attr("T: {complex64, bfloat16, float}")
     .SetShapeFn([](shape_inference::InferenceContext* context) {
-      shape_inference::ShapeHandle input_a = context->input(0);
-      shape_inference::ShapeHandle input_b = context->input(1);
-
-      int64 rank_a, rank_b;
-      if (context->RankKnown(input_a)) {
-        rank_a = context->Rank(input_a);
-      } else {
-        context->set_output(0, context->UnknownShape());
-        return Status::OK();
-      }
-      if (context->RankKnown(input_b)) {
-        rank_b = context->Rank(input_b);
-      } else {
-        context->set_output(0, context->UnknownShape());
-        return Status::OK();
-      }
       string equation;
       TF_RETURN_IF_ERROR(context->GetAttr("equation", &equation));
-
-      std::map<char, shape_inference::DimensionHandle> left_map;
-      std::map<char, shape_inference::DimensionHandle> right_map;
-      std::vector<shape_inference::DimensionHandle> dims;
-
-      std::vector<string> equation_split = absl::StrSplit(equation, "->");
-
-      if (equation_split.size() != 2) {
-        return errors::InvalidArgument("Expected one \"->\" in equation. Got: ",
-                                       equation);
-      }
-
-      std::vector<string> lhs_rhs_split =
-          absl::StrSplit(equation_split[0], ',');
-      if (lhs_rhs_split.size() != 2) {
+      // XlaEinsum supports only two-input einsum equations.
+      if (!absl::StrContains(equation, ",")) {
         return errors::InvalidArgument("Expected one \",\" in equation. Got: ",
                                        equation);
       }
-
-      if (rank_a != lhs_rhs_split[0].size()) {
-        return errors::InvalidArgument(absl::StrCat(
-            "Expected equation[0] with size: ", rank_a, " Got '",
-            lhs_rhs_split[0], "'", " with size: ", lhs_rhs_split[0].size()));
-      }
-
-      if (rank_b != lhs_rhs_split[1].size()) {
-        return errors::InvalidArgument(absl::StrCat(
-            "Expected equation[1] with size: ", rank_b, " Got '",
-            lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
-      }
-
-      for (int i = 0; i < lhs_rhs_split[0].size(); ++i) {
-        left_map[lhs_rhs_split[0][i]] = context->Dim(input_a, i);
-      }
-      for (int i = 0; i < lhs_rhs_split[1].size(); ++i) {
-        right_map[lhs_rhs_split[1][i]] = context->Dim(input_b, i);
-      }
-
-      for (const char& c : equation_split[1]) {
-        if (left_map.count(c)) {
-          dims.push_back(left_map[c]);
-        } else if (right_map.count(c)) {
-          dims.push_back(right_map[c]);
-        } else {
-          return errors::InvalidArgument("Invalid equation: ", equation);
-        }
-      }
-
-      context->set_output(0, context->MakeShape(dims));
-      return Status::OK();
+      // Use EinsumShape for the rest of the inference now that we know we must
+      // have a two-input einsum.
+      return shape_inference::EinsumShape(context);
     })
     .Doc(R"doc(
 An op which supports basic einsum op with 2 inputs and 1 output.
 
-This op has better TPU performnce since it doesn't have explicitly reshape and
+This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
+)doc");
+
+REGISTER_OP("XlaSharding")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+An op which shards the input based on the given sharding attribute.
 )doc");
 
 REGISTER_OP("XlaReplicaId")
@@ -709,6 +664,51 @@ REGISTER_OP("XlaReplicaId")
       return Status::OK();
     })
     .Doc("Replica ID.");
+
+REGISTER_OP("XlaGather")
+    .Input("operand: T")
+    .Input("start_indices: Tindices")
+    .Input("slice_sizes: Tindices")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Gather operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#gather
+operand: The array we're gathering from.
+start_indices: Array containing the starting indices of the slices we gather.
+dimension_numbers: A serialized xla::GatherDimensionNumbers proto.
+slice_sizes: slice_sizes[i] is the bounds for the slice on dimension i.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaScatter")
+    .Input("operand: T")
+    .Input("scatter_indices: Tindices")
+    .Input("updates: T")
+    .Attr("update_computation: func")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Scatter operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#scatter.
+
+operand: Array to be scattered into.
+scatter_indices: Array containing the starting indices of the slices that must
+  be scattered to.
+updates: Array containing the values that must be used for scattering.
+update_computation: Computation to be used for combining the existing values in
+  the input array and the updates during scatter.
+dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
 
 }  // namespace
 }  // namespace tensorflow

@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/despecializer.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -81,6 +80,7 @@ static std::vector<GroupedConvolution2DSpec> GetConv2DTestCases() {
     config.kernel_layout = {3, 2, 1, 0};
 
     if (activation_size == 1 && kernel_size == 2) {
+      config.stride = config.pad = config.lhs_dilate = -1;
       // Test for outer dim.
       config.output_dims = {batch, activation_size + kernel_size - 1,
                             activation_size + kernel_size, output_feature};

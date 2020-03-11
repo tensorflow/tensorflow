@@ -35,6 +35,7 @@ from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.ftrl import FtrlOptimizer
 from tensorflow.python.training.experimental.loss_scale_optimizer import MixedPrecisionLossScaleOptimizer
 from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite
+from tensorflow.python.training.experimental.mixed_precision import enable_mixed_precision_graph_rewrite_v1
 from tensorflow.python.training.momentum import MomentumOptimizer
 from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
@@ -109,8 +110,7 @@ from tensorflow.python.training.training_util import create_global_step
 from tensorflow.python.training.training_util import get_or_create_global_step
 from tensorflow.python.training.warm_starting_util import VocabInfo
 from tensorflow.python.training.warm_starting_util import warm_start
-from tensorflow.python.pywrap_tensorflow import do_quantize_training_on_graphdef
-from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
+from tensorflow.python.training.py_checkpoint_reader import NewCheckpointReader
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=wildcard-import

@@ -1,6 +1,6 @@
 # TensorFlow Lite for Objective-C
 
-load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist")
+load("//tensorflow/lite:special_rules.bzl", "ios_visibility_whitelist", "tflite_ios_lab_runner")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_DEFAULT_TAGS", "TFL_DISABLED_SANITIZER_TAGS", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
 
@@ -44,7 +44,7 @@ RELEASE_COPTS = [
     # Warns if an @selector() expression is encountered with a method name that hasn't been defined yet.
     "-Wundeclared-selector",
     # Turn off warnings for headers not part of TensorFlow Lite Objective-C API.
-    "--system-header-prefix=tensorflow/lite/experimental/c/",
+    "--system-header-prefix=tensorflow/lite/c/",
 ]
 
 # Compiler flags for building test libraries.
@@ -63,7 +63,7 @@ objc_library(
     tags = TFL_DEFAULT_TAGS,
     visibility = ios_visibility_whitelist(),
     deps = [
-        "//tensorflow/lite/experimental/c:c_api",
+        "//tensorflow/lite/c:c_api",
     ],
     alwayslink = 1,
 )
@@ -72,8 +72,9 @@ ios_unit_test(
     name = "Tests",
     size = "medium",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
     tags = TFL_DEFAULT_TAGS + TFL_DISABLED_SANITIZER_TAGS + [
-        "nozapfhahn",  # Fails during execution, see b/134486097.
+        "nozapfhahn",  # TODO(b/145984659): Enable after solving tool failure.
     ],
     deps = [
         ":TestsLibrary",

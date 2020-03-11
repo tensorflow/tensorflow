@@ -16,23 +16,33 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_TEST_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_TEST_H_
 
+#include <math.h>
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <ctime>
-#include <initializer_list>
 #include <iostream>
+#include <iterator>
 #include <limits>
+#include <memory>
 #include <random>
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <type_traits>
 #include <vector>
 
-#include <gtest/gtest.h>
+#include <gtest/gtest.h>  // IWYU pragma: export
+#include "tensorflow/lite/experimental/ruy/matrix.h"  // IWYU pragma: export
 #include "tensorflow/lite/experimental/ruy/platform.h"
 #include "tensorflow/lite/experimental/ruy/pmu.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/experimental/ruy/ruy_advanced.h"
+#include "tensorflow/lite/experimental/ruy/spec.h"  // IWYU pragma: export
 #include "tensorflow/lite/experimental/ruy/time.h"
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
@@ -44,8 +54,8 @@ limitations under the License.
 #include "third_party/lapack/blas.h"
 #endif
 
-#ifdef GEMMLOWP_PROFILING
-#include "profiling/profiler.h"
+#ifdef RUY_PROFILER
+#include "tensorflow/lite/experimental/ruy/profiler/profiler.h"
 #endif
 
 namespace ruy {
@@ -59,15 +69,22 @@ inline std::vector<std::string>* CoveredPaths() {
   return &covered_paths;
 }
 
-const char* PathName(Path path) {
+inline const char* PathName(Path path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case Path::NAME:              \
     return #NAME;
   switch (path) {
     RUY_PATHNAME_CASE(kReference)
     RUY_PATHNAME_CASE(kStandardCpp)
+#if RUY_PLATFORM(NEON)
     RUY_PATHNAME_CASE(kNeon)
     RUY_PATHNAME_CASE(kNeonDotprod)
+#elif RUY_PLATFORM(X86)
+    RUY_PATHNAME_CASE(kSse42)
+    RUY_PATHNAME_CASE(kAvx2)
+    RUY_PATHNAME_CASE(kAvx512)
+    RUY_PATHNAME_CASE(kAvxVnni)
+#endif
     default:
       RUY_CHECK(false);
       return nullptr;
@@ -75,7 +92,7 @@ const char* PathName(Path path) {
 #undef RUY_PATHNAME_CASE
 }
 
-const char* TuningName(Tuning tuning) {
+inline const char* TuningName(Tuning tuning) {
 #define RUY_SUBPATHNAME_CASE(NAME) \
   case Tuning::NAME:               \
     return #NAME;
@@ -89,7 +106,7 @@ const char* TuningName(Tuning tuning) {
 #undef RUY_SUBPATHNAME_CASE
 }
 
-const char* PathName(ExternalPath path) {
+inline const char* PathName(ExternalPath path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case ExternalPath::NAME:      \
     return #NAME;
@@ -105,11 +122,12 @@ const char* PathName(ExternalPath path) {
 #undef RUY_PATHNAME_CASE
 }
 
-std::ostream& operator<<(std::ostream& stream, Path path) {
+inline std::ostream& operator<<(std::ostream& stream, Path path) {
   return stream << PathName(path);
 }
 
-std::ostream& operator<<(std::ostream& stream, ExternalPath external_path) {
+inline std::ostream& operator<<(std::ostream& stream,
+                                ExternalPath external_path) {
   return stream << PathName(external_path);
 }
 
@@ -131,6 +149,32 @@ std::string Join(const ContainerType& container) {
 struct LogCoveredPathsOnDestruction final {
   ~LogCoveredPathsOnDestruction() {
     std::cerr << "Covered paths: " << Join(*CoveredPaths()) << std::endl;
+
+    // When testing on ARM64 ChromiumOS emulator, make sure that we covered
+    // the dotprod path. We're getting such coverage at the moment thanks to
+    // using a sufficiently recent emulator, and we don't want to regress that.
+#if RUY_PLATFORM(ARM_64) && defined RUY_TESTING_ON_CHROMIUMOS
+    bool found_dotprod = false;
+    for (const std::string& covered_path : *CoveredPaths()) {
+      if (covered_path == "kNeonDotprod") {
+        found_dotprod = true;
+      }
+    }
+    if (!found_dotprod) {
+      std::cerr
+          << "Error: we haven't tested the kNeonDotprod path as we should "
+             "have. At the moment, this is required on ChromiumOS as this is "
+             "what we run emulator tests in, that currently supports "
+             "dot-product "
+             "instructions, and we care very much about not regressing that. "
+             "If this test was run in an emulator, please upgrade to a newer "
+             "emulator version. If this test was run on an actual device, and "
+             "you need to be able to run ruy tests on devices not supporting "
+             "dot-product instructions, get in touch with us.\n"
+          << std::endl;
+      abort();
+    }
+#endif
   }
   static void Singleton() { static LogCoveredPathsOnDestruction singleton; }
 };
@@ -138,6 +182,7 @@ struct LogCoveredPathsOnDestruction final {
 enum class RandomRange {
   kGeneral,
   kAvoidMinValue,
+  kOffCenterAvoidMinValue,
   kReasonableSrcZeroPoint,
   kReasonableDstZeroPoint,
   kBias
@@ -155,6 +200,8 @@ struct RandomRangeBounds<Scalar, true> {
         return -1;
       case RandomRange::kAvoidMinValue:
         return -1;
+      case RandomRange::kOffCenterAvoidMinValue:
+        return -1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
       case RandomRange::kReasonableDstZeroPoint:
@@ -171,6 +218,8 @@ struct RandomRangeBounds<Scalar, true> {
       case RandomRange::kGeneral:
         return 1;
       case RandomRange::kAvoidMinValue:
+        return 1;
+      case RandomRange::kOffCenterAvoidMinValue:
         return 1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
@@ -203,11 +252,19 @@ Scalar Parametrized(float param) {
 template <typename Scalar>
 struct RandomRangeBounds<Scalar, false> {
   static Scalar GetMinBound(RandomRange range) {
+    static constexpr double offcentredness =
+        0.02;  // Shift lower limit by about 5 for range of 255.
     switch (range) {
       case RandomRange::kGeneral:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kAvoidMinValue:
         return 1 + std::numeric_limits<Scalar>::lowest();
+      case RandomRange::kOffCenterAvoidMinValue:
+        return 1 + std::numeric_limits<Scalar>::lowest() +
+               static_cast<Scalar>(
+                   offcentredness * std::numeric_limits<Scalar>::max() -
+                   offcentredness *
+                       (std::numeric_limits<Scalar>::lowest() + 1));
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kReasonableDstZeroPoint:
@@ -227,6 +284,8 @@ struct RandomRangeBounds<Scalar, false> {
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kAvoidMinValue:
         return std::numeric_limits<Scalar>::max();
+      case RandomRange::kOffCenterAvoidMinValue:
+        return std::numeric_limits<Scalar>::max();
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kReasonableDstZeroPoint:
@@ -245,7 +304,7 @@ struct RandomRangeBounds<Scalar, false> {
 inline std::default_random_engine& global_random_engine() {
   static std::default_random_engine engine;
   return engine;
-};
+}
 
 template <typename Scalar>
 struct UniformRandomDistribution {
@@ -301,8 +360,8 @@ void MakeRandomVector(RandomRange range, int size, std::vector<Scalar>* dst) {
 
 enum class LayoutStyle { kPackedLinear, kLinear };
 
-void MakeLayout(int rows, int cols, Order order, LayoutStyle layout_style,
-                Layout* layout) {
+inline void MakeLayout(int rows, int cols, Order order,
+                       LayoutStyle layout_style, Layout* layout) {
   layout->rows = rows;
   layout->cols = cols;
   layout->order = order;
@@ -435,7 +494,6 @@ struct TestSet final {
   void DoMul(TestResultType* result);
   void Benchmark(TestResultType* result);
   void VerifyTestResults() const;
-  void VerifyNonTrivial() const;
 
  public:
   enum class LifeStage {
@@ -451,7 +509,7 @@ struct TestSet final {
   };
 
   ~TestSet() {
-    RUY_CHECK(life_stage == LifeStage::kFinal);
+    RUY_CHECK_EQ(life_stage, LifeStage::kFinal);
     LogCoveredPathsOnDestruction::Singleton();
   }
 
@@ -490,7 +548,17 @@ struct TestSet final {
   bool benchmark_prepack_rhs = false;
 };
 
-Context& GlobalContext() {
+inline PmuEvents& GlobalPmuEvents() {
+  static PmuEvents pmu;
+  return pmu;
+}
+
+inline Context& GlobalContext() {
+  // Ensure that GlobalPmuEvents is constructed before we create any context.
+  // This ensures that pmu counters are opened before we create any worker
+  // thread, which is necessary to count events from worker threads.
+  GlobalPmuEvents();
+
   static Context context;
   return context;
 }
@@ -535,6 +603,13 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::DoMul(TestResultType* result) {
                               prepacked_rhs_ptr);
 }
 
+// When building for WAsm, ASSERT_DEATH is not defined.
+#ifdef ASSERT_DEATH
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE) ASSERT_DEATH(CONDITION, MESSAGE)
+#else
+#define RUY_ASSERT_DEATH(CONDITION, MESSAGE)
+#endif
+
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().explicit_tuning = result->tuning;
@@ -548,12 +623,12 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().SetRuntimeEnabledPaths(result->path);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     DoMul(result);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   } else if (expected_outcome == ExpectedOutcome::kDeath) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
 #if (!defined NDEBUG) && (!defined RUY_ASAN) && (!defined RUY_TSAN)
-    ASSERT_DEATH(DoMul(result), "");
+    RUY_ASSERT_DEATH(DoMul(result), "");
 #endif
   } else {
     RUY_CHECK(false);
@@ -597,7 +672,7 @@ struct GemmlowpOrder<Order::kRowMajor> {
   static constexpr gemmlowp::MapOrder kValue = gemmlowp::MapOrder::RowMajor;
 };
 
-gemmlowp::GemmContext& GlobalGemmlowpContext() {
+inline gemmlowp::GemmContext& GlobalGemmlowpContext() {
   static gemmlowp::GemmContext context;
   return context;
 }
@@ -660,7 +735,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline =
@@ -680,7 +755,7 @@ void EvalGemmlowp(const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
           LhsScalar, DstScalar, gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
           &GlobalGemmlowpContext(), gemmlowp_lhs, gemmlowp_rhs, &gemmlowp_dst,
           -lhs.zero_point, -rhs.zero_point, output_pipeline);
-    } else
+    } else  // NOLINT[readability/braces]
 #endif
     {
       const auto& output_pipeline = std::make_tuple(
@@ -1003,9 +1078,9 @@ void EvalOpenBlas(const Matrix<Scalar>& lhs, const Matrix<Scalar>& rhs,
     transposed_rhs = true;
   }
 
-  RUY_CHECK(gemm_lhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_rhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_dst.layout.order == Order::kColMajor);
+  RUY_CHECK_EQ(gemm_lhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_rhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_dst.layout.order, Order::kColMajor);
 
   char transa = transposed_lhs ? 'T' : 'N';
   char transb = transposed_rhs ? 'T' : 'N';
@@ -1153,7 +1228,7 @@ bool Agree(const Matrix<Scalar>& matrix1, const Matrix<Scalar>& matrix2,
       }
     }
     tolerated_max_diff = max_abs_val * std::numeric_limits<Scalar>::epsilon() *
-                         4 * std::sqrt(static_cast<float>(depth));
+                         64 * std::sqrt(static_cast<float>(depth));
     tolerated_mean_diff = tolerated_max_diff / std::sqrt(size);
   } else if (RUY_OPT_ENABLED(RUY_OPT_NATIVE_ROUNDING)) {
     tolerated_max_diff = 1;
@@ -1203,7 +1278,7 @@ struct Stats {
   double max;
 };
 
-std::string StatsAsString(const Stats& stats) {
+inline std::string StatsAsString(const Stats& stats) {
   char buf[256];
   snprintf(buf, sizeof(buf), "(median = %g, mean = %g, min = %g, max = %g)",
            stats.median, stats.mean, stats.min, stats.max);
@@ -1272,74 +1347,27 @@ void AnalyzeTestError(const TestSetType& test_set, int first_bad_result_index,
   }
 }
 
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void ComputeAccumRangeBeforeMultiplier(
-    const Matrix<LhsScalar>& lhs, const Matrix<RhsScalar>& rhs,
-    const SpecType& spec, typename SpecType::AccumScalar* accum_min,
-    typename SpecType::AccumScalar* accum_max) {
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  using AccumScalar = typename SpecType::AccumScalar;
-  Matrix<AccumScalar> dst_before_multiplier;
-  MakeSimpleLayout(lhs.layout.rows, rhs.layout.cols, Order::kColMajor,
-                   &dst_before_multiplier.layout);
-  const int size = FlatSize(dst_before_multiplier.layout);
-  std::vector<AccumScalar> dst_before_multiplier_data(size);
-  dst_before_multiplier.data = dst_before_multiplier_data.data();
-  ruy::BasicSpec<AccumScalar, AccumScalar> spec_before_multiplier;
-  spec_before_multiplier.bias = spec.bias;
-  Mul<Path::kReference>(lhs, rhs, spec_before_multiplier, &context,
-                        &dst_before_multiplier);
-  *accum_min = *std::min_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-  *accum_max = *std::max_element(dst_before_multiplier_data.begin(),
-                                 dst_before_multiplier_data.end());
-}
-
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void ComputeReasonableMultiplier(const Matrix<LhsScalar>& lhs,
-                                 const Matrix<RhsScalar>& rhs,
-                                 typename SpecType::DstScalar dst_zero_point,
-                                 const SpecType& spec, double* multiplier) {
-  using AccumScalar = typename SpecType::AccumScalar;
-  using DstScalar = typename SpecType::DstScalar;
+template <typename TestSetType>
+void ComputeReasonableMultiplier(
+    const Matrix<typename TestSetType::LhsScalar>& lhs,
+    const Matrix<typename TestSetType::RhsScalar>& rhs, double* multiplier) {
+  using LhsScalar = typename TestSetType::LhsScalar;
+  using RhsScalar = typename TestSetType::RhsScalar;
+  using DstScalar = typename TestSetType::DstScalar;
   if (std::is_floating_point<DstScalar>::value ||
       std::is_same<DstScalar, std::int32_t>::value) {
     *multiplier = 0;
     return;
   }
-  if (getenv("QUICK_BENCHMARK")) {
-    *multiplier = static_cast<double>(std::numeric_limits<DstScalar>::max()) /
-                  (static_cast<double>(lhs.layout.cols) *
-                   std::numeric_limits<LhsScalar>::max() *
-                   std::numeric_limits<RhsScalar>::max());
-    return;
-  }
-  AccumScalar accum_min;
-  AccumScalar accum_max;
-  ComputeAccumRangeBeforeMultiplier(lhs, rhs, spec, &accum_min, &accum_max);
-  accum_min = std::min(accum_min, 0);
-  accum_max = std::max(accum_max, 0);
-  const double dst_pos_range_width =
-      static_cast<double>(std::numeric_limits<DstScalar>::max()) -
-      dst_zero_point;
-  const double dst_neg_range_width =
-      dst_zero_point -
-      static_cast<double>(std::numeric_limits<DstScalar>::lowest());
-  if (accum_max == 0 && accum_min == 0) {
-    *multiplier = 1;
-  } else if (std::abs(accum_max) * dst_pos_range_width >
-             std::abs(accum_min) * dst_neg_range_width) {
-    *multiplier = dst_pos_range_width / accum_max;
-  } else {
-    *multiplier = dst_neg_range_width / -accum_min;
-  }
-  RUY_CHECK_GT(*multiplier, 0.0);
+  *multiplier = static_cast<double>(std::numeric_limits<DstScalar>::max()) /
+                (static_cast<double>(lhs.layout.cols) *
+                 std::numeric_limits<LhsScalar>::max() *
+                 std::numeric_limits<RhsScalar>::max());
 }
 
-void QuantizeMultiplier(double multiplier_double,
-                        std::int32_t* multiplier_fixedpoint,
-                        int* multiplier_exponent) {
+inline void QuantizeMultiplier(double multiplier_double,
+                               std::int32_t* multiplier_fixedpoint,
+                               int* multiplier_exponent) {
   RUY_CHECK_GT(multiplier_double, 0);
   if (multiplier_double == 0.) {
     *multiplier_fixedpoint = 0;
@@ -1392,9 +1420,8 @@ template <typename TestSetType>
 struct MakeSpecMultiplierFieldsImpl<TestSetType, true> {
   static void Run(TestSetType* test_set) {
     double multiplier;
-    ComputeReasonableMultiplier(test_set->lhs.matrix, test_set->rhs.matrix,
-                                test_set->dst_zero_point, test_set->spec,
-                                &multiplier);
+    ComputeReasonableMultiplier<TestSetType>(test_set->lhs.matrix,
+                                             test_set->rhs.matrix, &multiplier);
     QuantizeMultiplier(multiplier, &test_set->spec.multiplier_fixedpoint,
                        &test_set->spec.multiplier_exponent);
     if (!test_set->benchmark) {
@@ -1414,56 +1441,37 @@ struct MakeSpecMultiplierFieldsImpl<TestSetType, false> {
   }
 };
 
-template <typename LhsScalar, typename RhsScalar, typename Spec>
-void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
-                         const Matrix<RhsScalar>& rhs,
-                         typename Spec::DstScalar dst_zero_point, Spec* spec) {
+template <typename Spec>
+void MakeSpecClampFields(Spec* spec) {
   using AccumScalar = typename Spec::AccumScalar;
   using DstScalar = typename Spec::DstScalar;
 
-  if (getenv("BENCHMARK_ONLY_MATMUL")) {
-    spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
-    spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
+  if (std::is_same<AccumScalar, std::int32_t>::value) {
+    // Returning raw accumulators, clamping is not supported.
+    spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
+    spec->clamp_max = std::numeric_limits<DstScalar>::max();
     return;
   }
 
-  if (getenv("QUICK_BENCHMARK")) {
-    spec->clamp_min = std::numeric_limits<DstScalar>::lowest() + 1;
-    spec->clamp_max = std::numeric_limits<DstScalar>::max() - 1;
+  if (getenv("BENCHMARK_ONLY_MATMUL")) {
+    if (std::is_floating_point<DstScalar>::value) {
+      spec->clamp_min = -std::numeric_limits<DstScalar>::infinity();
+      spec->clamp_max = std::numeric_limits<DstScalar>::infinity();
+    } else {
+      spec->clamp_min = std::numeric_limits<DstScalar>::lowest();
+      spec->clamp_max = std::numeric_limits<DstScalar>::max();
+    }
     return;
   }
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  Matrix<DstScalar> unclamped_dst;
-  MakeSimpleLayout(lhs.layout.rows, rhs.layout.cols, Order::kColMajor,
-                   &unclamped_dst.layout);
-  unclamped_dst.zero_point = dst_zero_point;
-  const int size = FlatSize(unclamped_dst.layout);
-  std::vector<DstScalar> unclamped_dst_data(size);
-  unclamped_dst.data = unclamped_dst_data.data();
-  ruy::BasicSpec<AccumScalar, DstScalar> spec_unclamped;
-  spec_unclamped.bias = spec->bias;
-  spec_unclamped.multiplier_fixedpoint = spec->multiplier_fixedpoint;
-  spec_unclamped.multiplier_exponent = spec->multiplier_exponent;
-  spec_unclamped.multiplier_fixedpoint_perchannel =
-      spec->multiplier_fixedpoint_perchannel;
-  spec_unclamped.multiplier_exponent_perchannel =
-      spec->multiplier_exponent_perchannel;
-  Mul<Path::kReference>(lhs, rhs, spec_unclamped, &context, &unclamped_dst);
-  // If dst is std::int32_t, no need to set the clamp min/max.
-  if (!std::is_same<typename Spec::DstScalar, std::int32_t>::value) {
-    std::sort(unclamped_dst_data.begin(), unclamped_dst_data.end());
-    const int clamp_count = static_cast<int>(std::floor(kClampRatio * size));
-    RUY_CHECK_LT(clamp_count, size);
-    spec->clamp_min = unclamped_dst_data[clamp_count];
-    spec->clamp_max = unclamped_dst_data[size - 1 - clamp_count];
-  }
+
+  spec->clamp_min = std::numeric_limits<DstScalar>::lowest() + 1;
+  spec->clamp_max = std::numeric_limits<DstScalar>::max() - 1;
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
-  RUY_CHECK(life_stage == LifeStage::kInitial);
-  if (!use_specified_zero_points) {
+  RUY_CHECK_EQ(life_stage, LifeStage::kInitial);
+  if (!benchmark && !use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
     // If destination is std::int32_t, no dst_zero_point is necessary.
@@ -1478,9 +1486,9 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
-  RUY_CHECK(life_stage == LifeStage::kHasZeroPoints);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasZeroPoints);
   MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
-             RandomRange::kAvoidMinValue, &lhs);
+             RandomRange::kOffCenterAvoidMinValue, &lhs);
   MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
              RandomRange::kGeneral, &rhs);
   life_stage = LifeStage::kHasLhsRhs;
@@ -1488,14 +1496,19 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
-  RUY_CHECK(life_stage == LifeStage::kHasLhsRhs);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
-  if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
+  if (!getenv("BENCHMARK_ONLY_MATMUL") &&
+      (benchmark || (global_random_engine()() & 1))) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
   }
+  if (lhs.matrix.zero_point == std::numeric_limits<LhsScalar>::lowest() &&
+      rhs.matrix.zero_point == std::numeric_limits<RhsScalar>::lowest()) {
+    lhs.matrix.zero_point += 1;
+  }
   MakeSpecMultiplierFieldsImpl<TestSet>::Run(this);
-  MakeSpecClampFields(lhs.matrix, rhs.matrix, dst_zero_point, &spec);
+  MakeSpecClampFields(&spec);
   life_stage = LifeStage::kHasSpec;
 }
 
@@ -1520,7 +1533,7 @@ inline int GetHexIntEnvVarOrZero(const char* name) {
   if (!val) {
     return 0;
   }
-  return std::stoi(val, 0, 16);
+  return std::stoi(val, nullptr, 16);
 }
 
 inline bool GetBoolEnvVarOrFalse(const char* name) {
@@ -1529,14 +1542,14 @@ inline bool GetBoolEnvVarOrFalse(const char* name) {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeOtherParams() {
-  RUY_CHECK(life_stage == LifeStage::kHasSpec);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasSpec);
   if (max_num_threads == 0) {
     max_num_threads = GetIntEnvVarOrZero("THREADS");
   }
   life_stage = LifeStage::kHasOtherParams;
 }
 
-std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
+inline std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   std::vector<Path> result;
   std::uint32_t remaining_paths = static_cast<std::uint32_t>(paths_bitfield);
   std::uint32_t test_bit = 1;
@@ -1550,19 +1563,21 @@ std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   return result;
 }
 
-std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
+inline std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
   if (benchmark) {
     return {Tuning::kAuto};
   }
+#if RUY_PLATFORM(ARM)
   if (path == Path::kNeon || path == Path::kNeonDotprod) {
     return {Tuning::kInOrder, Tuning::kOutOfOrder, Tuning::kAuto};
   }
+#endif
   return {Tuning::kAuto};
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
-  RUY_CHECK(life_stage == LifeStage::kHasResultPaths);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasResultPaths);
 
   // Prepacked matrices are Path-dependent, so create them for each test result.
   for (auto& result : results) {
@@ -1603,7 +1618,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
     PrePackForMul<kAllPaths>(lhs.matrix, rhs.matrix, spec, &GlobalContext(),
                              &null_data_dst, prepacked_lhs_ptr,
                              prepacked_rhs_ptr, alloc_fn);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   }
 
   life_stage = LifeStage::kHasPrepackedMatrices;
@@ -1611,7 +1626,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
-  RUY_CHECK(life_stage == LifeStage::kHasOtherParams);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasOtherParams);
 
   Path paths_bitfield = static_cast<Path>(GetHexIntEnvVarOrZero("PATHS"));
 
@@ -1626,14 +1641,14 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   // to allow specifying e.g. ffff to mean 'all paths' regardless of whether all
   // those bits exist as actual paths.
   paths_bitfield = paths_bitfield & kAllPaths;
-  RUY_CHECK(paths_bitfield != Path::kNone);
+  RUY_CHECK_NE(paths_bitfield, Path::kNone);
   paths = PathsBitfieldAsVector(paths_bitfield);
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
 
   using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
 
-  if (!getenv("NOEXT")) {
+  if (!GetBoolEnvVarOrFalse("NOEXT")) {
     if (SupportsGemmlowp<TestSetType>::kValue) {
 #ifdef GEMMLOWP_SSE4
       const bool gemmlowp_supported = !spec.multiplier_fixedpoint_perchannel;
@@ -1655,7 +1670,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
 #if RUY_PLATFORM(ARM_32) || RUY_PLATFORM(ARM_64)
       // OpenBLAS multi-threading is disabled, so avoid mixing single-threaded
       // and multi-threaded benchmark results.
-      if (max_num_threads == 1) {
+      if (max_num_threads == 1 && !getenv("NO_OPENBLAS")) {
         external_paths.push_back(ExternalPath::kOpenBlas);
       }
 #endif
@@ -1838,17 +1853,17 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   if (!benchmark_min_secs) {
     benchmark_min_secs = 0.5;
   }
-#ifdef GEMMLOWP_PROFILING
-  const char* lhstype = TypeName<LhsScalar>();
-  const char* lhssymm = SymmetryName(lhs.matrix);
-  const char* rhstype = TypeName<RhsScalar>();
-  const char* rhssymm = SymmetryName(rhs.matrix);
+#ifdef RUY_PROFILER
+  {
+    const char* lhstype = TypeName<LhsScalar>();
+    const char* lhssymm = SymmetryName(lhs.matrix);
+    const char* rhstype = TypeName<RhsScalar>();
+    const char* rhssymm = SymmetryName(rhs.matrix);
 
-  printf("Profiling path=%s shape=(%dx%dx%d) lhs=(%s,%s) rhs=(%s,%s)\n",
-         PathName(*result).c_str(), rows, depth, cols, lhstype, lhssymm,
-         rhstype, rhssymm);
-  gemmlowp::RegisterCurrentThreadForProfiling();
-  gemmlowp::StartProfiling();
+    printf("Profiling path=%s shape=(%dx%dx%d) lhs=(%s,%s) rhs=(%s,%s)\n",
+           PathName(*result).c_str(), rows, depth, cols, lhstype, lhssymm,
+           rhstype, rhssymm);
+    ruy::profiler::ScopeProfile profile;
 #endif
 
   float latency = std::numeric_limits<float>::infinity();
@@ -1862,15 +1877,15 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
   float backend_stall_rate = std::numeric_limits<float>::infinity();
 
   for (int repeat = 0; repeat < repeats; repeat++) {
-    PmuEvents pmu_events;
+    auto& pmu_events = GlobalPmuEvents();
     if (record_pmu) {
       pmu_events.StartRecording();
     }
-    TimePoint time_start = Clock::now();
+    TimePoint time_start = Now();
     TimePoint t = time_start;
     int iters = 0;
     int iters_at_a_time = 1;
-    while (ToSeconds(t - time_start) < benchmark_min_secs) {
+    while (ToFloatSeconds(t - time_start) < benchmark_min_secs) {
       for (int i = 0; i < iters_at_a_time; i++) {
         if (cold) {
           lhs.matrix.data = cold_lhs.Next();
@@ -1887,10 +1902,10 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
         iters++;
       }
       iters_at_a_time *= 2;
-      t = Clock::now();
+      t = Now();
     }
-    latency = std::min(latency,
-                       static_cast<float>(ToSeconds(t - time_start) / iters));
+    latency = std::min(
+        latency, static_cast<float>(ToFloatSeconds(t - time_start) / iters));
     if (record_pmu) {
       pmu_events.StopRecording();
       const float normalization_factor =
@@ -1930,8 +1945,8 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
     result->backend_stall_rate = backend_stall_rate;
   }
 
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::FinishProfiling();
+#ifdef RUY_PROFILER
+  }
   fflush(stdout);
 #endif
 
@@ -1948,7 +1963,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Eval() {
-  RUY_CHECK(life_stage == LifeStage::kHasPrepackedMatrices);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasPrepackedMatrices);
   for (auto& result : results) {
     if (benchmark) {
       Benchmark(result.get());
@@ -2034,52 +2049,10 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyTestResults() const {
 }
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
-void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
-  if (getenv("QUICK_BENCHMARK")) {
-    return;
-  }
-  if (results.front()->path != Path::kReference) {
-    return;
-  }
-  Context context;
-  context.SetRuntimeEnabledPaths(Path::kReference);
-  const auto& dst_storage = results.front()->storage_matrix;
-  const Matrix<DstScalar>& dst = dst_storage.matrix;
-  Matrix<DstScalar> unclamped_dst;
-  unclamped_dst.layout = dst.layout;
-  unclamped_dst.zero_point = dst.zero_point;
-  const int size = FlatSize(unclamped_dst.layout);
-  std::vector<DstScalar> unclamped_dst_data(size);
-  unclamped_dst.data = unclamped_dst_data.data();
-  ruy::BasicSpec<AccumScalar, DstScalar> spec_unclamped;
-  spec_unclamped.bias = spec.bias;
-  spec_unclamped.multiplier_fixedpoint = spec.multiplier_fixedpoint;
-  spec_unclamped.multiplier_exponent = spec.multiplier_exponent;
-  Mul<Path::kReference>(lhs.matrix, rhs.matrix, spec_unclamped, &context,
-                        &unclamped_dst);
-  int count_clamped = 0;
-  bool found_distinct_values = false;
-  for (int row = 0; row < dst.layout.rows; row++) {
-    for (int col = 0; col < dst.layout.cols; col++) {
-      count_clamped +=
-          (Element(dst, row, col) != Element(unclamped_dst, row, col));
-      found_distinct_values |= (Element(dst, row, col) != Element(dst, 0, 0));
-    }
-  }
-  if (!spec.multiplier_exponent_perchannel) {
-    RUY_CHECK_LE(count_clamped, std::floor(2 * kClampRatio * size));
-    if (size > 10) {
-      RUY_CHECK(found_distinct_values);
-    }
-  }
-}
-
-template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
-  RUY_CHECK(life_stage == LifeStage::kEvaluated);
+  RUY_CHECK_EQ(life_stage, LifeStage::kEvaluated);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     VerifyTestResults();
-    VerifyNonTrivial();
   }
   life_stage = LifeStage::kFinal;
 }

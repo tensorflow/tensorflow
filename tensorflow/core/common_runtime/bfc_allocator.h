@@ -23,10 +23,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/allocator_retry.h"
 #include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -34,6 +35,8 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+class MemoryDump;
 
 // A memory allocator that implements a 'best-fit with coalescing'
 // algorithm.  This is essentially a very simple version of Doug Lea's
@@ -47,7 +50,8 @@ class BFCAllocator : public Allocator {
  public:
   // Takes ownership of sub_allocator.
   BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
-               bool allow_growth, const string& name);
+               bool allow_growth, const string& name,
+               bool garbage_collection = false);
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
@@ -77,6 +81,10 @@ class BFCAllocator : public Allocator {
 
   void SetSafeFrontier(uint64 count) override;
 
+  bool ShouldRecordOpName() const { return true; }
+
+  MemoryDump RecordMemoryMap();
+
  private:
   struct Bin;
 
@@ -105,7 +113,12 @@ class BFCAllocator : public Allocator {
   // constituents so they're only useful for allocations not requiring a
   // particular timestamp.
   bool MergeTimestampedChunks(size_t required_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Add TraceMe (in memory allocation and deallocation) for memory stats
+  // profiling. The requested_bytes can be negative if it's a deallocation.
+  void AddTraceMe(absl::string_view traceme_name, int64 requested_bytes)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
@@ -165,8 +178,15 @@ class BFCAllocator : public Allocator {
 
     bool in_use() const { return allocation_id != -1; }
 
+#ifdef TENSORFLOW_MEM_DEBUG
+    // optional debugging info
+    const char* op_name = nullptr;
+    uint64 step_id = 0;
+    int64 action_count = 0;
+#endif
+
     string DebugString(BFCAllocator* a,
-                       bool recurse) NO_THREAD_SAFETY_ANALYSIS {
+                       bool recurse) TF_NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
       strings::StrAppend(
           &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
@@ -180,6 +200,11 @@ class BFCAllocator : public Allocator {
         Chunk* n = a->ChunkFromHandle(next);
         strings::StrAppend(&dbg, ", next: ", n->DebugString(a, false));
       }
+#ifdef TENSORFLOW_MEM_DEBUG
+      strings::StrAppend(&dbg, ", for: ", op_name ? op_name : "UNKNOWN",
+                         ", stepid: ", step_id,
+                         ", last_action: ", action_count);
+#endif
       return dbg;
     }
   };
@@ -196,7 +221,7 @@ class BFCAllocator : public Allocator {
           : allocator_(allocator) {}
       // Sort first by size and then use pointer address as a tie breaker.
       bool operator()(const ChunkHandle ha,
-                      const ChunkHandle hb) const NO_THREAD_SAFETY_ANALYSIS {
+                      const ChunkHandle hb) const TF_NO_THREAD_SAFETY_ANALYSIS {
         const Chunk* a = allocator_->ChunkFromHandle(ha);
         const Chunk* b = allocator_->ChunkFromHandle(hb);
         if (a->size != b->size) {
@@ -309,6 +334,11 @@ class BFCAllocator : public Allocator {
       regions_.insert(entry, AllocationRegion(ptr, memory_size));
     }
 
+    std::vector<AllocationRegion>::iterator RemoveAllocationRegion(
+        std::vector<AllocationRegion>::iterator it) {
+      return regions_.erase(it);
+    }
+
     ChunkHandle get_handle(const void* p) const {
       return RegionFor(p)->get_handle(p);
     }
@@ -352,56 +382,70 @@ class BFCAllocator : public Allocator {
   // 'rounded_bytes' bytes.  Returns true on success and false on
   // failure.
   bool Extend(size_t alignment, size_t rounded_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Deallocate free regions to give back the memory to suballocator, so that
+  // we can re-allocate a larger region.  The main use scenario of this function
+  // is when OOM happens but we have free regions and the sum of sizes of free
+  // regions and unallocated bytes is larger than the requested size, implying
+  // (external) memory fragmentation.  Returns true if any free regions are
+  // found and freed; false otherwise.
+  bool DeallocateFreeRegions(size_t rounded_bytes);
+
+  // Helper function to deallocate regions.
+  void DeallocateRegions(const absl::flat_hash_set<void*>& region_ptrs)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
   void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
-                     uint64 freed_before) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+                     uint64 freed_before) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
   void SplitChunk(ChunkHandle h, size_t num_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Merges the two chunk handles.  Requires that the chunks are
   // contiguous in their allocation.
-  void Merge(ChunkHandle h, ChunkHandle h2) EXCLUSIVE_LOCKS_REQUIRED(lock_);
-
-  // Frees the memory represented by 'h', coalescing the chunk if
-  // possible.
-  void FreeAndMaybeCoalesce(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void Merge(ChunkHandle h, ChunkHandle h2) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Adds the chunk 'h' to the proper free bin.
-  void InsertFreeChunkIntoBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void InsertFreeChunkIntoBin(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Removes the free chunk pointed to by 'c' from the set free_chunks.
   void RemoveFreeChunkIterFromBin(Bin::FreeChunkSet* free_chunks,
                                   const Bin::FreeChunkSet::iterator& c)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Removes a free chunk from the bin.
-  void RemoveFreeChunkFromBin(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void RemoveFreeChunkFromBin(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
   void MaybeRemoveFreeChunkFromBin(ChunkHandle h)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Removes the chunk metadata represented by 'h'.
-  void DeleteChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void DeleteChunk(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  string RenderOccupancy() EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void DumpMemoryLog(size_t num_bytes) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  string RenderOccupancy() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void DumpMemoryLog(size_t num_bytes) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  MemoryDump RecordMemoryMapInternal() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void MaybeWriteMemoryMap() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  ChunkHandle AllocateChunk() EXCLUSIVE_LOCKS_REQUIRED(lock_);
-  void DeallocateChunk(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  ChunkHandle AllocateChunk() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void DeallocateChunk(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  Chunk* ChunkFromHandle(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  Chunk* ChunkFromHandle(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
   const Chunk* ChunkFromHandle(ChunkHandle h) const
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
-  void MarkFree(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void MarkFree(ChunkHandle h) TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   ChunkHandle TryToCoalesce(ChunkHandle h, bool ignore_freed_at)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
+  // Fragmentation is calculated as the reverse ratio of the largest free chunk
+  // size over total free memory, and returns a value within [0, 1].
+  double GetFragmentation() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Information about a Bin that is useful for debugging.
   struct BinDebugInfo {
@@ -414,7 +458,7 @@ class BFCAllocator : public Allocator {
 
   // Computes and returns a BinDebugInfo for each Bin.
   std::array<BinDebugInfo, kNumBins> get_bin_debug_info()
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   AllocatorRetry retry_helper_;
 
@@ -469,6 +513,10 @@ class BFCAllocator : public Allocator {
   // of the available memory.
   bool started_backpedal_ = false;
 
+  // Whether the allocator will deallocate free regions to avoid OOM due to
+  // memory fragmentation.
+  bool garbage_collection_;
+
   std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;
   SharedCounter* timing_counter_ = nullptr;
@@ -478,19 +526,24 @@ class BFCAllocator : public Allocator {
 
   // Structures mutable after construction
   mutable mutex lock_;
-  RegionManager region_manager_ GUARDED_BY(lock_);
+  RegionManager region_manager_ TF_GUARDED_BY(lock_);
 
-  std::vector<Chunk> chunks_ GUARDED_BY(lock_);
+  std::vector<Chunk> chunks_ TF_GUARDED_BY(lock_);
 
   // Pointer to head of linked list of free Chunks
-  ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
+  ChunkHandle free_chunks_list_ TF_GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
-  int64 next_allocation_id_ GUARDED_BY(lock_);
+  int64 next_allocation_id_ TF_GUARDED_BY(lock_);
 
   // Stats.
-  AllocatorStats stats_ GUARDED_BY(lock_);
+  AllocatorStats stats_ TF_GUARDED_BY(lock_);
+#ifdef TENSORFLOW_MEM_DEBUG
+  int64 action_counter_ TF_GUARDED_BY(lock_);
+#define MEM_DEBUG_SIZE_HISTORY_SIZE 4096
+  int64 size_history_[MEM_DEBUG_SIZE_HISTORY_SIZE];
+#endif
 
   friend class GPUBFCAllocatorPrivateMethodsTest;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);

@@ -15,195 +15,434 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 
-#include "tensorflow/core/common_runtime/device.h"
+#include <queue>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/graph_view.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/grappler_item_builder.h"
-#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
-#include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
-#include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-void AddFakeSinks(FunctionDef* function_def) {
-  int counter = 0;
-  for (const auto& output : function_def->signature().output_arg()) {
-    NodeDef* node = function_def->add_node_def();
-    tensorflow::grappler::function_utils::SetUniqueFunctionNodeName(
-        strings::StrCat("FakeSink", counter++), function_def, node);
-    node->set_op("Identity");
-    node->add_input(function_def->ret().at(output.name()));
-    (*node->mutable_attr())["T"].set_type(output.type());
+constexpr char kDelimiter[] = "@@";
 
-    (*function_def->mutable_ret())[output.name()] =
-        strings::StrCat(node->name(), ":output:0");
+// clang-format off
+constexpr std::array<const char*, 3> kOpsWithSeed = {
+    "AnonymousRandomSeedGenerator",
+    "ShuffleDataset",
+    "ShuffleAndRepeatDataset"
+};
+// clang-format on
+
+constexpr char kSeedInputName[] = "seed";
+constexpr char kSeed2InputName[] = "seed2";
+
+template <std::size_t SIZE>
+bool IsNodeOfType(const NodeDef& node,
+                  const std::array<const char*, SIZE>& op_types) {
+  for (const auto& type : op_types) {
+    if (node.op() == type) return true;
+  }
+  return false;
+}
+
+Status FindNode(const GraphDef& graph, const string& name,
+                const NodeDef** result) {
+  for (const auto& node : graph.node()) {
+    if (node.name() == name) {
+      *result = &node;
+      return Status::OK();
+    }
+  }
+  return errors::NotFound("Could not find node ", name, ".");
+}
+
+uint64 DefaultDependencyLoopNodeHash() {
+  static const uint64 hash = Hash64("DependencyLoopNode");
+  return hash;
+}
+
+uint64 DefaultDependencyLoopFnHash() {
+  static const uint64 hash = Hash64("DependencyLoopFn");
+  return hash;
+}
+
+void ClearOpDefForHashing(OpDef* op) {
+  op->clear_name();
+  op->clear_description();
+  op->clear_summary();
+  for (auto& arg : *op->mutable_input_arg()) {
+    arg.clear_name();
+    arg.clear_description();
+  }
+  for (auto& arg : *op->mutable_output_arg()) {
+    arg.clear_name();
+    arg.clear_description();
   }
 }
 
-void RemoveFakeSinks(FunctionDef* function_def) {
-  // Map from identity node names to their input tensor strings
-  std::map<string, string> identity_map;
-  for (const auto& node : function_def->node_def()) {
-    if (node.op() == "Identity" && node.input_size() == 1) {
-      identity_map[node.name()] = node.input(0);
+namespace {
+Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
+  *result = false;
+  if (IsNodeOfType(node, kOpsWithSeed)) {
+    const OpRegistrationData* reg;
+    auto status = OpRegistry::Global()->LookUp(node.op(), &reg);
+
+    if (status.ok()) {
+      if (reg->op_def.input_arg_size() > i) {
+        const std::string input_arg_name = reg->op_def.input_arg(i).name();
+        if (input_arg_name == kSeedInputName ||
+            input_arg_name == kSeed2InputName) {
+          VLOG(2) << "Ignoring arg: " << input_arg_name
+                  << " from node: " << node.name();
+          *result = true;
+          return Status::OK();
+        }
+      }
+    } else if (errors::IsNotFound(status)) {
+      LOG(WARNING) << "Cannot find " << node.op()
+                   << " in global op registry, so cannot determine which "
+                      "inputs are seeds.";
+    } else {
+      return status;
     }
   }
-  for (const auto& output_arg : function_def->signature().output_arg()) {
-    const string& tensor = function_def->ret().at(output_arg.name());
-    const string& output_node = tensor.substr(0, tensor.find(':'));
-    if (identity_map.find(output_node) != identity_map.end()) {
-      (*function_def->mutable_ret())[output_arg.name()] =
-          identity_map.at(output_node);
-    }
-  }
-}
-
-Status ApplyRewrites(OpKernelContext* ctx,
-                     const std::function<RewriterConfig(void)> config_factory,
-                     bool optimize_function_library, GraphDef* graph_def,
-                     string* output_node) {
-  // Add an identity node as the fetch node, otherwise we might get 'placeholder
-  // is both fed and fetched' errors in some cases when using input list with
-  // placeholder dataset nodes.
-  NodeDef* node = graph_def->mutable_node()->Add();
-  tensorflow::grappler::graph_utils::SetUniqueGraphNodeName("Sink", graph_def,
-                                                            node);
-  node->set_op("Identity");
-  node->add_input(*output_node);
-  (*node->mutable_attr())["T"].set_type(DT_VARIANT);
-  *output_node = node->name();
-
-  // Add fake sink node to graph and functions to allow rewriting the actual
-  // sink nodes.
-  //
-  // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals
-  // to be optimizable, we will no longer need this.
-  for (auto& function_def : *graph_def->mutable_library()->mutable_function()) {
-    AddFakeSinks(&function_def);
-  }
-
-  // Create metagraph.
-  MetaGraphDef meta_graph_def;
-  (*meta_graph_def.mutable_graph_def()) = *graph_def;
-
-  // Grappler determines fetch ops from collection 'train_op'.
-  CollectionDef collection_def;
-  auto node_list = collection_def.mutable_node_list();
-  node_list->add_value(*output_node);
-  (*meta_graph_def.mutable_collection_def())["train_op"] = collection_def;
-
-  // Create Grappler item.
-  tensorflow::grappler::ItemConfig item_config;
-  item_config.apply_optimizations = true;
-  std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
-      tensorflow::grappler::GrapplerItemFromMetaGraphDef(
-          "graph", meta_graph_def, item_config);
-  grappler_item->optimization_options().optimize_function_library =
-      optimize_function_library;
-  std::unordered_map<string, tensorflow::DeviceProperties> device_map;
-  tensorflow::grappler::VirtualCluster cluster(device_map);
-
-  // Run data optimizer using grappler's meta optimizer.
-  tensorflow::ConfigProto config;
-  *config.mutable_graph_options()->mutable_rewrite_options() = config_factory();
-  TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      *grappler_item, config, ctx->device(), &cluster, graph_def));
-
-  // Remove fake sinks after optimizations are done.
-  //
-  // TODO(b/118820916): When MetaOptimizer adds provisions for function retvals
-  // to be optimizable, we will no longer need this.
-  for (auto& function_def : *graph_def->mutable_library()->mutable_function()) {
-    RemoveFakeSinks(&function_def);
-  }
-
   return Status::OK();
 }
+
+// Returns true if its a control input.
+Status ParseInputNodeName(const std::string& input_name, std::string* node_name,
+                          std::string* suffix, bool* is_control_input) {
+  if (input_name[0] == '^') {
+    *node_name = input_name.substr(1);
+    *is_control_input = true;
+    return Status::OK();
+  }
+  std::pair<std::string, std::string> node_spec =
+      absl::StrSplit(input_name, absl::MaxSplits(':', 1));
+  *node_name = node_spec.first;
+  *suffix = node_spec.second;
+  *is_control_input = false;
+  return Status::OK();
+}
+}  // namespace
+
+// Given a graph_def and a root_node, this class computes a fingerprint that
+// tries to capture the structure of the graph rooted at the provided node.
+// It does not at any point rely on the names of the nodes in the graph and
+// just relies on the connections between different nodes. In the presence of
+// multiple cycles in the graph, there is a non-zero possibility that two
+// graphs with different structure might end up with the same fingerprint
+// as in order to break cycles we prune away some edges (in a deterministic
+// fashion though). Idea for this algorithm was borrowed from:
+// https://stackoverflow.com/questions/11338746/directed-graphs-with-a-given-root-node-match-another-directed-graph-for-equali
+class GraphHasher {
+ public:
+  explicit GraphHasher(const GraphDef& graph_def, const NodeDef* root_node)
+      : graph_def_(graph_def),
+        root_node_(root_node),
+        flib_def_(OpRegistry::Global(), graph_def.library()) {}
+
+  Status ComputeHash(uint64* hash) {
+    TF_RETURN_IF_ERROR(Init());
+    return ComputeNodeHash(root_node_, hash);
+  }
+
+ private:
+  // Pre process the graph to do a BFS and prune away cycles that might cause
+  // problems.
+  Status Init() {
+    absl::flat_hash_set<std::string> visited;
+    std::queue<const NodeDef*> bfs_queue;
+    bfs_queue.push(root_node_);
+    while (!bfs_queue.empty()) {
+      const NodeDef* node = bfs_queue.front();
+      bfs_queue.pop();
+      visited.insert(node->name());
+      NodeRep node_rep;
+      for (int i = 0; i < node->input_size(); ++i) {
+        DCHECK_GT(node->input(i).length(), 0);
+
+        // We skip trying to take the hash of the seeds of any ops, as they
+        // are irrelevant to the hash of the graph and may vary from run to run.
+        bool should_ignore_input = false;
+        TF_RETURN_IF_ERROR(ShouldIgnoreInput(*node, i, &should_ignore_input));
+        if (should_ignore_input) continue;
+
+        std::string node_name, suffix;
+        bool is_control_input;
+        TF_RETURN_IF_ERROR(ParseInputNodeName(node->input(i), &node_name,
+                                              &suffix, &is_control_input));
+        const NodeDef* input_node;
+        TF_RETURN_IF_ERROR(FindNode(graph_def_, node_name, &input_node));
+
+        // If we've already seen this node before, skip it and don't add it to
+        // the queue.
+        if (visited.find(node_name) != visited.end()) {
+          EdgeRep cycle_edge(node, input_node);
+          cycle_forming_edges_.insert(cycle_edge.GetHash());
+          continue;
+        }
+        if (is_control_input) {
+          node_rep.node_control_inputs.push_back(input_node);
+        } else {
+          node_rep.node_inputs.push_back(std::make_pair(input_node, suffix));
+        }
+        bfs_queue.push(input_node);
+      }
+      nodes_[node] = node_rep;
+    }
+    return Status::OK();
+  }
+
+  Status ComputeNodeHash(const NodeDef* node, uint64* hash) {
+    auto it = cache_.find(node);
+    if (it != cache_.end()) {
+      *hash = it->second;
+      return Status::OK();
+    }
+
+    NodeRep* node_rep = gtl::FindOrNull(nodes_, node);
+    if (node_rep == nullptr) {
+      return errors::InvalidArgument("Could not find node: ", node->name());
+    }
+
+    uint64 non_input_hash;
+    TF_RETURN_IF_ERROR(ComputeNonInputNodeHash(*node, &non_input_hash));
+
+    // Hash control inputs. We combine the hashes in an unordered fashion
+    // because the order doesn't matter.
+    uint64 control_inputs_hash = 0;
+    for (const NodeDef* control_input : node_rep->node_control_inputs) {
+      uint64 node_hash = 0;
+      EdgeRep edge(node, control_input);
+      // If the edge was pruned we get the non input node hash to avoid cycles.
+      if (cycle_forming_edges_.find(edge.GetHash()) !=
+          cycle_forming_edges_.end()) {
+        TF_RETURN_IF_ERROR(ComputeNonInputNodeHash(*control_input, &node_hash));
+      } else {
+        TF_RETURN_IF_ERROR(ComputeNodeHash(control_input, &node_hash));
+      }
+      control_inputs_hash =
+          Hash64CombineUnordered(control_inputs_hash, node_hash);
+    }
+
+    // Hash regular inputs. We combine them in an ordered fashion.
+    uint64 inputs_hash = 0;
+    for (auto input : node_rep->node_inputs) {
+      uint64 node_hash = 0;
+      EdgeRep edge(node, input.first);
+      // If the edge was pruned we get the non input node hash to avoid cycles.
+      if (cycle_forming_edges_.find(edge.GetHash()) !=
+          cycle_forming_edges_.end()) {
+        TF_RETURN_IF_ERROR(ComputeNonInputNodeHash(*input.first, &node_hash));
+      } else {
+        TF_RETURN_IF_ERROR(ComputeNodeHash(input.first, &node_hash));
+      }
+      inputs_hash = Hash64Combine(
+          inputs_hash, Hash64Combine(node_hash, Hash64(input.second)));
+    }
+
+    *hash = Hash64Combine(non_input_hash,
+                          Hash64Combine(control_inputs_hash, inputs_hash));
+    cache_[node] = *hash;
+    return Status::OK();
+  }
+
+  Status ComputeNonInputNodeHash(const NodeDef& node, uint64* hash) {
+    // Hash Op.
+    uint64 op_hash = Hash64(node.op());
+
+    // Hash Attrs. We get the list of attrs from the op registry and then look
+    // up their values in the NodeDef attr map. This avoids looping over
+    // a map which is non-deterministic.
+    uint64 attrs_hash = 0;
+    const OpRegistrationData* reg;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(node.op(), &reg));
+
+    for (const auto& attr : reg->op_def.attr()) {
+      auto attr_key = attr.name();
+      if (!node.attr().contains(attr_key)) continue;
+      auto attr_value = node.attr().at(attr_key);
+      if (attr_key == kColocationAttrName ||
+          attr_key == kColocationGroupPrefix) {
+        continue;
+      }
+      uint64 attr_hash = 0;
+      TF_RETURN_IF_ERROR(HashAttr(attr_key, attr_value, &attr_hash));
+      attrs_hash = Hash64Combine(attrs_hash, attr_hash);
+    }
+
+    // Hash Device.
+    uint64 device_hash = Hash64(node.device());
+
+    *hash = Hash64Combine(op_hash, Hash64Combine(attrs_hash, device_hash));
+    return Status::OK();
+  }
+
+  Status HashAttr(const std::string& attr_name, const AttrValue& attr_value,
+                  uint64* hash) {
+    uint64 value_hash = 0;
+    if (attr_value.has_func()) {
+      TF_RETURN_IF_ERROR(HashFunction(attr_value.func(), &value_hash));
+    } else {
+      value_hash = DeterministicProtoHash64(attr_value);
+    }
+    *hash = Hash64(absl::StrCat(attr_name, "=", value_hash));
+    return Status::OK();
+  }
+
+  Status HashFunction(const NameAttrList& func, uint64* hash) {
+    const FunctionDef* fdef = flib_def_.Find(func.name());
+
+    // Convert to a GraphDef.
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
+                                               &flib_def_, &fbody));
+    GraphDef graph_def = fbody->graph->ToGraphDefDebug();
+    graph_def.mutable_library()->MergeFrom(flib_def_.ToProto());
+
+    // For each return node, we create a new GraphHasher to compute a hash.
+    // We then combine these hashes to produce the hash ordered.
+    uint64 ret_nodes_hash = 0;
+    for (const auto& ret_node : fbody->ret_nodes) {
+      GraphHasher ret_node_hasher(graph_def, &ret_node->def());
+      uint64 ret_node_hash = 0;
+      TF_RETURN_IF_ERROR(ret_node_hasher.ComputeHash(&ret_node_hash));
+      ret_nodes_hash = Hash64Combine(ret_nodes_hash, ret_node_hash);
+    }
+
+    // For the control ret nodes, we just take the non-input hash.
+    uint64 control_ret_nodes_hash = 0;
+    for (const auto& control_ret_node : fbody->control_ret_nodes) {
+      uint64 control_ret_node_hash = 0;
+      TF_RETURN_IF_ERROR(ComputeNonInputNodeHash(control_ret_node->def(),
+                                                 &control_ret_node_hash));
+      control_ret_nodes_hash =
+          Hash64CombineUnordered(control_ret_nodes_hash, control_ret_node_hash);
+    }
+
+    *hash = Hash64Combine(ret_nodes_hash, control_ret_nodes_hash);
+    return Status::OK();
+  }
+
+  struct NodeRep {
+    std::vector<const NodeDef*> node_control_inputs;
+    std::vector<std::pair<const NodeDef*, std::string>> node_inputs;
+  };
+
+  struct EdgeRep {
+    const NodeDef* start_node;
+    const NodeDef* end_node;
+
+    EdgeRep(const NodeDef* start, const NodeDef* end)
+        : start_node(start), end_node(end) {}
+
+    uint64 GetHash() {
+      return Hash64Combine(absl::Hash<const NodeDef*>()(start_node),
+                           absl::Hash<const NodeDef*>()(end_node));
+    }
+  };
+
+  const GraphDef graph_def_;
+  const NodeDef* root_node_;
+  const FunctionLibraryDefinition flib_def_;
+  // Edges that need to be pruned as their presence will cause cycles.
+  absl::flat_hash_set<uint64> cycle_forming_edges_;
+  absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
+  absl::flat_hash_map<const NodeDef*, uint64> cache_;
+};
 
 }  // anonymous namespace
 
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def) {
-  GraphDefBuilder b;
-  DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* output_node = nullptr;
-  TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which Tensor
-  // represents this Dataset.
-  ops::UnaryOp("_Retval", output_node,
-               b.opts()
-                   .WithName("dataset")
-                   .WithAttr("T", DT_VARIANT)
-                   .WithAttr("index", 0));
-  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
+Status HashTensor(const Tensor& tensor, uint64* hash) {
+  const tstring* s = nullptr;
+  // Hash tensor type.
+  *hash = Hash64Combine(0, tensor.dtype());
+  // Hash tensor shape.
+  for (int i = 0; i < tensor.shape().dims(); ++i) {
+    *hash = Hash64Combine(*hash, tensor.shape().dim_size(i));
+  }
+  // Hash tensor data.
+  switch (tensor.dtype()) {
+    case DT_RESOURCE:
+    case DT_VARIANT:
+      return errors::Unimplemented("Hashing ", DataTypeString(tensor.dtype()),
+                                   " is not supported.");
+    case DT_STRING:
+      s = tensor.flat<tstring>().data();
+      for (int i = 0; i < tensor.NumElements(); ++i, ++s) {
+        *hash = Hash64Combine(*hash, Hash64(s->data(), s->size()));
+      }
+      break;
+    default:
+      *hash = Hash64(tensor.tensor_data().data(), tensor.tensor_data().size());
+  }
   return Status::OK();
 }
 
-Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
-                      std::function<RewriterConfig(void)> config_factory,
-                      bool optimize_function_library,
-                      DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
-  std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.optimization_only = true;
-  SerializationContext serialization_ctx(params);
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
+Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash) {
+  GraphHasher graph_hasher(graph, &node);
+  return graph_hasher.ComputeHash(hash);
+}
 
-  string output_node;
-  for (const auto& node : graph_def.node()) {
+Status HashGraph(const GraphDef& graph_def, uint64* hash) {
+  const NodeDef* sink = nullptr;
+  for (auto& node : graph_def.node()) {
     if (node.op() == "_Retval") {
-      output_node = node.input(0);
+      sink = &node;
+      break;
     }
   }
 
-  VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
-  TF_RETURN_IF_ERROR(ApplyRewrites(ctx, config_factory,
-                                   optimize_function_library, &graph_def,
-                                   &output_node));
-  VLOG(3) << "After graph rewrites: " << graph_def.DebugString();
+  if (sink == nullptr) {
+    return errors::Internal("Cannot find sink node for dataset graph.");
+  }
 
-  // Instantiate the optimized input pipeline by running the optimized graph
-  // using the optimized function library.
-  FunctionLibraryRuntime* flr = nullptr;
-  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr = nullptr;
-  std::unique_ptr<FunctionLibraryDefinition> lib_def = nullptr;
-  TF_RETURN_IF_ERROR(
-      ctx->function_library()->Clone(&lib_def, &pflr, &flr, true));
+  GraphHasher graph_hasher(graph_def, sink);
+  TF_RETURN_IF_ERROR(graph_hasher.ComputeHash(hash));
+  return Status::OK();
+}
 
-  // Some functions may have been modified without having their names
-  // changed (for example, nested dataset graphs from FlatMap or
-  // Interleave).
-  TF_RETURN_IF_ERROR(AddToFunctionLibrary(lib_def.get(), graph_def.library()));
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+  if (seeds.first == 0 && seeds.second == 0) {
+    return {random::New64(), random::New64()};
+  }
+  return seeds;
+}
 
-  Graph graph(OpRegistry::Global());
-  TF_RETURN_IF_ERROR(ImportGraphDef({}, graph_def, &graph, nullptr));
-  std::vector<Tensor> outputs;
-  GraphRunner graph_runner(flr->device());
-
-  TF_RETURN_IF_ERROR(
-      graph_runner.Run(&graph, flr, input_list, {output_node}, &outputs));
-  TF_RETURN_IF_ERROR(GetDatasetFromVariantTensor(outputs[0], rewritten_input));
-  (*rewritten_input)->Ref();
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> register_fn,
+                                    std::function<void()>* deregister_fn) {
+  if (cancellation_manager) {
+    CancellationToken token = cancellation_manager->get_cancellation_token();
+    if (!cancellation_manager->RegisterCallback(token,
+                                                std::move(register_fn))) {
+      return errors::Cancelled("Operation was cancelled");
+    }
+    *deregister_fn = [cancellation_manager, token]() {
+      cancellation_manager->DeregisterCallback(token);
+    };
+  } else {
+    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
+               "not be registered.";
+    *deregister_fn = []() {};
+  }
   return Status::OK();
 }
 
@@ -246,267 +485,38 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 
 namespace {
 
-uint64 DefaultDependencyLoopNodeHash() {
-  static const uint64 hash = Hash64("DependencyLoopNode");
-  return hash;
+// We assume that all keys are of the form <iterator_prefix>:<name>. We extract
+// the iterator name by getting rid of everything post the final colon.
+Status GetIteratorName(StringPiece key, string* name) {
+  if (!str_util::StartsWith(key, data::kFullNameRandomHex)) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  std::vector<string> split_keys = str_util::Split(key, data::kPipe);
+  if (split_keys.size() != 2) {
+    return errors::InvalidArgument("Save key: ", key,
+                                   " not generated using full_name.");
+  }
+  string real_key = split_keys[1];
+  const int pos = real_key.rfind(kColon);
+  *name = real_key.substr(0, pos);
+  return Status::OK();
 }
-
-uint64 DefaultDependencyLoopFnHash() {
-  static const uint64 hash = Hash64("DependencyLoopFn");
-  return hash;
-}
-
-void ClearOpDefForHashing(OpDef* op) {
-  op->clear_name();
-  op->clear_description();
-  op->clear_summary();
-  for (auto& arg : *op->mutable_input_arg()) {
-    arg.clear_name();
-    arg.clear_description();
-  }
-  for (auto& arg : *op->mutable_output_arg()) {
-    arg.clear_name();
-    arg.clear_description();
-  }
-}
-
-// forward declaration for use in HashAttr.
-uint64 HashSubgraphFunctionImpl(
-    const FunctionDefLibrary& library, const FunctionDef* f,
-    std::vector<std::string>* visited,
-    absl::flat_hash_map<std::string, uint64>* cache);
-
-// Produces a hash of a attribute from an op or a function. Since attributes
-// may refer to functions present in the graph, we may need to hash the function
-// referred to by the attribute, and thus we need the FunctionDefLibrary.
-uint64 HashAttr(const FunctionDefLibrary& library, const std::string& attr_key,
-                const AttrValue& attr_value, std::vector<std::string>* visited,
-                absl::flat_hash_map<std::string, uint64>* cache) {
-  uint64 attr_hash = 0;
-  if (attr_value.has_func()) {
-    for (const auto& func : library.function()) {
-      if (func.signature().name() == attr_value.func().name()) {
-        attr_hash = Hash64CombineUnordered(
-            attr_hash,
-            Hash64(absl::StrCat(
-                attr_key, "=",
-                HashSubgraphFunctionImpl(library, &func, visited, cache))));
-        break;
-      }
-    }
-  } else {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, Hash64(absl::StrCat(attr_key, "=",
-                                       DeterministicProtoHash64(attr_value))));
-  }
-
-  return attr_hash;
-}
-
-// This function hashes a subgraph (rooted at node) by traversing all possible
-// dependency paths from that node.
-uint64 HashSubgraphImpl(const grappler::GraphView& g, const NodeDef* node,
-                        std::vector<std::string>* visited,
-                        absl::flat_hash_map<std::string, uint64>* cache) {
-  uint64 input_hash = 0;
-  uint64 control_dep_hash = 0;
-
-  std::string canonical_node_name = absl::StrCat("node-", node->name());
-  auto it = cache->find(canonical_node_name);
-  if (it != cache->end()) {
-    return it->second;
-  }
-
-  uint64 op_hash = Hash64(node->op());
-
-  // Checks to make sure we won't get stuck in an infinite loop (especially in
-  // loops with control dependencies).
-  for (const std::string& visited_node_name : *visited) {
-    if (visited_node_name == canonical_node_name) {
-      uint64 final_hash =
-          Hash64Combine(DefaultDependencyLoopNodeHash(), op_hash);
-      (*cache)[canonical_node_name] = final_hash;
-      return final_hash;
-    }
-  }
-  visited->push_back(canonical_node_name);
-
-  for (int i = 0; i < node->input_size(); ++i) {
-    DCHECK_GT(node->input(i).length(), 0);
-    if (node->input(i)[0] == '^') {
-      // TODO(frankchn): Investigate if control dependencies are necessary
-      // inputs to the hash.
-      // Control dependency node names start with '^', and order of appearance
-      // for the control dependencies does not matter.
-      control_dep_hash = Hash64CombineUnordered(
-          control_dep_hash,
-          HashSubgraphImpl(g, g.GetNode(node->input(i).substr(1)), visited,
-                           cache));
-    } else {
-      // The output port is significant and is optionally delimited by a ':'
-      // for non-zero ports.
-      std::pair<std::string, std::string> node_spec =
-          absl::StrSplit(node->input(i), absl::MaxSplits(':', 1));
-      uint64 child_node_hash =
-          HashSubgraphImpl(g, g.GetNode(node_spec.first), visited, cache);
-      uint64 child_port_hash = Hash64(node_spec.second);
-      input_hash = Hash64Combine(
-          input_hash, Hash64Combine(child_node_hash, child_port_hash));
-    }
-  }
-
-  uint64 attr_hash = 0;
-  for (const auto& attr : node->attr()) {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(g.graph()->library(), attr.first, attr.second,
-                            visited, cache));
-  }
-
-  uint64 device_hash = Hash64(node->device());
-
-  uint64 final_hash = Hash64Combine(
-      Hash64Combine(attr_hash, op_hash),
-      Hash64Combine(device_hash, Hash64Combine(input_hash, control_dep_hash)));
-
-  (*cache)[canonical_node_name] = final_hash;
-  visited->pop_back();
-
-  return final_hash;
-}
-
-// This function hashes a function by traversing all possible dependency paths
-// from all output nodes declared by the function in its definition.
-uint64 HashSubgraphFunctionImpl(
-    const FunctionDefLibrary& library, const FunctionDef* f,
-    std::vector<std::string>* visited,
-    absl::flat_hash_map<std::string, uint64>* cache) {
-  std::string canonical_function_name =
-      absl::StrCat("function-", f->signature().name());
-
-  auto it = cache->find(canonical_function_name);
-  if (it != cache->end()) {
-    return it->second;
-  }
-
-  OpDef op = f->signature();
-  ClearOpDefForHashing(&op);
-  uint64 signature_hash = OpDefHash(op);
-
-  // Checks to make sure we won't get stuck in an infinite loop (especially when
-  // functions depend on other function ops as a control dependency).
-  for (const std::string& visited_node_name : *visited) {
-    if (visited_node_name == canonical_function_name) {
-      uint64 final_hash =
-          Hash64Combine(DefaultDependencyLoopFnHash(), signature_hash);
-      (*cache)[canonical_function_name] = final_hash;
-      return final_hash;
-    }
-  }
-  visited->push_back(canonical_function_name);
-
-  uint64 attr_hash = 0;
-  for (const auto& attr : f->attr()) {
-    attr_hash = Hash64CombineUnordered(
-        attr_hash, HashAttr(library, attr.first, attr.second, visited, cache));
-  }
-
-  uint64 arg_attr_hash = 0;
-  for (const auto& arg_attr : f->arg_attr()) {
-    for (const auto& attr : arg_attr.second.attr()) {
-      arg_attr_hash = Hash64CombineUnordered(
-          arg_attr_hash,
-          Hash64Combine(arg_attr.first, HashAttr(library, attr.first,
-                                                 attr.second, visited, cache)));
-    }
-  }
-
-  GraphDef node_graph;
-  for (const auto& node : f->node_def()) {
-    NodeDef* node_graph_node = node_graph.add_node();
-    *node_graph_node = node;
-  }
-  for (const auto& input_arg : f->signature().input_arg()) {
-    // We add dummy input nodes for the inputs to the function.
-    NodeDef* node_graph_node = node_graph.add_node();
-    node_graph_node->set_name(input_arg.name());
-    node_graph_node->set_op("_Retval");
-  }
-  *(node_graph.mutable_library()) = library;
-
-  grappler::GraphView node_gv(&node_graph);
-
-  // TODO(frankchn): Investigate whether we need to hash the name of the
-  // return argument / control return argument or whether we can relax it and
-  // hash the index (etc...)
-  uint64 ret_hash = f->ret_size();
-  for (const auto& ret : f->ret()) {
-    std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
-    // For every return value, we need to hash the output node (and the subgraph
-    // rooted at the output node) to ensure that the computation graph that
-    // ends at the output node has not changed.
-    uint64 node_hash = HashSubgraphImpl(
-        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
-    uint64 node_port_hash = Hash64(node_spec.second);
-
-    ret_hash = Hash64CombineUnordered(
-        ret_hash, Hash64Combine(Hash64(ret.first),
-                                Hash64Combine(node_hash, node_port_hash)));
-  }
-
-  uint64 control_ret_hash = f->control_ret_size();
-  for (const auto& ret : f->control_ret()) {
-    std::pair<std::string, std::string> node_spec =
-        absl::StrSplit(ret.second, absl::MaxSplits(':', 1));
-
-    uint64 node_hash = HashSubgraphImpl(
-        node_gv, node_gv.GetNode(node_spec.first), visited, cache);
-    uint64 node_port_hash = Hash64(node_spec.second);
-
-    control_ret_hash = Hash64CombineUnordered(
-        control_ret_hash,
-        Hash64Combine(Hash64(ret.first),
-                      Hash64Combine(node_hash, node_port_hash)));
-  }
-
-  uint64 final_hash = Hash64Combine(
-      Hash64Combine(Hash64Combine(signature_hash, attr_hash), arg_attr_hash),
-      Hash64Combine(ret_hash, control_ret_hash));
-  (*cache)[canonical_function_name] = final_hash;
-  visited->pop_back();
-
-  return final_hash;
-}
-
-}  // namespace
-
-uint64 HashSubgraphFunction(const FunctionDefLibrary& library,
-                            const FunctionDef* f) {
-  std::vector<std::string> visited;
-  absl::flat_hash_map<std::string, uint64> cache;
-  return HashSubgraphFunctionImpl(library, f, &visited, &cache);
-}
-
-uint64 HashSubgraph(const GraphDef& g, const NodeDef* node) {
-  std::vector<std::string> visited;
-  absl::flat_hash_map<std::string, uint64> cache;
-  return HashSubgraphImpl(grappler::GraphView(&g), node, &visited, &cache);
-}
-
-namespace {
-
-constexpr char kDelimiter[] = "@@";
 
 }  // namespace
 
 VariantTensorDataReader::VariantTensorDataReader(
-    const tensorflow::VariantTensorData* data)
-    : data_(data) {
-  string metadata;
-  data_->get_metadata(&metadata);
-  auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
-  for (size_t i = 0; i < keys.size(); ++i) {
-    map_[keys[i]] = i;
+    const std::vector<const tensorflow::VariantTensorData*>& data) {
+  for (const auto& d : data) {
+    string metadata;
+    d->get_metadata(&metadata);
+    auto keys = str_util::Split(metadata, kDelimiter, str_util::SkipEmpty());
+    const string name = keys[0];
+    data_[name] = d;
+    map_[name] = std::map<string, size_t>();
+    for (size_t i = 1; i < keys.size(); ++i) {
+      map_[name][keys[i]] = i - 1;
+    }
   }
 }
 
@@ -514,7 +524,7 @@ Status VariantTensorDataReader::ReadScalar(StringPiece key, int64* val) {
   return ReadScalarInternal(key, val);
 }
 
-Status VariantTensorDataReader::ReadScalar(StringPiece key, string* val) {
+Status VariantTensorDataReader::ReadScalar(StringPiece key, tstring* val) {
   return ReadScalarInternal(key, val);
 }
 
@@ -522,25 +532,67 @@ Status VariantTensorDataReader::ReadTensor(StringPiece key, Tensor* val) {
   return ReadTensorInternal(key, val);
 }
 
+Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
+                                           int64* val) {
+  return ReadScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataReader::ReadScalar(StringPiece name, StringPiece key,
+                                           tstring* val) {
+  return ReadScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataReader::ReadTensor(StringPiece name, StringPiece key,
+                                           Tensor* val) {
+  return ReadTensorInternal(name, key, val);
+}
+
 bool VariantTensorDataReader::Contains(StringPiece key) {
-  return map_.find(string(key)) != map_.end();
+  string name;
+  if (!GetIteratorName(key, &name).ok()) {
+    return false;
+  }
+  return Contains(name, key);
+}
+
+bool VariantTensorDataReader::Contains(StringPiece n, StringPiece key) {
+  string name(n);
+  return map_[name].find(string(key)) != map_[name].end();
 }
 
 template <typename T>
 Status VariantTensorDataReader::ReadScalarInternal(StringPiece key, T* val) {
-  if (map_.find(string(key)) == map_.end()) {
-    return errors::NotFound(key);
-  }
-  *val = data_->tensors(map_[string(key)]).scalar<T>()();
-  return Status::OK();
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return ReadScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataReader::ReadTensorInternal(StringPiece key,
                                                    Tensor* val) {
-  if (map_.find(string(key)) == map_.end()) {
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return ReadTensorInternal(name, key, val);
+}
+
+template <typename T>
+Status VariantTensorDataReader::ReadScalarInternal(StringPiece n,
+                                                   StringPiece key, T* val) {
+  string name(n);
+  if (map_[name].find(string(key)) == map_[name].end()) {
     return errors::NotFound(key);
   }
-  *val = data_->tensors(map_[string(key)]);
+  *val = data_[name]->tensors(map_[name][string(key)]).scalar<T>()();
+  return Status::OK();
+}
+
+Status VariantTensorDataReader::ReadTensorInternal(StringPiece n,
+                                                   StringPiece key,
+                                                   Tensor* val) {
+  string name(n);
+  if (map_[name].find(string(key)) == map_[name].end()) {
+    return errors::NotFound(key);
+  }
+  *val = data_[name]->tensors(map_[name][string(key)]);
   return Status::OK();
 }
 
@@ -549,7 +601,7 @@ Status VariantTensorDataWriter::WriteScalar(StringPiece key, const int64 val) {
 }
 
 Status VariantTensorDataWriter::WriteScalar(StringPiece key,
-                                            const string& val) {
+                                            const tstring& val) {
   return WriteScalarInternal(key, val);
 }
 
@@ -558,28 +610,111 @@ Status VariantTensorDataWriter::WriteTensor(StringPiece key,
   return WriteTensorInternal(key, val);
 }
 
-Status VariantTensorDataWriter::Flush() {
-  string metadata;
-  for (size_t i = 0; i < keys_.size(); ++i) {
-    strings::StrAppend(&metadata, kDelimiter, keys_[i]);
+Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
+                                            const int64 val) {
+  return WriteScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataWriter::WriteScalar(StringPiece name, StringPiece key,
+                                            const tstring& val) {
+  return WriteScalarInternal(name, key, val);
+}
+
+Status VariantTensorDataWriter::WriteTensor(StringPiece name, StringPiece key,
+                                            const Tensor& val) {
+  return WriteTensorInternal(name, key, val);
+}
+
+void VariantTensorDataWriter::MaybeFlush() {
+  if (is_flushed_) return;
+  for (auto& keys : keys_) {
+    const string name = keys.first;
+    string metadata = name;
+    for (size_t i = 0; i < keys_[name].size(); ++i) {
+      strings::StrAppend(&metadata, kDelimiter, keys_[name][i]);
+    }
+    data_[name]->set_metadata(metadata);
   }
-  data_->set_metadata(metadata);
-  return Status::OK();
+  is_flushed_ = true;
+}
+
+void VariantTensorDataWriter::Reset() {
+  is_flushed_ = false;
+  data_.clear();
+  keys_.clear();
+}
+
+void VariantTensorDataWriter::ReleaseData(
+    std::vector<std::unique_ptr<VariantTensorData>>* variants) {
+  MaybeFlush();
+  for (auto& it : data_) {
+    variants->push_back(std::move(it.second));
+  }
+  Reset();
+}
+
+void VariantTensorDataWriter::GetData(
+    std::vector<const VariantTensorData*>* variants) {
+  MaybeFlush();
+  for (auto& it : data_) {
+    variants->push_back(it.second.get());
+  }
 }
 
 template <typename T>
 Status VariantTensorDataWriter::WriteScalarInternal(StringPiece key,
                                                     const T& val) {
-  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
-  val_t.scalar<T>()() = val;
-  return WriteTensorInternal(key, val_t);
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteScalar after GetData or ReleaseData is called");
+  }
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return WriteScalarInternal(name, key, val);
 }
 
 Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
                                                     const Tensor& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteTensor after GetData or ReleaseData is called");
+  }
+  string name;
+  TF_RETURN_IF_ERROR(GetIteratorName(key, &name));
+  return WriteTensorInternal(name, key, val);
+}
+
+template <typename T>
+Status VariantTensorDataWriter::WriteScalarInternal(StringPiece name,
+                                                    StringPiece key,
+                                                    const T& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteScalar after GetData or ReleaseData is called");
+  }
+  Tensor val_t = Tensor(DataTypeToEnum<T>::v(), TensorShape({}));
+  val_t.scalar<T>()() = val;
+  return WriteTensorInternal(name, key, val_t);
+}
+
+Status VariantTensorDataWriter::WriteTensorInternal(StringPiece n,
+                                                    StringPiece key,
+                                                    const Tensor& val) {
+  if (is_flushed_) {
+    return errors::FailedPrecondition(
+        "Cannot call WriteTensor after GetData or ReleaseData is called");
+  }
   DCHECK_EQ(key.find(kDelimiter), string::npos);
-  keys_.push_back(string(key));
-  *(data_->add_tensors()) = val;
+  string name(n);
+  if (keys_.count(name) == 0) {
+    keys_[name] = std::vector<string>();
+  }
+  keys_[name].push_back(string(key));
+  if (data_.count(name) == 0) {
+    data_[name] = absl::make_unique<VariantTensorData>();
+    data_[name]->set_type_name("tensorflow::Iterator");
+  }
+  *(data_[name]->add_tensors()) = val;
   return Status::OK();
 }
 
@@ -630,6 +765,44 @@ std::function<void(std::function<void()>)> RunnerWithMaxParallelism(
         runner(std::move(scoped_fn));
       },
       std::move(runner), std::placeholders::_1);
+}
+
+Status DeterminismPolicy::FromString(const std::string& s,
+                                     DeterminismPolicy* out) {
+  DeterminismPolicy::Type type;
+  if (s == DeterminismPolicy::kDeterministic) {
+    type = DeterminismPolicy::Type::kDeterministic;
+  } else if (s == DeterminismPolicy::kNondeterministic) {
+    type = DeterminismPolicy::Type::kNondeterministic;
+  } else if (s == DeterminismPolicy::kDefault) {
+    type = DeterminismPolicy::Type::kDefault;
+  } else {
+    return errors::InvalidArgument("Unrecognized determinism policy: ", s);
+  }
+  *out = DeterminismPolicy(type);
+  return Status::OK();
+}
+
+DeterminismPolicy::DeterminismPolicy(bool is_deterministic) {
+  if (is_deterministic) {
+    determinism_ = DeterminismPolicy::Type::kDeterministic;
+  } else {
+    determinism_ = DeterminismPolicy::Type::kNondeterministic;
+  }
+}
+
+std::string DeterminismPolicy::String() const {
+  switch (determinism_) {
+    case DeterminismPolicy::Type::kDeterministic:
+      return DeterminismPolicy::kDeterministic;
+    case DeterminismPolicy::Type::kNondeterministic:
+      return DeterminismPolicy::kNondeterministic;
+    case DeterminismPolicy::Type::kDefault:
+      return DeterminismPolicy::kDefault;
+    default:
+      LOG(ERROR) << "Unrecognized determinism value";
+      return "Unrecognized";
+  }
 }
 
 }  // namespace data

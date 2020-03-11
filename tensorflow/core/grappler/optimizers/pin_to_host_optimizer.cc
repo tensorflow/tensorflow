@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/tpu.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -55,7 +55,8 @@ bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
 
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
-      prop.dtype() != DataType::DT_INT64) {
+      prop.dtype() != DataType::DT_INT64 &&
+      prop.dtype() != DataType::DT_FLOAT) {
     return false;
   }
 
@@ -118,7 +119,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   }
 
   // These nodes may be optimized away downstream (even if pinned to Host), we
-  // should (recusively) check their source.
+  // should (recursively) check their source.
   if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     for (const auto& fanin : graph.GetFanins(node, false)) {
       bool fanin_candidate = false;
@@ -339,6 +340,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       if (IsConstant(node)) {
         const_nodes.emplace_back(&node, node.device());
       }
+      VLOG(2) << "Moving node " << node.name() << " to device " << device;
       *node.mutable_device() = std::move(device);
     }
   }
@@ -355,6 +357,8 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // The consumer is not Host friendly, swap it back to the original device.
       if (!internal::IsNodeInputPortHostFriendly(*fanout.node,
                                                  fanout.port_id)) {
+        VLOG(2) << "Swapping node " << node->name() << " back to device "
+                << device;
         node->set_device(device);
         break;
       }

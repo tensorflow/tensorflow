@@ -3,20 +3,21 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_windows",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_cuda_library",
-    "tf_cc_binary",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 
 # For platform specific build config
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -39,6 +40,7 @@ cc_library(
     name = "grpc_util",
     srcs = ["grpc_util.cc"],
     hdrs = ["grpc_util.h"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         "//tensorflow:grpc",
         "//tensorflow:grpc++",
@@ -108,6 +110,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -123,6 +126,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -226,6 +230,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -295,6 +300,8 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
         "//tensorflow/core/distributed_runtime:device_resolver_distributed",
         "//tensorflow/core/distributed_runtime:graph_mgr",
@@ -460,6 +467,9 @@ tf_cc_test(
     name = "grpc_tensor_coding_test",
     size = "small",
     srcs = ["grpc_tensor_coding_test.cc"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":grpc_tensor_coding",
         ":grpc_testlib",

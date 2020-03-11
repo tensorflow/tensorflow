@@ -63,7 +63,7 @@ def _initialized_session(config=None):
 
 class LazyColumnTest(test.TestCase):
 
-  def test_transormations_called_once(self):
+  def test_transformations_called_once(self):
 
     class TransformCounter(_FeatureColumn):
 
@@ -1131,7 +1131,7 @@ class CrossedColumnTest(test.TestCase):
   def test_linear_model(self):
     """Tests linear_model.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))
@@ -1213,7 +1213,7 @@ class CrossedColumnTest(test.TestCase):
   def test_keras_linear_model(self):
     """Tests _LinearModel.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc._bucketized_column(a, boundaries=(0, 1))
@@ -2682,7 +2682,7 @@ class InputLayerTest(test.TestCase):
       # additional variables
       _ = input_layer(features)
       self.assertEqual(1, len(variables))
-      self.assertEqual(variables[0], input_layer.variables[0])
+      self.assertIs(variables[0], input_layer.variables[0])
 
   def test_feature_column_input_layer_gradient(self):
     with context.eager_mode():
@@ -4385,32 +4385,74 @@ class IdentityCategoricalColumnTest(test.TestCase):
           id_weight_pair.id_tensor.eval())
 
   @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_small(self):
-    column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, -1, 0),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
+  def test_get_sparse_tensors_with_inputs_too_big(self):
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (1, 0), (1, 1)), values=(2, 1, 0), dense_shape=(2, 2))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc._categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc._embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+
     with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_greater_or_equal_0'):
-        id_weight_pair.id_tensor.eval()
+      with self.assertRaisesRegexp(errors.OpError,
+                                   r'indices\[0\] = 2 is not in \[0, 2\)'):
+        self.evaluate(embedding_lookup)
 
   @test_util.run_deprecated_v1
-  def test_get_sparse_tensors_with_inputs_too_big(self):
-    column = fc._categorical_column_with_identity(key='aaa', num_buckets=3)
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, 99, 0),
-        dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
-    self.assertIsNone(id_weight_pair.weight_tensor)
+  def test_get_sparse_tensors_with_inputs_too_small(self):
+    # Inputs.
+    vocabulary_size = 2
+    sparse_input = sparse_tensor.SparseTensorValue(
+        indices=((0, 0), (0, 0), (1, 1), (1, 2)),
+        values=(-9, 0, -6, 1),
+        dense_shape=(2, 4))
+
+    # Embedding variable.
+    embedding_dimension = 2
+    embedding_values = (
+        (1., 2.),  # id 0
+        (3., 5.),  # id 1
+    )
+
+    def _initializer(shape, dtype, partition_info=None):
+      del shape, dtype, partition_info
+      return embedding_values
+
+    # Build columns.
+    categorical_column = fc._categorical_column_with_identity(
+        key='aaa', num_buckets=vocabulary_size)
+    embedding_column = fc._embedding_column(
+        categorical_column,
+        dimension=embedding_dimension,
+        initializer=_initializer)
+
+    # Provide sparse input and get dense result.
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({'aaa': sparse_input}))
+    expected_lookups = ((1., 2.), (3., 5))
     with _initialized_session():
-      with self.assertRaisesRegexp(
-          errors.OpError, 'assert_less_than_num_buckets'):
-        id_weight_pair.id_tensor.eval()
+      self.assertAllEqual(expected_lookups, self.evaluate(embedding_lookup))
 
   @test_util.run_deprecated_v1
   def test_get_sparse_tensors_with_default_value(self):

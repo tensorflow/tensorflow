@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -51,7 +52,7 @@ class FingerprintOpTest : public OpsTestBase {
     inputs_.push_back(TensorValue(data));
 
     method_ = Tensor(DT_STRING, TensorShape{});
-    method_.scalar<string>()() = method;
+    method_.scalar<tstring>()() = method;
     inputs_.push_back(TensorValue(&method_));
     return Status::OK();
   }
@@ -77,15 +78,15 @@ TEST_F(FingerprintOpTest, GoldenValue) {
 // special-case handling.
 TEST_F(FingerprintOpTest, StringGoldenValue) {
   Tensor data(DT_STRING, {1, 2, 2});
-  auto buffer = data.flat<string>();
+  auto buffer = data.flat<tstring>();
   buffer(0).resize(10);
   buffer(1).resize(7);
   buffer(2).resize(0);
   buffer(3).resize(19);
-  std::iota(buffer(0).begin(), buffer(0).end(), 0);
-  std::iota(buffer(1).begin(), buffer(1).end(), 7);
-  std::iota(buffer(2).begin(), buffer(2).end(), 71);
-  std::iota(buffer(3).begin(), buffer(3).end(), 41);
+  std::iota(&buffer(0)[0], &buffer(0)[0] + buffer(0).size(), 0);
+  std::iota(&buffer(1)[0], &buffer(1)[0] + buffer(1).size(), 7);
+  std::iota(&buffer(2)[0], &buffer(2)[0] + buffer(2).size(), 71);
+  std::iota(&buffer(3)[0], &buffer(3)[0] + buffer(3).size(), 41);
 
   TF_ASSERT_OK(MakeFingerprintOp(&data));
   TF_ASSERT_OK(RunOpKernel());
@@ -134,10 +135,10 @@ TEST_F(FingerprintOpTest, CollisionString) {
   constexpr int64 size = 256;
 
   Tensor tensor(DT_STRING, {1});
-  auto& input = tensor.vec<string>()(0);
+  auto& input = tensor.vec<tstring>()(0);
   input.resize(size);
 
-  TTypes<uint8>::UnalignedFlat buffer(reinterpret_cast<uint8*>(&*input.begin()),
+  TTypes<uint8>::UnalignedFlat buffer(reinterpret_cast<uint8*>(&input[0]),
                                       input.size());
   buffer.setRandom();
 
@@ -163,7 +164,7 @@ TEST_F(FingerprintOpTest, CompareBytesAndString) {
   auto pods = pods_tensor.matrix<float>();
   pods.setRandom();
 
-  auto strings = strings_tensor.vec<string>();
+  auto strings = strings_tensor.vec<tstring>();
   for (int64 i = 0; i < strings.size(); ++i) {
     strings(i).assign(reinterpret_cast<const char*>(&pods(i, 0)),
                       pods.dimension(1) * sizeof(pods(i, 0)));
@@ -199,7 +200,7 @@ TEST(FingerprintOpShapeFnTest, MethodKnownStatically) {
   ShapeInferenceTestOp op("Fingerprint");
 
   Tensor method(DT_STRING, TensorShape{});
-  method.scalar<string>()() = "farmhash64";
+  method.scalar<tstring>()() = "farmhash64";
   op.input_tensors.assign({nullptr, &method});
 
   TF_ASSERT_OK(MakeNodeDef(DT_UINT8, &op.node_def));
@@ -229,12 +230,12 @@ TEST(FingerprintOpShapeFnTest, InvalidMethod) {
 
   // When `method` shape is unknown statically.
   Tensor method(DT_STRING, TensorShape{1});
-  method.vec<string>()(0) = "farmhash64";
+  method.vec<tstring>()(0) = "farmhash64";
   op.input_tensors.assign({nullptr, &method});
   INFER_ERROR("must be rank 0", op, "?;?");
 
   method = Tensor(DT_STRING, TensorShape{});
-  method.scalar<string>()() = "unsupported_method";
+  method.scalar<tstring>()() = "unsupported_method";
   op.input_tensors.assign({nullptr, &method});
   INFER_ERROR("unsupported_method", op, "?;?");
 }

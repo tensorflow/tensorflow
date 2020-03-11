@@ -27,7 +27,7 @@ func @empty_graph() {
 // Check that an empty graph is invalid (it needs a region).
 func @empty_graph() {
  "tf_executor.graph" () ({
-// expected-error@-1 {{'tf_executor.graph' op expects a non-empty body}}
+// expected-error@-1 {{'tf_executor.graph' op expects a non-empty block}}
  ^entry:
   }) : () -> ()
   return
@@ -47,6 +47,17 @@ func @graph_with_invalid_op(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+// Check that tf_executor.graph can't be nested directly in a tf_executor.graph.
+func @nested_graph() {
+  tf_executor.graph {
+    tf_executor.graph {}
+// expected-error@-1 {{'tf_executor.graph' op unallowed directly inside another tf_executor.graph}}
+  }
+  return
+}
+
+// -----
+
 // Check that a tf_executor.fetch is terminating a tf_executor.graph (custom parser)
 func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   tf_executor.graph {
@@ -58,11 +69,23 @@ func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
 
 // -----
 
+// Check that a tf_executor.fetch parent is a graph.
+func @parent_is_graph() {
+  "some.op"() ({
+    tf_executor.fetch
+// expected-error@-1 {{'tf_executor.fetch' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 // Check that a tf_executor.fetch is terminating a tf_executor.graph (verifier)
 func @graph_with_invalid_terminator(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+// expected-error@+2 {{'tf_executor.graph' op expects regions to end with 'tf_executor.fetch', found 'tf_executor.yield'}}
+// expected-note@+1 {{in custom textual format, the absence of terminator implies 'tf_executor.fetch'}}
   "tf_executor.graph" () ({
     tf_executor.yield
-// expected-error@-1 {{'tf_executor.yield' op invalid tf_executor.graph terminator, fetch expected}}
   }) : () -> ()
   return %arg0 : tensor<*xf32>
 }
@@ -149,6 +172,17 @@ func @invalid_fetch(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) -> tensor<
 
 // -----
 
+// Check that a tf_executor.island parent is a graph.
+func @parent_is_graph() {
+  "some.op"() ({
+    %ctl = tf_executor.island {}
+// expected-error@-1 {{'tf_executor.island' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 // Check that an island can't have other operands than controls.
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
@@ -189,7 +223,7 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"() ({
-// expected-error@-1 {{'tf_executor.island' op expects a non-empty body}}
+// expected-error@-1 {{'tf_executor.island' op expects a non-empty block}}
  ^entry:
     }) : () -> (!tf_executor.control)
   }
@@ -202,10 +236,22 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
     "tf_executor.island"() ({
+// expected-error@-1 {{'tf_executor.island' op expects regions to end with 'tf_executor.yield', found 'std.return'}}
+// expected-note@-2 {{in custom textual format, the absence of terminator implies 'tf_executor.yield'}}
       return
-// expected-error@-1 {{'std.return' op invalid tf_executor.island terminator, yield expected}}
     }) : () -> (!tf_executor.control)
   }
+  return
+}
+
+// -----
+
+// Check that a tf_executor.yield parent is a tf_executor.island.
+func @parent_is_island() {
+  "some.op"() ({
+    tf_executor.yield
+// expected-error@-1 {{'tf_executor.yield' op expects parent op 'tf_executor.island'}}
+  }) : () -> ()
   return
 }
 
@@ -276,6 +322,17 @@ func @invalid_yield(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 
 // -----
 
+// Check that a tf_executor.Switch parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i1>) {
+  "some.op"() ({
+    %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.Switch' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 // Check that a switch always takes two arguments.
 func @invalid_switch(%arg0: tensor<*xf32>) {
   tf_executor.graph {
@@ -287,23 +344,11 @@ func @invalid_switch(%arg0: tensor<*xf32>) {
 
 // -----
 
-// Check that the predicate must be a tensor.
-func @invalidswitch(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
-  %result = tf_executor.graph {
-    %true, %false, %ctlSwitch = "tf_executor.Switch"(%arg0, %arg1) : (tensor<*xf32>, i1) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit integer values}}
-    tf_executor.fetch %true : tensor<*xf32>
-  }
-  return %result : tensor<*xf32>
-}
-
-// -----
-
 // Check that a switch second argument must be a valid predicate (i1).
 func @invalid_switch(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
     %true, %false, %ctlSwitch = "tf_executor.Switch"(%arg0, %arg0) : (tensor<*xf32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit integer values}}
+// expected-error@-1 {{'tf_executor.Switch' op operand #1 must be tensor of 1-bit signless integer values}}
     tf_executor.fetch %true : tensor<*xf32>
   }
   return %result : tensor<*xf32>
@@ -335,11 +380,22 @@ func @invalid_switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 
 // -----
 
+// Check that a tf_executor.SwitchN parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i32>) {
+  "some.op"() ({
+     %1:6 = tf_executor.SwitchN %arg0, %arg1 of 5 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.SwitchN' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 // Check that switchN result numbers matches the num_out attribute.
-func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-     %1:3 = "tf_executor.SwitchN"(%arg1, %arg0) {num_outs = 5} : (tensor<*xf32>, i32) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
+     %1:3 = "tf_executor.SwitchN"(%arg1, %arg0) {num_outs = 5} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
 // expected-error@-1 {{'tf_executor.SwitchN' op expect `num_outs` (5) results but got 2}}
 
      tf_executor.fetch %1#0 : tensor<*xf32>
@@ -350,10 +406,10 @@ func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Check that switchN result type matches the input type.
-func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-     %1:3 = "tf_executor.SwitchN"(%arg1, %arg0) {num_outs = 2} : (tensor<*xf32>, i32) -> (tensor<*xf32>, i32, !tf_executor.control)
+     %1:3 = "tf_executor.SwitchN"(%arg1, %arg0) {num_outs = 2} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, i32, !tf_executor.control)
 // expected-error@-1 {{'tf_executor.SwitchN' op type mismatch between data operand and result: 'tensor<*xf32>' vs 'i32'}}
 
      tf_executor.fetch %1#0 : tensor<*xf32>
@@ -364,7 +420,7 @@ func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
 // -----
 
 // Check that switchN custom type has a single entry.
-func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
      %1:3 = tf_executor.SwitchN %arg1, %arg0 of 2 : tensor<*xf32>, i32
@@ -373,6 +429,17 @@ func @invalid_switchN(%arg0: i32, %arg1: tensor<*xf32>) -> tensor<*xf32> {
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
   return %fetches : tensor<*xf32>
+}
+
+// -----
+
+// Check that a tf_executor.Merge parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>) {
+  "some.op"() ({
+    %value, %idx, %ctlMerge = tf_executor.Merge %arg0, %arg0 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.Merge' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
 }
 
 // -----
@@ -411,7 +478,7 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
     %true, %false, %ctlSwitch = tf_executor.Switch %arg0, %arg1 : tensor<*xf32>
 
     %value, %idx, %ctlMerge = "tf_executor.Merge"(%true, %false, %arg1) : (tensor<*xf32>, tensor<*xf32>, tensor<i1>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable but got 'tensor<*xf32>' vs 'tensor<i1>'}}
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<i1>' vs 'tensor<*xf32>'}}
     tf_executor.fetch %value : tensor<*xf32>
   }
   return %result : tensor<*xf32>
@@ -423,10 +490,46 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
   %result = tf_executor.graph {
     %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*xf32>, tensor<4xf32>) -> (tensor<8xf32>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable but got 'tensor<8xf32>' vs 'tensor<4xf32>'}}
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4xf32>' vs 'tensor<8xf32>'}}
     tf_executor.fetch %value : tensor<8xf32>
   }
   return %result : tensor<8xf32>
+}
+
+// -----
+
+// Check that merge data inputs of variant type are broadcastable to the output
+func @invalid_merge(%arg0: tensor<*x!tf.variant>, %arg1: tensor<4x!tf.variant>) -> tensor<8x!tf.variant> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.variant>, tensor<4x!tf.variant>) -> (tensor<8x!tf.variant>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf.variant>' vs 'tensor<8x!tf.variant>'}}
+    tf_executor.fetch %value : tensor<8x!tf.variant>
+  }
+  return %result : tensor<8x!tf.variant>
+}
+
+// -----
+
+// Check that merge data inputs of resource type are broadcastable to the output
+func @invalid_merge(%arg0: tensor<*x!tf.resource>, %arg1: tensor<4x!tf.resource>) -> tensor<8x!tf.resource> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<*x!tf.resource>, tensor<4x!tf.resource>) -> (tensor<8x!tf.resource>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor.Merge' op expects all operands to be broadcastable with output type but got 'tensor<4x!tf.resource>' vs 'tensor<8x!tf.resource>'}}
+    tf_executor.fetch %value : tensor<8x!tf.resource>
+  }
+  return %result : tensor<8x!tf.resource>
+}
+
+// -----
+
+// Check that if result is a ref type, all operands need to be ref too.
+func @invalid_merge(%arg0: tensor<4x!tf.f32ref>, %arg1: tensor<4xf32>) -> tensor<4x!tf.f32ref> {
+  %result = tf_executor.graph {
+    %value, %idx, %ctlMerge = "tf_executor.Merge"(%arg0, %arg1) : (tensor<4x!tf.f32ref>, tensor<4xf32>) -> (tensor<4x!tf.f32ref>, tensor<i32>, !tf_executor.control)
+    // expected-error@-1 {{'tf_executor.Merge' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
+    tf_executor.fetch %value : tensor<4x!tf.f32ref>
+  }
+  return %result : tensor<4x!tf.f32ref>
 }
 
 // -----
@@ -446,6 +549,17 @@ func @invalid_merge(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 
 // -----
 
+// Check that a tf_executor.Enter parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>) {
+  "some.op"() ({
+    %res:2 = tf_executor.Enter %arg0 frame "some/fra\"me" : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.Enter' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 // Check that Enter return value is the same type as the input.
 func @invalid_enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
   %result = tf_executor.graph {
@@ -454,6 +568,28 @@ func @invalid_enter(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
     tf_executor.fetch %res#0 : tensor<*xf32>
   }
   return %result : tensor<*xf32>
+}
+
+// -----
+
+// Check that a tf_executor.NextIteration.Sink parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: !tf_executor.token) {
+  "some.op"() ({
+    tf_executor.NextIteration.Sink[%arg1] %arg0 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.NextIteration.Sink' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
+// Check that a tf_executor.NextIteration.Source parent is a graph.
+func @parent_is_graph() {
+  "some.op"() ({
+    %1:3 = tf_executor.NextIteration.Source : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.NextIteration.Source' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
 }
 
 // -----
@@ -521,6 +657,17 @@ func @invalid_nextiteration(%arg0: tensor<*xf32>, %arg1: i1) -> tensor<*xf32> {
 
 // -----
 
+// Check that a tf_executor.Exit parent is a graph.
+func @parent_is_graph(%arg0: tensor<*xf32>) {
+  "some.op"() ({
+    %1:2 = tf_executor.Exit %arg0 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor.Exit' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
 func @exit(%arg0: tensor<*xi32>) -> tensor<*xf32> {
   %0 = tf_executor.graph {
     %1:2 = "tf_executor.Exit"(%arg0) : (tensor<*xi32>) -> (tensor<*xf32>, !tf_executor.control)
@@ -528,4 +675,26 @@ func @exit(%arg0: tensor<*xi32>) -> tensor<*xf32> {
     tf_executor.fetch %1#0 : tensor<*xf32>
   }
   return %0 : tensor<*xf32>
+}
+
+// -----
+
+// Check that a tf_executor.ControlTrigger parent is a graph.
+func @parent_is_graph(%arg0: !tf_executor.control, %arg1: !tf_executor.control) {
+  "some.op"() ({
+    %0 = tf_executor.ControlTrigger %arg0, %arg1
+// expected-error@-1 {{'tf_executor.ControlTrigger' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
+}
+
+// -----
+
+// Check that a tf_executor.LoopCond parent is a graph.
+func @parent_is_graph(%arg0: tensor<i1>, %arg1: !tf_executor.control) {
+  "some.op"() ({
+    %1:2 = tf_executor.LoopCond %arg0, %arg1 : tensor<i1>
+// expected-error@-1 {{'tf_executor.LoopCond' op expects parent op 'tf_executor.graph'}}
+  }) : () -> ()
+  return
 }

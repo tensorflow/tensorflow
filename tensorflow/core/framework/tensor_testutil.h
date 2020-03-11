@@ -119,8 +119,8 @@ struct is_floating_point_type {
   static const bool value = std::is_same<T, Eigen::half>::value ||
                             std::is_same<T, float>::value ||
                             std::is_same<T, double>::value ||
-                            std::is_same<T, std::complex<float> >::value ||
-                            std::is_same<T, std::complex<double> >::value;
+                            std::is_same<T, std::complex<float>>::value ||
+                            std::is_same<T, std::complex<double>>::value;
 };
 
 template <typename T>
@@ -150,6 +150,39 @@ inline void ExpectEqual<complex128>(const complex128& a, const complex128& b) {
   EXPECT_DOUBLE_EQ(a.imag(), b.imag()) << a << " vs. " << b;
 }
 
+template <typename T>
+inline void ExpectEqual(const T& a, const T& b, int index) {
+  EXPECT_EQ(a, b) << " at index " << index;
+}
+
+template <>
+inline void ExpectEqual<float>(const float& a, const float& b, int index) {
+  EXPECT_FLOAT_EQ(a, b) << " at index " << index;
+}
+
+template <>
+inline void ExpectEqual<double>(const double& a, const double& b, int index) {
+  EXPECT_DOUBLE_EQ(a, b) << " at index " << index;
+}
+
+template <>
+inline void ExpectEqual<complex64>(const complex64& a, const complex64& b,
+                                   int index) {
+  EXPECT_FLOAT_EQ(a.real(), b.real())
+      << a << " vs. " << b << " at index " << index;
+  EXPECT_FLOAT_EQ(a.imag(), b.imag())
+      << a << " vs. " << b << " at index " << index;
+}
+
+template <>
+inline void ExpectEqual<complex128>(const complex128& a, const complex128& b,
+                                    int index) {
+  EXPECT_DOUBLE_EQ(a.real(), b.real())
+      << a << " vs. " << b << " at index " << index;
+  EXPECT_DOUBLE_EQ(a.imag(), b.imag())
+      << a << " vs. " << b << " at index " << index;
+}
+
 inline void AssertSameTypeDims(const Tensor& x, const Tensor& y) {
   ASSERT_EQ(x.dtype(), y.dtype());
   ASSERT_TRUE(x.IsSameSize(y))
@@ -168,8 +201,8 @@ struct Expector<T, false> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       ExpectEqual(a[i], b[i]);
     }
@@ -185,8 +218,8 @@ struct Expector<T, true> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       ExpectEqual(a[i], b[i]);
     }
@@ -202,8 +235,8 @@ struct Expector<T, true> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       EXPECT_TRUE(Near(a[i], b[i], abs_err))
           << "a = " << a[i] << " b = " << b[i] << " index = " << i;

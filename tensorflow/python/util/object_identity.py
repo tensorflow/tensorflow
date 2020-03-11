@@ -17,8 +17,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import weakref
+
+from tensorflow.python.util.compat import collections_abc
 
 
 class _ObjectIdentityWrapper(object):
@@ -29,6 +30,8 @@ class _ObjectIdentityWrapper(object):
   _ListWrapper objects to object-identity collections.
   """
 
+  __slots__ = ["_wrapped"]
+
   def __init__(self, wrapped):
     self._wrapped = wrapped
 
@@ -36,16 +39,35 @@ class _ObjectIdentityWrapper(object):
   def unwrapped(self):
     return self._wrapped
 
+  def _assert_type(self, other):
+    if not isinstance(other, _ObjectIdentityWrapper):
+      raise TypeError("Cannot compare wrapped object with unwrapped object")
+
+  def __lt__(self, other):
+    self._assert_type(other)
+    return id(self._wrapped) < id(other._wrapped)  # pylint: disable=protected-access
+
+  def __gt__(self, other):
+    self._assert_type(other)
+    return id(self._wrapped) > id(other._wrapped)  # pylint: disable=protected-access
+
   def __eq__(self, other):
-    if isinstance(other, _ObjectIdentityWrapper):
-      return self._wrapped is other._wrapped  # pylint: disable=protected-access
-    return self._wrapped is other
+    if other is None:
+      return False
+    self._assert_type(other)
+    return self._wrapped is other._wrapped  # pylint: disable=protected-access
+
+  def __ne__(self, other):
+    return not self.__eq__(other)
 
   def __hash__(self):
     # Wrapper id() is also fine for weakrefs. In fact, we rely on
     # id(weakref.ref(a)) == id(weakref.ref(a)) and weakref.ref(a) is
     # weakref.ref(a) in _WeakObjectIdentityWrapper.
     return id(self._wrapped)
+
+  def __repr__(self):
+    return "<{} wrapping {!r}>".format(type(self).__name__, self._wrapped)
 
 
 class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
@@ -58,7 +80,41 @@ class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
     return self._wrapped()
 
 
-class ObjectIdentityDictionary(collections.MutableMapping):
+class Reference(_ObjectIdentityWrapper):
+  """Reference that refers an object.
+
+  ```python
+  x = [1]
+  y = [1]
+
+  x_ref1 = Reference(x)
+  x_ref2 = Reference(x)
+  y_ref2 = Reference(y)
+
+  print(x_ref1 == x_ref2)
+  ==> True
+
+  print(x_ref1 == y)
+  ==> False
+  ```
+  """
+
+  # Disabling super class' unwrapped field.
+  unwrapped = property()
+
+  def deref(self):
+    """Returns the referenced object.
+
+    ```python
+    x_ref = Reference(x)
+    print(x is x_ref.deref())
+    ==> True
+    ```
+    """
+    return self._wrapped
+
+
+class ObjectIdentityDictionary(collections_abc.MutableMapping):
   """A mutable mapping data structure which compares using "is".
 
   This is necessary because we have trackable objects (_ListWrapper) which
@@ -88,6 +144,9 @@ class ObjectIdentityDictionary(collections.MutableMapping):
     for key in self._storage:
       yield key.unwrapped
 
+  def __repr__(self):
+    return "ObjectIdentityDictionary(%s)" % repr(self._storage)
+
 
 class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
   """Like weakref.WeakKeyDictionary, but compares objects with "is"."""
@@ -109,11 +168,17 @@ class ObjectIdentityWeakKeyDictionary(ObjectIdentityDictionary):
         yield unwrapped
 
 
-class ObjectIdentitySet(collections.MutableSet):
+class ObjectIdentitySet(collections_abc.MutableSet):
   """Like the built-in set, but compares objects with "is"."""
 
   def __init__(self, *args):
-    self._storage = set([self._wrap_key(obj) for obj in list(*args)])
+    self._storage = set(self._wrap_key(obj) for obj in list(*args))
+
+  @staticmethod
+  def _from_storage(storage):
+    result = ObjectIdentitySet()
+    result._storage = storage  # pylint: disable=protected-access
+    return result
 
   def _wrap_key(self, key):
     return _ObjectIdentityWrapper(key)
@@ -126,6 +191,19 @@ class ObjectIdentitySet(collections.MutableSet):
 
   def add(self, key):
     self._storage.add(self._wrap_key(key))
+
+  def update(self, items):
+    self._storage.update([self._wrap_key(item) for item in items])
+
+  def clear(self):
+    self._storage.clear()
+
+  def intersection(self, items):
+    return self._storage.intersection([self._wrap_key(item) for item in items])
+
+  def difference(self, items):
+    return ObjectIdentitySet._from_storage(
+        self._storage.difference([self._wrap_key(item) for item in items]))
 
   def __len__(self):
     return len(self._storage)

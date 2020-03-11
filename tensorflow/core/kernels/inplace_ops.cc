@@ -51,7 +51,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
   case DataTypeToEnum<type>::value: \
     return DoParallelConcatUpdate<CPUDevice, type>(d, value, loc, output);
     TF_CALL_POD_TYPES(CASE);
-    TF_CALL_string(CASE);
+    TF_CALL_tstring(CASE);
     TF_CALL_variant(CASE);
 #undef CASE
     default:
@@ -279,7 +279,10 @@ class InplaceOpBase : public OpKernel {
                     i.shape().DebugString(), " vs. ", v.shape().DebugString()));
 
     Tensor y = x;  // This creates an alias intentionally.
-    OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
+    // Skip processing if tensors are empty.
+    if (x.NumElements() > 0 || v.NumElements() > 0) {
+      OP_REQUIRES_OK(ctx, DoCompute(ctx, i, v, &y));
+    }
     ctx->set_output(0, y);
   }
 
@@ -319,8 +322,8 @@ void DoInplaceOp(const CPUDevice& d, InplaceOpType op, const Tensor& i,
 void DoInplaceStringUpdateOp(const CPUDevice& d, const Tensor& i,
                              const Tensor& v, Tensor* y) {
   auto Ti = i.flat<int32>();
-  auto Tv = v.flat_outer_dims<string>();
-  auto Ty = y->flat_outer_dims<string>();
+  auto Tv = v.flat_outer_dims<tstring>();
+  auto Ty = y->flat_outer_dims<tstring>();
   auto nrows = Ty.dimension(0);
   for (int64 j = 0; j < Ti.size(); ++j) {
     auto r = (Ti(j) % nrows + nrows) % nrows;  // Guard index range.
@@ -416,7 +419,7 @@ Status DoCopy(const CPUDevice& device, const Tensor& x, Tensor* y) {
 
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_bool(CASE);
-    TF_CALL_string(CASE);
+    TF_CALL_tstring(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ",
@@ -477,7 +480,7 @@ REGISTER_KERNEL_BUILDER(Name("DeepCopy").Device(DEVICE_CPU), CopyOp<CPUDevice>);
 REGISTER_EMPTY(float, CPU)
 REGISTER_EMPTY(double, CPU)
 REGISTER_EMPTY(Eigen::half, CPU)
-REGISTER_EMPTY(string, CPU)
+REGISTER_EMPTY(tstring, CPU)
 REGISTER_EMPTY(int32, CPU)
 REGISTER_EMPTY(int64, CPU)
 REGISTER_EMPTY(bool, CPU)

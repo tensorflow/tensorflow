@@ -18,7 +18,9 @@ limitations under the License.
 #include "absl/algorithm/container.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/lower_functional_ops.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 namespace {
@@ -33,8 +35,9 @@ bool LowerAsMultiDeviceFunction(const Node* n) {
   if (n->IsPartitionedCall()) return true;
 
   bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return s.ok() && match;
+  bool found =
+      TryGetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
+  return found && match;
 }
 
 }  // namespace
@@ -95,7 +98,7 @@ Status RewriteFunctionCallNode(Node* n, Graph* g,
       ValidateInlining(n, fbody.get(), inline_options);
   if (can_inline_function_call.ok()) {
     TF_RETURN_IF_ERROR(
-        InlineFunctionBody(g->flib_def(), g, n, fbody.get(), inline_options));
+        InlineFunctionBody(flib_def, g, n, fbody.get(), inline_options));
   } else {
     VLOG(2) << "Failed to inline function call node: "
             << can_inline_function_call.error_message();

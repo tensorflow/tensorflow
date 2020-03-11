@@ -16,64 +16,99 @@ limitations under the License.
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/graph_transformations/quantization_util.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
 namespace {
 
-bool SupportsQuantization(const Operator& op) {
+bool SupportsQuantization(Model* model, const Operator& op) {
   auto type = op.type;
   if (type == OperatorType::kUnsupported) {
     auto* unsupported = static_cast<const TensorFlowUnsupportedOperator*>(&op);
     return unsupported->quantized;
   }
-  return type == OperatorType::kConv || type == OperatorType::kDepthwiseConv ||
-         type == OperatorType::kFullyConnected ||
-         type == OperatorType::kConcatenation ||
-         type == OperatorType::kL2Normalization || type == OperatorType::kAdd ||
-         type == OperatorType::kAveragePool || type == OperatorType::kMaxPool ||
-         type == OperatorType::kMinimum || type == OperatorType::kMaximum ||
-         type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
-         type == OperatorType::kLogSoftmax || type == OperatorType::kSlice ||
-         type == OperatorType::kResizeBilinear ||
-         type == OperatorType::kSplit || type == OperatorType::kSplitV ||
-         type == OperatorType::kSub || type == OperatorType::kSqueeze ||
-         type == OperatorType::kPad || type == OperatorType::kPadV2 ||
-         type == OperatorType::kReshape || type == OperatorType::kTanh ||
-         type == OperatorType::kMul || type == OperatorType::kBatchToSpaceND ||
-         type == OperatorType::kSum || type == OperatorType::kSpaceToBatchND ||
-         type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kStridedSlice ||
-         type == OperatorType::kDepthToSpace ||
-         type == OperatorType::kLstmCell || type == OperatorType::kGather ||
-         type == OperatorType::kTranspose || type == OperatorType::kMean ||
-         type == OperatorType::kEqual || type == OperatorType::kGreater ||
-         type == OperatorType::kGreaterEqual || type == OperatorType::kLess ||
-         type == OperatorType::kLessEqual || type == OperatorType::kSelect ||
-         type == OperatorType::kArgMax || type == OperatorType::kRelu ||
-         type == OperatorType::kRelu1 || type == OperatorType::kRelu6 ||
-         type == OperatorType::kLeakyRelu || type == OperatorType::kShape ||
-         type == OperatorType::kExpandDims || type == OperatorType::kPack ||
-         type == OperatorType::kUnpack || type == OperatorType::kTopK_V2 ||
-         type == OperatorType::kRandomUniform ||
-         type == OperatorType::kResizeNearestNeighbor ||
-         type == OperatorType::kPRelu || type == OperatorType::kReduceMax ||
-         type == OperatorType::kReduceMin ||
-         type == OperatorType::kTransposeConv ||
-         type == OperatorType::kMatrixSetDiag ||
-         type == OperatorType::kMatrixDiag ||
-         type == OperatorType::kSparseToDense ||
-         type == OperatorType::kHardSwish;
+  if (op.type == OperatorType::kRange) {
+    const auto& array = model->GetArray(op.outputs[0]);
+    return (array.data_type != ArrayDataType::kFloat &&
+            array.data_type != ArrayDataType::kFloat16);
+  }
+  // Please add op in alpha-beta sequence.
+  static const std::set<OperatorType> supported_ops{
+      OperatorType::kAdd,
+      OperatorType::kArgMax,
+      OperatorType::kAveragePool,
+      OperatorType::kBatchToSpaceND,
+      OperatorType::kConcatenation,
+      OperatorType::kConv,
+      OperatorType::kDepthToSpace,
+      OperatorType::kDepthwiseConv,
+      OperatorType::kDiv,
+      OperatorType::kEqual,
+      OperatorType::kExpandDims,
+      OperatorType::kFullyConnected,
+      OperatorType::kGather,
+      OperatorType::kGreater,
+      OperatorType::kGreaterEqual,
+      OperatorType::kHardSwish,
+      OperatorType::kL2Normalization,
+      OperatorType::kLeakyRelu,
+      OperatorType::kLess,
+      OperatorType::kLessEqual,
+      OperatorType::kLogistic,
+      OperatorType::kLogSoftmax,
+      OperatorType::kLstmCell,
+      OperatorType::kMatrixDiag,
+      OperatorType::kMatrixSetDiag,
+      OperatorType::kMaximum,
+      OperatorType::kMaxPool,
+      OperatorType::kMean,
+      OperatorType::kMinimum,
+      OperatorType::kMirrorPad,
+      OperatorType::kMul,
+      OperatorType::kPack,
+      OperatorType::kPad,
+      OperatorType::kPadV2,
+      OperatorType::kPRelu,
+      OperatorType::kRandomUniform,
+      OperatorType::kReduceMax,
+      OperatorType::kReduceMin,
+      OperatorType::kRelu,
+      OperatorType::kRelu1,
+      OperatorType::kRelu6,
+      OperatorType::kReshape,
+      OperatorType::kResizeBilinear,
+      OperatorType::kResizeNearestNeighbor,
+      OperatorType::kSelect,
+      OperatorType::kShape,
+      OperatorType::kSlice,
+      OperatorType::kSoftmax,
+      OperatorType::kSpaceToBatchND,
+      OperatorType::kSpaceToDepth,
+      OperatorType::kSparseToDense,
+      OperatorType::kSplit,
+      OperatorType::kSplitV,
+      OperatorType::kSqueeze,
+      OperatorType::kStridedSlice,
+      OperatorType::kSub,
+      OperatorType::kSum,
+      OperatorType::kTanh,
+      OperatorType::kTopK_V2,
+      OperatorType::kTranspose,
+      OperatorType::kTransposeConv,
+      OperatorType::kUnpack,
+  };
+  return supported_ops.find(type) != supported_ops.end();
 }
 
 // The quantized op allows output arrays of type float using
@@ -369,7 +404,8 @@ bool ChooseQuantizationForOperatorOutput(
       op.type == OperatorType::kSpaceToDepth ||
       op.type == OperatorType::kReshape || op.type == OperatorType::kSplit ||
       op.type == OperatorType::kRelu || op.type == OperatorType::kRelu1 ||
-      op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu) {
+      op.type == OperatorType::kRelu6 || op.type == OperatorType::kPRelu ||
+      op.type == OperatorType::kUnpack) {
     int data_input_index = 0;
     if (op.type == OperatorType::kSplit) {
       data_input_index = 1;
@@ -494,7 +530,7 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
           << "Input array " << input << " is missing quantization_params";
     }
   }
-  if (!SupportsQuantization(op)) {
+  if (!SupportsQuantization(model, op)) {
     return tensorflow::errors::InvalidArgument(
         "Unimplemented: this graph contains an operator of type ",
         HelpfulOperatorTypeName(op),

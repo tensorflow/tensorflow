@@ -36,29 +36,33 @@ from setuptools import find_packages
 from setuptools import setup
 from setuptools.command.build_py import build_py
 PACKAGE_NAME = 'tflite_runtime'
-PACKAGE_VERSION = os.environ['TENSORFLOW_VERSION']
+PACKAGE_VERSION = os.environ['PACKAGE_VERSION']
 DOCLINES = __doc__.split('\n')
-TENSORFLOW_DIR = os.environ['TENSORFLOW_SRC_ROOT']
-
-# Setup cross compiling
-TARGET = os.environ.get('TENSORFLOW_TARGET', None)
-if TARGET == 'rpi':
-  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
-  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
-elif TARGET == 'aarch64':
-  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
-  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
-MAKE_CROSS_OPTIONS = ['TARGET=%s' % TARGET]  if TARGET else []
-
+TENSORFLOW_DIR = os.environ['TENSORFLOW_DIR']
 RELATIVE_MAKE_DIR = os.path.join('tensorflow', 'lite', 'tools', 'make')
 MAKE_DIR = os.path.join(TENSORFLOW_DIR, RELATIVE_MAKE_DIR)
 DOWNLOADS_DIR = os.path.join(MAKE_DIR, 'downloads')
 RELATIVE_MAKEFILE_PATH = os.path.join(RELATIVE_MAKE_DIR, 'Makefile')
 DOWNLOAD_SCRIPT_PATH = os.path.join(MAKE_DIR, 'download_dependencies.sh')
 
+# Setup cross compiling
+TARGET = os.environ.get('TENSORFLOW_TARGET')
+if TARGET == 'rpi':
+  os.environ['CXX'] = 'arm-linux-gnueabihf-g++'
+  os.environ['CC'] = 'arm-linux-gnueabihf-gcc'
+elif TARGET == 'aarch64':
+  os.environ['CXX'] = 'aarch64-linux-gnu-g++'
+  os.environ['CC'] = 'aarch64-linux-gnu-gcc'
+
+MAKE_CROSS_OPTIONS = []
+for name in ['TARGET', 'TARGET_ARCH', 'CC_PREFIX', 'EXTRA_CXXFLAGS']:
+  value = os.environ.get('TENSORFLOW_%s' % name)
+  if value:
+    MAKE_CROSS_OPTIONS.append('%s=%s' % (name, value))
+
 
 # Check physical memory and if we are on a reasonable non small SOC machine
-# with more than 4GB, use all the CPUs, otherwisxe only 1.
+# with more than 4GB, use all the CPUs, otherwise only 1.
 def get_build_cpus():
   physical_bytes = os.sysconf('SC_PAGESIZE') * os.sysconf('SC_PHYS_PAGES')
   if physical_bytes < (1<<30) * 4:
@@ -135,11 +139,11 @@ ext = Extension(
              'interpreter_wrapper/numpy.cc',
              'interpreter_wrapper/python_error_reporter.cc',
              'interpreter_wrapper/python_utils.cc'],
+    extra_compile_args=['--std=c++11'],
     swig_opts=['-c++',
                '-I%s' % TENSORFLOW_DIR,
                '-module', 'interpreter_wrapper',
                '-outdir', PACKAGE_NAME],
-    extra_compile_args=['-std=c++11'],
     include_dirs=[TENSORFLOW_DIR,
                   os.path.join(TENSORFLOW_DIR, 'tensorflow', 'lite', 'tools',
                                'pip_package'),
@@ -149,20 +153,40 @@ ext = Extension(
     libraries=[LIB_TFLITE],
     library_dirs=[LIB_TFLITE_DIR])
 
-
 setup(
-    name=PACKAGE_NAME,
+    name=PACKAGE_NAME.replace('_', '-'),
     version=PACKAGE_VERSION,
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
     url='https://www.tensorflow.org/lite/',
-    author='Google Inc.',
+    author='Google, LLC',
     author_email='packages@tensorflow.org',
     license='Apache 2.0',
     include_package_data=True,
     keywords='tflite tensorflow tensor machine learning',
+    classifiers=[
+        'Development Status :: 5 - Production/Stable',
+        'Intended Audience :: Developers',
+        'Intended Audience :: Education',
+        'Intended Audience :: Science/Research',
+        'License :: OSI Approved :: Apache Software License',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.4',
+        'Programming Language :: Python :: 3.5',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Topic :: Scientific/Engineering',
+        'Topic :: Scientific/Engineering :: Mathematics',
+        'Topic :: Scientific/Engineering :: Artificial Intelligence',
+        'Topic :: Software Development',
+        'Topic :: Software Development :: Libraries',
+        'Topic :: Software Development :: Libraries :: Python Modules',
+    ],
     packages=find_packages(exclude=[]),
     ext_modules=[ext],
+    install_requires=[
+        'numpy >= 1.16.0',
+    ],
     cmdclass={
         'build_ext': CustomBuildExt,
         'build_py': CustomBuildPy,

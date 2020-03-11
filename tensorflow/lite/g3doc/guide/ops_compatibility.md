@@ -9,18 +9,18 @@ Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
 the set of supported operations in future TensorFlow Lite releases. Additional
-ops can be included by [using select TensorFlow ops](ops_select.md), at the cost
-of binary size.
+ops can be included by [using select TensorFlow ops](ops_select.md), at
+the cost of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
 optimized, along with the limitations imposed by this process.
 
-## Supported Types
+## Supported types
 
-Most TensorFlow Lite operations target both floating-point (float32) and
-quantized (uint8, int8) inference, but many ops do not yet for other types like
-tf.float16 and strings.
+Most TensorFlow Lite operations target both floating-point (`float32`) and
+quantized (`uint8`, `int8`) inference, but many ops do not yet for other types
+like `tf.float16` and strings.
 
 Apart from using different version of the operations, the other difference
 between floating-point and quantized models lies in the way they are converted.
@@ -29,60 +29,51 @@ requires "fake-quantization" during model training, getting range information
 via a calibration data set, or doing "on-the-fly" range estimation. See
 [quantization](../performance/model_optimization.md).
 
-## Data Format and Broadcasting
+## Data format and broadcasting
 
 At the moment TensorFlow Lite supports only TensorFlow's "NHWC" format, and
 broadcasting is only support in a limited number of ops (tf.add, tf.mul, tf.sub,
 and tf.div).
 
-## Compatible Operations
+## Compatible operations
 
 The following TensorFlow operations are usually mapped to their TensorFlow Lite
 counterparts:
 
-*   [tf.batch_to_space_nd](https://www.tensorflow.org/api_docs/python/tf/batch_to_space_nd) -
-    *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other) and the
-    crops attribute is not used*
-*   [tf.exp](https://www.tensorflow.org/api_docs/python/tf/exp)
-*   [tf.fake_quant*](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
-*   [tf.matmul](https://www.tensorflow.org/api_docs/python/tf/matmul) - *as long
-    as the second argument is constant and transposition is not used*
-*   [tf.nn.avg_pool](https://www.tensorflow.org/api_docs/python/tf/nn/avg_pool)
-*   [tf.nn.conv2d](https://www.tensorflow.org/api_docs/python/tf/nn/conv2d) -
-    *as long as the filter is constant*
-*   [tf.nn.depthwise_conv2d](https://www.tensorflow.org/api_docs/python/tf/nn/depthwise_conv2d) -
-    *as long as the filter is constant and rate is [1,1]*
-*   [tf.nn.l2_normalize](https://www.tensorflow.org/api_docs/python/tf/nn/l2_normalize) -
-    *as long as normalization is done along the last dimension*
-*   [tf.nn.local_response_normalization](https://www.tensorflow.org/api_docs/python/tf/nn/local_response_normalization)
-*   [tf.nn.log_softmax](https://www.tensorflow.org/api_docs/python/tf/nn/log_softmax) -
-    *as long as axis is not provided*
-*   [tf.nn.max_pool](https://www.tensorflow.org/api_docs/python/tf/nn/max_pool)
-*   [tf.nn.softmax](https://www.tensorflow.org/api_docs/python/tf/nn/softmax) -
-    *as long as tensors are 2D and axis is the last dimension*
-*   [tf.nn.top_k](https://www.tensorflow.org/api_docs/python/tf/nn/top_k)
-*   [tf.one_hot](https://www.tensorflow.org/api_docs/python/tf/one_hot)
-*   [tf.pad](https://www.tensorflow.org/api_docs/python/tf/pad) - *as long as
-    mode and constant_values are not used*
-*   [tf.reduce_mean](https://www.tensorflow.org/api_docs/python/tf/reduce_mean) -
-    *as long as the reduction_indices attribute is not used*
-*   [tf.reshape](https://www.tensorflow.org/api_docs/python/tf/reshape)
-*   [tf.sigmoid](https://www.tensorflow.org/api_docs/python/tf/sigmoid)
-*   [tf.space_to_batch_nd](https://www.tensorflow.org/api_docs/python/tf/space_to_batch_nd) -
-    *as long as the input tensor is 4D (1 batch + 2 spatial + 1 other)*
-*   [tf.space_to_depth](https://www.tensorflow.org/api_docs/python/tf/space_to_depth)
-*   [tf.split](https://www.tensorflow.org/api_docs/python/tf/split) - *as long
-    as num is not provided and num_or_size_split contains number of splits as a
-    0D tensor*
-*   [tf.squeeze](https://www.tensorflow.org/api_docs/python/tf/squeeze) - *as
-    long as axis is not provided*
-*   [tf.squared_difference](https://www.tensorflow.org/versions/master/api_docs/python/tf/squared_difference)
-*   [tf.strided_slice](https://www.tensorflow.org/api_docs/python/tf/strided_slice) -
-    *as long as ellipsis_mask and new_axis_mask are not used*
-*   [tf.transpose](https://www.tensorflow.org/versions/master/api_docs/python/tf/transpose) -
-    *as long as conjugate is not used*
+*   `tf.batch_to_space_nd` —As long as the input tensor is 4D (1 batch + 2
+    spatial + 1 other) and the crops attribute is not used.
+*   `tf.exp`
+*   `tf.fake_quant`
+*   `tf.matmul` —As the second argument is constant and transposition is not
+    used*
+*   `tf.nn.avg_pool`
+*   `tf.nn.conv2d` —As long as the filter is constant.
+*   `tf.nn.depthwise_conv2d` —As long as the filter is constant and rate is `[1,
+    1]`.
+*   `tf.nn.l2_normalize` —As long as normalization is done along the last
+    dimension.
+*   `tf.nn.local_response_normalization`
+*   `tf.nn.log_softmax` —As long as axis is not provided.
+*   `tf.nn.max_pool`
+*   `tf.nn.softmax` —As long as tensors are 2D and axis is the last dimension.
+*   `tf.nn.top_k`
+*   `tf.one_hot`
+*   `tf.pad` —As long as mode and constant_values are not used.
+*   `tf.reduce_mean` —As long as the reduction_indices attribute is not used.
+*   `tf.reshape`
+*   `tf.sigmoid`
+*   `tf.space_to_batch_nd` —As long as the input tensor is 4D (1 batch + 2
+    spatial + 1 other).
+*   `tf.space_to_depth`
+*   `tf.split` —As long as num is not provided and `num_or_size_split` contains
+    number of splits as a 0D tensor.
+*   `tf.squeeze` —As long as axis is not provided.
+*   `tf.squared_difference`
+*   `tf.strided_slice` —As long as `ellipsis_mask and new_axis_mask` are not
+    used.
+*   `tf.transpose` —As long as conjugate is not used.
 
-## Straightforward Conversions, Constant-Folding and Fusing
+## Straight-forward conversions, constant-folding and fusing
 
 A number of TensorFlow operations can be processed by TensorFlow Lite even
 though they have no direct equivalent. This is the case for operations that can
@@ -94,48 +85,47 @@ processes.
 Here is a non-exhaustive list of TensorFlow operations that are usually removed
 from the graph:
 
-*   [tf.add](https://www.tensorflow.org/api_docs/python/tf/add)
-*   [tf.check_numerics](https://www.tensorflow.org/api_docs/python/tf/check_numerics)
-*   [tf.constant](https://www.tensorflow.org/api_docs/python/tf/constant)
-*   [tf.div](https://www.tensorflow.org/api_docs/python/tf/div)
-*   [tf.divide](https://www.tensorflow.org/api_docs/python/tf/divide)
-*   [tf.fake_quant_with_min_max_args](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_args)
-*   [tf.fake_quant_with_min_max_vars](https://www.tensorflow.org/api_docs/python/tf/fake_quant_with_min_max_vars)
-*   [tf.identity](https://www.tensorflow.org/api_docs/python/tf/identity)
-*   [tf.maximum](https://www.tensorflow.org/api_docs/python/tf/maximum)
-*   [tf.minimum](https://www.tensorflow.org/api_docs/python/tf/minimum)
-*   [tf.multiply](https://www.tensorflow.org/api_docs/python/tf/multiply)
-*   [tf.no_op](https://www.tensorflow.org/api_docs/python/tf/no_op)
-*   [tf.placeholder](https://www.tensorflow.org/api_docs/python/tf/placeholder)
-*   [tf.placeholder_with_default](https://www.tensorflow.org/api_docs/python/tf/placeholder_with_default)
-*   [tf.realdiv](https://www.tensorflow.org/api_docs/python/tf/realdiv)
-*   [tf.reduce_max](https://www.tensorflow.org/api_docs/python/tf/reduce_max)
-*   [tf.reduce_min](https://www.tensorflow.org/api_docs/python/tf/reduce_min)
-*   [tf.reduce_sum](https://www.tensorflow.org/api_docs/python/tf/reduce_sum)
-*   [tf.rsqrt](https://www.tensorflow.org/api_docs/python/tf/rsqrt)
-*   [tf.shape](https://www.tensorflow.org/api_docs/python/tf/shape)
-*   [tf.sqrt](https://www.tensorflow.org/api_docs/python/tf/sqrt)
-*   [tf.square](https://www.tensorflow.org/api_docs/python/tf/square)
-*   [tf.subtract](https://www.tensorflow.org/api_docs/python/tf/subtract)
-*   [tf.tile](https://www.tensorflow.org/api_docs/python/tf/tile)
-*   [tf.nn.batch_norm_with_global_normalization](https://www.tensorflow.org/api_docs/python/tf/nn/batch_norm_with_global_normalization)
-*   [tf.nn.bias_add](https://www.tensorflow.org/api_docs/python/tf/nn/bias_add)
-*   [tf.nn.fused_batch_norm](https://www.tensorflow.org/api_docs/python/tf/nn/fused_batch_norm)
-*   [tf.nn.relu](https://www.tensorflow.org/api_docs/python/tf/nn/relu)
-*   [tf.nn.relu6](https://www.tensorflow.org/api_docs/python/tf/nn/relu6)
+*   `tf.add`
+*   `tf.check_numerics`
+*   `tf.constant`
+*   `tf.div`
+*   `tf.divide`
+*   `tf.fake_quant_with_min_max_args`
+*   `tf.fake_quant_with_min_max_vars`
+*   `tf.identity`
+*   `tf.maximum`
+*   `tf.minimum`
+*   `tf.multiply`
+*   `tf.no_op`
+*   `tf.placeholder`
+*   `tf.placeholder_with_default`
+*   `tf.realdiv`
+*   `tf.reduce_max`
+*   `tf.reduce_min`
+*   `tf.reduce_sum`
+*   `tf.rsqrt`
+*   `tf.shape`
+*   `tf.sqrt`
+*   `tf.square`
+*   `tf.subtract`
+*   `tf.tile`
+*   `tf.nn.batch_norm_with_global_normalization`
+*   `tf.nn.bias_add`
+*   `tf.nn.fused_batch_norm`
+*   `tf.nn.relu`
+*   `tf.nn.relu6`
 
-Note that many of those operations don't have TensorFlow Lite equivalents and
-the corresponding model will not be convertible if they can't be elided or
-fused.
+Note: Many of those operations don't have TensorFlow Lite equivalents and the
+corresponding model will not be convertible if they can't be elided or fused.
 
-## Unsupported Operations
+## Unsupported operations
 
 TensorFlow operation not listed above are likely unsupported. Notably, the
 following common ops are not supported at the moment:
 
-*   [tf.depth_to_space](https://www.tensorflow.org/api_docs/python/tf/depth_to_space)
+*   `tf.depth_to_space`
 
-## TensorFlow Lite Operations
+## TensorFlow Lite operations
 
 The following TensorFlow Lite operations are fully supported and used in place
 of the TensorFlow operations listed above:
@@ -641,6 +631,40 @@ Outputs {
 }
 ```
 
+**NON_MAX_SUPPRESSION_V4**
+
+```
+Inputs {
+  0: boxes in format [y1, x1, y2, x2]
+  1: scores
+  2: max number of detections
+  3: IOU threshold
+  4: score threshold
+}
+Outputs {
+  0: selected indices
+  1: number of selected indices
+}
+```
+
+**NON_MAX_SUPPRESSION_V5**
+
+```
+Inputs {
+  0: boxes in format [y1, x1, y2, x2]
+  1: scores
+  2: max number of detections
+  3: IOU threshold
+  4: score threshold
+  5: soft NMS sigma
+}
+Outputs {
+  0: selected indices
+  1: selected scores
+  2: number of selected indices
+}
+```
+
 **PACK**
 
 ```
@@ -1117,17 +1141,17 @@ Outputs {
 }
 ```
 
-And these are TensorFlow Lite operations that are present but not ready for
-custom models yet:
+The following TensorFlow Lite operations are present, but not ready for custom
+models:
 
-*   CALL
-*   CONCAT_EMBEDDINGS
-*   CUSTOM
-*   EMBEDDING_LOOKUP
-*   EMBEDDING_LOOKUP_SPARSE
-*   HASHTABLE_LOOKUP
-*   LSH_PROJECTION
-*   LSTM
-*   RNN
-*   SKIP_GRAM
-*   SVDF
+*   `CALL`
+*   `CONCAT_EMBEDDINGS`
+*   `CUSTOM`
+*   `EMBEDDING_LOOKUP`
+*   `EMBEDDING_LOOKUP_SPARSE`
+*   `HASHTABLE_LOOKUP`
+*   `LSH_PROJECTION`
+*   `LSTM`
+*   `RNN`
+*   `SKIP_GRAM`
+*   `SVDF`

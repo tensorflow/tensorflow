@@ -221,6 +221,16 @@ TEST_F(XlaBuilderTest, ShapeInferenceError) {
   EXPECT_THAT(statusor.status().error_message(), HasSubstr("shape inference"));
 }
 
+TEST_F(XlaBuilderTest, DynamicDimensionReshapeToR0) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {1}), "x");
+  auto y = Parameter(&b, 1, ShapeUtil::MakeShape(S32, {}), "dyn_dim");
+  auto dx = SetDimensionSize(x, y, 0);
+  Reshape(dx, {});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_TRUE(statusor.ok());
+}
+
 TEST_F(XlaBuilderTest, ParameterAlreadyRegistered) {
   XlaBuilder b_call("add");
   Parameter(&b_call, 0, ShapeUtil::MakeShape(PRED, {}), "x");
@@ -282,7 +292,7 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
-  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // first do the in-dim broadcast then convert the degenerate broadcast into a
   // reshape and a broadcast.
   //
   // Expected:
@@ -317,6 +327,17 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Broadcast(op::Reshape(op::Broadcast())));
+}
+
+TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
+  BroadcastInDim(x, {-3, 3, 4},
+                 /*broadcast_dimensions=*/{0, 1, 2});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("shape's dimensions must not be < 0"));
 }
 
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
@@ -853,14 +874,14 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
                                    /*target_param_index=*/{0},
                                    /*target_dim_num=*/3));
   auto gte = GetTupleElement(p0, 0);  // f32[2, 3, <=4, <=5, 6]
-  Reshape(gte, /*new_sizes=*/{6, 4, 1, 5, 2, 3});
+  Reshape(gte, /*new_sizes=*/{6, 4, 5, 2, 3});
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   const Shape& result_shape =
       module->entry_computation()->root_instruction()->shape();
   EXPECT_TRUE(result_shape.is_dynamic_dimension(1));
-  EXPECT_TRUE(result_shape.is_dynamic_dimension(3));
+  EXPECT_TRUE(result_shape.is_dynamic_dimension(2));
   EXPECT_TRUE(ContainersEqual(result_shape.dynamic_dimensions(),
-                              {false, true, false, true, false, false}))
+                              {false, true, true, false, false}))
       << result_shape;
 }
 
@@ -917,10 +938,7 @@ TEST_F(XlaBuilderTest, DynamicSelectNotCompatible) {
   auto gte1 = GetTupleElement(p0, 1);  // f32[4,5,<=6]
   Select(pred, gte0, gte1);
   Status status = BuildHloModule(&b).status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("Operands to select must be the same shape; "
-                                   "got f32[4,<=5,6] and f32[4,5,<=6]"));
+  ASSERT_IS_OK(status);
 }
 
 TEST_F(XlaBuilderTest, DynamicTranspose) {
@@ -978,5 +996,151 @@ TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
   EXPECT_EQ(*alias_p1, ShapeIndex({0}));
 }
 
+void ExpectAttributesMatch(const FrontendAttributes& attr,
+                           const FrontendAttributes& ref) {
+  EXPECT_EQ(ref.map_size(), attr.map_size());
+  for (auto reference : ref.map()) {
+    auto other = attr.map().find(reference.first);
+    EXPECT_NE(other, attr.map().end());
+    EXPECT_EQ(other->second, reference.second);
+  }
+}
+
+void ExpectInstructionsAttributesMatch(
+    const HloModule& module, const std::vector<FrontendAttributes>& expected) {
+  ASSERT_EQ(module.computation_count(), 1);
+  auto expected_it = expected.begin();
+  for (auto inst : module.entry_computation()->instructions()) {
+    ASSERT_NE(expected_it, expected.end());
+    ExpectAttributesMatch(inst->frontend_attributes(), *expected_it);
+    expected_it++;
+  }
+  EXPECT_EQ(expected_it, expected.end());
+}
+
+TEST_F(XlaBuilderTest, SimpleSetFrontendAttributes) {
+  XlaBuilder b(TestName());
+  FrontendAttributes attributes;
+
+  ConstantR0(&b, 0);  // No attribute set
+
+  (*attributes.mutable_map())["attr_a"] = "a";
+  b.SetFrontendAttributes(attributes);
+  ConstantR0(&b, 0);  // One attribute: { "attr_a": "a" }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+
+  std::vector<FrontendAttributes> expected{FrontendAttributes(), attributes,
+                                           FrontendAttributes()};
+  ExpectInstructionsAttributesMatch(*module, expected);
+}
+
+TEST_F(XlaBuilderTest, ComplexSetFrontendAttributes) {
+  XlaBuilder b(TestName());
+
+  ConstantR0(&b, 0);  // No attribute set.
+  std::vector<FrontendAttributes> expected{FrontendAttributes()};
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // One attribute: { "attr_a": "a" }
+    expected.push_back(attributes);
+  }
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_b"] = "b";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // One attribute: { "attr_b": "b" }
+    expected.push_back(attributes);
+  }
+
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_b"] = "b";
+    (*attributes.mutable_map())["attr_c"] = "c";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);  // Two attributes: { "attr_b": "b", "attr_c": "c" }
+    expected.push_back(attributes);
+  }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  ExpectInstructionsAttributesMatch(*module, expected);
+}
+
+TEST_F(XlaBuilderTest, AddFrontendAttribute) {
+  XlaBuilder b(TestName());
+
+  ConstantR0(&b, 0);
+  std::vector<FrontendAttributes> expected{FrontendAttributes()};
+
+  // One attribute: { "attr_a": "a" }
+  {
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    b.SetFrontendAttributes(attributes);
+    ConstantR0(&b, 0);
+    expected.push_back(attributes);
+  }
+
+  // Two attributes: {"attra": "a", "attr_c": "c"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.SetInstructionFrontendAttribute(op, "attr_c", "c"));
+
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    (*attributes.mutable_map())["attr_c"] = "c";
+    expected.push_back(attributes);
+  }
+
+  // Override value of existing "attr_a"
+  // One attribute: { "attr_a", "a2"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.SetInstructionFrontendAttribute(op, "attr_a", "a2"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a2";
+    expected.push_back(attributes);
+  }
+
+  // Check "attr_a" is back to its original value
+  // One attribute: { "attr_a", "a"}
+  {
+    auto op = ConstantR0(&b, 0);
+    (void)op;
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_a"] = "a";
+    expected.push_back(attributes);
+  }
+
+  b.ClearFrontendAttributes();
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  // One attribute: { "attr_d", "d"}
+  {
+    auto op = ConstantR0(&b, 0);
+    EXPECT_IS_OK(b.SetInstructionFrontendAttribute(op, "attr_d", "d"));
+    FrontendAttributes attributes;
+    (*attributes.mutable_map())["attr_d"] = "d";
+    expected.push_back(attributes);
+  }
+
+  ConstantR0(&b, 0);  // No attribute set
+  expected.push_back(FrontendAttributes());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
+  ExpectInstructionsAttributesMatch(*module, expected);
+}
 }  // namespace
 }  // namespace xla

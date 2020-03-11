@@ -20,7 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct WorkerSession;
+class WorkerSession;
 
 // ClusterFunctionLibraryRuntime contains methods to Instantiate and Run
 // functions across processes by making RPCs.
@@ -35,10 +35,11 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
 
   ~ClusterFunctionLibraryRuntime() override;
 
-  Status Instantiate(const string& function_name,
-                     const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
-                     const FunctionLibraryRuntime::InstantiateOptions& options,
-                     FunctionLibraryRuntime::LocalHandle* handle) override;
+  void Instantiate(const string& function_name,
+                   const FunctionLibraryDefinition& lib_def, AttrSlice attrs,
+                   const FunctionLibraryRuntime::InstantiateOptions& options,
+                   FunctionLibraryRuntime::LocalHandle* handle,
+                   FunctionLibraryRuntime::DoneCallback done) override;
 
   void Run(const FunctionLibraryRuntime::Options& opts,
            FunctionLibraryRuntime::LocalHandle handle,
@@ -81,7 +82,7 @@ class ClusterFunctionLibraryRuntime : public DistributedFunctionLibraryRuntime {
           recv_keys(recv_keys) {}
   };
 
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -97,7 +97,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "PrecisionAtRecall"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Recall"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RecallAtPrecision"
     mtype: "<type \'type\'>"
   }
   member {

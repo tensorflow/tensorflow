@@ -92,11 +92,11 @@ inline __device__ RgbTuple hsv2rgb_cuda(const float h, const float s,
 }
 
 template <bool AdjustHue, bool AdjustSaturation, bool AdjustV, typename T>
-__global__ void adjust_hsv_nhwc(const int64 number_elements,
-                                const T* const __restrict__ input,
-                                T* const output, const float* const hue_delta,
-                                const float* const saturation_scale,
-                                const float* const value_scale) {
+__global__ void adjust_hsv_nhwc(
+    const int64 number_elements, const T* const __restrict__ input,
+    T* const __restrict__ output, const float* const __restrict__ hue_delta,
+    const float* const __restrict__ saturation_scale,
+    const float* const __restrict__ value_scale) {
   // multiply by 3 since we're dealing with contiguous RGB bytes for each pixel
   // (NHWC)
   for (int64 idx = (blockDim.x * blockIdx.x + threadIdx.x) * 3;

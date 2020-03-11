@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 namespace {
@@ -71,7 +70,6 @@ Session* NewSession(const SessionOptions& options) {
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
   Session* out_session;
   s = NewSession(options, &out_session);
   if (!s.ok()) {
@@ -92,7 +90,7 @@ Status NewSession(const SessionOptions& options, Session** out_session) {
   // Starts exporting metrics through a platform-specific monitoring API (if
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
-  monitoring::StartExporter();
+  session_created->GetCell()->Set(true);
   s = factory->NewSession(options, out_session);
   if (!s.ok()) {
     *out_session = nullptr;

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/meta_support.h"
 #include "tensorflow/core/kernels/quantization_utils.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace {
@@ -37,18 +38,44 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename T>
+template <typename T>
+T Cast(float v) {
+  return v;
+}
+
+template <>
+bfloat16 Cast<bfloat16>(float v) {
+  return bfloat16(v);
+}
+
+template <typename Device, typename T, typename S>
 class DequantizeOp : public OpKernel {
  public:
   explicit DequantizeOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     string mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("mode", &mode_string));
-    OP_REQUIRES(ctx,
-                (mode_string == "MIN_COMBINED" || mode_string == "MIN_FIRST" ||
-                 mode_string == "SCALED"),
-                errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
-                                        " 'MIN_FIRST', or 'SCALED', is '" +
-                                        mode_string + "'"));
+    OP_REQUIRES(
+        ctx,
+        (ctx->output_type(0) == DT_FLOAT || ctx->output_type(0) == DT_BFLOAT16),
+        errors::InvalidArgument("Output type must be bfloat16 or float,"
+                                " is '" +
+                                DataTypeString(ctx->output_type(0)) + "'"));
+
+    if (ctx->output_type(0) == DT_FLOAT) {
+      OP_REQUIRES(ctx,
+                  (mode_string == "MIN_COMBINED" ||
+                   mode_string == "MIN_FIRST" || mode_string == "SCALED"),
+                  errors::InvalidArgument("Mode string must be 'MIN_COMBINED',"
+                                          " 'MIN_FIRST', or 'SCALED', is '" +
+                                          mode_string + "'"));
+    } else {
+      OP_REQUIRES(
+          ctx, (mode_string == "MIN_COMBINED"),
+          errors::InvalidArgument("When output type is bfloat16, Mode"
+                                  " string must be 'MIN_COMBINED', is '" +
+                                  mode_string + "'"));
+    }
+
     if (mode_string == "MIN_COMBINED") {
       mode_ = QUANTIZE_MODE_MIN_COMBINED;
     } else if (mode_string == "MIN_FIRST") {
@@ -56,12 +83,61 @@ class DequantizeOp : public OpKernel {
     } else if (mode_string == "SCALED") {
       mode_ = QUANTIZE_MODE_SCALED;
     }
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("narrow_range", &narrow_range_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("axis", &axis_));
   }
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& input = ctx->input(0);
-    const float min_range = ctx->input(1).flat<float>()(0);
-    const float max_range = ctx->input(2).flat<float>()(0);
+    const Tensor& input_min_tensor = ctx->input(1);
+    const Tensor& input_max_tensor = ctx->input(2);
+
+    int num_slices = 1;
+    if (axis_ > -1) {
+      num_slices = input.dim_size(axis_);
+    }
+
+    Tensor* output = nullptr;
+    Tensor float_output = tensorflow::Tensor(DT_FLOAT, input.shape());
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
+    if (num_slices == 1) {
+      const float min_range = input_min_tensor.flat<float>()(0);
+      const float max_range = input_max_tensor.flat<float>()(0);
+      DequantizeTensor(ctx, input, min_range, max_range, &float_output);
+    } else {
+      OP_REQUIRES(ctx, mode_ != QUANTIZE_MODE_MIN_FIRST,
+                  errors::Unimplemented("MIN_FIRST mode is not implemented for "
+                                        "Dequantize with axis != -1."));
+
+      int64 pre_dim = 1, post_dim = 1;
+      for (int i = 0; i < axis_; ++i) {
+        pre_dim *= float_output.dim_size(i);
+      }
+      for (int i = axis_ + 1; i < float_output.dims(); ++i) {
+        post_dim *= float_output.dim_size(i);
+      }
+      auto input_tensor = input.template bit_casted_shaped<T, 3>(
+          {pre_dim, num_slices, post_dim});
+      auto output_tensor =
+          float_output.flat_inner_outer_dims<float, 3>(axis_ - 1);
+      auto min_ranges = input_min_tensor.vec<float>();
+      auto max_ranges = input_max_tensor.vec<float>();
+      for (int i = 0; i < num_slices; ++i) {
+        DequantizeSlice(ctx->eigen_device<Device>(), ctx,
+                        input_tensor.template chip<1>(i), min_ranges(i),
+                        max_ranges(i), output_tensor.template chip<1>(i));
+      }
+    }
+    S* out_ptr = output->flat<S>().data();
+    float* in_ptr = float_output.flat<float>().data();
+    for (int64 i = 0; i < float_output.NumElements(); ++i) {
+      out_ptr[i] = static_cast<S>(in_ptr[i]);
+    }
+  }
+
+  void DequantizeTensor(OpKernelContext* ctx, const Tensor& input,
+                        const float min_range, const float max_range,
+                        Tensor* output) {
     const float half_range =
         !std::is_signed<T>::value
             ? 0.0f
@@ -69,8 +145,6 @@ class DequantizeOp : public OpKernel {
                std::numeric_limits<T>::min() + 1) /
                   2.0f;
 
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));
     if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
       const float scale_factor =
           (max_range - min_range) /
@@ -93,10 +167,12 @@ class DequantizeOp : public OpKernel {
             output);
       }
     } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      const int min_output_value =
+          std::numeric_limits<T>::min() + (narrow_range_ ? 1 : 0);
       const float scale_factor =
           std::numeric_limits<T>::min() == 0
               ? (max_range / std::numeric_limits<T>::max())
-              : std::max(min_range / std::numeric_limits<T>::min(),
+              : std::max(min_range / min_output_value,
                          max_range / std::numeric_limits<T>::max());
       const auto& input_tensor = input.flat<T>();
       output->flat<float>() =
@@ -105,25 +181,95 @@ class DequantizeOp : public OpKernel {
     }
   }
 
+  template <typename ConstVec, typename Vec>
+  void DequantizeSlice(const Device& d, OpKernelContext* ctx,
+                       const ConstVec& input, float min_range, float max_range,
+                       Vec output) {
+    // TODO(pauldonnelly): Factor out the similar calculations in quantize,
+    //   dequantize and quantize_and_dequantize ops.
+    const float half_range =
+        !std::is_signed<T>::value
+            ? 0.0f
+            : (static_cast<float>(std::numeric_limits<T>::max()) -
+               std::numeric_limits<T>::min() + 1) /
+                  2.0f;
+
+    if (mode_ == QUANTIZE_MODE_MIN_COMBINED) {
+      const float scale_factor =
+          (max_range - min_range) /
+          (static_cast<float>(std::numeric_limits<T>::max()) -
+           std::numeric_limits<T>::min());
+
+      output.device(d) =
+          ((input.template cast<float>() + half_range) * scale_factor) +
+          min_range;
+    } else if (mode_ == QUANTIZE_MODE_SCALED) {
+      const int min_output_value =
+          std::numeric_limits<T>::min() + (narrow_range_ ? 1 : 0);
+      const float scale_factor =
+          std::numeric_limits<T>::min() == 0
+              ? (max_range / std::numeric_limits<T>::max())
+              : std::max(min_range / min_output_value,
+                         max_range / std::numeric_limits<T>::max());
+      output.device(d) = input.template cast<float>() * scale_factor;
+    }
+  }
+
  private:
   int mode_;
+  int axis_;
+  bool narrow_range_;
 };
 
-REGISTER_KERNEL_BUILDER(
-    Name("Dequantize").Device(DEVICE_CPU).TypeConstraint<quint8>("T"),
-    DequantizeOp<CPUDevice, quint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("Dequantize").Device(DEVICE_CPU).TypeConstraint<qint8>("T"),
-    DequantizeOp<CPUDevice, qint8>);
-REGISTER_KERNEL_BUILDER(
-    Name("Dequantize").Device(DEVICE_CPU).TypeConstraint<quint16>("T"),
-    DequantizeOp<CPUDevice, quint16>);
-REGISTER_KERNEL_BUILDER(
-    Name("Dequantize").Device(DEVICE_CPU).TypeConstraint<qint16>("T"),
-    DequantizeOp<CPUDevice, qint16>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .TypeConstraint<float>("dtype"),
+                        DequantizeOp<CPUDevice, quint8, float>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .TypeConstraint<float>("dtype"),
+                        DequantizeOp<CPUDevice, qint8, float>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint16>("T")
+                            .TypeConstraint<float>("dtype"),
+                        DequantizeOp<CPUDevice, quint16, float>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint16>("T")
+                            .TypeConstraint<float>("dtype"),
+                        DequantizeOp<CPUDevice, qint16, float>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint32>("T")
+                            .TypeConstraint<float>("dtype"),
+                        DequantizeOp<CPUDevice, qint32, float>);
 
-REGISTER_KERNEL_BUILDER(
-    Name("Dequantize").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
-    DequantizeOp<CPUDevice, qint32>);
-
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .TypeConstraint<bfloat16>("dtype"),
+                        DequantizeOp<CPUDevice, quint8, bfloat16>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .TypeConstraint<bfloat16>("dtype"),
+                        DequantizeOp<CPUDevice, qint8, bfloat16>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint16>("T")
+                            .TypeConstraint<bfloat16>("dtype"),
+                        DequantizeOp<CPUDevice, quint16, bfloat16>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint16>("T")
+                            .TypeConstraint<bfloat16>("dtype"),
+                        DequantizeOp<CPUDevice, qint16, bfloat16>);
+REGISTER_KERNEL_BUILDER(Name("Dequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint32>("T")
+                            .TypeConstraint<bfloat16>("dtype"),
+                        DequantizeOp<CPUDevice, qint32, bfloat16>);
 }  // namespace tensorflow

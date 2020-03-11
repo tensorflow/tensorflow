@@ -16,4 +16,16 @@ A second scalar seed to avoid seed collision.
 END
   }
   summary: "Creates a Dataset that returns pseudorandom numbers."
+  description: <<END
+Creates a Dataset that returns a stream of uniformly distributed
+pseudorandom 64-bit signed integers.
+
+In the TensorFlow Python API, you can instantiate this dataset via the
+class `tf.data.experimental.RandomDataset`.
+
+Instances of this dataset are also created as a result of the
+`hoist_random_uniform` static optimization. Whether this optimization is
+performed is determined by the `experimental_optimization.hoist_random_uniform`
+option of `tf.data.Options`.
+END
 }

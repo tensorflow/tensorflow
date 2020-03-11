@@ -119,6 +119,7 @@ class DfsHloVisitorBase {
   virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   virtual Status HandlePartitionId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
+  virtual Status HandleSetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
@@ -224,6 +225,7 @@ class DfsHloVisitorBase {
   virtual Status HandleInfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleOutfeed(HloInstructionPtr hlo) = 0;
   virtual Status HandleRng(HloInstructionPtr hlo) = 0;
+  virtual Status HandleRngBitGenerator(HloInstructionPtr hlo) = 0;
   virtual Status HandleRngGetAndUpdateState(HloInstructionPtr hlo) = 0;
   virtual Status HandleReverse(HloInstructionPtr hlo) = 0;
   virtual Status HandleSort(HloInstructionPtr hlo) = 0;
@@ -300,7 +302,18 @@ class DfsHloVisitorBase {
 
   // Useful when we want to visit the same computation more than once with the
   // same visitor.
-  void ResetVisitStates() { visit_state_.clear(); }
+  void ResetVisitStates() {
+    // Clear the map, but don't resize the capacity across uses -- Calculating
+    // and reserving space could be expensive, and we always use the same
+    // module->instruction_count() as the capacity.
+    visit_state_.erase(visit_state_.begin(), visit_state_.end());
+  }
+
+  // Useful when we want to free up the memory used by the visit state without
+  // destroying the actual visitor subclass.
+  void DestroyVisitState() {
+    visit_state_ = absl::flat_hash_map<int, VisitState>{};
+  }
 
   void SetVisitState(int id, VisitState state) { visit_state_[id] = state; }
 

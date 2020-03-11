@@ -2,7 +2,7 @@ path: "tensorflow.quantization"
 tf_module {
   member_method {
     name: "dequantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'mode\', \'name\', \'axis\', \'narrow_range\', \'dtype\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'None\', \'False\', \"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "fake_quant_with_min_max_args"
@@ -30,11 +30,11 @@ tf_module {
   }
   member_method {
     name: "quantize"
-    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\'], "
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\', \'narrow_range\', \'axis\', \'ensure_minimum_range\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\', \'False\', \'None\', \'0.01\'], "
   }
   member_method {
     name: "quantize_and_dequantize"
-    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'name\', \'narrow_range\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'None\', \'False\'], "
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'signed_input\', \'num_bits\', \'range_given\', \'round_mode\', \'name\', \'narrow_range\', \'axis\'], varargs=None, keywords=None, defaults=[\'True\', \'8\', \'False\', \'HALF_TO_EVEN\', \'None\', \'False\', \'None\'], "
   }
   member_method {
     name: "quantized_concat"

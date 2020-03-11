@@ -20,9 +20,16 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 /// TODO(b/130756570): Support OpBase constraints in PatternRewrites.
 def SingleResultAndOperandHaveSameElementType : Constraint<
-  CPred<"$0->getResult(0)->getType().cast<ShapedType>()"
-        ".getElementType() == "
-        "$1->getType().cast<ShapedType>().getElementType()">>;
+  CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
+
+def SingleResultAndOperandHaveSameType : Constraint<
+  CPred<"$0.getType() == $1.getType()">>;
+
+def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
+
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.
@@ -42,6 +49,23 @@ def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
                           (TF_SubOp $arg0, $arg1)>;
 
 //===----------------------------------------------------------------------===//
+// BatchMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
+
+//===----------------------------------------------------------------------===//
 // Bitcast op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -51,15 +75,6 @@ def BitcastSameType : Pat<(TF_BitcastOp:$res $arg), (replaceWithValue $arg),
 
 def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
-
-//===----------------------------------------------------------------------===//
-// Cast op patterns.
-//===----------------------------------------------------------------------===//
-
-def CastSameType : Pat<(TF_CastOp:$res $arg, $truncate),
-                       (replaceWithValue $arg),
-                       [(SingleResultAndOperandHaveSameElementType $res,
-                                                                   $arg)]>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.
@@ -95,11 +110,13 @@ def LogOfSoftmax : Pat<(TF_LogOp (TF_SoftmaxOp $arg)), (TF_LogSoftmaxOp $arg)>;
 def LogicalNotNested : Pat<(TF_LogicalNotOp (TF_LogicalNotOp $arg)),
                            (replaceWithValue $arg)>;
 
-def LogicalNotOfEqual : Pat<(TF_LogicalNotOp (TF_EqualOp $arg0, $arg1)),
-                            (TF_NotEqualOp $arg0, $arg1)>;
+def LogicalNotOfEqual : Pat<
+    (TF_LogicalNotOp (TF_EqualOp $arg0, $arg1, $shape_error)),
+    (TF_NotEqualOp $arg0, $arg1, $shape_error)>;
 
-def LogicalNotOfNotEqual : Pat<(TF_LogicalNotOp (TF_NotEqualOp $arg0, $arg1)),
-                               (TF_EqualOp $arg0, $arg1)>;
+def LogicalNotOfNotEqual : Pat<
+    (TF_LogicalNotOp (TF_NotEqualOp $arg0, $arg1, $shape_error)),
+    (TF_EqualOp $arg0, $arg1, $shape_error)>;
 
 def LogicalNotOfGreater : Pat<(TF_LogicalNotOp (TF_GreaterOp $arg0, $arg1)),
                               (TF_LessEqualOp $arg0, $arg1)>;
@@ -162,3 +179,11 @@ def TruncateDivWithSqrtDivisor : Pat<(TF_TruncateDivOp $arg0,
 
 def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
                                (TF_MulNoNanOp (TF_RsqrtOp $arg1), $arg0)>;
+
+
+//===----------------------------------------------------------------------===//
+// Cast op followed by a ReadVariable op can be folded into the ReadVariable
+//===----------------------------------------------------------------------===//
+
+def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOneUse $output)]>;
+

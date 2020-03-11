@@ -1,0 +1,19 @@
+op {
+  name: "SparseMatrixMul"
+  input_arg {
+    name: "a"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "b"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

@@ -47,7 +47,7 @@ END
   in_arg {
     name: "min_node_weight"
     description: <<END
-mininum avg of hessians in a node before required for the node to be considered for splitting.
+minimum avg of hessians in a node before required for the node to be considered for splitting.
 END
   }
   out_arg {
@@ -91,6 +91,7 @@ END
     name: "split_with_default_directions"
     description: <<END
 A Rank 1 tensor indicating which direction to go if data is missing.
+Inequality with default left returns 0, inequality with default right returns 1, equality with default right returns 2.
 END
   }
   attr {

@@ -138,10 +138,10 @@ OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
   return op_context;
 }
 
-// Returns an OpInfo for an Einsum
-OpContext DescribeEinsum(const std::vector<int>& dims_a,
-                         const std::vector<int>& dims_b,
-                         const string& equation) {
+// Returns an OpInfo for an XlaEinsum
+OpContext DescribeXlaEinsum(const std::vector<int>& dims_a,
+                            const std::vector<int>& dims_b,
+                            const string& equation) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op("XlaEinsum");
@@ -153,6 +153,19 @@ OpContext DescribeEinsum(const std::vector<int>& dims_a,
   if (!dims_b.empty())
     DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
   return op_context;
+}
+
+// Returns an OpInfo for an Einsum
+OpContext DescribeEinsum(const std::vector<int>& dims_a,
+                         const std::vector<int>& dims_b,
+                         const string& equation) {
+  OpContext op_context = DescribeXlaEinsum(dims_a, dims_b, equation);
+  op_context.op_info.set_op("Einsum");
+  return op_context;
+}
+
+void DescribeDummyTensor(OpInfo::TensorProperties* tensor) {
+  // Intentionally leave the tensor shape and type information missing.
 }
 
 // Wrangles the minimum number of proto fields to set up a 1D Tensor for cost
@@ -484,11 +497,31 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
+  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    OpLevelCostEstimator::BatchMatMulDimensions batch_mat_mul;
+
+    batch_mat_mul.matmul_dims.n = 0;
+    batch_mat_mul.matmul_dims.m = 0;
+    batch_mat_mul.matmul_dims.k = 0;
+
+    estimator_.CountBatchMatMulOperations(op_info, &batch_mat_mul,
+                                          found_unknown_shapes);
+    int dimension_product = 1;
+    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
+
+    dimension_product *= batch_mat_mul.matmul_dims.n;
+    dimension_product *= batch_mat_mul.matmul_dims.m;
+    dimension_product *= batch_mat_mul.matmul_dims.k;
+
+    return dimension_product;
+  }
+
   void SetComputeMemoryOverlap(bool value) {
     estimator_.compute_memory_overlap_ = value;
   }
 
-  void ValidateOpDimensionsFromImputs(const int n, const int h, const int w,
+  void ValidateOpDimensionsFromInputs(const int n, const int h, const int w,
                                       const int c, const int kx, const int ky,
                                       const int sx, const int sy,
                                       const string& data_format,
@@ -538,12 +571,12 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
-  std::unordered_set<string> persisent_ops = {
+  std::unordered_set<string> persistent_ops = {
       "Const",       "Variable",       "VariableV2", "AutoReloadVariable",
       "VarHandleOp", "ReadVariableOp",
   };
-  // Minmum cost for all persistent ops.
-  for (const auto& op : persisent_ops) {
+  // Minimum cost for all persistent ops.
+  for (const auto& op : persistent_ops) {
     op_context.op_info.set_op(op);
     auto cost = estimator_.PredictCosts(op_context);
     EXPECT_EQ(Costs::Duration(0), cost.memory_time);
@@ -939,6 +972,32 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                 DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+
+  // Test the count to make sure that they extracted the dimensions correctly
+  int prod = CountBatchMatMulDimProduct(
+      DescribeBatchMatMul({2, 4}, {1, 3, 4, 2}).op_info,
+      &batch_matmul_inaccurate);
+  EXPECT_EQ(prod, 16);
+  EXPECT_FALSE(batch_matmul_inaccurate);
+
+  // Exercise the bad cases of a batchMatMul.
+  OpContext bad_batch = DescribeBatchMatMul({2, 4}, {4, 2});
+  bad_batch.op_info.set_op("notBatchMatMul");
+  prod =
+      CountBatchMatMulDimProduct(bad_batch.op_info, &batch_matmul_inaccurate);
+
+  EXPECT_EQ(prod, 0);
+  EXPECT_TRUE(batch_matmul_inaccurate);
+
+  // Exercise a transpose case of a batchMatMul
+  OpContext transpose_batch = DescribeBatchMatMul({2, 4, 3, 1}, {4, 2});
+  auto attr = transpose_batch.op_info.mutable_attr();
+  (*attr)["adj_x"].set_b(true);
+  (*attr)["adj_y"].set_b(true);
+
+  prod = CountBatchMatMulDimProduct(transpose_batch.op_info,
+                                    &batch_matmul_inaccurate);
+  EXPECT_EQ(prod, 12);
 }
 
 TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
@@ -1069,10 +1128,10 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
   for (const auto& p : paddings) {
     for (const auto& f : formats) {
       // n, h, w, c, kx, ky, sx, sy, data_format, padding.
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
     }
   }
 }
@@ -1457,6 +1516,12 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(DescribeEinsum({100, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({100, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time);
   }
   {  // Test a simple batch matrix multiplication.
     auto cost = PredictCosts(
@@ -1468,6 +1533,14 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(
+                  DescribeEinsum({25, 100, 50}, {100, 50, 25}, "Bik,jkB->Bij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({25, 100, 50}, {100, 50, 25},
+                                             "Bik,jkB->Bij"))
+                  .execution_time);
   }
   {  // Test multiple batch dimensions.
     auto cost = PredictCosts(DescribeEinsum(
@@ -1480,6 +1553,15 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({25, 16, 100, 50}, {16, 100, 50, 25},
+                                    "BNik,NjkB->BNij"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({25, 16, 100, 50}, {16, 100, 50, 25},
+                                       "BNik,NjkB->BNij"))
+            .execution_time);
   }
   {  // Test multiple M dimensions.
     auto cost =
@@ -1491,6 +1573,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({25, 100, 50}, {100, 50}, "Aik,jk->Aij"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({25, 100, 50}, {100, 50}, "Aik,jk->Aij"))
+            .execution_time);
   }
   {  // Test multiple N dimensions.
     auto cost =
@@ -1502,6 +1591,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {25, 100, 50}, "ik,Bjk->ijB"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {25, 100, 50}, "ik,Bjk->ijB"))
+            .execution_time);
   }
   {  // Test multiple contracting dimensions.
     auto cost = PredictCosts(
@@ -1513,6 +1609,14 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(
+                  DescribeEinsum({100, 50, 25}, {100, 50, 25}, "ikl,jkl->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({100, 50, 25}, {100, 50, 25},
+                                             "ikl,jkl->ij"))
+                  .execution_time);
   }
   {  // Test a simple matrix transpose.
     auto cost = PredictCosts(DescribeEinsum({100, 50}, {}, "ij->ji"));
@@ -1522,6 +1626,12 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {}, "ij->ji")).execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {}, "ij->ji"))
+            .execution_time);
   }
   {  // Test a malformed Einsum equation: Mismatch between shapes and equation.
     auto cost =
@@ -1533,6 +1643,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50, 25}, {50, 100}, "ik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50, 25}, {50, 100}, "ik,kl->il"))
+            .execution_time);
+
     cost = PredictCosts(DescribeEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"));
     EXPECT_EQ(Costs::Duration(52000), cost.execution_time);
     EXPECT_EQ(Costs::Duration(0), cost.compute_time);
@@ -1540,6 +1657,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"))
+            .execution_time);
   }
   {  // Test an unsupported Einsum: ellipsis
     auto cost = PredictCosts(DescribeEinsum(
@@ -1550,6 +1674,15 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50, 25, 16}, {50, 100, 32, 12},
+                                    "ik...,kl...->il..."))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50, 25, 16}, {50, 100, 32, 12},
+                                       "ik...,kl...->il..."))
+            .execution_time);
   }
   {  // Test a malformed/unsupported Einsum: repeated indices
     auto cost =
@@ -1560,6 +1693,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 100, 50}, {50, 100}, "iik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 100, 50}, {50, 100}, "iik,kl->il"))
+            .execution_time);
   }
   {  // Test missing shapes.
     auto cost = PredictCosts(DescribeEinsum({-1, 50}, {100, 50}, "ik,jk->ij"));
@@ -1570,6 +1710,41 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(DescribeEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
+  TestOpLevelCostEstimator estimator;
+  estimator.SetDeviceInfo(DeviceInfo(/*gigaops=*/1, /*gb_per_sec=*/1));
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
+  }
+
+  {
+    OpContext op_context;
+    op_context.op_info.set_op("AssignSubVariableOp");
+    DescribeDummyTensor(op_context.op_info.add_inputs());
+    DescribeTensor1D(100, op_context.op_info.add_inputs());
+    auto cost = estimator.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(400), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(100), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(400), cost.execution_time);
+    EXPECT_FALSE(cost.inaccurate);
   }
 }
 

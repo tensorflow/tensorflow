@@ -30,12 +30,12 @@ RandomAccessInputStream::~RandomAccessInputStream() {
 }
 
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
-                                           string* result) {
+                                           tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
   result->clear();
-  result->resize(bytes_to_read);
+  result->resize_uninitialized(bytes_to_read);
   char* result_buffer = &(*result)[0];
   StringPiece data;
   Status s = file_->Read(pos_, bytes_to_read, &data, result_buffer);

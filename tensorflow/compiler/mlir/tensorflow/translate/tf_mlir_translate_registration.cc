@@ -20,9 +20,9 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "llvm/Support/MemoryBuffer.h"
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
@@ -40,42 +40,35 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 }  // namespace
 
-static OwningModuleRef GraphdefToMlirTranslateFunction(
-    llvm::StringRef input_filename, MLIRContext* context) {
+static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
+                                                       MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
-      StringRefToView(input_filename), debug_info_file, input_arrays,
-      input_dtypes, input_shapes, output_arrays, inference_type, min_values,
-      max_values, prune_unused_nodes, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
 static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
-    llvm::StringRef input_filename, MLIRContext* context) {
+    llvm::StringRef input, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-      StringRefToView(input_filename), debug_info_file, input_arrays,
-      input_dtypes, input_shapes, output_arrays, inference_type, min_values,
-      max_values, prune_unused_nodes, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, control_output_arrays, prune_unused_nodes,
+      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(
     "graphdef-to-splatted-mlir", GraphdefToSplattedMlirTranslateFunction);
 
 static LogicalResult MlirToGraphdefTranslateFunction(
-    ModuleOp module, llvm::StringRef output_filename) {
+    ModuleOp module, llvm::raw_ostream& output) {
   if (!module) return failure();
 
-  std::error_code error;
-  auto result = llvm::make_unique<llvm::ToolOutputFile>(output_filename, error,
-                                                        llvm::sys::fs::F_None);
-  if (error) {
-    LOG(ERROR) << error.message();
-    return failure();
-  }
-
   // TODO(fengliuai): Add exporter flags.
-  tensorflow::ExporterConfigs confs;
+  tensorflow::GraphExportConfig confs;
+  confs.graph_as_function = graph_as_function;
   StatusOr<std::unique_ptr<tensorflow::GraphDef>> graphdef_or(
       tensorflow::ConvertMlirToGraphdef(module, confs));
   if (!graphdef_or.status().ok()) {
@@ -83,8 +76,7 @@ static LogicalResult MlirToGraphdefTranslateFunction(
     return mlir::failure();
   }
 
-  result->os() << graphdef_or.ValueOrDie()->DebugString();
-  result->keep();
+  output << graphdef_or.ValueOrDie()->DebugString();
   return success();
 }
 

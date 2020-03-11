@@ -58,6 +58,12 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(
+          instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
+  }
+
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
 
@@ -81,7 +87,7 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
   // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
   // which on paper gives good performance. However, there are two observations:
   // * a mixed layout combination is more cuDNN-bug prone, based on empirical
-  //   envidence.
+  //   evidence.
   // * we've also observed that for mixed layouts, cuDNN transposes data back
   //   and forth from a different layout combination. If we end up with
   //   transposes anyway, we prefer to have them in XLA, as they can be fused.
@@ -166,7 +172,7 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
   // instr->operand(2), if exists, is the bias buffer. There is no need to
   // assign layout to it, as it has only one dimension.
 
-  // instr->opernad(3), if exists, is the side input buffer.
+  // instr->operand(3), if exists, is the side input buffer.
   if (instr->operand_count() == 4) {
     if (kind != CudnnConvKind::kForwardActivation) {
       return InternalError(

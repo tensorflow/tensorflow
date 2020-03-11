@@ -118,10 +118,12 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.replacements = replacements
     self.in_replacements = False
     self.preserved_annos = {
+        anno.Basic.DIRECTIVES,
+        anno.Basic.EXTRA_LOOP_TEST,
         anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
         anno.Static.ORIG_DEFINITIONS,
-        'extra_test',
+        'function_context_name',
     }
 
   def _prepare_replacement(self, replaced, key):
@@ -219,7 +221,7 @@ def _convert_to_ast(n):
   # unknown. ctx must be filled in according to the template being used.
   # See ReplaceTransformer.visit_Name.
   if isinstance(n, str):
-    return gast.Name(id=n, ctx=None, annotation=None)
+    return gast.Name(id=n, ctx=None, annotation=None, type_comment=None)
   if isinstance(n, qual_names.QN):
     return n.ast()
   if isinstance(n, list):
@@ -259,7 +261,7 @@ def replace(template, **replacements):
   for k in replacements:
     replacements[k] = _convert_to_ast(replacements[k])
   template_str = parser.STANDARD_PREAMBLE + textwrap.dedent(template)
-  nodes = parser.parse_str(
+  nodes = parser.parse(
       template_str,
       preamble_len=parser.STANDARD_PREAMBLE_LEN,
       single_node=False)

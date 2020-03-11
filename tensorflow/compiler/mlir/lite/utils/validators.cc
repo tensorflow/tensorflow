@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 
-#include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/Dialect/Traits.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TFL {
@@ -59,6 +59,16 @@ bool TFIntListIs1XY1(const ArrayAttr &attr) {
       elements.back().cast<IntegerAttr>().getValue() != 1)
     return false;
   return true;
+}
+
+// Returns true if every element of the attribute is 1. All elements of `attr`
+// must be `IntegerAttr`.
+bool TFIntListIsAllOnes(const ArrayAttr &attr) {
+  const auto &elements = attr.getValue();
+
+  return !std::any_of(elements.begin(), elements.end(), [](Attribute e) {
+    return e.cast<IntegerAttr>().getValue() != 1;
+  });
 }
 
 bool IsBroadcastableElementsAttrs(mlir::Attribute a, mlir::Attribute b) {

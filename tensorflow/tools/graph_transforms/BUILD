@@ -3,7 +3,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "if_not_v2",
     "if_not_windows",
     "tf_cc_binary",
     "tf_cc_test",
@@ -99,6 +98,7 @@ cc_library(
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
+        "inline_partitionedcall.cc",
         "insert_logging.cc",
         "obfuscate_names.cc",
         "quantize_nodes.cc",
@@ -108,6 +108,7 @@ cc_library(
         "remove_device.cc",
         "remove_nodes.cc",
         "rename_attribute.cc",
+        "rename_node.cc",
         "rename_op.cc",
         "round_weights.cc",
         "set_device.cc",
@@ -122,6 +123,9 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/algorithm:container",
         "//tensorflow/c:checkpoint_reader",
         "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
@@ -175,6 +179,7 @@ tf_cc_test(
         "fold_old_batch_norms_test.cc",
         "freeze_requantization_ranges_test.cc",
         "fuse_convolutions_test.cc",
+        "inline_partitionedcall_test.cc",
         "insert_logging_test.cc",
         "obfuscate_names_test.cc",
         "quantize_nodes_test.cc",
@@ -183,6 +188,7 @@ tf_cc_test(
         "remove_device_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
+        "rename_node_test.cc",
         "rename_op_test.cc",
         "round_weights_test.cc",
         "set_device_test.cc",
@@ -208,6 +214,18 @@ tf_cc_test(
     ],
 )
 
+filegroup(
+    name = "transform_graph_hdrs",
+    srcs = [
+        "transform_graph.h",
+        "transform_utils.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "transform_graph_lib",
     srcs = ["transform_graph.cc"],
@@ -223,6 +241,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 # This library includes a main function, to make it easy to create other
@@ -317,8 +336,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:_pywrap_transform_graph",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:util",
     ],
 )
@@ -327,7 +346,9 @@ tf_py_test(
     name = "transform_graph_py_test",
     size = "small",
     srcs = ["python/transform_graph_test.py"],
-    additional_deps = [
+    main = "python/transform_graph_test.py",
+    tags = ["v1only"],
+    deps = [
         ":transform_graph_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -335,5 +356,4 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    main = "python/transform_graph_test.py",
 )

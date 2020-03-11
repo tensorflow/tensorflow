@@ -129,6 +129,9 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         }
         AllocatorAttributes cpu_attr;
         cpu_attr.set_gpu_compatible(true);
+        MEMDEBUG_CACHE_OP(
+            "CollectiveRemoteAccessDistributed::RecvFromPeer"
+            "::recv_buf_callback");
         Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
                                         to_tensor->dtype(), to_tensor->shape());
         PopulateTensorFromExtra(extra, cpu_tensor);
@@ -137,11 +140,11 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
                            nullptr /*send_dev_ctx*/, to_device_ctx, cpu_dev,
                            to_device, cpu_attr, to_alloc_attr, cpu_tensor,
                            to_tensor, dev_to_dev_stream_index,
-                           [cpu_tensor, done](const Status& s) {
+                           [this, cpu_tensor, done](const Status& s) {
                              delete cpu_tensor;
                              // This callback must not block, so execute
                              // done in another thread.
-                             SchedClosure([s, done] { done(s); });
+                             RunClosure([s, done] { done(s); });
                            });
         delete state;
         return;

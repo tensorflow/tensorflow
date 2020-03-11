@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import copy
 
+import numpy as np
+
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -65,12 +67,12 @@ class BaseLayerTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testKerasStyleAddWeight(self):
     keras_layer = keras_base_layer.Layer(name='keras_layer')
-    with ops.name_scope('foo'):
+    with ops.name_scope('foo', skip_on_eager=False):
       keras_variable = keras_layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(keras_variable.name, 'foo/my_var:0')
 
-    with ops.name_scope('baz'):
+    with ops.name_scope('baz', skip_on_eager=False):
       old_style_layer = base_layers.Layer(name='my_layer')
       # Test basic variable creation.
       variable = old_style_layer.add_variable(
@@ -80,7 +82,7 @@ class BaseLayerTest(test.TestCase):
     with base_layers.keras_style_scope():
       layer = base_layers.Layer(name='my_layer')
     # Test basic variable creation.
-    with ops.name_scope('bar'):
+    with ops.name_scope('bar', skip_on_eager=False):
       variable = layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(variable.name, 'bar/my_var:0')
@@ -159,7 +161,7 @@ class BaseLayerTest(test.TestCase):
           trainable=True)
 
   @test_util.run_deprecated_v1
-  def testReusePartitionedVaraiblesAndRegularizers(self):
+  def testReusePartitionedVariablesAndRegularizers(self):
     regularizer = lambda x: math_ops.reduce_sum(x) * 1e-3
     partitioner = partitioned_variables.fixed_size_partitioner(3)
     for reuse in [False, True]:
@@ -637,6 +639,70 @@ class BaseLayerTest(test.TestCase):
     self.assertEqual(len(layer.get_losses_for([inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
     self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+
+
+class IdentityLayer(base_layers.Layer):
+  """A layer returns the identity of it's input."""
+
+  def call(self, inputs):
+    return inputs
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class DTypeTest(test.TestCase):
+
+  def _const(self, dtype):
+    return array_ops.constant(1, dtype=dtype)
+
+  def test_dtype_inferred_from_input(self):
+    # Test with Tensor input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with Numpy input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(np.array(1., dtype='float64'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test with integer input
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('int32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    # Test layer dtype doesn't change when passed a new dtype
+    layer = IdentityLayer()
+    self.assertIsNone(layer.dtype)
+    layer(self._const('float64'))
+    self.assertEqual(layer.dtype, 'float64')
+    layer(self._const('float16'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    # Test layer dtype inferred from first input
+    layer = IdentityLayer()
+    layer([self._const('float32'), self._const('float64')])
+    self.assertEqual(layer.dtype, 'float32')
+
+  def test_passing_dtype_to_constructor(self):
+    layer = IdentityLayer(dtype='float64')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+    layer = IdentityLayer(dtype='int32')
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'int32')
+
+    layer = IdentityLayer(dtype=dtypes.float64)
+    layer(self._const('float32'))
+    self.assertEqual(layer.dtype, 'float64')
+
+  def test_inputs_not_casted(self):
+    layer = IdentityLayer(dtype='float32')
+    self.assertEqual(layer(self._const('float64')).dtype, 'float64')
+
 
 if __name__ == '__main__':
   test.main()

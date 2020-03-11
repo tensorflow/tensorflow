@@ -19,589 +19,266 @@ namespace {
 
 constexpr char kNodeName[] = "filter_dataset";
 
-class FilterDatasetOpTest : public DatasetOpsTestBase {
- protected:
-  // Creates `TensorSliceDataset` variant tensor from the input vector of
-  // tensors.
-  Status CreateTensorSliceDatasetTensor(
-      std::vector<Tensor> *const tensor_vector, Tensor *dataset_tensor) {
-    DatasetBase *tensor_slice_dataset;
-    TF_RETURN_IF_ERROR(CreateTensorSliceDataset(
-        "tensor_slice_node", tensor_vector, &tensor_slice_dataset));
-    TF_RETURN_IF_ERROR(
-        StoreDatasetInVariantTensor(tensor_slice_dataset, dataset_tensor));
+class FilterDatasetParams : public DatasetParams {
+ public:
+  template <typename T>
+  FilterDatasetParams(T input_dataset_params,
+                      std::vector<Tensor> other_arguments,
+                      FunctionDefHelper::AttrValueWrapper pred_func,
+                      std::vector<FunctionDef> func_lib,
+                      DataTypeVector type_arguments,
+                      DataTypeVector output_dtypes,
+                      std::vector<PartialTensorShape> output_shapes,
+                      string node_name)
+      : DatasetParams(std::move(output_dtypes), std::move(output_shapes),
+                      std::move(node_name)),
+        other_arguments_(std::move(other_arguments)),
+        pred_func_(std::move(pred_func)),
+        func_lib_(std::move(func_lib)),
+        type_arguments_(std::move(type_arguments)) {
+    input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
+  }
+
+  std::vector<Tensor> GetInputTensors() const override {
+    return other_arguments_;
+  }
+
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    input_names->reserve(input_dataset_params_.size() +
+                         other_arguments_.size());
+    input_names->emplace_back(FilterDatasetOp::kInputDataset);
+    for (int i = 0; i < other_arguments_.size(); ++i) {
+      input_names->emplace_back(
+          absl::StrCat(FilterDatasetOp::kOtherArguments, "_", i));
+    }
+
     return Status::OK();
   }
 
-  // Creates a new `FilterDataset` op kernel
-  Status CreateFilterDatasetKernel(
-      const FunctionDefHelper::AttrValueWrapper &func,
-      const DataTypeVector &output_types,
-      const std::vector<PartialTensorShape> &output_shapes,
-      std::unique_ptr<OpKernel> *op_kernel) {
-    NodeDef node_def = test::function::NDef(
-        kNodeName, name_utils::OpName(FilterDatasetOp::kDatasetType),
-        {FilterDatasetOp::kInputDataset},
-        {{FilterDatasetOp::kPredicate, func},
-         {FilterDatasetOp::kTarguments, {}},
-         {FilterDatasetOp::kOutputTypes, output_types},
-         {FilterDatasetOp::kOutputShapes, output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
+  Status GetAttributes(AttributeVector* attr_vector) const override {
+    *attr_vector = {{FilterDatasetOp::kPredicate, pred_func_},
+                    {FilterDatasetOp::kTarguments, type_arguments_},
+                    {FilterDatasetOp::kOutputShapes, output_shapes_},
+                    {FilterDatasetOp::kOutputTypes, output_dtypes_}};
     return Status::OK();
   }
 
-  // Creates a new `FilterDataset` op kernel context.
-  Status CreateFilterDatasetContext(
-      OpKernel *const op_kernel,
-      gtl::InlinedVector<TensorValue, 4> *const inputs,
-      std::unique_ptr<OpKernelContext> *context) {
-    TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
-    TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
-    return Status::OK();
-  }
+  std::vector<FunctionDef> func_lib() const override { return func_lib_; }
+
+  string dataset_type() const override { return FilterDatasetOp::kDatasetType; }
+
+ private:
+  std::vector<Tensor> other_arguments_;
+  FunctionDefHelper::AttrValueWrapper pred_func_;
+  std::vector<FunctionDef> func_lib_;
+  DataTypeVector type_arguments_;
 };
 
-struct TestCase {
-  std::vector<Tensor> input_tensors;
-  FunctionDefHelper::AttrValueWrapper func;
-  std::vector<FunctionDef> func_lib;
-  std::vector<Tensor> expected_outputs;
-  DataTypeVector expected_output_dtypes;
-  std::vector<PartialTensorShape> expected_output_shapes;
-  int64 expected_cardinality;
-  std::vector<int> breakpoints;
-};
-
-template <typename T>
-std::vector<Tensor> ConvertToTensorVec(std::vector<T> values) {
-  std::vector<Tensor> tensors;
-  tensors.reserve(values.size());
-  for (auto &value : values) {
-    tensors.emplace_back(
-        DatasetOpsTestBase::CreateTensor<T>(TensorShape({1}), {value}));
-  }
-  return tensors;
-}
+class FilterDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: norm case.
-TestCase TestCase1() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::IsZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({0, 0, 0}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({1})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+FilterDatasetParams FilterDatasetParams1() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64>(TensorShape{9, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return FilterDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*pred_func=*/FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
+      /*func_lib*/ {test::function::IsZero()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({1})},
+      /*node_name=*/kNodeName);
 }
 
 // Test case 2: the input dataset has no outputs.
-TestCase TestCase2() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{0}, {})},
-          /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::IsZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {0, 2, 6}};
+FilterDatasetParams FilterDatasetParams2() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64>(TensorShape{0}, {})},
+      /*node_name=*/"tensor_slice_dataset");
+  return FilterDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*pred_func=*/FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
+      /*func_lib*/ {test::function::IsZero()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
 }
 
 // Test case 3: the filter function returns two outputs.
-TestCase InvalidFuncTestCase1() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/
-          FunctionDefHelper::FunctionRef(
-              "GetUnique", {{"T", DT_INT64}, {"out_idx", DT_INT32}}),
-          /*func_lib*/ {test::function::Unique()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {}};
+FilterDatasetParams InvalidPredFuncFilterDatasetParams1() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64>(TensorShape{3, 3}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return FilterDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*pred_func=*/
+      FunctionDefHelper::FunctionRef("GetUnique",
+                                     {{"T", DT_INT64}, {"out_idx", DT_INT32}}),
+      /*func_lib*/ {test::function::Unique()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({3, 1})},
+      /*node_name=*/kNodeName);
 }
 
 // Test case 4: the filter function returns a 1-D bool tensor.
-TestCase InvalidFuncTestCase2() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/ FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::IsZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({3, 1})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {}};
+FilterDatasetParams InvalidPredFuncFilterDatasetParams2() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64>(TensorShape{3, 3, 1}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return FilterDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*pred_func=*/
+      FunctionDefHelper::FunctionRef("IsZero", {{"T", DT_INT64}}),
+      /*func_lib=*/{test::function::IsZero()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({3, 1})},
+      /*node_name=*/kNodeName);
 }
 
 // Test case 5: the filter function returns a scalar int64 tensor.
-TestCase InvalidFuncTestCase3() {
-  return {/*input_tensors*/
-          {DatasetOpsTestBase::CreateTensor<int64>(
-              TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
-          /*func*/ FunctionDefHelper::FunctionRef("NonZero", {{"T", DT_INT64}}),
-          /*func_lib*/ {test::function::NonZero()},
-          /*expected_outputs*/
-          ConvertToTensorVec<int64>({}),
-          /*expected_output_dtypes*/ {DT_INT64},
-          /*expected_output_shapes*/ {PartialTensorShape({})},
-          /*expected_cardinality*/ kUnknownCardinality,
-          /*breakpoints*/ {}};
+FilterDatasetParams InvalidPredFuncFilterDatasetParams3() {
+  auto tensor_slice_dataset_params = TensorSliceDatasetParams(
+      /*components=*/
+      {CreateTensor<int64>(TensorShape{9}, {0, 0, 0, 3, 4, 5, 6, 7, 8})},
+      /*node_name=*/"tensor_slice_dataset");
+  return FilterDatasetParams(
+      std::move(tensor_slice_dataset_params),
+      /*other_arguments=*/{},
+      /*pred_func=*/
+      FunctionDefHelper::FunctionRef("NonZero", {{"T", DT_INT64}}),
+      /*func_lib=*/{test::function::NonZero()},
+      /*type_arguments=*/{},
+      /*output_dtypes=*/{DT_INT64},
+      /*output_shapes=*/{PartialTensorShape({})},
+      /*node_name=*/kNodeName);
 }
 
-class ParameterizedFilterDatasetOpTest
-    : public FilterDatasetOpTest,
-      public ::testing::WithParamInterface<TestCase> {};
-
-TEST_P(ParameterizedFilterDatasetOpTest, GetNext) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-  bool end_of_sequence = false;
-  std::vector<Tensor> out_tensors;
-  while (!end_of_sequence) {
-    std::vector<Tensor> next;
-    TF_EXPECT_OK(
-        iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
-    out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-  }
-
-  TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+std::vector<GetNextTestCase<FilterDatasetParams>> GetNextTestCases() {
+  return {{/*dataset_params=*/FilterDatasetParams1(),
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+          {/*dataset_params=*/FilterDatasetParams2(),
+           /*expected_outputs=*/{}}};
 }
+
+ITERATOR_GET_NEXT_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
+                         GetNextTestCases())
 
 TEST_F(FilterDatasetOpTest, DatasetNodeName) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = TestCase1();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  EXPECT_EQ(filter_dataset->node_name(), kNodeName);
+  auto dataset_params = FilterDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetNodeName(dataset_params.node_name()));
 }
 
 TEST_F(FilterDatasetOpTest, DatasetTypeString) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = TestCase1();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  EXPECT_EQ(filter_dataset->type_string(),
-            name_utils::OpName(FilterDatasetOp::kDatasetType));
+  auto dataset_params = FilterDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetTypeString(
+      name_utils::OpName(FilterDatasetOp::kDatasetType)));
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, DatasetOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  TF_EXPECT_OK(VerifyTypesMatch(filter_dataset->output_dtypes(),
-                                test_case.expected_output_dtypes));
+TEST_F(FilterDatasetOpTest, DatasetOutputDtypes) {
+  auto dataset_params = FilterDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, DatasetOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  TF_EXPECT_OK(VerifyShapesCompatible(filter_dataset->output_shapes(),
-                                      test_case.expected_output_shapes));
+std::vector<DatasetOutputShapesTestCase<FilterDatasetParams>>
+DatasetOutputShapesTestCases() {
+  return {{/*dataset_params=*/FilterDatasetParams1(),
+           /*expected_output_shapes=*/{PartialTensorShape({1})}},
+          {/*dataset_params=*/FilterDatasetParams2(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, Cardinality) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
+DATASET_OUTPUT_SHAPES_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
+                             DatasetOutputShapesTestCases())
 
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  EXPECT_EQ(filter_dataset->Cardinality(), test_case.expected_cardinality);
+std::vector<CardinalityTestCase<FilterDatasetParams>> CardinalityTestCases() {
+  return {{/*dataset_params=*/FilterDatasetParams1(),
+           /*expected_cardinality=*/kUnknownCardinality},
+          {/*dataset_params=*/FilterDatasetParams2(),
+           /*expected_cardinality=*/kUnknownCardinality}};
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, DatasetSave) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
+DATASET_CARDINALITY_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
+                           CardinalityTestCases())
 
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-  VariantTensorData data;
-  VariantTensorDataWriter writer(&data);
-  TF_ASSERT_OK(filter_dataset->Save(serialization_ctx.get(), &writer));
-  TF_ASSERT_OK(writer.Flush());
+TEST_F(FilterDatasetOpTest, IteratorOutputDtypes) {
+  auto dataset_params = FilterDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, IteratorOutputDtypes) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
-                                test_case.expected_output_dtypes));
+std::vector<IteratorOutputShapesTestCase<FilterDatasetParams>>
+IteratorOutputShapesTestCases() {
+  return {{/*dataset_params=*/FilterDatasetParams1(),
+           /*expected_output_shapes=*/{PartialTensorShape({1})}},
+          {/*dataset_params=*/FilterDatasetParams2(),
+           /*expected_output_shapes=*/{PartialTensorShape({})}}};
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, IteratorOutputShapes) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
+ITERATOR_OUTPUT_SHAPES_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
+                              IteratorOutputShapesTestCases())
 
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      test_case.expected_output_shapes));
+TEST_F(FilterDatasetOpTest, IteratorPrefix) {
+  auto dataset_params = FilterDatasetParams1();
+  TF_ASSERT_OK(Initialize(dataset_params));
+  TF_ASSERT_OK(CheckIteratorPrefix(name_utils::IteratorPrefix(
+      FilterDatasetOp::kDatasetType, dataset_params.iterator_prefix())));
 }
 
-TEST_F(ParameterizedFilterDatasetOpTest, IteratorOutputPrefix) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = TestCase1();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
-
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
-
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  EXPECT_EQ(iterator->prefix(), name_utils::IteratorPrefix(
-                                    FilterDatasetOp::kDatasetType, "Iterator"));
+std::vector<IteratorSaveAndRestoreTestCase<FilterDatasetParams>>
+IteratorSaveAndRestoreTestCases() {
+  return {{/*dataset_params=*/FilterDatasetParams1(),
+           /*breakpoints=*/{0, 2, 6},
+           /*expected_outputs=*/
+           CreateTensors<int64>(TensorShape({1}), {{0}, {0}, {0}})},
+          {/*dataset_params=*/FilterDatasetParams2(),
+           /*breakpoints=*/{0, 2, 6},
+           /*expected_outputs=*/{}}};
 }
 
-TEST_P(ParameterizedFilterDatasetOpTest, Roundtrip) {
-  int thread_num = 2, cpu_num = 2;
-  const TestCase &test_case = GetParam();
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(test_case.func_lib, cpu_num));
+ITERATOR_SAVE_AND_RESTORE_TEST_P(FilterDatasetOpTest, FilterDatasetParams,
+                                 IteratorSaveAndRestoreTestCases())
 
-  std::unique_ptr<OpKernel> filter_dataset_kernel;
-  TF_ASSERT_OK(CreateFilterDatasetKernel(
-      test_case.func, test_case.expected_output_dtypes,
-      test_case.expected_output_shapes, &filter_dataset_kernel));
+class ParameterizedInvalidPredicateFuncTest
+    : public FilterDatasetOpTest,
+      public ::testing::WithParamInterface<FilterDatasetParams> {};
 
-  Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-  std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
-                                              &tensor_slice_dataset_tensor));
-  gtl::InlinedVector<TensorValue, 4> inputs(
-      {TensorValue(&tensor_slice_dataset_tensor)});
-  std::unique_ptr<OpKernelContext> filter_dataset_context;
-  TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(), &inputs,
-                                          &filter_dataset_context));
-  DatasetBase *filter_dataset;
-  TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                             filter_dataset_context.get(), &filter_dataset));
-  core::ScopedUnref scoped_unref(filter_dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(
-      CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  std::unique_ptr<SerializationContext> serialization_ctx;
-  TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
-
+TEST_P(ParameterizedInvalidPredicateFuncTest, InvalidPredicateFunc) {
+  auto dataset_params = GetParam();
+  TF_ASSERT_OK(Initialize(dataset_params));
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
-  int cur_iteration = 0;
-  const std::vector<int> &breakpoints = test_case.breakpoints;
-  for (int breakpoint : breakpoints) {
-    VariantTensorData data;
-    VariantTensorDataWriter writer(&data);
-    TF_EXPECT_OK(iterator->Save(serialization_ctx.get(), &writer));
-    TF_EXPECT_OK(writer.Flush());
-    VariantTensorDataReader reader(&data);
-    TF_EXPECT_OK(RestoreIterator(iterator_ctx.get(), &reader, "Iterator",
-                                 *filter_dataset, &iterator));
-
-    while (cur_iteration <= breakpoint) {
-      std::vector<Tensor> next;
-      TF_EXPECT_OK(
-          iterator->GetNext(iterator_ctx.get(), &next, &end_of_sequence));
-      out_tensors.insert(out_tensors.end(), next.begin(), next.end());
-      cur_iteration++;
-    }
-  }
-
-  TF_EXPECT_OK(ExpectEqual(out_tensors, test_case.expected_outputs,
-                           /*compare_order*/ true));
+  EXPECT_EQ(
+      iterator_->GetNext(iterator_ctx_.get(), &out_tensors, &end_of_sequence)
+          .code(),
+      tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_TRUE(out_tensors.empty());
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    FilterDatasetOpTest, ParameterizedFilterDatasetOpTest,
-    ::testing::ValuesIn(std::vector<TestCase>({TestCase1(), TestCase2()})));
-
-TEST_F(ParameterizedFilterDatasetOpTest, InvalidFuncs) {
-  int thread_num = 2, cpu_num = 2;
-  TF_ASSERT_OK(InitThreadPool(thread_num));
-  TF_ASSERT_OK(InitFunctionLibraryRuntime(
-      {test::function::IsZero(), test::function::Unique(),
-       test::function::NonZero()},
-      cpu_num));
-
-  std::vector<TestCase> test_cases(
-      {InvalidFuncTestCase1(), InvalidFuncTestCase2(), InvalidFuncTestCase3()});
-  for (const auto &test_case : test_cases) {
-    std::unique_ptr<OpKernel> filter_dataset_kernel;
-    TF_ASSERT_OK(CreateFilterDatasetKernel(
-        test_case.func, test_case.expected_output_dtypes,
-        test_case.expected_output_shapes, &filter_dataset_kernel));
-    Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
-    std::vector<Tensor> inputs_for_tensor_slice_dataset =
-        test_case.input_tensors;
-    TF_ASSERT_OK(CreateTensorSliceDatasetTensor(
-        &inputs_for_tensor_slice_dataset, &tensor_slice_dataset_tensor));
-    gtl::InlinedVector<TensorValue, 4> inputs(
-        {TensorValue(&tensor_slice_dataset_tensor)});
-    std::unique_ptr<OpKernelContext> filter_dataset_context;
-    TF_ASSERT_OK(CreateFilterDatasetContext(filter_dataset_kernel.get(),
-                                            &inputs, &filter_dataset_context));
-    DatasetBase *filter_dataset;
-    TF_ASSERT_OK(CreateDataset(filter_dataset_kernel.get(),
-                               filter_dataset_context.get(), &filter_dataset));
-    core::ScopedUnref scoped_unref(filter_dataset);
-
-    std::unique_ptr<IteratorContext> iterator_ctx;
-    TF_ASSERT_OK(
-        CreateIteratorContext(filter_dataset_context.get(), &iterator_ctx));
-    std::unique_ptr<IteratorBase> iterator;
-    TF_ASSERT_OK(filter_dataset->MakeIterator(iterator_ctx.get(), "Iterator",
-                                              &iterator));
-
-    bool end_of_sequence = false;
-    std::vector<Tensor> out_tensors;
-    EXPECT_EQ(
-        iterator->GetNext(iterator_ctx.get(), &out_tensors, &end_of_sequence)
-            .code(),
-        tensorflow::error::INVALID_ARGUMENT);
-    EXPECT_TRUE(out_tensors.empty());
-  }
-}
+    FilterDatasetOpTest, ParameterizedInvalidPredicateFuncTest,
+    ::testing::ValuesIn({InvalidPredFuncFilterDatasetParams1(),
+                         InvalidPredFuncFilterDatasetParams2(),
+                         InvalidPredFuncFilterDatasetParams3()}));
 
 }  // namespace
 }  // namespace data

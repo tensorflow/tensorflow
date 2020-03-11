@@ -1,0 +1,21 @@
+path: "tensorflow.saved_model.SaveOptions"
+tf_class {
+  is_instance: "<class \'tensorflow.python.saved_model.save_options.SaveOptions\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "function_aliases"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "namespace_whitelist"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member {
+    name: "save_debug_info"
+    mtype: "<type \'member_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\', \'function_aliases\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+}

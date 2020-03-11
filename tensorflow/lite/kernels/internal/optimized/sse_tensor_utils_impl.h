@@ -24,23 +24,32 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-#ifdef __SSE4_1__
+#ifdef __SSSE3__
 
 // Matrix multiplication for quantized values using symmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result);
+
+// Matrix multiplication for quantized values using asymmetric quantization.
+void SseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result, const float* __restrict__ per_channel_scale,
+    const int32_t* __restrict__ input_offset);
 
 // Matrix multiplication for quantized values using symmetric quantization.
 // Sparse version.
 void SseSparseMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
-    const int m_cols, const int8_t* __restrict__ vectors,
-    const float* scaling_factors, int n_batch, float* __restrict__ result,
-    int result_stride);
+    const int8_t* __restrict__ matrix, const uint8_t* __restrict__ ledger,
+    const int m_rows, const int m_cols, const int8_t* __restrict__ vectors,
+    const float* __restrict__ scaling_factors, int n_batch,
+    float* __restrict__ result);
 
-#endif  // __SSE4_1__
+#endif  // __SSSE3__
 
 }  // namespace tensor_utils
 }  // namespace tflite

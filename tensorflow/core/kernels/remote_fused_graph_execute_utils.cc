@@ -510,7 +510,7 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
         tensor_shape_map->emplace(node_name,
                                   std::make_pair(j, std::make_pair(dt, ts)));
       } else {
-        return errors::InvalidArgument("Graph contains unknow shapes");
+        return errors::InvalidArgument("Graph contains unknown shapes");
       }
     }
   }
@@ -1356,7 +1356,7 @@ RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
       dst_ptr = tensor->flat<int8>().data();
       break;
     case DT_STRING:
-      dst_ptr = tensor->flat<string>().data();
+      dst_ptr = tensor->flat<tstring>().data();
       break;
     case DT_INT64:
       dst_ptr = tensor->flat<int64>().data();

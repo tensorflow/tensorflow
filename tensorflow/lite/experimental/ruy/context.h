@@ -16,11 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_RUY_CONTEXT_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_RUY_CONTEXT_H_
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/prepacked_cache.h"
 #include "tensorflow/lite/experimental/ruy/thread_pool.h"
 #include "tensorflow/lite/experimental/ruy/trace.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
@@ -51,6 +53,7 @@ struct Context final {
   // State for each thread in the thread pool. Entry 0 is the main thread.
   std::vector<std::unique_ptr<PerThreadState>> per_thread_states;
   TracingContext tracing;
+  CachePolicy cache_policy = CachePolicy::kNoCache;
 
   Allocator* GetMainAllocator() {
     if (!main_allocator_) {
@@ -58,6 +61,15 @@ struct Context final {
     }
     return main_allocator_.get();
   }
+
+  PrepackedCache* GetPrepackedCache() {
+    if (!prepacked_cache_) {
+      prepacked_cache_.reset(new PrepackedCache);
+    }
+    return prepacked_cache_.get();
+  }
+
+  void ClearPrepackedCache() { prepacked_cache_ = nullptr; }
 
   void EnsureNPerThreadStates(int thread_count) {
     while (per_thread_states.size() < static_cast<std::size_t>(thread_count)) {
@@ -88,6 +100,7 @@ struct Context final {
   // while it's already in committed state, so the main thread needs both
   // this allocator, and its per-thread allocator.
   std::unique_ptr<Allocator> main_allocator_;
+  std::unique_ptr<PrepackedCache> prepacked_cache_;
   Path runtime_enabled_paths_ = Path::kNone;
 };
 

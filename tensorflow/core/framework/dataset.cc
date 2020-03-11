@@ -22,12 +22,24 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/resource.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
+
+static mutex* get_dataset_op_registry_lock() {
+  static mutex dataset_op_registry_lock(LINKER_INITIALIZED);
+  return &dataset_op_registry_lock;
+}
+
+static std::unordered_set<string>* get_dataset_op_registry() {
+  static std::unordered_set<string>* names = new std::unordered_set<string>;
+  return names;
+}
 
 // A wrapper class for storing a `DatasetBase` instance in a DT_VARIANT tensor.
 // Objects of the wrapper class own a reference on an instance of `DatasetBase`,
@@ -264,9 +276,6 @@ Status GraphDefBuilderWrapper::AddFunction(
             << " the graph. It will not be added again.";
     return Status::OK();
   }
-  if (!ctx->optimization_only()) {
-    TF_RETURN_IF_ERROR(EnsureFunctionIsStateless(function_name, lib_def));
-  }
   const FunctionDef* f_def = lib_def.Find(function_name);
   if (f_def == nullptr) {
     return errors::InvalidArgument("Unable to find FunctionDef for ",
@@ -326,6 +335,27 @@ bool GraphDefBuilderWrapper::HasAttr(const string& name,
   return HasAttr(op_def, attr_name);
 }
 
+Status IteratorBase::InitializeBase(IteratorContext* ctx,
+                                    const IteratorBase* parent,
+                                    const string& output_prefix) {
+  parent_ = parent;
+  id_ =
+      Hash64CombineUnordered(Hash64(prefix()), reinterpret_cast<uint64>(this));
+  if (parent_) {
+    parent_id_ = Hash64CombineUnordered(Hash64(parent_->prefix()),
+                                        reinterpret_cast<uint64>(parent_));
+  }
+  if (const auto& model = ctx->model()) {
+    auto factory = [ctx, this](model::Node::Args args) {
+      return CreateNode(ctx, std::move(args));
+    };
+    model->AddNode(std::move(factory), prefix(), output_prefix, &node_);
+    cleanup_fns_.push_back(
+        [model, prefix = prefix()]() { model->RemoveNode(prefix); });
+  }
+  return Status::OK();
+}
+
 int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
   int64 allocated_bytes = 0;
   DatasetBase* dataset;
@@ -338,6 +368,20 @@ int64 GetAllocatedBytes(const std::vector<Tensor>& element) {
     }
   }
   return allocated_bytes;
+}
+
+int64 GetTotalBytes(const std::vector<Tensor>& element) {
+  int64 total_bytes = 0;
+  DatasetBase* dataset;
+  for (auto& tensor : element) {
+    if (tensor.dtype() == DT_VARIANT &&
+        GetDatasetFromVariantTensor(tensor, &dataset).ok()) {
+      total_bytes += dataset->TotalBytes();
+    } else {
+      total_bytes += tensor.TotalBytes();
+    }
+  }
+  return total_bytes;
 }
 
 Status GetDatasetFromVariantTensor(const Tensor& tensor,
@@ -369,29 +413,26 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
   return Status::OK();
 }
 
-Status DatasetBase::Save(SerializationContext* ctx,
-                         IteratorStateWriter* writer) const {
-  string serialized_graph_def;
-  string output_node;
-  GraphDefBuilder b;
-  DatasetGraphDefBuilder db(&b);
-  Node* node = nullptr;
-  TF_RETURN_IF_ERROR(AsGraphDefInternal(ctx, &db, &node));
-  output_node = node->name();
-  GraphDef graph_def;
-  TF_RETURN_IF_ERROR(b.ToGraphDef(&graph_def));
-  graph_def.SerializeToString(&serialized_graph_def);
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphKey, serialized_graph_def));
-  TF_RETURN_IF_ERROR(
-      writer->WriteScalar(kDatasetGraphOutputNodeKey, output_node));
-  return Status::OK();
+Status DatasetBase::MakeIterator(
+    IteratorContext* ctx, const IteratorBase* parent,
+    const string& output_prefix,
+    std::unique_ptr<IteratorBase>* iterator) const {
+  *iterator = MakeIteratorInternal(output_prefix);
+  Status s = (*iterator)->InitializeBase(ctx, parent, output_prefix);
+  if (s.ok()) {
+    s.Update((*iterator)->Initialize(ctx));
+  }
+  if (!s.ok()) {
+    // Reset the iterator to avoid returning an uninitialized iterator.
+    iterator->reset();
+  }
+  return s;
 }
 
 Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     SerializationContext* ctx, const DatasetBase* dataset, Node** output) {
   Status status = dataset->AsGraphDefInternal(ctx, this, output);
-  if (ctx->optimization_only() && errors::IsUnimplemented(status)) {
+  if (errors::IsUnimplemented(status) && !ctx->fail_if_unimplemented()) {
     Tensor t(DT_VARIANT, TensorShape({}));
     // `StoreDatasetInVariantTensor` will transfer ownership of `dataset`. We
     // increment the refcount of `dataset` here to retain ownership.
@@ -401,7 +442,7 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
     TF_RETURN_IF_ERROR(AddPlaceholder(t, output));
     DCHECK_NE(ctx->input_list(), nullptr);
     ctx->input_list()->emplace_back((*output)->name(), std::move(t));
-    LOG(WARNING)
+    LOG_EVERY_N_SEC(WARNING, 30)
         << "Input of " << dataset->DebugString()
         << " will not be optimized because the dataset does not implement the "
            "AsGraphDefInternal() method needed to apply optimizations.";
@@ -410,11 +451,37 @@ Status DatasetBase::DatasetGraphDefBuilder::AddInputDataset(
   return status;
 }
 
+DatasetBaseIterator::DatasetBaseIterator(const BaseParams& params)
+    : params_(params) {
+  params_.dataset->Ref();
+  VLOG(2) << prefix() << " constructor";
+}
+
+DatasetBaseIterator::~DatasetBaseIterator() {
+  VLOG(2) << prefix() << " destructor";
+  params_.dataset->Unref();
+}
+
+string DatasetBaseIterator::BuildTraceMeName() {
+  string result = strings::StrCat(params_.prefix, "#id=", id_);
+  if (parent_) {
+    strings::StrAppend(&result, ",parent_id=", parent_id_);
+  }
+
+  TraceMeMetadata metadata = GetTraceMeMetadata();
+  for (const auto& pair : metadata) {
+    strings::StrAppend(&result, ",", pair.first, "=", pair.second);
+  }
+  strings::StrAppend(&result, "#");
+  return result;
+}
+
 Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     std::vector<Tensor>* out_tensors,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
+  DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
@@ -427,6 +494,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
+  DVLOG(3) << prefix() << " GetNext exit";
   return s;
 }
 
@@ -438,6 +506,18 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES_OK(ctx, StoreDatasetInVariantTensor(dataset, output));
   }
+}
+
+// static
+bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
+  if (DatasetOpRegistry::IsRegistered(op_def->name())) {
+    return true;
+  }
+
+  return (op_def->output_arg_size() == 1 &&
+          op_def->output_arg(0).type() == DT_VARIANT &&
+          (absl::EndsWith(op_def->name(), "Dataset") ||
+           absl::EndsWith(op_def->name(), "DatasetV2")));
 }
 
 void UnaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
@@ -461,10 +541,8 @@ const char DatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
 const char DatasetBase::kDatasetGraphOutputNodeKey[] =
     "_DATASET_GRAPH_OUTPUT_NODE";
 
-BackgroundWorker::BackgroundWorker(Env* env, const string& name) {
-  thread_.reset(env->StartThread({} /* thread_options */, name,
-                                 [this]() { WorkerLoop(); }));
-}
+BackgroundWorker::BackgroundWorker(Env* env, const char* name)
+    : env_(env), name_(name) {}
 
 BackgroundWorker::~BackgroundWorker() {
   {
@@ -483,12 +561,17 @@ BackgroundWorker::~BackgroundWorker() {
 void BackgroundWorker::Schedule(std::function<void()> work_item) {
   {
     mutex_lock l(mu_);
+    if (!thread_) {
+      thread_ = absl::WrapUnique(env_->StartThread(
+          {} /* thread_options */, name_, [this]() { WorkerLoop(); }));
+    }
     work_queue_.push_back(std::move(work_item));
   }
   cond_var_.notify_one();
 }
 
 void BackgroundWorker::WorkerLoop() {
+  tensorflow::ResourceTagger tag(kTFDataResourceTag, "Background");
   while (true) {
     std::function<void()> work_item = nullptr;
     {
@@ -508,10 +591,24 @@ void BackgroundWorker::WorkerLoop() {
   }
 }
 
+// static
+void DatasetOpRegistry::Register(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  get_dataset_op_registry()->insert(op_name);
+}
+
+// static
+bool DatasetOpRegistry::IsRegistered(const string& op_name) {
+  mutex_lock l(*get_dataset_op_registry_lock());
+  std::unordered_set<string>* op_names = get_dataset_op_registry();
+  return op_names->find(op_name) != op_names->end();
+}
+
 namespace {
 class RunnerImpl : public Runner {
  public:
   void Run(const std::function<void()>& f) override {
+    tensorflow::ResourceTagger tag(kTFDataResourceTag, "Runner");
     f();
 
     // NOTE: We invoke a virtual function to prevent `f` being tail-called, and

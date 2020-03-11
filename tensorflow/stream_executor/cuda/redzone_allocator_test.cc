@@ -15,12 +15,12 @@ limitations under the License.
 
 #ifdef GOOGLE_CUDA
 
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -53,17 +53,19 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  cuda::PtxCompilationOptions opts;
+  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
-                             kRedzoneSize, kRedzonePattern);
 
   Stream stream(stream_exec);
   stream.Init();
+  RedzoneAllocator allocator(
+      &stream, &se_allocator, opts,
+      /*memory_limit=*/RedzoneAllocator::kDefaultMemoryLimit,
+      /*redzone_size=*/kRedzoneSize,
+      /*redzone_pattern=*/kRedzonePattern);
   TF_ASSERT_OK_AND_ASSIGN(DeviceMemory<uint8> buf,
-                          allocator.AllocateBytes(&stream,
-                                                  /*byte_size=*/kAllocSize));
-  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+                          allocator.AllocateBytes(/*byte_size=*/kAllocSize));
+  EXPECT_REDZONE_OK(allocator.CheckRedzones());
 
   char* buf_addr = reinterpret_cast<char*>(buf.opaque());
   DeviceMemoryBase lhs_redzone(buf_addr - kRedzoneSize, kRedzoneSize);
@@ -100,15 +102,13 @@ TEST(RedzoneAllocatorTest, WriteToRedzone) {
     DeviceMemoryBase redzone_at_offset(
         reinterpret_cast<char*>(redzone.opaque()) + offset, 1);
     char old_redzone_value = 0;
-    {
-      EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
-    }
+    { EXPECT_REDZONE_OK(allocator.CheckRedzones()); }
     stream.ThenMemcpy(&old_redzone_value, redzone_at_offset, 1)
         .ThenMemZero(&redzone_at_offset, 1);
-    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_VIOLATION(allocator.CheckRedzones());
 
     // Checking reinitializes the redzone.
-    EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+    EXPECT_REDZONE_OK(allocator.CheckRedzones());
   };
 
   modify_redzone(lhs_redzone, /*offset=*/0, "lhs");
@@ -128,14 +128,17 @@ TEST(RedzoneAllocatorTest, VeryLargeRedzone) {
   Platform* platform =
       MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   StreamExecutor* stream_exec = platform->ExecutorForDevice(0).ValueOrDie();
-  cuda::PtxCompilationOptions opts;
+  GpuAsmOpts opts;
   StreamExecutorMemoryAllocator se_allocator(platform, {stream_exec});
-  RedzoneAllocator allocator(/*device_ordinal=*/0, &se_allocator, opts,
-                             kRedzoneSize, /*redzone_pattern=*/-1);
   Stream stream(stream_exec);
   stream.Init();
-  (void)allocator.AllocateBytes(&stream, /*byte_size=*/1);
-  EXPECT_REDZONE_OK(allocator.CheckRedzones(&stream));
+  RedzoneAllocator allocator(
+      &stream, &se_allocator, opts,
+      /*memory_limit=*/RedzoneAllocator::kDefaultMemoryLimit,
+      /*redzone_size=*/kRedzoneSize,
+      /*redzone_pattern=*/-1);
+  (void)allocator.AllocateBytes(/*byte_size=*/1);
+  EXPECT_REDZONE_OK(allocator.CheckRedzones());
 }
 
 }  // namespace

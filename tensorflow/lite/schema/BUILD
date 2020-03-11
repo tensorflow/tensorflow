@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "flatbuffer_cc_library")
 
 package(
     default_visibility = [
@@ -12,7 +12,7 @@ package(
 py_binary(
     name = "upgrade_schema",
     srcs = ["upgrade_schema.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     deps = [":upgrade_schema_main_lib"],
 )
 
@@ -38,7 +38,7 @@ py_test(
     name = "upgrade_schema_test",
     size = "small",
     srcs = ["upgrade_schema_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -54,16 +54,28 @@ py_test(
 )
 
 exports_files([
+    "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",
     "schema_v3.fbs",
 ])
 
-# Generic schema for inference on device.
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+    build_for_embedded = True,
+)
+
+# Generic schema for flatbuffer converter (but with mutable makes bigger).
+flatbuffer_cc_library(
+    name = "schema_fbs_with_mutable",
+    srcs = ["schema.fbs"],
+    flatc_args = [
+        "--gen-mutable",
+        "--gen-object-api",
+    ],
+    out_prefix = "mutable/",
 )
 
 # Generic schema for inference on device (but with reflections makes bigger).
@@ -95,7 +107,7 @@ cc_test(
         "tflite_not_portable_ios",
     ],
     deps = [
-        "//tensorflow/core:lib_platform",
+        "//tensorflow/core/platform",
         "@com_google_googletest//:gtest",
         "@flatbuffers//:flatc_library",
     ],

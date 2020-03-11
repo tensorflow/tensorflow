@@ -19,7 +19,11 @@ from __future__ import print_function
 
 import argparse
 import sys
-from tensorflow.python import pywrap_tensorflow
+
+# We need to import pywrap_tensorflow prior to the toco wrapper.
+# pylint: disable=invalud-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_toco_api
 from tensorflow.python.platform import app
 
 FLAGS = None
@@ -36,14 +40,14 @@ def execute(unused_args):
   with open(FLAGS.model_input_file, "rb") as input_file:
     input_str = input_file.read()
 
-  debug_info_str = ""
+  debug_info_str = None
   if FLAGS.debug_proto_file:
     with open(FLAGS.debug_proto_file, "rb") as debug_info_file:
       debug_info_str = debug_info_file.read()
 
   enable_mlir_converter = FLAGS.enable_mlir_converter
 
-  output_str = pywrap_tensorflow.TocoConvert(
+  output_str = _pywrap_toco_api.TocoConvert(
       model_str,
       toco_str,
       input_str,
@@ -81,8 +85,8 @@ def main():
   parser.add_argument(
       "--enable_mlir_converter",
       action="store_true",
-      help=("Boolean indiciating whether to enable the MLIR converter instead "
-            "of TOCO converter. (default False)"))
+      help=("Boolean indiciating whether to enable MLIR-based conversion "
+            "instead of TOCO conversion. (default False)"))
 
   FLAGS, unparsed = parser.parse_known_args()
 

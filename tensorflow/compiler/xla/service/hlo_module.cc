@@ -28,11 +28,14 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -215,13 +218,19 @@ void HloModule::ReplaceComputations(
 
 string HloModule::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  s << "HloModule " << name();
+  s << "HloModule " << PrintName(name(), options.print_ids());
   if (has_schedule()) {
     TF_CHECK_OK(schedule().Verify());
     s << ", is_scheduled=true";
   }
   s << "\n\n";
-  for (const HloComputation* computation : MakeComputationPostOrder()) {
+  const auto& computations = options.canonicalize_computations()
+                                 ? MakeComputationSorted()
+                                 : MakeComputationPostOrder();
+  for (const HloComputation* computation : computations) {
+    if (!options.print_computation(computation)) {
+      continue;
+    }
     if (computation == entry_computation()) {
       s << "ENTRY ";
     }
@@ -287,7 +296,8 @@ Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
-    const HloModuleProto& proto, const HloModuleConfig& module_config) {
+    const HloModuleProto& proto, const HloModuleConfig& module_config,
+    bool prohibit_empty_literal) {
   VLOG(2) << "CreateFromProto()";
   XLA_VLOG_LINES(3, proto.DebugString());
 
@@ -325,7 +335,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   for (const HloComputationProto& computation_proto : proto.computations()) {
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> computation,
-        HloComputation::CreateFromProto(computation_proto, computation_map));
+        HloComputation::CreateFromProto(computation_proto, computation_map,
+                                        prohibit_empty_literal));
     CHECK_NE(computation.get(), nullptr);
     int64 computation_id = computation_proto.id();
     TF_RET_CHECK(computation_id != -1);
@@ -382,14 +393,33 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 }
 
 /* static */
-StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
-    const HloModuleProto& module, const DebugOptions& debug_options) {
-  TF_RET_CHECK(module.has_host_program_shape())
-      << "No program shape found in the proto";
-  ProgramShape program_shape(module.host_program_shape());
-
+StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromShape(
+    const ProgramShape& program_shape, const DebugOptions& debug_options,
+    const ExecutionOptions* execution_options) {
   HloModuleConfig module_config(ProgramShape{program_shape});
   module_config.set_debug_options(debug_options);
+  if (execution_options) {
+    if (execution_options->num_replicas() > 0) {
+      module_config.set_replica_count(execution_options->num_replicas());
+    }
+    if (execution_options->num_partitions() > 0) {
+      module_config.set_num_partitions(execution_options->num_partitions());
+    }
+    if (execution_options->has_device_assignment()) {
+      TF_ASSIGN_OR_RETURN(std::unique_ptr<DeviceAssignment> device_assignment,
+                          DeviceAssignment::Deserialize(
+                              execution_options->device_assignment()));
+      module_config.set_static_device_assignment(*device_assignment);
+      if (execution_options->num_replicas() > 0) {
+        CHECK_EQ(module_config.static_device_assignment().replica_count(),
+                 module_config.replica_count());
+      }
+      if (execution_options->num_partitions() > 0) {
+        CHECK_EQ(module_config.static_device_assignment().computation_count(),
+                 module_config.num_partitions());
+      }
+    }
+  }
 
   // The module config is constructed with default layouts regardless of what is
   // passed in via the ProgramShape. Set the layouts to the appropriate values.
@@ -403,6 +433,17 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
   TF_RETURN_IF_ERROR(entry_layout->mutable_result_layout()->CopyLayoutFromShape(
       program_shape.result()));
   return module_config;
+}
+
+/* static */
+StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
+    const HloModuleProto& module, const DebugOptions& debug_options,
+    const ExecutionOptions* execution_options) {
+  TF_RET_CHECK(module.has_host_program_shape())
+      << "No program shape found in the proto";
+  ProgramShape program_shape(module.host_program_shape());
+  return CreateModuleConfigFromShape(program_shape, debug_options,
+                                     execution_options);
 }
 
 namespace {
@@ -561,6 +602,26 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   return post_order;
 }
 
+namespace {
+bool CompareComputationsByContent(HloComputation* a, HloComputation* b) {
+  if (a->instruction_count() != b->instruction_count()) {
+    return a->instruction_count() < b->instruction_count();
+  }
+  return a->ToString(HloPrintOptions::Fingerprint()) <
+         b->ToString(HloPrintOptions::Fingerprint());
+}
+}  // anonymous namespace
+
+std::vector<HloComputation*> HloModule::MakeComputationSorted() const {
+  std::vector<HloComputation*> result;
+  result.reserve(computations_.size());
+  for (const auto& computation : computations_) {
+    result.push_back(computation.get());
+  }
+  std::sort(result.begin(), result.end(), CompareComputationsByContent);
+  return result;
+}
+
 std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
   std::vector<HloComputation*> result;
   for (auto* c : computations()) {
@@ -575,10 +636,7 @@ std::vector<HloComputation*> HloModule::MakeNonfusionComputations() const {
 std::vector<HloComputation*> HloModule::MakeNonfusionComputationsSorted()
     const {
   auto result = MakeNonfusionComputations();
-  std::sort(result.begin(), result.end(),
-            [](HloComputation* a, HloComputation* b) {
-              return a->name() < b->name();
-            });
+  std::sort(result.begin(), result.end(), CompareComputationsByContent);
   return result;
 }
 
@@ -659,6 +717,19 @@ HloComputation* HloModule::GetComputationWithName(absl::string_view name) {
       computations_in_module,
       [&](HloComputation* computation) { return computation->name() == name; });
   return it == computations_in_module.end() ? nullptr : *it;
+}
+
+uint64 HloModule::Hash() const {
+  uint64 result = entry_computation_layout().Hash();
+  // Use MakeComputationSorted() instead of MakeComputationPostOrder()
+  // because naming may affect the order of MakeComputationPostOrder() but not
+  // MakeComputationSorted().
+  for (auto* computation : MakeComputationSorted()) {
+    for (auto* instruction : computation->MakeInstructionPostOrder()) {
+      result = tensorflow::Hash64Combine(result, instruction->Hash());
+    }
+  }
+  return result;
 }
 
 /* static */ std::atomic<int> HloModule::next_unique_module_id_(0);

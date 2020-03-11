@@ -887,6 +887,168 @@ std::string GetDeconvolutionShared3x3(
                           dst_channels_aligned);
 }
 
+std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
+  std::string c = R"(
+    #include <metal_stdlib>
+    using namespace metal;
+
+    struct uniforms {
+      int4 src_size;
+      int4 dst_size;
+      int filter_offset;
+      int3 dummy_0;
+    };
+)";
+  c += R"(
+    $0
+    kernel void ComputeFunction(
+                                $1
+                                uint3 group_id[[threadgroup_position_in_grid]],
+                                uint3 tid3d[[thread_position_in_threadgroup]],
+                                uint3 ugid[[thread_position_in_grid]]) {
+)";
+  c += "  int X = static_cast<int>(group_id.y * 8u + tid3d.x);\n";
+  c += "  int Y = static_cast<int>(group_id.z * 4u + tid3d.y);\n";
+  c += "  int Z = static_cast<int>(group_id.x * 1u + tid3d.z);\n";
+  c += "  X *= " + std::to_string(block_size.x) + ";\n";
+  c += "  Y *= " + std::to_string(block_size.y) + ";\n";
+  if (!use_local_mem) {
+    c += "  if (X * 2 > params.dst_size.x || Y * 2 > params.dst_size.y || Z >= "
+         "params.dst_size.z) return;\n";
+  }
+  for (int y = 0; y < block_size.y; ++y) {
+    for (int x = 0; x < block_size.x; ++x) {
+      const std::string block = std::to_string(x) + std::to_string(y);
+      c += "  ACCUM_FLT4 r_" + block +
+           "_00 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
+      c += "  ACCUM_FLT4 r_" + block +
+           "_10 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
+      c += "  ACCUM_FLT4 r_" + block +
+           "_01 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
+      c += "  ACCUM_FLT4 r_" + block +
+           "_11 = ACCUM_FLT4(0.0f, 0.0f, 0.0f, 0.0f);\n";
+    }
+  }
+  c += "  int f_offset = Z * params.filter_offset;\n";
+  if (use_local_mem) {
+    c += "  threadgroup FLT4 weights_cache[64];\n";
+    c += "  int local_id = static_cast<int>(tid3d.y * 8u + tid3d.x);\n";
+  }
+  for (int x = 0; x < block_size.x + 1; ++x) {
+    const std::string sx = std::to_string(x);
+    const std::string xc =
+        x == 0 ? std::string("X - 1") : "X + " + std::to_string(x - 1);
+    c += "  bool in_x" + sx + " = " + xc + " >= 0 && " + xc +
+         " < params.src_size.x;\n";
+    c += "  int xc" + sx + " = clamp(" + xc + ", 0, params.src_size.x - 1);\n";
+  }
+  for (int y = 0; y < block_size.y + 1; ++y) {
+    const std::string sy = std::to_string(y);
+    const std::string yc =
+        y == 0 ? std::string("Y - 1") : "Y + " + std::to_string(y - 1);
+    c += "  bool in_y" + std::to_string(y) + " = " + yc + " >= 0 && " + yc +
+         " < params.src_size.y;\n";
+    c += "  int yc" + sy + " = clamp(" + yc + ", 0, params.src_size.y - 1);\n";
+  }
+  for (int y = 0; y < block_size.y + 1; ++y) {
+    for (int x = 0; x < block_size.x + 1; ++x) {
+      const std::string sx = std::to_string(x);
+      const std::string sy = std::to_string(y);
+      c += "  FLT m_" + sx + sy + " = in_x" + sx + " && in_y" + sy + ";\n";
+      c += "  device FLT4* src_ptr_" + sx + sy + " = src_buffer + yc" + sy +
+           " * params.src_size.x + xc" + sx + ";\n";
+    }
+  }
+  c += "  for (int s = 0; s < params.src_size.z; ++s) {\n";
+  if (use_local_mem) {
+    c += "    BARRIER(mem_flags::mem_none);\n";
+    c += "    weights_cache[local_id] = filters[f_offset + local_id];\n";
+    c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
+         "32];\n";
+  } else {
+    c += "    device FLT4* weights_cache = filters + f_offset;\n";
+  }
+  for (int y = 0; y < block_size.y + 1; ++y) {
+    for (int x = 0; x < block_size.x + 1; ++x) {
+      const std::string id = std::to_string(x) + std::to_string(y);
+      c += "    FLT4 src_" + id + " = *src_ptr_" + id + " * m_" + id +
+           "; src_ptr_" + id + " += params.src_size.w;\n";
+    }
+  }
+  c += "    f_offset += 64;\n";
+  if (use_local_mem) {
+    c += "    BARRIER(mem_flags::mem_threadgroup);\n";
+  }
+  for (int i = 0; i < 16; ++i) {
+    const int result_sub_pixel_id = i % 4;
+    const int src_pixel_id = i / 4;
+    const int weights_offset = i * 4;
+    for (int y = 0; y < block_size.y; ++y) {
+      for (int x = 0; x < block_size.x; ++x) {
+        const std::string block = std::to_string(x) + std::to_string(y);
+        const std::string R = "r_" + block + "_" +
+                              std::to_string(result_sub_pixel_id % 2) +
+                              std::to_string(result_sub_pixel_id / 2);
+        const std::string S = "src_" + std::to_string(src_pixel_id % 2 + x) +
+                              std::to_string(src_pixel_id / 2 + y);
+        c += "    " + R + ".x += dot(" + S + ", weights_cache[" +
+             std::to_string(weights_offset + 0) + "]);\n";
+        c += "    " + R + ".y += dot(" + S + ", weights_cache[" +
+             std::to_string(weights_offset + 1) + "]);\n";
+        c += "    " + R + ".z += dot(" + S + ", weights_cache[" +
+             std::to_string(weights_offset + 2) + "]);\n";
+        c += "    " + R + ".w += dot(" + S + ", weights_cache[" +
+             std::to_string(weights_offset + 3) + "]);\n";
+      }
+    }
+  }
+  c += "  }\n";
+  c += "\n";
+  if (use_local_mem) {
+    c += "  if (X * 2 > params.dst_size.x || Y * 2 > params.dst_size.y || Z >= "
+         "params.dst_size.z) return;\n";
+  }
+  c += "  X = X * 2 - 1;\n";
+  c += "  Y = Y * 2 - 1;\n";
+  c += "\n";
+  c += "  const int dst_offset = (Z * params.dst_size.y + Y) * "
+       "params.dst_size.x "
+       "+ X;\n";
+  c += "  FLT4 bias_val = biases[Z];\n";
+  for (int y = 0; y < block_size.y; ++y) {
+    for (int x = 0; x < block_size.x; ++x) {
+      for (int sub_y = 0; sub_y < 2; ++sub_y) {
+        for (int sub_x = 0; sub_x < 2; ++sub_x) {
+          const int x_offset = x * 2 + sub_x;
+          const int y_offset = y * 2 + sub_y;
+          const std::string block = std::to_string(x) + std::to_string(y);
+          const std::string R = "r_" + block + "_" + std::to_string(sub_x) +
+                                std::to_string(sub_y);
+          const std::string dst_x = "X + " + std::to_string(x_offset);
+          const std::string dst_y = "Y + " + std::to_string(y_offset);
+          const std::string x_check = x_offset == 0
+                                          ? std::string("X >= 0")
+                                          : dst_x + " < params.dst_size.x";
+          const std::string y_check = y_offset == 0
+                                          ? std::string("Y >= 0")
+                                          : dst_y + " < params.dst_size.y";
+          c += "  if (" + x_check + " && " + y_check + ") {\n";
+          c += "    FLT4 value = FLT4(" + R + ") + bias_val;\n";
+          c += "    int linear_index = dst_offset + params.dst_size.x * " +
+               std::to_string(y_offset) + " + " + std::to_string(x_offset) +
+               ";\n";
+          c += "    uint3 gid = uint3(" + dst_x + ", " + dst_y + ", Z);\n";
+          c += "    $2\n";
+          c += "    dst_buffer[linear_index] = value;\n";
+          c += "  }\n";
+        }
+      }
+    }
+  }
+  c += "}\n";
+  return c;
+}
+
 }  // namespace
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
@@ -904,8 +1066,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
   const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
-  int gpu_type = GetAppleSocVersion();
-  if (shared_size < 1000 * 16 && (gpu_type == 7 || gpu_type == 8)) {
+  auto gpu_type = GetGpuType();
+  if (shared_size < 1000 * 16 &&
+      (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8)) {
     desc->shader_source =
         GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
   } else {
@@ -950,15 +1113,14 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
   desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
-      {"constant FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -972,7 +1134,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
              output_dimension.w,
              output_dimension.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -1044,12 +1206,10 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  auto biases = GetByteBufferConvertedResized(
+      params.bias.data, options.storage_precision, params.weights.shape.o);
   border_desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"constant FLT4* const biases", biases},
@@ -1088,7 +1248,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
              /*uint GridParams.elements_count*/
              ptr[12],
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -1116,8 +1276,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
   desc->is_linkable = false;
 
   const int shared_size = sizeof(float) * 4 * src_depth * dst_ch_aligned * 4;
-  int gpu_type = GetAppleSocVersion();
-  if (shared_size < (1024 * 16 - 32) && (gpu_type == 7 || gpu_type == 8) &&
+  auto gpu_type = GetGpuType();
+  if (shared_size < (1024 * 16 - 32) &&
+      (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8) &&
       dst_ch_aligned <= kThreadGroupWidth * kThreadGroupHeight) {
     desc->shader_source = GetDeconvolutionShared3x3(params);
   } else {
@@ -1137,9 +1298,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
       }};
 
   desc->immutable_buffers = {
-      {"device FilterStripe* const filters",
-       VectorToUint8Vector(filters_reordered)},
-      {"constant FLT4* const biases", VectorToUint8Vector(params.bias.data)},
+      {"device FilterStripe* const filters", filters},
+      {"constant FLT4* const biases", biases},
   };
 
   desc->uniform_buffers = {
@@ -1161,7 +1321,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
              /*short2 Params3x3.src_offset*/ ptr[1],
              /*short2 Params3x3.dst_offset*/ ptr[2],
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -1184,6 +1344,135 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
   };
 
   return {border_desc, desc};
+}
+
+std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
+    int id, ValueId input_id, ValueId output_id,
+    const ConvolutionTransposedAttributes& params,
+    const RuntimeOptions& options) {
+  const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
+  const int dst_depth = IntegralDivideRoundUp(params.weights.shape.o, 4);
+  const int kernel_x = 4;
+  const int kernel_y = 4;
+
+  const int flt_count = kernel_x * kernel_y * src_depth * dst_depth * 4 * 4;
+  std::vector<float> gpu_data(flt_count);
+
+  const int remap[16] = {10, 11, 14, 15, 8, 9, 12, 13, 2, 3, 6, 7, 0, 1, 4, 5};
+
+  int counter = 0;
+  for (int d = 0; d < dst_depth; ++d) {
+    for (int s = 0; s < src_depth; ++s) {
+      for (int y = 0; y < kernel_y; ++y) {
+        for (int x = 0; x < kernel_x; ++x) {
+          const int kernel_index = remap[y * kernel_x + x];
+          const int kernel_index_x = kernel_index % kernel_x;
+          const int kernel_index_y = kernel_index / kernel_x;
+          float4 filters[4];
+          for (int j = 0; j < 4; ++j) {
+            for (int i = 0; i < 4; ++i) {
+              const int s_ch = s * 4 + i;
+              const int d_ch = d * 4 + j;
+              if (s_ch < params.weights.shape.i &&
+                  d_ch < params.weights.shape.o) {
+                const int f_index = params.weights.shape.LinearIndex(
+                    {d_ch, kernel_index_y, kernel_index_x, s_ch});
+                filters[j][i] = params.weights.data[f_index];
+              } else {
+                filters[j][i] = 0.0f;
+              }
+            }
+          }
+          for (int i = 0; i < 4; ++i) {
+            gpu_data[counter++] = filters[i].x;
+            gpu_data[counter++] = filters[i].y;
+            gpu_data[counter++] = filters[i].z;
+            gpu_data[counter++] = filters[i].w;
+          }
+        }
+      }
+    }
+  }
+
+  auto filters = GetByteBufferConverted(gpu_data, options.storage_precision);
+  auto biases = GetByteBufferConvertedResized(
+      params.bias.data, options.storage_precision, params.weights.shape.o);
+
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = false;
+
+  const auto gpu_type = GetGpuType();
+  const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
+                       gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
+  const bool recommended_2x =
+      !powervr && options.storage_precision == RuntimeOptions::Precision::FP16;
+  const bool use_local_mem = powervr;
+  const int2 block_size(recommended_2x ? 2 : 1, 1);
+  desc->shader_source = GetDeconvolution4x4(block_size, use_local_mem);
+
+  desc->input_buffers = {
+      {input_id, "device FLT4* const src_buffer"},
+  };
+
+  desc->output_buffer = {
+      output_id, "device FLT4* dst_buffer",
+      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
+        const auto& src_shape = buffers.find(input_id)->second;
+        BHWC dst_shape = CalculateOutputShape(src_shape, params);
+        return BHWC{src_shape.b, dst_shape.h, dst_shape.w, dst_shape.c};
+      }};
+
+  desc->immutable_buffers = {
+      {"device FLT4* const filters", filters},
+      {"device FLT4* const biases", biases},
+  };
+
+  desc->uniform_buffers = {
+      {"constant uniforms& params",
+       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
+         const auto& src_shape = buffers.find(input_id)->second;
+         const auto& dst_shape = buffers.find(output_id)->second;
+         const int src_depth = IntegralDivideRoundUp(src_shape.c, 4);
+         std::vector<int> uniform_params{
+             src_shape.w,
+             src_shape.h,
+             src_depth,
+             src_shape.w * src_shape.h,
+             dst_shape.w,
+             dst_shape.h,
+             IntegralDivideRoundUp(dst_shape.c, 4),
+             0,
+             4 * 16 * src_depth,
+             0,
+             0,
+             0,
+         };
+         return GetByteBuffer(uniform_params);
+       }},
+  };
+
+  desc->resize_function = [output_id, block_size,
+                           params](const std::map<ValueId, BHWC>& buffers) {
+    const auto& dst_shape = buffers.find(output_id)->second;
+    const int grid_x = IntegralDivideRoundUp(dst_shape.w + 2, 2 * block_size.x);
+    const int grid_y = IntegralDivideRoundUp(dst_shape.h + 2, 2 * block_size.y);
+    const int grid_z = IntegralDivideRoundUp(dst_shape.c, 4);
+    const uint3 group_size{8, 4, 1};
+    int groups_x = IntegralDivideRoundUp(grid_x, group_size.x);
+    int groups_y = IntegralDivideRoundUp(grid_y, group_size.y);
+    int groups_z = IntegralDivideRoundUp(grid_z, group_size.z);
+    return std::make_pair(group_size, uint3{groups_z, groups_x, groups_y});
+  };
+
+  return {desc};
+}
+
+bool CheckConvolutionTransposed4x4Support(
+    const ConvolutionTransposedAttributes& attr) {
+  return attr.weights.shape.w == 4 && attr.weights.shape.h == 4 &&
+         attr.stride.w == 2 && attr.stride.h == 2 &&
+         attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
 }
 
 }  // namespace metal

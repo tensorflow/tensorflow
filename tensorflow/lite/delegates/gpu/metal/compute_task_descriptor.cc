@@ -23,19 +23,42 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-/// Helper function to convert buffer's content into stream of bytes
-std::vector<uint8_t> VectorFloatToHalf(const std::vector<float>& input_vector) {
-  std::vector<HalfBits> result;
-  result.reserve(input_vector.size());
-  for (const float v : input_vector) {
-    result.push_back(fp16_ieee_from_fp32_value(v));
+/// Converts float to destination type (if needed) and stores as bytes array.
+std::vector<uint8_t> GetByteBufferConverted(
+    const std::vector<float>& input_vector,
+    RuntimeOptions::Precision destination_type) {
+  if (destination_type == metal::RuntimeOptions::Precision::FP32) {
+    return GetByteBuffer(input_vector);
+  } else {
+    std::vector<uint8_t> result;
+    result.reserve(input_vector.size() * sizeof(HalfBits));
+    for (const float value : input_vector) {
+      const HalfBits converted = fp16_ieee_from_fp32_value(value);
+      const uint8_t* bytes = reinterpret_cast<const uint8_t*>(&converted);
+      result.insert(result.end(), bytes, bytes + sizeof(HalfBits));
+    }
+    return result;
   }
-  return VectorToUint8Vector(result);
+}
+
+/// Resizes, Converts float to destination type (if needed) and stores as bytes
+/// array.
+std::vector<uint8_t> GetByteBufferConvertedResized(
+    const std::vector<float>& input_vector,
+    RuntimeOptions::Precision destination_type, size_t elements_count) {
+  auto result = GetByteBufferConverted(input_vector, destination_type);
+  const size_t type_size =
+      destination_type == metal::RuntimeOptions::Precision::FP32
+          ? sizeof(float)
+          : sizeof(HalfBits);
+  result.resize(type_size * elements_count);
+  return result;
 }
 
 }  // namespace metal

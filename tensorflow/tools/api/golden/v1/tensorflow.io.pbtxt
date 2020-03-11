@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RaggedFeature"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RandomShuffleQueue"
     mtype: "<type \'type\'>"
   }
@@ -38,7 +42,7 @@ tf_module {
   }
   member {
     name: "TFRecordWriter"
-    mtype: "<type \'type\'>"
+    mtype: "<class \'pybind11_builtins.pybind11_type\'>"
   }
   member {
     name: "VarLenFeature"
@@ -107,6 +111,10 @@ tf_module {
   member_method {
     name: "encode_jpeg"
     argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "encode_png"
+    argspec: "args=[\'image\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
   member_method {
     name: "encode_proto"

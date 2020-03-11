@@ -41,9 +41,9 @@ class DecodeRawOp : public OpKernel {
   void Compute(OpKernelContext* context) override {
     const auto& input = context->input(0);
     int64 str_size = -1;
-    auto flat_in = input.flat<string>();
+    auto flat_in = input.flat<tstring>();
     for (int64 i = 0; i < flat_in.size(); ++i) {
-      const string& in_str = flat_in(i);
+      const tstring& in_str = flat_in(i);
       if (str_size == -1) {
         str_size = in_str.size();
       } else {
@@ -87,14 +87,23 @@ class DecodeRawOp : public OpKernel {
     } else {
       // Otherwise, the data is not in the host's byte order, and rather than a
       // direct copy, we need to reverse the byte ordering of each element.
+      int64 element_size;
+      if (out_type_ == DT_COMPLEX64 || out_type_ == DT_COMPLEX128) {
+        // For Complex data type, real and imaginary parts need to be swapped
+        // separately
+        element_size = sizeof(T) / 2;
+      } else {
+        element_size = sizeof(T);
+      }
       for (int64 i = 0; i < flat_in.size(); ++i) {
         const char* in_data_bytes =
             reinterpret_cast<const char*>(flat_in(i).data());
         char* out_data_bytes = reinterpret_cast<char*>(out_data);
         const char* p = in_data_bytes;
         char* q = out_data_bytes;
-        for (; p < in_data_bytes + str_size; p += sizeof(T), q += sizeof(T)) {
-          std::reverse_copy(p, p + sizeof(T), q);
+        for (; p < in_data_bytes + str_size;
+             p += element_size, q += element_size) {
+          std::reverse_copy(p, p + element_size, q);
         }
         out_data += added_dim;
       }

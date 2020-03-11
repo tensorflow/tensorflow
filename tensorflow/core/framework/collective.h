@@ -81,7 +81,9 @@ struct CollImplDetails {
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>
-      dependencies;  // collective instances on which this node depends
+      dependencies;           // collective instances on which this node depends
+  string communication_hint;  // user-supplied hint for implementation choice,
+                              // e.g. ring or nccl
 };
 
 // Data common to all members of a collective instance.
@@ -259,6 +261,9 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;
@@ -297,10 +302,10 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   // execution, where safety is defined as: ordered with respect to the
   // collective instances defined in the callee's `wait_for` attribute.
   virtual void WaitForDependencies(const CollectiveParams& col_params) {}
-  // `Launched` unblocks the dependent collective instances by recording that
-  // this callee device has completed the critical portion of the collective
-  // execution.
-  virtual void Launched(const CollectiveParams& col_params) {}
+  // `UnblockDependencies` unblocks the dependent collective instances by
+  // recording that this caller's device has completed the critical portion of
+  // the collective execution.
+  virtual void UnblockDependencies(const CollectiveParams& col_params) {}
 
   // Used to designate an invalid group or instance key.
   static int64 kInvalidId;

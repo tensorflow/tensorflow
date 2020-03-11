@@ -25,19 +25,50 @@ class Profiler {
   enum class EventType {
     // Default event type, the metadata field has no special significance.
     DEFAULT = 0,
+
     // The event is an operator invocation and the event_metadata field is the
     // index of operator node.
-    OPERATOR_INVOKE_EVENT = 1
+    OPERATOR_INVOKE_EVENT = 1,
+
+    // The event is an invocation for an internal operator of a TFLite delegate.
+    // The event_metadata field is the index of operator node that's specific to
+    // the delegate.
+    DELEGATE_OPERATOR_INVOKE_EVENT = 2
   };
 
   virtual ~Profiler() {}
 
-  // Signals the beginning of an event, returning a handle to the profile event.
+  // Signals the beginning of an event from a subgraph indexed at
+  // 'event_subgraph_index', returning a handle to the profile event.
   virtual uint32_t BeginEvent(const char* tag, EventType event_type,
-                              uint32_t event_metadata) = 0;
+                              uint32_t event_metadata,
+                              uint32_t event_subgraph_index) = 0;
+  // Similar w/ the above, but the event comes from the primary subgraph that's
+  // indexed at 0.
+  virtual uint32_t BeginEvent(const char* tag, EventType event_type,
+                              uint32_t event_metadata) {
+    return BeginEvent(tag, event_type, event_metadata, /*primary subgraph*/ 0);
+  }
 
   // Signals an end to the specified profile event.
   virtual void EndEvent(uint32_t event_handle) = 0;
+
+  // Appends an event of type 'event_type' with 'tag' and 'event_metadata'
+  // which started at 'start' and ended at 'end'
+  // Note:
+  // In cases were ProfileSimmarizer and tensorflow::StatsCalculator are used
+  // they assume the value is in "usec", if in any case subclasses
+  // didn't put usec, then the values are not meaningful.
+  // TODO karimnosseir: Revisit and make the function more clear.
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata, uint64_t start, uint64_t end) {
+    AddEvent(tag, event_type, event_metadata, start, end,
+             /*event_subgraph_index*/ 0);
+  }
+
+  virtual void AddEvent(const char* tag, EventType event_type,
+                        uint32_t event_metadata, uint64_t start, uint64_t end,
+                        uint32_t event_subgraph_index) {}
 };
 
 // Adds a profile event to `profiler` that begins with the construction
@@ -73,13 +104,30 @@ class ScopedOperatorProfile : public ScopedProfile {
                       static_cast<uint32_t>(node_index)) {}
 };
 
+class ScopedDelegateOperatorProfile : public ScopedProfile {
+ public:
+  ScopedDelegateOperatorProfile(Profiler* profiler, const char* tag,
+                                int node_index)
+      : ScopedProfile(profiler, tag,
+                      Profiler::EventType::DELEGATE_OPERATOR_INVOKE_EVENT,
+                      static_cast<uint32_t>(node_index)) {}
+};
+
 }  // namespace tflite
 
-#define TFLITE_VARNAME_UNIQ(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ_IMPL(name, ctr) name##ctr
+#define TFLITE_VARNAME_UNIQ(name, ctr) TFLITE_VARNAME_UNIQ_IMPL(name, ctr)
+
+#define TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler, tag)          \
+  tflite::ScopedProfile TFLITE_VARNAME_UNIQ(_profile_, __COUNTER__)( \
+      (profiler), (tag))
+
 #define TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler, tag, node_index)     \
   tflite::ScopedOperatorProfile TFLITE_VARNAME_UNIQ(_profile_, __COUNTER__)( \
       (profiler), (tag), (node_index))
-#define TFLITE_SCOPED_OPERATOR_PROFILE(profiler, node_index) \
-  TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE((profiler), "OpInvoke", (node_index))
+
+#define TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(profiler, tag, node_index) \
+  tflite::ScopedDelegateOperatorProfile TFLITE_VARNAME_UNIQ(               \
+      _profile_, __COUNTER__)((profiler), (tag), (node_index))
 
 #endif  // TENSORFLOW_LITE_CORE_API_PROFILER_H_

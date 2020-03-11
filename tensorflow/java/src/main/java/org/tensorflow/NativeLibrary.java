@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Properties;
 
 /**
  * Helper class for loading the TensorFlow Java native library.
@@ -51,7 +52,8 @@ final class NativeLibrary {
       // (2) The required native code has been statically linked (through a custom launcher), OR
       // (3) The native code is part of another library (such as an application-level library)
       // that has already been loaded. For example, tensorflow/examples/android and
-      // tensorflow/contrib/android include the required native code in differently named libraries.
+      // tensorflow/tools/android/inference_interface include the required native code in
+      // differently named libraries.
       //
       // Doesn't matter how, but it seems the native code is loaded, so nothing else to do.
       return;
@@ -65,7 +67,7 @@ final class NativeLibrary {
         NativeLibrary.class.getClassLoader().getResourceAsStream(jniResourceName);
     // Extract the JNI's dependency
     final String frameworkLibName =
-        maybeAdjustForMacOS(System.mapLibraryName("tensorflow_framework"));
+        getVersionedLibraryName(System.mapLibraryName("tensorflow_framework"));
     final String frameworkResourceName = makeResourceName(frameworkLibName);
     log("frameworkResourceName: " + frameworkResourceName);
     final InputStream frameworkResource =
@@ -126,22 +128,74 @@ final class NativeLibrary {
     }
   }
 
-  private static String maybeAdjustForMacOS(String libFilename) {
-    if (!System.getProperty("os.name").contains("OS X")) {
-      return libFilename;
+  private static boolean resourceExists(String baseName) {
+    return NativeLibrary.class.getClassLoader().getResource(makeResourceName(baseName)) != null;
+  }
+
+  private static String getVersionedLibraryName(String libFilename) {
+    final String versionName = getMajorVersionNumber();
+
+    // If we're on darwin, the versioned libraries look like blah.1.dylib.
+    final String darwinSuffix = ".dylib";
+    if (libFilename.endsWith(darwinSuffix)) {
+      final String prefix = libFilename.substring(0, libFilename.length() - darwinSuffix.length());
+      if (versionName != null) {
+        final String darwinVersionedLibrary = prefix + "." + versionName + darwinSuffix;
+        if (resourceExists(darwinVersionedLibrary)) {
+          return darwinVersionedLibrary;
+        }
+      } else {
+        // If we're here, we're on darwin, but we couldn't figure out the major version number. We
+        // already tried the library name without any changes, but let's do one final try for the
+        // library with a .so suffix.
+        final String darwinSoName = prefix + ".so";
+        if (resourceExists(darwinSoName)) {
+          return darwinSoName;
+        }
+      }
+    } else if (libFilename.endsWith(".so")) {
+      // Libraries ending in ".so" are versioned like "libfoo.so.1", so try that.
+      final String versionedSoName = libFilename + "." + versionName;
+      if (versionName != null && resourceExists(versionedSoName)) {
+        return versionedSoName;
+      }
     }
-    // This is macOS, and the TensorFlow release process might have setup dependencies on
-    // libtensorflow_framework.so instead of libtensorflow_framework.dylib. Adjust for that.
-    final ClassLoader cl = NativeLibrary.class.getClassLoader();
-    if (cl.getResource(makeResourceName(libFilename)) != null) {
-      return libFilename;
+
+    // Otherwise, we've got no idea.
+    return libFilename;
+  }
+
+  /**
+   * Returns the major version number of this TensorFlow Java API, or {@code null} if it cannot be
+   * determined.
+   */
+  private static String getMajorVersionNumber() {
+    InputStream resourceStream =
+        NativeLibrary.class.getClassLoader().getResourceAsStream("tensorflow-version-info");
+    if (resourceStream == null) {
+      return null;
     }
-    // liftensorflow_framework.dylib not found, try libtensorflow_framework.so
-    final String suffix = ".dylib";
-    if (!libFilename.endsWith(suffix)) {
-      return libFilename;
+
+    try {
+      Properties props = new Properties();
+      props.load(resourceStream);
+      String version = props.getProperty("version");
+      // expecting a string like 1.14.0, we want to get the first '1'.
+      int dotIndex;
+      if (version == null || (dotIndex = version.indexOf('.')) == -1) {
+        return null;
+      }
+      String majorVersion = version.substring(0, dotIndex);
+      try {
+        Integer.parseInt(majorVersion);
+        return majorVersion;
+      } catch (NumberFormatException unused) {
+        return null;
+      }
+    } catch (IOException e) {
+      log("failed to load tensorflow version info.");
+      return null;
     }
-    return libFilename.substring(0, libFilename.length() - suffix.length()) + ".so";
   }
 
   private static String extractResource(

@@ -41,6 +41,16 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "training/coordinator.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
+)
+
 cc_library(
     name = "gradients",
     srcs = [
@@ -233,6 +243,7 @@ cc_library_with_android_deps(
     deps = [
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_experimental",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -604,7 +615,6 @@ tf_gen_op_wrappers_cc(
         "resource_variable_ops",
     ],
     pkg = "//tensorflow/core",
-    visibility = ["//tensorflow:internal"],
 )
 
 tf_gen_op_wrappers_cc(
@@ -649,7 +659,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -667,7 +676,6 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

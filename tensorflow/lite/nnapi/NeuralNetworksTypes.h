@@ -18,6 +18,8 @@ limitations under the License.
 #include <stdint.h>
 #include <stdio.h>
 
+#include <string>
+
 typedef struct AHardwareBuffer AHardwareBuffer;
 
 // NN api types based on NNAPI header file
@@ -41,6 +43,7 @@ enum {
   ANEURALNETWORKS_TENSOR_QUANT8_ASYMM = 5,
   ANEURALNETWORKS_BOOL = 6,
   ANEURALNETWORKS_TENSOR_BOOL8 = 9,
+  ANEURALNETWORKS_TENSOR_QUANT16_SYMM = 7,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM_PER_CHANNEL = 11,
   ANEURALNETWORKS_TENSOR_QUANT8_SYMM = 13,
 };
@@ -115,6 +118,12 @@ enum {
   ANEURALNETWORKS_POW = 70,
   ANEURALNETWORKS_PRELU = 71,
   ANEURALNETWORKS_QUANTIZE = 72,
+  ANEURALNETWORKS_QUANTIZED_16BIT_LSTM = 73,
+  ANEURALNETWORKS_REDUCE_ANY = 76,
+  ANEURALNETWORKS_REDUCE_MAX = 77,
+  ANEURALNETWORKS_REDUCE_MIN = 78,
+  ANEURALNETWORKS_REDUCE_PROD = 79,
+  ANEURALNETWORKS_REDUCE_SUM = 80,
   ANEURALNETWORKS_RSQRT = 83,
   ANEURALNETWORKS_SELECT = 84,
   ANEURALNETWORKS_SIN = 85,
@@ -123,8 +132,10 @@ enum {
   ANEURALNETWORKS_SQRT = 88,
   ANEURALNETWORKS_TILE = 89,
   ANEURALNETWORKS_TOPK_V2 = 90,
+  ANEURALNETWORKS_TRANSPOSE_CONV = 91,
   ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_LSTM = 92,
   ANEURALNETWORKS_UNIDIRECTIONAL_SEQUENCE_RNN = 93,
+  ANEURALNETWORKS_RESIZE_NEAREST_NEIGHBOR = 94,
 };
 
 /**
@@ -150,6 +161,7 @@ enum {
 /**
  * Result codes.
  */
+// LINT.IfChange
 enum {
   ANEURALNETWORKS_NO_ERROR = 0,
   ANEURALNETWORKS_OUT_OF_MEMORY = 1,
@@ -162,6 +174,7 @@ enum {
   ANEURALNETWORKS_OUTPUT_INSUFFICIENT_SIZE = 8,
   ANEURALNETWORKS_UNAVAILABLE_DEVICE = 9,
 };
+// LINT.ThenChange(//tensorflow/lite/delegates/nnapi/nnapi_delegate.cc:NnApiErrorDescription)
 
 /**
  * Implicit padding algorithms.
@@ -538,5 +551,21 @@ typedef enum {
 typedef int (*ANeuralNetworksExecution_getDuration_fn)(
     const ANeuralNetworksExecution* execution, int32_t durationCode,
     uint64_t* duration);
+
+typedef int (*ANeuralNetworksDevice_getExtensionSupport_fn)(
+    const ANeuralNetworksDevice* device, const char* extensionName,
+    bool* isExtensionSupported);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperandType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operandCodeWithinExtension, int32_t* type);
+
+typedef int (*ANeuralNetworksModel_getExtensionOperationType_fn)(
+    ANeuralNetworksModel* model, const char* extensionName,
+    uint16_t operationCodeWithinExtension, ANeuralNetworksOperationType* type);
+
+typedef int (*ANeuralNetworksModel_setOperandExtensionData_fn)(
+    ANeuralNetworksModel* model, int32_t index, const void* data,
+    size_t length);
 
 #endif  // TENSORFLOW_LITE_NNAPI_NEURALNETWORKSTYPES_H_

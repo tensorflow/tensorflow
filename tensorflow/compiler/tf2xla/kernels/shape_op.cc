@@ -40,9 +40,23 @@ class ShapeOp : public XlaOpKernel {
 
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
-    Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
-    OP_REQUIRES_OK(ctx, TensorShapeToConstant(input_shape, &shape_constant));
-    ctx->SetConstantOutput(0, shape_constant);
+    std::vector<xla::XlaOp> operands;
+    const int rank = input_shape.dims();
+    if (rank != 0) {
+      for (int64 i = 0; i < rank; ++i) {
+        operands.push_back(xla::Broadcast(
+            xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
+                                    ctx->output_xla_type(0)),
+            {1}));
+      }
+
+      ctx->SetOutput(0, xla::ConcatInDim(ctx->builder(), operands, 0));
+    } else {
+      // Rank 0 won't have dynamic size dimension, use constant output.
+      Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
+      OP_REQUIRES_OK(ctx, TensorShapeToConstant(input_shape, &shape_constant));
+      ctx->SetConstantOutput(0, shape_constant);
+    }
   }
 
  private:
@@ -60,9 +74,27 @@ class ShapeNOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape input_shape = ctx->InputShape(i);
-      Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
-      OP_REQUIRES_OK(ctx, TensorShapeToConstant(input_shape, &shape_constant));
-      ctx->SetConstantOutput(i, shape_constant);
+      std::vector<xla::XlaOp> operands;
+
+      const int rank = input_shape.dims();
+      if (rank != 0) {
+        // Each dimension can be dynamic, so use GetDimensionSize to get the
+        // runtime dimension.
+        for (int64 dim = 0; dim < rank; ++dim) {
+          operands.push_back(xla::Broadcast(
+              xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(i), dim),
+                                      ctx->output_xla_type(i)),
+              {1}));
+        }
+
+        ctx->SetOutput(i, xla::ConcatInDim(ctx->builder(), operands, 0));
+      } else {
+        // Rank 0 won't have dynamic size dimension, use constant output.
+        Tensor shape_constant(out_dtype_, TensorShape({input_shape.dims()}));
+        OP_REQUIRES_OK(ctx,
+                       TensorShapeToConstant(input_shape, &shape_constant));
+        ctx->SetConstantOutput(i, shape_constant);
+      }
     }
   }
 
@@ -105,7 +137,9 @@ class SizeOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     auto size = xla::One(builder, xla::U32);
     for (int64 i = 0; i < rank; ++i) {
-      size = xla::Mul(size, xla::GetDimensionSize(ctx->Input(0), i));
+      size = xla::Mul(
+          size, xla::ConvertElementType(xla::GetDimensionSize(ctx->Input(0), i),
+                                        xla::U32));
     }
     size = xla::ConvertElementType(size, ctx->output_xla_type(0));
     ctx->SetOutput(0, size);

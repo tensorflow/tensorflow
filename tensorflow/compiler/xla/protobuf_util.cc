@@ -39,12 +39,17 @@ bool ProtobufEquals(const tensorflow::protobuf::Message& m1,
 }
 
 Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
-                            const string& directory, const string& file_name) {
+                            const string& directory, const string& file_name,
+                            string* full_path) {
   tensorflow::Env* env = tensorflow::Env::Default();
   TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory));
   string safe_file_name = SanitizeFileName(file_name) + ".pb";
-  const string path = tensorflow::io::JoinPath(directory, safe_file_name);
-  return tensorflow::WriteBinaryProto(env, path, message);
+  string full_path_impl;
+  if (!full_path) {
+    full_path = &full_path_impl;
+  }
+  *full_path = tensorflow::io::JoinPath(directory, safe_file_name);
+  return tensorflow::WriteBinaryProto(env, *full_path, message);
 }
 
 }  // namespace protobuf_util

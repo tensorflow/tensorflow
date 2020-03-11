@@ -2,6 +2,15 @@
 
 ### Specification summary
 
+We are providing a specification, and we can only provide some guarantees on
+behaviour if the spec is followed. We also understand different hardware may
+have preferences and restrictions that may cause slight deviations when
+implementing the spec that result in implementations that are not bit-exact.
+Whereas that may be acceptable in most cases (and we will provide a suite of
+tests that to the best of our knowledge include per-operation tolerances that we
+gathered from several models), the nature of machine learning (and deep learning
+in the most common case) makes it impossible to provide any hard guarantees.
+
 8-bit quantization approximates floating point values using the following
 formula.
 
@@ -36,8 +45,8 @@ quantization params: `scale=[1.0, 2.0, 3.0]`, `zero_point=[1, 2, 3]`,
 `quantization_dimension=1` will be quantized across the second dimension of t:
 
     t[:, 0, :, :] will have scale[0]=1.0, zero_point[0]=1
-    t[:, 1, :, :] will have scale[1]=2.0, zero_point[0]=2
-    t[:, 2, :, :] will have scale[2]=3.0, zero_point[0]=3
+    t[:, 1, :, :] will have scale[1]=2.0, zero_point[1]=2
+    t[:, 2, :, :] will have scale[2]=3.0, zero_point[2]=3
 
 Often, the quantized_dimension is the output_channel of the weights of
 convolutions, but in theory it can be the dimension that corresponds to each
@@ -64,9 +73,9 @@ Explanation of the math:
 
 $A$ is a $m \times n$ matrix of quantized activations. <br />
 $B$ is a $n \times p$ matrix of quantized weights. <br />
-Consider multiplying the $j$th row of $A$, $a_j$ by the $k$th row of
+Consider multiplying the $j$th row of $A$, $a_j$ by the $k$th column of
 $B$, $b_k$, both of length $n$. The quantized integer values and
-zero-points values are $q_a$, $z_a$ and $q_b$, $q_b$ respectively.
+zero-points values are $q_a$, $z_a$ and $q_b$, $z_b$ respectively.
 
 $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 \sum_{i=0}^{n} (q_{a}^{(i)} - z_a) (q_{b}^{(i)} - z_b) =
@@ -78,9 +87,9 @@ $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 The \\(\sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)}\\) term is unavoidable since it’s
 performing the dot product of the input value and the weight value.
 
-The \\(\sum_{i=0}^{n} q_{b}^{(i)} z_a + \sum_{i=0}^{n} z_a z_b\\) terms are made up
-of constants that remain the same per inference invocation, and thus can be
-pre-calculated.
+The $$\sum_{i=0}^{n} q_{b}^{(i)} z_a$$ and $$\sum_{i=0}^{n} z_a z_b$$ terms are
+made up of constants that remain the same per inference invocation, and thus can
+be pre-calculated.
 
 The \\(\sum_{i=0}^{n} q_{a}^{(i)} z_b\\) term needs to be computed every inference
 since the activation changes every inference. By enforcing weights to be
@@ -140,7 +149,7 @@ CONV_2D
   Input 2 (Bias):
     data_type  : int32
     range      : [int32_min, int32_max]
-    granularity: per-axis (dim = 0)
+    granularity: per-axis
     restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
   Output 0:
     data_type  : int8
@@ -160,7 +169,7 @@ DEPTHWISE_CONV_2D
   Input 2 (Bias):
     data_type  : int32
     range      : [int32_min, int32_max]
-    granularity: per-axis (dim = 3)
+    granularity: per-axis
     restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
   Output 0:
     data_type  : int8

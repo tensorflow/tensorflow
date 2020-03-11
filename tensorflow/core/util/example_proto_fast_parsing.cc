@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/base/casts.h"
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb_text.h"
+#include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,6 +43,55 @@ namespace {
 
 template <typename T>
 using SmallVector = gtl::InlinedVector<T, 4>;
+
+template <typename T>
+class LimitedArraySlice {
+ public:
+  using value_type = T;
+
+  LimitedArraySlice(T* begin, size_t num_elements)
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
+
+  // May return negative if there were push_back calls after slice was filled.
+  int64 EndDistance() const { return end_ - current_; }
+
+  // Attempts to push value to the back of this. If the slice has
+  // already been filled, this method has no effect on the underlying data, but
+  // it changes the number returned by EndDistance into negative values.
+  void push_back(T&& value) {
+    if (EndDistance() > 0) *current_ = std::move(value);
+    ++current_;
+  }
+
+  // "Constructs" an element at the back of this by resizing the slice, and
+  // returns a mutable reference to the new last element.
+  // REQUIRES: EndDistance() > 0.
+  T& construct_at_end() {
+    DCHECK_GT(EndDistance(), 0);
+    return *(current_++);
+  }
+
+  // Returns a mutable reference to the last element in the slice.
+  // REQUIRES: size() > 0.
+  T& back() { return *(current_ - 1); }
+
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
+ private:
+  T* current_;
+  T* begin_;
+  T* end_;
+};
 
 template <typename A>
 auto EnableAliasing(A* a) -> decltype(a->EnableAliasing(true), void()) {
@@ -117,6 +166,14 @@ class Feature {
     return true;
   }
 
+  // Helper methods
+  tstring& construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
+    return bytes_list->construct_at_end();
+  }
+  tstring& construct_at_end(SmallVector<tstring>* bytes_list) {
+    return bytes_list->emplace_back();
+  }
+
   template <typename Result>
   bool ParseBytesList(Result* bytes_list) {
     DCHECK(bytes_list != nullptr);
@@ -135,9 +192,9 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      string bytes;
-      if (!stream.ReadString(&bytes, bytes_length)) return false;
-      bytes_list->push_back(std::move(bytes));
+      tstring& bytes = construct_at_end(bytes_list);
+      bytes.resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;
@@ -400,12 +457,11 @@ bool TestFastParse(const string& serialized, Example* example) {
       case DT_INVALID:
         break;
       case DT_STRING: {
-        SmallVector<string> list;
+        SmallVector<tstring> list;
         if (!name_and_feature.second.ParseBytesList(&list)) return false;
         auto* result_list = value.mutable_bytes_list();
         for (auto& bytes : list) {
-          auto* new_value = result_list->add_value();
-          new_value->swap(bytes);
+          result_list->add_value(bytes.data(), bytes.size());
         }
         break;
       }
@@ -460,12 +516,16 @@ void ParallelFor(const std::function<void(size_t)>& f, size_t n,
   }
 }
 
-enum class Type { Sparse, Dense };
+// Enumeration for distinguishing feature types.
+// Note: FastParseSequenceExample constructs a map that includes Type values,
+// and relies on the fact that they are default-initialized to Dense.
+enum class Type { Dense, Sparse, Ragged };
 
+// Note: We use SparseBuffer for sparse, ragged, and dense_varlen features.
 struct SparseBuffer {
   // Features are in one of the 3 vectors below depending on config's dtype.
   // Other 2 vectors remain empty.
-  SmallVector<string> bytes_list;
+  SmallVector<tstring> bytes_list;
   SmallVector<float> float_list;
   SmallVector<int64> int64_list;
 
@@ -480,43 +540,6 @@ struct SeededHasher {
     return Hash64(s.data(), s.size(), seed);
   }
   uint64 seed{0xDECAFCAFFE};
-};
-
-template <typename T>
-class LimitedArraySlice {
- public:
-  using value_type = T;
-
-  LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), begin_(begin), end_(begin + num_elements) {}
-
-  // May return negative if there were push_back calls after slice was filled.
-  int64 EndDistance() const { return end_ - current_; }
-
-  // Attempts to push value to the back of this. If the slice has
-  // already been filled, this method has no effect on the underlying data, but
-  // it changes the number returned by EndDistance into negative values.
-  void push_back(T&& value) {
-    if (EndDistance() > 0) *current_ = std::move(value);
-    ++current_;
-  }
-
-  // Returns the number of elements in the slice.
-  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
-
-  // Attempts to resize the vector to the given size. It does so by advancing
-  // the pointer to the current element, possibly beyond the end of the slice.
-  // As a consequence, calling `size()` after `resize(x)` was called might
-  // return a value less than `x`.
-  void resize(size_t size) { current_ = begin_ + size; }
-
-  // Returns the pointer to the underlying data buffer.
-  T* data() { return begin_; }
-
- private:
-  T* current_;
-  T* begin_;
-  T* end_;
 };
 
 void LogDenseFeatureDataLoss(StringPiece feature_name) {
@@ -542,15 +565,17 @@ void LogSparseFeatureDataLoss(StringPiece feature_name) {
 }
 
 Status FastParseSerializedExample(
-    const string& serialized_example, const string& example_name,
+    const tstring& serialized_example, const tstring& example_name,
     const size_t example_index, const Config& config,
     const PresizedCuckooMap<std::pair<size_t, Type>>& config_index,
     SeededHasher hasher, std::vector<Tensor>* output_dense,
     std::vector<SparseBuffer>* output_varlen_dense,
     std::vector<SparseBuffer>* output_sparse,
+    std::vector<SparseBuffer>* output_ragged,
     PerExampleFeatureStats* output_stats) {
   DCHECK(output_dense != nullptr);
   DCHECK(output_sparse != nullptr);
+  DCHECK(output_ragged != nullptr);
   parsed::Example parsed_example;
   if (!ParseExample(serialized_example, &parsed_example)) {
     return errors::InvalidArgument("Could not parse example input, value: '",
@@ -558,6 +583,7 @@ Status FastParseSerializedExample(
   }
   std::vector<int64> sparse_feature_last_example(config.sparse.size(), -1);
   std::vector<int64> dense_feature_last_example(config.dense.size(), -1);
+  std::vector<int64> ragged_feature_last_example(config.ragged.size(), -1);
 
   // Handle features present in the example.
   const size_t parsed_example_size = parsed_example.size();
@@ -584,13 +610,15 @@ Status FastParseSerializedExample(
 
     size_t d = d_and_type.first;
     bool is_dense = d_and_type.second == Type::Dense;
+    bool is_ragged = d_and_type.second == Type::Ragged;
 
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name = is_dense
-                                              ? config.dense[d].feature_name
-                                              : config.sparse[d].feature_name;
+      const tstring& config_feature_name =
+          is_dense ? config.dense[d].feature_name
+                   : (is_ragged ? config.ragged[d].feature_name
+                                : config.sparse[d].feature_name);
       if (feature_name != config_feature_name) continue;
     }
 
@@ -666,8 +694,8 @@ Status FastParseSerializedExample(
             break;
           }
           case DT_STRING: {
-            auto out_p = out.flat<string>().data() + offset;
-            LimitedArraySlice<string> slice(out_p, num_elements);
+            auto out_p = out.flat<tstring>().data() + offset;
+            LimitedArraySlice<tstring> slice(out_p, num_elements);
             if (!feature.ParseBytesList(&slice)) return parse_error();
             if (slice.EndDistance() != 0) {
               return shape_error(num_elements - slice.EndDistance(), "bytes");
@@ -756,25 +784,30 @@ Status FastParseSerializedExample(
         }
       }
     } else {
+      // Feature is sparse or ragged.
+      auto& last_example =
+          is_ragged ? ragged_feature_last_example : sparse_feature_last_example;
+
       // If feature was already visited, skip.
       // Compare comment at the beginning of the loop.
-      if (sparse_feature_last_example[d] == example_index) {
+      if (last_example[d] == example_index) {
         LogSparseFeatureDataLoss(feature_name);
         continue;
       }
-      sparse_feature_last_example[d] = example_index;
+      last_example[d] = example_index;
 
       // Handle sparse features.
-      SparseBuffer& out = (*output_sparse)[d];
-      if (example_dtype != DT_INVALID &&
-          example_dtype != config.sparse[d].dtype) {
-        return example_error(strings::StrCat(
-            "Data types don't match. ",
-            "Expected type: ", DataTypeString(config.sparse[d].dtype),
-            ", Actual type: ", DataTypeString(example_dtype)));
+      SparseBuffer& out = is_ragged ? (*output_ragged)[d] : (*output_sparse)[d];
+      DataType feature_dtype =
+          is_ragged ? config.ragged[d].dtype : config.sparse[d].dtype;
+      if (example_dtype != DT_INVALID && example_dtype != feature_dtype) {
+        return example_error(
+            strings::StrCat("Data types don't match. ",
+                            "Expected type: ", DataTypeString(feature_dtype),
+                            ", Actual type: ", DataTypeString(example_dtype)));
       }
 
-      switch (config.sparse[d].dtype) {
+      switch (feature_dtype) {
         case DT_INT64: {
           if (example_dtype != DT_INVALID) {
             if (!feature.ParseInt64List(&out.int64_list)) {
@@ -852,8 +885,8 @@ Status FastParseSerializedExample(
         break;
       }
       case DT_STRING: {
-        std::copy_n(in.flat<string>().data(), num_elements,
-                    out.flat<string>().data() + offset);
+        std::copy_n(in.flat<tstring>().data(), num_elements,
+                    out.flat<tstring>().data() + offset);
         break;
       }
       default:
@@ -880,6 +913,15 @@ Status FastParseSerializedExample(
     out.example_end_indices.push_back(prev_example_end_index);
   }
 
+  // Handle missing ragged features.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    if (ragged_feature_last_example[d] == example_index) continue;
+    SparseBuffer& out = (*output_ragged)[d];
+    size_t prev_example_end_index =
+        out.example_end_indices.empty() ? 0 : out.example_end_indices.back();
+    out.example_end_indices.push_back(prev_example_end_index);
+  }
+
   return Status::OK();
 }
 
@@ -895,6 +937,32 @@ Status CheckConfigDataType(DataType dtype) {
   }
 }
 
+// Use this in the "default" clause of switch statements when dispatching
+// on a dtype variable that was checked by CheckConfigDataType():
+inline void ReportUnexpectedDataType(DataType dtype) {
+  DCHECK(false)
+      << "Encountered unexpected DataType " << DataTypeString(dtype)
+      << "in variable that should have been checked by CheckConfigDataType().";
+}
+
+Status CheckConfigDataTypes(const Config& config) {
+  // Check config so we can safely CHECK(false) in switches on config.*.dtype
+  for (auto& c : config.sparse) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+  }
+  for (auto& c : config.dense) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+  }
+  for (auto& c : config.ragged) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    if (!(c.splits_dtype == DT_INT32 || c.splits_dtype == DT_INT64)) {
+      return errors::InvalidArgument("Invalid ragged_split_type: ",
+                                     DataTypeString(c.splits_dtype));
+    }
+  }
+  return Status::OK();
+}
+
 template <typename T>
 const SmallVector<T>& GetListFromBuffer(const SparseBuffer& buffer);
 
@@ -907,7 +975,7 @@ const SmallVector<float>& GetListFromBuffer<float>(const SparseBuffer& buffer) {
   return buffer.float_list;
 }
 template <>
-const SmallVector<string>& GetListFromBuffer<string>(
+const SmallVector<tstring>& GetListFromBuffer<tstring>(
     const SparseBuffer& buffer) {
   return buffer.bytes_list;
 }
@@ -917,7 +985,7 @@ void CopyOrMoveBlock(const T* b, const T* e, T* t) {
   std::copy(b, e, t);
 }
 template <>
-void CopyOrMoveBlock(const string* b, const string* e, string* t) {
+void CopyOrMoveBlock(const tstring* b, const tstring* e, tstring* t) {
   std::move(b, e, t);
 }
 
@@ -999,26 +1067,60 @@ class TensorVector {
   T* data_ = nullptr;
 };
 
+void CountSparseFeatures(
+    const std::vector<std::vector<SparseBuffer>>& sparse_buffers, size_t d,
+    size_t* total_num_features, size_t* max_num_features) {
+  for (auto& sparse_values_tmp : sparse_buffers) {
+    const std::vector<size_t>& end_indices =
+        sparse_values_tmp[d].example_end_indices;
+    *total_num_features += end_indices.back();
+    *max_num_features = std::max(*max_num_features, end_indices[0]);
+    for (size_t i = 1; i < end_indices.size(); ++i) {
+      size_t example_size = end_indices[i] - end_indices[i - 1];
+      *max_num_features = std::max(*max_num_features, example_size);
+    }
+  }
+}
+
+void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
+                              Tensor* dst) {
+  switch (dtype) {
+    case DT_INT64: {
+      std::copy(src->int64_list.begin(), src->int64_list.end(),
+                dst->flat<int64>().data() + offset);
+      break;
+    }
+    case DT_FLOAT: {
+      std::copy(src->float_list.begin(), src->float_list.end(),
+                dst->flat<float>().data() + offset);
+      break;
+    }
+    case DT_STRING: {
+      std::move(src->bytes_list.begin(), src->bytes_list.end(),
+                dst->flat<tstring>().data() + offset);
+      break;
+    }
+    default:
+      ReportUnexpectedDataType(dtype);
+  }
+}
+
 }  // namespace
 
 Status FastParseExample(const Config& config,
-                        gtl::ArraySlice<string> serialized,
-                        gtl::ArraySlice<string> example_names,
+                        gtl::ArraySlice<tstring> serialized,
+                        gtl::ArraySlice<tstring> example_names,
                         thread::ThreadPool* thread_pool, Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
-  for (auto& c : config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
-  for (auto& c : config.dense) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
+  TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
 
   if (config.collect_feature_stats) {
     result->feature_stats.resize(serialized.size());
   }
 
-  size_t config_size = config.dense.size() + config.sparse.size();
+  size_t config_size =
+      config.dense.size() + config.sparse.size() + config.ragged.size();
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
@@ -1031,6 +1133,10 @@ Status FastParseExample(const Config& config,
     for (size_t d = 0; d < config.sparse.size(); ++d) {
       ok &= config_index.InsertUnique(hasher(config.sparse[d].feature_name),
                                       {d, Type::Sparse});
+    }
+    for (size_t d = 0; d < config.ragged.size(); ++d) {
+      ok &= config_index.InsertUnique(hasher(config.ragged[d].feature_name),
+                                      {d, Type::Ragged});
     }
     if (ok) break;
     LOG(WARNING) << "Collision found. This should happen only if you have "
@@ -1045,7 +1151,7 @@ Status FastParseExample(const Config& config,
   }
 
   // Allocate dense output for fixed length dense values
-  // (variable-length dense and sparse have to be buffered).
+  // (variable-length dense and sparse and ragged have to be buffered).
   std::vector<Tensor> fixed_dense_values(config.dense.size());
   for (size_t d = 0; d < config.dense.size(); ++d) {
     if (config.dense[d].variable_length) continue;
@@ -1097,10 +1203,12 @@ Status FastParseExample(const Config& config,
   // Do minibatches in parallel.
   std::vector<std::vector<SparseBuffer>> sparse_buffers(num_minibatches);
   std::vector<std::vector<SparseBuffer>> varlen_dense_buffers(num_minibatches);
+  std::vector<std::vector<SparseBuffer>> ragged_buffers(num_minibatches);
   std::vector<Status> status_of_minibatch(num_minibatches);
   auto ProcessMiniBatch = [&](size_t minibatch) {
     sparse_buffers[minibatch].resize(config.sparse.size());
     varlen_dense_buffers[minibatch].resize(config.dense.size());
+    ragged_buffers[minibatch].resize(config.ragged.size());
     size_t start = first_example_of_minibatch(minibatch);
     size_t end = first_example_of_minibatch(minibatch + 1);
     for (size_t e = start; e < end; ++e) {
@@ -1112,7 +1220,8 @@ Status FastParseExample(const Config& config,
           serialized[e],
           (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
           config_index, hasher, &fixed_dense_values,
-          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch], stats);
+          &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch],
+          &ragged_buffers[minibatch], stats);
       if (!status_of_minibatch[minibatch].ok()) break;
     }
   };
@@ -1123,6 +1232,13 @@ Status FastParseExample(const Config& config,
     TF_RETURN_IF_ERROR(status);
   }
 
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
+
   for (size_t d = 0; d < config.dense.size(); ++d) {
     result->dense_values.push_back(std::move(fixed_dense_values[d]));
   }
@@ -1132,16 +1248,8 @@ Status FastParseExample(const Config& config,
     // Loop over minibatches
     size_t total_num_features = 0;
     size_t max_num_features = 0;
-    for (auto& sparse_values_tmp : sparse_buffers) {
-      const std::vector<size_t>& end_indices =
-          sparse_values_tmp[d].example_end_indices;
-      total_num_features += end_indices.back();
-      max_num_features = std::max(max_num_features, end_indices[0]);
-      for (size_t i = 1; i < end_indices.size(); ++i) {
-        size_t example_size = end_indices[i] - end_indices[i - 1];
-        max_num_features = std::max(max_num_features, example_size);
-      }
-    }
+    CountSparseFeatures(sparse_buffers, d, &total_num_features,
+                        &max_num_features);
 
     TensorShape indices_shape;
     indices_shape.AddDim(total_num_features);
@@ -1161,7 +1269,7 @@ Status FastParseExample(const Config& config,
 
     size_t offset = 0;
     for (size_t i = 0; i < sparse_buffers.size(); ++i) {
-      const SparseBuffer& buffer = sparse_buffers[i][d];
+      SparseBuffer& buffer = sparse_buffers[i][d];
 
       // Update indices.
       int64* ix_p = &indices->matrix<int64>()(offset, 0);
@@ -1180,28 +1288,61 @@ Status FastParseExample(const Config& config,
         ++example_index;
       }
 
-      // Copy values over.
-      switch (config.sparse[d].dtype) {
-        case DT_INT64: {
-          std::copy(buffer.int64_list.begin(), buffer.int64_list.end(),
-                    values->flat<int64>().data() + offset);
-          break;
+      CopySparseBufferToTensor(config.sparse[d].dtype, offset, &buffer, values);
+      offset += delta;
+    }
+  };
+
+  // Merge SparseBuffers from all minibatches for every config.ragged.
+  auto MergeRaggedMinibatches = [&](size_t d) {
+    // Loop over minibatches
+    size_t total_num_features = 0;
+    size_t max_num_features = 0;
+    CountSparseFeatures(ragged_buffers, d, &total_num_features,
+                        &max_num_features);
+
+    TensorShape row_splits_shape;
+    row_splits_shape.AddDim(serialized.size() + 1);
+    result->ragged_splits.emplace_back(config.ragged[d].splits_dtype,
+                                       row_splits_shape);
+    Tensor* row_splits = &result->ragged_splits.back();
+    if (config.ragged[d].splits_dtype == DT_INT64) {
+      row_splits->flat<int64>()(0) = 0;
+    } else {
+      row_splits->flat<int32>()(0) = 0;
+    }
+
+    TensorShape values_shape;
+    values_shape.AddDim(total_num_features);
+    result->ragged_values.emplace_back(config.ragged[d].dtype, values_shape);
+    Tensor* values = &result->ragged_values.back();
+
+    size_t values_offset = 0;
+    size_t splits_offset = 0;
+    for (size_t i = 0; i < ragged_buffers.size(); ++i) {
+      SparseBuffer& buffer = ragged_buffers[i][d];
+      if (buffer.example_end_indices.empty()) continue;
+
+      // Update row_splits.  row_splits are formed by concatenating the example
+      // end_indices (adjusting each to start after the previous one ends).
+      if (config.ragged[d].splits_dtype == DT_INT64) {
+        int64* row_splits_out = &row_splits->flat<int64>()(splits_offset);
+        int64 start = *row_splits_out;
+        for (size_t example_end_index : buffer.example_end_indices) {
+          *++row_splits_out = start + example_end_index;
         }
-        case DT_FLOAT: {
-          std::copy(buffer.float_list.begin(), buffer.float_list.end(),
-                    values->flat<float>().data() + offset);
-          break;
+      } else {
+        int32* row_splits_out = &row_splits->flat<int32>()(splits_offset);
+        int32 start = *row_splits_out;
+        for (size_t example_end_index : buffer.example_end_indices) {
+          *++row_splits_out = start + example_end_index;
         }
-        case DT_STRING: {
-          std::move(buffer.bytes_list.begin(), buffer.bytes_list.end(),
-                    values->flat<string>().data() + offset);
-          break;
-        }
-        default:
-          LOG(FATAL) << "Should not happen.";
       }
 
-      offset += delta;
+      CopySparseBufferToTensor(config.ragged[d].dtype, values_offset, &buffer,
+                               values);
+      values_offset += buffer.example_end_indices.back();
+      splits_offset += buffer.example_end_indices.size();
     }
   };
 
@@ -1253,12 +1394,12 @@ Status FastParseExample(const Config& config,
         break;
       }
       case DT_STRING: {
-        FillAndCopyVarLen<string>(d, num_elements, num_elements_per_minibatch,
-                                  config, varlen_dense_buffers, &values);
+        FillAndCopyVarLen<tstring>(d, num_elements, num_elements_per_minibatch,
+                                   config, varlen_dense_buffers, &values);
         break;
       }
       default:
-        LOG(FATAL) << "Should not happen.";
+        ReportUnexpectedDataType(config.dense[d].dtype);
     }
   };
 
@@ -1270,19 +1411,18 @@ Status FastParseExample(const Config& config,
     MergeSparseMinibatches(d);
   }
 
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    MergeRaggedMinibatches(d);
+  }
+
   return Status::OK();
 }
 
-Status FastParseSingleExample(const Config& config, const string& serialized,
+Status FastParseSingleExample(const Config& config, StringPiece serialized,
                               Result* result) {
   DCHECK(result != nullptr);
   // Check config so we can safely CHECK(false) in switches on config.*.dtype
-  for (auto& c : config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
-  for (auto& c : config.dense) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-  }
+  TF_RETURN_IF_ERROR(CheckConfigDataTypes(config));
 
   PerExampleFeatureStats* stats = nullptr;
   if (config.collect_feature_stats) {
@@ -1291,7 +1431,8 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
   }
 
   // TODO(mrry): Cache the construction of this map at Op construction time.
-  size_t config_size = config.dense.size() + config.sparse.size();
+  size_t config_size =
+      config.dense.size() + config.sparse.size() + config.ragged.size();
   SeededHasher hasher;
   // Build config index.
   PresizedCuckooMap<std::pair<size_t, Type>> config_index(config_size);
@@ -1305,6 +1446,10 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       ok &= config_index.InsertUnique(hasher(config.sparse[d].feature_name),
                                       {d, Type::Sparse});
     }
+    for (size_t d = 0; d < config.ragged.size(); ++d) {
+      ok &= config_index.InsertUnique(hasher(config.ragged[d].feature_name),
+                                      {d, Type::Ragged});
+    }
     if (ok) break;
     LOG(WARNING) << "Collision found. This should happen only if you have "
                     "around 2^32 entries in your config.";
@@ -1316,6 +1461,13 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
     return errors::Internal(
         "Could not avoid collision. This should not happen.");
   }
+
+  result->sparse_indices.reserve(config.sparse.size());
+  result->sparse_values.reserve(config.sparse.size());
+  result->sparse_shapes.reserve(config.sparse.size());
+  result->dense_values.reserve(config.dense.size());
+  result->ragged_values.reserve(config.ragged.size());
+  result->ragged_splits.reserve(config.ragged.size());
 
   // Allocate dense output tensors.
   for (size_t d = 0; d < config.dense.size(); ++d) {
@@ -1341,6 +1493,15 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
     result->sparse_values.emplace_back();
   }
 
+  // Allocate ragged output tensors.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    // Variable-length values tensors will be allocated later.
+    result->ragged_values.emplace_back();
+    // Splits tensors are empty (unused) for single (scalar) inputs.
+    const auto splits_dtype = config.ragged[d].splits_dtype;
+    result->ragged_splits.emplace_back(splits_dtype, TensorShape({0}));
+  }
+
   parsed::Example parsed_example;
   if (!ParseExample(serialized, &parsed_example)) {
     return errors::InvalidArgument("Could not parse example input, value: '",
@@ -1348,6 +1509,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
   }
   std::vector<bool> sparse_feature_already_seen(config.sparse.size(), false);
   std::vector<bool> dense_feature_already_seen(config.dense.size(), false);
+  std::vector<bool> ragged_feature_already_seen(config.ragged.size(), false);
 
   if (stats) {
     // TODO(b/111553342): This may over-count the number of features if there
@@ -1373,13 +1535,15 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
 
     size_t d = d_and_type.first;
     bool is_dense = d_and_type.second == Type::Dense;
+    bool is_sparse = d_and_type.second == Type::Sparse;
 
     {
       // Testing for PresizedCuckooMap collision.
       // TODO(lew): Use dense_hash_map and avoid this and hasher creation.
-      const string& config_feature_name = is_dense
-                                              ? config.dense[d].feature_name
-                                              : config.sparse[d].feature_name;
+      const tstring& config_feature_name =
+          is_dense ? config.dense[d].feature_name
+                   : (is_sparse ? config.sparse[d].feature_name
+                                : config.ragged[d].feature_name);
       if (feature_name != config_feature_name) continue;
     }
 
@@ -1440,8 +1604,8 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           break;
         }
         case DT_STRING: {
-          auto out_p = out->flat<string>().data();
-          LimitedArraySlice<string> slice(out_p, num_elements);
+          auto out_p = out->flat<tstring>().data();
+          LimitedArraySlice<tstring> slice(out_p, num_elements);
           if (!feature.ParseBytesList(&slice)) return parse_error();
           if (slice.EndDistance() != 0) {
             return parse_error();
@@ -1449,11 +1613,11 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           break;
         }
         default:
-          LOG(FATAL) << "Should not happen.";
+          ReportUnexpectedDataType(example_dtype);
       }
 
     } else {  // if variable length
-      SmallVector<string> bytes_list;
+      SmallVector<tstring> bytes_list;
       TensorVector<float> float_list;
       SmallVector<int64> int64_list;
 
@@ -1476,20 +1640,24 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
               " but expected type: ", DataTypeString(config.dense[d].dtype)));
         }
       } else {
+        // Feature is sparse or ragged.
+        auto& feature_already_seen = is_sparse ? sparse_feature_already_seen
+                                               : ragged_feature_already_seen;
+        auto& feature_dtype =
+            is_sparse ? config.sparse[d].dtype : config.ragged[d].dtype;
         // If feature was already visited, skip.
         // Compare comment at the beginning of the loop.
-        if (sparse_feature_already_seen[d]) {
+        if (feature_already_seen[d]) {
           LogSparseFeatureDataLoss(feature_name);
           continue;
         }
-        sparse_feature_already_seen[d] = true;
+        feature_already_seen[d] = true;
 
         // Handle sparse features.
-        if (example_dtype != DT_INVALID &&
-            example_dtype != config.sparse[d].dtype) {
+        if (example_dtype != DT_INVALID && example_dtype != feature_dtype) {
           return example_error(strings::StrCat(
               "Data types don't match. ",
-              "Expected type: ", DataTypeString(config.sparse[d].dtype),
+              "Expected type: ", DataTypeString(feature_dtype),
               ", Actual type: ", DataTypeString(example_dtype)));
         }
       }
@@ -1518,7 +1686,8 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           break;
         }
         default:
-          LOG(FATAL) << "Should not happen. " << DataTypeString(example_dtype);
+          num_elements = 0;
+          ReportUnexpectedDataType(example_dtype);
       }
 
       if (num_elements % num_elements_divisor != 0) {
@@ -1540,7 +1709,7 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
 
         out = &result->dense_values[d];
         out_dtype = config.dense[d].dtype;
-      } else {
+      } else if (is_sparse) {
         Tensor* out_indices = &result->sparse_indices[d];
         Tensor* out_dense_shape = &result->sparse_shapes[d];
 
@@ -1560,6 +1729,10 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         out = &result->sparse_values[d];
         out_dtype = config.sparse[d].dtype;
         out_shape.AddDim(num_elements);
+      } else {
+        out = &result->ragged_values[d];
+        out_dtype = config.ragged[d].dtype;
+        out_shape.AddDim(num_elements);
       }
 
       switch (example_dtype) {
@@ -1578,11 +1751,11 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         case DT_STRING: {
           *out = Tensor(out_dtype, out_shape);
           CopyOrMoveBlock(bytes_list.begin(), bytes_list.end(),
-                          out->flat<string>().data());
+                          out->flat<tstring>().data());
           break;
         }
         default:
-          LOG(FATAL) << "Should not happen.";
+          ReportUnexpectedDataType(example_dtype);
       }
     }
   }
@@ -1621,13 +1794,50 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
     }
   }
 
+  // Handle missing ragged features.
+  for (size_t d = 0; d < config.ragged.size(); ++d) {
+    if (!ragged_feature_already_seen[d]) {
+      result->ragged_values[d] =
+          Tensor(config.ragged[d].dtype, TensorShape({0}));
+    }
+  }
+
   return Status::OK();
+}
+
+// Private helper functions for FastParseSequenceExample.
+namespace {
+
+// A struct used by FastParseSequenceExample to hold the serialized proto
+// substrings for a single feature, plus some auxiliary information derived
+// from those protos (such as the total value length).
+struct FeatureProtos {
+  // Proto substrings from each serialized SequenceExample that correspond
+  // with this feature.  `protos_present` records whether the proto had a
+  // value defined (even if that value is empty).
+  std::vector<StringPiece> protos;
+  std::vector<bool> protos_present;
+
+  // Information derived from protos:
+  size_t length;    // total length for ragged/sparse, max row length for dense.
+  size_t num_rows;  // only populated for ragged sequence features.
+
+  // Information from the config:
+  Type type;  // Whether this feature is sparse, ragged, or dense.
+  DataType dtype;
+};
+
+// Map from feature name to FeatureProtos for that feature.
+using FeatureProtosMap = absl::flat_hash_map<StringPiece, FeatureProtos>;
+
+string ExampleName(const gtl::ArraySlice<tstring> example_names, int n) {
+  return example_names.empty() ? "<unknown>" : example_names[n];
 }
 
 // Return the number of bytes elements parsed, or -1 on error. If out is null,
 // this method simply counts the number of elements without any copying.
 inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
-                             string* out) {
+                             tstring* out) {
   int num_elements = 0;
   uint32 length;
   if (!stream->ExpectTag(kDelimitedTag(1)) || !stream->ReadVarint32(&length)) {
@@ -1638,12 +1848,17 @@ inline int ParseBytesFeature(protobuf::io::CodedInputStream* stream,
     while (!stream->ExpectAtEnd()) {
       uint32 bytes_length;
       if (!stream->ExpectTag(kDelimitedTag(1)) ||
-          !stream->ReadVarint32(&bytes_length) ||
-          (out != nullptr && !stream->ReadString(out++, bytes_length))) {
+          !stream->ReadVarint32(&bytes_length)) {
         return -1;
       }
       if (out == nullptr) {
         stream->Skip(bytes_length);
+      } else {
+        out->resize_uninitialized(bytes_length);
+        if (!stream->ReadRaw(out->data(), bytes_length)) {
+          return -1;
+        }
+        out++;
       }
       num_elements++;
     }
@@ -1765,6 +1980,52 @@ inline int ParseInt64Feature(protobuf::io::CodedInputStream* stream,
   return num_elements;
 }
 
+// Parses the next feature on `stream` into `out` starting at `out_offset`.
+// Updates `out_offset`, and returns the number of values added.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`.
+inline int ParseFeature(DataType dtype, protobuf::io::CodedInputStream* stream,
+                        Tensor* out, size_t* out_offset) {
+  int delta;
+  switch (dtype) {
+    case DT_STRING:
+      delta =
+          ParseBytesFeature(stream, out->flat<tstring>().data() + *out_offset);
+      break;
+    case DT_FLOAT:
+      delta =
+          ParseFloatFeature(stream, out->flat<float>().data() + *out_offset);
+      break;
+    case DT_INT64:
+      delta =
+          ParseInt64Feature(stream, out->flat<int64>().data() + *out_offset);
+      break;
+    default:
+      ReportUnexpectedDataType(dtype);
+      delta = 0;
+  }
+  if (delta > 0) {
+    *out_offset += delta;
+  }
+  return delta;
+}
+
+// Returns the length of the next feature on `stream`.
+// Returns -1 if the next feature on `stream` doesn't match `dtype`.
+inline int GetFeatureLength(DataType dtype,
+                            protobuf::io::CodedInputStream* stream) {
+  switch (dtype) {
+    case DT_STRING:
+      return ParseBytesFeature(stream, nullptr);
+    case DT_FLOAT:
+      return ParseFloatFeature(stream, nullptr);
+    case DT_INT64:
+      return ParseInt64Feature(stream, nullptr);
+    default:
+      ReportUnexpectedDataType(dtype);
+      return -1;
+  }
+}
+
 inline DataType ParseDataType(protobuf::io::CodedInputStream* stream) {
   uint8 peek_tag = PeekTag(stream);
   switch (peek_tag) {
@@ -1804,88 +2065,13 @@ inline bool SkipEmptyFeature(protobuf::io::CodedInputStream* stream,
   return stream->ReadVarint32(&length) && length == 0;
 }
 
-// TODO(sundberg): Use the threadpool to parallelize example parsing.
-// TODO(b/111553342): Support extracting feature statistics from the examples.
-Status FastParseSequenceExample(
-    const FastParseExampleConfig& context_config,
-    const FastParseExampleConfig& feature_list_config,
-    gtl::ArraySlice<string> serialized, gtl::ArraySlice<string> example_names,
-    thread::ThreadPool* thread_pool, Result* context_result,
-    Result* feature_list_result, std::vector<Tensor>* dense_feature_lengths) {
-  int num_examples = serialized.size();
-  DCHECK(context_result != nullptr);
-  DCHECK(feature_list_result != nullptr);
-  DCHECK(dense_feature_lengths != nullptr);
-  size_t num_context_features =
-      context_config.sparse.size() + context_config.dense.size();
-  absl::flat_hash_map<StringPiece, bool> context_is_sparse;
-  context_is_sparse.reserve(num_context_features);
-  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
-      context_feature_type_and_lengths;
-  context_feature_type_and_lengths.reserve(num_context_features);
-  if (!example_names.empty() && example_names.size() != num_examples) {
-    return errors::InvalidArgument(
-        "example_names must be empty or have the correct number of elements");
-  }
-  for (auto& c : context_config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-    context_feature_type_and_lengths[c.feature_name] =
-        std::make_pair(c.dtype, 0);
-    context_is_sparse[c.feature_name] = true;
-  }
-  for (auto& c : context_config.dense) {
-    if (context_is_sparse[c.feature_name]) {
-      return errors::InvalidArgument("Context feature " + c.feature_name +
-                                     " cannot be both dense and sparse");
-    }
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-    context_feature_type_and_lengths[c.feature_name] =
-        std::make_pair(c.dtype, c.default_value.NumElements());
-    if (c.default_value.NumElements() > 0) {
-      if (!c.shape.IsCompatibleWith(c.default_value.shape())) {
-        return errors::InvalidArgument("Default value for context feature ",
-                                       c.feature_name,
-                                       " has an incorrect shape: saw ",
-                                       c.default_value.shape().DebugString(),
-                                       " but expected ", c.shape.DebugString());
-      }
-    }
-  }
-  size_t num_sequence_features =
-      feature_list_config.sparse.size() + feature_list_config.dense.size();
-  absl::flat_hash_map<StringPiece, bool> sequence_is_sparse;
-  sequence_is_sparse.reserve(num_sequence_features);
-  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
-      sequence_feature_type_and_lengths;
-  sequence_feature_type_and_lengths.reserve(num_sequence_features);
-  for (auto& c : feature_list_config.sparse) {
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-    sequence_feature_type_and_lengths[c.feature_name] =
-        std::make_pair(c.dtype, 0);
-    sequence_is_sparse[c.feature_name] = true;
-  }
-  for (auto& c : feature_list_config.dense) {
-    if (sequence_is_sparse[c.feature_name]) {
-      return errors::InvalidArgument("Sequence feature " + c.feature_name +
-                                     " cannot be both dense and sparse");
-    }
-    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
-    sequence_feature_type_and_lengths[c.feature_name] =
-        std::make_pair(c.dtype, 0);
-  }
-
-  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
-      all_context_features(num_examples);
-  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
-      all_sequence_features(num_examples);
-  const string kUnknown = "<unknown>";
-  for (int d = 0; d < num_examples; d++) {
-    const string& example = serialized[d];
-    const string& example_name =
-        example_names.empty() ? kUnknown : example_names[d];
-    auto* context_features = &all_context_features[d];
-    auto* sequence_features = &all_sequence_features[d];
-
+// Reads an example proto, and extracts a StringPiece pointer to each feature.
+Status ExtractFeaturesFromSequenceExamples(
+    const gtl::ArraySlice<tstring> examples,
+    const gtl::ArraySlice<tstring> example_names,
+    FeatureProtosMap* context_features, FeatureProtosMap* sequence_features) {
+  for (int d = 0; d < examples.size(); d++) {
+    const tstring& example = examples[d];
     protobuf::io::CodedInputStream stream(
         reinterpret_cast<const uint8*>(example.data()), example.size());
     // Not clear what this does. Why not stream.EnableAliasing()?
@@ -1893,26 +2079,24 @@ Status FastParseSequenceExample(
 
     // Extract pointers to all features within this serialized example.
     while (!stream.ExpectAtEnd()) {
-      absl::flat_hash_map<StringPiece, StringPiece>* features = nullptr;
-      const absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>*
-          config = nullptr;
+      FeatureProtosMap* features = nullptr;
       if (stream.ExpectTag(kDelimitedTag(1))) {
         // Context
         features = context_features;
-        config = &context_feature_type_and_lengths;
       } else if (stream.ExpectTag(kDelimitedTag(2))) {
         // Sequence
         features = sequence_features;
-        config = &sequence_feature_type_and_lengths;
       } else if (!SkipExtraneousTag(&stream)) {
         return errors::InvalidArgument(
-            "Invalid protocol message input, example id: ", example_name);
+            "Invalid protocol message input, example id: ",
+            ExampleName(example_names, d));
       }
       if (features != nullptr) {
         uint32 length;
         if (!stream.ReadVarint32(&length)) {
           return errors::InvalidArgument(
-              "Invalid protocol message input, example id: ", example_name);
+              "Invalid protocol message input, example id: ",
+              ExampleName(example_names, d));
         }
         auto limit = stream.PushLimit(length);
         while (!stream.ExpectAtEnd()) {
@@ -1921,7 +2105,8 @@ Status FastParseSequenceExample(
           if (!stream.ExpectTag(kDelimitedTag(1)) ||
               !stream.ReadVarint32(&length)) {
             return errors::InvalidArgument(
-                "Invalid protocol message input, example id: ", example_name);
+                "Invalid protocol message input, example id: ",
+                ExampleName(example_names, d));
           }
           auto limit = stream.PushLimit(length);
           if (!stream.ExpectTag(kDelimitedTag(1)) ||
@@ -1929,177 +2114,193 @@ Status FastParseSequenceExample(
               !stream.ExpectTag(kDelimitedTag(2)) ||
               !ParseString(&stream, &value) || !stream.ExpectAtEnd()) {
             return errors::InvalidArgument(
-                "Invalid protocol message input, example id: ", example_name);
+                "Invalid protocol message input, example id: ",
+                ExampleName(example_names, d));
           }
           stream.PopLimit(limit);
           // Only save if this feature was requested.
-          if (config->count(key) > 0) {
-            (*features)[key] = value;
+          auto feature_iter = features->find(key);
+          if (feature_iter != features->end()) {
+            auto& feature = feature_iter->second;
+            feature.protos[d] = value;
+            feature.protos_present[d] = true;
           }
         }
         stream.PopLimit(limit);
       }
     }
+  }
+  return Status::OK();
+}
 
-    for (const auto& c : *context_features) {
-      size_t num_elements = 0;
-      if (!c.second.empty()) {
-        protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(c.second.data()), c.second.size());
-        EnableAliasing(&stream);
-        DataType dtype = context_feature_type_and_lengths[c.first].first;
-        int64 num;
-        switch (dtype) {
-          case DT_STRING:
-            num = ParseBytesFeature(&stream, nullptr);
-            break;
-          case DT_FLOAT:
-            num = ParseFloatFeature(&stream, nullptr);
-            break;
-          case DT_INT64:
-            num = ParseInt64Feature(&stream, nullptr);
-            break;
-          default:
-            num = -1;
-            break;
-        }
-        if (num == -1) {
-          return errors::InvalidArgument("Error in context feature ", c.first,
-                                         " in example ", example_name);
-        }
-        num_elements += num;
+// Populates context_features[k].length based on context_features[k].protos
+// (for all k).
+Status GetContextFeatureLengths(const gtl::ArraySlice<tstring> example_names,
+                                FeatureProtosMap* context_features) {
+  for (auto& c : *context_features) {
+    FeatureProtos& feature = c.second;
+    for (int d = 0; d < feature.protos.size(); ++d) {
+      const auto& proto = feature.protos[d];
+      if (proto.empty()) continue;
+      protobuf::io::CodedInputStream stream(
+          reinterpret_cast<const uint8*>(proto.data()), proto.size());
+      EnableAliasing(&stream);
+      int num_elements = GetFeatureLength(feature.dtype, &stream);
+      if (num_elements < 0) {
+        return errors::InvalidArgument(
+            "Name: ", ExampleName(example_names, d),
+            ", Context feature: ", c.first,
+            ".  Data types don't match. Expected type: ",
+            DataTypeString(feature.dtype));
       }
-      if (context_is_sparse[c.first]) {
-        context_feature_type_and_lengths[c.first].second += num_elements;
-      } else {
-        size_t current_max = context_feature_type_and_lengths[c.first].second;
-        context_feature_type_and_lengths[c.first].second =
-            std::max(current_max, num_elements);
-      }
-    }
-    for (const auto& c : *sequence_features) {
-      size_t num_elements = 0;
-      if (!c.second.empty()) {
-        protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(c.second.data()), c.second.size());
-        EnableAliasing(&stream);
-        DataType dtype = sequence_feature_type_and_lengths[c.first].first;
-        while (!stream.ExpectAtEnd()) {
-          uint32 feature_length;
-          if (!stream.ExpectTag(kDelimitedTag(1)) ||
-              !stream.ReadVarint32(&feature_length)) {
-            return errors::InvalidArgument("Error in sequence feature ",
-                                           c.first, " in example ",
-                                           example_name);
-          }
-          if (feature_length > 2) {
-            auto limit = stream.PushLimit(feature_length);
-            int64 num;
-            switch (dtype) {
-              case DT_STRING:
-                num = ParseBytesFeature(&stream, nullptr);
-                break;
-              case DT_FLOAT:
-                num = ParseFloatFeature(&stream, nullptr);
-                break;
-              case DT_INT64:
-                num = ParseInt64Feature(&stream, nullptr);
-                break;
-              default:
-                num = -1;
-                break;
-            }
-            if (num == -1) {
-              return errors::InvalidArgument("Error in sequence feature ",
-                                             c.first, " in example ",
-                                             example_name);
-            }
-            num_elements += num;
-            stream.PopLimit(limit);
-          } else if (feature_length == 2) {
-            if (!SkipEmptyFeature(&stream, dtype)) {
-              return errors::InvalidArgument("Error in sequence feature ",
-                                             c.first, " in example ",
-                                             example_name);
-            }
-          } else if (feature_length != 0) {
-            return errors::InvalidArgument("Error in sequence feature ",
-                                           c.first, " in example ",
-                                           example_name);
-          }
-        }
-      }
-      if (sequence_is_sparse[c.first]) {
-        sequence_feature_type_and_lengths[c.first].second += num_elements;
-      } else {
-        size_t current_max = sequence_feature_type_and_lengths[c.first].second;
-        sequence_feature_type_and_lengths[c.first].second =
-            std::max(current_max, num_elements);
+      switch (feature.type) {
+        case Type::Sparse:  // intentional fall-through
+        case Type::Ragged:
+          feature.length += num_elements;
+          break;
+        case Type::Dense:
+          feature.length =
+              std::max(feature.length, static_cast<size_t>(num_elements));
+          break;
       }
     }
   }
+  return Status::OK();
+}
 
-  // Allocate memory.
-  context_result->sparse_values.resize(context_config.sparse.size());
-  context_result->sparse_indices.resize(context_config.sparse.size());
-  context_result->sparse_shapes.resize(context_config.sparse.size());
-  context_result->dense_values.resize(context_config.dense.size());
-  feature_list_result->sparse_values.resize(feature_list_config.sparse.size());
-  feature_list_result->sparse_indices.resize(feature_list_config.sparse.size());
-  feature_list_result->sparse_shapes.resize(feature_list_config.sparse.size());
-  feature_list_result->dense_values.resize(feature_list_config.dense.size());
-  dense_feature_lengths->resize(feature_list_config.dense.size());
+// Populates sequence_features[k].length and sequence_features[k].num_rows based
+// on sequence_features[k].protos (for all k).
+Status GetSequenceFeatureLengths(const gtl::ArraySlice<tstring> example_names,
+                                 FeatureProtosMap* sequence_features) {
+  for (auto& c : *sequence_features) {
+    FeatureProtos& feature = c.second;
+    for (int d = 0; d < feature.protos.size(); ++d) {
+      const auto& proto = feature.protos[d];
+      if (proto.empty()) continue;
 
-  // NOTE(mrry): Cache the CPU allocator here and use it in Tensor construction,
-  // to avoid lock contention in `tensorflow::cpu_allocator()`.
-  Allocator* allocator = tensorflow::cpu_allocator();
+      size_t num_rows = 0;
+      size_t num_elements = 0;
+      protobuf::io::CodedInputStream stream(
+          reinterpret_cast<const uint8*>(proto.data()), proto.size());
+      EnableAliasing(&stream);
+      while (!stream.ExpectAtEnd()) {
+        uint32 feature_bytes;
+        if (!stream.ExpectTag(kDelimitedTag(1)) ||
+            !stream.ReadVarint32(&feature_bytes)) {
+          return errors::InvalidArgument("Error in sequence feature ", c.first,
+                                         " in example ",
+                                         ExampleName(example_names, d));
+        }
+        if (feature_bytes > 2) {
+          auto limit = stream.PushLimit(feature_bytes);
+          int delta = GetFeatureLength(feature.dtype, &stream);
+          if (delta < 0) {
+            return errors::InvalidArgument(
+                "Name: ", ExampleName(example_names, d),
+                ", Feature list: ", c.first, ", Index: ", num_rows,
+                ".  Data types don't match. Expected type: ",
+                DataTypeString(feature.dtype));
+          }
+          num_elements += delta;
+          stream.PopLimit(limit);
+        } else if (feature_bytes == 2) {
+          if (!SkipEmptyFeature(&stream, feature.dtype)) {
+            return errors::InvalidArgument(
+                "Name: ", ExampleName(example_names, d),
+                ", Feature list: ", c.first, ", Index: ", num_rows,
+                ".  Data types don't match. Expected type: ",
+                DataTypeString(feature.dtype));
+          }
+        } else if (feature_bytes != 0) {
+          return errors::InvalidArgument("Error in sequence feature ", c.first,
+                                         " in example ",
+                                         ExampleName(example_names, d));
+        }
+        ++num_rows;
+      }
+      switch (feature.type) {
+        case Type::Sparse:
+          feature.length += num_elements;
+          break;
+        case Type::Ragged:
+          feature.length += num_elements;
+          feature.num_rows += num_rows;
+          break;
+        case Type::Dense:
+          feature.length = std::max(feature.length, num_elements);
+          break;
+      }
+    }
+  }
+  return Status::OK();
+}
 
-  int t = 0;
-  for (const auto& c : context_config.dense) {
+// Copies src into dst[dst_offset:dst_offset+src.size], and then increments
+// dst_offset by src.size.
+void CopyTensorIntoTensor(DataType dtype, const Tensor& src, Tensor* dst,
+                          size_t* dst_offset) {
+  size_t src_size = src.NumElements();
+  switch (dtype) {
+    case DT_INT64: {
+      auto src_t = src.flat<int64>().data();
+      std::copy(src_t, src_t + src_size,
+                dst->flat<int64>().data() + *dst_offset);
+      break;
+    }
+    case DT_FLOAT: {
+      auto src_t = src.flat<float>().data();
+      std::copy(src_t, src_t + src_size,
+                dst->flat<float>().data() + *dst_offset);
+      break;
+    }
+    case DT_STRING: {
+      auto src_t = src.flat<tstring>().data();
+      std::copy(src_t, src_t + src_size,
+                dst->flat<tstring>().data() + *dst_offset);
+      break;
+    }
+    default:
+      ReportUnexpectedDataType(dtype);
+  }
+  *dst_offset += src_size;
+}
+
+// Parses dense features in `context_features`, and writes their parsed
+// values to `context_results`.
+Status ParseContextDenseFeatures(const FeatureProtosMap& context_features,
+                                 const FastParseExampleConfig& context_config,
+                                 gtl::ArraySlice<tstring> example_names,
+                                 bool is_batch, int num_examples,
+                                 Allocator* allocator, Result* context_result) {
+  for (int t = 0; t < context_config.dense.size(); ++t) {
+    const auto& c = context_config.dense[t];
+    const FeatureProtos& feature =
+        context_features.find(c.feature_name)->second;
     TensorShape dense_shape, example_shape;
     DataType dtype = c.dtype;
-    const size_t expected_max_elements =
-        context_feature_type_and_lengths[c.feature_name].second;
+    const size_t expected_max_elements = feature.length;
     if (!c.shape.AsTensorShape(&example_shape) ||
         expected_max_elements != example_shape.num_elements()) {
       return errors::InvalidArgument(
           "Inconsistent number of elements for feature ", c.feature_name, ": ",
           expected_max_elements, " vs ", dense_shape.num_elements());
     }
-    dense_shape.AddDim(num_examples);
+    if (is_batch) {
+      dense_shape.AddDim(num_examples);
+    }
     for (const int dim : c.shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
     context_result->dense_values[t] = Tensor(allocator, dtype, dense_shape);
 
-    // TODO(sundberg): Refactor to reduce code duplication, and add bounds
-    // checking for the outputs.
-    string* out_bytes = nullptr;
-    float* out_float = nullptr;
-    int64* out_int64 = nullptr;
-    switch (dtype) {
-      case DT_STRING:
-        out_bytes = context_result->dense_values[t].flat<string>().data();
-        break;
-      case DT_FLOAT:
-        out_float = context_result->dense_values[t].flat<float>().data();
-        break;
-      case DT_INT64:
-        out_int64 = context_result->dense_values[t].flat<int64>().data();
-        break;
-      default:
-        return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                       " in feature ", c.feature_name);
-    }
-    t++;
+    Tensor& out = context_result->dense_values[t];
+    size_t out_offset = 0;
 
     // Fill in the values.
     for (int e = 0; e < num_examples; e++) {
       size_t num_elements = 0;
-      const auto feature_iter = all_context_features[e].find(c.feature_name);
-      const string& example_name =
-          example_names.empty() ? kUnknown : example_names[e];
-      if (feature_iter == all_context_features[e].end()) {
+      const auto& feature_proto = feature.protos[e];
+      if (!feature.protos_present[e]) {
         // Copy the default value, if present. If not, return an error.
         if (c.default_value.NumElements() == 0) {
           return errors::InvalidArgument(
@@ -2107,211 +2308,245 @@ Status FastParseSequenceExample(
               " (data type: ", DataTypeString(c.dtype), ")",
               " is required but could not be found.");
         }
-        const string* in_bytes = nullptr;
-        const float* in_float = nullptr;
-        const int64* in_int64 = nullptr;
-        size_t num = 0;
-        switch (dtype) {
-          case DT_STRING:
-            in_bytes = c.default_value.flat<string>().data();
-            num = c.default_value.NumElements();
-            for (int p = 0; p < num; p++) {
-              *out_bytes++ = *in_bytes++;
-            }
-            break;
-          case DT_FLOAT:
-            in_float = c.default_value.flat<float>().data();
-            num = c.default_value.NumElements();
-            for (int p = 0; p < num; p++) {
-              *out_float++ = *in_float++;
-            }
-            break;
-          case DT_INT64:
-            in_int64 = c.default_value.flat<int64>().data();
-            num = c.default_value.NumElements();
-            for (int p = 0; p < num; p++) {
-              *out_int64++ = *in_int64++;
-            }
-            break;
-          default:
-            return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                           " in example ", example_name);
-        }
-        num_elements += num;
-      } else if (!feature_iter->second.empty()) {
-        const auto& feature = feature_iter->second;
+        CopyTensorIntoTensor(dtype, c.default_value, &out, &out_offset);
+        num_elements += c.default_value.NumElements();
+      } else if (!feature_proto.empty()) {
         protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(feature.data()), feature.size());
+            reinterpret_cast<const uint8*>(feature_proto.data()),
+            feature_proto.size());
         EnableAliasing(&stream);
-        size_t num_added;
-        switch (dtype) {
-          case DT_STRING:
-            num_added = ParseBytesFeature(&stream, out_bytes);
-            out_bytes += num_added;
-            break;
-          case DT_FLOAT:
-            num_added = ParseFloatFeature(&stream, out_float);
-            out_float += num_added;
-            break;
-          case DT_INT64:
-            num_added = ParseInt64Feature(&stream, out_int64);
-            out_int64 += num_added;
-            break;
-          default:
-            return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                           " in example ", example_name);
-        }
-        num_elements += num_added;
+        num_elements += ParseFeature(dtype, &stream, &out, &out_offset);
       }
       if (num_elements != expected_max_elements) {
         return errors::InvalidArgument(
-            "Unexpected number of elements in example ", example_name);
+            "Unexpected number of elements in example ",
+            ExampleName(example_names, e));
       }
     }
   }
-  t = 0;
-  for (const auto& c : context_config.sparse) {
+  return Status::OK();
+}
+
+// Parses sparse features in `context_features`, and writes their parsed
+// values to `context_results`.
+Status ParseContextSparseFeatures(const FeatureProtosMap& context_features,
+                                  const FastParseExampleConfig& context_config,
+                                  gtl::ArraySlice<tstring> example_names,
+                                  bool is_batch, int num_examples,
+                                  Allocator* allocator,
+                                  Result* context_result) {
+  for (int t = 0; t < context_config.sparse.size(); ++t) {
+    const auto& c = context_config.sparse[t];
+    const FeatureProtos& feature =
+        context_features.find(c.feature_name)->second;
     TensorShape indices_shape, values_shape;
     DataType dtype = c.dtype;
-    size_t expected_num_elements =
-        context_feature_type_and_lengths[c.feature_name].second;
+    size_t expected_num_elements = feature.length;
     indices_shape.AddDim(expected_num_elements);
-    indices_shape.AddDim(2);
+    indices_shape.AddDim(is_batch ? 2 : 1);
     values_shape.AddDim(expected_num_elements);
     context_result->sparse_indices[t] =
         Tensor(allocator, DT_INT64, indices_shape);
     context_result->sparse_values[t] = Tensor(allocator, dtype, values_shape);
     context_result->sparse_shapes[t] =
-        Tensor(allocator, DT_INT64, TensorShape({2}));
-    // TODO(sundberg): Refactor to reduce code duplication, and add bounds
-    // checking for the outputs.
-    string* out_bytes = nullptr;
-    float* out_float = nullptr;
-    int64* out_int64 = nullptr;
-    switch (dtype) {
-      case DT_STRING:
-        out_bytes = context_result->sparse_values[t].flat<string>().data();
-        break;
-      case DT_FLOAT:
-        out_float = context_result->sparse_values[t].flat<float>().data();
-        break;
-      case DT_INT64:
-        out_int64 = context_result->sparse_values[t].flat<int64>().data();
-        break;
-      default:
-        return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                       " in feature ", c.feature_name);
-    }
+        Tensor(allocator, DT_INT64, TensorShape({is_batch ? 2 : 1}));
+    Tensor& out_values = context_result->sparse_values[t];
+    size_t out_values_offset = 0;
     int64* out_indices = context_result->sparse_indices[t].flat<int64>().data();
     auto out_shape = context_result->sparse_shapes[t].vec<int64>();
-    t++;
 
     // Fill in the values.
     size_t num_elements = 0;
     size_t max_num_cols = 0;
     for (int e = 0; e < num_examples; e++) {
-      const auto& feature = all_context_features[e][c.feature_name];
-      const string& example_name =
-          example_names.empty() ? kUnknown : example_names[e];
-      if (!feature.empty()) {
-        protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(feature.data()), feature.size());
-        EnableAliasing(&stream);
-        size_t num_added;
-        switch (dtype) {
-          case DT_STRING:
-            num_added = ParseBytesFeature(&stream, out_bytes);
-            out_bytes += num_added;
-            break;
-          case DT_FLOAT:
-            num_added = ParseFloatFeature(&stream, out_float);
-            out_float += num_added;
-            break;
-          case DT_INT64:
-            num_added = ParseInt64Feature(&stream, out_int64);
-            out_int64 += num_added;
-            break;
-          default:
-            return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                           " in example ", example_name);
-        }
-        num_elements += num_added;
-        max_num_cols = std::max(max_num_cols, num_added);
-        for (int i = 0; i < num_added; i++) {
-          *out_indices++ = e;
-          *out_indices++ = i;
-        }
+      const auto& feature_proto = feature.protos[e];
+      if (feature_proto.empty()) continue;
+      protobuf::io::CodedInputStream stream(
+          reinterpret_cast<const uint8*>(feature_proto.data()),
+          feature_proto.size());
+      EnableAliasing(&stream);
+      size_t num_added =
+          ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+      num_elements += num_added;
+      max_num_cols = std::max(max_num_cols, num_added);
+      for (int i = 0; i < num_added; i++) {
+        if (is_batch) *out_indices++ = e;
+        *out_indices++ = i;
       }
     }
     if (num_elements != expected_num_elements) {
       return errors::InvalidArgument(
           "Unexpected total number of elements in feature ", c.feature_name);
     }
-    out_shape(0) = num_examples;
-    out_shape(1) = max_num_cols;
+    if (is_batch) {
+      out_shape(0) = num_examples;
+      out_shape(1) = max_num_cols;
+    } else {
+      out_shape(0) = max_num_cols;
+    }
   }
-  t = 0;
-  TensorShape dense_length_shape({num_examples});
-  for (const auto& c : feature_list_config.dense) {
+  return Status::OK();
+}
+
+// Parses ragged features in `context_features`, and writes their parsed
+// values to `context_results`.
+Status ParseContextRaggedFeatures(const FeatureProtosMap& context_features,
+                                  const FastParseExampleConfig& context_config,
+                                  gtl::ArraySlice<tstring> example_names,
+                                  bool is_batch, int num_examples,
+                                  Allocator* allocator,
+                                  Result* context_result) {
+  for (int t = 0; t < context_config.ragged.size(); ++t) {
+    const auto& c = context_config.ragged[t];
+    const FeatureProtos& feature =
+        context_features.find(c.feature_name)->second;
+    TensorShape values_shape, splits_shape;
+    DataType dtype = c.dtype;
+    DataType splits_dtype = c.splits_dtype;
+    size_t expected_num_elements = feature.length;
+    values_shape.AddDim(expected_num_elements);
+    if (is_batch) {
+      splits_shape.AddDim(num_examples + 1);
+    }
+    context_result->ragged_values[t] = Tensor(allocator, dtype, values_shape);
+    context_result->ragged_splits[t] =
+        Tensor(allocator, splits_dtype, splits_shape);
+    Tensor& out_values = context_result->ragged_values[t];
+    size_t out_values_offset = 0;
+    int32* int32_splits =
+        is_batch && splits_dtype == DT_INT32
+            ? context_result->ragged_splits[t].vec<int32>().data()
+            : nullptr;
+    int64* int64_splits =
+        is_batch && splits_dtype == DT_INT64
+            ? context_result->ragged_splits[t].vec<int64>().data()
+            : nullptr;
+    if (int32_splits) {
+      *int32_splits++ = 0;
+    } else if (int64_splits) {
+      *int64_splits++ = 0;
+    }
+
+    // Fill in the values.
+    size_t split = 0;  // = total number of elements we've seen so far
+    for (int e = 0; e < num_examples; e++) {
+      const auto& feature_proto = feature.protos[e];
+      if (!feature_proto.empty()) {
+        protobuf::io::CodedInputStream stream(
+            reinterpret_cast<const uint8*>(feature_proto.data()),
+            feature_proto.size());
+        EnableAliasing(&stream);
+        size_t num_added =
+            ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+        split += num_added;
+      }
+      if (int32_splits) {
+        *int32_splits++ = split;
+      } else if (int64_splits) {
+        *int64_splits++ = split;
+      }
+    }
+    if (split != expected_num_elements) {
+      return errors::InvalidArgument(
+          "Unexpected total number of elements in feature ", c.feature_name);
+    }
+    if (int32_splits || int64_splits) {
+      int actual_splits =
+          int32_splits
+              ? int32_splits -
+                    context_result->ragged_splits[t].vec<int32>().data()
+              : int64_splits -
+                    context_result->ragged_splits[t].vec<int64>().data();
+      if (actual_splits != num_examples + 1) {
+        return errors::InvalidArgument(
+            "Unexpected number of examples for feature ", c.feature_name);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+// Parses dense features in `sequence_features`, and writes their parsed
+// values to `sequence_result`.
+Status ParseSequenceDenseFeatures(const FeatureProtosMap& sequence_features,
+                                  const FastParseExampleConfig& sequence_config,
+                                  gtl::ArraySlice<tstring> example_names,
+                                  bool is_batch, int num_examples,
+                                  Allocator* allocator, Result* sequence_result,
+                                  std::vector<Tensor>* dense_feature_lengths) {
+  TensorShape dense_length_shape;
+  if (is_batch) {
+    dense_length_shape.AddDim(num_examples);
+  }
+  for (int t = 0; t < sequence_config.dense.size(); ++t) {
+    const auto& c = sequence_config.dense[t];
+    const FeatureProtos& feature =
+        sequence_features.find(c.feature_name)->second;
     TensorShape dense_shape, row_shape;
     DataType dtype = c.dtype;
-    const size_t expected_max_elements =
-        sequence_feature_type_and_lengths[c.feature_name].second;
+    const size_t expected_max_elements = feature.length;
     if (!c.shape.AsTensorShape(&row_shape) ||
         expected_max_elements !=
             (expected_max_elements / row_shape.num_elements()) *
                 row_shape.num_elements()) {
-      return errors::InvalidArgument("Unexpected shape error in feature ",
-                                     c.feature_name);
+      PartialTensorShape total_shape = row_shape;
+      total_shape.InsertDim(0, -1);
+      return errors::InvalidArgument(
+          "Feature list '", c.feature_name,
+          "' has an unexpected number of values.  Total values size: ",
+          expected_max_elements,
+          " is not consistent with output shape: ", total_shape.DebugString());
     }
     int64 expected_max_rows = expected_max_elements / row_shape.num_elements();
-    dense_shape.AddDim(num_examples);
+    if (is_batch) {
+      dense_shape.AddDim(num_examples);
+    }
     dense_shape.AddDim(expected_max_rows);
-    for (const int dim : feature_list_config.dense[t].shape.dim_sizes()) {
+    for (const int dim : sequence_config.dense[t].shape.dim_sizes()) {
       dense_shape.AddDim(dim);
     }
-    feature_list_result->dense_values[t] =
-        Tensor(allocator, dtype, dense_shape);
+    sequence_result->dense_values[t] = Tensor(allocator, dtype, dense_shape);
     (*dense_feature_lengths)[t] =
         Tensor(allocator, DT_INT64, dense_length_shape);
     int64* out_lengths = (*dense_feature_lengths)[t].flat<int64>().data();
 
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
       case DT_STRING:
-        out_bytes = feature_list_result->dense_values[t].flat<string>().data();
+        out_bytes = sequence_result->dense_values[t].flat<tstring>().data();
         break;
       case DT_FLOAT:
-        out_float = feature_list_result->dense_values[t].flat<float>().data();
+        out_float = sequence_result->dense_values[t].flat<float>().data();
         break;
       case DT_INT64:
-        out_int64 = feature_list_result->dense_values[t].flat<int64>().data();
+        out_int64 = sequence_result->dense_values[t].flat<int64>().data();
         break;
       default:
-        return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                       " in feature ", c.feature_name);
+        ReportUnexpectedDataType(dtype);
     }
-    t++;
 
     // Fill in the values.
     for (int e = 0; e < num_examples; e++) {
       size_t num_elements = 0, num_rows = 0;
-      const auto feature_iter = all_sequence_features[e].find(c.feature_name);
-      const string& example_name =
-          example_names.empty() ? kUnknown : example_names[e];
-      if (feature_iter == all_sequence_features[e].end()) {
+      const auto& feature_proto = feature.protos[e];
+      if (!feature.protos_present[e]) {
         // Return an error if this feature was not allowed to be missing.
         // Otherwise, we'll pad as needed below.
         if (!c.variable_length) {
-          return errors::InvalidArgument("Missing feature ", c.feature_name,
-                                         " in example ", example_name);
+          return errors::InvalidArgument(
+              "Name: ", ExampleName(example_names, e), ", Feature list '",
+              c.feature_name,
+              "' is required but could not be found.  "
+              "Did you mean to include it in "
+              "feature_list_dense_missing_assumed_empty or "
+              "feature_list_dense_defaults?");
         }
-      } else if (!feature_iter->second.empty()) {
-        const auto& feature = feature_iter->second;
+      } else if (!feature_proto.empty()) {
         protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(feature.data()), feature.size());
+            reinterpret_cast<const uint8*>(feature_proto.data()),
+            feature_proto.size());
         EnableAliasing(&stream);
         while (!stream.ExpectAtEnd()) {
           uint32 feature_length;
@@ -2319,34 +2554,45 @@ Status FastParseSequenceExample(
               !stream.ReadVarint32(&feature_length)) {
             return errors::InvalidArgument("Error in sequence feature ",
                                            c.feature_name, " in example ",
-                                           example_name);
+                                           ExampleName(example_names, e));
           }
           auto limit = stream.PushLimit(feature_length);
-          size_t num_added;
-          switch (dtype) {
-            case DT_STRING:
-              num_added = ParseBytesFeature(&stream, out_bytes);
-              out_bytes += num_added;
-              break;
-            case DT_FLOAT:
-              num_added = ParseFloatFeature(&stream, out_float);
-              out_float += num_added;
-              break;
-            case DT_INT64:
-              num_added = ParseInt64Feature(&stream, out_int64);
-              out_int64 += num_added;
-              break;
-            default:
-              return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                             " in example ", example_name);
+          int num_added = 0;
+          if (feature_length > 2) {
+            switch (dtype) {
+              case DT_STRING:
+                num_added = ParseBytesFeature(&stream, out_bytes);
+                out_bytes += num_added;
+                break;
+              case DT_FLOAT:
+                num_added = ParseFloatFeature(&stream, out_float);
+                out_float += num_added;
+                break;
+              case DT_INT64:
+                num_added = ParseInt64Feature(&stream, out_int64);
+                out_int64 += num_added;
+                break;
+              default:
+                ReportUnexpectedDataType(dtype);
+                num_added = 0;
+            }
+            if (num_added < 0) {
+              // This should be unreachable -- we already scanned the feature in
+              // GetSequenceFeatureLengths, and it hasn't changed since then.
+              return errors::InvalidArgument("Error in sequence feature ",
+                                             c.feature_name, " in example ",
+                                             ExampleName(example_names, e));
+            }
+          }
+          if (num_added != row_shape.num_elements()) {
+            return errors::InvalidArgument(
+                "Name: ", ExampleName(example_names, e),
+                ", Key: ", c.feature_name, ", Index: ", num_rows,
+                ".  Number of values != expected.  values size: ", num_added,
+                " but output shape: ", row_shape.DebugString());
           }
           num_elements += num_added;
           num_rows++;
-          if (num_added != row_shape.num_elements()) {
-            return errors::InvalidArgument(
-                "Unexpected number of elements in feature ", c.feature_name,
-                ", example ", example_name);
-          }
           stream.PopLimit(limit);
         }
       }
@@ -2366,122 +2612,444 @@ Status FastParseSequenceExample(
           out_int64 += num_to_pad;
           break;
         default:
-          return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                         " in example ", example_name);
+          ReportUnexpectedDataType(dtype);
       }
     }
   }
-  t = 0;
-  for (const auto& c : feature_list_config.sparse) {
+  return Status::OK();
+}
+
+// Parses sparse features in `sequence_features`, and writes their parsed
+// values to `sequence_result`.
+Status ParseSequenceSparseFeatures(
+    const FeatureProtosMap& sequence_features,
+    const FastParseExampleConfig& sequence_config,
+    gtl::ArraySlice<tstring> example_names, bool is_batch, int num_examples,
+    Allocator* allocator, Result* sequence_result) {
+  for (int t = 0; t < sequence_config.sparse.size(); ++t) {
+    const auto& c = sequence_config.sparse[t];
+    const FeatureProtos& feature =
+        sequence_features.find(c.feature_name)->second;
     TensorShape indices_shape, values_shape;
     DataType dtype = c.dtype;
-    size_t expected_num_elements =
-        sequence_feature_type_and_lengths[c.feature_name].second;
+    size_t expected_num_elements = feature.length;
     indices_shape.AddDim(expected_num_elements);
-    indices_shape.AddDim(3);
+    indices_shape.AddDim(is_batch ? 3 : 2);
     values_shape.AddDim(expected_num_elements);
-    feature_list_result->sparse_indices[t] =
+    sequence_result->sparse_indices[t] =
         Tensor(allocator, DT_INT64, indices_shape);
-    feature_list_result->sparse_values[t] =
-        Tensor(allocator, dtype, values_shape);
-    feature_list_result->sparse_shapes[t] =
-        Tensor(allocator, DT_INT64, TensorShape({3}));
+    sequence_result->sparse_values[t] = Tensor(allocator, dtype, values_shape);
+    sequence_result->sparse_shapes[t] =
+        Tensor(allocator, DT_INT64, TensorShape({is_batch ? 3 : 2}));
 
-    string* out_bytes = nullptr;
+    tstring* out_bytes = nullptr;
     float* out_float = nullptr;
     int64* out_int64 = nullptr;
     switch (dtype) {
       case DT_STRING:
-        out_bytes = feature_list_result->sparse_values[t].flat<string>().data();
+        out_bytes = sequence_result->sparse_values[t].flat<tstring>().data();
         break;
       case DT_FLOAT:
-        out_float = feature_list_result->sparse_values[t].flat<float>().data();
+        out_float = sequence_result->sparse_values[t].flat<float>().data();
         break;
       case DT_INT64:
-        out_int64 = feature_list_result->sparse_values[t].flat<int64>().data();
+        out_int64 = sequence_result->sparse_values[t].flat<int64>().data();
         break;
       default:
-        return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                       " in feature ", c.feature_name);
+        ReportUnexpectedDataType(dtype);
     }
     int64* out_indices =
-        feature_list_result->sparse_indices[t].flat<int64>().data();
-    auto out_shape = feature_list_result->sparse_shapes[t].vec<int64>();
-    t++;
+        sequence_result->sparse_indices[t].flat<int64>().data();
+    auto out_shape = sequence_result->sparse_shapes[t].vec<int64>();
 
     // Fill in the values.
     size_t num_elements = 0;
     size_t max_num_rows = 0;
     size_t max_num_cols = 0;
     for (int e = 0; e < num_examples; e++) {
-      const auto& feature = all_sequence_features[e][c.feature_name];
-      const string& example_name =
-          example_names.empty() ? kUnknown : example_names[e];
-      if (!feature.empty()) {
-        protobuf::io::CodedInputStream stream(
-            reinterpret_cast<const uint8*>(feature.data()), feature.size());
-        EnableAliasing(&stream);
-        size_t num_rows = 0;
-        while (!stream.ExpectAtEnd()) {
-          uint32 feature_length;
-          if (!stream.ExpectTag(kDelimitedTag(1)) ||
-              !stream.ReadVarint32(&feature_length)) {
-            return errors::InvalidArgument("Error in sequence feature ",
-                                           c.feature_name, " in example ",
-                                           example_name);
-          }
-          if (feature_length > 2) {
-            auto limit = stream.PushLimit(feature_length);
-            size_t num_added;
-            switch (dtype) {
-              case DT_STRING:
-                num_added = ParseBytesFeature(&stream, out_bytes);
-                out_bytes += num_added;
-                break;
-              case DT_FLOAT:
-                num_added = ParseFloatFeature(&stream, out_float);
-                out_float += num_added;
-                break;
-              case DT_INT64:
-                num_added = ParseInt64Feature(&stream, out_int64);
-                out_int64 += num_added;
-                break;
-              default:
-                return errors::InvalidArgument("Unexpected dtype ", dtype,
-                                               " in example ", example_name);
-            }
-            num_elements += num_added;
-            max_num_cols = std::max(max_num_cols, num_added);
-            for (int i = 0; i < num_added; i++) {
-              *out_indices++ = e;
-              *out_indices++ = num_rows;
-              *out_indices++ = i;
-            }
-            stream.PopLimit(limit);
-          } else if (feature_length == 2) {
-            if (!SkipEmptyFeature(&stream, dtype)) {
-              return errors::InvalidArgument("Error in sequence feature ",
-                                             c.feature_name, " in example ",
-                                             example_name);
-            }
-          } else if (feature_length != 0) {
-            return errors::InvalidArgument("Error in sequence feature ",
-                                           c.feature_name, " in example ",
-                                           example_name);
-          }
-          num_rows++;
+      const auto& feature_proto = feature.protos[e];
+      if (feature_proto.empty()) continue;
+      protobuf::io::CodedInputStream stream(
+          reinterpret_cast<const uint8*>(feature_proto.data()),
+          feature_proto.size());
+      EnableAliasing(&stream);
+      size_t num_rows = 0;
+      while (!stream.ExpectAtEnd()) {
+        uint32 feature_length;
+        if (!stream.ExpectTag(kDelimitedTag(1)) ||
+            !stream.ReadVarint32(&feature_length)) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetSequenceFeatureLengths, and it hasn't changed since then.
+          return errors::InvalidArgument("Error in sequence feature ",
+                                         c.feature_name, " in example ",
+                                         ExampleName(example_names, e));
         }
-        max_num_rows = std::max(max_num_rows, num_rows);
+        if (feature_length > 2) {
+          auto limit = stream.PushLimit(feature_length);
+          size_t num_added;
+          switch (dtype) {
+            case DT_STRING:
+              num_added = ParseBytesFeature(&stream, out_bytes);
+              out_bytes += num_added;
+              break;
+            case DT_FLOAT:
+              num_added = ParseFloatFeature(&stream, out_float);
+              out_float += num_added;
+              break;
+            case DT_INT64:
+              num_added = ParseInt64Feature(&stream, out_int64);
+              out_int64 += num_added;
+              break;
+            default:
+              ReportUnexpectedDataType(dtype);
+              num_added = 0;
+          }
+          num_elements += num_added;
+          max_num_cols = std::max(max_num_cols, num_added);
+          for (int i = 0; i < num_added; i++) {
+            if (is_batch) *out_indices++ = e;
+            *out_indices++ = num_rows;
+            *out_indices++ = i;
+          }
+          stream.PopLimit(limit);
+        } else if (feature_length == 2) {
+          if (!SkipEmptyFeature(&stream, dtype)) {
+            // This should be unreachable -- we already scanned the feature in
+            // GetSequenceFeatureLengths, and it hasn't changed since then.
+            return errors::InvalidArgument("Error in sequence feature ",
+                                           c.feature_name, " in example ",
+                                           ExampleName(example_names, e));
+          }
+        } else if (feature_length != 0) {
+          // This should be unreachable -- we already scanned the feature in
+          // GetSequenceFeatureLengths, and it hasn't changed since then.
+          return errors::InvalidArgument("Error in sequence feature ",
+                                         c.feature_name, " in example ",
+                                         ExampleName(example_names, e));
+        }
+        num_rows++;
       }
+      max_num_rows = std::max(max_num_rows, num_rows);
     }
     if (num_elements != expected_num_elements) {
       return errors::InvalidArgument(
           "Unexpected number of elements in feature ", c.feature_name);
     }
-    out_shape(0) = num_examples;
-    out_shape(1) = max_num_rows;
-    out_shape(2) = max_num_cols;
+    if (is_batch) {
+      out_shape(0) = num_examples;
+      out_shape(1) = max_num_rows;
+      out_shape(2) = max_num_cols;
+    } else {
+      out_shape(0) = max_num_rows;
+      out_shape(1) = max_num_cols;
+    }
   }
+  return Status::OK();
+}
+
+// Parses ragged features in `sequence_features`, and writes their parsed
+// values to `sequence_result`.
+Status ParseSequenceRaggedFeatures(
+    const FeatureProtosMap& sequence_features,
+    const FastParseExampleConfig& sequence_config,
+    gtl::ArraySlice<tstring> example_names, bool is_batch, int num_examples,
+    Allocator* allocator, Result* sequence_result) {
+  for (int t = 0; t < sequence_config.ragged.size(); ++t) {
+    const auto& c = sequence_config.ragged[t];
+    const FeatureProtos& feature =
+        sequence_features.find(c.feature_name)->second;
+    TensorShape values_shape, inner_splits_shape, outer_splits_shape;
+    DataType dtype = c.dtype;
+    DataType splits_dtype = c.splits_dtype;
+    size_t expected_num_elements = feature.length;
+    size_t expected_num_rows = feature.num_rows;
+    values_shape.AddDim(expected_num_elements);
+    inner_splits_shape.AddDim(expected_num_rows + 1);
+    if (is_batch) {
+      outer_splits_shape.AddDim(num_examples + 1);
+    }
+    sequence_result->ragged_values[t] = Tensor(allocator, dtype, values_shape);
+    sequence_result->ragged_splits[t] =
+        Tensor(allocator, splits_dtype, inner_splits_shape);
+    sequence_result->ragged_outer_splits[t] =
+        Tensor(allocator, splits_dtype, outer_splits_shape);
+    Tensor& out_values = sequence_result->ragged_values[t];
+    size_t out_values_offset = 0;
+    int32* int32_inner_splits =
+        splits_dtype == DT_INT32
+            ? sequence_result->ragged_splits[t].vec<int32>().data()
+            : nullptr;
+    int64* int64_inner_splits =
+        splits_dtype == DT_INT64
+            ? sequence_result->ragged_splits[t].vec<int64>().data()
+            : nullptr;
+    int32* int32_outer_splits =
+        is_batch && splits_dtype == DT_INT32
+            ? sequence_result->ragged_outer_splits[t].vec<int32>().data()
+            : nullptr;
+    int64* int64_outer_splits =
+        is_batch && splits_dtype == DT_INT64
+            ? sequence_result->ragged_outer_splits[t].vec<int64>().data()
+            : nullptr;
+    if (int32_inner_splits) {
+      *int32_inner_splits++ = 0;
+    } else if (int64_inner_splits) {
+      *int64_inner_splits++ = 0;
+    }
+    if (int32_outer_splits) {
+      *int32_outer_splits++ = 0;
+    } else if (int64_outer_splits) {
+      *int64_outer_splits++ = 0;
+    }
+
+    // Fill in the values.
+    size_t inner_split = 0;  // total number of elements we've seen so far
+    size_t outer_split = 0;  // total number of rows we've seen so far
+    for (int e = 0; e < num_examples; e++) {
+      const auto& feature_proto = feature.protos[e];
+      if (!feature_proto.empty()) {
+        protobuf::io::CodedInputStream stream(
+            reinterpret_cast<const uint8*>(feature_proto.data()),
+            feature_proto.size());
+        EnableAliasing(&stream);
+        while (!stream.ExpectAtEnd()) {
+          uint32 feature_length;
+          if (!stream.ExpectTag(kDelimitedTag(1)) ||
+              !stream.ReadVarint32(&feature_length)) {
+            // This should be unreachable -- we already scanned the feature in
+            // GetSequenceFeatureLengths, and it hasn't changed since then.
+            return errors::InvalidArgument("Error in sequence feature ",
+                                           c.feature_name, " in example ",
+                                           ExampleName(example_names, e));
+          }
+          if (feature_length > 2) {
+            auto limit = stream.PushLimit(feature_length);
+            size_t num_added =
+                ParseFeature(dtype, &stream, &out_values, &out_values_offset);
+            inner_split += num_added;
+            stream.PopLimit(limit);
+          } else if (feature_length == 2) {
+            if (!SkipEmptyFeature(&stream, dtype)) {
+              // This should be unreachable -- we already scanned the feature in
+              // GetSequenceFeatureLengths, and it hasn't changed since then.
+              return errors::InvalidArgument("Error in sequence feature ",
+                                             c.feature_name, " in example ",
+                                             ExampleName(example_names, e));
+            }
+          } else if (feature_length != 0) {
+            // This should be unreachable -- we already scanned the feature in
+            // GetSequenceFeatureLengths, and it hasn't changed since then.
+            return errors::InvalidArgument("Error in sequence feature ",
+                                           c.feature_name, " in example ",
+                                           ExampleName(example_names, e));
+          }
+          if (int32_inner_splits) {
+            *int32_inner_splits++ = inner_split;
+          } else if (int64_inner_splits) {
+            *int64_inner_splits++ = inner_split;
+          }
+          outer_split++;
+        }
+      }
+      if (int32_outer_splits) {
+        *int32_outer_splits++ = outer_split;
+      } else if (int64_outer_splits) {
+        *int64_outer_splits++ = outer_split;
+      }
+    }
+    if (outer_split != expected_num_rows) {
+      return errors::InvalidArgument("Unexpected number of rows for feature ",
+                                     c.feature_name);
+    }
+    if (inner_split != expected_num_elements) {
+      return errors::InvalidArgument(
+          "Unexpected number of elements for feature ", c.feature_name);
+    }
+
+    if (int32_inner_splits || int64_inner_splits) {
+      const auto& inner_splits = sequence_result->ragged_splits[t];
+      int num_inner_splits =
+          int32_inner_splits
+              ? int32_inner_splits - inner_splits.vec<int32>().data()
+              : int64_inner_splits - inner_splits.vec<int64>().data();
+      if (num_inner_splits != expected_num_rows + 1) {
+        return errors::InvalidArgument("Unexpected number of rows for feature ",
+                                       c.feature_name);
+      }
+    }
+    if (int32_outer_splits || int64_outer_splits) {
+      const auto& outer_splits = sequence_result->ragged_outer_splits[t];
+      int num_outer_splits =
+          int32_outer_splits
+              ? int32_outer_splits - outer_splits.vec<int32>().data()
+              : int64_outer_splits - outer_splits.vec<int64>().data();
+      if (num_outer_splits != num_examples + 1) {
+        return errors::InvalidArgument(
+            "Unexpected number of examples for feature ", c.feature_name);
+      }
+    }
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+// TODO(sundberg): Use the threadpool to parallelize example parsing.
+// TODO(b/111553342): Support extracting feature statistics from the examples.
+Status FastParseSequenceExample(const FastParseExampleConfig& context_config,
+                                const FastParseExampleConfig& sequence_config,
+                                gtl::ArraySlice<tstring> serialized,
+                                gtl::ArraySlice<tstring> example_names,
+                                thread::ThreadPool* thread_pool,
+                                Result* context_result, Result* sequence_result,
+                                std::vector<Tensor>* dense_feature_lengths,
+                                bool is_batch) {
+  int num_examples = serialized.size();
+  DCHECK(context_result != nullptr);
+  DCHECK(sequence_result != nullptr);
+  DCHECK(dense_feature_lengths != nullptr);
+  size_t num_context_features = context_config.sparse.size() +
+                                context_config.dense.size() +
+                                context_config.ragged.size();
+  FeatureProtosMap context_features;
+  context_features.reserve(num_context_features);
+
+  if (!example_names.empty() && example_names.size() != num_examples) {
+    return errors::InvalidArgument(
+        "example_names must be empty or have the correct number of elements");
+  }
+  for (auto& c : context_config.sparse) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = context_features[c.feature_name];
+    feature.dtype = c.dtype;
+    feature.length = 0;
+    feature.type = Type::Sparse;
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+  for (auto& c : context_config.ragged) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = context_features[c.feature_name];
+    if (feature.type == Type::Sparse) {
+      return errors::InvalidArgument("Context feature " + c.feature_name +
+                                     " cannot be both ragged and sparse");
+    }
+    feature.dtype = c.dtype;
+    feature.length = 0;
+    feature.type = Type::Ragged;
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+  for (auto& c : context_config.dense) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = context_features[c.feature_name];
+    if (feature.type != Type::Dense) {
+      return errors::InvalidArgument("Context feature " + c.feature_name +
+                                     " cannot be both dense and sparse");
+    }
+    if (c.default_value.NumElements() > 0) {
+      if (!c.shape.IsCompatibleWith(c.default_value.shape())) {
+        return errors::InvalidArgument("Default value for context feature ",
+                                       c.feature_name,
+                                       " has an incorrect shape: saw ",
+                                       c.default_value.shape().DebugString(),
+                                       " but expected ", c.shape.DebugString());
+      }
+    }
+    feature.dtype = c.dtype;
+    feature.length = c.default_value.NumElements();
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+  size_t num_sequence_features = sequence_config.sparse.size() +
+                                 sequence_config.dense.size() +
+                                 sequence_config.ragged.size();
+  FeatureProtosMap sequence_features;
+  sequence_features.reserve(num_sequence_features);
+  for (auto& c : sequence_config.sparse) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = sequence_features[c.feature_name];
+    feature.dtype = c.dtype;
+    feature.length = 0;
+    feature.type = Type::Sparse;
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+  for (auto& c : sequence_config.ragged) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = sequence_features[c.feature_name];
+    if (feature.type == Type::Sparse) {
+      return errors::InvalidArgument("Sequence feature " + c.feature_name +
+                                     " cannot be both ragged and sparse");
+    }
+    feature.dtype = c.dtype;
+    feature.length = 0;
+    feature.type = Type::Ragged;
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+  for (auto& c : sequence_config.dense) {
+    TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
+    FeatureProtos& feature = sequence_features[c.feature_name];
+    if (feature.type != Type::Dense) {
+      return errors::InvalidArgument("Sequence feature " + c.feature_name +
+                                     " cannot be both dense and sparse");
+    }
+    feature.dtype = c.dtype;
+    feature.length = 0;
+    feature.protos.resize(num_examples);
+    feature.protos_present.resize(num_examples);
+  }
+
+  // Find the serialized proto substrings for each feature.
+  TF_RETURN_IF_ERROR(ExtractFeaturesFromSequenceExamples(
+      serialized, example_names, &context_features, &sequence_features));
+
+  // Scan through the protos to determine how much memory we need to allocate.
+  TF_RETURN_IF_ERROR(
+      GetContextFeatureLengths(example_names, &context_features));
+  TF_RETURN_IF_ERROR(
+      GetSequenceFeatureLengths(example_names, &sequence_features));
+
+  // Allocate memory.
+  context_result->sparse_values.resize(context_config.sparse.size());
+  context_result->sparse_indices.resize(context_config.sparse.size());
+  context_result->sparse_shapes.resize(context_config.sparse.size());
+  context_result->dense_values.resize(context_config.dense.size());
+  context_result->ragged_values.resize(context_config.ragged.size());
+  context_result->ragged_splits.resize(context_config.ragged.size());
+  context_result->ragged_outer_splits.resize(context_config.ragged.size());
+  sequence_result->sparse_values.resize(sequence_config.sparse.size());
+  sequence_result->sparse_indices.resize(sequence_config.sparse.size());
+  sequence_result->sparse_shapes.resize(sequence_config.sparse.size());
+  sequence_result->dense_values.resize(sequence_config.dense.size());
+  sequence_result->ragged_values.resize(sequence_config.ragged.size());
+  sequence_result->ragged_splits.resize(sequence_config.ragged.size());
+  sequence_result->ragged_outer_splits.resize(sequence_config.ragged.size());
+  dense_feature_lengths->resize(sequence_config.dense.size());
+
+  // NOTE(mrry): Cache the CPU allocator here and use it in Tensor construction,
+  // to avoid lock contention in `tensorflow::cpu_allocator()`.
+  Allocator* allocator = tensorflow::cpu_allocator();
+
+  TF_RETURN_IF_ERROR(ParseContextDenseFeatures(
+      context_features, context_config, example_names, is_batch, num_examples,
+      allocator, context_result));
+  TF_RETURN_IF_ERROR(ParseContextSparseFeatures(
+      context_features, context_config, example_names, is_batch, num_examples,
+      allocator, context_result));
+  TF_RETURN_IF_ERROR(ParseContextRaggedFeatures(
+      context_features, context_config, example_names, is_batch, num_examples,
+      allocator, context_result));
+  TF_RETURN_IF_ERROR(ParseSequenceDenseFeatures(
+      sequence_features, sequence_config, example_names, is_batch, num_examples,
+      allocator, sequence_result, dense_feature_lengths));
+  TF_RETURN_IF_ERROR(ParseSequenceSparseFeatures(
+      sequence_features, sequence_config, example_names, is_batch, num_examples,
+      allocator, sequence_result));
+  TF_RETURN_IF_ERROR(ParseSequenceRaggedFeatures(
+      sequence_features, sequence_config, example_names, is_batch, num_examples,
+      allocator, sequence_result));
 
   return Status::OK();
 }

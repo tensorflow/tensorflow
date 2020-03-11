@@ -47,35 +47,17 @@ XLA_TEST_F(TestUtilsTest, UnusedParam) {
   computation_status = builder.Build();
   TF_ASSERT_OK(computation_status.status());
 
-  auto executable_status = local_client_->Compile(
-      computation_status.ValueOrDie(), {&pair_float, &single_float},
-      ExecutableBuildOptions());
-  TF_ASSERT_OK(executable_status.status());
-  HloModule& module = const_cast<HloModule&>(
-      executable_status.ValueOrDie()->executable()->module());
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto executables, local_client_->Compile(computation_status.ValueOrDie(),
+                                               {&pair_float, &single_float},
+                                               ExecutableBuildOptions()));
+  HloModule& module =
+      const_cast<HloModule&>(executables[0]->executable()->module());
   TF_ASSERT_OK(MakeFakeArguments(&module).status());
 }
 
-XLA_TEST_F(TestUtilsTest, Token) {
-  auto module = ParseAndReturnUnverifiedModule(
-                    R"(HloModule outfeed_module
-
-    ENTRY InfeedToOutfeed {
-      token0 = token[] parameter(0)
-      infeed = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.data = (u32[3]{0}, pred[]) get-tuple-element(infeed), index=0
-      outfeed = token[] outfeed(infeed.data, token0)
-      ROOT infeed.1 = ((u32[3]{0}, pred[]), token[]) infeed(token0)
-      infeed.1.data = (u32[3]{0}, pred[]) get-tuple-element(infeed.1), index=0
-      infeed.1.token = token[] get-tuple-element(infeed.1), index=1
-      outfeed.1 = token[] outfeed(infeed.1.data, infeed.1.token)
-    })")
-                    .ValueOrDie();
-  TF_ASSERT_OK(MakeFakeArguments(module.get()).status());
-}
-
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
-  auto module = ParseAndReturnUnverifiedModule(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -103,7 +85,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
 }
 
 XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
-  auto module = ParseAndReturnUnverifiedModule(
+  auto module = ParseAndReturnVerifiedModule(
                     R"(HloModule index_space_module
 
     ENTRY IndexSpace {
@@ -135,7 +117,7 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesFloats) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
 
 compare {
@@ -166,7 +148,7 @@ ENTRY %sort.148.1589 (parameter.0: f32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesInt32) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort.148.1589
 
 compare {
@@ -197,7 +179,7 @@ ENTRY %sort.148.1589 (parameter.0: s32[1048576], parameter.1: s32[1048576]) -> (
 
 XLA_TEST_F(TestUtilsTest, NoDuplicatesBfloat16) {
   // Inputs which are sort keys in key/value sorts should have no duplicates.
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule sort, is_scheduled=true
 
 compare {
@@ -227,7 +209,7 @@ ENTRY %sort. (parameter.0: bf16[2,1452], parameter.1: s32[2,1452]) -> (bf16[2,14
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsR0InputToDynamicSlice) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
 HloModule Test
 
 ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
@@ -255,7 +237,7 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
 ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
@@ -289,7 +271,7 @@ ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
 }
 
 XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
   HloModule Test
 
 scatter_update (lhs: f32[], rhs: f32[]) -> f32[] {

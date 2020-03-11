@@ -67,18 +67,19 @@ using ::tflite::gpu::ValueId;
   uint3 _groupsSize;
   uint3 _groupsCount;
   DispatchParamsFunction _resizeFunction;
+  std::string _description;
 }
 
 - (Status)compileWithDevice:(id<MTLDevice>)device
              taskDescriptor:(ComputeTaskDescriptorPtr)desc
              runtimeOptions:(const RuntimeOptions&)options {
-#if (defined(__MAC_10_13) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_13) ||      \
-    (defined(__IPHONE_10_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_10_0) || \
-    (defined(__TVOS_10_0) && __TV_OS_VERSION_MIN_REQUIRED >= __TVOS_10_0)
-  NSString* barrier = @"simdgroup_barrier";
-#else
-  NSString* barrier = @"threadgroup_barrier";
-#endif
+  NSString* barrier;
+  // simdgroup_barrier is supported on macOS 10.13+ and Metal shading language version 2.0
+  if (@available(macOS 10.13, iOS 10.0, tvOS 10.0, *)) {
+    barrier = @"simdgroup_barrier";
+  } else {
+    barrier = @"threadgroup_barrier";
+  }
   NSString* storageType;
   NSString* accumulatorType;
   NSString* toAccumulatorType = @"";
@@ -146,6 +147,7 @@ using ::tflite::gpu::ValueId;
   }
   _resizeFunction = desc->resize_function;
   _program = program;
+  _description = desc->description;
   return OkStatus();
 }
 

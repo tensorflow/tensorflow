@@ -8,7 +8,7 @@
 # Verify that we can also pull some attributes that are needed to be able to
 # create a Graph in memory, like `T`.
 # CHECK: tf.MaxPool
-# CHECK-SAME: T = "tfdtype$DT_FLOAT"
+# CHECK-SAME: T = f32
 
 node {
   name: "input"

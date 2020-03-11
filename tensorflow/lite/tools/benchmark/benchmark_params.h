@@ -47,8 +47,17 @@ class BenchmarkParam {
     AssertHasSameType(GetValueType<T>(), type_);
     return static_cast<TypedBenchmarkParam<T>*>(this);
   }
+
+  template <typename T>
+  const TypedBenchmarkParam<T>* AsConstTyped() const {
+    AssertHasSameType(GetValueType<T>(), type_);
+    return static_cast<const TypedBenchmarkParam<T>*>(this);
+  }
+
   virtual ~BenchmarkParam() {}
-  BenchmarkParam(ParamType type) : type_(type) {}
+  explicit BenchmarkParam(ParamType type) : type_(type) {}
+
+  virtual void Set(const BenchmarkParam&) {}
 
  private:
   static void AssertHasSameType(ParamType a, ParamType b);
@@ -59,11 +68,16 @@ class BenchmarkParam {
 template <typename T>
 class TypedBenchmarkParam : public BenchmarkParam {
  public:
-  TypedBenchmarkParam(const T& value)
+  explicit TypedBenchmarkParam(const T& value)
       : BenchmarkParam(GetValueType<T>()), value_(value) {}
+
   void Set(const T& value) { value_ = value; }
 
-  T Get() { return value_; }
+  T Get() const { return value_; }
+
+  void Set(const BenchmarkParam& other) override {
+    Set(other.AsConstTyped<T>()->Get());
+  }
 
  private:
   T value_;
@@ -80,6 +94,14 @@ class BenchmarkParams {
     return params_.find(name) != params_.end();
   }
 
+  bool Empty() const { return params_.empty(); }
+
+  const BenchmarkParam* GetParam(const std::string& name) const {
+    const auto& entry = params_.find(name);
+    if (entry == params_.end()) return nullptr;
+    return entry->second.get();
+  }
+
   template <typename T>
   void Set(const std::string& name, const T& value) {
     AssertParamExists(name);
@@ -91,6 +113,9 @@ class BenchmarkParams {
     AssertParamExists(name);
     return params_.at(name)->AsTyped<T>()->Get();
   }
+
+  // Set the value of all same parameters from 'other'.
+  void Set(const BenchmarkParams& other);
 
  private:
   void AssertParamExists(const std::string& name) const;

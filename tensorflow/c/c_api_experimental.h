@@ -68,6 +68,7 @@ TF_CAPI_EXPORT extern void TF_EnableXLACompilation(TF_SessionOptions* options,
 // Use in tests to allow XLA to fallback to TF classic. This has global effect.
 TF_CAPI_EXPORT unsigned char TF_SetXlaEnableLazyCompilation(
     unsigned char enable);
+TF_CAPI_EXPORT unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable);
 
 // Sets XLA's auto jit mode according to the specified string, which is parsed
 // as if passed in XLA_FLAGS. This has global effect.
@@ -187,31 +188,6 @@ TF_CAPI_EXPORT extern void TFE_EnqueueVariantTensor(TF_Session* session,
 TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_DequeueVariantTensor(
     TF_Session* session, int tensor_id, TF_Status* status);
 
-// Prints `handle` in a human readable format to standard output for debugging.
-TF_CAPI_EXPORT extern void TFE_TensorHandlePrintDebugString(
-    TFE_TensorHandle* handle);
-
-TF_CAPI_EXPORT extern void TFE_OpPrintDebugString(TFE_Op* op);
-
-typedef struct TFE_ExecuteOpNotification TFE_ExecuteOpNotification;
-
-// Allows invoking a kernel asynchronously, and explicitly returns a
-// notification that can be waited upon. This always executes the kernel in a
-// new thread.
-// 1. `retvals` and `num_retvals` can only be consumed after
-// `TFE_ExecuteOp` returns successfully. They shouldn't be used
-// if the return is unsuccessful
-// 2. These new APIs cannot be used together with the TFE context level async
-// support.
-TF_CAPI_EXPORT extern TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(
-    TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
-    TF_Status* status);
-
-// Waits to complete the op execution, and cleans up the notification.
-// Errors reported by op execution are set in `status`.
-TF_CAPI_EXPORT extern void TFE_ExecuteOpNotificationWaitAndDelete(
-    TFE_ExecuteOpNotification* notification, TF_Status* status);
-
 TF_CAPI_EXPORT extern void TF_MakeInternalErrorStatus(TF_Status* status,
                                                       const char* errMsg);
 
@@ -296,53 +272,6 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-// Create a symbolic tensor from the input graph node.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(
-    TF_Output t, TF_DataType data_type);
-
-// Returns 0 if the input tensor handle represents a symbolic tensor (i.e., a
-// graph node). Otherwise returns non-0.
-TF_CAPI_EXPORT extern unsigned char TFE_TensorHandleIsConcrete(
-    TFE_TensorHandle* handle);
-
-// If `handle` is a symbolic tensor, return the corresponding graph node
-// represented by TF_Output. Otherwise, return an error status.
-TF_CAPI_EXPORT extern TF_Output TFE_GetTFOutputFromTensorHandle(
-    TFE_TensorHandle* handle, TF_Status* status);
-
-typedef struct TFE_TraceContext TFE_TraceContext;
-
-// A trace context contains a trace graph, to which TFE_AddEagerOpToGraph()
-// calls add graph nodes as a way to symbolically execute the eager ops.
-//
-// It also contains a hash map from concrete input tensors to symbolic
-// tensors. That map will be used to create input tensors to the trace graph.
-TF_CAPI_EXPORT extern TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph);
-
-TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
-
-// Symbolically executes `op`, by adding a corresponding node to the graph
-// associated with `trace_ctx`. This graph node outputs a set of symbolic
-// tensors in `retvals` and `num_retvals`. Returns the corresponding graph
-// operation on success, otherwise returns nullptr.
-TF_CAPI_EXPORT extern TF_Operation* TFE_AddEagerOpToGraph(
-    TFE_Op* op, TFE_TraceContext* trace_ctx, TFE_TensorHandle** retvals,
-    int* num_retvals, TF_Status* status);
-
-// Finalizes the trace graph and its inputs, and returns the number of inputs.
-// After this call, the next two APIs can be called to iterate over the input
-// tensors.
-TF_CAPI_EXPORT extern int TFE_FinalizeInputTensorsFromTraceContext(
-    TFE_TraceContext* trace_ctx);
-
-TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
-    TFE_TraceContext* trace_ctx, unsigned int idx);
-
-// Each input tensor should be consumed at most once.
-TF_CAPI_EXPORT extern TFE_TensorHandle*
-TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
-                                               unsigned int idx);
-
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {
   // Number of dimensions. -1 indicates unknown rank.
@@ -378,19 +307,30 @@ TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeList(
 TF_CAPI_EXPORT extern void TF_DeleteShapeAndTypeListArray(
     TF_ShapeAndTypeList** shape_list_array, int num_items);
 
-// Infer shapes for the given `node_def`. The arguments mimic the arguments of
-// the `shape_inference::InferenceContext` constructor. The types need not be
-// set in `input_shapes` as it is not used for shape inference.
+// Infer shapes for the given `op`. The arguments mimic the arguments of the
+// `shape_inference::InferenceContext` constructor. Note the following:
+//   - The inputs of the `op` are not used for shape inference. So, it is
+//     OK to not have the inputs properly set in `op`. See `input_tensors`
+//     if you want shape inference to consider the input tensors of the
+//     op for shape inference.
+//   - The types need not be set in `input_shapes` as it is not used.
+//   - The number of `input_tensors` should be the same as the number of items
+//     in `input_shapes`.
 //
 // The results are returned in `output_shapes` and
 // `output_resource_shapes_and_types`. The caller is responsible for freeing the
 // memory in these buffers by calling `TF_DeleteShapeAndTypeList`.
 TF_CAPI_EXPORT extern void TFE_InferShapes(
     TFE_Op* op, TF_ShapeAndTypeList* input_shapes, TF_Tensor** input_tensors,
-    int num_input_tensors, TF_ShapeAndTypeList* input_tensor_as_shapes,
+    TF_ShapeAndTypeList* input_tensor_as_shapes,
     TF_ShapeAndTypeList** input_resource_shapes_and_types,
     TF_ShapeAndTypeList** output_shapes,
     TF_ShapeAndTypeList*** output_resource_shapes_and_types, TF_Status* status);
+
+TF_CAPI_EXPORT extern void
+TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

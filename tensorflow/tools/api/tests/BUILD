@@ -25,11 +25,12 @@ py_test(
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
         "no_rocm",
+        "no_windows",  # Bugs due to some paths.
     ],
     deps = [
         "//tensorflow:tensorflow_py",
@@ -44,23 +45,13 @@ py_test(
 )
 
 py_test(
-    name = "deprecation_test",
-    srcs = ["deprecation_test.py"],
-    python_version = "PY2",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
-)
-
-py_test(
     name = "module_test",
     srcs = ["module_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",  # Failing due to missing API symbols.
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",

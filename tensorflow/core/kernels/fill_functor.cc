@@ -32,9 +32,9 @@ void SetZeroFunctor<Eigen::ThreadPoolDevice, T>::operator()(
   out.device(d) = out.constant(T(0));
 }
 
-void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
-    const Eigen::ThreadPoolDevice& d, typename TTypes<string>::Flat out) {
-  out.device(d) = out.constant(string());
+void SetZeroFunctor<Eigen::ThreadPoolDevice, tstring>::operator()(
+    const Eigen::ThreadPoolDevice& d, typename TTypes<tstring>::Flat out) {
+  out.device(d) = out.constant(tstring());
 }
 
 // Explicit instantiations.

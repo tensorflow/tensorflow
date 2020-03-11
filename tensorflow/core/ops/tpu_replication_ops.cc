@@ -41,6 +41,9 @@ REGISTER_OP("TPUReplicatedInput")
     .Output("output: T")
     .Attr("N: int >= 1")
     .Attr("T: type")
+    .Attr("is_mirrored_variable: bool = false")
+    // Index of the input. If is_mirrored_variable is true, this is ignored.
+    .Attr("index: int = -1")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle cur = c->input(c->num_inputs() - 1);
       for (int i = c->num_inputs() - 2; i >= 0; --i) {
@@ -105,6 +108,7 @@ REGISTER_OP("_TPUReplicate")
     .Attr("padding_map: list(string) = []")
     .Attr("step_marker_location: string = \"STEP_MARK_AT_ENTRY\"")
     .Attr("allow_soft_placement: bool = false")
+    .Attr("num_distributed_variables: int = 0")
     .Input("inputs: Tinputs")
     .Input("broadcast_inputs: Tbroadcast_inputs")
     .Input("variables: NumVariables * resource")

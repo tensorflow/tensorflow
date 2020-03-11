@@ -45,7 +45,7 @@ namespace {
 // A simple rendezvous class.
 // Assumes a single sender and a single receiver, no duplicate sends, and no
 // sends of dead tensors.
-class SimpleRendezvous : public Rendezvous {
+class SimpleRendezvous : public RendezvousInterface {
  public:
   explicit SimpleRendezvous() {}
 
@@ -86,7 +86,7 @@ class SimpleRendezvous : public Rendezvous {
   typedef std::unordered_map<string, Tensor> Table;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -124,8 +124,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   std::unique_ptr<Graph> graph_to_run(new Graph(graph->op_registry()));
   CopyGraph(*graph, graph_to_run.get());
 
-  SimpleRendezvous* rendez = new SimpleRendezvous;
-  core::ScopedUnref rendez_unref(rendez);
+  SimpleRendezvous rendez;
 
   // Extract the input names and keys, and feed in the inputs.
   std::vector<string> input_names;
@@ -136,8 +135,8 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
                                             tensor_name, FrameAndIter(0, 0));
     Rendezvous::ParsedKey parsed;
     TF_RETURN_IF_ERROR(Rendezvous::ParseKey(full_key, &parsed));
-    TF_RETURN_IF_ERROR(rendez->Send(parsed, Rendezvous::Args(), in.second,
-                                    false /* is_dead */));
+    TF_RETURN_IF_ERROR(rendez.Send(parsed, Rendezvous::Args(), in.second,
+                                   false /* is_dead */));
   }
 
   // Call RewriteGraphForExecution
@@ -158,21 +157,16 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   params.device = device_;
   params.function_library = function_library;
   const int producer = graph_to_run->versions().producer();
-  params.create_kernel = [this, function_library, producer](const NodeDef& ndef,
-                                                            OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, function_library, ndef, producer,
+  params.create_kernel = [this, function_library, producer](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, function_library, props, producer,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
-  };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(
-      NewLocalExecutor(params, std::move(graph_to_run), &executor));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;
@@ -181,7 +175,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // called via this method.
   args.step_id = LogMemory::CONSTANT_FOLDING_STEP_ID;
   args.runner = runner;
-  args.rendezvous = rendez;
+  args.rendezvous = &rendez;
   // NOTE: Use of graph runner is limited to single-device executions
   // so a CollectiveExecutor should never be required.
   args.collective_executor = nullptr;
@@ -202,7 +196,7 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
     bool is_dead;
     Tensor output_tensor;
     TF_RETURN_IF_ERROR(
-        rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
+        rendez.Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead));
     // Does a deep copy so that ownership of the tensor isn't tied to the
     // allocator of the cpu device we created above. The allocator could be
     // deleted along with the device.

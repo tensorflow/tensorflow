@@ -11,6 +11,6 @@ package(
 py_binary(
     name = "gen_git_source",
     srcs = ["gen_git_source.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
 )

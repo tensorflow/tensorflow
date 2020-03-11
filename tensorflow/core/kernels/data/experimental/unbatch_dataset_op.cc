@@ -19,10 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
-
-// See documentation in ../../ops/dataset_ops.cc for a high-level
-// description of the following op.
 
 class UnbatchDatasetOp : public UnaryDatasetOpKernel {
  public:
@@ -71,6 +69,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "UnbatchDatasetOp::Dataset"; }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -91,7 +93,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
             shapes_(params.dataset->output_shapes().size()) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -209,11 +212,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 current_index_ GUARDED_BY(mu_);
-      int64 current_batch_size_ GUARDED_BY(mu_);
-      std::vector<Tensor> tensors_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      std::vector<TensorShape> shapes_ GUARDED_BY(mu_);
+      int64 current_index_ TF_GUARDED_BY(mu_);
+      int64 current_batch_size_ TF_GUARDED_BY(mu_);
+      std::vector<Tensor> tensors_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::vector<TensorShape> shapes_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;
@@ -227,5 +230,6 @@ REGISTER_KERNEL_BUILDER(Name("ExperimentalUnbatchDataset").Device(DEVICE_CPU),
                         UnbatchDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

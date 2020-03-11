@@ -327,6 +327,11 @@ class SVDBenchmark(test.Benchmark):
       (1, 8, 8),
       (10, 8, 8),
       (100, 8, 8),
+      (1000, 8, 8),
+      (1, 32, 32),
+      (10, 32, 32),
+      (100, 32, 32),
+      (1000, 32, 32),
       (1, 256, 256),
       (10, 256, 256),
       (100, 256, 256),
@@ -400,8 +405,8 @@ if __name__ == "__main__":
                 full_matrices)
             _AddTest(SvdGradOpTest, "SvdGrad", name,
                      _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
-            # The results are too inacurate for float32.
-            if dtype == np.float64:
+            # The results are too inaccurate for float32.
+            if dtype in (np.float64, np.complex128):
               _AddTest(
                   SvdGradGradOpTest, "SvdGradGrad", name,
                   _GetSvdGradGradOpTest(dtype, shape, compute_uv,

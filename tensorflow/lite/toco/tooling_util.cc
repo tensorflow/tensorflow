@@ -387,6 +387,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Reshape)
     HANDLE_OPERATORTYPENAME_CASE(Squeeze)
     HANDLE_OPERATORTYPENAME_CASE(Rsqrt)
+    HANDLE_OPERATORTYPENAME_CASE(SegmentSum)
     HANDLE_OPERATORTYPENAME_CASE(Shape)
     HANDLE_OPERATORTYPENAME_CASE(Slice)
     HANDLE_OPERATORTYPENAME_CASE(Split)
@@ -449,6 +450,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
     HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV3)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV3)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -1049,18 +1052,20 @@ void CheckEachArray(const Model& model) {
     const auto& array = array_entry.second;
     // It's OK to have a buffer or an alloc, but not both.
     // (Since allocs are for transient arrays without a buffer).
-    CHECK(!array->buffer || !array->alloc);
+    CHECK(!array->buffer || !array->alloc) << "Tensor: " << array_entry.first;
     if (array->buffer) {
       // If there is a buffer, its type should be consistent with data_type.
-      CHECK(array->buffer->type == array->data_type);
+      CHECK(array->buffer->type == array->data_type)
+          << "Tensor: " << array_entry.first;
       // The presence of a fixed buffer should imply the presence of a fixed
       // shape.
-      CHECK(array->has_shape());
+      CHECK(array->has_shape()) << array_entry.first;
       // Constant buffer should has a valid shape.
       CheckValidShape(array->shape());
       // The shape flat-size should agree with the buffer length.
       CHECK_EQ(array->buffer->Length(),
-               RequiredBufferSizeForShape(array->shape()));
+               RequiredBufferSizeForShape(array->shape()))
+          << "Tensor: " << array_entry.first;
     }
 
     // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
@@ -2347,6 +2352,12 @@ std::unordered_set<string> ScanArrayNames(
 void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     const auto matches = ScanArrayNames(*model, entry);
+    if (matches.empty()) {
+      LOG(ERROR) << "arrays_extra_info_file: No matching arrays found for "
+                 << (entry.has_name() ? entry.name() : "")
+                 << (entry.has_name_regexp() ? entry.name_regexp() : "");
+      continue;
+    }
     for (const auto& matched_name : matches) {
       auto& array = model->GetArray(matched_name);
       if (entry.has_min() || entry.has_max()) {

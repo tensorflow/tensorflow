@@ -5,6 +5,7 @@ load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 load(
     "//tensorflow:tensorflow.bzl",
+    "VERSION",
     "tf_binary_additional_srcs",
     "tf_cc_binary",
     "tf_cc_test",
@@ -24,10 +25,27 @@ java_library(
         ":java_op_sources",
         ":java_sources",
     ],
-    data = [":libtensorflow_jni"] + tf_binary_additional_srcs(),
+    data = tf_binary_additional_srcs() + [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
     plugins = [":processor"],
+    resources = [":java_resources"],
     visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "version-info",
+    outs = ["src/main/resources/tensorflow-version-info"],
+    cmd = "echo version=%s > $@" % VERSION,
+    output_to_bindir = 1,
+)
+
+filegroup(
+    name = "java_resources",
+    srcs = [":version-info"],
+    visibility = [
+        "//tensorflow/contrib/android:__pkg__",
+        "//tensorflow/java:__pkg__",
+    ],
 )
 
 # NOTE(ashankar): Rule to include the Java API in the Android Inference Library
@@ -39,8 +57,8 @@ filegroup(
         "src/main/java/org/tensorflow/types/*.java",
     ]),
     visibility = [
-        "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
+        "//tensorflow/tools/android/inference_interface:__pkg__",
     ],
 )
 

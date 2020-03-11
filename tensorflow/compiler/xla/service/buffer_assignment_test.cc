@@ -143,6 +143,20 @@ class BufferAssignmentTest : public HloTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentWithPresetAssignments(
+      HloModule* module, std::unique_ptr<PresetAssignments> preset_assignments,
+      int64 alignment = 1) {
+    return BufferAssigner::Run(
+               module, absl::make_unique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allocate_buffers_for_constants=*/true,
+               BufferAssigner::DefaultColorer(),
+               /*must_not_live_out=*/{},
+               /*can_share_buffer=*/nullptr, std::move(preset_assignments))
+        .ConsumeValueOrDie();
+  }
+
   // Builds an x+1.0 computation to use in a Map.
   std::unique_ptr<HloComputation> BuildMapComputationPlus1(const string& name) {
     auto builder = HloComputation::Builder(name);
@@ -599,6 +613,13 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+
+  // Check if the HLO instructions have the correct colors in the layout.
+  EXPECT_EQ(param0->shape().layout().memory_space(), 2);
+  EXPECT_EQ(param1->shape().layout().memory_space(), 3);
+  EXPECT_EQ(mul->shape().layout().memory_space(), 4);
+  EXPECT_EQ(add->shape().layout().memory_space(), 5);
+  EXPECT_EQ(sub->shape().layout().memory_space(), 6);
 }
 
 TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
@@ -666,6 +687,176 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
+
+  // Check if the HLO instructions have the correct colors in the layout.
+  EXPECT_EQ(mul->shape().layout().memory_space(), 1);
+  EXPECT_EQ(add->shape().layout().memory_space(), 1);
+  EXPECT_EQ(sub->shape().layout().memory_space(), 0);
+  EXPECT_EQ(param0->shape().layout().memory_space(), 0);
+  EXPECT_EQ(param1->shape().layout().memory_space(), 0);
+}
+
+TEST_F(BufferAssignmentTest, PresetAssignments) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  // Similar to BasicPartiallyColored, but the color is set in the layout.
+  // The output of the mul and the add have the color 1 and have preset
+  // assignments, and the other buffers have the color 0, which allows the mul
+  // and add to share buffers.
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  Shape f32vec100_color1 =
+      ShapeUtil::MakeShapeWithLayout(F32, {100}, {0}, {}, 0, 1);
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_color1, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({mul, {}}, {/*offset=*/100, /*size=*/400});
+  preset_assignments->add_chunk({add, {}}, {/*offset=*/550, /*size=*/400});
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 950;
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      module.get(), std::move(preset_assignments));
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_EQ(paramscalar_buffer.color(), LogicalBuffer::Color(0));
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+  EXPECT_EQ(param0_buffer.color(), LogicalBuffer::Color(0));
+
+  // The mul and add use the same preset buffer. Ensure it has the correct color
+  // and offsets.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_EQ(mul_buffer, add_buffer);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+  EXPECT_EQ(mul_buffer.color(), LogicalBuffer::Color(1));
+
+  EXPECT_EQ(mul_buffer.assigned_buffers().size(), 2);
+  for (const auto& value_and_offsetsize : mul_buffer.assigned_buffers()) {
+    if (value_and_offsetsize.first->instruction() == mul) {
+      EXPECT_EQ(value_and_offsetsize.second.offset, 100);
+      EXPECT_EQ(value_and_offsetsize.second.size, 400);
+    } else {
+      EXPECT_EQ(value_and_offsetsize.first->instruction(), add);
+      EXPECT_EQ(value_and_offsetsize.second.offset, 550);
+      EXPECT_EQ(value_and_offsetsize.second.size, 400);
+    }
+  }
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, PresetAssignmentsWhile) {
+  // Tests preset assignments when there is no 1-to-1 correspondence between
+  // HloValue and HloBuffer (i.e., a while loop).
+  auto module = CreateNewVerifiedModule();
+  Shape f32vec10_color1 =
+      ShapeUtil::MakeShapeWithLayout(F32, {10}, {0}, {}, 0, 1);
+  Shape t_s32_f32v10_color1 =
+      ShapeUtil::MakeTupleShape({s32_, f32vec10_color1});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32_, cond_param, 0));
+  HloInstruction* cond_limit = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(50)));
+  cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v10_color1, "body_param"));
+  HloInstruction* body_iter = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32_, body_param, 0));
+  HloInstruction* body_data = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec10_color1, body_param, 1));
+  HloInstruction* body_data_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>(
+          {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f})));
+  HloInstruction* body_data_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          f32vec10_color1, HloOpcode::kAdd, body_data, body_data_increment));
+  HloInstruction* body_iter_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+  HloInstruction* body_iter_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          s32_, HloOpcode::kAdd, body_iter, body_iter_increment));
+  body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_iter_next, body_data_next}));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, s32_, "param_iter"));
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec10_, "param_data"));
+  HloInstruction* negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec10_color1, HloOpcode::kNegate, data));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({iter, negate}));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      t_s32_f32v10_color1, cond_computation, body_computation, tuple));
+  HloInstruction* while_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32vec10_color1, while_op, 1));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec10_, HloOpcode::kAdd, while_data, data));
+  module->AddEntryComputation(builder.Build());
+
+  // Set only one preset assignment for while data and its aliases.
+  auto preset_assignments = absl::make_unique<PresetAssignments>();
+  preset_assignments->add_chunk({negate, {}}, {/*offset=*/100, /*size=*/40});
+  preset_assignments->add_chunk({while_op, {1}}, {/*offset=*/100, /*size=*/40});
+  preset_assignments->add_chunk({cond_param, {1}},
+                                {/*offset=*/100, /*size=*/40});
+  preset_assignments->add_chunk({body_param, {1}},
+                                {/*offset=*/100, /*size=*/40});
+  preset_assignments->add_chunk({body_data_next, {}},
+                                {/*offset=*/100, /*size=*/40});
+  preset_assignments->assignment_information_for_space(/*memory_space=*/1)
+      ->size = 140;
+
+  auto buffers = RunBufferAssignmentWithPresetAssignments(
+      module.get(), std::move(preset_assignments));
+
+  // All assigned buffers are aliased so they should have the same offset and
+  // size.
+  const BufferAllocation& data_buffer = GetTopLevelAllocation(*buffers, negate);
+  EXPECT_EQ(data_buffer.assigned_buffers().size(), 5);
+  for (const auto& value_and_offsetsize : data_buffer.assigned_buffers()) {
+    EXPECT_EQ(value_and_offsetsize.second.offset, 100);
+    EXPECT_EQ(value_and_offsetsize.second.size, 40);
+    EXPECT_EQ(value_and_offsetsize.first->color(), LogicalBuffer::Color(1));
+  }
 }
 
 TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
@@ -2504,8 +2695,7 @@ ENTRY entry_computation {
 }
 
 )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   auto module = module_or_status.ConsumeValueOrDie();
 
   RunCopyInsertion(module.get());
