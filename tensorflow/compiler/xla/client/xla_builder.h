@@ -1075,6 +1075,10 @@ class XlaBuilder {
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
 
+  // Creates an op with the given opcode and the output shape.
+  virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                         absl::Span<const XlaOp> operands);
+
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.
   template <typename InstructionType>
