@@ -83,21 +83,19 @@ Metadata starts by creating a new model info:
 
 ```python
 from tflite_support import flatbuffers
-from tflite_support import metadata as
-_metadata
-from tflite_support import metadata_schema_py_generated as
-_metadata_fb
+from tflite_support import metadata as _metadata
+from tflite_support import metadata_schema_py_generated as _metadata_fb
 
 """ ... """
 """Creates the metadata for an image classifier."""
 
 # Creates model info.
 model_meta = _metadata_fb.ModelMetadataT()
-model_meta.name = self.model_info.name
+model_meta.name = "MobileNetV1 image classifier"
 model_meta.description = ("Identify the most prominent object in the "
                           "image from a set of 1,001 categories such as "
                           "trees, animals, food, vehicles, person etc.")
-model_meta.version = self.model_info.version
+model_meta.version = "v1"
 model_meta.author = "TensorFlow"
 model_meta.license = ("Apache License. Version 2.0 "
                       "http://www.apache.org/licenses/LICENSE-2.0.")
@@ -130,8 +128,7 @@ input_meta.name = "image"
 input_meta.description = (
     "Input image to be classified. The expected image is {0} x {1}, with "
     "three channels (red, blue, and green) per pixel. Each value in the "
-    "tensor is a single byte between 0 and 255.".format(
-        self.model_info.image_width, self.model_info.image_height))
+    "tensor is a single byte between 0 and 255.".format(160, 160))
 input_meta.content = _metadata_fb.ContentT()
 input_meta.content.contentProperties = _metadata_fb.ImagePropertiesT()
 input_meta.content.contentProperties.colorSpace = (
@@ -146,8 +143,8 @@ input_normalization.options.mean = [127.5]
 input_normalization.options.std = [127.5]
 input_meta.processUnits = [input_normalization]
 input_stats = _metadata_fb.StatsT()
-input_stats.max = [self.model_info.image_max]
-input_stats.min = [self.model_info.image_min]
+input_stats.max = [255]
+input_stats.min = [0]
 input_meta.stats = input_stats
 ```
 
@@ -170,7 +167,7 @@ output_stats.max = [1.0]
 output_stats.min = [0.0]
 output_meta.stats = output_stats
 label_file = _metadata_fb.AssociatedFileT()
-label_file.name = os.path.basename(self.label_file_path)
+label_file.name = os.path.basename("your_path_to_label_file")
 label_file.description = "Labels for objects that the model can recognize."
 label_file.type = _metadata_fb.AssociatedFileType.TENSOR_AXIS_LABELS
 output_meta.associatedFiles = [label_file]
@@ -192,19 +189,17 @@ b = flatbuffers.Builder(0)
 b.Finish(
     model_meta.Pack(b),
     _metadata.MetadataPopulator.METADATA_FILE_IDENTIFIER)
-self.metadata_buf = b.Output()
+metadata_buf = b.Output()
 ```
 
 Once the data structure is ready, the writing of the metadata into the tflite
 file is done via the `populate` method:
 
 ```python
-def _populate_metadata(self):
-  """Populates metadata and label file to the model file."""
-  populator = _metadata.MetadataPopulator.with_model_file(self.model_file)
-  populator.load_metadata_buffer(self.metadata_buf)
-  populator.load_associated_files([self.label_file_path])
-  populator.populate()
+populator = _metadata.MetadataPopulator.with_model_file(model_file)
+populator.load_metadata_buffer(metadata_buf)
+populator.load_associated_files(["your_path_to_label_file"])
+populator.populate()
 ```
 
 #### Verify the metadata
