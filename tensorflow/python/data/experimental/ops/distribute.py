@@ -89,12 +89,16 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
   """
 
   def __init__(self, input_dataset, num_replicas, use_fallback=True):
-    self._input_dataset = input_dataset
 
     self._save_configuration({
       "num_replicas": num_replicas,
       "use_fallback": use_fallback,
     })
+
+    def recalculate_batch_size(output_shape):
+      """Recalculates the output_shape after dividing it by num_replicas."""
+      # If the output shape is unknown, we set the batch dimension to unknown.
+      if output_shape.rank is None:
         return None
 
       if len(output_shape) < 1:

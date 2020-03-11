@@ -65,8 +65,7 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.pywrap_tensorflow_internal import __version__ \
+from tensorflow.python.client.pywrap_tf_session import __version__ \
   as tf_version
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
