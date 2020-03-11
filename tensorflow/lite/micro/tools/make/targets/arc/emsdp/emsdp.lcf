@@ -5,43 +5,58 @@
 #   due to CCM memory wrapping into upper addresses beyond its size
 
 MEMORY {
-    IVT     : ORIGIN = 0x00000000, LENGTH = 0x60000000
-    ICCM0   : ORIGIN = 0x60000000, LENGTH = 0x00020000
+    PSRAM   : ORIGIN = 0x10000000, LENGTH = 0x01000000
+    SRAM    : ORIGIN = 0x20000000, LENGTH = 0x00040000
+    IVT     : ORIGIN = 0x60000000, LENGTH = 0x400
+    ICCM0   : ORIGIN = 0x60000400, LENGTH = (0x00020000 - 0x400)
 #   CCMWRAP0: ORIGIN = 0x60020000, LENGTH = 0x0ffe0000
-#   SYSTEM1 : ORIGIN = 0x70000000, LENGTH = 0x10000000
     DCCM    : ORIGIN = 0x80000000, LENGTH = 0x00020000
 #   CCMWRAP1: ORIGIN = 0x80020000, LENGTH = 0x0ffe0000
     XCCM    : ORIGIN = 0x90000000, LENGTH = 0x00004000
 #   CCMWRAP2: ORIGIN = 0x90004000, LENGTH = 0x0fffc000
     YCCM    : ORIGIN = 0xa0000000, LENGTH = 0x00004000
 #   CCMWRAP3: ORIGIN = 0xa0004000, LENGTH = 0x0fffc000
-    SYSTEM2 : ORIGIN = 0xb0000000, LENGTH = 0x50000000
     }
+
 SECTIONS {
-    GROUP BLOCK(4): {
-	.text? : { *('.text$crt*') }
-        * (TEXT): {}
-    	* (LIT): {}
-	} > ICCM0
+
+    GROUP BLOCK(4) : {
+        .vectors (TEXT) SIZE(DEFINED _IVTSIZE?_IVTSIZE:756): {} = FILL(0xa5a5a5a5,4)
+    } > IVT
 
     GROUP BLOCK(4): {
-	/* _SDA_BASE_ computed implicitly */
+        .text? : { *('.text$crt*') }
+        * (TEXT): {}
+        * (LIT): {}
+    } > ICCM0
+
+    GROUP BLOCK(4): {
+    /* _SDA_BASE_ computed implicitly */
         .sdata?: {}
         .sbss?: {}
         * (DATA): {}
         * (BSS): {}
-       .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:65536): {}
-       .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:0): {}
-	} > SYSTEM2
+       .stack ALIGN(4) SIZE(DEFINED _STACKSIZE?_STACKSIZE:16K): {}
+       .heap? ALIGN(4) SIZE(DEFINED _HEAPSIZE?_HEAPSIZE:8K): {}
+    } > DCCM
+
+    GROUP BLOCK(4): {
+        .rodata_in_data? : {}
+    } > PSRAM
+
     GROUP BLOCK(4): {
         .Xdata? : {}
-        } > XCCM
+    } > XCCM
+
     GROUP BLOCK(4): {
         .Ydata? : {}
-        } > YCCM
-    GROUP BLOCK(4) : {
-        .vectors (TEXT) SIZE(DEFINED _IVTSIZE?_IVTSIZE:756): {} = FILL(0xa5a5a5a5,4)
-        } > IVT
+    } > YCCM
+
+    GROUP BLOCK(4): {
+        .Zdata? : {}
+    } > DCCM
+
+
     }
 
 
