@@ -753,7 +753,7 @@ tf_py_test(
 
 tf_py_test(
     name = "stats_dataset_ops_test",
-    size = "large",
+    size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",
