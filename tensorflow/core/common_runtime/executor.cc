@@ -931,6 +931,7 @@ class ExecutorState {
 
   void RunAsync(Executor::DoneCallback done);
 
+ private:
   // Either a tensor pointer (pass-by-reference) or a tensor (pass-by-value).
   struct Entry {
     enum class State {
@@ -1050,8 +1051,6 @@ class ExecutorState {
     // The attributes of the allocator that creates the tensor.
     AllocatorAttributes alloc_attr;
   };
-
- private:
 
   // Contains the device context assigned by the device at the beginning of a
   // step.
