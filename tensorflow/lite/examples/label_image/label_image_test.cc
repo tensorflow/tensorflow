@@ -29,6 +29,7 @@ TEST(LabelImageTest, GraceHopper) {
       "grace_hopper.bmp";
   int height, width, channels;
   Settings s;
+  s.input_type = kTfLiteUInt8;
   std::vector<uint8_t> input =
       read_bmp(lena_file, &width, &height, &channels, &s);
   ASSERT_EQ(height, 606);
@@ -37,8 +38,8 @@ TEST(LabelImageTest, GraceHopper) {
 
   std::vector<uint8_t> output(606 * 517 * 3);
   resize<uint8_t>(output.data(), input.data(), 606, 517, 3, 214, 214, 3, &s);
-  ASSERT_EQ(output[0], 0x0);
-  ASSERT_EQ(output[214 * 214 * 3 - 1], 0x0);
+  ASSERT_EQ(output[0], 0x15);
+  ASSERT_EQ(output[214 * 214 * 3 - 1], 0x11);
 }
 
 TEST(LabelImageTest, GetTopN) {
