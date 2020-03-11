@@ -804,19 +804,6 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
-PyLocalExecutable::ExecutePerReplica(
-    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) const {
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::ExecutePerReplica");
-  if (num_partitions() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d partitions using "
-        "ExecutePerReplica()",
-        num_partitions());
-  }
-  return ExecuteOnLocalDevices(argument_handles);
-}
-
-StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
 PyLocalExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) const {
   tensorflow::profiler::TraceMe traceme(

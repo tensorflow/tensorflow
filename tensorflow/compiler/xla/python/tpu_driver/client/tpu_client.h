@@ -315,19 +315,11 @@ class PyTpuExecutable {
     return local_devices_;
   }
 
-  // TODO(power): Both Execute and ExecutePerReplica block and wait inside for
-  // computation to finish. Coordinate with JAX code change to see if we can
-  // make both Execute and ExecutePerReplica non-blocking.
+  // TODO(power): Both Execute and ExecutePerOnLocalDevices block and wait
+  // inside for computation to finish. Coordinate with JAX code change to see if
+  // we can make both Execute and ExecutePerReplica non-blocking.
   StatusOr<std::unique_ptr<PyTpuBuffer>> Execute(
       absl::Span<PyTpuBuffer* const> argument_handles);
-
-  // Execute on many replicas. Takes a sequence of argument lists (one argument
-  // list per replica) and returns a tuple of results (one result per replica).
-  // The number of argument lists must be equal to the replica count.
-  // The executable must have only one partition.
-  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
-  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecutePerReplica(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local

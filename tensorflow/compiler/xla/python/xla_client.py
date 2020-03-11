@@ -607,17 +607,17 @@ class Computation(object):
 #   def SizeOfGeneratedCodeInBytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
 #       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th replica.
+#         comprises the arguments for execution on the i'th local device.
 #
 #     Returns:
-#       A list of the computation's outputs for each replica, as a Buffer. If
-#       a shallow sequence of arguments was passed in for `arguments`, then the
-#       sole, zero'th replica's output is returned instead, as a Buffer.
+#       A list of the computation's outputs for each local device, as a Buffer.
+#       If a shallow sequence of arguments was passed in for `arguments`, then
+#       the sole, zero'th device's output is returned instead, as a Buffer.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -661,7 +661,7 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
+  return [out.to_py() for out in executable.ExecuteOnLocalDevices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):

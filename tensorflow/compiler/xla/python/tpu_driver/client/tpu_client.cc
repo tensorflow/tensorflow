@@ -642,19 +642,6 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
-PyTpuExecutable::ExecutePerReplica(
-    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
-  tensorflow::profiler::TraceMe traceme("PyTpuExecutable::ExecutePerReplica");
-  if (num_partitions() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d partitions using "
-        "ExecutePerReplica().",
-        num_partitions());
-  }
-  return ExecuteOnLocalDevices(argument_handles);
-}
-
-StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
 PyTpuExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme(

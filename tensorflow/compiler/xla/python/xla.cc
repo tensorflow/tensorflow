@@ -1127,25 +1127,6 @@ PYBIND11_MODULE(xla_extension, m) {
                                   std::move(output));
           },
           py::arg("arguments"))
-      // TODO(phawkins): remove when all callers switch to ExecuteOnLocalDevices
-      .def(
-          "ExecutePerReplica",
-          [](const PyLocalExecutable& executable,
-             absl::Span<const std::vector<PyLocalBuffer*>> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PyLocalBuffer>> output_buffers,
-                executable.ExecutePerReplica(args));
-            std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffer : output_buffers) {
-              outputs.push_back(WrapWithClient(
-                  executable.client()->shared_from_this(), std::move(buffer)));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
       .def(
           "ExecuteOnLocalDevices",
           [](const PyLocalExecutable& executable,

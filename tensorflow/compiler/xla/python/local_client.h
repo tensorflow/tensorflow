@@ -365,14 +365,6 @@ class PyLocalExecutable {
   StatusOr<std::unique_ptr<PyLocalBuffer>> Execute(
       absl::Span<PyLocalBuffer* const> argument_handles) const;
 
-  // Execute on many replicas. Takes a sequence of argument lists (one argument
-  // list per replica) and returns a tuple of results (one result per replica).
-  // The number of argument lists must be equal to the replica count.
-  // The executable must have only one partition.
-  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecutePerReplica(
-      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) const;
-
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
