@@ -32,6 +32,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
@@ -48,6 +49,7 @@ from tensorflow.python.keras.losses import mean_squared_logarithmic_error
 from tensorflow.python.keras.losses import poisson
 from tensorflow.python.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras.losses import squared_hinge
+from tensorflow.python.keras.saving.saved_model import metric_serialization
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
@@ -63,6 +65,9 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
 
@@ -148,15 +153,18 @@ class Metric(base_layer.Layer):
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
 
-    # TODO(psv): We are excluding wrapping `update_state` of built-in metrics
-    # with function here because of b/121302287. With this, built-in metrics
-    # will continue to work with TPUs and custom metrics will not, however
-    # users writing custom metrics need not worry about control dependencies
-    # and returning ops.
-    if cls.__module__ == Metric.__module__:
+    # If `update_state` is not in eager/tf.function and it is not from a
+    # built-in metric, wrap it in `tf.function`. This is so that users writing
+    # custom metrics in v1 need not worry about control dependencies and
+    # return ops.
+    if (base_layer_utils.is_in_eager_or_tf_function() or
+        is_built_in(cls)):
       update_state_fn = obj.update_state
     else:
-      update_state_fn = def_function.function(obj.update_state)
+      if isinstance(obj.update_state, def_function.Function):
+        update_state_fn = obj.update_state
+      else:
+        update_state_fn = def_function.function(obj.update_state)
 
     obj.update_state = types.MethodType(
         metrics_utils.update_state_wrapper(update_state_fn), obj)
@@ -178,7 +186,10 @@ class Metric(base_layer.Layer):
     def replica_local_fn(*args, **kwargs):
       """Updates the state of the metric in a replica-local context."""
       update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
-      with ops.control_dependencies([update_op]):
+      update_ops = []
+      if update_op is not None:
+        update_ops.append(update_op)
+      with ops.control_dependencies(update_ops):
         result_t = self.result()  # pylint: disable=not-callable
 
         # We are adding the metric object as metadata on the result tensor.
@@ -225,9 +236,6 @@ class Metric(base_layer.Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
-
-    Please use `tf.config.experimental_run_functions_eagerly(True)` to execute
-    this function eagerly for debugging or profiling.
 
     Args:
       *args:
@@ -276,6 +284,10 @@ class Metric(base_layer.Layer):
         aggregation=aggregation)
 
   ### End: For use by subclasses ###
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return metric_serialization.MetricSavedModelSaver(self)
 
 
 class Reduce(Metric):
@@ -594,10 +606,26 @@ class MeanMetricWrapper(Mean):
 
   def get_config(self):
     config = {}
+
+    if type(self) is MeanMetricWrapper:  # pylint: disable=unidiomatic-typecheck
+      # Only include function argument when the object is a MeanMetricWrapper
+      # and not a subclass.
+      config['fn'] = self._fn
+
     for k, v in six.iteritems(self._fn_kwargs):
       config[k] = K.eval(v) if is_tensor_or_variable(v) else v
     base_config = super(MeanMetricWrapper, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @classmethod
+  def from_config(cls, config):
+    # Note that while MeanMetricWrapper itself isn't public, objects of this
+    # class may be created and added to the model by calling model.compile.
+    if cls is MeanMetricWrapper:
+      fn = get(config.pop('fn'))
+      return cls(fn, **config)
+
+    return super(MeanMetricWrapper, cls).from_config(config)
 
 
 @keras_export('keras.metrics.Accuracy')
@@ -917,7 +945,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor(result)
+    return ops.convert_to_tensor_v2(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -1656,7 +1684,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.keras.metrics.PrecisionAtRecall()])
+      metrics=[tf.keras.metrics.PrecisionAtRecall(recall=0.8)])
   ```
   """
 
@@ -1699,6 +1727,89 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
   def get_config(self):
     config = {'num_thresholds': self.num_thresholds, 'recall': self.recall}
     base_config = super(PrecisionAtRecall, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.metrics.RecallAtPrecision')
+class RecallAtPrecision(SensitivitySpecificityBase):
+  """Computes the maximally achievable recall at a required precision.
+
+  For a given score-label-distribution the required precision might not
+  be achievable, in this case 0.0 is returned as recall.
+
+  This metric creates four local variables, `true_positives`, `true_negatives`,
+  `false_positives` and `false_negatives` that are used to compute the
+  recall at the given precision. The threshold for the given precision
+  value is computed and used to evaluate the corresponding recall.
+
+  If `sample_weight` is `None`, weights default to 1.
+  Use `sample_weight` of 0 to mask values.
+
+  Usage:
+
+  >>> m = tf.keras.metrics.RecallAtPrecision(0.8, num_thresholds=1)
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m.result().numpy()
+  0.5
+
+  >>> m.reset_states()
+  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
+  ...                    sample_weight=[1, 0, 0, 1])
+  >>> m.result().numpy()
+  1.0
+
+  Usage with tf.keras API:
+
+  ```python
+  model = tf.keras.Model(inputs, outputs)
+  model.compile(
+      'sgd',
+      loss='mse',
+      metrics=[tf.keras.metrics.RecallAtPrecision(precision=0.8)])
+  ```
+  """
+
+  def __init__(self, precision, num_thresholds=200, name=None, dtype=None):
+    """Creates a `RecallAtPrecision` instance.
+
+    Args:
+      precision: A scalar value in range `[0, 1]`.
+      num_thresholds: (Optional) Defaults to 200. The number of thresholds to
+        use for matching the given precision.
+      name: (Optional) string name of the metric instance.
+      dtype: (Optional) data type of the metric result.
+    """
+    if precision < 0 or precision > 1:
+      raise ValueError('`precision` must be in the range [0, 1].')
+    self.precision = precision
+    self.num_thresholds = num_thresholds
+    super(RecallAtPrecision, self).__init__(
+        value=precision,
+        num_thresholds=num_thresholds,
+        name=name,
+        dtype=dtype)
+
+  def result(self):
+    # Calculate precision and recall at all the thresholds.
+    # All recalls are computed, because they are not a monotoneous function of
+    # precision and we want to search for the highest feasible recall.
+    precisions = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_positives)
+    recalls = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_negatives)
+    # Find best recall where the precision is as good as required.
+    feasible = array_ops.where(math_ops.greater_equal(precisions, self.value))
+    feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+    best_recall = control_flow_ops.cond(
+        feasible_exists,
+        lambda: math_ops.reduce_max(array_ops.gather(recalls, feasible)),
+        lambda: 0.0)
+    return best_recall
+
+  def get_config(self):
+    config = {'num_thresholds': self.num_thresholds,
+              'precision': self.precision}
+    base_config = super(RecallAtPrecision, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
@@ -1848,7 +1959,7 @@ class AUC(Metric):
           summation_method)
     super(AUC, self).__init__(name=name, dtype=dtype)
 
-    # Handle multilable arguments.
+    # Handle multilabel arguments.
     self.multi_label = multi_label
     if label_weights is not None:
       label_weights = constant_op.constant(label_weights, dtype=self.dtype)
@@ -1864,7 +1975,9 @@ class AUC(Metric):
       self.label_weights = None
 
     self._built = False
-    if not self.multi_label:
+    if self.multi_label:
+      self._num_labels = None
+    else:
       self._build(None)
 
   def _build(self, shape):
@@ -1873,12 +1986,14 @@ class AUC(Metric):
       if shape.ndims != 2:
         raise ValueError('`y_true` must have rank=2 when `multi_label` is '
                          'True. Found rank %s.' % shape.ndims)
+      self._num_labels = shape[1]
       variable_shape = tensor_shape.TensorShape(
-          [tensor_shape.Dimension(self.num_thresholds), shape[1]])
+          [tensor_shape.Dimension(self.num_thresholds), self._num_labels])
+
     else:
       variable_shape = tensor_shape.TensorShape(
           [tensor_shape.Dimension(self.num_thresholds)])
-
+    self._build_input_shape = shape
     # Create metric variables
     self.true_positives = self.add_weight(
         'true_positives',
@@ -1922,7 +2037,7 @@ class AUC(Metric):
     """
     deps = []
     if not self._built:
-      self._build(y_true.shape)
+      self._build(tensor_shape.TensorShape(y_pred.shape))
 
     if self.multi_label or (self.label_weights is not None):
       # y_true should have shape (number of examples, number of labels).
@@ -1937,7 +2052,7 @@ class AUC(Metric):
                        (self.false_positives, ('T', 'L')),
                        (self.false_negatives, ('T', 'L'))])
       if self.label_weights is not None:
-        # label_weights should be of lenght equal to the number of labels.
+        # label_weights should be of length equal to the number of labels.
         shapes.append((self.label_weights, ('L',)))
       deps = [
           check_ops.assert_shapes(
@@ -2015,7 +2130,6 @@ class AUC(Metric):
                               1] - self.true_positives[1:]
     p = self.true_positives + self.false_positives
     dp = p[:self.num_thresholds - 1] - p[1:]
-
     prec_slope = math_ops.div_no_nan(
         dtp, math_ops.maximum(dp, 0), name='prec_slope')
     intercept = self.true_positives[1:] - math_ops.multiply(prec_slope, p[1:])
@@ -2028,13 +2142,26 @@ class AUC(Metric):
             name='recall_relative_ratio'),
         array_ops.ones_like(p[1:]))
 
-    return math_ops.reduce_sum(
-        math_ops.div_no_nan(
-            prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
-            math_ops.maximum(self.true_positives[1:] + self.false_negatives[1:],
-                             0),
-            name='pr_auc_increment'),
-        name='interpolate_pr_auc')
+    pr_auc_increment = math_ops.div_no_nan(
+        prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
+        math_ops.maximum(self.true_positives[1:] + self.false_negatives[1:], 0),
+        name='pr_auc_increment')
+
+    if self.multi_label:
+      by_label_auc = math_ops.reduce_sum(
+          pr_auc_increment, name=self.name + '_by_label', axis=0)
+      if self.label_weights is None:
+        # Evenly weighted average of the label AUCs.
+        return math_ops.reduce_mean(by_label_auc, name=self.name)
+      else:
+        # Weighted average of the label AUCs.
+        return math_ops.div_no_nan(
+            math_ops.reduce_sum(
+                math_ops.multiply(by_label_auc, self.label_weights)),
+            math_ops.reduce_sum(self.label_weights),
+            name=self.name)
+    else:
+      return math_ops.reduce_sum(pr_auc_increment, name='interpolate_pr_auc')
 
   def result(self):
     if (self.curve == metrics_utils.AUCCurve.PR and
@@ -2089,8 +2216,13 @@ class AUC(Metric):
           name=self.name)
 
   def reset_states(self):
-    K.batch_set_value(
-        [(v, np.zeros((self.num_thresholds,))) for v in self.variables])
+    if self.multi_label:
+      K.batch_set_value([(v, np.zeros((self.num_thresholds, self._num_labels)))
+                         for v in self.variables])
+    else:
+      K.batch_set_value([
+          (v, np.zeros((self.num_thresholds,))) for v in self.variables
+      ])
 
   def get_config(self):
     if is_tensor_or_variable(self.label_weights):
@@ -2713,6 +2845,7 @@ class MeanTensor(Metric):
 
   def _build(self, shape):
     self._shape = tensor_shape.TensorShape(shape)
+    self._build_input_shape = self._shape
     # Create new state variables
     self._total = self.add_weight(
         'total', shape=shape, initializer=init_ops.zeros_initializer)
@@ -3103,8 +3236,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -3149,8 +3282,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:
@@ -3199,11 +3332,7 @@ def clone_metric(metric):
 
 def clone_metrics(metrics):
   """Clones the given metric list/dict."""
-  if metrics is None:
-    return None
-  if isinstance(metrics, dict):
-    return {key: clone_metric(value) for key, value in metrics.items()}
-  return [clone_metric(metric) for metric in metrics]
+  return nest.map_structure(clone_metric, metrics)
 
 
 @keras_export('keras.metrics.serialize')
@@ -3222,6 +3351,7 @@ def deserialize(config, custom_objects=None):
 
 @keras_export('keras.metrics.get')
 def get(identifier):
+  """Return a metric given its identifer."""
   if isinstance(identifier, dict):
     return deserialize(identifier)
   elif isinstance(identifier, six.string_types):
@@ -3229,5 +3359,10 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret '
-                     'metric function identifier: %s' % identifier)
+    error_msg = 'Could not interpret metric function identifier: {}'.format(
+        identifier)
+    raise ValueError(error_msg)
+
+
+def is_built_in(cls):
+  return cls.__module__ == Metric.__module__

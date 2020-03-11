@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 #if RUY_PLATFORM(SSE42) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 #include <immintrin.h>  // IWYU pragma: keep
@@ -52,9 +52,9 @@ static constexpr int kAvx8bitInnerSize = 4;
 //
 // When removing this comment, update profiling label below.
 void Kernel8bitSse42(const KernelParams8bit<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kSse42 8-bit (UNFINISHED)");
-
+  profiler::ScopeLabel label("Kernel kSse42 8-bit (UNFINISHED)");
   std::int32_t accum_data[kAvx8bitBlockSize][kAvx8bitBlockSize];
+
   int bias_ptr_block_increment =
       params.flags & RUY_ASM_FLAG_HAS_BIAS ? kAvx8bitBlockSize : 0;
 
@@ -320,7 +320,7 @@ void Kernel8bitSse42(const KernelParams8bit<8, 8>& params) {
 //
 // When removing this comment, update profiling label below.
 void KernelFloatSse42(const KernelParamsFloat<8, 8>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kSse42 float (UNFINISHED)");
+  profiler::ScopeLabel label("Kernel kSse42 float (UNFINISHED)");
 
   float lhs_data[kAvxFloatBlockSize];
   float rhs_data[kAvxFloatBlockSize];

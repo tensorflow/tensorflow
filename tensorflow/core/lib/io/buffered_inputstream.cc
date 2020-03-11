@@ -188,9 +188,7 @@ Status BufferedInputStream::ReadAll(T* result) {
 }
 
 template Status BufferedInputStream::ReadAll<string>(string* result);
-#ifdef USE_TSTRING
 template Status BufferedInputStream::ReadAll<tstring>(tstring* result);
-#endif  // USE_TSTRING
 
 Status BufferedInputStream::Reset() {
   TF_RETURN_IF_ERROR(input_stream_->Reset());

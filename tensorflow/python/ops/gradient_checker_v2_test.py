@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for compute_gradient.
-"""
+"""Tests for compute_gradient."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -47,6 +46,21 @@ def _random_complex(shape, dtype):
 @test_util.run_all_in_graph_and_eager_modes
 class GradientCheckerTest(test.TestCase):
 
+  def testWithStaticShape(self):
+    size = (2, 3)
+    constant = constant_op.constant(2.0, shape=size, name="const")
+
+    def add_constant_with_static_shape_check(x):
+      self.assertAllEqual(x.shape.as_list(), constant.shape.as_list())
+      return x + constant
+
+    x = constant_op.constant(3.0, shape=size, name="x")
+
+    error = gradient_checker.max_error(*gradient_checker.compute_gradient(
+        add_constant_with_static_shape_check, [x]))
+
+    self.assertLess(error, 1e-4)
+
   def testAddSimple(self):
     size = (2, 3)
     x1 = constant_op.constant(2.0, shape=size, name="x1")
@@ -58,31 +72,32 @@ class GradientCheckerTest(test.TestCase):
 
   def testAddCustomized(self):
     size = (2, 3)
-    x1 = constant_op.constant(
-        2.0, shape=size, dtype=dtypes.float64, name="x1")
+    x1 = constant_op.constant(2.0, shape=size, dtype=dtypes.float64, name="x1")
     x2 = np.asarray(np.arange(6, dtype=np.float64).reshape(2, 3))
     # checkint gradients for x2 using a special delta
     error = gradient_checker.max_error(*gradient_checker.compute_gradient(
-        lambda x2: math_ops.add(x1, x2),
-        [x2], delta=1e-2))
+        lambda x2: math_ops.add(x1, x2), [x2], delta=1e-2))
     tf_logging.info("x2 error = %f", error)
     self.assertLess(error, 1e-10)
 
   def testGather(self):
+
     def f(params):
       index_values = [1, 3]
       indices = constant_op.constant(index_values, name="i")
       return array_ops.gather(params, indices, name="y")
+
     p_shape = (4, 2)
     p_size = 8
     params = constant_op.constant(
         np.arange(p_size).astype(np.float), shape=p_shape, name="p")
-    error = gradient_checker.max_error(*gradient_checker.compute_gradient(
-        f, [params]))
+    error = gradient_checker.max_error(
+        *gradient_checker.compute_gradient(f, [params]))
     tf_logging.info("gather error = %f", error)
     self.assertLess(error, 1e-4)
 
   def testNestedGather(self):
+
     def f(params):
       index_values = [1, 3, 5, 6]
       indices = constant_op.constant(index_values, name="i")
@@ -90,57 +105,62 @@ class GradientCheckerTest(test.TestCase):
       index_values2 = [0, 2]
       indices2 = constant_op.constant(index_values2, name="i2")
       return array_ops.gather(y, indices2, name="y2")
+
     p_shape = (8, 2)
     p_size = 16
     params = constant_op.constant(
         np.arange(p_size).astype(np.float), shape=p_shape, name="p")
-    error = gradient_checker.max_error(*gradient_checker.compute_gradient(
-        f, [params]))
+    error = gradient_checker.max_error(
+        *gradient_checker.compute_gradient(f, [params]))
     tf_logging.info("nested gather error = %f", error)
     self.assertLess(error, 1e-4)
 
   def testComplexMul(self):
     c = constant_op.constant(5 + 7j, dtype=dtypes.complex64)
+
     def f(x):
       return c * x
+
     x_shape = c.shape
     x_dtype = c.dtype
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
-    analytical, numerical = gradient_checker.compute_gradient(
-        f, [x])
+    analytical, numerical = gradient_checker.compute_gradient(f, [x])
     correct = np.array([[5, -7], [7, 5]])
     self.assertAllEqual(correct, analytical[0])
     self.assertAllClose(correct, numerical[0], rtol=1e-4)
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
     self.assertLess(
-        gradient_checker.max_error(*gradient_checker.compute_gradient(
-            f, [x])), 3e-4)
+        gradient_checker.max_error(*gradient_checker.compute_gradient(f, [x])),
+        3e-4)
 
   def testComplexConj(self):
+
     def f(x):
       return math_ops.conj(x)
+
     x_shape = ()
     x_dtype = dtypes.complex64
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
-    analytical, numerical = gradient_checker.compute_gradient(
-        f, [x])
+    analytical, numerical = gradient_checker.compute_gradient(f, [x])
     correct = np.array([[1, 0], [0, -1]])
     self.assertAllEqual(correct, analytical[0])
     self.assertAllClose(correct, numerical[0], rtol=2e-5)
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
     self.assertLess(
-        gradient_checker.max_error(*gradient_checker.compute_gradient(
-            f, [x])), 2e-5)
+        gradient_checker.max_error(*gradient_checker.compute_gradient(f, [x])),
+        2e-5)
 
   def testEmptySucceeds(self):
+
     def f(x):
       return array_ops.identity(x)
-    x = constant_op.constant(np.random.random_sample((0, 3)),
-                             dtype=dtypes.float32)
+
+    x = constant_op.constant(
+        np.random.random_sample((0, 3)), dtype=dtypes.float32)
     for grad in gradient_checker.compute_gradient(f, [x]):
       self.assertEqual(grad[0].shape, (0, 0))
-    error = gradient_checker.max_error(*gradient_checker.compute_gradient(
-        f, [x]))
+    error = gradient_checker.max_error(
+        *gradient_checker.compute_gradient(f, [x]))
     self.assertEqual(error, 0)
 
   def testEmptyMatMul(self):
@@ -160,37 +180,47 @@ class GradientCheckerTest(test.TestCase):
     self.assertEqual(error, 0)
 
   def testEmptyFails(self):
+
     @custom_gradient.custom_gradient
     def id_bad_grad(x):
       y = array_ops.identity(x)
+
       def grad_fn(dy):
         # dx = constant_op.constant(np.zeros((1, 4)), dtype=dtypes.float32)
         dx = array_ops.transpose(dy)
         return dx
+
       return y, grad_fn
+
     def f(x):
       return id_bad_grad(x)
-    x = constant_op.constant(np.random.random_sample((0, 3)),
-                             dtype=dtypes.float32)
+
+    x = constant_op.constant(
+        np.random.random_sample((0, 3)), dtype=dtypes.float32)
     bad = r"Empty gradient has wrong shape: expected \(0, 3\), got \(3, 0\)"
     with self.assertRaisesRegexp(ValueError, bad):
       gradient_checker.compute_gradient(f, [x])
 
   def testNaNGradFails(self):
+
     @custom_gradient.custom_gradient
     def id_nan_grad(x):
       y = array_ops.identity(x)
+
       def grad_fn(dy):
         dx = np.nan * dy
         # dx = dy
         return dx
+
       return y, grad_fn
+
     def f(x):
       return id_nan_grad(x)
-    x = constant_op.constant(np.random.random_sample((1, 1)),
-                             dtype=dtypes.float32)
-    error = gradient_checker.max_error(*gradient_checker.compute_gradient(
-        f, [x]))
+
+    x = constant_op.constant(
+        np.random.random_sample((1, 1)), dtype=dtypes.float32)
+    error = gradient_checker.max_error(
+        *gradient_checker.compute_gradient(f, [x]))
     # Typical test would assert error < max_err, so assert this test would
     # raise AssertionError, since NaN is not < 1.0.
     with self.assertRaisesRegexp(AssertionError, "nan not less than 1.0"):
@@ -264,9 +294,7 @@ class MiniMNISTTest(test.TestCase):
         name="softmax_bias")
 
     # List all the parameter so that we can test them one at a time
-    all_params = [
-        inp, hidden_weight, hidden_bias, softmax_weight, softmax_bias
-    ]
+    all_params = [inp, hidden_weight, hidden_bias, softmax_weight, softmax_bias]
 
     # Now, Building MNIST
     def f(inp, hidden_weight, hidden_bias, softmax_weight, softmax_bias):
@@ -287,8 +315,9 @@ class MiniMNISTTest(test.TestCase):
       xs = all_params
       i = param_index
       # use x for the i-th parameter
-      xs = xs[0:i]+[x]+xs[i+1:]
+      xs = xs[0:i] + [x] + xs[i + 1:]
       return f(*xs)
+
     # Test the gradients.
     err = gradient_checker.max_error(*gradient_checker.compute_gradient(
         f_restricted, [all_params[param_index]], delta=1e-5))

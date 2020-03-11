@@ -54,9 +54,10 @@ filegroup(
 )
 
 filegroup(
-    name = "pywrap_eager_hdrs",
+    name = "pywrap_required_hdrs",
     srcs = [
         "c_api_internal.h",
+        "python_api.h",
         "tf_status_helper.h",
         "tf_status_internal.h",
         "tf_tensor_internal.h",
@@ -95,6 +96,17 @@ tf_cuda_library(
     }) + [
         ":tf_status_internal",
         ":tf_tensor_internal",
+    ],
+)
+
+filegroup(
+    name = "pywrap_tf_session_hdrs",
+    srcs = [
+        "python_api.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )
 
@@ -230,7 +242,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -524,6 +536,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -536,6 +549,7 @@ tf_cc_test(
         "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
+    tags = ["notsan"],  # b/149031034
     # We must ensure that the dependencies can be dynamically linked since
     # the shared library must be able to use core:framework.
     # linkstatic = tf_kernel_tests_linkstatic(),
@@ -634,6 +648,7 @@ tf_cuda_cc_test(
     deps = [
         ":c_api",
         ":kernels",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -641,6 +656,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:ops_testutil",
         "//third_party/eigen3",
+        "@com_google_absl//absl/container:inlined_vector",
     ],
 )
 

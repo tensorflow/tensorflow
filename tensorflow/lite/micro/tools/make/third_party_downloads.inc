@@ -20,8 +20,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/d76d5e3acb87cf089daf50b31f991026149ecb6c.zip"
-CMSIS_MD5 := "866f79cfb86f7aee29a320aeda530aca"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
+CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"
@@ -57,5 +57,5 @@ PERSON_MODEL_INT8_MD5 := "8a7d2c70325f53136faea6dde517b8cc"
 EMBARC_OSP_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_osp/archive/embarc_mli.zip"
 EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
-EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
-EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/97c09b81bd1c4d0455de298626c271d75faedba2.zip"
+EMBARC_MLI_MD5 := "f7c5555a15e7837806cfaeb22d3c7b50"

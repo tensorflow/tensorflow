@@ -27,20 +27,20 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/event.h"
 #include "tensorflow/stream_executor/gpu/gpu_kernel.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
 namespace gpu {
 
 // CUDA-platform implementation of the platform-agnostic
-// StreamExecutorInferface.
+// StreamExecutorInterface.
 class GpuExecutor : public internal::StreamExecutorInterface {
  public:
   // sub_platform indicates the subplatform used in this executor; it must
@@ -328,10 +328,10 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // for use in getting device metadata. Immutable post-initialization.
   int device_ordinal_;
 
-  // The major verion of the compute capability for device_.
+  // The major version of the compute capability for device_.
   int cc_major_;
 
-  // The minor verion of the compute capability for device_.
+  // The minor version of the compute capability for device_.
   int cc_minor_;
 
   // GPU ISA version for device_.

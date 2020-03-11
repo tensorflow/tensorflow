@@ -23,7 +23,8 @@ from tensorflow.python.keras.saving.saved_model import base_serialization
 from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 
 
@@ -50,25 +51,21 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
         dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
-        batch_input_shape=getattr(self.obj, '_batch_input_shape', None))
-    try:
-      # Store the config dictionary, which is only used by the revived object
-      # to return the original config when revived_obj.get_config() is called.
-      # It is not important for recreating the revived object.
-      metadata['config'] = self.obj.get_config()
-    except NotImplementedError:
-      # in the case of a subclassed model, the get_config() method will throw
-      # a NotImplementedError.
-      pass
+        batch_input_shape=getattr(self.obj, '_batch_input_shape', None),
+        stateful=self.obj.stateful)
+
+    metadata.update(get_config(self.obj))
     if self.obj.input_spec is not None:
       # Layer's input_spec has already been type-checked in the property setter.
       metadata['input_spec'] = nest.map_structure(
-          lambda x: None if x is None else serialize_keras_object(x),
+          lambda x: generic_utils.serialize_keras_object(x) if x else None,
           self.obj.input_spec)
     if (self.obj.activity_regularizer is not None and
         hasattr(self.obj.activity_regularizer, 'get_config')):
-      metadata['activity_regularizer'] = serialize_keras_object(
+      metadata['activity_regularizer'] = generic_utils.serialize_keras_object(
           self.obj.activity_regularizer)
+    if self.obj._build_input_shape is not None:  # pylint: disable=protected-access
+      metadata['build_input_shape'] = self.obj._build_input_shape  # pylint: disable=protected-access
     return metadata
 
   def objects_to_serialize(self, serialization_cache):
@@ -108,6 +105,20 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
     return objects, functions
 
 
+# TODO(kathywu): Move serialization utils (and related utils from
+# generic_utils.py) to a separate file.
+def get_config(obj):
+  with generic_utils.skip_failed_serialization():
+    # Store the config dictionary, which may be used when reviving the object.
+    # When loading, the program will attempt to revive the object from config,
+    # and if that fails, the object will be revived from the SavedModel.
+    config = generic_utils.serialize_keras_object(obj)['config']
+
+  if config is not None:
+    return {'config': config}
+  return {}
+
+
 class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
   """InputLayer serialization."""
 
@@ -131,3 +142,19 @@ class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   def functions_to_serialize(self, serialization_cache):
     return {}
+
+
+class RNNSavedModelSaver(LayerSavedModelSaver):
+  """RNN layer serialization."""
+
+  @property
+  def object_identifier(self):
+    return '_tf_keras_rnn_layer'
+
+  def _get_serialized_attributes_internal(self, serialization_cache):
+    objects, functions = (
+        super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
+            serialization_cache))
+
+    objects['states'] = data_structures.wrap_or_unwrap(self.obj.states)
+    return objects, functions

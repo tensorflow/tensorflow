@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/pooling.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
 
@@ -98,16 +101,16 @@ void AverageEvalUint8(TfLiteContext* context, const TfLiteNode* node,
       GetTensorShape(output), GetTensorData<uint8_t>(output));
 }
 
-void AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
+TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
                      const TfLitePoolParams* params, const OpData* data,
                      const TfLiteTensor* input, TfLiteTensor* output) {
   // Run Average Pooling MLI kernel
   // MLI optimized version only supports int8 dataype and no fused Relu
   // TODO: subject to add mli_saturate kernel
-  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone){
-    mli_tensor mli_in = { 0 };
-    mli_tensor mli_out = { 0 };
-    mli_pool_cfg cfg = { 0 };
+  if (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone) {
+    mli_tensor mli_in = {0};
+    mli_tensor mli_out = {0};
+    mli_pool_cfg cfg = {0};
 
     ConvertToMliTensor<int8_t>(input, &mli_in);
     ConvertToMliTensor<int8_t>(output, &mli_out);
@@ -129,25 +132,46 @@ void AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
       cfg.padding_bottom = data->padding.height + data->padding.height_offset;
     }
 
-    mli_point_to_subtsr_cfg substr_cfg_in = {{0,0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
-    mli_point_to_subtsr_cfg substr_cfg_out = {{0,0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
+    mli_point_to_subtsr_cfg subtsr_cfg_in = {{0,0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
+    mli_point_to_subtsr_cfg subtsr_cfg_out = {{0,0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
     mli_tensor sub_mli_in = {0};
     mli_tensor sub_mli_out = {0};
+    mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+    mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
 
-    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    // Tensors for data in fast (local) memory and config to copy data from external to local memory
+    mli_tensor in_local = sub_mli_in;
+    mli_tensor out_local = sub_mli_out;
+    mli_mov_cfg_t copy_config;
+    mli_mov_cfg_for_copy(&copy_config);
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_io_tensors(context, &in_local, &out_local));
+	bool in_is_local = in_local.data == sub_mli_in.data;
+	bool out_is_local = out_local.data == sub_mli_out.data;
+
+    const int batches =
+        MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
     for (int i = 0; i < batches; i++) {
-      substr_cfg_in.start_coord[0] = i;
-      substr_cfg_out.start_coord[0] = i;
-      mli_hlp_point_to_subtensor(&mli_in, &substr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &substr_cfg_out, &sub_mli_out);
-
-      mli_krn_avepool_hwc_sa8(&sub_mli_in, &cfg, &sub_mli_out);
+      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
+      mli_krn_avepool_hwc_sa8(&in_local, &cfg, &out_local);
+      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
+	  if (i == batches -1) break;
+      subtsr_cfg_in.start_coord[0]++;
+      subtsr_cfg_out.start_coord[0]++;
+      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
+      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+      if (in_is_local) {
+        in_local.data = sub_mli_in.data;
+	  }
+      if (out_is_local) {
+        out_local.data = sub_mli_out.data;
+	  }
     }
+    free_arc_scratch_buffers();
   } else {
     int32_t activation_min, activation_max;
-  (void)CalculateActivationRangeQuantized(context, params->activation, output,
-                                          &activation_min, &activation_max);
+    (void)CalculateActivationRangeQuantized(context, params->activation, output,
+                                            &activation_min, &activation_max);
     PoolParams op_params;
     op_params.stride_height = params->stride_height;
     op_params.stride_width = params->stride_width;
@@ -158,9 +182,10 @@ void AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
     op_params.quantized_activation_min = activation_min;
     op_params.quantized_activation_max = activation_max;
     reference_integer_ops::AveragePool(
-      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
-      GetTensorShape(output), GetTensorData<int8_t>(output));
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   }
+  return kTfLiteOk;
 }
 
 void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
@@ -235,11 +260,11 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       AverageEvalUint8(context, node, params, &data, input, output);
       break;
     case kTfLiteInt8:
-      AverageEvalInt8(context, node, params, &data, input, output);
+      return AverageEvalInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Input type %s is not currently supported",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -262,8 +287,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

@@ -23,6 +23,7 @@ from tensorflow.python.keras.saving.saved_model import layer_serialization
 
 # Network serialization is pretty much the same as layer serialization.
 class NetworkSavedModelSaver(layer_serialization.LayerSavedModelSaver):
+  """Network serialization."""
 
   @property
   def object_identifier(self):
@@ -30,5 +31,9 @@ class NetworkSavedModelSaver(layer_serialization.LayerSavedModelSaver):
 
   def _python_properties_internal(self):
     metadata = super(NetworkSavedModelSaver, self)._python_properties_internal()
+
+    # Network stateful property is dependent on the child layers.
+    metadata.pop('stateful')
+
     metadata['is_graph_network'] = self.obj._is_graph_network  # pylint: disable=protected-access
     return metadata

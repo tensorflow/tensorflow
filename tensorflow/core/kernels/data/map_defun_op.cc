@@ -239,6 +239,7 @@ void MapDefunOp::SetRunOptions(OpKernelContext* ctx,
   } else {
     opts->runner = ctx->runner();
   }
+  opts->run_all_kernels_inline = ctx->run_all_kernels_inline();
 }
 
 Status MapDefunOp::SetupArgs(OpKernelContext* ctx,

@@ -21,6 +21,12 @@ include "mlir/IR/OpBase.td"
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
+// The broadcasting dimensions correspond to a tuple that describes how a
+// smaller rank shape is broadcast into a larger rank shape. For example,
+// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
+// matching the matrix to dimensions 1 and 2 of the cuboid.
+def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
+
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -317,12 +323,6 @@ class BASE_HLO_TanhOp {
 //===----------------------------------------------------------------------===//
 // XLA binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
-
-// The broadcasting dimensions correspond to a tuple that describes how a
-// smaller rank shape is broadcast into a larger rank shape. For example,
-// given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
-// matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
 
 class BASE_HLO_AddOp {
   string summary = "Addition operator";
@@ -631,6 +631,33 @@ class BASE_HLO_CompareOp {
 }
 
 //===----------------------------------------------------------------------===//
+// Quantize op definitions.
+//===----------------------------------------------------------------------===//
+
+// These mirror the XLA ComparisonDirection enum.
+def HLO_MIN_COMBINED : StrEnumAttrCase<"MIN_COMBINED">;
+
+def HLO_DequantizeModeAttr : StrEnumAttr<"DequantizeMode",
+  "Dequantization mode. Only MIN_COMBINED is supported.",
+  [HLO_MIN_COMBINED]>;
+
+class BASE_HLO_DequantizeOp {
+  string summary = "Dequantize operator";
+
+  string description = [{
+    Dequantize the quantized input of packed uint32 to bfloat16. Only uint8 or
+    uint16 is supported for the original unpacked input.
+
+    Returns a tensor of shape [d0,..., dn * unpack_size] if unpacked input shape
+    is [d0, ..., dn], where unpack_size = sizeof(unit32) / sizeof(T), where T is
+    the unpacked input type. If transpose_output is true, will return a tensor
+    of shape [dn * unpack_size, dn-1, ..., d1, d0]. transpose_output is faster
+    when input's rank higher than 1. The input needs to be transposed to use
+    transpose_output feature.
+  }];
+}
+
+//===----------------------------------------------------------------------===//
 // XLA Slice definitions.
 //===----------------------------------------------------------------------===//
 
@@ -676,8 +703,8 @@ class BASE_HLO_AllToAllOp {
     AllToAll is a collective operation that sends data from all cores to all
     cores. It has two phases:
     - The scatter phase. On each core, the operand is split into `split_count`
-      number of blocks along the `split_dimensions`, and the blocks are
-      scattered to all cores, e.g., the i-th block is send to the i-th core.
+      number of blocks along the `split_dimension`, and the blocks are
+      scattered to all cores, e.g., the i-th block is sent to the i-th core.
     - The gather phase. Each core concatenates the received blocks along the
       `concat_dimension`.
 
@@ -691,7 +718,7 @@ class BASE_HLO_AllToAllOp {
       will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
       will be applied within replicas 4, 5, 0, and the concatenation order is
       also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
-      group, in the concatenation order of their appearance.
+      group, and the concatenation order is the numerical order (0, 1, 2, ...).
 
     Prerequisites:
     - The dimension size of the operand on the split_dimension is divisible by
@@ -849,6 +876,24 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+class BASE_HLO_ConvOp {
+  string summary = "Convolution operator";
+
+  string description = [{
+    Computes a convolution of the kind used in neural networks.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
+  }];
+}
+
+class BASE_HLO_CopyOp {
+  string summary = "Copy operator";
+
+  string description = [{
+    Returns a copy of `operand`.
+  }];
+}
+
 class BASE_HLO_CrossReplicaSumOp {
    string summary = "Sums input across replicated instances.";
 
@@ -865,15 +910,6 @@ class BASE_HLO_CrossReplicaSumOp {
    }];
 }
 
-class BASE_HLO_ConvOp {
-  string summary = "Convolution operator";
-
-  string description = [{
-    Computes a convolution of the kind used in neural networks.
-
-    See https://www.tensorflow.org/xla/operation_semantics#conv_convolution.
-  }];
-}
 
 class BASE_HLO_CustomCallOp {
   string summary = "CustomCall operator";

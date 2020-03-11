@@ -406,9 +406,10 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
@@ -427,7 +428,17 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
+      out_iterator);
+}
+
+Status MakeIteratorFromInputElement(
+    IteratorContext* ctx, const std::vector<Tensor>& input_element,
+    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
+    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+  return MakeIteratorFromInputElement(ctx, /*parent=*/nullptr, input_element,
+                                      thread_index, inst_captured_func, prefix,
+                                      out_iterator);
 }
 
 /* static */
@@ -899,7 +910,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
     const FunctionDef* fdef;
     TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
     for (const auto& node : fdef->node_def()) {
-      // Check if the op has a kernel availabe for the current device.
+      // Check if the op has a kernel available for the current device.
       if (!KernelDefAvailable(current_device_type, node)) {
         *is_multi_device = true;
         return Status::OK();

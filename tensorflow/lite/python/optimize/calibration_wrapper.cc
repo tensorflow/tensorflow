@@ -201,6 +201,17 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   Py_RETURN_NONE;
 }
 
+PyObject* CalibrationWrapper::Calibrate() {
+  auto tflite_model = CreateMutableModel(*model_->GetModel());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
+  flatbuffers::FlatBufferBuilder builder;
+  auto loc = tflite::Model::Pack(builder, tflite_model.get());
+  tflite::FinishModelBuffer(builder, loc);
+  return python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
+}
+
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,

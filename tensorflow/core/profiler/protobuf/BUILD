@@ -30,7 +30,6 @@ tf_proto_library(
     name = "input_pipeline_proto",
     srcs = ["input_pipeline.proto"],
     cc_api_version = 2,
-    protodeps = [":hardware_types_proto"],
     visibility = [
         ":friends",
     ],
@@ -68,6 +67,7 @@ tf_proto_library(
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
     protodeps = [
+        ":kernel_stats_proto",
         ":op_metrics_proto",
         ":steps_db_proto",
     ],
@@ -76,7 +76,14 @@ tf_proto_library(
     ],
 )
 
-# This proto is deprecating and not guarenteed to be compatible across versions.
+tf_proto_library(
+    name = "kernel_stats_proto",
+    srcs = ["kernel_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+# This proto is deprecating and not guaranteed to be compatible across versions.
 # Please don't refer in new project unless you are double confirmed.
 tf_proto_library(
     name = "tf_stats_proto",

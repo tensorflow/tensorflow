@@ -48,6 +48,7 @@ cc_library(
     deps = [
         ":host_gpu_executor",
         ":host_platform_id",
+        "//tensorflow/core:lib",
         "//tensorflow/stream_executor:executor_cache",
         "//tensorflow/stream_executor:multi_platform_manager",
         "//tensorflow/stream_executor:stream_executor_headers",

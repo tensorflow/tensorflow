@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -104,7 +106,9 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
-        count_(count) {
+        count_(count),
+        traceme_metadata_(
+            {{"buffer_size", strings::Printf("%lld", buffer_size)}}) {
     input_->Ref();
   }
 
@@ -163,11 +167,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
 
-    string BuildTraceMeName() override {
-      return strings::StrCat(
-          this->prefix(), "#buffer_size=", this->dataset()->buffer_size_, "#");
-    }
-
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
@@ -176,7 +175,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       int64 num_log_entries = 0;
       if (!input_impl_ && epoch_ == 0) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
+            ctx, this, this->prefix(), &input_impl_));
       }
       while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
         if (EnvTime::NowMicros() >
@@ -206,7 +205,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this->prefix(), &input_impl_));
+              ctx, this, this->prefix(), &input_impl_));
         }
         if (!end_of_input_sequence) {
           if (num_elements_ == 0) {
@@ -343,7 +342,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       // Restore the input iterator if it wasn't already exhausted.
       if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
+            ctx, this, this->prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
       } else {
         input_impl_.reset();
@@ -395,6 +394,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return this->dataset()->traceme_metadata_;
+    }
+
     mutex mu_;
     int64 seed_ GUARDED_BY(mu_);
     int64 seed2_ GUARDED_BY(mu_);
@@ -441,6 +444,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   // fuse shuffle and repeat together, and make the shuffle dataset op
   // responsible for repeating as well.
   const int64 count_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 // A dataset that uses a pseudorandom sequence of seeds for the iterators

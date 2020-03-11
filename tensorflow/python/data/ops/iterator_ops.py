@@ -571,8 +571,8 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
         `components` and `element_spec` is provided.
     """
 
-    error_message = "Either `dataset` or both `components` and "
-    "`element_spec` need to be provided."
+    error_message = ("Either `dataset` or both `components` and "
+                     "`element_spec` need to be provided.")
 
     self._device = context.context().device_name
 
@@ -818,7 +818,7 @@ def get_next_as_optional(iterator):
   will have no value.
 
   Args:
-    iterator: A `tf.compat.v1.data.Iterator` object.
+    iterator: An iterator for an instance of `tf.data.Dataset`.
 
   Returns:
     An `Optional` object representing the next value from the iterator (if it

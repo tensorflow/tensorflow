@@ -608,7 +608,7 @@ int NPyBfloat16_ArgMinFunc(void* data, npy_intp n, npy_intp* min_ind,
 
 // NumPy casts
 
-template <typename T>
+template <typename T, typename Enable = void>
 struct TypeDescriptor {
   // typedef ... T;  // Representation type in memory for NumPy values of type
   // static int Dtype() { return NPY_...; }  // Numpy type number for T.
@@ -638,9 +638,12 @@ struct TypeDescriptor<uint32> {
   static int Dtype() { return NPY_UINT32; }
 };
 
-template <>
-struct TypeDescriptor<uint64> {
-  typedef uint64 T;
+template <typename Uint64Type>
+struct TypeDescriptor<
+    Uint64Type, typename std::enable_if<std::is_integral<Uint64Type>::value &&
+                                        !std::is_signed<Uint64Type>::value &&
+                                        sizeof(Uint64Type) == 8>::type> {
+  typedef Uint64Type T;
   static int Dtype() { return NPY_UINT64; }
 };
 
@@ -662,9 +665,12 @@ struct TypeDescriptor<int32> {
   static int Dtype() { return NPY_INT32; }
 };
 
-template <>
-struct TypeDescriptor<int64> {
-  typedef int64 T;
+template <typename Int64Type>
+struct TypeDescriptor<
+    Int64Type, typename std::enable_if<std::is_integral<Int64Type>::value &&
+                                       std::is_signed<Int64Type>::value &&
+                                       sizeof(Int64Type) == 8>::type> {
+  typedef Int64Type T;
   static int Dtype() { return NPY_INT64; }
 };
 

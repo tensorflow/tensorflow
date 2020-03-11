@@ -117,7 +117,7 @@ std::string GenerateDepthWiseConvolution3DCode(
   if (!IsSpecializedCase(channel_multiplier)) {
     c += "    int channel_multiplier,            \n";
   }
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "    int batch_size,          \n";
   }
   c += "    int4 src_size,                   \n";
@@ -258,7 +258,8 @@ DepthWiseConvolution3D& DepthWiseConvolution3D::operator=(
 
 Status DepthWiseConvolution3D::Compile(
     const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateDepthWiseConvolution3DCode(
       definition_, stride_correction, biases_, channel_multiplier_,
       weights_are_buffer_, linked_operations_, *creation_context.device);
@@ -289,7 +290,7 @@ Status DepthWiseConvolution3D::BindArguments() {
   if (!IsSpecializedCase(channel_multiplier_)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(int32_t(channel_multiplier_)));
   }
-  if (definition_.batch_support) {
+  if (definition_.IsBatchSupported()) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Batch()));
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));

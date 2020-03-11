@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -23,7 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_slicers.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
 
@@ -150,7 +154,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<uint8_t>(im2col), nullptr);
 }
 
-void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
                              const TfLiteTensor* input,
                              const TfLiteTensor* filter,
@@ -167,8 +171,10 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     mli_conv2d_cfg cfg = {};
 
     // reuse space allocated for OpData parameters
-    mli_weights.el_params.asym.scale.pi16 = (int16_t*)data->per_channel_output_multiplier;
-    mli_bias.el_params.asym.scale.pi16 = (int16_t*)data->per_channel_output_shift;
+    mli_weights.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_multiplier;
+    mli_bias.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_shift;
 
     int16_t filter_zero_point = 0;
     int16_t bias_zero_point = 0;
@@ -204,21 +210,51 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       cfg.padding_bottom = data->padding.height + data->padding.height_offset;
     }
 
-    mli_point_to_subtsr_cfg substr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
-    mli_point_to_subtsr_cfg substr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
-    mli_tensor sub_mli_in = {0};
-    mli_tensor sub_mli_out = {0};
+    const int heightDimension = 1;
+    int inSliceHeight = 0;
+    int outSliceHeight = 0;
+    const int kernelHeight = static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
+    const int overlap = kernelHeight - cfg.stride_height;
 
-    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    // Tensors for data in fast (local) memory and config to copy data from external to local memory
+    mli_tensor weights_local = mli_weights;
+    mli_tensor bias_local = mli_bias;
+    mli_tensor in_local = mli_in;
+    mli_tensor out_local = mli_out;
+    mli_mov_cfg_t copy_config;
+    mli_mov_cfg_for_copy(&copy_config);
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, &inSliceHeight, &outSliceHeight));
 
-    for (int i = 0; i < batches; i++) {
-      substr_cfg_in.start_coord[0] = i;
-      substr_cfg_out.start_coord[0] = i;
-      mli_hlp_point_to_subtensor(&mli_in, &substr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &substr_cfg_out, &sub_mli_out);
+    const bool in_is_local = in_local.data == mli_in.data;
+    const bool out_is_local = out_local.data == mli_out.data;
 
-      mli_krn_conv2d_hwc_sa8_sa8_sa32(&sub_mli_in, &mli_weights, &mli_bias, &cfg, &sub_mli_out);
+    /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
+    because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
+    on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
+    The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
+    in chunks of 'sliceHeight' */
+    TensorSlicer in_slice(&mli_in, heightDimension, inSliceHeight, cfg.padding_top, cfg.padding_bottom, overlap); 
+    TensorSlicer out_slice(&mli_out, heightDimension, outSliceHeight);
+
+    mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+    mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+
+    mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
+    mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
+
+    while (!out_slice.Done()) {
+      cfg.padding_top = in_slice.GetPaddingPre();
+      cfg.padding_bottom = in_slice.GetPaddingPost();
+
+      mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+      mli_krn_conv2d_hwc_sa8_sa8_sa32(in_ptr, &weights_local, &bias_local, &cfg, out_ptr);
+      mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+      in_slice.Next();
+      out_slice.Next();
     }
+    free_arc_scratch_buffers();
   } else {
     ConvParams op_params;
     op_params.input_offset = -input->params.zero_point;
@@ -238,6 +274,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<int32>(bias), GetTensorShape(output),
         GetTensorData<int8>(output));
   }
+  return kTfLiteOk;
 }
 
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
@@ -314,7 +351,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                 nullptr, output);
       break;
     case kTfLiteInt8:
-      EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
+      return EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
                               output, nullptr);
       break;
     case kTfLiteUInt8:
@@ -322,8 +359,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                     nullptr, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

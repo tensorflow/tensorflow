@@ -15,6 +15,7 @@ limitations under the License.
 #include <random>
 
 #include "absl/time/clock.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -23,15 +24,19 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/snappy.h"
 #if !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/lib/io/snappy/snappy_inputbuffer.h"
 #include "tensorflow/core/lib/io/snappy/snappy_outputbuffer.h"
@@ -46,9 +51,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringprintf.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 #include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -60,16 +67,7 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
-const int64 kSnappyWriterInputBufferSizeBytes = 16 << 20;   // 16 MiB
-const int64 kSnappyWriterOutputBufferSizeBytes = 16 << 20;  // 16 MiB
-
-// The reader input buffer size is deliberately large because the input reader
-// will throw an error if the compressed block length cannot fit in the input
-// buffer.
-const int64 kSnappyReaderInputBufferSizeBytes = 1 << 30;    // 1 GiB
-const int64 kSnappyReaderOutputBufferSizeBytes = 16 << 20;  // 16 MiB
-
-const size_t kHeaderSize = sizeof(uint64);
+const int64 kCurrentVersion = 1;
 
 constexpr char kModeAuto[] = "auto";
 constexpr char kModeWrite[] = "write";
@@ -91,6 +89,7 @@ constexpr char kState[] = "state";
 constexpr char kHashDir[] = "hash_dir";
 constexpr char kRunId[] = "run_id";
 constexpr char kRunDir[] = "run_dir";
+constexpr char kVersionStr[] = "version";
 constexpr char kFilenames[] = "filenames";
 constexpr char kCurrentFilenames[] = "current_filenames";
 constexpr char kElementsProduced[] = "elements_produced";
@@ -105,195 +104,21 @@ constexpr char kBuffer[] = "buffer";
 constexpr char kNumElementsWritten[] = "num_elements_written";
 constexpr char kNextElem[] = "next_elem";
 
-class SnapshotWriter {
- public:
-  static constexpr const char* const kClassName = "SnapshotWriter";
-  static constexpr const char* const kWriteStringPiece = "WriteStringPiece";
-  static constexpr const char* const kWriteCord = "WriteCord";
-
-  explicit SnapshotWriter(WritableFile* dest, const string& compression_type =
-                                                  io::compression::kNone)
-      : dest_(dest), compression_type_(compression_type) {
-#if defined(IS_SLIM_BUILD)
-    if (compression_type != io::compression::kNone) {
-      LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
-                 << "off compression.";
-    }
-#else   // IS_SLIM_BUILD
-    if (compression_type == io::compression::kGzip) {
-      io::ZlibCompressionOptions zlib_options;
-      zlib_options = io::ZlibCompressionOptions::GZIP();
-
-      io::ZlibOutputBuffer* zlib_output_buffer = new io::ZlibOutputBuffer(
-          dest, zlib_options.input_buffer_size, zlib_options.output_buffer_size,
-          zlib_options);
-      TF_CHECK_OK(zlib_output_buffer->Init());
-      dest_ = zlib_output_buffer;
-      dest_is_owned_ = true;
-    } else if (compression_type == io::compression::kSnappy) {
-      io::SnappyOutputBuffer* snappy_output_buffer = new io::SnappyOutputBuffer(
-          dest, /*input_buffer_bytes=*/kSnappyWriterInputBufferSizeBytes,
-          /*output_buffer_bytes=*/kSnappyWriterOutputBufferSizeBytes);
-      dest_ = snappy_output_buffer;
-      dest_is_owned_ = true;
-    }
-#endif  // IS_SLIM_BUILD
-  }
-
-  Status WriteRecord(const StringPiece& data) {
-    profiler::TraceMe activity(
-        absl::StrCat(kClassName, kSeparator, kWriteStringPiece),
-        profiler::TraceMeLevel::kInfo);
-    char header[kHeaderSize];
-    core::EncodeFixed64(header, data.size());
-    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
-    return dest_->Append(data);
-  }
-
-#if defined(PLATFORM_GOOGLE)
-  Status WriteRecord(const absl::Cord& data) {
-    profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kWriteCord),
-                               profiler::TraceMeLevel::kInfo);
-    char header[kHeaderSize];
-    core::EncodeFixed64(header, data.size());
-
-    TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
-
-    return dest_->Append(data);
-  }
-#endif  // PLATFORM_GOOGLE
-
-  Status Close() {
-    if (dest_is_owned_) {
-      Status s = dest_->Close();
-      delete dest_;
-      dest_ = nullptr;
-      return s;
-    }
-    return Status::OK();
-  }
-
-  ~SnapshotWriter() {
-    if (dest_ != nullptr) {
-      Status s = Close();
-      if (!s.ok()) {
-        LOG(ERROR) << "Could not finish writing file: " << s;
-      }
-    }
-  }
-
- private:
-  WritableFile* dest_;
-  bool dest_is_owned_ = false;
-  const string compression_type_;
-};
-
-class SnapshotReader {
- public:
-  static constexpr const char* const kClassName = "SnapshotReader";
-  static constexpr const char* const kReadString = "ReadString";
-  static constexpr const char* const kReadCord = "ReadCord";
-
-  explicit SnapshotReader(
-      RandomAccessFile* file,
-      const string& compression_type = io::compression::kNone)
-      : file_(file),
-        input_stream_(new io::RandomAccessInputStream(file)),
-        compression_type_(compression_type) {
-#if defined(IS_SLIM_BUILD)
-    if (compression_type_ != io::compression::kNone) {
-      LOG(ERROR) << "Compression is unsupported on mobile platforms. Turning "
-                 << "off compression.";
-    }
-#else   // IS_SLIM_BUILD
-    if (compression_type_ == io::compression::kGzip) {
-      io::ZlibCompressionOptions zlib_options;
-      zlib_options = io::ZlibCompressionOptions::GZIP();
-
-      input_stream_.reset(new io::ZlibInputStream(
-          input_stream_.release(), zlib_options.input_buffer_size,
-          zlib_options.output_buffer_size, zlib_options, true));
-    } else if (compression_type_ == io::compression::kSnappy) {
-      input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
-          file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
-          /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
-    }
-#endif  // IS_SLIM_BUILD
-  }
-
-  Status ReadRecord(tstring* record) {
-    profiler::TraceMe activity(
-        absl::StrCat(kClassName, kSeparator, kReadString),
-        profiler::TraceMeLevel::kInfo);
-    tstring header;
-    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
-    uint64 length = core::DecodeFixed64(header.data());
-    return input_stream_->ReadNBytes(length, record);
-  }
-
-#if defined(PLATFORM_GOOGLE)
-  Status ReadRecord(absl::Cord* record) {
-    profiler::TraceMe activity(absl::StrCat(kClassName, kSeparator, kReadCord),
-                               profiler::TraceMeLevel::kInfo);
-    tstring header;
-    TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
-    uint64 length = core::DecodeFixed64(header.data());
-
-    if (compression_type_ == io::compression::kNone) {
-      return input_stream_->ReadNBytes(length, record);
-    } else {
-      tstring tmp_str;
-      Status s = input_stream_->ReadNBytes(length, &tmp_str);
-      record->Append(tmp_str);
-      return s;
-    }
-  }
-#endif
-
- private:
-  RandomAccessFile* file_;
-  std::unique_ptr<io::InputStreamInterface> input_stream_;
-  const string compression_type_;
-};
-
 Status WriteMetadataFile(const string& hash_dir,
                          const experimental::SnapshotMetadataRecord& metadata) {
   string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
-
   std::string tmp_filename =
       absl::StrCat(metadata_filename, "-tmp-", random::New64());
-
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(tmp_filename, &file));
-
-  auto writer = absl::make_unique<SnapshotWriter>(file.get());
-  TF_RETURN_IF_ERROR(writer->WriteRecord(metadata.SerializeAsString()));
-  TF_RETURN_IF_ERROR(writer->Close());
-  TF_RETURN_IF_ERROR(file->Sync());
-  TF_RETURN_IF_ERROR(file->Close());
-
-  TF_RETURN_IF_ERROR(
-      Env::Default()->RenameFile(tmp_filename, metadata_filename));
-
-  return Status::OK();
+  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, metadata));
+  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
 }
 
 Status ReadMetadataFile(const string& hash_dir,
                         experimental::SnapshotMetadataRecord* metadata) {
   string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
-
-  std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(
-      Env::Default()->NewRandomAccessFile(metadata_filename, &file));
-
-  tstring record_bytes;
-  auto reader = absl::make_unique<SnapshotReader>(file.get());
-  TF_RETURN_IF_ERROR(reader->ReadRecord(&record_bytes));
-
-  metadata->ParseFromString(record_bytes);
-  return Status::OK();
+  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
 }
 
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
@@ -314,6 +139,10 @@ Status DetermineOpState(const std::string& mode_string,
                         const uint64 pending_snapshot_expiry_seconds,
                         SnapshotMode* mode) {
   if (mode_string == kModeRead) {
+    // In read mode, we should expect a metadata file is written.
+    if (errors::IsNotFound(file_status)) {
+      return file_status;
+    }
     LOG(INFO) << "Overriding mode to reader.";
     *mode = READER;
     return Status::OK();
@@ -449,7 +278,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         ctx, AsGraphDef(ctx, input, SerializationContext(params), &graph_def));
 
     uint64 hash;
-    OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+    OP_REQUIRES_OK(ctx, ComputeDatasetHash(graph_def, path, &hash));
 
     Status dump_status = DumpDatasetGraph(path, hash, graph_def);
     if (!dump_status.ok()) {
@@ -641,6 +470,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(DetermineOpState(
               dataset()->mode_, s, metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
+          VLOG(2) << "Snapshot state: " << state_;
           TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
         }
         return iterator_->GetNext(ctx, out_tensors, end_of_sequence);
@@ -653,6 +483,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kState), static_cast<int64>(state_)));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kHashDir), hash_dir_));
+        VLOG(2) << "Saving Snapshot iterator: " << state_;
         return Status::OK();
       }
 
@@ -675,6 +506,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         experimental::SnapshotMetadataRecord metadata;
         TF_RETURN_IF_ERROR(ReadMetadataFile(hash_dir_, &metadata));
         TF_RETURN_IF_ERROR(InitializeIterator(ctx, metadata));
+        VLOG(2) << "Restoring Snapshot iterator: " << state_;
         return RestoreInput(ctx, reader, iterator_);
       }
 
@@ -706,10 +538,25 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             if (run_id.empty()) {
               run_id = metadata.run_id();
             }
+            // dtypes in metadata should be the same as dataset()->output_dtypes
+            if (metadata.dtype_size() != dataset()->output_dtypes().size()) {
+              return errors::Internal(
+                  "Expected number of dtypes: ",
+                  dataset()->output_dtypes().size(),
+                  " but number in snapshot: ", metadata.dtype_size());
+            }
+            for (int i = 0; i < metadata.dtype_size(); ++i) {
+              if (metadata.dtype(i) != dataset()->output_dtypes()[i]) {
+                return errors::Internal(
+                    "Type: ", i,
+                    " doesn't match. Snapshot: ", metadata.dtype(i),
+                    "; dataset: ", dataset()->output_dtypes()[i]);
+              }
+            }
             iterator_ = absl::make_unique<SnapshotReaderIterator>(
                 SnapshotReaderIterator::Params{
                     dataset(), absl::StrCat(prefix(), "ReaderImpl")},
-                hash_dir_, run_id);
+                hash_dir_, run_id, metadata.version());
             break;
           case PASSTHROUGH:
             iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
@@ -727,10 +574,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         explicit SnapshotReaderIterator(const Params& params,
                                         const string& hash_dir,
-                                        const string& run_id)
+                                        const string& run_id, int64 version)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              run_id_(run_id) {}
+              run_id_(run_id),
+              version_(version) {}
 
         ~SnapshotReaderIterator() override {
           mutex_lock l(mu_);
@@ -806,6 +654,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 absl::StrCat(dataset()->node_name(), kSeparator,
                              kSnapshotReadElements),
                 static_cast<float>(num_elements_read_), elements_produced_);
+            stats_aggregator->AddScalar(
+                absl::StrCat(dataset()->node_name(), kSeparator,
+                             "snapshot_reader_buffer_size"),
+                static_cast<float>(buffer_.size()), elements_produced_);
           }
 
           if (!buffer_.empty()) {
@@ -816,7 +668,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
               {
                 profiler::TraceMe activity(
-                    absl::StrCat(prefix(), kSeparator, kBookkeeping),
+                    [&]() {
+                      return absl::StrCat(prefix(), kSeparator, kBookkeeping);
+                    },
                     profiler::TraceMeLevel::kInfo);
                 // Printing some statistics along the way.
                 int64 num_bytes = 0;
@@ -862,6 +716,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name(kHashDir), hash_dir_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunId), run_id_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kRunDir), run_dir_));
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name(kVersionStr), version_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kFilenames, kSizeSuffix)),
               filenames_.size()));
@@ -883,6 +739,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               writer->WriteScalar(full_name(kNumFilesDone), num_files_done_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumElementsRead),
                                                  num_elements_read_));
+          VLOG(2) << "Saving SnapshotReaderIterator: " << num_elements_read_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -903,6 +761,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunId), &run_id_));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kRunDir), &run_dir_));
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(full_name(kVersionStr), &version_));
           curr_filenames_.clear();
           curr_filenames_.reserve(dataset()->num_reader_threads_);
           for (auto i = 0; i < dataset()->num_reader_threads_; ++i) {
@@ -946,6 +806,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               reader->ReadScalar(full_name(kNumFilesDone), &num_files_done_));
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumElementsRead),
                                                 &num_elements_read_));
+          VLOG(2) << "Restoring SnapshotReaderIterator: " << num_elements_read_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -953,9 +815,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         // Reads one file end to end.
         Status ReadFile(const string& filename) {
           std::unique_ptr<RandomAccessFile> file;
-          TF_CHECK_OK(Env::Default()->NewRandomAccessFile(filename, &file));
-          std::unique_ptr<SnapshotReader> reader(
-              new SnapshotReader(file.get(), dataset()->compression_));
+          TF_RETURN_IF_ERROR(
+              Env::Default()->NewRandomAccessFile(filename, &file));
+          SnapshotReader reader(file.get(), dataset()->compression_, version_,
+                                dataset()->output_dtypes());
 
           while (true) {
             // Wait for a slot in the buffer.
@@ -972,33 +835,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                     "ReadFile");
               }
             }
-#if !defined(PLATFORM_GOOGLE)
-            tstring record_bytes;
-            Status s = reader->ReadRecord(&record_bytes);
-#else
-            absl::Cord record_cord;
-            Status s = reader->ReadRecord(&record_cord);
-#endif
+            std::vector<Tensor> read_tensors;
+            Status s = reader.ReadTensors(&read_tensors);
             if (s.ok()) {
               profiler::TraceMe activity(
-                  absl::StrCat(prefix(), kSeparator, kParse),
+                  [&]() { return absl::StrCat(prefix(), kSeparator, kParse); },
                   profiler::TraceMeLevel::kInfo);
-              experimental::SnapshotRecord record;
-#if !defined(PLATFORM_GOOGLE)
-              record.ParseFromString(record_bytes);
-#else
-              record.ParseFromCord(record_cord);
-#endif
-              std::vector<Tensor> out_tensors;
-              for (int i = 0; i < record.tensor_size(); ++i) {
-                Tensor t;
-                if (!t.FromProto(record.tensor(i))) {
-                  return errors::DataLoss("Unable to parse tensor from proto.");
-                }
-                out_tensors.push_back(t);
-              }
               BufferElement elem;
-              std::swap(elem.value, out_tensors);
+              elem.value = std::move(read_tensors);
               elem.status = Status::OK();
               mutex_lock l(mu_);
               buffer_.push_back(std::move(elem));
@@ -1114,9 +958,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         condition_variable cond_var_;
 
         const string hash_dir_;
-        const experimental::SnapshotMetadataRecord metadata_;
         tstring run_id_ GUARDED_BY(mu_);
         tstring run_dir_ GUARDED_BY(mu_);
+        int64 version_;
         std::vector<tstring> filenames_;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
@@ -1146,7 +990,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                         const string& run_id)
             : DatasetIterator<Dataset>(params),
               hash_dir_(hash_dir),
-              run_id_(run_id) {}
+              run_id_(run_id) {
+          if (run_id_.empty()) {
+            run_id_ = strings::StrCat(
+                strings::Hex(random::New64(), strings::kZeroPad4));
+          }
+          run_dir_ =
+              io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
+        }
 
         ~SnapshotWriterIterator() override {
           mutex_lock l(mu_);
@@ -1158,16 +1009,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
         Status Initialize(IteratorContext* ctx) override {
-          mutex_lock l(mu_);
           thread_pool_ = ctx->CreateThreadPool(kSnapshotWriterWorkerPool,
                                                dataset()->num_writer_threads_);
-          if (run_id_.empty()) {
-            run_id_ = strings::StrCat(
-                strings::Hex(random::New64(), strings::kZeroPad4));
-          }
-          run_dir_ =
-              io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                                 &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
@@ -1191,6 +1036,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 metadata.set_creation_timestamp(EnvTime::NowMicros());
                 metadata.set_graph_hash(dataset()->graph_hash_);
                 metadata.set_run_id(run_id_.data(), run_id_.size());
+                metadata.set_version(kCurrentVersion);
+                for (const auto& output_dtype : dataset()->output_dtypes()) {
+                  metadata.add_dtype(output_dtype);
+                }
                 metadata.set_finalized(false);
                 TF_RETURN_IF_ERROR(WriteMetadataFile(hash_dir_, metadata));
               }
@@ -1225,7 +1074,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
           {
             profiler::TraceMe activity(
-                absl::StrCat(prefix(), kSeparator, kBookkeeping),
+                [&]() {
+                  return absl::StrCat(prefix(), kSeparator, kBookkeeping);
+                },
                 profiler::TraceMeLevel::kInfo);
 
             // Book keeping to report some statistics.
@@ -1242,6 +1093,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                kSnapshotWrittenElements),
                   static_cast<float>(num_elements_written_),
                   elements_produced_);
+              stats_aggregator->AddScalar(
+                  absl::StrCat(dataset()->node_name(), kSeparator,
+                               "snapshot_writer_buffer_size"),
+                  static_cast<float>(buffer_.size()), elements_produced_);
             }
 
             absl::Time end = absl::Now();
@@ -1300,8 +1155,6 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                   buffer_element.value[j]));
             }
           }
-          TF_RETURN_IF_ERROR(
-              writer->WriteScalar(full_name(kNextFileIndex), next_file_index_));
           TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumElementsWritten),
                                                  num_elements_written_));
           if (next_elem_.end_of_sequence) {
@@ -1317,6 +1170,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 next_elem_.value[i]));
           }
+          VLOG(2) << "Saving SnapshotWriterIterator: " << num_elements_written_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -1380,12 +1235,25 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                   &buffer_element.value.back()));
             }
           }
-          {
-            int64 temp;
-            TF_RETURN_IF_ERROR(
-                reader->ReadScalar(full_name(kNextFileIndex), &temp));
-            next_file_index_ = static_cast<uint64>(temp);
+          // Since the last save we might have written out some files. So we
+          // get a list of files in the directory and take the final filename
+          // written. We use the name of the snapshot file to figure out
+          // next_file_index_;
+          std::vector<std::string> filenames;
+          TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
+              absl::StrCat(absl::string_view(run_dir_), "/*"), &filenames));
+          std::sort(filenames.begin(), filenames.end());
+          std::string final_filename = filenames.back();
+          std::vector<std::string> split_filename =
+              absl::StrSplit(final_filename, '/');
+          std::vector<std::string> split_snapshot_filename =
+              absl::StrSplit(split_filename.back(), '.');
+          std::string max_num_str = split_snapshot_filename[0];
+          uint64 max_num;
+          if (!strings::safe_strtou64(max_num_str, &max_num)) {
+            return errors::Internal("Could not parse: ", max_num, " as uint64");
           }
+          next_file_index_ = max_num + 1;
           TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kNumElementsWritten),
                                                 &num_elements_written_));
           size_t next_elem_size;
@@ -1408,6 +1276,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 full_name(strings::StrCat(kNextElem, "[", i, "]")),
                 &next_elem_.value.back()));
           }
+          VLOG(2) << "Restoring SnapshotWriterIterator: "
+                  << num_elements_written_
+                  << "; elements_produced: " << elements_produced_;
           return Status::OK();
         }
 
@@ -1420,9 +1291,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
           string snapshot_data_filename = io::JoinPath(
-              run_dir_,
-              absl::StrCat(strings::Printf("%08llu", next_file_index_),
-                           ".snapshot"));
+              run_dir_, strings::Printf("%08llu.snapshot", next_file_index_));
           next_file_index_++;
           return snapshot_data_filename;
         }
@@ -1474,7 +1343,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                  std::unique_ptr<SnapshotWriter>* writer,
                                  bool* end_of_processing) {
           profiler::TraceMe activity(
-              absl::StrCat(prefix(), kSeparator, kProcessOneElement),
+              [&]() {
+                return absl::StrCat(prefix(), kSeparator, kProcessOneElement);
+              },
               profiler::TraceMeLevel::kInfo);
           bool cancelled = false;
           *end_of_processing = false;
@@ -1513,14 +1384,15 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
 
           if (produced_elem) {
-            experimental::SnapshotRecord record;
-            for (auto out_tensor : elem.value) {
+            for (const auto& out_tensor : elem.value) {
               *bytes_written += out_tensor.TotalBytes();
-              TensorProto* t = record.add_tensor();
-              out_tensor.AsProtoTensorContent(t);
             }
 
-            if (*bytes_written > dataset()->shard_size_bytes_) {
+            bool should_close;
+            TF_RETURN_IF_ERROR(ShouldCloseFile(*snapshot_data_filename,
+                                               *bytes_written, (*writer).get(),
+                                               (*file).get(), &should_close));
+            if (should_close) {
               // If we exceed the shard size, we get a new file and reset.
               TF_RETURN_IF_ERROR((*writer)->Close());
               TF_RETURN_IF_ERROR((*file)->Sync());
@@ -1529,16 +1401,11 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               TF_RETURN_IF_ERROR(Env::Default()->NewAppendableFile(
                   *snapshot_data_filename, file));
               *writer = absl::make_unique<SnapshotWriter>(
-                  file->get(), dataset()->compression_);
+                  file->get(), dataset()->compression_, kCurrentVersion,
+                  dataset()->output_dtypes());
               *bytes_written = 0;
             }
-#if defined(PLATFORM_GOOGLE)
-            TF_RETURN_IF_ERROR(
-                (*writer)->WriteRecord(record.SerializeAsCord()));
-#else   // PLATFORM_GOOGLE
-            TF_RETURN_IF_ERROR(
-                (*writer)->WriteRecord(record.SerializeAsString()));
-#endif  // PLATFORM_GOOGLE
+            TF_RETURN_IF_ERROR((*writer)->WriteTensors(elem.value));
             return Status::OK();
           }
 
@@ -1586,7 +1453,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             return;
           }
           std::unique_ptr<SnapshotWriter> writer(
-              new SnapshotWriter(file.get(), dataset()->compression_));
+              new SnapshotWriter(file.get(), dataset()->compression_,
+                                 kCurrentVersion, dataset()->output_dtypes()));
 
           bool end_of_processing = false;
           while (!end_of_processing) {
@@ -1606,6 +1474,41 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
+        Status ShouldCloseFile(const string& filename, uint64 bytes_written,
+                               SnapshotWriter* writer, WritableFile* file,
+                               bool* should_close) {
+          // If the compression ratio has been estimated, use it to decide
+          // whether the file should be closed. We avoid estimating the
+          // compression ratio repeatedly because it requires syncing the file,
+          // which can be expensive.
+          {
+            tf_shared_lock l(mu_);
+            if (compression_ratio_ > 0.0) {
+              *should_close = bytes_written > (compression_ratio_ *
+                                               dataset()->shard_size_bytes_);
+              return Status::OK();
+            }
+          }
+          // If the number of bytes written aren't shard_size_bytes_ yet, we
+          // keep on going.
+          if (bytes_written <= dataset()->shard_size_bytes_) {
+            *should_close = false;
+            return Status::OK();
+          }
+          // Use the actual file size to determine compression ratio.
+          // Make sure that all bytes are written out.
+          TF_RETURN_IF_ERROR(writer->Sync());
+          TF_RETURN_IF_ERROR(file->Sync());
+          uint64 file_size;
+          TF_RETURN_IF_ERROR(Env::Default()->GetFileSize(filename, &file_size));
+          mutex_lock l(mu_);
+          compression_ratio_ = static_cast<double>(bytes_written) /
+                               static_cast<double>(file_size);
+          LOG(INFO) << "Writing compression achieved: " << compression_ratio_;
+          *should_close = file_size >= dataset()->shard_size_bytes_;
+          return Status::OK();
+        }
+
         mutex mu_;
         // This condition variable is notified
         // 1. By the background writer threads when an element from the buffer
@@ -1623,6 +1526,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         const string hash_dir_;
         tstring run_id_ GUARDED_BY(mu_);
         tstring run_dir_ GUARDED_BY(mu_);
+        double compression_ratio_ GUARDED_BY(mu_) = 0.0;
         bool is_restored_ GUARDED_BY(mu_) = false;
 
         uint64 elements_produced_ GUARDED_BY(mu_) = 0;
@@ -1647,7 +1551,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             : DatasetIterator<Dataset>(params) {}
 
         Status Initialize(IteratorContext* ctx) override {
-          return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+          return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                                 &input_impl_);
         }
 
         Status GetNextInternal(IteratorContext* ctx,
@@ -1699,6 +1604,19 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     const std::string mode_;
     const std::string snapshot_name_;
   };
+
+  Status ComputeDatasetHash(const GraphDef& graph_def, const std::string& path,
+                            uint64* hash) {
+    TF_RETURN_IF_ERROR(HashGraph(graph_def, hash));
+    // Adding path, compression, reader / writer path prefix, shard size
+    // bytes to the fp as they effect the data written on disk.
+    *hash = Hash64Combine(*hash, Hash64(path));
+    *hash = Hash64Combine(*hash, Hash64(compression_));
+    *hash = Hash64Combine(*hash, Hash64(reader_path_prefix_));
+    *hash = Hash64Combine(*hash, Hash64(writer_path_prefix_));
+    *hash = Hash64Combine(*hash, shard_size_bytes_);
+    return Status::OK();
+  }
 
   const int graph_def_version_;
   DataTypeVector output_types_;

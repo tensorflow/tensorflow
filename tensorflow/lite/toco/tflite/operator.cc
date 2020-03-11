@@ -1046,12 +1046,24 @@ class ResizeBilinear
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners);
+    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners,
+                                                 op.half_pixel_centers);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->align_corners = options.align_corners();
+    op->half_pixel_centers = options.half_pixel_centers();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& resize_bilinear_op =
+        static_cast<const ResizeBilinearOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.resize_bilinear.half_pixel_centers =
+        resize_bilinear_op.half_pixel_centers;
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 
@@ -1152,6 +1164,15 @@ class StridedSlice
     op->ellipsis_mask = options.ellipsis_mask();
     op->new_axis_mask = options.new_axis_mask();
     op->shrink_axis_mask = options.shrink_axis_mask();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const auto& ss_op =
+        static_cast<const StridedSliceOperator&>(*op_signature.op);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.strided_slice.num_dims = ss_op.start_indices.size();
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
   }
 };
 

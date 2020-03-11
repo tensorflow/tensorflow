@@ -16,11 +16,11 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/kernel.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 
 #if RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 #include <immintrin.h>  // IWYU pragma: keep
@@ -53,7 +53,7 @@ void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& params) {
 #else  // RUY_PLATFORM(AVX512) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit");
+  profiler::ScopeLabel label("Kernel kAvx512 8-bit");
 
   std::int32_t dst_stride;
   if ((params.dst_type_id == DstTypeId<std::int8_t>::kValue) ||
@@ -1050,7 +1050,7 @@ void Kernel8bitAvx512(const KernelParams8bit<16, 16>& params) {
 }  // NOLINT(readability/fn_size)
 
 void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 8-bit GEMV");
+  profiler::ScopeLabel label("Kernel kAvx512 8-bit GEMV");
 
   RUY_DCHECK_EQ(params.dst_cols, 1);
   RUY_DCHECK_EQ(params.last_col, 0);
@@ -1276,7 +1276,7 @@ void Kernel8bitAvx512SingleCol(const KernelParams8bit<16, 16>& params) {
 }  // NOLINT(readability/fn_size)
 
 void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float");
+  profiler::ScopeLabel label("Kernel kAvx512 float");
 
   // As parameters are defined, we need to scale by sizeof(float).
   const std::int64_t lhs_stride = params.lhs_stride >> 2;
@@ -1732,7 +1732,7 @@ void KernelFloatAvx512(const KernelParamsFloat<16, 16>& params) {
 }
 
 void KernelFloatAvx512SingleCol(const KernelParamsFloat<16, 16>& params) {
-  gemmlowp::ScopedProfilingLabel label("Kernel kAvx512 float GEMV");
+  profiler::ScopeLabel label("Kernel kAvx512 float GEMV");
 
   RUY_DCHECK_EQ(params.dst_cols, 1);
   RUY_DCHECK_EQ(params.last_col, 0);

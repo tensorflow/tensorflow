@@ -736,11 +736,11 @@ class RaggedToDenseBenchmark(googletest.Benchmark):
                     default_shape=(),
                     output_shape=None,
                     min_iters=1000):
-    """Run a benchmark with the specified configuraiton parameters.
+    """Run a benchmark with the specified configuration parameters.
 
     Args:
       shape: Bounding box for the input ragged tensor.
-      ragged_rank: Ragged rank for the input ragged tensor.  Defauts to
+      ragged_rank: Ragged rank for the input ragged tensor.  Defaults to
         `len(shape)-1`.
       dtype: Data type for the input ragged tensor.
       fill: How full each dimension should be (0-1).  Corresponds 1:1 with

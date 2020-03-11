@@ -54,4 +54,9 @@ using hexagon_nn_global_init_fn = decltype(hexagon_nn_global_init);
 using hexagon_nn_is_device_supported_fn =
     decltype(hexagon_nn_is_device_supported);
 
+using hexagon_nn_version_fn = decltype(hexagon_nn_version);
+
+using hexagon_nn_hexagon_interface_version_fn =
+    decltype(hexagon_nn_hexagon_interface_version);
+
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_HEXAGON_NN_INTERFACE_H_

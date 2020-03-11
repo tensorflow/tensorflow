@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/hexagon_nn.h"
-#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
@@ -59,7 +58,7 @@ TfLiteStatus ReshapeOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   AddInput(graph_builder_->GetHexagonTensorId(inputs->data[0]));
 
   // Output shape.
-  TfLiteTensor* shape_tensor;
+  TfLiteTensor* shape_tensor = nullptr;
   bool output_shape_is_dynamic = false;
   if (inputs->size == 2) {
     shape_tensor = &context->tensors[inputs->data[1]];

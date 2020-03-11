@@ -665,7 +665,7 @@ class FunctionLibraryRuntime {
   // "handle".
   //
   // If function execution succeeds, "done" is called with OK and
-  // "*rets" is filled with the function's return values. Otheriwse,
+  // "*rets" is filled with the function's return values. Otherwise,
   // "done" is called with an error status.
   //
   // Does not take ownership of "rets".
@@ -712,6 +712,10 @@ class FunctionLibraryRuntime {
     // If True, allow returning dead tensors.
     bool allow_dead_tensors = false;
 
+    // If True, hint that all kernels should be treated as "inexpensive", and
+    // hence executed on the scheduling thread.
+    bool run_all_kernels_inline = false;
+
     // Returns a human readable representation of this.
     string DebugString() const;
   };
@@ -722,11 +726,13 @@ class FunctionLibraryRuntime {
   virtual void Run(const Options& opts, Handle handle,
                    CallFrameInterface* call_frame, DoneCallback done) = 0;
 
-  // Creates a "kernel" for the given node def "ndef".
+  // Creates a "kernel" for the given NodeProperties "props".
   //
   // If succeeds, returns OK and the caller takes the ownership of the
   // returned "*kernel". Otherwise, returns an error.
-  virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
+  virtual Status CreateKernel(
+      const std::shared_ptr<const NodeProperties>& props,
+      OpKernel** kernel) = 0;
 
   // Returns true iff the function named `function_name` is stateful.
   //
@@ -818,12 +824,15 @@ class CustomKernelCreator {
 
   // Given a NodeDef 'node_def' and the function library runtime 'flr',
   // validate if the class supports creating such a kernel.
-  virtual bool CanCreateKernel(const FunctionLibraryRuntime& flr,
-                               const NodeDef& node_def) const = 0;
+  virtual bool CanCreateKernel(
+      const FunctionLibraryRuntime& flr,
+      const std::shared_ptr<const NodeProperties>& props) const = 0;
 
   // Given a supported NodeDef, returns a kernel that computes the node.
-  virtual Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& ndef,
-                              std::unique_ptr<OpKernel>* kernel) const = 0;
+  virtual Status CreateKernel(
+      FunctionLibraryRuntime* flr,
+      const std::shared_ptr<const NodeProperties>& props,
+      std::unique_ptr<OpKernel>* kernel) const = 0;
 };
 
 // Used to instantiate and run functions in a distributed system.
