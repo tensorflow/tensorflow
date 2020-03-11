@@ -86,6 +86,12 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
+
+    self._save_configuration({
+      "num_experiments": num_experiments,
+      "input_datasets": len(list(datasets))
+    })
+
     self._datasets = list(datasets)
     self._element_spec = self._datasets[0].element_spec
     variant_tensor = (
@@ -173,6 +179,14 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
+
+    self._save_configuration({
+      "input_function_count": len(list(functions)),
+      "ratio_numerator": ratio_numerator,
+      "ratio_denominator": ratio_denominator,
+      "num_elements_per_branch": num_elements_per_branch,
+    })
+
     input_structure = dataset_ops.DatasetSpec(input_dataset.element_spec)
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(

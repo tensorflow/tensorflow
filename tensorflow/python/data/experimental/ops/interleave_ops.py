@@ -111,6 +111,13 @@ class _DirectedInterleaveDataset(dataset_ops.DatasetV2):
     first_output_types = dataset_ops.get_legacy_output_types(data_inputs[0])
     first_output_classes = dataset_ops.get_legacy_output_classes(data_inputs[0])
 
+    self._save_configuration({
+      "inputs_count": len(list(data_inputs)),
+      "inputs_type": first_output_types,
+      "inputs_classes": first_output_classes,
+      "selector_input": str(selector_input)
+    })
+
     for data_input in data_inputs[1:]:
       if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
           or dataset_ops.get_legacy_output_classes(data_input)

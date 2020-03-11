@@ -31,6 +31,10 @@ class _TakeWhileDataset(dataset_ops.UnaryUnchangedStructureDataset):
     """See `take_while()` for details."""
 
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "predicate": str(predicate),
+    })
+
     wrapped_func = dataset_ops.StructuredFunctionWrapper(
         predicate,
         "tf.data.experimental.take_while()",

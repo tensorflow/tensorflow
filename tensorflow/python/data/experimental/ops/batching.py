@@ -290,6 +290,12 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
+
+    self._save_configuration({
+      "batch_size": batch_size,
+      "row_shape": row_shape,
+    })
+
     if not isinstance(
         dataset_ops.get_legacy_output_types(input_dataset), dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
@@ -321,6 +327,18 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
                drop_remainder, use_legacy_function=False):
     self._input_dataset = input_dataset
+
+    _num_parallel_calls = dataset_ops.parse_maybe_autotune_arg(
+        num_parallel_calls
+    )
+
+    self._save_configuration({
+      "map_func": str(map_func),
+      "batch_size": batch_size,
+      "num_parallel_calls": _num_parallel_calls,
+      "drop_remainder": drop_remainder,
+      "use_legacy_function": use_legacy_function,
+    })
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func,

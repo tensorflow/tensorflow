@@ -35,6 +35,15 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, features, num_parallel_calls,
                deterministic):
     self._input_dataset = input_dataset
+    _num_parallel_calls = dataset_ops.parse_maybe_autotune_arg(
+      num_parallel_calls
+    )
+
+    self._save_configuration({
+      "features": features,
+      "num_parallel_calls": _num_parallel_calls,
+    })
+
     if not structure.are_compatible(
         input_dataset.element_spec,
         tensor_spec.TensorSpec([None], dtypes.string)):
@@ -64,10 +73,15 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._dense_defaults = params.dense_defaults_vec
     self._dense_shapes = params.dense_shapes_as_proto
     self._dense_types = params.dense_types
+
     input_dataset_shape = dataset_ops.get_legacy_output_shapes(
         self._input_dataset)
 
     self._element_spec = {}
+
+    self._save_configuration({
+      "input_dataset_shape": input_dataset_shape,
+    })
 
     for (key, value_type) in zip(params.sparse_keys, params.sparse_types):
       self._element_spec[key] = sparse_tensor.SparseTensorSpec(

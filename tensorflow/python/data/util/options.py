@@ -34,6 +34,14 @@ class OptionsBase(object):
     # NOTE: Cannot use `self._options` here as we override `__setattr__`
     object.__setattr__(self, "_options", {})
 
+  def _serialize_configuration(self):
+    return {
+      name: getattr(self, name)
+      if not isinstance(getattr(self, name), OptionsBase) else
+      getattr(self, name)._serialize_configuration()
+      for name in set(self._options)
+    }
+
   def __eq__(self, other):
     if not isinstance(other, self.__class__):
       return NotImplemented

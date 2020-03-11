@@ -34,6 +34,11 @@ class RandomDatasetV2(dataset_ops.DatasetSource):
 
   def __init__(self, seed=None):
     """A `Dataset` of pseudorandom values."""
+
+    self._save_configuration({
+      "seed": seed,
+    })
+
     self._seed, self._seed2 = random_seed.get_seed(seed)
     variant_tensor = gen_experimental_dataset_ops.random_dataset(
         seed=self._seed, seed2=self._seed2, **self._flat_structure)
@@ -50,6 +55,11 @@ class RandomDatasetV1(dataset_ops.DatasetV1Adapter):
 
   @functools.wraps(RandomDatasetV2.__init__)
   def __init__(self, seed=None):
+
+    self._save_configuration({
+      "seed": seed,
+    })
+
     wrapped = RandomDatasetV2(seed)
     super(RandomDatasetV1, self).__init__(wrapped)
 

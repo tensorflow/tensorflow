@@ -95,6 +95,11 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       source_device: Device where input_dataset would be placed.
     """
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "target_device": target_device,
+      "source_device": source_device,
+    })
+
     self._target_device = target_device
     spec = framework_device.DeviceSpec().from_string(self._target_device)
     self._is_gpu_target = (spec.device_type == "GPU")
@@ -231,6 +236,11 @@ class _MapOnGpuDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func, use_inter_op_parallelism=True):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "map_func": str(map_func),
+      "use_inter_op_parallelism": use_inter_op_parallelism,
+    })
+
     self._use_inter_op_parallelism = use_inter_op_parallelism
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(

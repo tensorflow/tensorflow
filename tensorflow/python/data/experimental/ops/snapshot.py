@@ -50,6 +50,22 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
                mode=None,
                snapshot_name=None):
 
+    self._save_configuration({
+      "path": path,
+      "compression": compression,
+      "reader_path_prefix": reader_path_prefix,
+      "writer_path_prefix": writer_path_prefix,
+      "shard_size_bytes": shard_size_bytes,
+      "pending_snapshot_expiry_seconds": pending_snapshot_expiry_seconds,
+      "num_reader_threads": num_reader_threads,
+      "reader_buffer_size": reader_buffer_size,
+      "num_writer_threads": num_writer_threads,
+      "shuffle_on_read": shuffle_on_read,
+      "shuffle_seed": shuffle_seed,
+      "mode": mode,
+      "snapshot_name": snapshot_name,
+    })
+
     self._compression = compression if compression is not None else ""
     self._reader_path_prefix = (
         reader_path_prefix if reader_path_prefix is not None else "")

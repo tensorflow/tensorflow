@@ -65,6 +65,9 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.pywrap_tensorflow_internal import __version__ \
+  as tf_version
 from tensorflow.python.training.tracking import base as tracking_base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
@@ -193,6 +196,218 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
             lambda: weak_self._trace_variant_creation()()),  # pylint: disable=unnecessary-lambda,protected-access
         name="_variant_tracker")
     self._graph_attr = ops.get_default_graph()
+    self._save_configuration()
+
+  def _save_configuration(self, config=None):
+
+    if config is None:
+      config = dict()
+
+    import inspect
+    total_stack = inspect.stack()  # total complete stack
+    total_depth = len(total_stack)  # length of total stack
+
+    def extract_data(_id):
+      frameinfo = total_stack[frame_id][0]  # info on rel frame
+
+      func_name = frameinfo.f_code.co_name
+      filename = frameinfo.f_code.co_filename
+      line_number = frameinfo.f_lineno  # of the call
+      # func_firstlineno = frameinfo.f_code.co_firstlineno
+
+      return func_name, filename, line_number
+
+    def break_while(dataset_class, func_name, filename):
+      # Operation Automatically added in `self._apply_options()`
+      if str(dataset_class) in [
+        "_MaxIntraOpParallelismDataset",
+        "_PrivateThreadPoolDataset",
+        "_OptimizeDataset",
+        "_ModelDataset",
+        "_SetStatsAggregatorDataset"
+      ]:
+        return func_name == "_apply_options"
+
+      else:
+        return "tensorflow_core/python/" not in filename
+
+    frame_id = 0
+
+    while True:
+
+      func_name, filename, line_number = extract_data(frame_id)
+
+      if break_while(self.__class__.__name__, func_name, filename):
+        config["calling_context"] = dict()
+        config["calling_context"]["function"] = func_name
+        config["calling_context"]["filename"] = filename
+        config["calling_context"]["line_number"] = line_number
+        break
+
+      elif frame_id >= total_depth:
+        print("Impossible to trace the call ...")
+        break
+
+      frame_id += 1
+
+    if not hasattr(self, "_config"):
+      self._config = dict()
+
+    if config is not None:
+      self._config.update(config)
+
+  def serialize_configuration(self):
+    """Returns the TF Data Configuration as a Dict for performance analysis"""
+
+    conf = dict()
+    conf["TENSORFLOW_VERSION"] = tf_version
+
+    try:
+      from nvidia import dali
+      conf["NVIDIA_DALI_VERSION"] = dali.__version__
+    except ImportError:
+      pass
+
+    conf["DISTRIBUTED_MODE"] = None
+
+    try:
+      import horovod
+      conf["HOROVOD_VERSION"] = horovod.__version__
+
+      def horovod_rank_and_size():
+        """Get MPI rank and size from environment variables and return them as a
+        tuple of integers.
+        Most MPI implementations have an `mpirun` or `mpiexec` command that will
+        run an MPI executable and set up all communication necessary between the
+        different processors. As part of that set up, they will set environment
+        variables that contain the rank and size of the MPI_COMM_WORLD
+        communicator. We can read those environment variables from Python in
+        order to ensure that `hvd.rank()` and `hvd.size()` return the expected
+        values. Since MPI is just a standard, not an implementation,
+        implementations typically choose their own environment variable names.
+        This function tries to support several different implementation, but
+        really it only needs to support whatever implementation we want to use
+        for TensorFlow.
+        If this is not running under MPI, then defaults of rank zero and size
+        one are returned. (This is appropriate because when you call MPI_Init
+        in an application not started with mpirun, it will create a new
+        independent communicator with only one process in it.)
+
+        Source: https://github.com/horovod/horovod/blob/c3626/test/common.py#L25
+        """
+        rank_env = 'PMI_RANK OMPI_COMM_WORLD_RANK HOROVOD_RANK'.split()
+        size_env = 'PMI_SIZE OMPI_COMM_WORLD_SIZE HOROVOD_SIZE'.split()
+
+        for rank_var, size_var in zip(rank_env, size_env):
+          rank = os.environ.get(rank_var)
+          size = os.environ.get(size_var)
+          if rank is not None and size is not None:
+            return int(rank), int(size)
+
+        # Default to rank zero and size one otherwise
+        return 0, 1
+
+      _rank, _size = horovod_rank_and_size()
+
+      if _size > 1:
+        conf["DISTRIBUTED_GLOBAL_SIZE"] = _size
+        conf["DISTRIBUTED_MODE"] = "HOROVOD"
+
+    except ImportError:
+      pass
+
+    from tensorflow.python.distribute.distribution_strategy_context import \
+      has_strategy
+    from tensorflow.python.distribute.distribution_strategy_context import \
+      get_strategy
+
+    if has_strategy():
+      conf["DISTRIBUTED_MODE"] = "TF_DISTRIBUTED"
+      conf["DISTRIBUTED_GLOBAL_SIZE"] = \
+        get_strategy().num_replicas_in_sync
+
+    conf["TOTAL_CPU_THREADS"] = multiprocessing.cpu_count()
+
+    def unfold_conf(_conf):
+      # we make a copy to avoid modifying the original
+      _conf = copy.copy(_conf)
+
+      data = dict()
+      if "input_ds" in _conf:
+        data.update(unfold_conf(_conf["input_ds"]))
+        del _conf["input_ds"]
+
+      if data.keys():
+        key = max(int(k) for k in data.keys()) + 1
+      else:
+        key = 0
+
+      key = "%02d" % key
+
+      data[key] = _conf
+      return data
+
+    conf["TF_DATA_PIPELINE"] = self._serialize_configuration()
+    conf["TF_DATA_PIPELINE"] = unfold_conf(conf["TF_DATA_PIPELINE"])
+    conf["TF_DATA_PIPELINE"]["options"] = self.options()._serialize_configuration()
+
+    return conf
+
+  def _generate_dataset_configuration_file(self):
+    tf_data_serialize_dir = os.getenv("TF_DATASET_SERIALIZE_OUTPUT_DIR", None)
+
+    if tf_data_serialize_dir is not None:
+
+      if not os.path.exists(tf_data_serialize_dir):
+        os.makedirs(tf_data_serialize_dir)
+
+      file_id = 0
+      while True:
+        tf_data_serialize_filepath = os.path.join(
+          tf_data_serialize_dir, "tf_data_pipeline_conf%s.json" %
+                                 (("." + str(file_id)) if file_id > 0 else "")
+        )
+
+        if not os.path.exists(tf_data_serialize_filepath):
+          break
+
+        file_id += 1
+
+      with open(tf_data_serialize_filepath, 'w') as json_file:
+        json.dump(
+          self.serialize_configuration(),
+          json_file,
+          indent=4,
+          sort_keys=True
+        )
+
+  def _serialize_configuration(self):
+
+    output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
+    output_shapes = str(output_shapes).replace("'", "")
+    output_types = nest.map_structure(repr, get_legacy_output_types(self))
+    output_types = str(output_types).replace("'", "")
+
+    config = dict()
+
+    try:
+      config.update(self._config)
+    except AttributeError:
+      pass
+
+    try:
+      config["variant_tensor_inputs"] = str(
+        self._input_dataset._variant_tensor_attr
+      )
+    except AttributeError:
+      pass
+
+    config["variant_tensor_outputs"] = str(self._variant_tensor_attr)
+    config["output_dtype"] = output_types
+    config["output_shape"] = output_shapes
+    config["__class__"] = self.__class__.__name__
+
+    return config
 
   @property
   def _variant_tensor(self):
@@ -2131,6 +2346,8 @@ class DatasetV1(DatasetV2):
             (graph_level_seed + 87654321 * op_level_seed) % (2 ** 63 - 1))
 
       dataset = self._apply_options()
+      dataset._generate_dataset_configuration_file()
+
       return dataset._variant_tensor  # pylint: disable=protected-access
 
     try:
@@ -2192,6 +2409,8 @@ class DatasetV1(DatasetV2):
           "execution is enabled. Use `for element in dataset` instead.")
     _ensure_same_dataset_graph(self)
     dataset = self._apply_options()
+    dataset._generate_dataset_configuration_file()
+
     if shared_name is None:
       shared_name = ""
     iterator_resource = gen_dataset_ops.iterator_v2(
@@ -2475,6 +2694,9 @@ class DatasetV1Adapter(DatasetV1):
   def __init__(self, dataset):
     self._dataset = dataset
     super(DatasetV1Adapter, self).__init__()
+
+  def _serialize_configuration(self):
+    return self._dataset._serialize_configuration()
 
   def _as_variant_tensor(self):
     return self._dataset._variant_tensor  # pylint: disable=protected-access
@@ -2799,6 +3021,25 @@ class Options(options_lib.OptionsBase):
     """
     return options_lib.merge_options(self, options)
 
+  def serialize(self):
+
+      def _serialize_options(options):
+          config = dict()
+
+          for opt_key in dir(options):
+              if opt_key[0] != "_" and opt_key not in ["merge", "serialize"]:
+                  opt_detail = getattr(options, opt_key)
+
+                  if not isinstance(opt_detail,
+                                    (type(None), str, bool, int, float)):
+                      config[opt_key] = _serialize_options(opt_detail)
+                  else:
+                      config[opt_key] = opt_detail
+
+          return config
+
+      return _serialize_options(self)
+
 
 class DatasetSource(DatasetV2):
   """Abstract class representing a dataset with no inputs."""
@@ -2814,17 +3055,21 @@ class UnaryDataset(DatasetV2):
     self._input_dataset = input_dataset
     super(UnaryDataset, self).__init__(variant_tensor)
 
+  def _serialize_configuration(self):
+
+    config = dict()
+
+    config["input_ds"] = self._input_dataset._serialize_configuration()
+
+    config.update(super(UnaryDataset, self)._serialize_configuration())
+    return config
+
   def _inputs(self):
     return [self._input_dataset]
 
 
 class UnaryUnchangedStructureDataset(UnaryDataset):
   """Represents a unary dataset with the same input and output structure."""
-
-  def __init__(self, input_dataset, variant_tensor):
-    self._input_dataset = input_dataset
-    super(UnaryUnchangedStructureDataset, self).__init__(
-        input_dataset, variant_tensor)
 
   @property
   def element_spec(self):
@@ -2889,12 +3134,23 @@ class SparseTensorSliceDataset(DatasetSource):
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
-    shape_shape = self._sparse_tensor.dense_shape.get_shape()
-    rank = (indices_shape.dims[1] - 1).merge_with(shape_shape.dims[0] - 1)
+    dense_shape = self._sparse_tensor.dense_shape.get_shape()
+    rank = (indices_shape.dims[1] - 1).merge_with(dense_shape.dims[0] - 1)
     self._structure = (tensor_spec.TensorSpec([None, rank], dtypes.int64),
                        tensor_spec.TensorSpec([None],
                                               self._sparse_tensor.dtype),
                        tensor_spec.TensorSpec([rank], dtypes.int64))
+
+    config = {
+      "sparse_input_indices_shape": self._sparse_tensor.indices.get_shape(),
+      "sparse_input_dense_shape": self._sparse_tensor.dense_shape.get_shape(),
+    }
+
+    config["sparse_input_rank"] = (
+      self._config["sparse_input_indices_shape"].dims[1] - 1
+    ).merge_with(self._config["sparse_input_dense_shape"].dims[0] - 1)
+
+    self._save_configuration(config)
 
     variant_tensor = gen_dataset_ops.sparse_tensor_slice_dataset(
         self._sparse_tensor.indices, self._sparse_tensor.values,
@@ -3341,6 +3597,17 @@ class ZipDataset(DatasetV2):
         **self._flat_structure)
     super(ZipDataset, self).__init__(variant_tensor)
 
+  def _serialize_configuration(self):
+
+    config = dict()
+
+    config["inputs_ds"] = list()
+    for ds in self._datasets:
+      config["inputs_ds"].append(ds._serialize_configuration())
+
+    config.update(super(ZipDataset, self)._serialize_configuration())
+    return config
+
   def _inputs(self):
     return nest.flatten(self._datasets)
 
@@ -3389,6 +3656,17 @@ class ConcatenateDataset(DatasetV2):
     # pylint: enable=protected-access
     super(ConcatenateDataset, self).__init__(variant_tensor)
 
+  def _serialize_configuration(self):
+
+    config = dict()
+
+    config["input_ds"] = list()
+    for ds in self._input_datasets:
+      config["input_ds"].append(ds._serialize_configuration())
+
+    config.update(super(ConcatenateDataset, self)._serialize_configuration())
+    return config
+
   def _inputs(self):
     return self._input_datasets
 
@@ -3403,6 +3681,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.repeat()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "repeat_count": count
+    })
+
     if count is None:
       self._count = constant_op.constant(-1, dtype=dtypes.int64, name="count")
     else:
@@ -3420,8 +3702,9 @@ class RangeDataset(DatasetSource):
 
   def __init__(self, *args, **kwargs):
     """See `Dataset.range()` for details."""
-    self._parse_args(*args, **kwargs)
+    self._save_configuration(self._parse_args(*args, **kwargs))
     self._structure = tensor_spec.TensorSpec([], self._output_type)
+
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3432,23 +3715,35 @@ class RangeDataset(DatasetSource):
   def _parse_args(self, *args, **kwargs):
     """Parse arguments according to the same rules as the `range()` builtin."""
     if len(args) == 1:
-      self._start = self._build_tensor(0, "start")
-      self._stop = self._build_tensor(args[0], "stop")
-      self._step = self._build_tensor(1, "step")
+      _start = 0
+      _stop = args[0]
+      _step = 1
     elif len(args) == 2:
-      self._start = self._build_tensor(args[0], "start")
-      self._stop = self._build_tensor(args[1], "stop")
-      self._step = self._build_tensor(1, "step")
+      _start = args[0]
+      _stop = args[1]
+      _step = 1
     elif len(args) == 3:
-      self._start = self._build_tensor(args[0], "start")
-      self._stop = self._build_tensor(args[1], "stop")
-      self._step = self._build_tensor(args[2], "step")
+      _start = args[0]
+      _stop = args[1]
+      _step = args[2]
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
-    if "output_type" in kwargs:
+
+    try:
       self._output_type = kwargs["output_type"]
-    else:
+    except KeyError:
       self._output_type = dtypes.int64
+
+    self._start = self._build_tensor(_start, "start")
+    self._stop = self._build_tensor(_stop, "stop")
+    self._step = self._build_tensor(_step, "step")
+
+    return {
+      "start": _start,
+      "stop": _stop,
+      "step": _step,
+      "output_type": self._output_type,
+    }
 
   def _build_tensor(self, int64_value, name):
     return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
@@ -3505,6 +3800,10 @@ class CacheDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, filename):
     """See `Dataset.cache()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "cache_filename": filename
+    })
+
     self._filename = ops.convert_to_tensor(
         filename, dtype=dtypes.string, name="filename")
     if tf2.enabled() and (context.executing_eagerly() or ops.inside_function()):
@@ -3601,6 +3900,12 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
+    self._save_configuration({
+      "buffer_size": buffer_size,
+      "seed": seed,
+      "reshuffle_each_iteration": reshuffle_each_iteration
+    })
+
     if tf2.enabled() and self._reshuffle_each_iteration and (
         context.executing_eagerly() or ops.inside_function()):
       self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
@@ -3626,6 +3931,10 @@ class TakeDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.take()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "take_count": count
+    })
+
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
     variant_tensor = gen_dataset_ops.take_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3640,6 +3949,10 @@ class SkipDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.skip()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "skip_count": count
+    })
+
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
     variant_tensor = gen_dataset_ops.skip_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3654,6 +3967,11 @@ class ShardDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, num_shards, index):
     """See `Dataset.shard()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "num_shards": num_shards,
+      "index": index
+    })
+
     self._num_shards = ops.convert_to_tensor(
         num_shards, dtype=dtypes.int64, name="num_shards")
     self._index = ops.convert_to_tensor(index, dtype=dtypes.int64, name="index")
@@ -3671,6 +3989,10 @@ class BatchDataset(UnaryDataset):
   def __init__(self, input_dataset, batch_size, drop_remainder):
     """See `Dataset.batch()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "batch_size": batch_size,
+      "drop_remainder": drop_remainder
+    })
     self._batch_size = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._drop_remainder = ops.convert_to_tensor(
@@ -3942,6 +4264,17 @@ class PaddedBatchDataset(UnaryDataset):
           padding_values=nest.flatten(self._padding_values),
           drop_remainder=self._drop_remainder,
           output_shapes=structure.get_flat_tensor_shapes(self._structure))
+
+    self._save_configuration({
+      "batch_size": batch_size,
+      "padded_shapes": padded_shapes,
+      "padding_values": padding_values,
+      "drop_remainder": drop_remainder,
+      "input_shapes": input_shapes,
+      "output_flat_padded_shapes": flat_padded_shapes,
+      "output_shapes": output_shapes
+    })
+
     super(PaddedBatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
@@ -3972,6 +4305,14 @@ class MapDataset(UnaryDataset):
         self._transformation_name(),
         dataset=input_dataset,
         use_legacy_function=use_legacy_function)
+
+    self._save_configuration({
+      "use_inter_op_parallelism": use_inter_op_parallelism,
+      "preserve_cardinality": preserve_cardinality,
+      "use_legacy_function": use_legacy_function,
+      "map_func": str(map_func),
+    })
+
     variant_tensor = gen_dataset_ops.map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -4005,6 +4346,16 @@ class ParallelMapDataset(UnaryDataset):
                use_legacy_function=False):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
+    _num_parallel_calls = parse_maybe_autotune_arg(num_parallel_calls)
+
+    self._save_configuration({
+      "use_inter_op_parallelism": use_inter_op_parallelism,
+      "preserve_cardinality": preserve_cardinality,
+      "use_legacy_function": use_legacy_function,
+      "num_parallel_calls": _num_parallel_calls,
+      "map_func": str(map_func),
+    })
+
     self._use_inter_op_parallelism = use_inter_op_parallelism
     self._map_func = StructuredFunctionWrapper(
         map_func,
@@ -4067,6 +4418,11 @@ class FlatMapDataset(UnaryDataset):
           "`map_func` must return a `Dataset` object. Got {}".format(
               type(self._map_func.output_structure)))
     self._structure = self._map_func.output_structure._element_spec  # pylint: disable=protected-access
+
+    self._save_configuration({
+      "map_func": str(map_func)
+    })
+
     variant_tensor = gen_dataset_ops.flat_map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._map_func.function.captured_inputs,
@@ -4091,6 +4447,14 @@ class InterleaveDataset(UnaryDataset):
   def __init__(self, input_dataset, map_func, cycle_length, block_length):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
+    _cycle_length = parse_maybe_autotune_arg(cycle_length)
+
+    self._save_configuration({
+      "map_func": str(map_func),
+      "cycle_length": _cycle_length,
+      "block_length": block_length,
+    })
+
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
@@ -4137,6 +4501,17 @@ class ParallelInterleaveDataset(UnaryDataset):
                deterministic=None):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
+    _cycle_length = parse_maybe_autotune_arg(cycle_length)
+
+    _num_parallel_calls = parse_maybe_autotune_arg(num_parallel_calls)
+
+    self._save_configuration({
+      "map_func": str(map_func),
+      "cycle_length": _cycle_length,
+      "block_length": block_length,
+      "num_parallel_calls": _num_parallel_calls,
+    })
+
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetSpec):
@@ -4219,6 +4594,11 @@ class FilterDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, predicate, use_legacy_function=False):
     """See `Dataset.filter()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "predicate": str(predicate),
+      "use_legacy_function": use_legacy_function,
+    })
+
     wrapped_func = StructuredFunctionWrapper(
         predicate,
         self._transformation_name(),
@@ -4262,6 +4642,13 @@ class PrefetchDataset(UnaryUnchangedStructureDataset):
         to None.
     """
     self._input_dataset = input_dataset
+    _buffer_size = parse_maybe_autotune_arg(buffer_size)
+
+    self._save_configuration({
+      "buffer_size": _buffer_size,
+      "slack_period": slack_period,
+    })
+
     if buffer_size is None:
       buffer_size = -1  # This is the sentinel for auto-tuning.
     self._buffer_size = ops.convert_to_tensor(
@@ -4280,6 +4667,13 @@ class WindowDataset(UnaryDataset):
   def __init__(self, input_dataset, size, shift, stride, drop_remainder):
     """See `window_dataset()` for more details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "size": size,
+      "shift": shift,
+      "stride": stride,
+      "drop_remainder": drop_remainder,
+    })
+
     self._size = ops.convert_to_tensor(size, dtype=dtypes.int64, name="size")
     self._shift = ops.convert_to_tensor(shift, dtype=dtypes.int64, name="shift")
     self._stride = ops.convert_to_tensor(
@@ -4320,6 +4714,11 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
       self._options = self._options.merge(options)
     else:
       self._options = options
+
+    self._save_configuration({
+      "options": self._options.serialize(),
+    })
+
     variant_tensor = input_dataset._variant_tensor  # pylint: disable=protected-access
     super(_OptionsDataset, self).__init__(input_dataset, variant_tensor)
 
@@ -4337,6 +4736,11 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
         algorithm=algorithm.value,
         cpu_budget=cpu_budget,
         **self._flat_structure)
+    self._save_configuration({
+      "autotune_algorithm": algorithm.name,
+      "cpu_budget": cpu_budget,
+    })
+
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -4356,6 +4760,12 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
         self._optimizations,
         optimization_configs=optimization_configs,
         **self._flat_structure)
+
+    self._save_configuration({
+      "optimizations": optimizations,
+      "optimization_configs": optimization_configs,
+    })
+
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -4373,6 +4783,13 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
         self._prefix,
         self._counter_prefix,
         **self._flat_structure)
+
+    self._save_configuration({
+      "stats_aggregator": aggregator,
+      "prefix": prefix,
+      "counter_prefix": counter_prefix,
+    })
+
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -4386,6 +4803,11 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
         max_intra_op_parallelism,
         dtype=dtypes.int64,
         name="max_intra_op_parallelism")
+
+    self._save_configuration({
+      "max_intra_op_parallelism": max_intra_op_parallelism,
+    })
+
     variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._max_intra_op_parallelism,
@@ -4401,6 +4823,11 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
     self._input_dataset = input_dataset
     self._num_threads = ops.convert_to_tensor(
         num_threads, dtype=dtypes.int64, name="num_threads")
+
+    self._save_configuration({
+      "num_threads": num_threads,
+    })
+
     variant_tensor = ged_ops.private_thread_pool_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._num_threads,

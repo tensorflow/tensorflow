@@ -26,6 +26,10 @@ class _SleepDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, sleep_microseconds):
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "sleep_microseconds": sleep_microseconds,
+    })
+
     self._sleep_microseconds = sleep_microseconds
     variant_tensor = gen_experimental_dataset_ops.sleep_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access

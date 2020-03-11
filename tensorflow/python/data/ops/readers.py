@@ -111,6 +111,13 @@ class _TextLineDataset(dataset_ops.DatasetSource):
         to buffer. A value of 0 results in the default buffering values chosen
         based on the compression type.
     """
+
+    self._save_configuration({
+      "filenames": filenames,
+      "compression_type": compression_type or "",
+      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+    })
+
     self._filenames = filenames
     self._compression_type = convert.optional_param_to_tensor(
         "compression_type",
@@ -157,6 +164,18 @@ class TextLineDatasetV2(dataset_ops.DatasetSource):
         value greater than one to parallelize the I/O. If `None`, files will be
         read sequentially.
     """
+
+    _num_parallel_reads = dataset_ops.parse_maybe_autotune_arg(
+        num_parallel_reads
+    )
+
+    self._save_configuration({
+      "filenames": filenames,
+      "compression_type": compression_type,
+      "buffer_size": buffer_size,
+      "num_parallel_reads": _num_parallel_reads,
+    })
+
     filenames = _create_or_validate_filenames_dataset(filenames)
     self._filenames = filenames
     self._compression_type = compression_type
@@ -213,6 +232,13 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
       buffer_size: (Optional.) A `tf.int64` scalar representing the number of
         bytes in the read buffer. 0 means no buffering.
     """
+
+    self._save_configuration({
+      "filenames": filenames,
+      "compression_type": compression_type or "",
+      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+    })
+
     self._filenames = filenames
     self._compression_type = convert.optional_param_to_tensor(
         "compression_type",
@@ -240,6 +266,15 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
                sloppy, buffer_output_elements, prefetch_input_elements):
     """See `tf.data.experimental.parallel_interleave()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "map_func": str(map_func),
+      "cycle_length": cycle_length,
+      "block_length": block_length,
+      "sloppy": sloppy,
+      "buffer_output_elements": buffer_output_elements or (2 * block_length),
+      "prefetch_input_elements": prefetch_input_elements or (2 * cycle_length),
+    })
+
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, dataset_ops.DatasetSpec):
@@ -335,6 +370,17 @@ class TFRecordDatasetV2(dataset_ops.DatasetV2):
     """
     filenames = _create_or_validate_filenames_dataset(filenames)
 
+    _num_parallel_reads = dataset_ops.parse_maybe_autotune_arg(
+        num_parallel_reads
+    )
+
+    self._save_configuration({
+      "filenames": filenames,
+      "compression_type": compression_type,
+      "buffer_size": buffer_size,
+      "num_parallel_reads": _num_parallel_reads,
+    })
+
     self._filenames = filenames
     self._compression_type = compression_type
     self._buffer_size = buffer_size
@@ -427,6 +473,16 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
       compression_type: (Optional.) A `tf.string` scalar evaluating to one of
         `""` (no compression), `"ZLIB"`, or `"GZIP"`.
     """
+
+    self._save_configuration({
+      "filenames": filenames,
+      "record_bytes": record_bytes,
+      "header_bytes": header_bytes or 0,
+      "footer_bytes": footer_bytes or 0,
+      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+      "compression_type": compression_type or "",
+    })
+
     self._filenames = filenames
     self._record_bytes = ops.convert_to_tensor(
         record_bytes, dtype=dtypes.int64, name="record_bytes")
@@ -486,6 +542,20 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
         read sequentially.
     """
     filenames = _create_or_validate_filenames_dataset(filenames)
+
+    _num_parallel_reads = dataset_ops.parse_maybe_autotune_arg(
+        num_parallel_reads
+    )
+
+    self._save_configuration({
+      "filenames": filenames,
+      "record_bytes": record_bytes,
+      "header_bytes": header_bytes or 0,
+      "footer_bytes": footer_bytes or 0,
+      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+      "compression_type": compression_type or "",
+      "num_parallel_reads": _num_parallel_reads,
+    })
 
     self._filenames = filenames
     self._record_bytes = record_bytes

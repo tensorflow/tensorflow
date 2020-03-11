@@ -29,6 +29,11 @@ class MatchingFilesDataset(dataset_ops.DatasetSource):
   """A `Dataset` that list the files according to the input patterns."""
 
   def __init__(self, patterns):
+
+    self._save_configuration({
+      "patterns": patterns,
+    })
+
     self._patterns = ops.convert_to_tensor(
         patterns, dtype=dtypes.string, name="patterns")
     variant_tensor = ged_ops.matching_files_dataset(self._patterns)

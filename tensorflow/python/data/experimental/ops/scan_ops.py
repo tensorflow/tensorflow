@@ -36,6 +36,12 @@ class _ScanDataset(dataset_ops.UnaryDataset):
                use_default_device=None):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
+    self._save_configuration({
+      "initial_state": initial_state,
+      "scan_func": str(scan_func),
+      "use_default_device": str(use_default_device),
+    })
+
     self._initial_state = structure.normalize_element(initial_state)
 
     # Compute initial values for the state classes, shapes and types based on

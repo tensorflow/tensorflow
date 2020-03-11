@@ -47,6 +47,11 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, num_workers, index):
     self._input_dataset = input_dataset
 
+    self._save_configuration({
+      "num_workers": num_workers,
+      "index": index,
+    })
+
     self._element_spec = input_dataset.element_spec
     if (compat.forward_compatible(2019, 11, 25) or
         (input_dataset.options().experimental_distribute.auto_shard_policy !=
@@ -84,11 +89,12 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
   """
 
   def __init__(self, input_dataset, num_replicas, use_fallback=True):
+    self._input_dataset = input_dataset
 
-    def recalculate_batch_size(output_shape):
-      """Recalculates the output_shape after dividing it by num_replicas."""
-      # If the output shape is unknown, we set the batch dimension to unknown.
-      if output_shape.rank is None:
+    self._save_configuration({
+      "num_replicas": num_replicas,
+      "use_fallback": use_fallback,
+    })
         return None
 
       if len(output_shape) < 1:
@@ -129,6 +135,13 @@ class _RemoteDataset(dataset_ops.DatasetSource):
   """Creates a dataset on a given `device` given a graph def."""
 
   def __init__(self, graph_def, device, element_spec):
+
+    self._save_configuration({
+      "graph_def": str(graph_def),
+      "device": device,
+      "element_spec": str(element_spec),
+    })
+
     self._elem_spec = element_spec
     with ops.device(device):
       variant_tensor = ged_ops.dataset_from_graph(graph_def)
