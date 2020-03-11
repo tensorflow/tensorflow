@@ -189,6 +189,11 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
 
+// Converts a 2D set of Device objects indexed by [replica][partition] into an
+// xla::DeviceAssignment.
+StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
+    absl::Span<const std::vector<Device*>> devices);
+
 // Holds a reference from Python to one or more device buffers.
 // A PyLocalBuffer can be either valid or invalid. An invalid buffer is one that
 // has never been initialized, or a buffer that has been deleted (e.g., by
@@ -312,15 +317,6 @@ class PyLocalBuffer {
 // partition, as specified by the build options).
 class PyLocalExecutable {
  public:
-  // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<PyLocalExecutable>> CompileForDevices(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options, PyLocalClient* client,
-      const std::vector<std::vector<Device*>>& device_assignment);
-
-  // TODO(phawkins): Deprecated. Delete once all callers have been updated to
-  // use the newer form.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,

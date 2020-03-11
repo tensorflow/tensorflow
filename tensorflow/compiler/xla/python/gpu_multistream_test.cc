@@ -49,11 +49,12 @@ TEST(GpuMultiStream, Basics) {
   build_options.mutable_debug_options()->set_xla_gpu_disable_multi_streaming(
       false);
   build_options.mutable_debug_options()->set_xla_gpu_use_random_streams(true);
-
+  DeviceAssignment device_assignment(1, 1);
+  device_assignment(0, 0) = device->id();
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PyLocalExecutable> executable,
-      PyLocalExecutable::CompileForDevices(computation, {}, &build_options,
-                                           client.get(), {{device}}));
+      PyLocalExecutable::Compile(computation, {}, &build_options, client.get(),
+                                 device_assignment));
 
   int64 dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);

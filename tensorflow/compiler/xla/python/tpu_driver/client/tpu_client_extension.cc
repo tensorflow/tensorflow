@@ -177,8 +177,25 @@ PYBIND11_MODULE(tpu_client_extension, m) {
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def_static("Compile", &PyTpuExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
-      .def_static("Compile", &PyTpuExecutable::CompileForDevices,
-                  py::call_guard<py::gil_scoped_release>())
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyTpuClient> client,
+                     absl::optional<std::vector<std::vector<Device*>>>
+                         device_assignment)
+                      -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    absl::optional<DeviceAssignment> xla_device_assignment;
+                    if (device_assignment) {
+                      TF_ASSIGN_OR_RETURN(
+                          xla_device_assignment,
+                          DevicesToDeviceAssignment(*device_assignment));
+                    }
+                    return PyTpuExecutable::Compile(
+                        computation, argument_layouts, build_options, client,
+                        std::move(xla_device_assignment));
+                  })
       .def("local_logical_device_ids",
            &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
