@@ -81,7 +81,7 @@ cuda_py_test(
     name = "linear_operator_block_diag_test",
     size = "medium",
     srcs = ["linear_operator_block_diag_test.py"],
-    shard_count = 6,
+    shard_count = 8,
     tags = [
         "noasan",
         "optonly",
@@ -103,7 +103,7 @@ cuda_py_test(
     name = "linear_operator_block_lower_triangular_test",
     size = "medium",
     srcs = ["linear_operator_block_lower_triangular_test.py"],
-    shard_count = 6,
+    shard_count = 8,
     tags = [
         "noasan",
         "optonly",
