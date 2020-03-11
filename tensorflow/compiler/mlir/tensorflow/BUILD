@@ -1244,5 +1244,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

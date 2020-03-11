@@ -1311,3 +1311,80 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     return %arg0 : tensor<8xi32>
   }
 }
+
+// -----
+
+// Tests devices are set properly for replicated model parallelism with
+// outputs to TPU computation placed on logical device 0.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_different_outputs
+  func @parallel_execute_with_different_outputs(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"()
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        "tf_device.launch"
+      // CHECK-NEXT:     "tf.TPUExecute"
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01", device_assignment = [0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      tf_device.return %1 : tensor<8xi32>
+    }
+    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
+
+// -----
+
+// Tests devices are set properly for replicated model parallelism with
+// TPU computation with maximal and replicated outputs.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_replicated_output
+  func @parallel_execute_with_replicated_output(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"()
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      %1, %2 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01", device_assignment = [0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""]} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %1, %3 : tensor<*xi32>, tensor<*xi1>
+  }
+}

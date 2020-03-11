@@ -470,15 +470,19 @@ void AssignDevicesToReplicate(
 }
 
 // Creates a `tf.TPUExecute` op that executes TPU program.
-Operation* BuildExecuteOp(llvm::ArrayRef<Value> inputs,
-                          tf_device::LaunchFuncOp launch_func,
-                          OpBuilder* builder) {
+Operation* BuildExecuteOp(
+    const int core_id, llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    llvm::ArrayRef<Value> inputs, tf_device::LaunchFuncOp launch_func,
+    OpBuilder* builder) {
   // TODO(b/139377366): Need to snapshot all resource variable inputs in
   // follow-up CLs.
 
+  auto output_types = tensorflow::GetOutputTypesForLogicalDeviceComputation(
+      core_id, output_sharding_config, launch_func);
+
   // TPUExecute has same output types as launch_func.
-  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(),
-                                           launch_func.getResultTypes(), inputs,
+  return builder->create<TF::TPUExecuteOp>(launch_func.getLoc(), output_types,
+                                           inputs,
                                            llvm::ArrayRef<NamedAttribute>{});
 }
 
@@ -486,6 +490,7 @@ Operation* BuildExecuteOp(llvm::ArrayRef<Value> inputs,
 // represent execution of TPU program in multiple logical cores.
 tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     llvm::ArrayRef<llvm::SmallVector<std::string, 8>> execution_devices,
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     Operation* compile_op, tf_device::LaunchFuncOp launch_func,
     OpBuilder* builder) {
   const int num_cores_per_replica = execution_devices.front().size();
@@ -499,9 +504,11 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
   concatenated_output_types.reserve(launch_result_types.size() *
                                     num_cores_per_replica);
 
-  for (int core = 0; core < num_cores_per_replica; ++core)
-    for (Type t : launch_result_types)
-      concatenated_output_types.emplace_back(t);
+  for (int core = 0; core < num_cores_per_replica; ++core) {
+    auto output_types = tensorflow::GetOutputTypesForLogicalDeviceComputation(
+        core, output_sharding_config, launch_func);
+    for (Type t : output_types) concatenated_output_types.emplace_back(t);
+  }
 
   auto parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
       launch_func.getLoc(), num_cores_per_replica, concatenated_output_types);
@@ -526,7 +533,9 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     // launch_func.
     auto execute_inputs = input_list[core];
     execute_inputs.emplace_back(compile_op->getResult(core + 1));
-    auto execute = BuildExecuteOp(execute_inputs, launch_func, builder);
+
+    auto execute = BuildExecuteOp(core, output_sharding_config, execute_inputs,
+                                  launch_func, builder);
 
     // If computation is replicated, use aliased device. Otherwise there is only
     // one execution device per core and the device is assigned to the execute
@@ -543,19 +552,6 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
   }
 
   return parallel_execute_op;
-}
-
-// As tf_device.parallel_execute wraps # logical cores number of TPUExecute
-// ops, the number of return values of parallel_execute op exceeds that of
-// launch_func op. As so, each return value of parallel_execute op must be
-// mapped with corresponding return value usages of launch_func.
-//
-// TODO(b/148913294): Once argument and return value sharding of tpu computation
-// is determined, correctly map outputs of parallel_execute op.
-void RemapOutputsOfParallelExecute(tf_device::LaunchFuncOp launch_func,
-                                   Operation* op) {
-  for (auto outputs : llvm::zip(launch_func.getResults(), op->getResults()))
-    std::get<0>(outputs).replaceAllUsesWith(std::get<1>(outputs));
 }
 
 tf_device::LaunchOp AssignDevicesToReplicatedExecute(
@@ -699,19 +695,30 @@ LogicalResult Rewrite(
   AssignDevicesToReplicate(replicate, tpu_device_assignment.execution_devices,
                            builder);
 
+  llvm::SmallVector<xla::OpSharding, 4> output_shardings;
+  auto result = tensorflow::ParseAndValidateOutputSharding(launch_func,
+                                                           &output_shardings);
+  if (failed(result)) return failure();
+
   if (num_cores_per_replica > 1) {
     // For model parallelism, tf_device.parallel_execute is used to express
     // concurrent device execution across multiple logical devices.
-    tf_device::ParallelExecuteOp execute_op =
-        BuildParallelExecuteOp(tpu_device_assignment.execution_devices,
-                               compile_op, launch_func, builder);
+    tf_device::ParallelExecuteOp execute_op = BuildParallelExecuteOp(
+        tpu_device_assignment.execution_devices, output_shardings, compile_op,
+        launch_func, builder);
 
-    RemapOutputsOfParallelExecute(launch_func, execute_op);
+    // As tf_device.parallel_execute wraps # logical cores number of TPUExecute
+    // ops, the number of return values of parallel_execute op exceeds that of
+    // launch_func op. As so, each return value of parallel_execute op must be
+    // mapped with corresponding return value usages of launch_func.
+    tensorflow::RemapOutputsFromLogicalDevices(output_shardings, launch_func,
+                                               execute_op);
   } else {
     llvm::SmallVector<Value, 4> execute_inputs(launch_func.getOperands());
     execute_inputs.emplace_back(compile_op->getResult(1));
-    Operation* execute_op =
-        BuildExecuteOp(execute_inputs, launch_func, builder);
+
+    Operation* execute_op = BuildExecuteOp(
+        /*core_id=*/0, output_shardings, execute_inputs, launch_func, builder);
     tf_device::LaunchOp launch_op = AssignDevicesToReplicatedExecute(
         tpu_device_assignment.execution_devices, execute_op, builder);
     launch_func.replaceAllUsesWith(launch_op);
