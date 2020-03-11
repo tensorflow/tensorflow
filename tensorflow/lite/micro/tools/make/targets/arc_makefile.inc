@@ -31,7 +31,7 @@ else
   TCF_FILE_NAME = $(TCF_FILE)
 endif
 
-  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
+  PLATFORM_FLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -O3 -Hpurge -Hcl -Hcrt_fast_memcpy -Hcrt_fast_memset -fslp-vectorize-aggressive -ffunction-sections -fdata-sections
   PLATFORM_FLAGS += -tcf_core_config
   PLATFORM_LDFLAGS = -tcf=$(TCF_FILE_NAME) -Hnocopyr -m -Hldopt=-Coutput=memory.map -default_lcf=$(MAKEFILE_DIR)/targets/arc/memory.lcf 
 

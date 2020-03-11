@@ -83,7 +83,7 @@ patch_kissfft() {
 }
 
 build_embarc_mli() {
-  gmake -j 4 -C ${1}/lib/make TCF_FILE=${2}
+  make -j 4 -C ${1}/lib/make TCF_FILE=${2}
 }
 
 # Main function handling the download, verify, extract, and patch process.
