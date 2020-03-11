@@ -9,6 +9,7 @@ package(
         "//nlp/nlx/i18n/pangloss:__subpackages__",
         "//nlp/nlx/infrastructure/multiscale:__subpackages__",
         "//nlp/projects/atc/tf/ops:__pkg__",
+        "//research/graph/convolutions/model:__subpackages__",
         "//research/socrates:__subpackages__",
         "//tensorflow:internal",
     ],
