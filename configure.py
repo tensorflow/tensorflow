@@ -1416,8 +1416,9 @@ def main():
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
 
-  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_TOOLKIT_PATH')):
-    write_action_env_to_bazelrc('ROCM_TOOLKIT_PATH',environ_cp.get('ROCM_TOOLKIT_PATH'))
+  if (environ_cp.get('TF_NEED_ROCM') == '1' and environ_cp.get('ROCM_PATH')):
+    write_action_env_to_bazelrc('ROCM_PATH',environ_cp.get('ROCM_PATH'))
+    write_action_env_to_bazelrc('ROCM_ROOT',environ_cp.get('ROCM_PATH'))
 
   environ_cp['TF_NEED_CUDA'] = str(
       int(get_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)))
