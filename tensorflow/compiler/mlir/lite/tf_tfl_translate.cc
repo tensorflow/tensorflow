@@ -137,13 +137,14 @@ int main(int argc, char **argv) {
 
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
-  if (import_saved_model || import_saved_model_v1) {
+  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
     if (input_mlir)
       module = tensorflow::errors::InvalidArgument(
           "Importing saved model should not have input_mlir set");
-    module = tensorflow::ImportSavedModel(
-        import_saved_model, import_saved_model_v1, input_file_name,
-        saved_model_tags, saved_model_exported_names, &context);
+    module = tensorflow::ImportSavedModel(import_saved_model_object_graph,
+                                          import_saved_model_signature_defs,
+                                          input_file_name, saved_model_tags,
+                                          saved_model_exported_names, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
@@ -196,7 +197,7 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
 
   // Currently we only do shape inference for saved model import.
-  if (import_saved_model || import_saved_model_v1) {
+  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
     pass_config.shape_inference = true;
   }
 
