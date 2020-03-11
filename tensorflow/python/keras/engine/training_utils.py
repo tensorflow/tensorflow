@@ -2116,7 +2116,7 @@ class TrainingLoop(object):
                batch_size=None,
                verbose=1,
                sample_weight=None,
-               class_weight = None,
+               class_weight=None,
                steps=None,
                callbacks=None,
                **kwargs):
