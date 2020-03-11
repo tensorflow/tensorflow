@@ -21,24 +21,34 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import segment_id_ops
 
+
 #===============================================================================
 # RowPartition
 #===============================================================================
+# TODO(edloper): Consider removing row_starts and row_limits factory methods
+# and accessors from RowPartition.  In particular, these two encodings are
+# "second-class citizens": we never cache them, and if you do construct a
+# RowPartition from them then it may be more expensive than you might expect
+# (because we append a value to the beginning/end to transform them into
+# splits).  If we do remove them from RowPartition, then we would still keep
+# the from_row_starts and from_row_limits factory methods in RaggedTensor.
 
 
-class RowPartition(object):
+class RowPartition(composite_tensor.CompositeTensor):
   """Partitioning of a sequence of values into contiguous subsequences ("rows").
 
   A `RowPartition` describes how a sequence with `nvals` items should be
@@ -185,9 +195,9 @@ class RowPartition(object):
     which row each value should be added to:
 
     ```python
-    rows = [[] for _ in nrows]
+    partitioned_rows = [[] for _ in nrows]
     for (value, rowid) in zip(values, value_rowids):
-      rows[rowid].append(value)
+      partitioned_rows[rowid].append(value)
     ``
 
     Args:
@@ -292,11 +302,11 @@ class RowPartition(object):
     where each row begins and ends:
 
     ```python
-    rows = []
+    partitioned_rows = []
     for i in range(len(row_splits) - 1):
       row_start = row_splits[i]
       row_end = row_splits[i + 1]
-      rows.append(values[row_start:row_end])
+      partitioned_rows.append(values[row_start:row_end])
     ```
 
     Args:
@@ -346,8 +356,8 @@ class RowPartition(object):
     the length of each row:
 
     ```python
-    rows = [[values.pop(0) for _ in range(length)]
-            for length in row_lengths]
+    partitioned_rows = [[values.pop(0) for _ in range(length)]
+                        for length in row_lengths]
     ```
 
     Args:
@@ -463,6 +473,8 @@ class RowPartition(object):
       row_splits = array_ops.concat([zero, row_limits], axis=0)
       return cls(row_splits=row_splits, internal=_row_partition_factory_key)
 
+  # TODO(edloper): Make nvals optional: user must specify at least one of
+  # {nvals, nrows}, but they can pick which one to specify.
   @classmethod
   def from_uniform_row_length(cls,
                               uniform_row_length,
@@ -476,7 +488,7 @@ class RowPartition(object):
     the same length:
 
     ```python
-    nrows = [[values.pop(0) for _ in range(uniform_row_length)]
+    partitioned_rows = [[values.pop(0) for _ in range(uniform_row_length)]
              for _ in range(nrows)]
     ```
 
@@ -580,10 +592,10 @@ class RowPartition(object):
     Args:
       partition: A row-partitioning tensor for the `RowPartition` being
         constructed.  I.e., one of: row_splits, row_lengths, row_starts,
-          row_limits, value_rowids.
+        row_limits, value_rowids, uniform_row_length.
       name: The name of the row-partitioning tensor.
       preferred_dtype: If partition has no dtype, give it this one. If
-      no dtype is specified, use dtypes.int64.
+        no dtype is specified, use dtypes.int64.
 
     Returns:
       A tensor equivalent to partition.
@@ -671,8 +683,7 @@ class RowPartition(object):
     `nvals == values.shape[0]`.
 
     Args:
-      out_type: `dtype` for the returned tensor.  Defaults to
-        `self.dtype`.
+      out_type: `dtype` for the returned tensor.  Defaults to `self.dtype`.
 
     Returns:
       scalar integer Tensor
@@ -687,8 +698,7 @@ class RowPartition(object):
     """Returns the number of rows created by this `RowPartition`.
 
     Args:
-      out_type: `dtype` for the returned tensor.  Defaults to
-        `self.dtype`.
+      out_type: `dtype` for the returned tensor.  Defaults to `self.dtype`.
 
     Returns:
       scalar integer Tensor
@@ -886,6 +896,165 @@ class RowPartition(object):
     any TensorFlow ops.
     """
     return self._nrows is not None
+
+  #=============================================================================
+  # Composite Tensor
+  #=============================================================================
+
+  @property
+  def _type_spec(self):
+    return RowPartitionSpec.from_value(self)
+
+
+#===============================================================================
+# RowPartitionSpec
+#===============================================================================
+# TODO(edloper): Consider refactoring RowPartitionSpec to allow any combination
+# of precomputed row-partition encodings (rather than always using row_splits).
+
+
+class RowPartitionSpec(type_spec.TypeSpec):
+  """Type specification for a `tf.RowPartition`."""
+
+  __slots__ = ["_nrows", "_nvals", "_uniform_row_length", "_dtype"]
+
+  value_type = property(lambda self: RowPartition)
+
+  def __init__(self,
+               nrows=None,
+               nvals=None,
+               uniform_row_length=None,
+               dtype=dtypes.int64):
+    """Constructs a new RowPartitionSpec.
+
+    Args:
+      nrows: The number of rows in the RowPartition, or `None` if unspecified.
+      nvals: The number of values partitioned by the RowPartition, or `None` if
+        unspecified.
+      uniform_row_length: The number of values in each row for this
+        RowPartition, or `None` if rows are ragged or row length is unspecified.
+      dtype: The data type used to encode the partition.  One of `tf.int64` or
+        `tf.int32`.
+    """
+    # Wrap dimension sizes in 1D TensorShapes so the default implementations
+    # of TypeSpec methods such as `is_compatile_with` will work.
+    nrows = tensor_shape.TensorShape([nrows])
+    nvals = tensor_shape.TensorShape([nvals])
+    if not isinstance(uniform_row_length, tensor_shape.TensorShape):
+      uniform_row_length = tensor_shape.TensorShape([uniform_row_length])
+    else:
+      uniform_row_length = uniform_row_length.with_rank(1)
+
+    self._nrows = nrows
+    self._nvals = nvals
+    self._uniform_row_length = uniform_row_length
+    self._dtype = dtypes.as_dtype(dtype)
+    if self._dtype not in (dtypes.int32, dtypes.int64):
+      raise ValueError("dtype must be tf.int32 or tf.int64")
+
+    # Check dimension consistency, & infer dimensions when possible.
+    nrows = tensor_shape.dimension_value(nrows[0])
+    nvals = tensor_shape.dimension_value(nvals[0])
+    ncols = tensor_shape.dimension_value(uniform_row_length[0])
+    if nrows == 0:  # no rows -> no values.
+      if nvals is None:
+        self._nvals = tensor_shape.TensorShape([0])
+      elif nvals != 0:
+        raise ValueError("nvals=%s is not compatible with nrows=%s" %
+                         (nvals, nrows))
+    if ncols == 0:  # there are no values in each row -> no values.
+      if nvals is None:
+        self._nvals = tensor_shape.TensorShape([0])
+      elif nvals != 0:
+        raise ValueError("nvals=%s is not compatible with uniform_row_length"
+                         "=%s" % (nvals, uniform_row_length))
+    if ncols is not None and nvals is not None:
+      if ncols != 0 and nvals % ncols != 0:
+        raise ValueError("nvals=%s is not compatible with uniform_row_length"
+                         "=%s (doesn't divide evenly)" % (nvals, ncols))
+      if nrows is not None and nvals != ncols * nrows:
+        raise ValueError("nvals=%s is not compatible with nrows=%s and "
+                         "uniform_row_length=%s" % (nvals, nrows, ncols))
+      if nrows is None and ncols != 0:
+        self._nrows = tensor_shape.TensorShape([nvals // ncols])
+    if ncols is not None and nrows is not None and nvals is None:
+      self._nvals = tensor_shape.TensorShape([ncols * nrows])
+
+  def is_compatible_with(self, other):
+    if not super(RowPartitionSpec, self).is_compatible_with(other):
+      return False
+    nrows = self._nrows.merge_with(other.nrows)
+    nvals = self._nvals.merge_with(other.nvals)
+    ncols = self._uniform_row_length.merge_with(other.uniform_row_length)
+    return self._dimensions_compatible(nrows, nvals, ncols)
+
+  def _serialize(self):
+    return (self._nrows, self._nvals, self._uniform_row_length, self._dtype)
+
+  @classmethod
+  def _deserialize(cls, serialization):
+    # Remove TensorShape wrappers from serialization.
+    (nrows, nvals, uniform_row_length, dtype) = serialization
+    nrows = tensor_shape.dimension_value(nrows[0])
+    nvals = tensor_shape.dimension_value(nvals[0])
+    return cls(nrows, nvals, uniform_row_length, dtype)
+
+  @property
+  def nrows(self):
+    return tensor_shape.dimension_value(self._nrows[0])
+
+  @property
+  def nvals(self):
+    return tensor_shape.dimension_value(self._nvals[0])
+
+  @property
+  def uniform_row_length(self):
+    return tensor_shape.dimension_value(self._uniform_row_length[0])
+
+  @property
+  def dtype(self):
+    return self._dtype
+
+  @property
+  def _component_specs(self):
+    row_splits_shape = tensor_shape.TensorShape(
+        [tensor_shape.dimension_at_index(self._nrows, 0) + 1])
+    return tensor_spec.TensorSpec(row_splits_shape, self._dtype)
+
+  def _to_components(self, value):
+    return value.row_splits()
+
+  def _from_components(self, tensor):
+    return RowPartition.from_row_splits(tensor, validate=False)
+
+  @classmethod
+  def from_value(cls, value):
+    if not isinstance(value, RowPartition):
+      raise TypeError("Expected `value` to be a `RowPartition`")
+    return cls(value.static_nrows, value.static_nvals,
+               value.static_uniform_row_length, value.dtype)
+
+  def __repr__(self):
+    return ("RowPartitionSpec(nrows=%s, nvals=%s, uniform_row_length=%s, "
+            "dtype=%r)" % (self.nrows, self.nvals, self.uniform_row_length,
+                           self.dtype))
+
+  @staticmethod
+  def _dimensions_compatible(nrows, nvals, uniform_row_length):
+    """Returns true if the given dimensions are compatible."""
+    nrows = tensor_shape.dimension_value(nrows[0])
+    nvals = tensor_shape.dimension_value(nvals[0])
+    ncols = tensor_shape.dimension_value(uniform_row_length[0])
+    if nrows == 0 and nvals not in (0, None):
+      return False  # can't have values if we have no rows.
+    if ncols == 0 and nvals not in (0, None):
+      return False  # can't have values if we have no values in each row.
+    if ncols is not None and nvals is not None:
+      if ncols != 0 and nvals % ncols != 0:
+        return False  # rows aren't uniform.
+      if nrows is not None and nvals != ncols * nrows:
+        return False  # inconsistent number of values.
+    return True
 
 
 #===============================================================================

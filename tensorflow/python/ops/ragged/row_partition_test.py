@@ -26,10 +26,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.ops.ragged.row_partition import RowPartition
+from tensorflow.python.ops.ragged.row_partition import RowPartitionSpec
 from tensorflow.python.platform import googletest
 
 
@@ -41,9 +43,9 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testClassDocStringExamples(self):
     # From section: "Component Tensors"
-    rt = RowPartition.from_row_splits(row_splits=[0, 4, 4, 7, 8, 8])
-    self.assertAllEqual(rt.row_splits(), [0, 4, 4, 7, 8, 8])
-    del rt
+    rp = RowPartition.from_row_splits(row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertAllEqual(rp.row_splits(), [0, 4, 4, 7, 8, 8])
+    del rp
 
     # From section: "Alternative Row-Partitioning Schemes"
     rt1 = RowPartition.from_row_splits(row_splits=[0, 4, 4, 7, 8, 8])
@@ -52,8 +54,8 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         value_rowids=[0, 0, 0, 0, 2, 2, 2, 3], nrows=5)
     rt4 = RowPartition.from_row_starts(row_starts=[0, 4, 4, 7, 8], nvals=8)
     rt5 = RowPartition.from_row_limits(row_limits=[4, 4, 7, 8, 8])
-    for rt in (rt1, rt2, rt3, rt4, rt5):
-      self.assertAllEqual(rt.row_splits(), [0, 4, 4, 7, 8, 8])
+    for rp in (rt1, rt2, rt3, rt4, rt5):
+      self.assertAllEqual(rp.row_splits(), [0, 4, 4, 7, 8, 8])
     del rt1, rt2, rt3, rt4, rt5
 
     # From section: "Multiple Ragged Dimensions"
@@ -67,10 +69,10 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testRaggedTensorConstruction(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
-    rt = RowPartition(
+    rp = RowPartition(
         row_splits=row_splits,
         internal=row_partition._row_partition_factory_key)
-    self.assertAllEqual(rt.row_splits(), [0, 2, 2, 5, 6, 7])
+    self.assertAllEqual(rp.row_splits(), [0, 2, 2, 5, 6, 7])
 
   def testRaggedTensorConstructionErrors(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
@@ -106,80 +108,80 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # nrows is known at graph creation time.
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     # TODO(martinz): add nrows
-    rt = RowPartition.from_value_rowids(value_rowids, validate=False)
-    self.assertEqual(rt.dtype, dtypes.int64)
+    rp = RowPartition.from_value_rowids(value_rowids, validate=False)
+    self.assertEqual(rp.dtype, dtypes.int64)
 
-    rt_row_splits = rt.row_splits()
-    rt_value_rowids = rt.value_rowids()
-    rt_nrows = rt.nrows()
+    rp_row_splits = rp.row_splits()
+    rp_value_rowids = rp.value_rowids()
+    rp_nrows = rp.nrows()
 
-    self.assertIs(rt_value_rowids, value_rowids)  # value_rowids
-    self.assertAllEqual(rt_value_rowids, value_rowids)
-    self.assertAllEqual(rt_nrows, 5)
-    self.assertAllEqual(rt_row_splits, [0, 2, 2, 5, 6, 7])
+    self.assertIs(rp_value_rowids, value_rowids)  # value_rowids
+    self.assertAllEqual(rp_value_rowids, value_rowids)
+    self.assertAllEqual(rp_nrows, 5)
+    self.assertAllEqual(rp_row_splits, [0, 2, 2, 5, 6, 7])
 
   def testFromValueRowIdsWithDerivedNRowsDynamic(self):
     # nrows is not known at graph creation time.
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     value_rowids = array_ops.placeholder_with_default(value_rowids, shape=None)
 
-    rt = RowPartition.from_value_rowids(value_rowids, validate=False)
+    rp = RowPartition.from_value_rowids(value_rowids, validate=False)
 
-    rt_value_rowids = rt.value_rowids()
-    rt_nrows = rt.nrows()
+    rp_value_rowids = rp.value_rowids()
+    rp_nrows = rp.nrows()
 
-    self.assertIs(rt_value_rowids, value_rowids)  # value_rowids
-    self.assertAllEqual(rt_value_rowids, value_rowids)
-    self.assertAllEqual(rt_nrows, 5)
+    self.assertIs(rp_value_rowids, value_rowids)  # value_rowids
+    self.assertAllEqual(rp_value_rowids, value_rowids)
+    self.assertAllEqual(rp_nrows, 5)
 
   def testFromValueRowIdsWithExplicitNRows(self):
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     nrows = constant_op.constant(7, dtypes.int64)
 
-    rt = RowPartition.from_value_rowids(value_rowids, nrows, validate=False)
+    rp = RowPartition.from_value_rowids(value_rowids, nrows, validate=False)
 
-    rt_value_rowids = rt.value_rowids()
-    rt_nrows = rt.nrows()
-    rt_row_splits = rt.row_splits()
+    rp_value_rowids = rp.value_rowids()
+    rp_nrows = rp.nrows()
+    rp_row_splits = rp.row_splits()
 
-    self.assertIs(rt_value_rowids, value_rowids)  # value_rowids
-    self.assertIs(rt_nrows, nrows)  # nrows
-    self.assertAllEqual(rt_row_splits, [0, 2, 2, 5, 6, 7, 7, 7])
+    self.assertIs(rp_value_rowids, value_rowids)  # value_rowids
+    self.assertIs(rp_nrows, nrows)  # nrows
+    self.assertAllEqual(rp_row_splits, [0, 2, 2, 5, 6, 7, 7, 7])
 
   def testFromValueRowIdsWithExplicitNRowsEqualToDefault(self):
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     nrows = constant_op.constant(5, dtypes.int64)
 
-    rt = RowPartition.from_value_rowids(value_rowids, nrows, validate=False)
+    rp = RowPartition.from_value_rowids(value_rowids, nrows, validate=False)
 
-    rt_value_rowids = rt.value_rowids()
-    rt_nrows = rt.nrows()
-    rt_row_splits = rt.row_splits()
+    rp_value_rowids = rp.value_rowids()
+    rp_nrows = rp.nrows()
+    rp_row_splits = rp.row_splits()
 
-    self.assertIs(rt_value_rowids, value_rowids)  # value_rowids
-    self.assertIs(rt_nrows, nrows)  # nrows
-    self.assertAllEqual(rt_value_rowids, value_rowids)
-    self.assertAllEqual(rt_nrows, nrows)
-    self.assertAllEqual(rt_row_splits, [0, 2, 2, 5, 6, 7])
+    self.assertIs(rp_value_rowids, value_rowids)  # value_rowids
+    self.assertIs(rp_nrows, nrows)  # nrows
+    self.assertAllEqual(rp_value_rowids, value_rowids)
+    self.assertAllEqual(rp_nrows, nrows)
+    self.assertAllEqual(rp_row_splits, [0, 2, 2, 5, 6, 7])
 
   def testFromValueRowIdsWithEmptyValues(self):
-    rt = RowPartition.from_value_rowids([])
-    rt_nrows = rt.nrows()
-    self.assertEqual(rt.dtype, dtypes.int64)
-    self.assertEqual(rt.value_rowids().shape.as_list(), [0])
-    self.assertAllEqual(rt_nrows, 0)
+    rp = RowPartition.from_value_rowids([])
+    rp_nrows = rp.nrows()
+    self.assertEqual(rp.dtype, dtypes.int64)
+    self.assertEqual(rp.value_rowids().shape.as_list(), [0])
+    self.assertAllEqual(rp_nrows, 0)
 
   def testFromRowSplits(self):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
 
-    rt = RowPartition.from_row_splits(row_splits, validate=False)
-    self.assertEqual(rt.dtype, dtypes.int64)
+    rp = RowPartition.from_row_splits(row_splits, validate=False)
+    self.assertEqual(rp.dtype, dtypes.int64)
 
-    rt_row_splits = rt.row_splits()
-    rt_nrows = rt.nrows()
+    rp_row_splits = rp.row_splits()
+    rp_nrows = rp.nrows()
 
-    self.assertIs(rt_row_splits, row_splits)
-    self.assertAllEqual(rt_nrows, 5)
+    self.assertIs(rp_row_splits, row_splits)
+    self.assertAllEqual(rp_nrows, 5)
 
   def testFromRowSplitsWithDifferentSplitTypes(self):
     splits1 = [0, 2, 2, 5, 6, 7]
@@ -207,43 +209,43 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     nvals = constant_op.constant(7)
     row_starts = constant_op.constant([0, 2, 2, 5, 6], dtypes.int64)
 
-    rt = RowPartition.from_row_starts(row_starts, nvals, validate=False)
-    self.assertEqual(rt.dtype, dtypes.int64)
+    rp = RowPartition.from_row_starts(row_starts, nvals, validate=False)
+    self.assertEqual(rp.dtype, dtypes.int64)
 
-    rt_row_starts = rt.row_starts()
-    rt_row_splits = rt.row_splits()
-    rt_nrows = rt.nrows()
+    rp_row_starts = rp.row_starts()
+    rp_row_splits = rp.row_splits()
+    rp_nrows = rp.nrows()
 
-    self.assertAllEqual(rt_nrows, 5)
-    self.assertAllEqual(rt_row_starts, row_starts)
-    self.assertAllEqual(rt_row_splits, [0, 2, 2, 5, 6, 7])
+    self.assertAllEqual(rp_nrows, 5)
+    self.assertAllEqual(rp_row_starts, row_starts)
+    self.assertAllEqual(rp_row_splits, [0, 2, 2, 5, 6, 7])
 
   def testFromRowLimits(self):
     row_limits = constant_op.constant([2, 2, 5, 6, 7], dtypes.int64)
 
-    rt = RowPartition.from_row_limits(row_limits, validate=False)
-    self.assertEqual(rt.dtype, dtypes.int64)
+    rp = RowPartition.from_row_limits(row_limits, validate=False)
+    self.assertEqual(rp.dtype, dtypes.int64)
 
-    rt_row_limits = rt.row_limits()
-    rt_row_splits = rt.row_splits()
-    rt_nrows = rt.nrows()
+    rp_row_limits = rp.row_limits()
+    rp_row_splits = rp.row_splits()
+    rp_nrows = rp.nrows()
 
-    self.assertAllEqual(rt_nrows, 5)
-    self.assertAllEqual(rt_row_limits, row_limits)
-    self.assertAllEqual(rt_row_splits, [0, 2, 2, 5, 6, 7])
+    self.assertAllEqual(rp_nrows, 5)
+    self.assertAllEqual(rp_row_limits, row_limits)
+    self.assertAllEqual(rp_row_splits, [0, 2, 2, 5, 6, 7])
 
   def testFromRowLengths(self):
     row_lengths = constant_op.constant([2, 0, 3, 1, 1], dtypes.int64)
 
-    rt = RowPartition.from_row_lengths(row_lengths, validate=False)
-    self.assertEqual(rt.dtype, dtypes.int64)
+    rp = RowPartition.from_row_lengths(row_lengths, validate=False)
+    self.assertEqual(rp.dtype, dtypes.int64)
 
-    rt_row_lengths = rt.row_lengths()
-    rt_nrows = rt.nrows()
+    rp_row_lengths = rp.row_lengths()
+    rp_nrows = rp.nrows()
 
-    self.assertIs(rt_row_lengths, row_lengths)  # nrows
-    self.assertAllEqual(rt_nrows, 5)
-    self.assertAllEqual(rt_row_lengths, row_lengths)
+    self.assertIs(rp_row_lengths, row_lengths)  # nrows
+    self.assertAllEqual(rp_nrows, 5)
+    self.assertAllEqual(rp_row_lengths, row_lengths)
 
   def testFromUniformRowLength(self):
     nvals = 16
@@ -307,7 +309,7 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   #=============================================================================
   def testRowPartitionStr(self):
     row_splits = [0, 2, 5, 6, 6, 7]
-    rt = RowPartition.from_row_splits(row_splits, validate=False)
+    rp = RowPartition.from_row_splits(row_splits, validate=False)
     splits_type = 'int64'
     if context.executing_eagerly():
       expected_repr = ('tf.RowPartition(row_splits=tf.Tensor([0 2 5 6 6 7], '
@@ -316,8 +318,8 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       expected_repr = ('tf.RowPartition(row_splits='
                        'Tensor("RowPartitionFromRowSplits/row_splits:0", '
                        'shape=(6,), dtype={}))').format(splits_type)
-    self.assertEqual(repr(rt), expected_repr)
-    self.assertEqual(str(rt), expected_repr)
+    self.assertEqual(repr(rp), expected_repr)
+    self.assertEqual(str(rp), expected_repr)
 
   @parameterized.parameters([
       # from_value_rowids
@@ -478,6 +480,230 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaises(errors.InvalidArgumentError):
         partition = factory(**kwargs)
         self.evaluate(partition.row_splits())
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class RowPartitionSpecTest(test_util.TensorFlowTestCase,
+                           parameterized.TestCase):
+
+  def testDefaultConstruction(self):
+    spec = RowPartitionSpec()
+    self.assertEqual(spec.nrows, None)
+    self.assertEqual(spec.nvals, None)
+    self.assertEqual(spec.uniform_row_length, None)
+    self.assertEqual(spec.dtype, dtypes.int64)
+
+  @parameterized.parameters([
+      (None, None, None, dtypes.int64, None, None, None, dtypes.int64),
+      (5, None, None, dtypes.int32, 5, None, None, dtypes.int32),
+      (None, 20, None, dtypes.int64, None, 20, None, dtypes.int64),
+      (None, None, 8, dtypes.int64, None, None, 8, dtypes.int64),
+      (5, None, 8, dtypes.int64, 5, 40, 8, dtypes.int64),  # nvals inferred
+      (None, 20, 4, dtypes.int32, 5, 20, 4, dtypes.int32),  # nrows inferred
+      (0, None, None, dtypes.int32, 0, 0, None, dtypes.int32),  # nvals inferred
+      (None, None, 0, dtypes.int32, None, 0, 0, dtypes.int32),  # nvals inferred
+  ])  # pyformat: disable
+  def testConstruction(self, nrows, nvals, uniform_row_length, dtype,
+                       expected_nrows, expected_nvals,
+                       expected_uniform_row_length, expected_dtype):
+    spec = RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
+    self.assertEqual(spec.nrows, expected_nrows)
+    self.assertEqual(spec.nvals, expected_nvals)
+    self.assertEqual(spec.uniform_row_length, expected_uniform_row_length)
+    self.assertEqual(spec.dtype, expected_dtype)
+
+  @parameterized.parameters([
+      dict(dtype=dtypes.float32, error='dtype must be tf.int32 or tf.int64'),
+      dict(nrows=0, nvals=5, error='.* not compatible .*'),
+      dict(uniform_row_length=0, nvals=5, error='.* not compatible .*'),
+      dict(nvals=11, uniform_row_length=5, error='.* not compatible .*'),
+      dict(
+          nrows=8, nvals=10, uniform_row_length=5,
+          error='.* not compatible .*'),
+  ])
+  def testConstructionError(self,
+                            nrows=None,
+                            nvals=None,
+                            uniform_row_length=None,
+                            dtype=dtypes.int64,
+                            error=None):
+    with self.assertRaisesRegexp(ValueError, error):
+      RowPartitionSpec(nrows, nvals, uniform_row_length, dtype)
+
+  def testValueType(self):
+    spec = RowPartitionSpec()
+    self.assertEqual(spec.value_type, RowPartition)
+
+  @parameterized.parameters([
+      dict(
+          spec=RowPartitionSpec(),
+          expected=(tensor_shape.TensorShape([None]),
+                    tensor_shape.TensorShape([None]),
+                    tensor_shape.TensorShape([None]), dtypes.int64)),
+      dict(
+          spec=RowPartitionSpec(dtype=dtypes.int32),
+          expected=(tensor_shape.TensorShape([None]),
+                    tensor_shape.TensorShape([None]),
+                    tensor_shape.TensorShape([None]), dtypes.int32)),
+      dict(
+          spec=RowPartitionSpec(nrows=8, nvals=13),
+          expected=(tensor_shape.TensorShape([8]),
+                    tensor_shape.TensorShape([13]),
+                    tensor_shape.TensorShape([None]), dtypes.int64)),
+      dict(
+          spec=RowPartitionSpec(nrows=8, uniform_row_length=2),
+          expected=(
+              tensor_shape.TensorShape([8]),
+              tensor_shape.TensorShape([16]),  # inferred
+              tensor_shape.TensorShape([2]),
+              dtypes.int64)),
+  ])
+  def testSerialize(self, spec, expected):
+    serialization = spec._serialize()
+    # TensorShape has an unconventional definition of equality, so we can't use
+    # assertEqual directly here.  But repr() is deterministic and lossless for
+    # the expected values, so we can use that instead.
+    self.assertEqual(repr(serialization), repr(expected))
+
+  @parameterized.parameters([
+      dict(
+          spec=RowPartitionSpec(),
+          expected=tensor_spec.TensorSpec([None], dtypes.int64)),
+      dict(
+          spec=RowPartitionSpec(dtype=dtypes.int32),
+          expected=tensor_spec.TensorSpec([None], dtypes.int32)),
+      dict(
+          spec=RowPartitionSpec(nrows=17, dtype=dtypes.int32),
+          expected=tensor_spec.TensorSpec([18], dtypes.int32)),
+      dict(
+          spec=RowPartitionSpec(nvals=10, uniform_row_length=2),
+          expected=tensor_spec.TensorSpec([6], dtypes.int64)),  # inferred nrow
+  ])
+  def testComponentSpecs(self, spec, expected):
+    self.assertEqual(spec._component_specs, expected)
+
+  @parameterized.parameters([
+      dict(
+          rp_factory=lambda: RowPartition.from_row_splits([0, 3, 7]),
+          components=[0, 3, 7]),
+  ])
+  def testToFromComponents(self, rp_factory, components):
+    rp = rp_factory()
+    spec = rp._type_spec
+    actual_components = spec._to_components(rp)
+    self.assertAllEqual(actual_components, components)
+    rp_reconstructed = spec._from_components(actual_components)
+    _assert_row_partition_equal(self, rp, rp_reconstructed)
+
+  @parameterized.parameters([
+      (RowPartitionSpec(), RowPartitionSpec()),
+      (RowPartitionSpec(nrows=8), RowPartitionSpec(nrows=8)),
+      (RowPartitionSpec(nrows=8), RowPartitionSpec(nrows=None)),
+      (RowPartitionSpec(nvals=8), RowPartitionSpec(nvals=8)),
+      (RowPartitionSpec(nvals=8), RowPartitionSpec(nvals=None)),
+      (RowPartitionSpec(uniform_row_length=8),
+       RowPartitionSpec(uniform_row_length=8)),
+      (RowPartitionSpec(uniform_row_length=8),
+       RowPartitionSpec(uniform_row_length=None)),
+      (RowPartitionSpec(nvals=12), RowPartitionSpec(uniform_row_length=3)),
+      (RowPartitionSpec(nrows=12), RowPartitionSpec(uniform_row_length=72)),
+      (RowPartitionSpec(nrows=5), RowPartitionSpec(nvals=15)),
+      (RowPartitionSpec(nvals=0), RowPartitionSpec(nrows=0)),
+      (RowPartitionSpec(nvals=0), RowPartitionSpec(uniform_row_length=0)),
+  ])
+  def testIsCompatibleWith(self, spec1, spec2):
+    self.assertTrue(spec1.is_compatible_with(spec2))
+
+  @parameterized.parameters([
+      (RowPartitionSpec(), RowPartitionSpec(dtype=dtypes.int32)),
+      (RowPartitionSpec(nvals=5), RowPartitionSpec(uniform_row_length=3)),
+      (RowPartitionSpec(nrows=7,
+                        nvals=12), RowPartitionSpec(uniform_row_length=3)),
+      (RowPartitionSpec(nvals=5), RowPartitionSpec(nrows=0)),
+      (RowPartitionSpec(nvals=5), RowPartitionSpec(uniform_row_length=0)),
+  ])
+  def testIsNotCompatibleWith(self, spec1, spec2):
+    self.assertFalse(spec1.is_compatible_with(spec2))
+
+  @parameterized.parameters([
+      dict(
+          spec1=RowPartitionSpec(nrows=8, nvals=3, dtype=dtypes.int32),
+          spec2=RowPartitionSpec(nrows=8, nvals=3, dtype=dtypes.int32),
+          expected=RowPartitionSpec(nrows=8, nvals=3, dtype=dtypes.int32)),
+      dict(
+          spec1=RowPartitionSpec(nrows=8, nvals=None),
+          spec2=RowPartitionSpec(nrows=None, nvals=8),
+          expected=RowPartitionSpec(nrows=None, nvals=None)),
+      dict(
+          spec1=RowPartitionSpec(nrows=8, nvals=33),
+          spec2=RowPartitionSpec(nrows=3, nvals=13),
+          expected=RowPartitionSpec(nrows=None, nvals=None)),
+      dict(
+          spec1=RowPartitionSpec(nrows=12, uniform_row_length=3),
+          spec2=RowPartitionSpec(nrows=3, uniform_row_length=3),
+          expected=RowPartitionSpec(nrows=None, uniform_row_length=3)),
+      dict(
+          spec1=RowPartitionSpec(5, 35, 7),
+          spec2=RowPartitionSpec(8, 80, 10),
+          expected=RowPartitionSpec(None, None, None)),
+  ])
+  def testMostSpecificCompatibleType(self, spec1, spec2, expected):
+    actual = spec1.most_specific_compatible_type(spec2)
+    self.assertEqual(actual, expected)
+
+  @parameterized.parameters([
+      (RowPartitionSpec(), RowPartitionSpec(dtype=dtypes.int32)),
+  ])
+  def testMostSpecificCompatibleTypeError(self, spec1, spec2):
+    with self.assertRaisesRegexp(ValueError, 'not compatible'):
+      spec1.most_specific_compatible_type(spec2)
+
+  def testFromValue(self):
+    self.assertEqual(
+        RowPartitionSpec.from_value(RowPartition.from_row_splits([0, 2, 8, 8])),
+        RowPartitionSpec(nrows=3))
+    self.assertEqual(
+        RowPartitionSpec.from_value(
+            RowPartition.from_row_lengths([5, 3, 0, 2])),
+        RowPartitionSpec(nrows=4))
+    self.assertEqual(
+        RowPartitionSpec.from_value(
+            RowPartition.from_value_rowids([0, 2, 2, 8])),
+        RowPartitionSpec(nrows=9, nvals=4))
+    self.assertEqual(
+        RowPartitionSpec.from_value(
+            RowPartition.from_uniform_row_length(
+                nvals=12, uniform_row_length=3)),
+        RowPartitionSpec(nvals=12, uniform_row_length=3))
+
+
+def _assert_row_partition_equal(test_class, actual, expected):
+  assert isinstance(test_class, test_util.TensorFlowTestCase)
+  assert isinstance(actual, RowPartition)
+  assert isinstance(expected, RowPartition)
+
+  test_class.assertEqual(actual.has_precomputed_row_splits(),
+                         expected.has_precomputed_row_splits())
+  test_class.assertEqual(actual.has_precomputed_row_lengths(),
+                         expected.has_precomputed_row_lengths())
+  test_class.assertEqual(actual.has_precomputed_value_rowids(),
+                         expected.has_precomputed_value_rowids())
+  test_class.assertEqual(actual.has_precomputed_nrows(),
+                         expected.has_precomputed_nrows())
+  test_class.assertEqual(actual.uniform_row_length() is None,
+                         expected.uniform_row_length() is None)
+
+  if expected.has_precomputed_row_splits():
+    test_class.assertAllEqual(actual.row_splits(), expected.row_splits())
+  if expected.has_precomputed_row_lengths():
+    test_class.assertAllEqual(actual.row_lengths(), expected.row_lengths())
+  if expected.has_precomputed_value_rowids():
+    test_class.assertAllEqual(actual.value_rowids(), expected.value_rowids())
+  if expected.has_precomputed_nrows():
+    test_class.assertAllEqual(actual.nrows(), expected.nrows())
+  if expected.uniform_row_length() is not None:
+    test_class.assertAllEqual(actual.uniform_row_length(),
+                              expected.uniform_row_length())
 
 
 if __name__ == '__main__':
