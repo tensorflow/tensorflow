@@ -85,6 +85,10 @@ endif
 
     MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buffers.h
     MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buffers.cc
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.cc
+    MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_slicers.h
+    MICROLITE_CC_SRCS += tensorflow/lite/micro/kernels/arc/mli_slicers.cc
     MICROLITE_CC_HDRS += tensorflow/lite/micro/kernels/arc/mli_tf_utils.h
 
     MICROLITE_CC_HDRS += tensorflow/lite/micro/tools/make/targets/arc/memory.lcf

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
+#include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
@@ -154,6 +155,7 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
       mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
       mli_krn_avepool_hwc_sa8(&in_local, &cfg, &out_local);
       mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
+	  if (i == batches -1) break;
       subtsr_cfg_in.start_coord[0]++;
       subtsr_cfg_out.start_coord[0]++;
       mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
@@ -165,6 +167,7 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
         out_local.data = sub_mli_out.data;
 	  }
     }
+    free_arc_scratch_buffers();
   } else {
     int32_t activation_min, activation_max;
     (void)CalculateActivationRangeQuantized(context, params->activation, output,
