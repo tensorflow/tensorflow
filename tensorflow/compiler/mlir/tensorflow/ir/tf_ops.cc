@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -998,6 +999,11 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
+}
+
+StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // TODO(ezhulenev): Implement optimal layout selection.
+  return "";
 }
 
 //===----------------------------------------------------------------------===//

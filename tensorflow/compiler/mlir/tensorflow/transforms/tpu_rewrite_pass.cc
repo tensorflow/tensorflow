@@ -723,13 +723,14 @@ LogicalResult Rewrite(
 }
 
 void TPURewritePass::runOnModule() {
-  llvm::SmallVector<tensorflow::DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   if (failed(tensorflow::GetDevicesFromOp(getModule(), &devices)))
     return signalPassFailure();
 
   OpBuilder builder(&getContext());
   auto result = getModule().walk([&](tf_device::LaunchFuncOp op) {
-    if (failed(Rewrite(op, devices, &builder))) return WalkResult::interrupt();
+    if (failed(Rewrite(op, devices.device_names(), &builder)))
+      return WalkResult::interrupt();
 
     return WalkResult::advance();
   });

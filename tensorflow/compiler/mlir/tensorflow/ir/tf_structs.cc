@@ -20,4 +20,27 @@ namespace mlir {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.cc.inc"
 
+namespace TF {
+
+void RuntimeDevices::AddDevice(const ParsedName& device) {
+  device_names_.push_back(device);
+}
+
+void RuntimeDevices::AddGpuDevice(const ParsedName& device,
+                                  const GpuDeviceMetadata& metadata) {
+  device_names_.push_back(device);
+  gpu_metadata_.insert({DeviceNameUtils::ParsedNameToString(device), metadata});
+}
+
+llvm::Optional<GpuDeviceMetadata> RuntimeDevices::GetGpuDeviceMetadata(
+    const ParsedName& device) const {
+  auto it = gpu_metadata_.find(DeviceNameUtils::ParsedNameToString(device));
+  if (it != gpu_metadata_.end()) {
+    return it->second;
+  } else {
+    return llvm::None;
+  }
+}
+
+}  // namespace TF
 }  // namespace mlir

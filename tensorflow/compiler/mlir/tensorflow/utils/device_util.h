@@ -36,16 +36,10 @@ namespace tensorflow {
 // (1) GpuDeviceMetadata: GPU device compute capability.
 void AddDevicesToOp(mlir::Operation* op, const DeviceSet* device_set);
 
-// Collects devices as DeviceNameUtils::ParsedName from an op `tf.devices`
-// attribute. A failure will be returned if device name is not valid.
-mlir::LogicalResult GetDevicesFromOp(
-    mlir::Operation* op,
-    llvm::SmallVectorImpl<DeviceNameUtils::ParsedName>* devices);
-
-// Returns GPU device metadata for the parsed device name if it exists in the
-// device metadata attributes, returns None otherwise.
-llvm::Optional<mlir::TF::GpuDeviceMetadata> GetGpuDeviceMetadata(
-    mlir::Operation* op, const DeviceNameUtils::ParsedName& device);
+// Collects devices information from an op `tf.devices` attributes. Returns
+// failure if can't parse device metadata from the attribute.
+mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
+                                     mlir::TF::RuntimeDevices* devices);
 
 }  // namespace tensorflow
 

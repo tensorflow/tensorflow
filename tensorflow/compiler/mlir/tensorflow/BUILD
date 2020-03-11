@@ -181,21 +181,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflow_structs",
-    srcs = [
-        "ir/tf_structs.cc",
-    ],
-    hdrs = [
-        "ir/tf_structs.h",
-    ],
-    deps = [
-        ":tensorflow_ops_inc_gen",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "tensorflow",
     srcs = [
         "ir/control_flow_ops.cc",
@@ -209,6 +194,7 @@ cc_library(
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
         "ir/tf_saved_model.cc",
+        "ir/tf_structs.cc",
         "ir/tf_verifiers.cc",
     ],
     hdrs = [
@@ -217,6 +203,7 @@ cc_library(
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
+        "ir/tf_structs.h",
         "ir/tf_traits.h",
         "ir/tf_verifiers.h",
         "transforms/bridge.h",
@@ -1162,7 +1149,7 @@ cc_library(
     srcs = ["utils/device_util.cc"],
     hdrs = ["utils/device_util.h"],
     deps = [
-        ":tensorflow_structs",
+        ":tensorflow",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
