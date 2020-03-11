@@ -663,10 +663,6 @@ class RowPartition(object):
       return self._value_rowids
     return segment_id_ops.row_splits_to_segment_ids(self._row_splits)
 
-  def nrows_as_dimension(self):
-    """Returns the first dimension of the shape as a `tf.Dimension`."""
-    return tensor_shape.dimension_at_index(self._row_splits.shape, 0) - 1
-
   def nvals(self, out_type=None):
     """Returns the number of values partitioned by this `RowPartition`.
 
@@ -759,6 +755,63 @@ class RowPartition(object):
       return self._row_lengths
     splits = self._row_splits
     return splits[1:] - splits[:-1]
+
+  @property
+  def static_nrows(self):
+    """The number of rows in this partition, if statically known.
+
+    ```python
+    self.row_lengths().shape == [self.static_nrows]
+    self.row_starts().shape == [self.static_nrows]
+    self.row_limits().shape == [self.static_nrows]
+    self.row_splits().shape == [self.static_nrows + 1]
+    ```
+
+    Returns:
+      The number of rows in this partition as an `int` (if statically known);
+      or `None` (otherwise).
+    """
+    if self._row_splits is not None:
+      nrows = tensor_shape.dimension_at_index(self._row_splits.shape, 0) - 1
+      if nrows.value is not None:
+        return nrows
+    if self._row_lengths is not None:
+      nrows = tensor_shape.dimension_at_index(self._row_lengths.shape, 0)
+      if nrows.value is not None:
+        return nrows
+    if self._nrows is not None:
+      return tensor_shape.Dimension(tensor_util.constant_value(self._nrows))
+    return None
+
+  @property
+  def static_nvals(self):
+    """The number of values in this partition, if statically known.
+
+    ```python
+    self.value_rowids().shape == [self.static_vals]
+    ```
+
+    Returns:
+      The number of values in this partition as an `int` (if statically known);
+      or `None` (otherwise).
+    """
+    if self._value_rowids is not None:
+      nvals = tensor_shape.dimension_at_index(self._value_rowids.shape, 0)
+      if nvals.value is not None:
+        return nvals.value
+    return None
+
+  @property
+  def static_uniform_row_length(self):
+    """The number of values in each row of this partition, if statically known.
+
+    Returns:
+      The number of values in each row of this partition as an `int` (if
+      statically known); or `None` (otherwise).
+    """
+    if self._uniform_row_length is not None:
+      return tensor_util.constant_value(self._uniform_row_length)
+    return None
 
   #=============================================================================
   # Transformation

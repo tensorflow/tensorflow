@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -818,17 +817,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     TensorShape([2, None, 2])
 
     """
-    nrows = self._row_partition.nrows_as_dimension()
-    if self._row_partition.uniform_row_length() is not None:
-      row_length = tensor_util.constant_value(
-          self._row_partition.uniform_row_length())
-    else:
-      row_length = None
-
-    values_shape = self._values.shape
-    value_shape = values_shape[1:]
-    return tensor_shape.TensorShape([nrows,
-                                     row_length]).concatenate(value_shape)
+    nrows = self._row_partition.static_nrows
+    ncols = self._row_partition.static_uniform_row_length
+    value_shape = self._values.shape[1:]
+    return tensor_shape.TensorShape([nrows, ncols]).concatenate(value_shape)
 
   @property
   def ragged_rank(self):
