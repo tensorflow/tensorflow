@@ -65,6 +65,20 @@ func @binary_op_broadcast(%arg0: tensor<4x1xf32>, %arg1: tensor<4x1x4xf32>) -> t
   return %0: tensor<4x4x4xf32>
 }
 
+// CHECK-LABEL: func @ternary_op
+func @ternary_op(%arg0: tensor<2xi1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK: "xla_hlo.select"(%arg0, %arg1, %arg2)
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<2xi1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// CHECK-LABEL: func @convert
+func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
+  // CHECK: "xla_hlo.convert"(%arg0) : (tensor<2xi32>) -> tensor<2xf32>
+  %0 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<2xi32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // TODO(hinsu): Add a test with variant type once one of the ops supporting
 // the type is whitelisted. It should be rejected with unsupported type remark.
 

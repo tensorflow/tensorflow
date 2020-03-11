@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
@@ -92,16 +93,6 @@ StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
   return MakeXlaOp(op.getResult());
 }
 
-XlaOp MlirHloBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
-
-    return CreateOp(GetMlirOpName(unop), shape, {operand}, /*attributes=*/{});
-  });
-}
-
 XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
     HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
     absl::optional<ComparisonDirection> direction) {
@@ -110,6 +101,13 @@ XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
       return Unimplemented("direction attribute not yet supported");
     return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
   });
+}
+
+StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
+    HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
+  return CreateOp(GetMlirOpName(opcode), shape,
+                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()),
+                  /*attributes=*/{});
 }
 
 StatusOr<XlaOp> MlirHloBuilder::CreateOp(

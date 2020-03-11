@@ -95,11 +95,12 @@ class MlirHloBuilder : public XlaBuilder {
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;
 
-  XlaOp UnaryOp(HloOpcode unop, XlaOp operand) override;
-
   XlaOp BinaryOpNoBroadcast(
       HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
       absl::optional<ComparisonDirection> direction) override;
+
+  StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                 absl::Span<const XlaOp> operands) override;
 
   // Creates HLO dialect op and returns the result as an XlaOp.
   StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,
