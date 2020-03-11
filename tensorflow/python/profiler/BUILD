@@ -218,12 +218,24 @@ py_test(
 )
 
 py_library(
+    name = "trace",
+    srcs = ["trace.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "traceme",
     srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "@six_archive//:six",
+        ":trace",
     ],
 )
 
