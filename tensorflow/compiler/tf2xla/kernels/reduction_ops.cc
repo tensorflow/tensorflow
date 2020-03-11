@@ -88,11 +88,12 @@ class MaxOp : public XlaReductionOp {
     OP_REQUIRES_OK(ctx, TypeCheck(xla_reduction_type_));
   }
 
-  Status TypeCheck(xla::PrimitiveType xla_reduction_type_){
-    if(xla_reduction_type_ == xla::C64){
-	  return errors::InvalidArgument(
-		"Unsupported type in xla_reduction_type_");
-	}else{
+  Status TypeCheck(xla::PrimitiveType xla_reduction_type_) {
+    if (xla_reduction_type_ == xla::C64) {
+      return errors::InvalidArgument(
+          "Unsupported PrimitiveType in MaxOp: '",
+          xla::PrimitiveType_Name(xla_reduction_type_), "'");
+    } else {
       return Status::OK();
     }
   }
