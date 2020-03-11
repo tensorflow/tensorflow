@@ -152,7 +152,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
       Status Initialize(IteratorContext* ctx) override {
         return DatasetIterator<Dataset<T>>::dataset()->input_->MakeIterator(
-            ctx, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
+            ctx, this, DatasetIterator<Dataset<T>>::prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

@@ -25,7 +25,7 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import function
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -147,7 +147,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     def reduce_fn(state, value):
       return state + value
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = dataset_fn().reduce(np.int64(0), reduce_fn)
       return "hello"
@@ -167,7 +167,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       counter_var.assign_add(1)
       return state + value
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = dataset_fn().reduce(np.int64(0), reduce_fn)
       return "hello"
@@ -191,7 +191,7 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
       counter_var.assign(counter_var * 2)
       return state + value
 
-    @function.defun
+    @def_function.function
     def fn():
       _ = dataset_fn().reduce(np.int64(0), reduce1_fn)
       _ = dataset_fn().reduce(np.int64(0), reduce2_fn)
@@ -200,6 +200,26 @@ class ReduceTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.evaluate(counter_var.initializer)
     self.assertEqual(self.evaluate(fn()), b"hello")
     self.assertEqual(self.evaluate(counter_var), 4)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedAutomaticControlDependencies(self):
+    counter_var = variables.Variable(0)
+
+    def map_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(10).map(map_fn)
+
+    @def_function.function
+    def fn():
+      for _ in dataset_fn():
+        pass
+      return counter_var
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), 10)
 
   @combinations.generate(test_base.default_test_combinations())
   def testStateOnGPU(self):

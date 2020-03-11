@@ -60,6 +60,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import traceback
 
 import numpy as np
 
@@ -92,7 +93,6 @@ input_lib = lazy_loader.LazyLoader(
     'input_lib', globals(),
     'tensorflow.python.distribute.input_lib')
 
-LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
 INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
@@ -104,22 +104,19 @@ INEFFICIENT_UNROLL_MIN_OPS = 1
 # datasets. Before it can be used though, we need to standardize the interface.
 
 
-# TODO(mdan): Use existing symbol names rather than carrying them separately.
-def _disallow_undefs_into_loop(*values):
+def _verify_loop_init_vars(values, symbol_names):
   """Ensures that all values in the state are defined when entering a loop."""
-  undefined = tuple(filter(special_values.is_undefined, values))
-  if undefined:
-    raise ValueError(
-        'TensorFlow requires that the following symbols must be defined'
-        ' before the loop: {}'.format(tuple(s.symbol_name for s in undefined)))
-
-  for value in values:
+  for name, value in zip(symbol_names, values):
+    if value is None:
+      raise ValueError('"{}" may not be None before the loop.'.format(name))
     if special_values.is_undefined_return(value):
       # Assumption: the loop will only capture the variable which tracks the
       # return value if the loop contained a return statement.
       # TODO(mdan): This should be checked at the place where return occurs.
       raise ValueError(
           'return statements are not supported within a TensorFlow loop.')
+    if special_values.is_undefined(value):
+      raise ValueError('"{}" must be defined before the loop.'.format(name))
 
 
 def _is_subshape(left, right):
@@ -142,11 +139,15 @@ def _is_subshape(left, right):
 def _verify_single_loop_var(
     name, check_shape, init, entry, exit_, shape_invariant):
   """Verifies whether the initial, entry and exit values are consistent."""
+  assert entry is not None, 'no TF op should set "{}" to None?'.format(name)
+  if exit_ is None:
+    raise ValueError('"{}" is None at the end of the iteration.'.format(name))
+
   if isinstance(init, (bool, int, float, str, np.ndarray)):
     init = ops.convert_to_tensor_v2(init)
   if isinstance(entry, (bool, int, float, str, np.ndarray)):
     entry = ops.convert_to_tensor_v2(entry)
-  if isinstance(exit_, (bool, int, float, str)):
+  if isinstance(exit_, (bool, int, float, str, np.ndarray)):
     exit_ = ops.convert_to_tensor_v2(exit_)
 
   if (not tensor_util.is_tensor(entry) or
@@ -188,7 +189,7 @@ def _verify_single_loop_var(
                                               shape_invariant))
       if not _is_subshape(exit_shape, shape_invariant):
         raise ValueError(
-            '"{}" has shape {} after the loop, which does not conform with'
+            '"{}" has shape {} after one iteration, which does not conform with'
             ' the shape invariant {}.'.format(
                 name, exit_shape, shape_invariant))
 
@@ -205,10 +206,20 @@ def _verify_tf_loop_vars(init_vars,
   else:
     shape_invariants = nest.map_structure(lambda _: None, iter_entry_vars)
 
-  named_vars = zip(symbol_names, init_vars, iter_entry_vars, iter_exit_vars,
-                   shape_invariants)
-  for name, init, entry, exit_, invariant in named_vars:
+  assert len(symbol_names) == len(shape_invariants)
+  assert len(symbol_names) == len(init_vars)
+  assert len(symbol_names) == len(iter_entry_vars)
+  assert len(symbol_names) == len(iter_exit_vars)
+
+  for i in range(len(symbol_names)):
+    name = symbol_names[i]
+    init = init_vars[i]
+    entry = iter_entry_vars[i]
+    exit_ = iter_exit_vars[i]
+    invariant = shape_invariants[i]
+
     try:
+      nest.assert_same_structure(init, entry, expand_composites=True)
       nest.assert_same_structure(entry, exit_, expand_composites=True)
     except (ValueError, TypeError) as e:
       raise TypeError('"{}" does not have the same nested structure after one'
@@ -227,10 +238,16 @@ def _verify_tf_loop_vars(init_vars,
 
 def _verify_single_cond_var(name, body_var, orelse_var):
   """Verifies whether body_var and orelse_var are consistent."""
-  if isinstance(body_var, (bool, int, float, str)):
+  if body_var is None:
+    raise ValueError('"{}" is None at the end of the TRUE branch.'.format(name))
+  if orelse_var is None:
+    raise ValueError(
+        '"{}" is None at the end of the FALSE branch.'.format(name))
+
+  if isinstance(body_var, (bool, int, float, str, np.ndarray)):
     body_var = ops.convert_to_tensor_v2(body_var)
 
-  if isinstance(orelse_var, (bool, int, float, str)):
+  if isinstance(orelse_var, (bool, int, float, str, np.ndarray)):
     orelse_var = ops.convert_to_tensor_v2(orelse_var)
 
   if (not tensor_util.is_tensor(body_var) or
@@ -359,6 +376,19 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
   """Overload of for_stmt that executes a Python for loop."""
   del get_state, set_state
 
+  if __debug__:
+    checker = _PythonLoopChecker()
+    before_iteration = checker.before_iteration
+    after_iteration = checker.after_iteration
+    before_iteration()
+
+    original_body = body
+    def protected_body(protected_iter):
+      original_body(protected_iter)
+      after_iteration()
+      before_iteration()
+    body = protected_body
+
   if extra_test is not None:
     if extra_test():
       for target in iter_:
@@ -420,7 +450,7 @@ def _tf_ragged_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF ragged tensors."""
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   # TODO(mdan): Move this into len()? Requires eager support.
   if iter_.shape and iter_.shape[0] is not None:
@@ -505,9 +535,7 @@ def _tf_range_for_stmt(
 def _tf_iterator_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF Iterators. See for_loop."""
-  init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
-
+  symbol_names = ('<internal has_next>',) + symbol_names
   has_next = compat_util.BasicRef(True)
 
   def aug_get_state():
@@ -518,24 +546,27 @@ def _tf_iterator_for_stmt(
     has_next.value, loop_vars = aug_loop_vars[0], aug_loop_vars[1:]
     set_state(loop_vars)
 
+  init_vars = aug_get_state()
+  _verify_loop_init_vars(init_vars, symbol_names)
+
   def aug_body():
     """Main body passed to _tf_while_stmt."""
     opt_iterate = iterator_ops.get_next_as_optional(iter_)
     has_next.value = opt_iterate.has_value()
-    loop_vars = get_state()  # previously set by set_state() in _tf_while_loop.
+    loop_vars = aug_get_state()  # updated by set_state() in _tf_while_loop.
 
     def main_path():
       body(opt_iterate.get_value())
-      new_loop_vars = get_state()
+      new_loop_vars = aug_get_state()
       # Note: this verification duplicates the one performed in tf_while_stmt,
       # but needs to be done earlier to prevent the tf.cond from blowing up
       # first.
       _verify_tf_loop_vars(
           init_vars, loop_vars, new_loop_vars, symbol_names, opts)
-      return (True,) + new_loop_vars
+      return new_loop_vars
 
     def noop_path():
-      return (False,) + loop_vars
+      return loop_vars
 
     # TODO(mdan): If tf.while_loop supported Optional, this could be avoided.
     # Calling set_state so that get_state() _tf_while_loop sees the conditional
@@ -557,7 +588,7 @@ def _tf_iterator_for_stmt(
       aug_body,
       aug_get_state,
       aug_set_state,
-      ('<internal has_next>',) + symbol_names,
+      symbol_names,
       opts)
 
 
@@ -588,7 +619,7 @@ def _tf_dataset_for_stmt(
   #  reduce(take_while(scan(3)))
 
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   # Workaround for Dataset.reduce not allowing empty state tensors - create
   # a dummy state variable that remains unused.
@@ -656,7 +687,11 @@ def _tf_distributed_iterable_for_stmt(
         'for ... in distributed input loops.')
 
   init_vars = get_state()
-  _disallow_undefs_into_loop(init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
+
+  if 'shape_invariants' in opts:
+    opts['shape_invariants'] = _shape_invariants_mapping_to_positional_list(
+        opts['shape_invariants'], init_vars)
 
   def reduce_body(loop_vars, iterate):
     set_state(loop_vars)
@@ -719,8 +754,15 @@ def while_stmt(test, body, get_state, set_state, symbol_names, opts):
 class _PythonLoopChecker(object):
   """Verifies Python loops for TF-specific limits."""
 
+  __slots__ = (
+      'iterations',
+      'check_inefficient_unroll',
+      'check_op_count_after_iteration',
+      'ops_before_iteration',
+      )
+
   def __init__(self):
-    self.iterations = 0
+    self.iterations = 1
     self.check_inefficient_unroll = WARN_INEFFICIENT_UNROLL
 
     # Triggered when we decided to test the op counts.
@@ -730,14 +772,15 @@ class _PythonLoopChecker(object):
     return ops.get_default_graph().get_operations()
 
   def _check_unroll_limits(self):
-    if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
+    if self.iterations > PYTHON_MAX_ITERATIONS:
       raise ValueError('iteration limit exceeded')
 
   def _stop_checking_inefficient_unroll(self):
     self.check_inefficient_unroll = False
+    self.check_op_count_after_iteration = False
     self.ops_before_iteration = None
 
-  def _verify_ineffcient_unroll(self):
+  def _verify_inefficient_unroll(self):
     """Checks for possibly-inefficient creation of ops in a Python loop."""
     assert self.ops_before_iteration is not None
     ops_after_iteration = self._get_ops()
@@ -747,13 +790,17 @@ class _PythonLoopChecker(object):
     if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
       return False
 
-    # TODO(mdan): Add location information.
     ag_logging.warn(
-        'TensorFlow ops are being created in a Python loop with large number'
-        ' of iterations. This can lead to slow startup. Did you mean to use a'
-        ' TensorFlow loop? For example, `while True:` is a Python loop, and'
-        ' `while tf.constant(True):` is a TensorFlow loop. The following'
-        ' ops were created after iteration %s: %s', self.iterations, new_ops)
+        'Large unrolled loop detected. Did you mean to use a TF loop?'
+        ' The following ops were created after iteration %s: %s'
+        '\nSee'
+        ' https://github.com/tensorflow/tensorflow/blob/master/'
+        'tensorflow/python/autograph/g3doc/reference/common_errors.md'
+        '#warning-large-unrolled-loop-detected'
+        '\n'
+        'Location:'
+        '\n%s'
+        '', self.iterations, new_ops, '\n'.join(traceback.format_stack()))
     return True
 
   def before_iteration(self):
@@ -769,8 +816,8 @@ class _PythonLoopChecker(object):
 
     self._check_unroll_limits()
 
-    if self.check_inefficient_unroll and self.check_op_count_after_iteration:
-      did_warn = self._verify_ineffcient_unroll()
+    if self.check_op_count_after_iteration:
+      did_warn = self._verify_inefficient_unroll()
       if did_warn:
         self._stop_checking_inefficient_unroll()  # Only warn once.
       elif self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS + 3:
@@ -784,13 +831,19 @@ def _py_while_stmt(test, body, get_state, set_state, opts):
 
   if __debug__:
     checker = _PythonLoopChecker()
+    before_iteration = checker.before_iteration
+    after_iteration = checker.after_iteration
+    before_iteration()
+
+    original_body = body
+    def protected_body():
+      original_body()
+      after_iteration()
+      before_iteration()
+    body = protected_body
 
   while test():
-    if __debug__:
-      checker.before_iteration()
     body()
-    if __debug__:
-      checker.after_iteration()
 
 
 def _shape_invariants_mapping_to_positional_list(mapping, keys):
@@ -806,7 +859,7 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
 def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
   init_vars = get_state()
-  _disallow_undefs_into_loop(*init_vars)
+  _verify_loop_init_vars(init_vars, symbol_names)
 
   def aug_test(*loop_vars):
     set_state(loop_vars)

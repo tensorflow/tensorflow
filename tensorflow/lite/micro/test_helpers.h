@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -33,8 +34,18 @@ const Model* GetSimpleMockModel();
 // tensors, and operators.
 const Model* GetComplexMockModel();
 
+// Returns a simple flatbuffer model with two branches.
+const Model* GetSimpleModelWithBranch();
+
+// Returns a flatbuffer model with `simple_stateful_op`
+const Model* GetSimpleStatefulModel();
+
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size, bool is_variable = false);
+
+// Builds a one-dimensional flatbuffer tensor of the given size with
+// quantization metadata.
+const Tensor* CreateQuantizedFlatbufferTensor(int size);
 
 // Creates a one-dimensional tensor with no quantization metadata.
 const Tensor* CreateMissingQuantizationFlatbufferTensor(int size);

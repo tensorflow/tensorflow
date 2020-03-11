@@ -55,6 +55,7 @@ ops.NotDifferentiable('NonMaxSuppressionV2')
 ops.NotDifferentiable('NonMaxSuppressionWithOverlaps')
 ops.NotDifferentiable('GenerateBoundingBoxProposals')
 
+
 # pylint: disable=invalid-name
 def _assert(cond, ex_type, msg):
   """A polymorphic assert, works with tensors and boolean expressions.
@@ -551,12 +552,20 @@ def rot90(image, k=1, name=None):
 
 
   For example:
-  ```python
-  a=tf.constant([[[1],[2]],[[3],[4]]])
-  # rotating `a` counter clockwise by 90 degrees
-  a_rot=tf.image.rot90(a,k=1) #rotated `a`
-  print(a_rot) # [[[2],[4]],[[1],[3]]]
-  ```
+
+  >>> a=tf.constant([[[1],[2]],
+  ...                [[3],[4]]])
+  >>> # rotating `a` counter clockwise by 90 degrees
+  >>> a_rot=tf.image.rot90(a)
+  >>> print(a_rot[...,0].numpy())
+  [[2 4]
+   [1 3]]
+  >>> # rotating `a` counter clockwise by 270 degrees
+  >>> a_rot=tf.image.rot90(a, k=3)
+  >>> print(a_rot[...,0].numpy())
+  [[3 1]
+   [4 2]]
+
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
@@ -678,6 +687,21 @@ def transpose(image, name=None):
 
   Raises:
     ValueError: if the shape of `image` not supported.
+
+  Usage Example:
+
+  >>> image = [[[1, 2], [3, 4]],
+  ...         [[5, 6], [7, 8]],
+  ...         [[9, 10], [11, 12]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.transpose(image)
+  <tf.Tensor: shape=(2, 3, 2), dtype=int32, numpy=
+  array([[[ 1,  2],
+         [ 5,  6],
+         [ 9, 10]],
+        [[ 3,  4],
+         [ 7,  8],
+         [11, 12]]], dtype=int32)>
   """
   with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -834,6 +858,32 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
 
   This op does nothing if `offset_*` is zero and the image already has size
   `target_height` by `target_width`.
+
+  Usage Example:
+
+  >>> x = [[[1., 2., 3.],
+  ...       [4., 5., 6.]],
+  ...       [[7., 8., 9.],
+  ...       [10., 11., 12.]]]
+  >>> padded_image = tf.image.pad_to_bounding_box(x, 1, 1, 4, 4)
+  >>> padded_image
+  <tf.Tensor: shape=(4, 4, 3), dtype=float32, numpy=
+  array([[[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 1.,  2.,  3.],
+  [ 4.,  5.,  6.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 7.,  8.,  9.],
+  [10., 11., 12.],
+  [ 0.,  0.,  0.]],
+  [[ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.],
+  [ 0.,  0.,  0.]]], dtype=float32)>
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1107,6 +1157,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
 
 @tf_export(v1=['image.ResizeMethod'])
 class ResizeMethodV1(object):
+  """See `v1.image.resize` for details."""
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
   BICUBIC = 2
@@ -1115,6 +1166,7 @@ class ResizeMethodV1(object):
 
 @tf_export('image.ResizeMethod', v1=[])
 class ResizeMethod(object):
+  """See `tf.image.resize` for details."""
   BILINEAR = 'bilinear'
   NEAREST_NEIGHBOR = 'nearest'
   BICUBIC = 'bicubic'
@@ -1214,9 +1266,9 @@ def resize_images(images,
 
   Resized images will be distorted if their original aspect ratio is not
   the same as `size`.  To avoid distortions see
-  `tf.compat.v1.image.resize_image_with_pad`.
+  `tf.image.resize_with_pad` or `tf.image.resize_with_crop_or_pad`.
 
-  `method` can be one of:
+  The `method` can be one of:
 
   *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation)
@@ -1276,7 +1328,7 @@ def resize_images(images,
       return gen_image_ops.resize_area(
           images_t, new_size, align_corners=align_corners)
     else:
-      raise ValueError('Resize method is not implemented.')
+      raise ValueError('Resize method is not implemented: {}'.format(method))
 
   return _resize_images_common(
       images,
@@ -1300,13 +1352,43 @@ def resize_images_v2(images,
   the same as `size`.  To avoid distortions see
   `tf.image.resize_with_pad`.
 
+  >>> image = tf.constant([
+  ...  [1,0,0,0,0],
+  ...  [0,1,0,0,0],
+  ...  [0,0,1,0,0],
+  ...  [0,0,0,1,0],
+  ...  [0,0,0,0,1],
+  ... ])
+  >>> # Add "batch" and "channels" dimensions
+  >>> image = image[tf.newaxis, ..., tf.newaxis]
+  >>> image.shape.as_list()  # [batch, height, width, channels]
+  [1, 5, 5, 1]
+  >>> tf.image.resize(image, [3,5])[0,...,0].numpy()
+  array([[0.6666667, 0.3333333, 0.       , 0.       , 0.       ],
+         [0.       , 0.       , 1.       , 0.       , 0.       ],
+         [0.       , 0.       , 0.       , 0.3333335, 0.6666665]],
+        dtype=float32)
+
+  It works equally well with a single image instead of a batch of images:
+
+  >>> tf.image.resize(image[0], [3,5]).shape.as_list()
+  [3, 5, 1]
+
   When 'antialias' is true, the sampling filter will anti-alias the input image
   as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
-  'antialias' has no effect when upsampling an image.
+  'antialias' has no effect when upsampling an image:
 
-  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+  >>> a = tf.image.resize(image, [5,10])
+  >>> b = tf.image.resize(image, [5,10], antialias=True)
+  >>> tf.reduce_max(abs(a - b)).numpy()
+  0.0
+
+  The `method` argument expects an item from the `image.ResizeMethod` enum, or
+  the string equivalent. The options are:
+
+  *   <b>`'bilinear'`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
@@ -1333,21 +1415,37 @@ def resize_images_v2(images,
     For synthetic images (especially those lacking proper prefiltering), less
     ringing than Keys cubic kernel but less sharp.
 
-  Note that near image edges the filtering kernel may be partially outside the
+  Note: Near image edges the filtering kernel may be partially outside the
   image boundaries. For these pixels, only input pixels inside the image will be
   included in the filter sum, and the output value will be appropriately
   normalized.
 
-  The return value has the same type as `images` if `method` is
-  `ResizeMethod.NEAREST_NEIGHBOR`. Otherwise, the return value has type
-  `float32`.
+  The return value has type `float32`, unless the `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`, then the return dtype is the dtype
+  of `images`:
+
+  >>> nn = tf.image.resize(image, [5,7], method='nearest')
+  >>> nn[0,...,0].numpy()
+  array([[1, 0, 0, 0, 0, 0, 0],
+         [0, 1, 1, 0, 0, 0, 0],
+         [0, 0, 0, 1, 0, 0, 0],
+         [0, 0, 0, 0, 1, 1, 0],
+         [0, 0, 0, 0, 0, 0, 1]], dtype=int32)
+
+  With `preserve_aspect_ratio=True`, the aspect ratio is preserved, so `size`
+  is the maximum for each dimension:
+
+  >>> max_10_20 = tf.image.resize(image, [10,20], preserve_aspect_ratio=True)
+  >>> max_10_20.shape.as_list()
+  [1, 10, 10, 1]
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
       size for the images.
-    method: ResizeMethod.  Defaults to `bilinear`.
+    method: An `image.ResizeMethod`, or string equivalent.  Defaults to
+      `bilinear`.
     preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
@@ -1408,7 +1506,7 @@ def resize_images_v2(images,
     elif method in scale_and_translate_methods:
       return resize_with_scale_and_translate(method)
     else:
-      raise ValueError('Resize method is not implemented.')
+      raise ValueError('Resize method is not implemented: {}'.format(method))
 
   return _resize_images_common(
       images,
@@ -2113,6 +2211,21 @@ def adjust_hue(image, delta, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Usage Example:
+
+  >>> image = [[[1, 2, 3], [4, 5, 6]],
+  ...          [[7, 8, 9], [10, 11, 12]],
+  ...          [[13, 14, 15], [16, 17, 18]]]
+  >>> image = tf.constant(image)
+  >>> tf.image.adjust_hue(image, 0.2)
+  <tf.Tensor: shape=(3, 2, 3), dtype=int32, numpy=
+  array([[[ 2,  1,  3],
+        [ 5,  4,  6]],
+       [[ 8,  7,  9],
+        [11, 10, 12]],
+       [[14, 13, 15],
+        [17, 16, 18]]], dtype=int32)>
   """
   with ops.name_scope(name, 'adjust_hue', [image]) as name:
     image = ops.convert_to_tensor(image, name='image')
@@ -3161,7 +3274,6 @@ def rgb_to_yuv(images):
 
   Returns:
     images: tensor with the same shape as `images`.
-
   """
   images = ops.convert_to_tensor(images, name='images')
   kernel = ops.convert_to_tensor(
@@ -3435,7 +3547,7 @@ def _ssim_per_channel(img1,
 
   # TODO(sjhwang): Try FFT.
   # TODO(sjhwang): Gaussian kernel is separable in space. Consider applying
-  #   1-by-n and n-by-1 Gaussain filters instead of an n-by-n filter.
+  #   1-by-n and n-by-1 Gaussian filters instead of an n-by-n filter.
   def reducer(x):
     shape = array_ops.shape(x)
     x = array_ops.reshape(x, shape=array_ops.concat([[-1], shape[-3:]], 0))
@@ -3712,9 +3824,8 @@ def image_gradients(image):
     ValueError: If `image` is not a 4D tensor.
   """
   if image.get_shape().ndims != 4:
-    raise ValueError(
-        'image_gradients expects a 4D tensor '
-        '[batch_size, h, w, d], not %s.', image.get_shape())
+    raise ValueError('image_gradients expects a 4D tensor '
+                     '[batch_size, h, w, d], not {}.'.format(image.get_shape()))
   image_shape = array_ops.shape(image)
   batch_size, height, width, depth = array_ops.unstack(image_shape)
   dy = image[:, 1:, :, :] - image[:, :-1, :, :]
@@ -4267,6 +4378,8 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     boxes: A `Tensor` of type `float32`. 3-D with shape `[batch,
       num_bounding_boxes, 4]` containing bounding boxes.
     name: A name for the operation (optional).
+    colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
+      through for the boxes.
 
   Returns:
     A `Tensor`. Has the same type as `images`.
@@ -4305,7 +4418,7 @@ def generate_bounding_box_proposals(scores,
                                     min_size=16,
                                     post_nms_topn=300,
                                     name=None):
-  """ Generate bounding box proposals from encoded bounding boxes.
+  """Generate bounding box proposals from encoded bounding boxes.
 
   Returns:
     rois: Region of interest boxes sorted by their scores.

@@ -435,8 +435,14 @@ Returns `x` + `y` element-wise.
 )doc");
 #endif  // INTEL_MKL
 
-REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
-    shape_inference::BroadcastBinaryOpShapeFn);
+REGISTER_OP("Sub")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr(
+        "T: {bfloat16, half, float, double, uint8, int8, uint16, int16, int32, "
+        "int64, complex64, complex128, uint32}")
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("_MklSub")
     .BINARY_FEWER()
@@ -1918,23 +1924,27 @@ REGISTER_OP("SobolSample")
     .Input("dim: int32")
     .Input("num_results: int32")
     .Input("skip: int32")
-    .Attr("dtype: {float, double} = DT_DOUBLE")
+    .Attr("dtype: {float, double} = DT_FLOAT")
     .Output("samples: dtype")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       ShapeHandle unused;
-      // inputs must be  scalars
+
+      // inputs must be scalars
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+
       const Tensor* dim_t = c->input_tensor(0);
       const Tensor* num_results_t = c->input_tensor(1);
-      if (dim_t == nullptr || num_results_t == nullptr) {
-        c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-        return Status::OK();
-      }
-      const int32 output_size =
-          dim_t->scalar<int32>()() * num_results_t->scalar<int32>()();
-      c->set_output(0, c->Vector(output_size));
+
+      int32 dim = dim_t == nullptr ? InferenceContext::kUnknownDim
+                                   : dim_t->scalar<int32>()();
+
+      int32 num_results = num_results_t == nullptr
+                              ? InferenceContext::kUnknownDim
+                              : num_results_t->scalar<int32>()();
+
+      c->set_output(0, c->Matrix(num_results, dim));
       return Status::OK();
     });
 

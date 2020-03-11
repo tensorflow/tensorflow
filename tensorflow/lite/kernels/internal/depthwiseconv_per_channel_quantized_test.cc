@@ -163,9 +163,8 @@ void CompareRoundingResults(int flat_size, const int depth_multiplier,
 
   // The tolerance that we apply to means is tight, but we allow for a rounding
   // difference in one pixel, and loosen by another 1% for float comparison.
-  float mean_tolerance =
-      std::max(1e-5f, 1.01f / flat_size * std::sqrt(1.f * depth_multiplier));
-  mean_tolerance = 500.f;
+  const float mean_tolerance =
+      std::max(1e-2f, 1.01f / flat_size * std::sqrt(1.f * depth_multiplier));
   const int diff_mean_tolerance = 256;
   const int diff_median_tolerance = 225;
 
@@ -347,7 +346,7 @@ void TryTestOneDepthwiseConv3x3Filter() {
 }
 
 TEST(QuantizedDepthwiseConvPerChannelTest, FastKernelTest) {
-  for (int i = 0; i < 30; ++i) {
+  for (int i = 0; i < 60; ++i) {
     TryTestOneDepthwiseConv3x3Filter();
   }
 }

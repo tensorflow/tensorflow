@@ -128,7 +128,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         IteratorContext::Params params(ctx);
         params.model = model_;
         return dataset()->input_->MakeIterator(
-            IteratorContext(std::move(params)), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), this, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,

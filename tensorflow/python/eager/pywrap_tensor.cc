@@ -71,28 +71,6 @@ TFE_Context* GetContextHandle(PyObject* py_context) {
   return ctx;
 }
 
-// Convert a Python numpy.ndarray object to a TFE_TensorHandle.
-// The two may share underlying storage so changes to one may reflect in the
-// other.
-TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
-  tensorflow::TensorHandle* handle;
-  tensorflow::Tensor t;
-  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
-  if (cppstatus.ok()) {
-    cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
-  }
-  if (!cppstatus.ok()) {
-    PyErr_SetString(PyExc_ValueError,
-                    tensorflow::strings::StrCat(
-                        "Failed to convert a NumPy array to a Tensor (",
-                        cppstatus.error_message(), ").")
-                        .c_str());
-    return nullptr;
-  }
-  return new TFE_TensorHandle{tensorflow::TensorHandleInterface(handle)};
-}
-
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
 // other.
@@ -265,41 +243,8 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     value_decrefer.reset(value);
   }
 
-  Safe_TFE_TensorHandlePtr handle;
-  if (PyArray_Check(value)) {
-    int desired_np_dtype = -1;
-    if (dtype != tensorflow::DT_INVALID) {
-      if (!tensorflow::TF_DataType_to_PyArray_TYPE(
-               static_cast<TF_DataType>(dtype), &desired_np_dtype)
-               .ok()) {
-        PyErr_SetString(
-            PyExc_TypeError,
-            tensorflow::strings::StrCat("Invalid dtype argument value ", dtype)
-                .c_str());
-        return nullptr;
-      }
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(value);
-    int current_np_dtype = PyArray_TYPE(array);
-    auto safe_value = tensorflow::make_safe(static_cast<PyObject*>(nullptr));
-    if ((desired_np_dtype >= 0 && desired_np_dtype != current_np_dtype) ||
-        !PyArray_ISCARRAY(array)) {
-      int new_dtype =
-          desired_np_dtype >= 0 ? desired_np_dtype : current_np_dtype;
-      safe_value = tensorflow::make_safe(
-          PyArray_FromAny(value, PyArray_DescrFromType(new_dtype), 0, 0,
-                          NPY_ARRAY_CARRAY_RO | NPY_ARRAY_FORCECAST, nullptr));
-      if (PyErr_Occurred()) return nullptr;
-      if (safe_value == nullptr) {
-        PyErr_SetString(PyExc_ValueError, "Error while casting a numpy value");
-        return nullptr;
-      }
-      value = safe_value.get();
-    }
-    handle = make_safe(NumpyToTFE_TensorHandle(ctx, value));
-  } else {
-    handle = make_safe(PySeqToTFE_TensorHandle(ctx, value, dtype));
-  }
+  Safe_TFE_TensorHandlePtr handle =
+      make_safe(PySeqToTFE_TensorHandle(ctx, value, dtype));
 
   if (handle == nullptr) return nullptr;
 
@@ -333,45 +278,28 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
-  // memory. We approximate the same behavior for eager execution - keeping
-  // int32 tensors in host memory.
+  // We always generate CPU:0 tensors, but we may need to change the device
+  // slightly, as for example from /job:localhost/... to /job:worker/...
   //
-  // We do so to preclude the need for callers into such kernels from having to
-  // explicitly place the int32 tensors in host memory. For example, without
-  // this, one needed:
-  //
-  // with tf.device('/gpu:0'):
-  //   ...// code here
-  //   with tf.device('/cpu:0'):
-  //     shape = tf.constant(...)
-  //   y = tf.random_uniform(shape)
-  //
-  // Without the CPU device block, tfe.ops.random_uniform would fail since the
-  // kernel expects the shape in host memory.
-  //
-  // With this support, we simplify the code:
-  //
-  // with tf.device('/gpu:0'):
-  //   y = tf.random_uniform(...)
-  //
-  // The approximation is not exact there are GPU kernels which do not require
-  // host memory for int32 tensors. This will lead to a discrepancy between
-  // eager and graph execution.
-  //
-  // To support remote execution copy int32 tensors to another CPU device.
-  // TODO(ashankar): Fix this.
+  // Note that this is a shallow copy and will share the underlying buffer,
+  // because we are copying to the same device.
   if (device_name != nullptr &&
-      (TFE_TensorHandleDataType(handle.get()) != TF_INT32 ||
-       strstr(device_name, "/device:CPU:0") != nullptr)) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
+      strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
     if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
       return nullptr;
     }
   }
+
+  // We always enable implicit mirroring for constants. Without this, code
+  // written previously under the assumption that
+  //
+  //   with tf.device('GPU:0'): x = tf.constant(1.0)
+  //
+  // will be placed in the GPU will suffer a non-trivial performance regression
+  // (measured at ~20% for certain benchmarks).
+  handle->handle->EnableImplicitMirroring();
 
   return handle.release();
 }
@@ -414,7 +342,7 @@ typedef struct EagerTensor {
   TFE_TensorHandle* handle;
   int64_t id;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
-  // be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
+  // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
   // inference metadata about shapes and dtypes of resources accessible from
   // this handle.
@@ -715,7 +643,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
-static PyGetSetDef EagerTensor_getseters[] = {
+static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("Tensor ID."), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
@@ -813,7 +741,7 @@ PyTypeObject* EagerTensorType = nullptr;
 static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
     {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
-    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getsetters)},
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
     {0, nullptr},
 };
@@ -854,7 +782,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
     EagerTensor_members,                /* tp_members */
-    EagerTensor_getseters,              /* tp_getset */
+    EagerTensor_getsetters,             /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */

@@ -79,7 +79,7 @@ def all_to_all(x,
 def _all_to_all_grad(op, grad):
   # The gradient of a all-to-all is also a all-to-all but the
   # split_dimension and concat_dimension is swapped.
-  # The graident with respect to group_assignment is None.
+  # The gradient with respect to group_assignment is None.
   return [
       gen_tpu_ops.all_to_all(
           grad,

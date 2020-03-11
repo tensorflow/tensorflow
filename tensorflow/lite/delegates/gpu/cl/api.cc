@@ -520,11 +520,7 @@ class InferenceBuilderImpl : public InferenceBuilder {
     create_info.storage_type = GetStorageType(options);
     if (options.usage == InferenceUsage::FAST_SINGLE_ANSWER) {
       create_info.hints.Add(ModelHints::kReduceKernelsCount);
-      // TODO(sorokin) temporary hack to speed up init time in some cases.
-      // TODO(sorokin): move this check to the place where hint is applied.
-      if (environment_->device().IsAdreno6xxOrHigher()) {
-        create_info.hints.Add(ModelHints::kFastTuning);
-      }
+      create_info.hints.Add(ModelHints::kFastTuning);
     }
     RETURN_IF_ERROR(context_->InitFromGraph(create_info, graph, environment_));
 
@@ -707,10 +703,8 @@ class InferenceEnvironmentImpl : public InferenceEnvironment {
     CLDevice device;
     if (options_.device) {
       cl_platform_id platform;
-      if (!FindPlatform(options_.device, &platform)) {
-        return NotFoundError(
-            "Unable to find cl_platform_id for the given cl_device");
-      }
+      RETURN_IF_ERROR(GetDeviceInfo<cl_platform_id>(
+          options_.device, CL_DEVICE_PLATFORM, &platform));
       device = CLDevice(options_.device, platform);
     } else {
       RETURN_IF_ERROR(CreateDefaultGPUDevice(&device));

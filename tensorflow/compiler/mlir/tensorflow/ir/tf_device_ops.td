@@ -66,6 +66,7 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
   let extraClassDeclaration = [{
     Block &GetBody() { return getOperation()->getRegion(0).front(); }
     StringRef getDevice() { return device(); }
+    bool WrapsSingleOp();
   }];
 
   let builders = [
@@ -131,16 +132,25 @@ def TfDevice_ReplicateOp :
   let description = [{
 The region held by this operation represents a computation that is replicated
 across multiple devices. The number of replications is based on the `n`
-attribute. Explicit devices can be populated in the `devices` attribute, and its
-length must match `n`. Within a replica, the execution semantics follow standard
-sequential behavior. Ops in the replicate with no device assigned will have its
-device set to the associated replicate device from `devices`. Operands are
-replicated inputs: each group of `n` inputs corresponds to an input for a single
-individual replica and is mapped to a single region argument. Inside one group
-the operands are matching in order the `devices` attribute. Each replicated
-input must have compatible shapes and types. Operands not replicated can be
-implicitly captured by ops in the region. Results are replicated each from the
-regions terminator.
+attribute. Explicit devices can be populated in the `devices` attribute, and it
+must be a mapping of device alias to list of explicit or aliased device names
+from the outer scope. The device name map specifies devices on which replicated
+ops inside tf_device.replicate will be executed. A tf_device.parallel_execute
+inside the tf_device.replicate op region may be used to represent computations
+across a larger set of devices. In that case, the device alias can be used to
+specify device assignment and replication of each concurrent execution
+(i.e. region) defined by tf_device.parallel_execute op. The size of each value
+list in the device name map must match `n`. Within a replica, the execution
+semantics follow standard sequential behavior. Ops in the tf_device.replicate
+wrapped with a tf_device.launch will have its device set to the associated
+replicated device from `devices` if the tf_device.launch refers to an aliased
+device name. Otherwise the device already set in tf_device.launch is used
+instead. Operands are replicated inputs: each group of `n` inputs corresponds to
+an input for a single individual replica and is mapped to a single region
+argument. Inside one group the operands are matching in order the `devices`
+attribute. Each replicated input must have compatible shapes and types. Operands
+not replicated can be implicitly captured by ops in the region. Results are
+replicated each from the regions terminator.
 
 For example:
 ```
@@ -148,28 +158,52 @@ For example:
 %1 = "tf.opB"() : () -> tensor<i32>
 %2 = "tf.opC"() : () -> tensor<f32>
 %3 = "tf.opD"() : () -> tensor<f32>
-%4 = "tf.opE"() : () -> tensor<i1>
-%output:4 = tf_device.replicate([%0, %1] as %input_0:tensor<i32>,
-                                [%2, %3] as %input_1:tensor<f32>)
-                {n = 2 : i32, devices = ["/DEVICE:0", "/DEVICE:1"]} {
-  // Inside the region, %input_0 corresponds to %0 for "/DEVICE:0" and %1 for
-  // "/DEVICE:1", and %input_1 corresponds to %2 for "/DEVICE:0" and %3 for
-  // "/DEVICE:1".
-  %f = "tf.opF"(%input_0, %4) : (tensor<i32>, tensor<i1>) -> tensor<i32>
-  %g = "tf.opG"(%input_1, %4) : (tensor<f32>, tensor<i1>) -> tensor<f32>
-  tf_device.return %f, %g : tensor<i32>, tensor<f32>
+%4 = "tf.opE"() : () -> tensor<!tf.resource>
+%5 = "tf.opF"() : () -> tensor<!tf.resource>
+%6 = "tf.opG"() : () -> tensor<!tf.string>
+%7 = "tf.opH"() : () -> tensor<!tf.string>
+%8 = "tf.opI"() : () -> tensor<i1>
+%output:8 = tf_device.replicate([%0, %1] as %input_0:tensor<i32>,
+                                [%2, %3] as %input_1:tensor<f32>,
+                                [%4, %5] as %input_2:tensor<!tf.resource>
+                                [%6, %7] as %input_3:tensor<!tf.string>)
+                {n = 2 : i32,
+                 devices = {DEVICE_ALIAS_0 = ["/DEVICE:0", "/DEVICE:1"],
+                            DEVICE_ALIAS_1 = ["/DEVICE:2", "/DEVICE:3"]}} {
+  // Inside the region, %0, %2, %4, and %6 corresponds to
+  // "/DEVICE:0"/"/DEVICE:2" and %1, %3, %5, and %7 corresponds to
+  // "/DEVICE:1"/"/DEVICE:3", depending on which device alias is used.
+  %j = "tf_device.launch"() ( {
+    %9 = "tf.opJ"(%input_0, %6) : (tensor<i32>, tensor<i1>) -> tensor<i32>
+    tf_device.return %9 : tensor<i32>
+  }) {device = "DEVICE_ALIAS_0"} : () -> tensor<i32>
+  %k = "tf_device.launch"() ( {
+    %10 = "tf.opK"(%input_1, %6) : (tensor<f32>, tensor<i1>) -> tensor<f32>
+    tf_device.return %10 : tensor<f32>
+  }) {device = "DEVICE_ALIAS_1"} : () -> tensor<f32>
+  %l = "tf_device.launch"() ( {
+    %11 = "tf.opL"(%input_2, %6) : (tensor<!tf.resource>, tensor<i1>)
+                                    -> tensor<!tf.resource>
+    tf_device.return %11 : tensor<!tf.resource>
+  }) {device = "/DEVICE:4"} : () -> tensor<f32>
+  %m = "tf.opM"(%input_3, %6) : (tensor<!tf.string>, tensor<i1>)
+                                  -> tensor<!tf.string>
+  tf_device.return %j, %k, %l, %m :
+    tensor<i32>, tensor<f32>, tensor<!tf.resource>, tensor<!tf.string>
 }
-// %output#0 corresponds to %f returned from "/DEVICE:0"
-// %output#1 corresponds to %f returned from "/DEVICE:1"
-// %output#2 corresponds to %g returned from "/DEVICE:0"
-// %output#3 corresponds to %g returned from "/DEVICE:1"
+// %output#0 corresponds to %j returned from "/DEVICE:0"
+// %output#1 corresponds to %j returned from "/DEVICE:1"
+// %output#2 corresponds to %k returned from "/DEVICE:2"
+// %output#3 corresponds to %k returned from "/DEVICE:3"
+// %output#4, %output#5 corresponds to %l and will be returned from "/DEVICE:4"
+// %output#6, %output#7 corresponds to %m and will have no device set
 ```
   }];
 
   let arguments = (ins
     Variadic<AnyType>:$replicated_inputs,
     Confined<I32Attr, [IntMinValue<2>]>:$n,
-    OptionalAttr<StrArrayAttr>:$devices
+    OptionalAttr<DictionaryAttr>:$devices
   );
 
   let results = (outs
@@ -184,14 +218,12 @@ For example:
 
   let builders = [
     OpBuilder<"Builder* builder, OperationState& state, int n, "
-              "llvm::ArrayRef<llvm::StringRef> devices, "
-              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>>"
-              "    replicated_inputs, "
+              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
+              "llvm::ArrayRef<std::pair<llvm::ArrayRef<Value>, Type>> replicated_inputs, "
               "llvm::ArrayRef<Type> replica_output_types">,
     OpBuilder<"Builder* builder, OperationState& state, int n, "
-              "llvm::ArrayRef<llvm::StringRef> devices, "
-              "llvm::ArrayRef<std::pair<Operation::operand_range, Type>>"
-              "    replicated_inputs, "
+              "const llvm::SmallDenseMap<StringRef, llvm::SmallVector<StringRef, 4>>& devices, "
+              "llvm::ArrayRef<std::pair<Operation::operand_range, Type>> replicated_inputs, "
               "Operation::result_type_range replica_output_types">
   ];
 

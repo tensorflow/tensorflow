@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -24,10 +25,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
-
 
 namespace tflite {
 namespace ops {
@@ -94,10 +94,11 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   // Run Fully Connected MLI kernel
   // MLI optimized version only supports int8 dataype and no fused Relu
   // TODO: subject to add mli_saturate kernel
-  // work around for issue #35318, mli fully connect kernel only supports zeropoint == 0 for weights.
-  // this check can be removed once issue #35318 is resolved.
-  if ((filter->params.zero_point == 0)
-     && (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone)) {
+  // work around for issue #35318, mli fully connect kernel only supports
+  // zeropoint == 0 for weights. this check can be removed once issue #35318 is
+  // resolved.
+  if ((filter->params.zero_point == 0) &&
+      (input->type == kTfLiteInt8 && params->activation == kTfLiteActNone)) {
     mli_tensor mli_in = {0};
     mli_tensor mli_weights = {0};
     mli_tensor mli_bias = {0};
@@ -129,7 +130,8 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
     mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
 
-    const int batches = MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    const int batches =
+        MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
 
     for (int i = 0; i < batches; i++) {
       mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
@@ -199,7 +201,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Quantized FullyConnected expects output data type uint8 or int16");
       return kTfLiteError;
@@ -254,8 +256,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

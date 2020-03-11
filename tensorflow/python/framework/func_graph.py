@@ -77,7 +77,7 @@ def convert_structure_to_signature(structure, arg_names=None):
 
   Returns:
     Identical structure that has TensorSpec objects instead of Tensors and
-    UknownArgument instead of any unsupported types.
+    UnknownArgument instead of any unsupported types.
   """
   def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
@@ -1023,6 +1023,8 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
+    func_graph.collective_manager_ids_used = (
+        deps_control_manager.collective_manager_ids_used)
 
   return func_graph
 
@@ -1197,7 +1199,7 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
                        "either zero or all names have to be specified.")
 
     for arg in flattened:
-      # We have a shape entry for each arg, regadless of whether it's a real
+      # We have a shape entry for each arg, regardless of whether it's a real
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):

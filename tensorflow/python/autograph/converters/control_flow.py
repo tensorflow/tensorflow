@@ -462,8 +462,8 @@ class ControlFlowTransformer(converter.Base):
 
     opts = self._create_loop_options(node)
 
-    if anno.hasanno(node, 'extra_test'):
-      extra_test = anno.getanno(node, 'extra_test')
+    if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
+      extra_test = anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST)
       extra_test_name = self.ctx.namer.new_symbol(
           'extra_test', reserved_symbols)
       template = """

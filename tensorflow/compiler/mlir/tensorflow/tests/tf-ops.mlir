@@ -66,17 +66,17 @@ func @testIdentity(%arg0: tensor<4x2x!tf.stringref>) -> tensor<4x2x!tf.string> {
 // -----
 
 // CHECK-LABEL: func @testBitcast
-func @testBitcast(%arg0: tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16> {
-  %0 = "tf.Bitcast"(%arg0) : (tensor<3x4x!tf.uint16>) -> tensor<3x4x!tf.quint16>
+func @testBitcast(%arg0: tensor<3x4xui16>) -> tensor<3x4x!tf.quint16> {
+  %0 = "tf.Bitcast"(%arg0) : (tensor<3x4xui16>) -> tensor<3x4x!tf.quint16>
   return %0 : tensor<3x4x!tf.quint16>
 }
 
 // -----
 
 // CHECK-LABEL: func @testReverseV2
-func @testReverseV2(%arg0: tensor<2x4x3x!tf.uint8>, %arg1: tensor<1xi32>) -> tensor<2x4x3x!tf.uint8> {
-  %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3x!tf.uint8>, tensor<1xi32>) -> tensor<2x4x3x!tf.uint8>
-  return %0 :  tensor<2x4x3x!tf.uint8>
+func @testReverseV2(%arg0: tensor<2x4x3xui8>, %arg1: tensor<1xi32>) -> tensor<2x4x3xui8> {
+  %0 = "tf.ReverseV2"(%arg0, %arg1) : (tensor<2x4x3xui8>, tensor<1xi32>) -> tensor<2x4x3xui8>
+  return %0 :  tensor<2x4x3xui8>
 }
 
 // -----
@@ -210,9 +210,9 @@ func @testLeakyWrongAlphaType(tensor<16xf32>) -> tensor<16xf32> {
 // -----
 
 // CHECK-LABEL: func @testMul
-func @testMul(%arg0: tensor<2x!tf.uint16>) -> (tensor<2x!tf.uint16>) {
-  %0 = "tf.Mul"(%arg0, %arg0) {T = "tfdtype$DT_UINT16", device = "/device:CPU:0", name = "Mul"} : (tensor<2x!tf.uint16>, tensor<2x!tf.uint16>) -> tensor<2x!tf.uint16>
-  return %0 : tensor<2x!tf.uint16>
+func @testMul(%arg0: tensor<2xui16>) -> (tensor<2xui16>) {
+  %0 = "tf.Mul"(%arg0, %arg0) {T = "tfdtype$DT_UINT16", device = "/device:CPU:0", name = "Mul"} : (tensor<2xui16>, tensor<2xui16>) -> tensor<2xui16>
+  return %0 : tensor<2xui16>
 }
 
 // -----
@@ -245,26 +245,26 @@ func @testReshape(tensor<*xf32>, tensor<*xf32>) -> (tensor<100x100xf32>) {
 // tf.Reshape with incorrect element number.
 func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<100> : tensor<2xi32>
-  // expected-error @+1 {{mismatch in tensor elements and shape implied elements}}
+  // expected-error @+1 {{number of output elements (10000) does not match expected number of elements (1000)}}
   %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with more than one -1 in the shape.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<-1> : tensor<2xi32>
   // expected-error @+1 {{more than one component of shape are -1}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
 // -----
 // tf.Reshape with -1 in the shape can't infer the dimension.
-func @testReshape(%arg0: tensor<10x10x10xf32>) -> tensor<100x100xf32> {
+func @testReshape(%arg0: tensor<10x10x10x10xf32>) -> tensor<100x100xf32> {
   %shape1 = constant dense<[101, -1]> : tensor<2xi32>
   // expected-error @+1 {{one component of shape is -1 but couldn't infer the dimension}}
-  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
+  %r1 = "tf.Reshape" (%arg0, %shape1) : (tensor<10x10x10x10xf32>, tensor<2xi32>) -> (tensor<100x100xf32>)
   return %r1 : tensor<100x100xf32>
 }
 
@@ -853,6 +853,154 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 }
 
 // -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOp
+func @testValidMatrixBandPartOp(%arg0: tensor<64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOp3D
+func @testValidMatrixBandPartOp3D(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64x64xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64x64xbf16>
+  return %0 : tensor<64x64x64xbf16>
+}
+
+// -----
+
+// Test valid tf.MatrixBandPart
+// CHECK-LABEL: func @testValidMatrixBandPartOpUnranked
+func @testValidMatrixBandPartOpUnranked(%arg0: tensor<*xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<*xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<64x64xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<64x64xbf16>
+  return %0 : tensor<64x64xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64x64xbf16>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<*xbf16> {
+  // expected-error @+1 {{op failed to verify that all of {input, band} have same type}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64x64xbf16>, tensor<i64>, tensor<i64>) -> tensor<*xbf16>
+  return %0 : tensor<*xbf16>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<i64>, %arg1: tensor<64x64xi64>, %arg2: tensor<i64>) -> tensor<i64> {
+  // expected-error @+1 {{op requires `input` to have rank of at least 2, but found 'tensor<i64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<i64>, tensor<64x64xi64>, tensor<i64>) -> tensor<i64>
+  return %0 : tensor<i64>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64xi64>, %arg1: tensor<32xi64>, %arg2: tensor<i64>) -> tensor<64x64xi64> {
+  // expected-error @+1 {{op requires `num_lower` to have 0 dimensions, but found 'tensor<32xi64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xi64>, tensor<32xi64>, tensor<i64>) -> tensor<64x64xi64>
+  return %0 : tensor<64x64xi64>
+}
+
+// -----
+
+// Test invalid tf.MatrixBandPart
+func @testInvalidMatrixBandPartOp(%arg0: tensor<64x64xi64>, %arg1: tensor<i64>, %arg2: tensor<32xi64>) -> tensor<64x64xi64> {
+  // expected-error @+1 {{op requires `num_upper` to have 0 dimensions, but found 'tensor<32xi64>'}}
+  %0 = "tf.MatrixBandPart"(%arg0, %arg1, %arg2) : (tensor<64x64xi64>, tensor<i64>, tensor<32xi64>) -> tensor<64x64xi64>
+  return %0 : tensor<64x64xi64>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.{|Stateful}PartitionedCall
+//===--------------------------------------------------------------------===//
+
+// Test valid tf.PartitionedCall
+// CHECK-LABEL: func @testValidPartitionedCall
+func @testValidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testUndefinedPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{'f' attribute refers to an undefined function: @nonexistant_pcall_func}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @nonexistant_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+// -----
+
+// Test invalid tf.PartitionedCall
+func @testInvalidPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{argument count mismatch: 'args' has 1 arguments, but '@pcall_func_2' expects 2}}
+  %0 = "tf.PartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func_2} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+// Test valid tf.StatefulPartitionedCall
+// CHECK-LABEL: func @testValidStatefulPartitionedCall
+func @testValidStatefulPartitionedCall(%arg0: tensor<i32>) -> tensor<i32> {
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func(%arg0: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+func @testUndefinedCallee(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{'f' attribute refers to an undefined function: @nonexistant_pcall_func}}
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @nonexistant_pcall_func} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+// -----
+
+func @testArgMismatch(%arg0: tensor<i32>) -> tensor<i32> {
+  // expected-error @+1 {{argument count mismatch: 'args' has 1 arguments, but '@pcall_func_2' expects 2}}
+  %0 = "tf.StatefulPartitionedCall"(%arg0) {config = "", config_proto = "", executor_type = "", f = @pcall_func_2} : (tensor<i32>) -> (tensor<i32>)
+  return %0 : tensor<i32>
+}
+
+func @pcall_func_2(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<i32> {
+  return %arg0 : tensor<i32>
+}
+
+// -----
+
+//===--------------------------------------------------------------------===//
+//  tf.Softmax
+//===--------------------------------------------------------------------===//
 
 // Test valid tf.Softmax
 // CHECK-LABEL: func @testSoftmax

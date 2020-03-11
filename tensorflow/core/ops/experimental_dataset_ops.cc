@@ -17,6 +17,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("AssertCardinalityDataset")
+    .Input("input_dataset: variant")
+    .Input("cardinality: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // cardinality should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("AssertNextDataset")
     .Input("input_dataset: variant")
     .Input("transformations: string")
@@ -561,6 +574,26 @@ REGISTER_OP("ParallelInterleaveDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// This is the V2 of ParallelInterleaveDataset, renamed to differentiate it
+// from the non-experimental ParallelInterleaveDataset op.
+REGISTER_OP("LegacyParallelInterleaveDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("buffer_output_elements: int64")
+    .Input("prefetch_input_elements: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// This op is no longer used. We keep it so that we can read graphs written by
+// old versions of TensorFlow.
 REGISTER_OP("ExperimentalParallelInterleaveDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -591,6 +624,27 @@ REGISTER_OP("ParseExampleDataset")
                                               // sorted by key (dense_keys and
                                               // sparse_keys combined) here.
     .Attr("sloppy: bool = false")
+    .Attr("ragged_keys: list(string) >= 0 = []")
+    .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
+    .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("ParseExampleDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("num_parallel_calls: int64")
+    .Input("dense_defaults: Tdense")
+    .Output("handle: variant")
+    .Attr("sparse_keys: list(string) >= 0")
+    .Attr("dense_keys: list(string) >= 0")
+    .Attr("sparse_types: list({float,int64,string}) >= 0")
+    .Attr("Tdense: list({float,int64,string}) >= 0")
+    .Attr("dense_shapes: list(shape) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")  // Output components will be
+                                              // sorted by key (dense_keys and
+                                              // sparse_keys combined) here.
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
     .Attr("ragged_keys: list(string) >= 0 = []")
     .Attr("ragged_value_types: list({float,int64,string}) >= 0 = []")
     .Attr("ragged_split_types: list({int32,int64}) >= 0 = []")

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 
+#include "mli_api.h"  // NOLINT
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -27,7 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc/mli_slicers.h"
-#include "tensorflow/lite/micro/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 
 #include "mli_api.h"
 
@@ -152,17 +153,19 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              const TfLiteTensor* bias, TfLiteTensor* output) {
   // Run Depthwise Conv MLI kernel
   // MLI optimized version only supports int8 dataype and dilation factor of 1
-  if ((input->type == kTfLiteInt8) &&
-    (params->dilation_width_factor == 1) && (params->dilation_height_factor == 1)) {
-    mli_tensor mli_in = { 0 };
-    mli_tensor mli_weights = { 0 };
-    mli_tensor mli_bias = { 0 };
-    mli_tensor mli_out = { 0 };
-    mli_conv2d_cfg cfg = { };
+  if ((input->type == kTfLiteInt8) && (params->dilation_width_factor == 1) &&
+      (params->dilation_height_factor == 1)) {
+    mli_tensor mli_in = {0};
+    mli_tensor mli_weights = {0};
+    mli_tensor mli_bias = {0};
+    mli_tensor mli_out = {0};
+    mli_conv2d_cfg cfg = {};
 
-    //reuse space allocated for OpData parameters
-    mli_weights.el_params.asym.scale.pi16 = (int16_t *)data->per_channel_output_multiplier;
-    mli_bias.el_params.asym.scale.pi16 = (int16_t *)data->per_channel_output_shift;
+    // reuse space allocated for OpData parameters
+    mli_weights.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_multiplier;
+    mli_bias.el_params.asym.scale.pi16 =
+        (int16_t*)data->per_channel_output_shift;
 
     int16_t filter_zero_point = 0;
     int16_t bias_zero_point = 0;
@@ -263,12 +266,12 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
 
     reference_integer_ops::DepthwiseConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+        op_params, data->per_channel_output_multiplier,
+        data->per_channel_output_shift, GetTensorShape(input),
+        GetTensorData<int8>(input), GetTensorShape(filter),
+        GetTensorData<int8>(filter), GetTensorShape(bias),
+        GetTensorData<int32>(bias), GetTensorShape(output),
+        GetTensorData<int8>(output));
   }
   return kTfLiteOk;
 }
@@ -347,8 +350,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,
                                         filter_width, filter_height, data_type,
                                         &data));
-  // TODO(aselle): Consider whether float conv and quantized conv should be
-  // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
       EvalFloat(context, node, params, &data, input, filter, bias, output);
@@ -361,8 +362,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantized(context, node, params, &data, input, filter, bias, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

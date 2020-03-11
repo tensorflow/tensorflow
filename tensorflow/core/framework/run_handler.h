@@ -62,7 +62,7 @@ class RunHandlerPool {
   // unique_ptr is destroyed.
   //
   // Will block unless there is an inactive handler.
-  std::unique_ptr<RunHandler> Get(int64 step_id = 0);
+  std::unique_ptr<RunHandler> Get(int64 step_id = 0, int64 timeout_in_ms = 0);
 
  private:
   class Impl;

@@ -28,7 +28,6 @@ to edit the `WORKSPACE` to configure the android NDK/SDK.
 ```
 bazel build -c opt \
   --config=android_arm64 \
-  --cxxopt='--std=c++11' \
   tensorflow/lite/tools/benchmark/android:benchmark_model
 ```
 

@@ -56,12 +56,12 @@ std::string PReLU::GetCoreCode(const LinkingContext& context) const {
     return absl::StrCat(context.var_name, " = max((FLT4)(0.0f), ",
                         context.var_name, ") + min((FLT4)(0.0f), ",
                         context.var_name, ") * ",
-                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
+                        alpha_.ReadLinearFLT4(context.s_coord), ";\n");
   } else {
     return absl::StrCat(context.var_name, " = clamp(", context.var_name,
                         ", (FLT4)(0.0f), (FLT4)(", clip_.GetName(),
                         ")) + min((FLT4)(0.0f), ", context.var_name, ") * ",
-                        alpha_.ReadLinearFLT4(context.z_coord), ";\n");
+                        alpha_.ReadLinearFLT4(context.s_coord), ";\n");
   }
 }
 

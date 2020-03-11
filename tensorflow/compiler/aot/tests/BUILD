@@ -25,6 +25,7 @@ test_suite(
         ":test_graph_tfmatmulandadd_test",
         ":test_graph_tfsplits_test",
         ":test_graph_tftop_k_test",
+        ":test_graph_tfvariable_readonly_test",
         ":test_graph_tfvariable_sequential_updates_test",
         ":test_graph_tfvariable_test",
         ":tfcompile_test",
@@ -73,6 +74,7 @@ genrule(
         "test_graph_tfsplits.pb",
         "test_graph_tftop_k.pb",
         "test_graph_tfvariable.pb",
+        "test_graph_tfvariable_readonly.pb",
         "test_graph_tfvariable_sequential_updates.pb",
     ],
     # Set CUDA_VISIBLE_DEVICES='' to prevent the code we launch from using any
@@ -96,6 +98,7 @@ tf_library(
     # compile but the others in this directory succeed, you may need to
     # expand the "required by all tf_library targets" list in tfcompile.bzl.
     include_standard_runtime_deps = False,
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -108,6 +111,7 @@ tf_library(
     cpp_class = "AddWithCkptComp",
     freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
     graph = "test_graph_tfadd_with_ckpt.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -121,6 +125,7 @@ tf_library(
     freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
     freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
     graph = "test_graph_tfadd_with_ckpt_saver.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -132,6 +137,7 @@ tf_library(
     config = "test_graph_tfassert_eq.config.pbtxt",
     cpp_class = "AssertComp",
     graph = "test_graph_tfassert_eq.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -143,6 +149,7 @@ tf_library(
     config = "test_graph_tfcond.config.pbtxt",
     cpp_class = "CondComp",
     graph = "test_graph_tfcond.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -154,6 +161,7 @@ tf_library(
     config = "test_graph_tffunction.config.pbtxt",
     cpp_class = "FunctionComp",
     graph = "test_graph_tffunction.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -165,6 +173,7 @@ tf_library(
     config = "test_graph_tfgather.config.pbtxt",
     cpp_class = "GatherComp",
     graph = "test_graph_tfgather.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -176,6 +185,7 @@ tf_library(
     config = "test_graph_tfmatmul.config.pbtxt",
     cpp_class = "foo::bar::MatMulComp",
     graph = "test_graph_tfmatmul.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -187,6 +197,7 @@ tf_library(
     config = "test_graph_tfmatmulandadd.config.pbtxt",
     cpp_class = "::foo::bar::MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -200,6 +211,7 @@ tf_library(
     cpp_class = "MatMulAndAddCompWithProfiling",
     enable_xla_hlo_profiling = True,
     graph = "test_graph_tfmatmulandadd.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -211,6 +223,7 @@ tf_library(
     config = "test_graph_tfsplits.config.pbtxt",
     cpp_class = "SplitsComp",
     graph = "test_graph_tfsplits.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -222,6 +235,7 @@ tf_library(
     config = "test_graph_tftop_k.config.pbtxt",
     cpp_class = "TopKComp",
     graph = "test_graph_tftop_k.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -233,6 +247,19 @@ tf_library(
     config = "test_graph_tfvariable.config.pbtxt",
     cpp_class = "VariableComp",
     graph = "test_graph_tfvariable.pb",
+    mlir_components = "None",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfvariable_readonly",
+    testonly = 1,
+    config = "test_graph_tfvariable_readonly.config.pbtxt",
+    cpp_class = "VariableReadonlyComp",
+    graph = "test_graph_tfvariable_readonly.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -244,6 +271,7 @@ tf_library(
     config = "test_graph_tfvariable_sequential_updates.config.pbtxt",
     cpp_class = "VariableSequentialUpdatesComp",
     graph = "test_graph_tfvariable_sequential_updates.pb",
+    mlir_components = "None",
     tags = [
         "manual",
     ],
@@ -269,6 +297,7 @@ tf_cc_test(
         ":test_graph_tfsplits",
         ":test_graph_tftop_k",
         ":test_graph_tfvariable",
+        ":test_graph_tfvariable_readonly",
         ":test_graph_tfvariable_sequential_updates",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
@@ -329,6 +358,18 @@ tf_library(
     config = "test_graph_tfcond.config.pbtxt",
     cpp_class = "CondComp",
     graph = "test_graph_tfcond.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tffunction_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tffunction.config.pbtxt",
+    cpp_class = "FunctionComp",
+    graph = "test_graph_tffunction.pb",
     mlir_components = "Bridge",
     tags = [
         "manual",
@@ -421,6 +462,42 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfvariable_readonly_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfvariable_readonly.config.pbtxt",
+    cpp_class = "VariableReadonlyComp",
+    graph = "test_graph_tfvariable_readonly.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfvariable_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfvariable.config.pbtxt",
+    cpp_class = "VariableComp",
+    graph = "test_graph_tfvariable.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfvariable_sequential_updates_mlir_bridge",
+    testonly = 1,
+    config = "test_graph_tfvariable_sequential_updates.config.pbtxt",
+    cpp_class = "VariableSequentialUpdatesComp",
+    graph = "test_graph_tfvariable_sequential_updates.pb",
+    mlir_components = "Bridge",
+    tags = [
+        "manual",
+    ],
+)
+
 tf_cc_test(
     name = "tfcompile_test_mlir_bridge",
     srcs = ["tfcompile_test.cc"],
@@ -434,12 +511,16 @@ tf_cc_test(
         ":test_graph_tfadd_with_ckpt_saver_mlir_bridge",
         ":test_graph_tfassert_eq_mlir_bridge",
         ":test_graph_tfcond_mlir_bridge",
+        ":test_graph_tffunction_mlir_bridge",
         ":test_graph_tfgather_mlir_bridge",
         ":test_graph_tfmatmul_mlir_bridge",
         ":test_graph_tfmatmulandadd_mlir_bridge",
         ":test_graph_tfmatmulandadd_with_profiling_mlir_bridge",
         ":test_graph_tfsplits_mlir_bridge",
         ":test_graph_tftop_k_mlir_bridge",
+        ":test_graph_tfvariable_mlir_bridge",
+        ":test_graph_tfvariable_readonly_mlir_bridge",
+        ":test_graph_tfvariable_sequential_updates_mlir_bridge",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

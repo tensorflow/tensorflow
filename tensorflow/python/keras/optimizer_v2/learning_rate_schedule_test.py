@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -79,26 +80,27 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.evaluate(step.assign(100))
       self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
-  @test_util.run_deprecated_v1
   def testVariables(self, serialize):
-    step = variables.Variable(1)
-    assign_1 = step.assign(1)
-    assign_2 = step.assign(2)
-    assign_100 = step.assign(100)
-    decayed_lr = learning_rate_schedule.ExponentialDecay(
-        .1, 3, 0.96, staircase=True)
-    decayed_lr = _maybe_serialized(decayed_lr, serialize)
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
+    with ops.Graph().as_default():
+      step = variables.Variable(1)
+      assign_1 = step.assign(1)
+      assign_2 = step.assign(2)
+      assign_100 = step.assign(100)
+      decayed_lr = learning_rate_schedule.ExponentialDecay(
+          .1, 3, 0.96, staircase=True)
+      decayed_lr = _maybe_serialized(decayed_lr, serialize)
 
-    self.evaluate(variables.global_variables_initializer())
-    # No change to learning rate
-    self.evaluate(assign_1.op)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
-    self.evaluate(assign_2.op)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
-    # Decayed learning rate
-    self.evaluate(assign_100.op)
-    expected = .1 * 0.96**(100 // 3)
-    self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
+      self.evaluate(variables.global_variables_initializer())
+      # No change to learning rate
+      self.evaluate(assign_1.op)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
+      self.evaluate(assign_2.op)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), .1, 1e-6)
+      # Decayed learning rate
+      self.evaluate(assign_100.op)
+      expected = .1 * 0.96**(100 // 3)
+      self.assertAllClose(self.evaluate(decayed_lr(step)), expected, 1e-6)
 
   @test_util.run_in_graph_and_eager_modes
   def testPiecewiseConstant(self, serialize):

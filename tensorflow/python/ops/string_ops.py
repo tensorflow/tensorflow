@@ -78,6 +78,10 @@ regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
 def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
   r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
 
+  >>> tf.strings.regex_replace("Text with tags.<br /><b>contains html</b>",
+  ...                          "<[^>]+>", " ")
+  <tf.Tensor: shape=(), dtype=string, numpy=b'Text with tags.  contains html '>
+
   Args:
     input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
@@ -470,6 +474,13 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
   (Note that int32 overflow results in an error while float overflow
   results in a rounded value.)
 
+  Examples:
+
+  >>> tf.strings.to_number("1.55")
+  <tf.Tensor: shape=(), dtype=float32, numpy=1.55>
+  >>> tf.strings.to_number("3", tf.int32)
+  <tf.Tensor: shape=(), dtype=int32, numpy=3>
+
   Args:
     input: A `Tensor` of type `string`.
     out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
@@ -509,6 +520,11 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   This functionality will be deprecated and it's recommended to use
   `tf.strings.to_hash_bucket_fast()` or `tf.strings.to_hash_bucket_strong()`.
 
+  Examples:
+
+  >>> tf.strings.to_hash_bucket(["Hello", "TensorFlow", "2.x"], 3)
+  <tf.Tensor: shape=(3,), dtype=int64, numpy=array([2, 0, 1])>
+
   Args:
     input: A `Tensor` of type `string`.
     num_buckets: An `int` that is `>= 1`. The number of buckets.
@@ -532,3 +548,35 @@ def string_to_hash_bucket_v1(
   return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
 
 string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__
+
+
+@tf_export("strings.join", v1=["strings.join", "string_join"])
+@deprecation.deprecated_endpoints("string_join")
+@dispatch.add_dispatch_support
+def string_join(inputs, separator="", name=None):
+  """Perform element-wise concatenation of a list of string tensors.
+
+  Given a list of string tensors of same shape, performs element-wise
+  concatenation of the strings of the same index in all tensors.
+
+
+  >>> tf.strings.join(['abc','def']).numpy()
+  b'abcdef'
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456'],
+  ...                  ['ghi','789']]).numpy()
+  array([b'abcdefghi', b'123456789'], dtype=object)
+  >>> tf.strings.join([['abc','123'],
+  ...                  ['def','456']],
+  ...                  separator=" ").numpy()
+  array([b'abc def', b'123 456'], dtype=object)
+
+  Args:
+    inputs: A list of `tf.Tensor` objects of same size and `tf.string` dtype.
+    separator: A string added between each string being joined.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.string` tensor.
+  """
+  return gen_string_ops.string_join(inputs, separator=separator, name=name)

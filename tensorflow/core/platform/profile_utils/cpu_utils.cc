@@ -23,6 +23,7 @@ limitations under the License.
 #include <windows.h>
 #endif
 
+#include "absl/base/call_once.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/profile_utils/android_armv7a_cpu_utils_helper.h"
 
@@ -134,8 +135,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 }
 
 /* static */ ICpuUtilsHelper& CpuUtils::GetCpuUtilsHelperSingletonInstance() {
-  static std::once_flag flag;
-  std::call_once(flag, []() {
+  static absl::once_flag flag;
+  absl::call_once(flag, []() {
     if (cpu_utils_helper_instance_ != nullptr) {
       LOG(FATAL) << "cpu_utils_helper_instance_ is already instantiated.";
     }

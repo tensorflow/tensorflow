@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 namespace tflite {
@@ -153,7 +153,7 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
-  ScopedProfilingLabelWrapper label("Mean");
+  ruy::profiler::ScopeLabel label("Mean");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -207,7 +207,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
                  const T* input_data,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Mean4D");
+  ruy::profiler::ScopeLabel label("Mean4D");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -252,7 +252,7 @@ inline void Mean(const tflite::MeanParams& op_params,
                  float input_scale, const RuntimeShape& unextended_output_shape,
                  uint8_t* output_data, int32 output_zero_point,
                  float output_scale) {
-  ScopedProfilingLabelWrapper label("Mean4D/Uint8");
+  ruy::profiler::ScopeLabel label("Mean4D/Uint8");
 
   // Current implementation only supports dimension equals 4 and simultaneous
   // reduction over width and height.
@@ -282,13 +282,15 @@ inline void Mean(const tflite::MeanParams& op_params,
   int32 bias =
       output_zero_point -
       static_cast<int32>(input_zero_point * input_scale / output_scale);
-  float real_scale = input_scale / (num_elements_in_axis * output_scale);
+  double real_scale =
+      static_cast<double>(input_scale / (num_elements_in_axis * output_scale));
 
-  int32 multiplier, shift;
+  int32_t multiplier;
+  int shift;
   QuantizeMultiplier(real_scale, &multiplier, &shift);
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
-      int acc = 0;
+      int32 acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
@@ -318,9 +320,9 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                bool compute_sum) {
   const bool uint8_case = std::is_same<T, int8_t>::value;
   if (uint8_case) {
-    ScopedProfilingLabelWrapper label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
+    ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
   } else {
-    ScopedProfilingLabelWrapper label(compute_sum ? "Sum/Int8" : "Mean/Int8");
+    ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Int8" : "Mean/Int8");
   }
   // Reset output data.
   size_t num_outputs = 1;
@@ -365,7 +367,8 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
     const float scale = input_scale / output_scale;
     if (compute_sum) {
       // TODO(b/116341117): Eliminate float and do this completely in 8bit.
-      const float bias = -input_zero_point * scale * num_elements_in_axis + 0.5;
+      const float bias =
+          -input_zero_point * scale * num_elements_in_axis + 0.5f;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         const U value =
             static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
@@ -373,7 +376,7 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
         output_data[idx] = static_cast<T>(value);
       }
     } else {
-      const float bias = -input_zero_point * scale + 0.5;
+      const float bias = -input_zero_point * scale + 0.5f;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         float float_mean = static_cast<float>(temp_sum[idx]) /
                            static_cast<float>(num_elements_in_axis);

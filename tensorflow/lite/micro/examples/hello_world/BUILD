@@ -5,6 +5,10 @@ load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
 )
+load(
+    "//tensorflow/lite/micro:build_def.bzl",
+    "micro_copts",
+)
 
 package(default_visibility = ["//visibility:public"])
 
@@ -18,6 +22,7 @@ cc_library(
     hdrs = [
         "sine_model_data.h",
     ],
+    copts = micro_copts(),
 )
 
 tflite_micro_cc_test(
@@ -44,6 +49,7 @@ cc_library(
     hdrs = [
         "output_handler.h",
     ],
+    copts = micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/micro:micro_framework",
@@ -58,6 +64,7 @@ cc_library(
     hdrs = [
         "constants.h",
     ],
+    copts = micro_copts(),
 )
 
 cc_binary(

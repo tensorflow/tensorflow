@@ -165,7 +165,6 @@ std::string GenerateConvolutionConstantCode(
     c += "  }\n";
   }
   c += "}\n";
-
   return c;
 }
 
@@ -221,7 +220,8 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 }
 
 Status ConvConstants::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateConvolutionConstantCode(
       definition_, kernel_size_, src_channels_, dst_channels_,
       stride_correction, *creation_context.device, linked_operations_);
@@ -276,6 +276,12 @@ Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
 bool IsConvConstantsSupported(const CLDevice& device,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
+  if (device.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
+      definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
+    // BUG, some AMD gpus crashe without it
+    return false;
+  }
+
   const auto& w_shape = attr.weights.shape;
   const int dst_channels = AlignByN(w_shape.o, 4);
   const int filters_count = w_shape.i * dst_channels * w_shape.h * w_shape.w;

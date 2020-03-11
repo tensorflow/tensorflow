@@ -25,6 +25,39 @@ limitations under the License.
 
 namespace tflite {
 
+namespace internal {
+
+// A helper class to encapsulate the implementation of APIs in Context.
+// context->impl_ points to an instance of this class.
+// Check tensorflow/lite/c/common.h for detailed descriptions.
+class ContextHelper {
+ public:
+  explicit ContextHelper(ErrorReporter* error_reporter,
+                         MicroAllocator* allocator)
+      : allocator_(allocator), error_reporter_(error_reporter) {}
+
+  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
+                                               void** ptr);
+
+  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
+                                                  size_t bytes,
+                                                  int* buffer_idx);
+
+  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
+
+  static void ReportOpError(struct TfLiteContext* context, const char* format,
+                            ...);
+
+  void SetNodeIndex(int idx) { current_node_idx_ = idx; }
+
+ private:
+  MicroAllocator* allocator_;
+  ErrorReporter* error_reporter_;
+  int current_node_idx_ = -1;
+};
+
+}  // namespace internal
+
 class MicroInterpreter {
  public:
   // The lifetime of the model, op resolver, tensor arena, and error reporter
@@ -39,10 +72,15 @@ class MicroInterpreter {
                    uint8_t* tensor_arena, size_t tensor_arena_size,
                    ErrorReporter* error_reporter);
 
+  ~MicroInterpreter();
+
   // Runs through the model and allocates all necessary input, output and
   // intermediate tensors.
   TfLiteStatus AllocateTensors();
 
+  // In order to support partial graph runs for strided models, this can return
+  // values other than kTfLiteOk and kTfLiteError.
+  // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
   size_t tensors_size() const { return context_.tensors_size; }
@@ -89,9 +127,10 @@ class MicroInterpreter {
     return nullptr;
   }
 
-  TfLiteStatus initialization_status() const { return initialization_status_; }
+  // Reset all variable tensors to the default value.
+  TfLiteStatus ResetVariableTensors();
 
-  ErrorReporter* error_reporter() { return error_reporter_; }
+  TfLiteStatus initialization_status() const { return initialization_status_; }
 
   size_t operators_size() const { return operators_->size(); }
 
@@ -106,7 +145,7 @@ class MicroInterpreter {
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
 
-  NodeAndRegistration* node_and_registrations_;
+  NodeAndRegistration* node_and_registrations_ = nullptr;
 
   const Model* model_;
   const OpResolver& op_resolver_;
@@ -120,6 +159,7 @@ class MicroInterpreter {
   const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;
 
   const SubGraph* subgraph_;
+  internal::ContextHelper context_helper_;
 };
 
 }  // namespace tflite

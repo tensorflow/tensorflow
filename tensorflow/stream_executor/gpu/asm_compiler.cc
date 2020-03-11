@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
-
 namespace stream_executor {
 
 #if TENSORFLOW_USE_ROCM || defined(PLATFORM_WINDOWS)
@@ -159,7 +155,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   int cc_minor;
   TF_RETURN_IF_ERROR(
       gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, handle));
+  return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
+}
 
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options) {
   string ptxas_path;
   auto env = tensorflow::Env::Default();
   for (const string& cuda_root :
@@ -183,13 +184,13 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
-  });
-
   TF_RETURN_IF_ERROR(
       tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
+
+  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+  });
 
   // Invoke ptxas and collect its output.
   string cubin_path;

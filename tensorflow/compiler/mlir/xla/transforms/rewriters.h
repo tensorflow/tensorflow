@@ -41,6 +41,10 @@ void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
 void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         OwningRewritePatternList *patterns);
 
+// Collection of rewrite patterns for lowering of HLO to Linalg dialect.
+void populateHLOToLinalgConversionPattern(MLIRContext *context,
+                                          OwningRewritePatternList *patterns);
+
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,
                                         ConversionTarget *conversionTarget);

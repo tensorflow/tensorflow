@@ -16,7 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
@@ -207,7 +207,8 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
                          [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp]] in
+                         [TF_BitwiseOrOp, HLO_OrOp],
+                         [TF_BitwiseAndOp, HLO_AndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -344,6 +345,18 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
           /*precision_config=*/(NullArrayAttr))>;
 
+
+//===----------------------------------------------------------------------===//
+// SparseMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+// Ignores the sparseness hints and translates tf.SparseMatMul to tf.MatMul
+// until we will have an implementation that can use the information.
+def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
+                                $transpose_a, $transpose_b),
+                               (TF_MatMulOp $a, $b, $transpose_a,
+                                $transpose_b)>;
+
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
@@ -355,16 +368,22 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support dynamic but ranked input by using scalar constants
-// along with broadcast_dimensions attribute. Similarly, Relu6 op with
-// non-static shape inputs can be lowered.
-def : Pat<(TF_ReluOp AnyStaticShapeTensor:$input),
-          (HLO_MaxOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                     (NullDenseIntElementsAttr))>;
+// TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
+// require HLO canonicalization of min and max on a tensor to ClampOp.
 
-def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
-          (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                       (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_ReluOp AnyRankedTensor:$input),
+          (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
+                     (BinBroadcastDimensions $zero, $input)),
+          [(TF_SintOrFpTensor $input)]>;
+
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
+          (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
+                       (HLO_ConstOp (GetScalarOfType<6> $input))),
+          [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
 //
@@ -400,6 +419,20 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
+
+//===----------------------------------------------------------------------===//
+// PartitionedCall op patterns.
+//===----------------------------------------------------------------------===//
+
+def ArgTypesMatchCallee : Constraint<
+    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+
+foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
+  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+             $config, $config_proto, $executor_type),
+            (CallOp $f, $args),
+          [(ArgTypesMatchCallee $op, $args, $f)]>;
+}
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
@@ -471,8 +504,8 @@ def : Pat<(TF_SignOp $x),
           )>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
-  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
-  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).isSignlessIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isSignlessIntOrFloat() && "
   "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
   "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
   "element types must be integers or floats of same width">;
@@ -485,15 +518,18 @@ def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
-// RngUniform.
+// Random ops.
 //===----------------------------------------------------------------------===//
 
-// TODO(misard,phawkins): handle random number generator seeds/states correctly.
-def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
-          (HLO_RngUniformOp
+foreach srcDstOpPair = [[TF_RandomUniformOp, HLO_RngUniformOp],
+                        [TF_RandomStandardNormalOp, HLO_RngNormalOp]] in {
+// TODO(b/148269299): handle random number generator seeds/states correctly.
+def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
+          (srcDstOpPair[1]
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
             (CastValueToI64 $old, $shape)),
-            [(IsShapedTensor $shape)]>;
+          [(IsShapedTensor $shape)]>;
+}
