@@ -260,6 +260,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 // Proto debug string:
 //   mesh_shape: 1
 //   mesh_shape: 1
+//   mesh_shape: 1
 //   mesh_shape: 2
 //   num_tasks: 1
 //   num_tpu_devices_per_task: 2
@@ -268,9 +269,11 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 //   device_coordinates: 0
 //   device_coordinates: 0
 //   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
 //   device_coordinates: 1
 // Serialized string:
-//   "\0A\03\01\01\02\10\01\18\02\22\06\00\00\00\00\00\01"
+//   "\0A\04\01\01\01\02\10\01\18\02\22\06\00\00\00\00\00\00\00\01"
 
 // -----
 
@@ -1241,7 +1244,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
     // CHECK-NEXT:     "tf.TPUExecute"
     // CHECK-NEXT:     tf_device.return
     // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:1"
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\01\02\10\01\18\02\22\06\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
     return %0 : tensor<8xi32>
   }
   func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
@@ -1255,6 +1258,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 // Proto debug string:
 //   mesh_shape: 1
 //   mesh_shape: 2
+//   mesh_shape: 1
 //   mesh_shape: 2
 //   num_tasks: 2
 //   num_tpu_devices_per_task: 2
@@ -1263,16 +1267,19 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
 //   device_coordinates: 0
 //   device_coordinates: 0
 //   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
 //   device_coordinates: 1
 //   device_coordinates: 0
 //   device_coordinates: 1
 //   device_coordinates: 0
 //   device_coordinates: 0
+//   device_coordinates: 0
 //   device_coordinates: 1
+//   device_coordinates: 0
 //   device_coordinates: 1
 // Serialized string:
-//   "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01"
-
+//   "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01"
 // -----
 
 // Tests devices are set properly for replicated model parallelism.
@@ -1302,7 +1309,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK-NEXT:     "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return
       // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_1"
-      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01", device_assignment = [0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
     return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
@@ -1339,7 +1346,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK:        "tf_device.launch"
       // CHECK-NEXT:     "tf.TPUExecute"
       // CHECK:        device = "TPU_REPLICATED_CORE_1"
-      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01", device_assignment = [0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
       tf_device.return %1 : tensor<8xi32>
     }
     return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
@@ -1377,7 +1384,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
       // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
       // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
       // CHECK:        device = "TPU_REPLICATED_CORE_1"
-      %1, %2 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\03\01\02\02\10\02\18\02\22\0c\00\00\00\00\00\01\00\01\00\00\01\01", device_assignment = [0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 1, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""]} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      %1, %2 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""]} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
       tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
     }
     return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>

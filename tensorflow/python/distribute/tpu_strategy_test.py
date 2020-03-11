@@ -171,7 +171,7 @@ class TPUStrategyTest(test.TestCase):
 
     # Computation on the 2nd core.
     device_assignment2 = device_assignment_lib.DeviceAssignment(
-        topology, [[[0, 0, 1]]])
+        topology, [[[0, 0, 0, 1]]])
     second_core_strategy = tpu_lib.TPUStrategy(
         resolver, device_assignment=device_assignment2)
 
@@ -202,7 +202,7 @@ class TPUStrategyTest(test.TestCase):
 
     # Strategy for the 2nd core.
     device_assignment2 = device_assignment_lib.DeviceAssignment(
-        topology, [[[0, 0, 1]]])
+        topology, [[[0, 0, 0, 1]]])
     second_core_strategy = tpu_lib.TPUStrategy(
         resolver, device_assignment=device_assignment2)
 
