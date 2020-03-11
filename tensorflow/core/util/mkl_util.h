@@ -140,8 +140,6 @@ inline void execute_primitives(
   }
 }
 
-#endif  // ENABLE_MKLDNN_V1
-#ifdef ENABLE_MKLDNN_V1
 // In MKL-DNN v1.x, the format (ex. NCHW) used to initialize a memory descriptor
 // (md) structure will no longer be recorded in its `format` field. Instead, it
 // will be set to a canonical `blocked` format for every fully described md.
@@ -678,6 +676,7 @@ typedef std::vector<MklDnnShape> MklDnnShapeList;
 template <typename T>
 class MklDnnData;
 
+// TODO merge with the execute_primitives.
 inline void ExecutePrimitive(const std::vector<primitive>& net,
                              const std::vector<MemoryArgsMap>* net_args,
                              const engine& cpu_engine) {
