@@ -290,7 +290,7 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
-    BroadcastDimAttr:$broadcast_dimensions
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
   let builders = [OpBuilder<
@@ -349,7 +349,7 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
   let arguments = (ins
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs,
-    BroadcastDimAttr:$broadcast_dimensions
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 }
 
@@ -632,7 +632,7 @@ def HLO_CompareOp: HLO_Op<"compare",
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
-    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
   let builders = [OpBuilder<
@@ -822,7 +822,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,
-    BroadcastDimAttr:$broadcast_dimensions
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 
   let results = (outs HLO_Tensor);

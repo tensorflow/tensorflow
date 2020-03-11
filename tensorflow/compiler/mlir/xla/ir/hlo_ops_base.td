@@ -25,8 +25,8 @@ def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
-
+defvar BroadcastDimAttr = I64ElementsAttr;
+  
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//

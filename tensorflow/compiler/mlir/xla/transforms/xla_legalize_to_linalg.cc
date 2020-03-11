@@ -258,9 +258,7 @@ class BroadcastInDimConverter
 
       if (broadcastOp.broadcast_dimensions()) {
         for (const auto& broadcastDim :
-             enumerate(broadcastOp.broadcast_dimensions()
-                           .getValue()
-                           .getIntValues())) {
+             enumerate(broadcastOp.broadcast_dimensions().getIntValues())) {
           int size = broadcastDim.value().getSExtValue();
           // TODO(pifon): Add support for args with dynamic shapes for the case
           // when a dimension of size 1 is broadcasted into dim of size N.
@@ -298,8 +296,6 @@ class ScalarBroadcastInDimConverter
     auto resultMemrefType =
         broadcastOp.output().getType().dyn_cast<MemRefType>();
     if (!operandMemrefType || !resultMemrefType) return matchFailure();
-    auto broadcastDims = broadcastOp.broadcast_dimensions();
-    if (!broadcastDims.hasValue()) return matchFailure();
 
     unsigned nloops = resultMemrefType.getRank();
     SmallVector<Attribute, 1> indexingMaps{
