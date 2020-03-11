@@ -64,7 +64,7 @@ class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
                                          tile_sizes_.end());
       if (tile_sizes.empty()) {
         tile_sizes =
-            SmallVector<int64_t, 2>(generic_op.getNumInputsAndOutputs(), 1);
+            SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value result : op.getOutputBuffers()) {
