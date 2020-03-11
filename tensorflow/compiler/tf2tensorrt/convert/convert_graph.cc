@@ -103,6 +103,15 @@ std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
   return std::make_pair(TfGpuId(-1), PlatformGpuId(-1));
 }
 
+// Returns false for const nodes (we intend to drop control edges from those).
+bool ShallKeepControlEdgeFrom(const Node* input_node) {
+  if (!input_node) {
+    VLOG(2) << "Node pointer is null, this should not happen";
+    return false;
+  }
+  return input_node->type_string() != "Const";
+}
+
 // Function to get subsegment information structure.
 Status GetEngineInfo(const Graph* g,
                      const grappler::GraphProperties& graph_properties,
@@ -172,7 +181,7 @@ Status GetEngineInfo(const Graph* g,
         continue;
       }
       if (edge->IsControlEdge()) {
-        if (input_node->type_string() != "Const") {
+        if (ShallKeepControlEdgeFrom(input_node)) {
           // Non-Const control input.
           info->connections.emplace_back(input_node->name(), input_node->id(),
                                          node_name, node_id,
@@ -221,7 +230,7 @@ Status GetEngineInfo(const Graph* g,
       }
       if (edge->IsControlEdge()) {
         // Control output.
-        if (node->type_string() != "Const") {
+        if (ShallKeepControlEdgeFrom(node)) {
           info->connections.emplace_back(output_node->name(), output_node->id(),
                                          node_name, node_id,
                                          /*input_edge=*/false);
