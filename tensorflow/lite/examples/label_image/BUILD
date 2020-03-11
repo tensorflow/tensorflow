@@ -32,6 +32,7 @@ cc_binary(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/tools/evaluation:utils",
@@ -62,7 +63,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
