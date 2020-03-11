@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -544,8 +543,9 @@ class BatchNormalizationBase(Layer):
     # TODO(rmlarsen): Support using fused avg updates for non-eager execution
     # after fixing graph pattern matching and enabling fused_batch_norm to
     # take exponential_avg_factor as a tensor input.
-    use_fused_avg_updates = (compat.forward_compatible(2020, 3, 6) and
-                             context.executing_eagerly())
+    use_fused_avg_updates = (
+        compat.forward_compatible(2020, 3, 6) and
+        ops.executing_eagerly_outside_functions())
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
