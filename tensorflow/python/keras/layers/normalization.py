@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -531,7 +532,12 @@ class BatchNormalizationBase(Layer):
     else:
       inputs_size = None
 
-    if compat.forward_compatible(2020, 3, 6):
+    # TODO(rmlarsen): Support using fused avg updates for non-eager execution
+    # after fixing graph pattern matching and enabling fused_batch_norm to
+    # take exponential_avg_factor as a tensor input.
+    use_fused_avg_updates = (compat.forward_compatible(2020, 3, 6) and
+                             context.executing_eagerly())
+    if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
       exponential_avg_factor = None
@@ -582,7 +588,7 @@ class BatchNormalizationBase(Layer):
           data_format=self._data_format)
 
     train_op = _fused_batch_norm_training
-    if compat.forward_compatible(2020, 3, 6) and inputs_size is not None:
+    if use_fused_avg_updates and inputs_size is not None:
       train_op = lambda: tf_utils.smart_cond(inputs_size > 0,
                                              _fused_batch_norm_training,
                                              _fused_batch_norm_training_empty)
@@ -593,7 +599,7 @@ class BatchNormalizationBase(Layer):
 
     training_value = tf_utils.constant_value(training)
     if training_value or training_value is None:
-      if not compat.forward_compatible(2020, 3, 6):
+      if not use_fused_avg_updates:
         if training_value is None:
           momentum = tf_utils.smart_cond(training, lambda: self.momentum,
                                          lambda: 1.0)
@@ -602,7 +608,7 @@ class BatchNormalizationBase(Layer):
 
       def mean_update():
         """Update self.moving_mean with the most recent data point."""
-        if compat.forward_compatible(2020, 3, 6):
+        if use_fused_avg_updates:
           return self._assign_new_value(self.moving_mean, mean)
         else:
           return self._assign_moving_average(self.moving_mean, mean, momentum,
@@ -610,7 +616,7 @@ class BatchNormalizationBase(Layer):
 
       def variance_update():
         """Update self.moving_variance with the most recent data point."""
-        if compat.forward_compatible(2020, 3, 6):
+        if use_fused_avg_updates:
           return self._assign_new_value(self.moving_variance, variance)
         else:
           return self._assign_moving_average(self.moving_variance, variance,
