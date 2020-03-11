@@ -106,7 +106,7 @@ std::pair<TfGpuId, PlatformGpuId> GetFirstValidDeviceId() {
 // Returns false for const nodes (we intend to drop control edges from those).
 bool ShallKeepControlEdgeFrom(const Node* input_node) {
   if (!input_node) {
-    VLOG(2) << "Node pointer is null, this should not happen";
+    LOG(FATAL) << "Node pointer is null, this should not happen";
     return false;
   }
   return input_node->type_string() != "Const";
