@@ -756,8 +756,9 @@ XlaOp XlaBuilder::BroadcastInDim(
     TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
     // Output shape, in the case of degenerate broadcast, the out_dim_size is
     // not necessarily the same as the dimension sizes of the output shape.
-    auto output_shape =
-        ShapeUtil::MakeShape(operand_shape->element_type(), out_dim_size);
+    TF_ASSIGN_OR_RETURN(auto output_shape,
+                        ShapeUtil::MakeValidatedShape(
+                            operand_shape->element_type(), out_dim_size));
     if (operand_shape->rank() != broadcast_dimensions.size()) {
       return InvalidArgument(
           "Size of broadcast_dimensions has to match operand's rank; operand "
