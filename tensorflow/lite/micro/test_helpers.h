@@ -27,6 +27,14 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
+constexpr int kOfflinePlannerHeaderSize = 3;
+
+struct NodeConnection_ {
+  std::initializer_list<int> input;
+  std::initializer_list<int> output;
+};
+typedef struct NodeConnection_ NodeConnection;
+
 // Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
 // 1 layer of weights, 1 output Tensor, and 1 operator.
 const Model* GetSimpleMockModel();
@@ -37,6 +45,11 @@ const Model* GetComplexMockModel();
 
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
+
+// Returns a simple flatbuffer model with offline planned tensors
+const Model* GetModelWithOfflinePlanning(int num_tensors,
+                                         const int32_t* metadata_buffer,
+                                         std::vector<NodeConnection> node_conn);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
