@@ -944,57 +944,35 @@ PyLocalExecutable::ExecuteOnLocalDevices(
 
 /*static*/ StatusOr<std::unique_ptr<PyLocalExecutable>>
 PyLocalExecutable::Compile(const XlaComputation& computation,
-                           absl::optional<std::vector<Shape>> argument_layouts,
-                           const ExecutableBuildOptions* build_options,
-                           PyLocalClient* client,
-                           absl::optional<DeviceAssignment> device_assignment) {
+                           PyLocalClient* client, CompileOptions options) {
   tensorflow::profiler::TraceMe traceme("LocalExecutable::Compile");
 
-  ExecutableBuildOptions options;
-  if (build_options != nullptr) {
-    options = *build_options;
+  ExecutableBuildOptions& build_options = options.executable_build_options;
+  if (!build_options.device_allocator()) {
+    build_options.set_device_allocator(client->allocator());
   }
 
-  if (!options.device_allocator()) {
-    options.set_device_allocator(client->allocator());
+  if (!build_options.has_device_assignment()) {
+    VLOG(2) << "PyLocalExecutable::Compile using default device_assignment.";
+    TF_ASSIGN_OR_RETURN(
+        DeviceAssignment device_assignment,
+        client->GetDefaultDeviceAssignment(build_options.num_replicas(),
+                                           build_options.num_partitions()));
+    build_options.set_device_assignment(device_assignment);
   }
+  VLOG(2) << "PyLocalExecutable::Compile device_assignment:\n"
+          << build_options.device_assignment().ToString();
 
-  if (device_assignment) {
-    VLOG(2) << "PyLocalExecutable::Compile got device_assignment:\n"
-            << device_assignment->ToString();
-    if (device_assignment->replica_count() != options.num_replicas()) {
-      return InvalidArgument(
-          "Mismatched number of replicas for device "
-          "assignment and computation (%d vs %d).\n%s",
-          device_assignment->replica_count(), options.num_replicas(),
-          device_assignment->ToString());
-    }
-    if (device_assignment->computation_count() != options.num_partitions()) {
-      return InvalidArgument(
-          "Mismatched number of partitions for device "
-          "assignment and computation (%d vs %d).\n%s",
-          device_assignment->computation_count(), options.num_partitions(),
-          device_assignment->ToString());
-    }
-  } else {
-    TF_ASSIGN_OR_RETURN(device_assignment,
-                        client->GetDefaultDeviceAssignment(
-                            options.num_replicas(), options.num_partitions()));
-    VLOG(2) << "PyLocalExecutable::Compile using default device_assignment:\n"
-            << device_assignment->ToString();
-  }
-  options.set_device_assignment(device_assignment.value());
-
-  if (!argument_layouts) {
+  if (!options.argument_layouts) {
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                         computation.GetProgramShape());
-    argument_layouts = program_shape.parameters();
-    for (Shape& shape : *argument_layouts) {
+    options.argument_layouts = program_shape.parameters();
+    for (Shape& shape : *options.argument_layouts) {
       LayoutUtil::ClearLayout(&shape);
     }
   }
   std::vector<const Shape*> argument_layout_pointers;
-  argument_layout_pointers.reserve(argument_layouts->size());
+  argument_layout_pointers.reserve(options.argument_layouts->size());
 
   // Assign a default layout to any array subshapes that are missing layouts.
   auto assign_layouts = [client](Shape* shape) {
@@ -1012,14 +990,14 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
         });
   };
 
-  for (Shape& layout : *argument_layouts) {
+  for (Shape& layout : *options.argument_layouts) {
     argument_layout_pointers.push_back(&layout);
     TF_RETURN_IF_ERROR(assign_layouts(&layout));
   }
 
   Shape result_layout;
-  if (options.result_layout()) {
-    result_layout = *options.result_layout();
+  if (build_options.result_layout()) {
+    result_layout = *build_options.result_layout();
   } else {
     TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
                         computation.GetProgramShape());
@@ -1027,15 +1005,15 @@ PyLocalExecutable::Compile(const XlaComputation& computation,
     LayoutUtil::ClearLayout(&result_layout);
   }
   TF_RETURN_IF_ERROR(assign_layouts(&result_layout));
-  options.set_result_layout(result_layout);
+  build_options.set_result_layout(result_layout);
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<LocalExecutable>> local_executables,
       client->client()->Compile(computation, argument_layout_pointers,
-                                options));
+                                build_options));
 
   return absl::make_unique<PyLocalExecutable>(
-      std::move(local_executables), std::move(*device_assignment), client);
+      std::move(local_executables), build_options.device_assignment(), client);
 }
 
 }  // namespace xla

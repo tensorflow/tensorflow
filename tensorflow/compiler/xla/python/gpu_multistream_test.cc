@@ -45,16 +45,19 @@ TEST(GpuMultiStream, Basics) {
   Tuple(&builder, {Neg(p0), Neg(p1)});
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
 
-  ExecutableBuildOptions build_options;
-  build_options.mutable_debug_options()->set_xla_gpu_disable_multi_streaming(
-      false);
-  build_options.mutable_debug_options()->set_xla_gpu_use_random_streams(true);
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_disable_multi_streaming(false);
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_use_random_streams(true);
   DeviceAssignment device_assignment(1, 1);
   device_assignment(0, 0) = device->id();
+  compile_options.executable_build_options.set_device_assignment(
+      device_assignment);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PyLocalExecutable> executable,
-      PyLocalExecutable::Compile(computation, {}, &build_options, client.get(),
-                                 device_assignment));
+      PyLocalExecutable::Compile(computation, client.get(),
+                                 std::move(compile_options)));
 
   int64 dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);

@@ -312,16 +312,22 @@ class PyLocalBuffer {
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
+struct CompileOptions {
+  // The layouts of the arguments that the computation should expect.
+  absl::optional<std::vector<Shape>> argument_layouts;
+
+  // XLA's compilation time options.
+  ExecutableBuildOptions executable_build_options;
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps one or more XLA LocalExecutables (one per
 // partition, as specified by the build options).
 class PyLocalExecutable {
  public:
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options, PyLocalClient* client,
-      absl::optional<DeviceAssignment> device_assignment);
+      const XlaComputation& computation, PyLocalClient* client,
+      CompileOptions options);
 
   PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                     DeviceAssignment device_assignment, PyLocalClient* client);

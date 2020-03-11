@@ -1068,45 +1068,58 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalExecutable, ClientAndUniquePtr<PyLocalExecutable>>
       executable(m, "LocalExecutable");
   executable
-      .def_static(
-          "Compile",
-          [](const XlaComputation& computation,
-             absl::optional<std::vector<Shape>> argument_layouts,
-             const ExecutableBuildOptions* build_options,
-             std::shared_ptr<PyLocalClient> client,
-             absl::optional<DeviceAssignment> device_assignment)
-              -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(
-                std::unique_ptr<PyLocalExecutable> executable,
-                PyLocalExecutable::Compile(
-                    computation, std::move(argument_layouts), build_options,
-                    client.get(), std::move(device_assignment)));
-            return WrapWithClient(std::move(client), std::move(executable));
-          })
-      .def_static(
-          "Compile",
-          [](const XlaComputation& computation,
-             absl::optional<std::vector<Shape>> argument_layouts,
-             const ExecutableBuildOptions* build_options,
-             std::shared_ptr<PyLocalClient> client,
-             absl::optional<std::vector<std::vector<Device*>>>
-                 device_assignment)
-              -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
-            py::gil_scoped_release gil_release;
-            absl::optional<DeviceAssignment> xla_device_assignment;
-            if (device_assignment) {
-              TF_ASSIGN_OR_RETURN(
-                  xla_device_assignment,
-                  DevicesToDeviceAssignment(*device_assignment));
-            }
-            TF_ASSIGN_OR_RETURN(
-                std::unique_ptr<PyLocalExecutable> executable,
-                PyLocalExecutable::Compile(
-                    computation, std::move(argument_layouts), build_options,
-                    client.get(), xla_device_assignment));
-            return WrapWithClient(std::move(client), std::move(executable));
-          })
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyLocalClient> client,
+                     absl::optional<DeviceAssignment> device_assignment)
+                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    CompileOptions options;
+                    options.argument_layouts = std::move(argument_layouts);
+                    if (build_options) {
+                      options.executable_build_options = *build_options;
+                    }
+                    if (device_assignment) {
+                      options.executable_build_options.set_device_assignment(
+                          *device_assignment);
+                    }
+                    TF_ASSIGN_OR_RETURN(
+                        std::unique_ptr<PyLocalExecutable> executable,
+                        PyLocalExecutable::Compile(computation, client.get(),
+                                                   std::move(options)));
+                    return WrapWithClient(std::move(client),
+                                          std::move(executable));
+                  })
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyLocalClient> client,
+                     absl::optional<std::vector<std::vector<Device*>>>
+                         device_assignment)
+                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    CompileOptions options;
+                    options.argument_layouts = std::move(argument_layouts);
+                    if (build_options) {
+                      options.executable_build_options = *build_options;
+                    }
+                    if (device_assignment) {
+                      TF_ASSIGN_OR_RETURN(
+                          DeviceAssignment xla_assignment,
+                          DevicesToDeviceAssignment(*device_assignment));
+                      options.executable_build_options.set_device_assignment(
+                          xla_assignment);
+                    }
+                    TF_ASSIGN_OR_RETURN(
+                        std::unique_ptr<PyLocalExecutable> executable,
+                        PyLocalExecutable::Compile(computation, client.get(),
+                                                   std::move(options)));
+                    return WrapWithClient(std::move(client),
+                                          std::move(executable));
+                  })
       .def("local_logical_device_ids",
            &PyLocalExecutable::local_logical_device_ids)
       .def("local_devices",
