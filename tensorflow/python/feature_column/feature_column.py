@@ -1053,8 +1053,8 @@ def _bucketized_column(source_column, boundaries):
   dense_tensor = input_layer(features, columns)
   ```
 
-  A `bucketized_column` can also be crossed with another categorical column using
-  `crossed_column`:
+  A `bucketized_column` can also be crossed with another categorical column
+  using `crossed_column`:
 
   ```python
   price = numeric_column('price')

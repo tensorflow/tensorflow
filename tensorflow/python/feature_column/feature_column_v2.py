@@ -1430,8 +1430,8 @@ def bucketized_column(source_column, boundaries):
   dense_tensor = tf.keras.layers.DenseFeatures(columns)(features)
   ```
 
-  A `bucketized_column` can also be crossed with another categorical column using
-  `crossed_column`:
+  A `bucketized_column` can also be crossed with another categorical column
+  using `crossed_column`:
 
   ```python
   price = tf.feature_column.numeric_column('price')
