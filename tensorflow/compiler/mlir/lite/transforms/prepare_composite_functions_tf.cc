@@ -23,7 +23,6 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -35,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project

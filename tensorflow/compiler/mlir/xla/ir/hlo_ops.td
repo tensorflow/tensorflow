@@ -18,8 +18,8 @@ limitations under the License.
 #ifndef HLO_OPS
 #define HLO_OPS
 
-include "mlir/Analysis/InferTypeOpInterface.td"
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 

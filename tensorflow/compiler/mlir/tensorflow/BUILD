@@ -24,7 +24,7 @@ filegroup(
         "ir/tf_op_interfaces.td",
         "ir/tf_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
     ],
 )
 
@@ -209,7 +209,7 @@ cc_library(
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.h",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
@@ -233,6 +233,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -955,7 +956,7 @@ tf_native_cc_binary(
 genrule(
     name = "derived_attr_populator_inc",
     srcs = [
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
