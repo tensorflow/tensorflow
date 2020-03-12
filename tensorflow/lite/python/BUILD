@@ -20,7 +20,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
+        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )
