@@ -2526,6 +2526,7 @@ def pybind_extension(
         linkopts = [],
         deps = [],
         defines = [],
+        additional_exported_symbols = [],
         visibility = None,
         testonly = None,
         licenses = None,
@@ -2544,15 +2545,22 @@ def pybind_extension(
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
     pyd_file = "%s%s.pyd" % (prefix, sname)
-    symbol = "init%s" % sname
-    symbol2 = "init_%s" % sname
-    symbol3 = "PyInit_%s" % sname
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
+
     exported_symbols_file = "%s-exported-symbols.lds" % name
     version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '%s' >$@" % exported_symbols_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
@@ -2561,7 +2569,7 @@ def pybind_extension(
     native.genrule(
         name = name + "_version_script",
         outs = [version_script_file],
-        cmd = "echo '{global:\n %s;\n %s;\n %s;\n local: *;};' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
