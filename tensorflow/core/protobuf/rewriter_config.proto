@@ -92,7 +92,7 @@ message RewriterConfig {
   Toggle auto_mixed_precision = 23;
   // Convert FP32 graph into BFloat16 graph for training and inference on Intel
   // CPUs. Default is OFF.
-  Toggle convert_to_bfloat16 = 24;
+  Toggle convert_to_bfloat16 = 25;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
 
