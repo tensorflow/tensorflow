@@ -1849,10 +1849,10 @@ def get(identifier):
 
   >>> loss = tf.keras.losses.get("categorical_crossentropy")
   >>> type(loss)
-  function
+  <class 'function'>
   >>> loss = tf.keras.losses.get("CategoricalCrossentropy")
   >>> type(loss)
-  tensorflow.python.keras.losses.CategoricalCrossentropy
+  <class 'tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
   You can also specify `config` of the loss to this function by passing dict
   containing `class_name` and `config` as an identifier. Also note that the
@@ -1862,7 +1862,7 @@ def get(identifier):
   ...               "config": {"from_logits": True}}
   >>> loss = tf.keras.losses.get(identifier)
   >>> type(loss)
-  tensorflow.python.keras.losses.CategoricalCrossentropy
+  <class 'tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
   Arguments:
     identifier: A loss identifier. One of None or string name of a loss
