@@ -1415,6 +1415,7 @@ def categorical_hinge(y_true, y_pred):
   return math_ops.maximum(0., neg - pos + 1.)
 
 
+@keras_export('keras.metrics.huber', 'keras.losses.huber')
 def huber_loss(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
