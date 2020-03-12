@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_string_ops."""
+"""Tests for tf.strings.reduce_join."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -26,7 +26,8 @@ from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedStringOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+class StringsReduceJoinOpTest(test_util.TensorFlowTestCase,
+                              parameterized.TestCase):
 
   def test_rank_one(self):
     input_array = [b'this', b'is', b'a', b'test']
