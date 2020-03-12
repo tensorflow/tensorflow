@@ -65,10 +65,12 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
-  const int min_depth = 32;
+  // Mali among other devices has smaller SIMD line size
+  const int min_depth = device.IsMali() ? 16 : 32;
+  const int min_hw = device.IsMali() ? 32 : 128;
   const bool recommended_channels =
       dst_depth % 4 == 0 && src_depth >= min_depth && dst_depth >= min_depth;
-  const bool recommended_hw = tiles_x * tiles_y >= 128;
+  const bool recommended_hw = tiles_x * tiles_y >= min_hw;
   return suitable_attributes && recommended_channels && recommended_hw;
 }
 
