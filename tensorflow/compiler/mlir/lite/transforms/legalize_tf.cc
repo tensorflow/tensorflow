@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -465,8 +466,7 @@ PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
 // TF Lite doesn't support Assert, we just drop the assert from the graph.
 PatternMatchResult ConvertTFAssertOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
-  op->dropAllReferences();
-  op->erase();
+  rewriter.eraseOp(op);
   return matchSuccess();
 }
 
@@ -653,7 +653,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
 
     // Rewire the output.
     op->getResult(2).replaceAllUsesWith(lstm_op.getResult());
-    op->erase();
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -712,7 +712,7 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
 
     // Rewire the output.
     op->getResult(1).replaceAllUsesWith(rnn_op.getResult());
-    op->erase();
+    rewriter.eraseOp(op);
 
     return matchSuccess();
   }
@@ -720,22 +720,44 @@ struct LegalizeUnidirectionalSequenceRnn : public RewritePattern {
 
 void LegalizeTF::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto* ctx = &getContext();
+  auto* context = &getContext();
   auto func = getFunction();
 
   // Add the generated patterns to the list.
-  populateWithGenerated(ctx, &patterns);
+  populateWithGenerated(context, &patterns);
   patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
                   ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op,
                   ConvertTFPackOp, ConvertTFReshapeOp, ConvertTFSplitOp,
                   ConvertTFSplitVOp, ConvertTFStridedSliceOp, ConvertTFUnpackOp,
                   ConvertTFAssertOp, ConvertTFReciprocalOp,
-                  ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(ctx);
+                  ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,
-                  LegalizeUnidirectionalSequenceRnn>(ctx);
-  applyPatternsGreedily(func, patterns);
+                  LegalizeUnidirectionalSequenceRnn>(context);
+
+  ConversionTarget target(*context);
+  // It is legal to have TF ops in the graph still which can be
+  // used later or in the case of SELECT were we allow TF ops in the final
+  // graph.
+  target.addLegalOp<mlir::ConstantOp>();
+  target.addLegalOp<ConstOp>();
+  target.addDynamicallyLegalDialect<TensorFlowLiteDialect>(
+      Optional<ConversionTarget::DynamicLegalityCallbackFn>([](Operation* op) {
+        auto tfl_op = dyn_cast_or_null<TflRuntimeVerifyOpInterface>(op);
+        if (!tfl_op) return false;
+        return succeeded(tfl_op.VerifyTflRuntimeTypes(tfl_op.getOperation()));
+      }));
+  // Keep trying to convert.
+  // TODO(karimnosseir): This is similar to what apply greedy patterns does.
+  // Look if there is a function that tries until it converge.
+  // Currently unit-test doesn't do multiple tries, so we need this.
+  const int max_iterations = 15;
+  for (int i = 0; i < max_iterations; ++i) {
+    if (failed(applyPartialConversion(func, target, patterns))) {
+      return;
+    }
+  }
 }
 
 }  // namespace
