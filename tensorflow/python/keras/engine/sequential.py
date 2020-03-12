@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import copy
 
+from tensorflow.python.frozen_keras.engine import legacy_base_layer
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
@@ -168,7 +169,8 @@ class Sequential(training.Model):
       if isinstance(origin_layer, input_layer.InputLayer):
         layer = origin_layer
 
-    if not isinstance(layer, base_layer.Layer):
+    if not isinstance(layer,
+                      (base_layer.Layer, legacy_base_layer.LegacyBaseLayer)):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))

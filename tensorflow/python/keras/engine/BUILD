@@ -44,6 +44,7 @@ py_library(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/frozen_keras/engine:legacy_base_layer",
         "//tensorflow/python/keras:activations",
         "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:callbacks",

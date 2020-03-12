@@ -87,46 +87,6 @@ class Regularizer(object):
   >>> regularizer(tensor)
   <tf.Tensor: shape=(), dtype=float32, numpy=50.0>
 
-
-  ## Developing new regularizers
-
-  Any function that takes in a weight matrix and returns a scalar
-  tensor can be used as a regularizer, e.g.:
-
-  >>> @tf.keras.utils.register_keras_serializable(package='Custom', name='l1')
-  ... def l1_reg(weight_matrix):
-  ...    return 0.01 * tf.math.reduce_sum(tf.math.abs(weight_matrix))
-  ...
-  >>> layer = tf.keras.layers.Dense(5, input_dim=5,
-  ...     kernel_initializer='ones', kernel_regularizer=l1_reg)
-  >>> tensor = tf.ones(shape=(5, 5))
-  >>> out = layer(tensor)
-  >>> layer.losses
-  [<tf.Tensor: shape=(), dtype=float32, numpy=0.25>]
-
-  Alternatively, you can write your custom regularizers in an
-  object-oriented way by extending this regularizer base class, e.g.:
-
-  >>> @tf.keras.utils.register_keras_serializable(package='Custom', name='l2')
-  ... class L2Regularizer(tf.keras.regularizers.Regularizer):
-  ...   def __init__(self, l2=0.):  # pylint: disable=redefined-outer-name
-  ...     self.l2 = l2
-  ...
-  ...   def __call__(self, x):
-  ...     return self.l2 * tf.math.reduce_sum(tf.math.square(x))
-  ...
-  ...   def get_config(self):
-  ...     return {'l2': float(self.l2)}
-  ...
-  >>> layer = tf.keras.layers.Dense(
-  ...   5, input_dim=5, kernel_initializer='ones',
-  ...   kernel_regularizer=L2Regularizer(l2=0.5))
-
-  >>> tensor = tf.ones(shape=(5, 5))
-  >>> out = layer(tensor)
-  >>> layer.losses
-  [<tf.Tensor: shape=(), dtype=float32, numpy=12.5>]
-
   ### A note on serialization and deserialization:
 
   Registering the regularizers as serializable is optional if you are just
