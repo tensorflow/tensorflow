@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//learning/pathways/data_parallel/tf2xla/...",
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
