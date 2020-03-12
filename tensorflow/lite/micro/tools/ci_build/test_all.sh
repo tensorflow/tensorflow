@@ -28,7 +28,7 @@ make -f tensorflow/lite/micro/tools/make/Makefile \
   clean clean_downloads
 
 # Add all the test scripts for the various supported platforms here. This
-# emables running all the tests together has part of the continuous integration
+# enables running all the tests together has part of the continuous integration
 # pipeline and reduces duplication associated with setting up the docker
 # environment.
 

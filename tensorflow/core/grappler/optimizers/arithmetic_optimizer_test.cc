@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/math_ops.h"
@@ -101,115 +102,6 @@ TEST_F(ArithmeticOptimizerTest, NoOp) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   VerifyGraphsMatch(item.graph, output, __LINE__);
-}
-
-TEST_F(ArithmeticOptimizerTest, OpDedupping) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c1 = ops::Const(s.WithOpName("c1"), {3.14, 2.7}, {1, 2});
-  Output c2 = ops::Const(s.WithOpName("c2"), {3.14, 2.7}, {1, 2});
-  Output div = ops::Div(s.WithOpName("div"), c1, c2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch = {"div"};
-
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  ASSERT_EQ(tensors_expected.size(), 1);
-
-  ArithmeticOptimizer optimizer;
-  GraphDef output;
-  OptimizeTwice(&optimizer, &item, &output);
-  NodeMap node_map(&output);
-  EXPECT_EQ(output.node_size(), 2);
-  const NodeDef* new_c1 = node_map.GetNode("c1");
-  ASSERT_NE(new_c1, nullptr);
-
-  const NodeDef* new_div = node_map.GetNode("div");
-  ASSERT_NE(new_div, nullptr);
-  ASSERT_EQ(new_div->input_size(), 2);
-  EXPECT_EQ(new_div->input(0), "c1");
-  EXPECT_EQ(new_div->input(1), "c1");
-
-  auto tensors = EvaluateNodes(output, item.fetch);
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<double>(tensors[0], tensors_expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, OpDeduppingAssertAndCheckNumerics) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output p = ops::Placeholder(s, DT_BOOL, ops::Placeholder::Shape({}));
-  Output c = ops::Const(s.WithOpName("c"), {3.14, 2.7}, {1, 2});
-  auto check1 = ops::CheckNumerics(s.WithOpName("check1"), c, "foo");
-  auto check2 = ops::CheckNumerics(s.WithOpName("check2"), c, "foo");
-  auto assert1 = ops::Assert(s.WithOpName("assert1"), p, {c});
-  auto assert2 = ops::Assert(s.WithOpName("assert2"), p, {c});
-  Output div = ops::Div(s.WithOpName("div").WithControlDependencies(
-                            {assert1.operation, assert2.operation}),
-                        check1, check2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch = {"div"};
-  Tensor bool_t(DT_BOOL, TensorShape({}));
-  bool_t.scalar<bool>().setConstant(true);
-  auto tensors_expected =
-      EvaluateNodes(item.graph, item.fetch, {{"Placeholder", bool_t}});
-  ASSERT_EQ(tensors_expected.size(), 1);
-
-  ArithmeticOptimizer optimizer;
-  GraphDef output;
-
-  OptimizeTwice(&optimizer, &item, &output);
-  NodeMap node_map(&output);
-
-  EXPECT_EQ(output.node_size(), 6);
-  const NodeDef* new_div = node_map.GetNode("div");
-  ASSERT_NE(new_div, nullptr);
-  ASSERT_EQ(new_div->input_size(), 3);
-  EXPECT_EQ(new_div->input(0), "check1");
-  EXPECT_EQ(new_div->input(1), "check2");
-  EXPECT_EQ(new_div->input(2), "^assert1");
-
-  auto tensors = EvaluateNodes(output, item.fetch, {{"Placeholder", bool_t}});
-  EXPECT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<double>(tensors[0], tensors_expected[0], 1e-6);
-}
-
-TEST_F(ArithmeticOptimizerTest, OpDedupCommutative) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c1 = ops::Const(s.WithOpName("c1"), {1.0f, 2.0f}, {1, 2});
-  Output c2 = ops::Const(s.WithOpName("c2"), {3.0f, 4.0f}, {1, 2});
-  Output mul1 = ops::Mul(s.WithOpName("mul1"), c1, c2);
-  Output mul2 = ops::Mul(s.WithOpName("mul2"), c2, c1);
-  Output div1 = ops::Div(s.WithOpName("div1"), mul1, mul2);
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch = {"div1"};
-  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  ASSERT_EQ(tensors_expected.size(), 1);
-
-  ArithmeticOptimizer optimizer;
-  GraphDef output;
-  OptimizeTwice(&optimizer, &item, &output);
-  NodeMap node_map(&output);
-
-  EXPECT_EQ(output.node_size(), 4);
-  const NodeDef* new_c1 = node_map.GetNode("c1");
-  ASSERT_NE(new_c1, nullptr);
-  const NodeDef* new_c2 = node_map.GetNode("c2");
-  ASSERT_NE(new_c2, nullptr);
-  const NodeDef* new_mul1 = node_map.GetNode("mul1");
-  ASSERT_NE(new_mul1, nullptr);
-  ASSERT_EQ(new_mul1->input_size(), 2);
-  EXPECT_EQ(new_mul1->input(0), "c1");
-  EXPECT_EQ(new_mul1->input(1), "c2");
-  const NodeDef* new_div1 = node_map.GetNode("div1");
-  ASSERT_NE(new_div1, nullptr);
-  ASSERT_EQ(new_div1->input_size(), 2);
-  EXPECT_EQ(new_div1->input(0), "mul1");
-  EXPECT_EQ(new_div1->input(1), "mul1");
-
-  auto tensors = EvaluateNodes(output, item.fetch);
-  ASSERT_EQ(tensors.size(), 1);
-  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
 }
 
 TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
@@ -473,6 +365,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   Output id = ops::Identity(s.WithOpName("id"), add6);
 
   GrapplerItem item;
+  item.fetch = {"id"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   const std::vector<string> devices{
@@ -487,16 +380,16 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   DisableAddToAddNCombining(&optimizer);
 
   GraphDef output;
-  OptimizeTwice(&optimizer, &item, &output);
+  DedupAndOptimizeTwiceAndPrune(&optimizer, &item, &output);
 
   // We expect the following rewrite(s) to occur:
   //
   // Mul(p,
   //     Add_6(Add_4(Const(2), Const(2)),
-  //           Add_5(Const(2), Const(2))))
+  //           Add_5(Const(2), Const(2)))
   NodeMap node_map(&output);
 
-  EXPECT_EQ(output.node_size(), 17);
+  EXPECT_EQ(output.node_size(), 8);
 
   const NodeDef* id_node = node_map.GetNode("id");
   ASSERT_NE(id_node, nullptr);
@@ -506,8 +399,8 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   const NodeDef* mul_node = node_map.GetNode(HoistMulName("Add_6"));
   ASSERT_NE(mul_node, nullptr);
   ASSERT_EQ(mul_node->input_size(), 2);
-  EXPECT_EQ(mul_node->input(0), HoistAddName("Add_6"));
-  EXPECT_EQ(mul_node->input(1), "Placeholder");
+  EXPECT_EQ(mul_node->input(0), "Placeholder");
+  EXPECT_EQ(mul_node->input(1), HoistAddName("Add_6"));
 
   const NodeDef* add_6_node = node_map.GetNode(HoistAddName("Add_6"));
   ASSERT_NE(add_6_node, nullptr);
@@ -4002,7 +3895,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
-  EnableOnlyRemoveStackStridedSliceSameAxis(&optimizer);
+  EnableOnlyRemoveStackSliceSameAxis(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
   for (const auto& node : output.node()) {
@@ -4047,6 +3940,122 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
                                  tensors_expected[fExpandedB]);
   // stacked[:, 2:, :] == expand_dims(c, 1).
   test::ExpectTensorEqual<float>(tensors[fCSlice2ToOut],
+                                 tensors_expected[fExpandedC]);
+}
+
+TEST_F(ArithmeticOptimizerTest, RemoveStackSimpleSliceSameAxis) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto a_in =
+      ops::Const(s.WithOpName("a_in"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
+  auto b_in =
+      ops::Const(s.WithOpName("b_in"), {-1.0f, -2.0f, -3.0f, -4.0f}, {2, 2});
+  auto c_in =
+      ops::Const(s.WithOpName("c_in"), {5.0f, 6.0f, 7.0f, 8.0f}, {2, 2});
+  auto a = ops::PlaceholderWithDefault(s.WithOpName("a"), a_in,
+                                       PartialTensorShape({-1, -1}));
+  auto b = ops::PlaceholderWithDefault(s.WithOpName("b"), b_in,
+                                       PartialTensorShape({-1, -1}));
+  auto c = ops::PlaceholderWithDefault(s.WithOpName("c"), c_in,
+                                       PartialTensorShape({-1, -1}));
+  // stacked = tf.stack((a, b, c), axis=1).
+  // stacked.shape == [2, 3, 2] (a, b, c are stacked along new axis 1)
+  auto stacked =
+      ops::Stack(s.WithOpName("stacked"), {a.output, b.output, c.output},
+                 ops::Stack::Axis(1));
+  auto expanded_a = ops::ExpandDims(s.WithOpName("expanded_a"), a, {1});
+  auto expanded_b = ops::ExpandDims(s.WithOpName("expanded_b"), b, {1});
+  auto expanded_c = ops::ExpandDims(s.WithOpName("expanded_c"), c, {1});
+  auto begin_a = ops::Const(s.WithOpName("begin_a"), {0, 0, 0}, {3});
+  auto begin_b = ops::Const(s.WithOpName("begin_b"), {0, 1, 0}, {3});
+  auto begin_c = ops::Const(s.WithOpName("begin_c"), {0, 2, 0}, {3});
+  auto sizes_to_end = ops::Const(s.WithOpName("size"), {-1, 1, -1}, {3});
+
+  // stacked[:, 0:1, :]
+  auto pa_slice = ops::Identity(
+      s.WithOpName("pa_slice_out"),
+      ops::Slice(s.WithOpName("pa_slice"), stacked, begin_a, sizes_to_end));
+
+  // stacked[:, 1:2, :]
+  auto pb_slice = ops::Identity(
+      s.WithOpName("pb_slice_out"),
+      ops::Slice(s.WithOpName("pb_slice"), stacked, begin_b, sizes_to_end));
+
+  // stacked[:, 2:3, :]
+  auto pc_slice = ops::Identity(
+      s.WithOpName("pc_slice_out"),
+      ops::Slice(s.WithOpName("pc_slice"), stacked, begin_c, sizes_to_end));
+
+  GrapplerItem item;
+  item.fetch = {"a",
+                "b",
+                "c",
+                "pa_slice_out",
+                "pb_slice_out",
+                "pc_slice_out",
+                "expanded_a",
+                "expanded_b",
+                "expanded_c"};
+  enum FetchItem {
+    fA,
+    fB,
+    fC,
+    fASliceOut,
+    fBSliceOut,
+    fCSliceOut,
+    fExpandedA,
+    fExpandedB,
+    fExpandedC,
+  };
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  // stacked[:, 0:1, :] == a.
+  test::ExpectTensorEqual<float>(tensors_expected[fASliceOut],
+                                 tensors_expected[fExpandedA]);
+  // stacked[:, 1:2, :] == b.
+  test::ExpectTensorEqual<float>(tensors_expected[fBSliceOut],
+                                 tensors_expected[fExpandedB]);
+  // stacked[:, 2:3, :] == c.
+  test::ExpectTensorEqual<float>(tensors_expected[fCSliceOut],
+                                 tensors_expected[fExpandedC]);
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyRemoveStackSliceSameAxis(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  const string kExpandDimsNamePrefix(
+      "ArithmeticOptimizer/RemoveStackStridedSliceSameAxis_p");
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "pa_slice_out") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), absl::StrCat(kExpandDimsNamePrefix, "a_slice"));
+    } else if (node.name() == "pb_slice_out") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), absl::StrCat(kExpandDimsNamePrefix, "b_slice"));
+    } else if (node.name() == "pc_slice_out") {
+      ASSERT_EQ(node.input_size(), 1);
+      EXPECT_EQ(node.input(0), absl::StrCat(kExpandDimsNamePrefix, "c_slice"));
+    } else if (absl::StartsWith(node.name(), kExpandDimsNamePrefix)) {
+      EXPECT_EQ(node.op(), "ExpandDims");
+      // The input is "a", "b", or "c", as appropriate.
+      EXPECT_EQ(node.input(0),
+                node.name().substr(kExpandDimsNamePrefix.size(), 1));
+    }
+  }
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+
+  // stacked[:, 0:1, :] == a.
+  test::ExpectTensorEqual<float>(tensors[fASliceOut],
+                                 tensors_expected[fExpandedA]);
+
+  // stacked[:, 1:2, :] == b.
+  test::ExpectTensorEqual<float>(tensors[fBSliceOut],
+                                 tensors_expected[fExpandedB]);
+  // stacked[:, 2:3, :] == c.
+  test::ExpectTensorEqual<float>(tensors[fCSliceOut],
                                  tensors_expected[fExpandedC]);
 }
 

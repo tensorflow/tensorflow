@@ -328,6 +328,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedMatMulWithBiasAndRelu";
     csinfo_.quantized_matmul_with_bias_and_relu_and_requantize =
         "QuantizedMatMulWithBiasAndReluAndRequantize";
+    csinfo_.quantized_matmul_with_bias_and_dequantize =
+        "QuantizedMatMulWithBiasAndDequantize";
     csinfo_.quantized_matmul_with_bias_and_requantize =
         "QuantizedMatMulWithBiasAndRequantize";
     csinfo_.quantized_depthwise_conv2d = "QuantizedDepthwiseConv2D";
@@ -620,6 +622,11 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                       mkl_op_registry::GetMklOpName(
                           csinfo_.quantized_matmul_with_bias_and_requantize),
                       CopyAttrsQuantizedMatMulWithBias, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_matmul_with_bias_and_dequantize,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_matmul_with_bias_and_dequantize),
+                      CopyAttrsQuantizedMatMulWithBiasAndDequantize,
+                      AlwaysRewrite});
     rinfo_.push_back(
         {csinfo_.quantized_depthwise_conv2d,
          mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
@@ -964,6 +971,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quantized_matmul_with_bias_and_relu;
     string quantized_matmul_with_bias_and_relu_and_requantize;
     string quantized_matmul_with_bias_and_requantize;
+    string quantized_matmul_with_bias_and_dequantize;
     string quantized_depthwise_conv2d;
     string quantized_depthwise_conv2d_with_bias;
     string quantized_depthwise_conv2d_with_bias_and_relu;
@@ -1900,6 +1908,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   static void CopyAttrsQuantizedMatMulWithBias(const Node* orig_node,
                                                NodeBuilder* nb,
                                                bool change_format = false);
+  static void CopyAttrsQuantizedMatMulWithBiasAndDequantize(
+      const Node* orig_node, NodeBuilder* nb, bool change_format = false);
   static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
 
@@ -2241,6 +2251,7 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
       "QuantizedMatMulWithBias",
       "QuantizedMatMulWithBiasAndRequantize",
+      "QuantizedMatMulWithBiasAndDequantize",
       "QuantizedMatMulWithBiasAndRelu",
       "QuantizedMatMulWithBiasAndReluAndRequantize",
       "QuantizedDepthwiseConv2D",
@@ -2707,6 +2718,27 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   }
 
   // Requantization attr Tbias.
+  DataType Tbias;
+  Status bias_status = GetNodeAttr(orig_node->def(), "Tbias", &Tbias);
+  if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
+}
+
+void MklLayoutRewritePass::CopyAttrsQuantizedMatMulWithBiasAndDequantize(
+    const Node* orig_node, NodeBuilder* nb, bool change_format) {
+  DataType T1, T2, Toutput;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T1", &T1));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T2", &T2));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Toutput", &Toutput));
+
+  // Add attributes to new node.
+  nb->Attr("T1", T1);
+  nb->Attr("T2", T2);
+  nb->Attr("Toutput", Toutput);
+  nb->Attr("T", T1);  // added "T" for facilitating MklToTf conversion.
+
+  // Requantization attr Tbias
   DataType Tbias;
   Status bias_status = GetNodeAttr(orig_node->def(), "Tbias", &Tbias);
   if (bias_status.ToString() == "OK") nb->Attr("Tbias", Tbias);
@@ -3639,7 +3671,7 @@ const MklLayoutRewritePass::RewriteInfo*
 MklLayoutRewritePass::CheckForNodeRewrite(const Node* n) const {
   CHECK_NOTNULL(n);
 
-  // QuntizedOps may have attributes other than "T", so decoupled the check
+  // QuantizedOps may have attributes other than "T", so decoupled the check
   // with a function, CheckForQuantizedNodeRewrite(const Node*).
   const RewriteInfo* ri = CheckForQuantizedNodeRewrite(n);
   if (ri != nullptr) return ri;
@@ -3789,7 +3821,7 @@ MklLayoutRewritePass::CheckForNodeFusion(Node* a) const {
     // a.k.a. "a->b->c" matches "op1->op2->op3"
     //
 
-    // Stores the first unvisted outgoing edge of each matched node in "nodes".
+    // Stores the first unvisited outgoing edge of each matched node in "nodes".
     std::stack<EdgeSet::const_iterator> current_neighbor_stack;
     nodes.clear();
 

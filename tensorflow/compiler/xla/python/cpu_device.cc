@@ -37,21 +37,21 @@ StatusOr<std::shared_ptr<PyLocalClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::shared_ptr<Device>> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutor* executor =
         client->backend().stream_executor(i).ValueOrDie();
     auto device_state = absl::make_unique<LocalDeviceState>(
         executor, client, /*synchronous_deallocation=*/true, asynchronous,
         /*allow_event_reuse=*/false);
-    std::shared_ptr<Device> device =
-        std::make_shared<CpuDevice>(i, std::move(device_state));
+    auto device = absl::make_unique<CpuDevice>(i, std::move(device_state));
     devices.push_back(std::move(device));
   }
 
   return std::make_shared<PyLocalClient>(
       kCpuPlatformName, client, std::move(devices), /*host_id=*/0,
-      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr);
+      /*allocator=*/nullptr, /*host_memory_allocator=*/nullptr,
+      /*gpu_run_options=*/nullptr);
 }
 
 }  // namespace xla

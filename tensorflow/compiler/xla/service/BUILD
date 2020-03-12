@@ -1371,6 +1371,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_proto_cc",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -3108,6 +3109,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        "//tensorflow/compiler/xla:debug_options_flags",
     ],
 )
 
@@ -3131,6 +3133,7 @@ cc_library(
     hdrs = ["hlo_dce.h"],
     deps = [
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_pass",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:status_macros",

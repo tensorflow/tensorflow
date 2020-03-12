@@ -319,6 +319,32 @@ this value or a subsequent newer value of the variable.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_Atan2Op : TF_Op<"Atan2", [NoSideEffect, ResultsBroadcastableShape]>,
+                 WithBroadcastableBinOpBuilder {
+  let summary = [{
+Computes arctangent of `y/x` element-wise, respecting signs of the arguments.
+  }];
+
+  let description = [{
+This is the angle \( \theta \in [-\pi, \pi] \) such that
+\[ x = r \cos(\theta) \]
+and
+\[ y = r \sin(\theta) \]
+where \(r = \sqrt(x^2 + y^2) \).
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$y,
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    TF_FpTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AvgPoolOp : TF_Op<"AvgPool", [NoSideEffect]> {
   let summary = "Performs average pooling on the input.";
 
@@ -426,6 +452,10 @@ about broadcasting
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   let hasCanonicalizer = 1;
 }
 
@@ -481,7 +511,7 @@ reverse of SpaceToBatch.  See below for a precise description.
   TF_DerivedOperandTypeAttr Tblock_shape = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect, TF_LayoutSensitiveInterface]> {
+def TF_BiasAddOp : TF_Op<"BiasAdd", [NoSideEffect]> {
   let summary = "Adds `bias` to `value`.";
 
   let description = [{
@@ -504,13 +534,6 @@ Broadcasting is supported, so `value` may have any number of dimensions.
 
   let verifier = [{
     return Verify(*this);
-  }];
-
-  let extraClassDeclaration = [{
-    // TF_LayoutSensitiveInterface:
-    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
-    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
@@ -1036,6 +1059,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
     // TF_LayoutSensitiveInterface:
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
@@ -1182,6 +1206,56 @@ and `B, D, F, H` as group 1. Thus we get the outputs:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_CumsumOp : TF_Op<"Cumsum", [NoSideEffect]> {
+  let summary = "Compute the cumulative sum of the tensor `x` along `axis`.";
+
+  let description = [{
+By default, this op performs an inclusive cumsum, which means that the first
+element of the input is identical to the first element of the output:
+
+```python
+tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
+```
+
+By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
+performed instead:
+
+```python
+tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
+```
+
+By setting the `reverse` kwarg to `True`, the cumsum is performed in the
+opposite direction:
+
+```python
+tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
+```
+
+This is more efficient than using separate `tf.reverse` ops.
+
+The `reverse` and `exclusive` kwargs can also be combined:
+
+```python
+tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$x,
+    TF_I32OrI64Tensor:$axis,
+
+    DefaultValuedAttr<BoolAttr, "false">:$exclusive,
+    DefaultValuedAttr<BoolAttr, "false">:$reverse
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_DepthToSpaceOp : TF_Op<"DepthToSpace", [NoSideEffect]> {
@@ -3926,6 +4000,21 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
+  let summary = "Creates a handle to a in-scope variable.";
+
+  let description = [{
+Used by internal passes for temporary representation of local state, which will
+be eventually removed.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+}
+
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
@@ -4855,6 +4944,8 @@ operation.
   );
 
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_RealOp : TF_Op<"Real", [NoSideEffect, SameOperandsAndResultShape]> {
@@ -5105,7 +5196,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -5113,7 +5204,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6418,6 +6509,74 @@ shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
+  let summary = "Delete the stack from its resource container.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle
+  );
+
+  let results = (outs);
+}
+
+def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
+  let summary = "Pop the element at the top of the stack.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle
+  );
+
+  let results = (outs
+    TF_Tensor:$elem
+  );
+
+  TF_DerivedResultTypeAttr elem_type = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
+  let summary = "Push an element onto the stack.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    TF_Tensor:$elem,
+
+    DefaultValuedAttr<BoolAttr, "false">:$swap_memory
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_StackV2Op : TF_Op<"StackV2", []> {
+  let summary = "A stack that produces elements in first-in last-out order.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I32Tensor:$max_size,
+
+    TypeAttr:$elem_type,
+    StrAttr:$stack_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$handle
+  );
+}
+
 def TF_StopGradientOp : TF_Op<"StopGradient", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Stops gradient computation.";
 
@@ -6576,9 +6735,9 @@ receive 0, 0, and 1, respectively. The appropriate bits in `begin_mask` and
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedBoundRanges(
-      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
-      ::llvm::SmallVectorImpl<int64_t> *end_indices,
-      ::llvm::SmallVectorImpl<int64_t> *strides);
+      ::llvm::SmallVectorImpl<int64_t> *slice_begin,
+      ::llvm::SmallVectorImpl<int64_t> *slice_end,
+      ::llvm::SmallVectorImpl<int64_t> *slice_stride);
   }];
 }
 
@@ -6625,10 +6784,10 @@ shape of `StridedSlice`'s `input`.
     // `begin_indices`, `end_indices`, and `strides` with their canonical
     // values, respectively.
     bool GetSlicedShapeAndBoundRanges(
-      ::llvm::SmallVectorImpl<int64_t> *shape,
-      ::llvm::SmallVectorImpl<int64_t> *begin_indices,
-      ::llvm::SmallVectorImpl<int64_t> *end_indices,
-      ::llvm::SmallVectorImpl<int64_t> *strides);
+      ::llvm::SmallVectorImpl<int64_t> *input_shape,
+      ::llvm::SmallVectorImpl<int64_t> *slice_begin,
+      ::llvm::SmallVectorImpl<int64_t> *slice_end,
+      ::llvm::SmallVectorImpl<int64_t> *slice_stride);
   }];
 }
 
@@ -6699,6 +6858,24 @@ occurred during compilation.
   let results = (outs
     TF_StrTensor:$output
   );
+}
+
+def TF_TPUCompileSucceededAssertOp : TF_Op<"TPUCompileSucceededAssert", []> {
+  let summary = [{
+Asserts that compilation succeeded. This op produces no output and closes the
+  }];
+
+  let description = [{
+device during failure to ensure all pending device interactions fail.
+
+'compilation_status' is a serialized CompilationResultProto.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$compilation_status
+  );
+
+  let results = (outs);
 }
 
 def TF_TPUCopyWithLayoutOp : TF_Op<"TPUCopyWithLayout", [NoSideEffect]> {
@@ -6919,6 +7096,59 @@ is the corresponding input gradient.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_TensorListConcatV2Op : TF_Op<"TensorListConcatV2", [NoSideEffect]> {
+  let summary = "Concats all tensors in the list along the 0th dimension.";
+
+  let description = [{
+Requires that all tensors have the same shape except the first dimension.
+
+input_handle: The input list.
+element_shape: The shape of the uninitialized elements in the list. If the first
+  dimension is not -1, it is assumed that all list elements have the same
+  leading dim.
+leading_dims: The list of leading dims of uninitialized list elements. Used if
+  the leading dim of input_handle.element_shape or the element_shape input arg
+  is not already set.
+tensor: The concated result.
+lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    TF_I32OrI64Tensor:$element_shape,
+    I64Tensor:$leading_dims
+  );
+
+  let results = (outs
+    TF_Tensor:$tensor,
+    I64Tensor:$lengths
+  );
+
+  TF_DerivedOperandTypeAttr shape_type = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorListElementShapeOp : TF_Op<"TensorListElementShape", [NoSideEffect]> {
+  let summary = "The shape of the elements of the given list, as a tensor.";
+
+  let description = [{
+input_handle: the list
+  element_shape: the shape of elements of the list
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$element_shape
+  );
+
+  TF_DerivedResultTypeAttr shape_type = TF_DerivedResultTypeAttr<0>;
+
+  let hasFolder = 1;
+}
+
 def TF_TensorListFromTensorOp : TF_Op<"TensorListFromTensor", [NoSideEffect]> {
   let summary = [{
 Creates a TensorList which, when stacked, has the value of `tensor`.
@@ -6978,6 +7208,33 @@ length: the number of tensors in the list
   let results = (outs
     I32Tensor:$length
   );
+}
+
+def TF_TensorListPopBackOp : TF_Op<"TensorListPopBack", [NoSideEffect]> {
+  let summary = [{
+Returns the last element of the input list as well as a list with all but that element.
+  }];
+
+  let description = [{
+Fails if the list is empty.
+
+input_handle: the input list
+tensor: the withdrawn last element of the list
+element_dtype: the type of elements in the list
+element_shape: the shape of the output tensor
+  }];
+
+  let arguments = (ins
+    TF_VariantTensor:$input_handle,
+    I32Tensor:$element_shape
+  );
+
+  let results = (outs
+    TF_VariantTensor:$output_handle,
+    TF_Tensor:$tensor
+  );
+
+  TF_DerivedResultTypeAttr element_dtype = TF_DerivedResultTypeAttr<1>;
 }
 
 def TF_TensorListPushBackOp : TF_Op<"TensorListPushBack", [NoSideEffect]> {
@@ -7660,6 +7917,8 @@ shape(t) ==> [2, 2, 3]
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {
@@ -7822,4 +8081,40 @@ def TF_ZerosLikeOp : TF_Op<"ZerosLike", [NoSideEffect, SameOperandsAndResultType
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF__TPUCompileMlirOp : TF_Op<"_TPUCompileMlir", []> {
+  let summary = [{
+Compiles a computations for execution on one or more TPU devices.
+  }];
+
+  let description = [{
+For the internal use of the distributed TPU compiler. Note that currently only
+single TPU device is supported.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
+known statically at TPUReplication rewrite time.
+'metadata' is a serialized TPUCompileMetadataProto describing
+the shapes and types of the inputs to the computation, as well as a mapping onto
+the TPU pod topology.
+'program' output is a string key that is passed to the _TPUExecute op and
+used to look up the program in the compilation cache.
+  }];
+
+  let arguments = (ins
+    Variadic<I64Tensor>:$dynamic_shapes,
+
+    StrAttr:$mlir_module,
+    StrAttr:$metadata
+  );
+
+  let results = (outs
+    TF_StrTensor:$compilation_status,
+    Variadic<TF_StrTensor>:$program
+  );
+
+  TF_DerivedResultSizeAttr num_computations = TF_DerivedResultSizeAttr<1>;
+  TF_DerivedOperandSizeAttr NumDynamicShapes = TF_DerivedOperandSizeAttr<0>;
 }

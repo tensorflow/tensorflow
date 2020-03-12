@@ -1213,10 +1213,10 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   tensorflow::TensorHandle* ret_handle;
   if (custom_device == nullptr) {
     status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        t, device, context, &ret_handle);
+        std::move(t), device, device, context, &ret_handle);
   } else {
     status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        t, custom_device, context, &ret_handle);
+        std::move(t), custom_device, context, &ret_handle);
   }
   if (!status->status.ok()) {
     return nullptr;
@@ -1794,8 +1794,10 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
 }  // namespace
 
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
-                              const char* device_name, void* device_info) {
+                              const char* device_name, void* device_info,
+                              TF_Status* status) {
   auto custom_device =
       std::make_unique<CustomDeviceAPI>(device, device_info, device_name);
-  ctx->context->RegisterCustomDevice(device_name, std::move(custom_device));
+  status->status =
+      ctx->context->RegisterCustomDevice(device_name, std::move(custom_device));
 }

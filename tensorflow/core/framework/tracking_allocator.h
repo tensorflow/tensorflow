@@ -91,29 +91,29 @@ class TrackingAllocator : public Allocator {
   ~TrackingAllocator() override {}
 
  private:
-  bool UnRef() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool UnRef() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Allocator* allocator_;  // not owned.
   mutable mutex mu_;
   // the number of calls to AllocateRaw that have not yet been matched
   // by a corresponding call to DeAllocateRaw, plus 1 if the Executor
   // has not yet read out the high watermark.
-  int ref_ GUARDED_BY(mu_);
+  int ref_ TF_GUARDED_BY(mu_);
   // the current number of outstanding bytes that have been allocated
   // by this wrapper, or 0 if the underlying allocator does not track
   // allocation sizes.
-  size_t allocated_ GUARDED_BY(mu_);
+  size_t allocated_ TF_GUARDED_BY(mu_);
   // the maximum number of outstanding bytes that have been allocated
   // by this wrapper, or 0 if the underlying allocator does not track
   // allocation sizes.
-  size_t high_watermark_ GUARDED_BY(mu_);
+  size_t high_watermark_ TF_GUARDED_BY(mu_);
   // the total number of bytes that have been allocated by this
   // wrapper if the underlying allocator tracks allocation sizes,
   // otherwise the total number of bytes that have been requested by
   // this allocator.
-  size_t total_bytes_ GUARDED_BY(mu_);
+  size_t total_bytes_ TF_GUARDED_BY(mu_);
 
-  gtl::InlinedVector<AllocRecord, 4> allocations_ GUARDED_BY(mu_);
+  gtl::InlinedVector<AllocRecord, 4> allocations_ TF_GUARDED_BY(mu_);
 
   // Track allocations locally if requested in the constructor and the
   // underlying allocator doesn't already do it for us.
@@ -123,8 +123,8 @@ class TrackingAllocator : public Allocator {
     size_t allocated_size;
     int64 allocation_id;
   };
-  std::unordered_map<const void*, Chunk> in_use_ GUARDED_BY(mu_);
-  int64 next_allocation_id_ GUARDED_BY(mu_);
+  std::unordered_map<const void*, Chunk> in_use_ TF_GUARDED_BY(mu_);
+  int64 next_allocation_id_ TF_GUARDED_BY(mu_);
 };
 
 }  // end namespace tensorflow

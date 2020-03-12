@@ -34,6 +34,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
+from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
@@ -525,6 +526,7 @@ class RNN(Layer):
     # do the tensor_shape to shapes here. The input could be single tensor, or a
     # nested structure of tensors.
     def get_input_spec(shape):
+      """Convert input shape to InputSpec."""
       if isinstance(shape, tensor_shape.TensorShape):
         input_spec_shape = shape.as_list()
       else:
@@ -779,7 +781,6 @@ class RNN(Layer):
         if not nest.is_sequence(new_states):
           new_states = [new_states]
         return output, new_states
-
     last_output, outputs, states = K.rnn(
         step,
         inputs,
@@ -972,6 +973,10 @@ class RNN(Layer):
     layer._num_constants = num_constants
     return layer
 
+  @property
+  def _trackable_saved_model_saver(self):
+    return layer_serialization.RNNSavedModelSaver(self)
+
 
 @keras_export('keras.layers.AbstractRNNCell')
 class AbstractRNNCell(Layer):
@@ -1088,10 +1093,9 @@ class DropoutRNNCellMixin(object):
     # RNN could be created with `unroll=True`. In that case, the `cell.call()`
     # function will be invoked multiple times, and we want to ensure same mask
     # is used every time.
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
-    self._eager_dropout_mask = None
-    self._eager_recurrent_dropout_mask = None
+    self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
+    self._recurrent_dropout_mask_cache = K.ContextValueCache(
+        self._create_recurrent_dropout_mask)
     super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
 
   def reset_dropout_mask(self):
@@ -1103,8 +1107,7 @@ class DropoutRNNCellMixin(object):
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
     """
-    self._dropout_mask = None
-    self._eager_dropout_mask = None
+    self._dropout_mask_cache.clear()
 
   def reset_recurrent_dropout_mask(self):
     """Reset the cached recurrent dropout masks if any.
@@ -1115,8 +1118,21 @@ class DropoutRNNCellMixin(object):
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
     """
-    self._recurrent_dropout_mask = None
-    self._eager_recurrent_dropout_mask = None
+    self._recurrent_dropout_mask_cache.clear()
+
+  def _create_dropout_mask(self, inputs, training, count=1):
+    return _generate_dropout_mask(
+        array_ops.ones_like(inputs),
+        self.dropout,
+        training=training,
+        count=count)
+
+  def _create_recurrent_dropout_mask(self, inputs, training, count=1):
+    return _generate_dropout_mask(
+        array_ops.ones_like(inputs),
+        self.recurrent_dropout,
+        training=training,
+        count=count)
 
   def get_dropout_mask_for_cell(self, inputs, training, count=1):
     """Get the dropout mask for RNN cell's input.
@@ -1136,23 +1152,8 @@ class DropoutRNNCellMixin(object):
     """
     if self.dropout == 0:
       return None
-    if (not context.executing_eagerly() and self._dropout_mask is None
-        or context.executing_eagerly() and self._eager_dropout_mask is None):
-      # Generate new mask and cache it based on context.
-      dp_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=count)
-      if context.executing_eagerly():
-        self._eager_dropout_mask = dp_mask
-      else:
-        self._dropout_mask = dp_mask
-    else:
-      # Reuse the existing mask.
-      dp_mask = (self._eager_dropout_mask
-                 if context.executing_eagerly() else self._dropout_mask)
-    return dp_mask
+    init_kwargs = dict(inputs=inputs, training=training, count=count)
+    return self._dropout_mask_cache.setdefault(kwargs=init_kwargs)
 
   def get_recurrent_dropout_mask_for_cell(self, inputs, training, count=1):
     """Get the recurrent dropout mask for RNN cell.
@@ -1172,25 +1173,8 @@ class DropoutRNNCellMixin(object):
     """
     if self.recurrent_dropout == 0:
       return None
-    if (not context.executing_eagerly() and self._recurrent_dropout_mask is None
-        or context.executing_eagerly()
-        and self._eager_recurrent_dropout_mask is None):
-      # Generate new mask and cache it based on context.
-      rec_dp_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.recurrent_dropout,
-          training=training,
-          count=count)
-      if context.executing_eagerly():
-        self._eager_recurrent_dropout_mask = rec_dp_mask
-      else:
-        self._recurrent_dropout_mask = rec_dp_mask
-    else:
-      # Reuse the existing mask.
-      rec_dp_mask = (self._eager_recurrent_dropout_mask
-                     if context.executing_eagerly()
-                     else self._recurrent_dropout_mask)
-    return rec_dp_mask
+    init_kwargs = dict(inputs=inputs, training=training, count=count)
+    return self._recurrent_dropout_mask_cache.setdefault(kwargs=init_kwargs)
 
 
 @keras_export('keras.layers.SimpleRNNCell')

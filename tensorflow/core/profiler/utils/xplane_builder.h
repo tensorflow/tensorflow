@@ -58,6 +58,10 @@ class XStatsBuilder {
     *new_stat = stat;
     new_stat->set_metadata_id(metadata.id());
   }
+  void AddStat(const XStat& stat) {
+    XStat* new_stat = stats_owner_->add_stats();
+    *new_stat = stat;
+  }
 
   XStat* FindOrAddMutableStat(int64 metadata_id) {
     for (auto& stat : *stats_owner_->mutable_stats()) {
@@ -173,6 +177,7 @@ class XLineBuilder {
   }
 
   XEventBuilder AddEvent(const XEventMetadata& metadata);
+  XEventBuilder AddEvent(const XEvent& event);
 
  private:
   XLine* line_;
@@ -204,6 +209,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
+  XEventMetadata* GetOrCreateEventMetadata(string&& name);
+  inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
+    return GetOrCreateEventMetadata(absl::string_view(name));
+  }
 
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
   XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);

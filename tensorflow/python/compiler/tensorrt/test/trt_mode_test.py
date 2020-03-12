@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from unittest import SkipTest  # pylint: disable=g-importing-member
 
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -104,7 +104,9 @@ class ExplicitBatchTest(TrtModeTestBase):
         self.GraphFn,
         dtypes.float32, [[1, 12, 5]], [[12, 5]],
         input_mask=[[True, True, True]],
-        output_mask=[[True, True]])
+        output_mask=[[True, True]],
+        extra_inputs=[],
+        extra_outputs=[])
 
   def GetConversionParams(self, run_params):
     """Return a TrtConversionParams for test that enables explicit batch."""
@@ -126,7 +128,8 @@ class ExplicitBatchTest(TrtModeTestBase):
   def ShouldRunTest(self, run_params):
     # Only run for TRT 6 and above.
     ver = get_linked_tensorrt_version()
-    return ver[0] >= 6 and (not run_params.use_calibration)
+    return ver[0] >= 6 and (
+        not run_params.use_calibration), "test >=TRT6 and non-calibration"
 
 
 class DynamicShapesTest(TrtModeTestBase):
@@ -137,10 +140,17 @@ class DynamicShapesTest(TrtModeTestBase):
   """
 
   def GetParams(self):
-    """We specify input/output mask with dynamic (unknown) shapes."""
+    """We specify input/output mask with dynamic (unknown) shapes.
+
+    A single
+    engine with three optimization profiles can handle the three different
+    input shapes.
+    """
     return self.BuildParamsWithMask(
         self.GraphFn,
         dtypes.float32, [[1, 12, 5]], [[12, 5]],
+        extra_inputs=[[[1, 2, 3]], [[1, 4, 6]]],
+        extra_outputs=[[[2, 3]], [[4, 6]]],
         input_mask=[[False, False, False]],
         output_mask=[[False, False]])
 
@@ -155,7 +165,8 @@ class DynamicShapesTest(TrtModeTestBase):
   def ShouldRunTest(self, run_params):
     # Only run for TRT 6 and above.
     ver = get_linked_tensorrt_version()
-    return ver[0] >= 6 and (not run_params.use_calibration)
+    return ver[0] >= 6 and (
+        not run_params.use_calibration), "test >=TRT6 and non-calibration"
 
 
 if __name__ == "__main__":

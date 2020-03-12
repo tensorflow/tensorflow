@@ -278,11 +278,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mu_->unlock();
       }
       data::TraceMeMetadata result;
-      result.push_back(
-          std::make_pair("buffer_limit", strings::Printf("%lld", limit)));
+      result.push_back(std::make_pair(
+          "buffer_limit",
+          strings::Printf("%lld", static_cast<long long>(limit))));
       if (dataset()->slack_period_ > 0) {
-        result.push_back(
-            std::make_pair("slack", strings::Printf("%lld", slack_us_.load())));
+        result.push_back(std::make_pair(
+            "slack",
+            strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
       }
       return result;
     }
@@ -298,21 +300,21 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       int64 created_us;
     };
 
-    int64 buffer_limit() const EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    int64 buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
         return auto_tuner_.buffer_limit();
       }
       return buffer_size_->value;
     }
 
-    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
     }
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         double buffer_limit_ = buffer_limit();
@@ -365,7 +367,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
@@ -438,7 +440,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status WriteStatus(IteratorStateWriter* writer, size_t index,
-                       const Status& status) EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+                       const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
                               static_cast<int64>(status.code())));
@@ -451,7 +453,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
-        EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64 code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
@@ -483,14 +485,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // This mutex is used to ensure exclusivity between multiple threads
     // accessing the input iterator. We keep this separate from `mu_` to allow
     // prefetching to run in parallel with GetNext calls.
-    mutex input_mu_ ACQUIRED_BEFORE(*mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(input_mu_);
+    mutex input_mu_ TF_ACQUIRED_BEFORE(*mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
-    PrefetchAutotuner auto_tuner_ GUARDED_BY(*mu_);
-    std::deque<BufferElement> buffer_ GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(*mu_);
-    bool cancelled_ GUARDED_BY(*mu_) = false;
-    bool prefetch_thread_finished_ GUARDED_BY(*mu_) = false;
+    PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
+    std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
+    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
+    bool cancelled_ TF_GUARDED_BY(*mu_) = false;
+    bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
 
     std::atomic<int64> slack_us_;

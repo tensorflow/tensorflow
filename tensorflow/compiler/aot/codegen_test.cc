@@ -156,17 +156,14 @@ static void CompareWithGoldenFile(
   // bazel test --test_strategy=local \
   //   third_party/tensorflow/compiler/aot:codegen_test
   const bool update_golden = false;
-  string golden_file_name;
+  string golden_file_name =
+      GetDataDependencyFilepath(tensorflow_relative_golden_file_name);
 
   if (update_golden) {
-    golden_file_name = io::JoinPath(testing::TensorFlowSrcRoot(),
-                                    tensorflow_relative_golden_file_name);
     TF_EXPECT_OK(
         WriteStringToFile(Env::Default(), golden_file_name, expected_contents));
   }
 
-  golden_file_name =
-      GetDataDependencyFilepath(tensorflow_relative_golden_file_name);
   string golden_file_contents;
   TF_ASSERT_OK(ReadFileToString(Env::Default(), golden_file_name,
                                 &golden_file_contents));
@@ -220,10 +217,16 @@ TEST(CodegenTest, Golden) {
       {},
       {BufferInfo::MakeTempBuffer(1),
        BufferInfo::MakeEntryParameter(/*size=*/8, /*param_number=*/0),
-       BufferInfo::MakeTempBuffer(2),
+       BufferInfo::MakeTempBuffer(1),
        BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/1),
-       BufferInfo::MakeTempBuffer(3), BufferInfo::MakeTempBuffer(120)},
-      5, {}));
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/2),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/3),
+       BufferInfo::MakeTempBuffer(1),
+       BufferInfo::MakeEntryParameter(/*size=*/96, /*param_number=*/4),
+       BufferInfo::MakeTempBuffer(1), BufferInfo::MakeTempBuffer(120)},
+      11, {}));
   compile_result.program_shape =
       xla::ShapeUtil::MakeProgramShape(
           {

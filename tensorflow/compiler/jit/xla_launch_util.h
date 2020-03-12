@@ -18,7 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_LAUNCH_UTIL_H_
 
-#include "absl/base/thread_annotations.h"
 #include "tensorflow/compiler/jit/xla_compilation_cache.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace tensorflow {
@@ -102,7 +102,7 @@ class VariableInfo {
 // `variables` is allowed to contain instances that don't track a resource
 // variable (i.e. variables[i].var() can be null for some i).
 Status LockVariables(absl::Span<VariableInfo> variables)
-    EXCLUSIVE_LOCK_FUNCTION();
+    TF_EXCLUSIVE_LOCK_FUNCTION();
 
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.

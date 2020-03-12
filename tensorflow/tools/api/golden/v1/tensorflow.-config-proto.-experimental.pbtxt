@@ -76,6 +76,12 @@ tf_proto {
       type: TYPE_BOOL
     }
     field {
+      name: "enable_mlir_graph_optimization"
+      number: 16
+      label: LABEL_OPTIONAL
+      type: TYPE_BOOL
+    }
+    field {
       name: "disable_output_partition_graphs"
       number: 14
       label: LABEL_OPTIONAL

@@ -50,6 +50,7 @@ exports_files(
         "model.h",
         "node_def_builder.h",
         "numeric_op.h",
+        "numeric_op_base.h",
         "op_kernel.h",
         "op_requires.h",
         "op_segment.h",
@@ -129,6 +130,7 @@ exports_files(
     [
         "attr_value_util.h",
         "common_shape_fns.h",
+        "kernel_shape_util.h",
         "node_def_util.h",
         "node_properties.h",
         "op.h",
@@ -166,6 +168,7 @@ filegroup(
         "graph_to_functiondef.h",
         "kernel_def_builder.h",
         "kernel_def_util.h",
+        "kernel_shape_util.h",
         "local_rendezvous.h",
         "log_memory.h",
         "logging.h",
@@ -176,6 +179,7 @@ filegroup(
         "node_def_util.h",
         "node_properties.h",
         "numeric_op.h",
+        "numeric_op_base.h",
         "numeric_types.h",
         "op.h",
         "op_def_builder.h",
@@ -269,9 +273,15 @@ filegroup(
         "bfloat16.h",
         "bounds_check.h",
         "cpu_allocator_impl.cc",
+        "kernel_shape_util.cc",
+        "kernel_shape_util.h",
         "log_memory.cc",
         "log_memory.h",
+        "numeric_op_base.h",
         "numeric_types.h",
+        "op_requires.h",
+        "ops_util.cc",
+        "ops_util.h",
         "register_types.h",
         "resource_handle.cc",
         "resource_handle.h",
@@ -353,11 +363,8 @@ filegroup(
         "op_def_util.h",
         "op_kernel.cc",
         "op_kernel.h",
-        "op_requires.h",
         "op_segment.cc",
         "op_segment.h",
-        "ops_util.cc",
-        "ops_util.h",
         "partial_tensor_shape.h",
         "queue_interface.h",
         "reader_interface.h",
@@ -595,7 +602,10 @@ cc_library(
 cc_library(
     name = "numeric_types",
     hdrs = ["numeric_types.h"],
-    visibility = ["//tensorflow/core:__subpackages__"],
+    visibility = [
+        "//tensorflow/compiler:__subpackages__",
+        "//tensorflow/core:__subpackages__",
+    ],
     deps = [
         "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
@@ -773,6 +783,19 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_shape_util",
+    srcs = ["kernel_shape_util.cc"],
+    hdrs = ["kernel_shape_util.h"],
+    deps = [
+        ":tensor",
+        ":tensor_shape",
+        "//tensorflow/core/lib/core:errors",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/core/util:padding",
+    ],
+)
+
+cc_library(
     name = "common_shape_fns",
     srcs = ["common_shape_fns.cc"],
     hdrs = ["common_shape_fns.h"],
@@ -866,6 +889,7 @@ cc_library(
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/util:padding",
         "@com_google_absl//absl/strings",
     ],
 )

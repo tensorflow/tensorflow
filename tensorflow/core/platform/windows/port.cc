@@ -77,7 +77,7 @@ int NumTotalCPUs() {
   // the Size fields by iterating over the written-to buffer.  Since I can't
   // easily test this on Windows, I'm deferring this to someone who can!
   //
-  // If you fix this, also consider updatig GetCurrentCPU below.
+  // If you fix this, also consider updating GetCurrentCPU below.
   return NumSchedulableCPUs();
 }
 
@@ -112,7 +112,7 @@ void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) { return free(ptr); }
+void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);

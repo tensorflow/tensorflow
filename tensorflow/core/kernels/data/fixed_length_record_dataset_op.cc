@@ -235,11 +235,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_
-        GUARDED_BY(mu_);  // must outlive input_buffer_
-    std::unique_ptr<io::InputBuffer> input_buffer_ GUARDED_BY(mu_);
-    int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
+        TF_GUARDED_BY(mu_);  // must outlive input_buffer_
+    std::unique_ptr<io::InputBuffer> input_buffer_ TF_GUARDED_BY(mu_);
+    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
   };
 
   class CompressedIterator : public DatasetIterator<Dataset> {
@@ -427,15 +427,15 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_
-        GUARDED_BY(mu_);  // must outlive buffered_input_stream_
+        TF_GUARDED_BY(mu_);  // must outlive buffered_input_stream_
     std::unique_ptr<io::RandomAccessInputStream>
         file_stream_;  // must outlive buffered_input_stream_
     std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
-        GUARDED_BY(mu_);
-    int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
-    tstring lookahead_cache_ GUARDED_BY(mu_);
+        TF_GUARDED_BY(mu_);
+    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    tstring lookahead_cache_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;

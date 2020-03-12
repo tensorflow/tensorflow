@@ -347,6 +347,16 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
 
     Value element_shape = operands[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
+    // If the `element_shape` is a scalar, we know that it's dynamic shape
+    // and returns an error.
+    if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
+      if (shaped_type.getRank() == 0) {
+        op.emitError(
+            "requires element_shape to be 1D tensor during TF Lite "
+            "transformation pass");
+        return ConversionPattern::matchFailure();
+      }
+    }
 
     DenseIntElementsAttr dense_elem_attr;
     if (matchPattern(element_shape, m_Constant(&dense_elem_attr))) {

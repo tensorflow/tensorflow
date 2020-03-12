@@ -411,7 +411,7 @@ class Network(base_layer.Layer):
   def _checkpoint_dependencies(self):
     dependencies = [
         trackable.TrackableReference(name=name, ref=layer)
-        for name, layer in self._layer_checkpoint_dependencies.items()]
+        for name, layer in sorted(self._layer_checkpoint_dependencies.items())]
     dependencies.extend(super(Network, self)._checkpoint_dependencies)
     return dependencies
 
@@ -586,7 +586,7 @@ class Network(base_layer.Layer):
     """
     return
 
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
@@ -859,10 +859,13 @@ class Network(base_layer.Layer):
 
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
-            kwargs.setdefault('training', training)
-            if (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
-                any([kwargs['training'] is x
-                     for x in backend._GRAPH_LEARNING_PHASES.values()])):
+            if 'training' not in kwargs or kwargs['training'] is None:
+              kwargs['training'] = training
+            elif (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
+                  any([
+                      kwargs['training'] is x
+                      for x in backend._GRAPH_LEARNING_PHASES.values()
+                  ])):
               kwargs['training'] = training  # Materialize placeholder.
 
           # Map Keras tensors in kwargs to their computed value.

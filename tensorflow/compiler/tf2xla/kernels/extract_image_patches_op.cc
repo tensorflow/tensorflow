@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/util/tensor_format.h"
 

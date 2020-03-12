@@ -74,16 +74,14 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(
-          keras_test_lib.all_strategy_combinations(),
-          combinations.combine(experimental_run_tf_function=[True, False])))
-  def test_callbacks_in_fit(self, distribution, experimental_run_tf_function):
+          keras_test_lib.all_strategy_combinations()))
+  def test_callbacks_in_fit(self, distribution):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
           optimizer='sgd',
           loss='mse',
-          metrics=['mae'],
-          experimental_run_tf_function=experimental_run_tf_function)
+          metrics=['mae'])
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -130,16 +128,14 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(
-          keras_test_lib.all_strategy_combinations(),
-          combinations.combine(experimental_run_tf_function=[True, False])))
-  def test_callbacks_in_eval(self, distribution, experimental_run_tf_function):
+          keras_test_lib.all_strategy_combinations()))
+  def test_callbacks_in_eval(self, distribution):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
           optimizer='sgd',
           loss='mse',
-          metrics=['mae'],
-          experimental_run_tf_function=experimental_run_tf_function)
+          metrics=['mae'])
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -156,17 +152,14 @@ class TestDistributionStrategyWithCallbacks(test.TestCase,
 
   @combinations.generate(
       combinations.times(
-          keras_test_lib.all_strategy_combinations(),
-          combinations.combine(experimental_run_tf_function=[True, False])))
-  def test_callbacks_in_predict(self, distribution,
-                                experimental_run_tf_function):
+          keras_test_lib.all_strategy_combinations()))
+  def test_callbacks_in_predict(self, distribution):
     with distribution.scope():
       model = keras_test_lib.get_model()
       model.compile(
           optimizer='sgd',
           loss='mse',
-          metrics=['mae'],
-          experimental_run_tf_function=experimental_run_tf_function)
+          metrics=['mae'])
 
     dataset = keras_test_lib.get_dataset(distribution)
     counter = Counter()
@@ -240,10 +233,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
-          mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False]))
-  def test_unsupported_features(self, distribution,
-                                experimental_run_tf_function, mode):
+          mode=['graph', 'eager']))
+  def test_unsupported_features(self, distribution, mode):
     with self.cached_session():
       with distribution.scope():
         model = keras_test_lib.get_model()
@@ -253,8 +244,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
         model.compile(
             optimizer,
             loss,
-            metrics=metrics,
-            experimental_run_tf_function=experimental_run_tf_function)
+            metrics=metrics)
 
       dataset = keras_test_lib.get_dataset(distribution)
       # Test with validation split
@@ -294,10 +284,9 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.one_device_strategy,
           ],
-          mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False]))
+          mode=['graph', 'eager']))
   def test_distribution_strategy_on_subclassed_model(
-      self, distribution, experimental_run_tf_function):
+      self, distribution):
     with distribution.scope():
 
       class _SimpleMLP(keras.Model):
@@ -318,10 +307,10 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             '`Sequential` model that is created without `input_shape`/'
             '`input_dim` set in its first layer or a subclassed model.'):
           model.compile(
-              'sgd', experimental_run_tf_function=experimental_run_tf_function)
+              'sgd')
       else:
         model.compile(
-            'sgd', experimental_run_tf_function=experimental_run_tf_function)
+            'sgd')
 
   @combinations.generate(
       combinations.combine(
@@ -329,10 +318,9 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.one_device_strategy,
           ],
-          mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False]))
+          mode=['graph', 'eager']))
   def test_distribution_strategy_on_deferred_sequential_model(
-      self, distribution, experimental_run_tf_function):
+      self, distribution):
     with distribution.scope():
       model = keras.models.Sequential()
       model.add(keras.layers.Dense(16, activation='relu'))
@@ -340,7 +328,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
       if context.executing_eagerly():
         model.compile(
-            'sgd', experimental_run_tf_function=experimental_run_tf_function)
+            'sgd')
       else:
         with self.assertRaisesRegexp(
             ValueError,
@@ -349,7 +337,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             '`input_shape`/`input_dim` set in its first layer or '
             'a subclassed model.'):
           model.compile(
-              'sgd', experimental_run_tf_function=experimental_run_tf_function)
+              'sgd')
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
@@ -375,10 +363,9 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager'],
-          experimental_run_tf_function=[True, False],
           optimizer=strategy_combinations.gradient_descent_optimizer_keras_v2_fn
       ))
-  def test_masking(self, distribution, experimental_run_tf_function, optimizer):
+  def test_masking(self, distribution, optimizer):
     with self.cached_session():
       np.random.seed(1337)
       x = np.array([[[1], [1]], [[0], [0]]])
@@ -390,8 +377,7 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
                 keras.layers.Dense(1, kernel_initializer='one')))
         model.compile(
             loss='mse',
-            optimizer=optimizer(),
-            experimental_run_tf_function=experimental_run_tf_function)
+            optimizer=optimizer())
       y = np.array([[[1], [1]], [[1], [1]]])
       dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
       dataset = dataset.repeat(100)
@@ -408,11 +394,9 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
           keras_test_lib.all_strategy_combinations(),
           combinations.combine(
               fused=[True, False],
-              experimental_run_tf_function=[True, False],
               optimizer=strategy_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
-  def test_batchnorm_correctness(self, distribution, fused, optimizer,
-                                 experimental_run_tf_function):
+  def test_batchnorm_correctness(self, distribution, fused, optimizer):
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()
@@ -425,8 +409,7 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
         model.add(norm)
         model.compile(
             loss='mse',
-            optimizer=optimizer(),
-            experimental_run_tf_function=experimental_run_tf_function)
+            optimizer=optimizer())
 
       # centered on 5.0, variance 10.0
       x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 10, 20, 30))
@@ -455,18 +438,15 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              experimental_run_tf_function=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
-  def test_save_load_h5(self, distribution, optimizer,
-                        experimental_run_tf_function):
+  def test_save_load_h5(self, distribution, optimizer):
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
         model = keras_test_lib.get_model()
         model.compile(
             optimizer(),
-            'mse',
-            experimental_run_tf_function=experimental_run_tf_function)
+            'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp('.h5')
@@ -475,8 +455,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
         model_2 = keras_test_lib.get_model()
         model_2.compile(
             optimizer(),
-            'mse',
-            experimental_run_tf_function=experimental_run_tf_function)
+            'mse')
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)
@@ -486,10 +465,8 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       combinations.times(
           keras_test_lib.all_strategy_combinations_minus_default(),
           combinations.combine(
-              experimental_run_tf_function=[True, False],
               optimizer=strategy_combinations.rmsprop_optimizer_keras_v2_fn)))
-  def test_save_load_trackable(self, distribution, optimizer,
-                               experimental_run_tf_function):
+  def test_save_load_trackable(self, distribution, optimizer):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
     if (isinstance(distribution,
                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)) and
@@ -501,8 +478,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
         model = keras_test_lib.get_model()
         model.compile(
             optimizer(),
-            'mse',
-            experimental_run_tf_function=experimental_run_tf_function)
+            'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp()
@@ -511,8 +487,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
         model_2 = keras_test_lib.get_model()
         model_2.compile(
             optimizer(),
-            'mse',
-            experimental_run_tf_function=experimental_run_tf_function)
+            'mse')
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)
@@ -523,10 +498,8 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          keras_test_lib.all_strategy_combinations_minus_default(),
-          combinations.combine(experimental_run_tf_function=[True, False])))
-  def test_layer_outside_scope(self, distribution,
-                               experimental_run_tf_function):
+          keras_test_lib.all_strategy_combinations_minus_default()))
+  def test_layer_outside_scope(self, distribution):
     with self.cached_session():
       with self.assertRaisesRegexp(
           ValueError, 'was not created in the distribution strategy'):
@@ -540,8 +513,7 @@ class TestDistributionStrategyValidation(test.TestCase, parameterized.TestCase):
           model.compile(
               optimizer,
               loss,
-              metrics=metrics,
-              experimental_run_tf_function=experimental_run_tf_function)
+              metrics=metrics)
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())

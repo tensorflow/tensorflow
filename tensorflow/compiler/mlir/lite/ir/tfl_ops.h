@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Transforms/LoopLikeInterface.h"  // TF:llvm-project

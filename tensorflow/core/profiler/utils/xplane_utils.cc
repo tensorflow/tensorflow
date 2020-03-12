@@ -219,9 +219,9 @@ void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
 }
 
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
+  RemoveEmptyLines(dst_plane);
   XPlaneVisitor src(&src_plane);
   XPlaneBuilder dst(dst_plane);
-  RemoveEmptyLines(dst_plane);
   src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
     XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());

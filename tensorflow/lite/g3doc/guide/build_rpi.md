@@ -55,7 +55,7 @@ This should compile a static library in:
 To build ARMv6 binary for Raspberry Pi Zero:
 
 ```bash
-TARGET_ARCH=armv6 ./tensorflow/lite/tools/make/build_rpi_lib.sh
+./tensorflow/lite/tools/make/build_rpi_lib.sh TARGET_ARCH=armv6
 ```
 
 This should compile a static library in:

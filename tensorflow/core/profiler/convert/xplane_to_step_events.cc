@@ -79,7 +79,9 @@ StepEvents ConvertHostThreadsXLineToStepEvents(
           StepMarkerType::kImplicitHostStepMarker, event.Name(), timespan));
     } else if (IsRealCpuCompute(event.Name())) {
       EventTypeSpan event_type_span(
-          ClassifyCpuEvent(event.Name(), correlation_id), timespan);
+          ClassifyCpuEvent(event.Name(), correlation_id,
+                           use_device_step_events),
+          timespan);
       result[group_id].AddEvent(event_type_span);
     }
   });

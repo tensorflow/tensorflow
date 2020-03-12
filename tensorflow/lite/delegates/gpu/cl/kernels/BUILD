@@ -326,6 +326,7 @@ cc_library(
         ":work_group_picking",
         "//tensorflow/lite/delegates/gpu/cl:buffer",
         "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl:texture2d",

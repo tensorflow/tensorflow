@@ -135,6 +135,7 @@ Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
       strings::safe_strto64(request_timeout_str, &request_timeout);
     }
     cfg.requestTimeoutMs = request_timeout;
+
     const char* ca_file = getenv("S3_CA_FILE");
     if (ca_file) {
       cfg.caFile = Aws::String(ca_file);
@@ -225,6 +226,8 @@ class S3RandomAccessFile : public RandomAccessFile {
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
+    VLOG(1) << "ReadFilefromS3 s3://" << bucket_ << "/" << object_ << " from "
+            << offset << " for n:" << n;
     Aws::S3::Model::GetObjectRequest getObjectRequest;
     getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     string bytes = strings::StrCat("bytes=", offset, "-", offset + n - 1);
@@ -308,6 +311,7 @@ class S3WritableFile : public WritableFile {
     if (!sync_needed_) {
       return Status::OK();
     }
+    VLOG(1) << "WriteFileToS3: s3://" << bucket_ << "/" << object_;
     long offset = outfile_->tellp();
     std::shared_ptr<Aws::Transfer::TransferHandle> handle =
         transfer_manager_.get()->UploadFile(
@@ -398,7 +402,8 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     Aws::InitAPI(options);
 
     // The creation of S3Client disables virtual addressing:
-    //   S3Client(clientConfiguration, signPayloads, useVirtualAdressing = true)
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAddressing =
+    //   true)
     // The purpose is to address the issue encountered when there is an `.`
     // in the bucket name. Due to TLS hostname validation or DNS rules,
     // the bucket may not be resolved. Disabling of virtual addressing
@@ -511,6 +516,7 @@ Status S3FileSystem::FileExists(const string& fname) {
 
 Status S3FileSystem::GetChildren(const string& dir,
                                  std::vector<string>* result) {
+  VLOG(1) << "GetChildren for path: " << dir;
   string bucket, prefix;
   TF_RETURN_IF_ERROR(ParseS3Path(dir, true, &bucket, &prefix));
 
@@ -557,6 +563,7 @@ Status S3FileSystem::GetChildren(const string& dir,
 }
 
 Status S3FileSystem::Stat(const string& fname, FileStatistics* stats) {
+  VLOG(1) << "Stat on path: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, true, &bucket, &object));
 
@@ -623,6 +630,7 @@ Status S3FileSystem::GetMatchingPaths(const string& pattern,
 }
 
 Status S3FileSystem::DeleteFile(const string& fname) {
+  VLOG(1) << "DeleteFile: " << fname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
@@ -638,6 +646,7 @@ Status S3FileSystem::DeleteFile(const string& fname) {
 }
 
 Status S3FileSystem::CreateDir(const string& dirname) {
+  VLOG(1) << "CreateDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, true, &bucket, &object));
 
@@ -664,6 +673,7 @@ Status S3FileSystem::CreateDir(const string& dirname) {
 }
 
 Status S3FileSystem::DeleteDir(const string& dirname) {
+  VLOG(1) << "DeleteDir: " << dirname;
   string bucket, object;
   TF_RETURN_IF_ERROR(ParseS3Path(dirname, false, &bucket, &object));
 
@@ -963,6 +973,7 @@ Status S3FileSystem::CompleteMultiPartCopy(
 }
 
 Status S3FileSystem::RenameFile(const string& src, const string& target) {
+  VLOG(1) << "RenameFile from: " << src << " to: " << target;
   string src_bucket, src_object, target_bucket, target_object;
   TF_RETURN_IF_ERROR(ParseS3Path(src, false, &src_bucket, &src_object));
   TF_RETURN_IF_ERROR(

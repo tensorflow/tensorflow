@@ -143,16 +143,16 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
+#ifdef ENABLE_MKLDNN_V1
+    auto* prim = FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem());
+    net.push_back(*(prim->GetPrimitive()));
+    std::vector<MemoryArgsMap> net_args;
+    net_args.push_back({{MKLDNN_ARG_FROM, *in.GetUsrMem()},
+                        {MKLDNN_ARG_TO, *out.GetUsrMem()}});
+    execute_primitives(net, prim->GetStream(), net_args);
+#else
     std::shared_ptr<stream> transpose_stream;
     transpose_stream.reset(new CPU_STREAM(cpu_engine));
-#ifdef ENABLE_MKLDNN_V1
-    const int net_idx = 0;
-    net.push_back(reorder(in.GetOpMem(), out.GetOpMem()));
-    std::vector<std::unordered_map<int, memory>> net_args;
-    net_args.push_back(
-        {{MKLDNN_ARG_FROM, in.GetOpMem()}, {MKLDNN_ARG_TO, out.GetOpMem()}});
-    net.at(net_idx).execute(*transpose_stream, net_args.at(net_idx));
-#else
     net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     transpose_stream->submit(net).wait();
 #endif  // ENABLE_MKLDNN_V1

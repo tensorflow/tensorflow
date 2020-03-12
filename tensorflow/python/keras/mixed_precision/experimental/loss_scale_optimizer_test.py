@@ -41,6 +41,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 
+# Disable not-callable lint error, as the linter is unable to detect that
+# LossScale instances are callable.
+# pylint: disable=not-callable
+
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.

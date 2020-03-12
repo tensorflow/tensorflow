@@ -392,12 +392,12 @@ func @DynamicStitch_scalar_matrix_indices(%arg0: tensor<2xf32>, %arg1: tensor<2x
 
 // Verify that custom types are lowered and have legal output.
 // CHECK-LABEL: func @DynamicStitch_uint8
-func @DynamicStitch_uint8(%arg0: tensor<2x2x!tf.uint8>) -> tensor<2x2x!tf.uint8> {
+func @DynamicStitch_uint8(%arg0: tensor<2x2xui8>) -> tensor<2x2xui8> {
   // CHECK-NOT: tf.DynamicStitch
 
   %indices = "tf.Const"() {value = dense<[1, 0]> : tensor<2xi32>} : () -> tensor<2xi32>
-  %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2x!tf.uint8>) -> tensor<2x2x!tf.uint8>
-  return %0 : tensor<2x2x!tf.uint8>
+  %0 = "tf.DynamicStitch"(%indices, %arg0) : (tensor<2xi32>, tensor<2x2xui8>) -> tensor<2x2xui8>
+  return %0 : tensor<2x2xui8>
 }
 
 // CHECK-LABEL: func @DynamicStitch_scalar_item

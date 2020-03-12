@@ -254,7 +254,7 @@ void Da7212Initialize(void) {
   }
 }
 
-// Initalization for receiving audio data
+// Initialization for receiving audio data
 TfLiteStatus InitAudioRecording(tflite::ErrorReporter *error_reporter) {
   edma_config_t dma_config = {0};
   sai_config_t sai_config;
