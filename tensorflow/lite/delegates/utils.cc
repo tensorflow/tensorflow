@@ -15,54 +15,30 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/utils.h"
 
-#include <algorithm>
-
 #include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace delegates {
 
-TfLiteStatus PruneContinuousSubsets(TfLiteContext* context,
-                                    const int max_subsets,
-                                    std::vector<int>* indices) {
-  if (!indices) {
-    context->ReportError(context, "indices cannot be nullptr");
+TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
+                                              const int original_tensor_index,
+                                              TfLiteType new_type,
+                                              TfLiteTensor** new_tensor,
+                                              int* new_tensor_index) {
+  const TfLiteTensor& original_tensor = context->tensors[original_tensor_index];
+  TF_LITE_ENSURE_STATUS(context->AddTensors(context, 1, new_tensor_index));
+  *new_tensor = &context->tensors[*new_tensor_index];
+  (*new_tensor)->type = new_type;
+  (*new_tensor)->allocation_type = kTfLiteArenaRw;
+  const auto* original_dims = original_tensor.dims;
+  TfLiteIntArray* dims = TfLiteIntArrayCreate(original_dims->size);
+  for (int i = 0; i < original_dims->size; ++i) {
+    dims->data[i] = original_dims->data[i];
+  }
+  if (context->ResizeTensor(context, *new_tensor, dims) != kTfLiteOk) {
+    TF_LITE_KERNEL_LOG(context, "Could not resize new delegate tensor");
     return kTfLiteError;
   }
-  if (indices->empty() || indices->size() < max_subsets) return kTfLiteOk;
-
-  // Sort indices just in case.
-  std::sort(indices->begin(), indices->end());
-
-  // Build a vector of subsets.
-  std::vector<std::vector<int>> continuous_subsets;
-  int last_index = indices->at(0) - 2;
-  for (const auto idx : *indices) {
-    if (idx > last_index + 1) {
-      continuous_subsets.emplace_back();
-    }
-    continuous_subsets.back().push_back(idx);
-    last_index = idx;
-  }
-
-  // Nothing to be done if number of subsets is already less than max_subsets.
-  if (continuous_subsets.size() <= max_subsets) return kTfLiteOk;
-
-  // Sort the vector of subsets in descending order of length.
-  std::sort(continuous_subsets.begin(), continuous_subsets.end(),
-            [](const std::vector<int>& a, const std::vector<int>& b) {
-              return a.size() > b.size();
-            });
-
-  // Re-build indices vector from top subsets.
-  indices->clear();
-  for (int i = 0; i < max_subsets; ++i) {
-    indices->reserve(indices->size() + continuous_subsets[i].size());
-    indices->insert(indices->end(), continuous_subsets[i].begin(),
-                    continuous_subsets[i].end());
-  }
-  std::sort(indices->begin(), indices->end());
-
   return kTfLiteOk;
 }
 
