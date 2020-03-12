@@ -71,12 +71,6 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     rendez_ = NewLocalRendezvous();
-    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
-                                       Rendezvous** r) {
-      *r = rendez_;
-      rendez_->Ref();
-      return Status::OK();
-    };
     delete exec_;
     TF_CHECK_OK(NewLocalExecutor(params, *graph, &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
@@ -255,7 +249,7 @@ void BuildConcurrentAddAssign(Graph* g) {
   auto one = test::graph::Constant(g, V(1.0));
   // A variable holds one float.
   auto var = test::graph::Var(g, DT_FLOAT, TensorShape({}));
-  // Initilize the variable with 1.0.
+  // Initialize the variable with 1.0.
   auto init = test::graph::Assign(g, var, one);
   // Output
   auto out = test::graph::Send(g, var, "out", ALICE, kIncarnation, BOB);

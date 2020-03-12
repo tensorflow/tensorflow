@@ -36,11 +36,6 @@ class RenamedDevice : public Device {
 
   ~RenamedDevice() override;
 
-  // Below are virtual methods defined on DeviceBase
-  bool RequiresRecordingAccessedTensors() const override {
-    return underlying_device_->RequiresRecordingAccessedTensors();
-  }
-
   const DeviceBase* UnderlyingDevice() const override {
     return underlying_device_->UnderlyingDevice();
   }
@@ -136,11 +131,6 @@ class RenamedDevice : public Device {
   void ComputeAsync(AsyncOpKernel* op_kernel, OpKernelContext* context,
                     AsyncOpKernel::DoneCallback done) override {
     underlying_device_->ComputeAsync(op_kernel, context, std::move(done));
-  }
-
-  void ConsumeListOfAccessedTensors(
-      DeviceContext* context, const TensorReferenceVector& tensors) override {
-    underlying_device_->ConsumeListOfAccessedTensors(context, tensors);
   }
 
   Status Sync() override { return underlying_device_->Sync(); }

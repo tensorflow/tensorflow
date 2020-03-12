@@ -95,8 +95,8 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
   def _local_results(self, value):
     return (value,)
 
-  def _reduce_to(self, reduce_op, value, destinations):
-    del reduce_op, destinations
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
+    del reduce_op, destinations, experimental_hints
     return value
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
@@ -510,7 +510,7 @@ class DefaultDistributionStrategyTest(test.TestCase, parameterized.TestCase):
       return input_data
 
     for _ in range(2):
-      default_strategy.experimental_run_v2(train_step, args=(next_val,))
+      default_strategy.run(train_step, args=(next_val,))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testDistributedDatasets(self):

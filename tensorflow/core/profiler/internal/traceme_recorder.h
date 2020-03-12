@@ -59,7 +59,7 @@ class TraceMeRecorder {
     uint64 end_time;    // 0 = missing
   };
   struct ThreadInfo {
-    int32 tid;
+    uint32 tid;
     string name;
   };
   struct ThreadEvents {
@@ -101,21 +101,22 @@ class TraceMeRecorder {
 
   TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
-  void RegisterThread(int32 tid, ThreadLocalRecorder* thread);
-  void UnregisterThread(int32 tid);
+  void RegisterThread(uint32 tid, ThreadLocalRecorder* thread);
+  void UnregisterThread(uint32 tid);
 
   bool StartRecording(int level);
   Events StopRecording();
 
   // Gathers events from all active threads, and clears their buffers.
-  Events Clear() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Events Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutex mutex_;
   // Map of the static container instances (thread_local storage) for each
   // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<int32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<uint32, ThreadLocalRecorder*> threads_
+      TF_GUARDED_BY(mutex_);
   // Events from threads that died during recording.
-  TraceMeRecorder::Events orphaned_events_ GUARDED_BY(mutex_);
+  TraceMeRecorder::Events orphaned_events_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace profiler

@@ -1037,4 +1037,35 @@ REGISTER_OP("ExperimentalUniqueDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("DataServiceDataset")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("max_outstanding_requests: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("RegisterDataset")
+    .Input("dataset: variant")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("dataset_id: int64")
+    .Attr("external_state_policy: int")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("BeginEpoch")
+    .Input("dataset_id: int64")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("epoch_id: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MakeDataServiceIterator")
+    .Input("dataset: variant")
+    .Input("epoch_id: int64")
+    .Input("iterator: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 }  // namespace tensorflow

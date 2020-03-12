@@ -236,8 +236,9 @@ class DirectSessionFactory : public SessionFactory {
   }
 
   mutex sessions_lock_;
-  std::vector<DirectSession*> sessions_ GUARDED_BY(sessions_lock_);
-  absl::flat_hash_set<string> session_metadata_keys_ GUARDED_BY(sessions_lock_);
+  std::vector<DirectSession*> sessions_ TF_GUARDED_BY(sessions_lock_);
+  absl::flat_hash_set<string> session_metadata_keys_
+      TF_GUARDED_BY(sessions_lock_);
 };
 
 class DirectSessionRegistrar {
@@ -592,7 +593,9 @@ Status DirectSession::RunInternal(
   if (ShouldUseRunHandlerPool(run_options) &&
       run_options.experimental().use_run_handler_pool()) {
     VLOG(1) << "Using RunHandler to scheduler inter-op closures.";
-    handler = GetOrCreateRunHandlerPool(options_)->Get(step_id, call_timeout);
+    handler = GetOrCreateRunHandlerPool(options_)->Get(
+        step_id, call_timeout,
+        run_options.experimental().run_handler_pool_options());
     if (!handler) {
       return errors::DeadlineExceeded(
           "Could not obtain RunHandler for request after waiting for ",
@@ -1333,7 +1336,11 @@ Status DirectSession::CreateExecutors(
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
-      nullptr, custom_kernel_creator, session_metadata));
+      /*parent=*/nullptr, custom_kernel_creator, session_metadata,
+      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      }));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1378,11 +1385,6 @@ Status DirectSession::CreateExecutors(
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-    };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,

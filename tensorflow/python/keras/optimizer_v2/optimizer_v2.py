@@ -223,11 +223,20 @@ class OptimizerV2(trackable.Trackable):
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - resource_apply_dense (update variable given gradient tensor is dense)
-    - resource_apply_sparse (update variable given gradient tensor is sparse)
-    - create_slots (if your optimizer algorithm requires additional variables)
+    - _resource_apply_dense (update variable given gradient tensor is dense)
+    - _resource_apply_sparse (update variable given gradient tensor is sparse)
+    - _create_slots (if your optimizer algorithm requires additional variables)
     - get_config (serialization of the optimizer, include all hyper parameters)
   """
+
+  # Subclasses should set this to True unless they override `apply_gradients`
+  # with a version that does not have the `all_reduce_sum_gradients` argument.
+  # Older versions of Keras did not have this argument so custom optimizers may
+  # have overridden `apply_gradients` without the `all_reduce_sum_gradients`
+  # argument. Keras only passes `all_reduce_sum_gradients` if this attribute is
+  # True.
+  # Note: This attribute will likely be removed in an upcoming release.
+  _HAS_ALL_REDUCE_SUM_GRAD = False
 
   def __init__(self, name, **kwargs):
     """Create a new Optimizer.
@@ -473,27 +482,49 @@ class OptimizerV2(trackable.Trackable):
         # Distribution strategy does not support reducing an empty list of
         # gradients
         return control_flow_ops.no_op()
+
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `tf.distribute.Strategy.experimental_run_v2` to enter replica "
+            "context.")
+
       apply_state = self._prepare(var_list)
+      if all_reduce_sum_gradients:
+        reduced_grads = self._aggregate_gradients(grads_and_vars)
+        var_list = [v for _, v in grads_and_vars]
+        grads_and_vars = list(zip(reduced_grads, var_list))
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
           kwargs={
               "name": name,
-              "all_reduce_sum_gradients": all_reduce_sum_gradients,
           })
 
-  def _aggregate_gradients(self, distribution, grads_and_vars):
-    """Returns all-reduced gradients."""
-    return distribution.extended.batch_reduce_to(
-        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+  def _aggregate_gradients(self, grads_and_vars):
+    """Returns all-reduced gradients.
 
-  def _distributed_apply(self, distribution, grads_and_vars, name, apply_state,
-                         all_reduce_sum_gradients):
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+
+    Returns:
+      A list of all-reduced gradients.
+    """
+    grads_and_vars = list(grads_and_vars)
+    def all_reduce_fn(distribution, grads_and_vars):
+      return distribution.extended.batch_reduce_to(
+          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    # We switch to a cross-replica context since there is a bug which causes
+    # IndexedSlices to be converted to dense tensors when all-reduced in a
+    # replica context.
+    # TODO(b/150507409): Do not switch to a cross-replica context once the bug
+    # is fixed.
+    if grads_and_vars:
+      return distribute_ctx.get_replica_context().merge_call(
+          all_reduce_fn, args=(grads_and_vars,))
+
+  def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
-    if all_reduce_sum_gradients:
-      reduced_grads = self._aggregate_gradients(distribution, grads_and_vars)
-      var_list = [v for _, v in grads_and_vars]
-      grads_and_vars = zip(reduced_grads, var_list)
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
@@ -589,6 +620,9 @@ class OptimizerV2(trackable.Trackable):
       return math_ops.cast(value, dtype)
     else:
       return value
+
+  def _create_slots(self, var_list):
+    pass
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -978,7 +1012,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
                                                **kwargs):
@@ -1027,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(

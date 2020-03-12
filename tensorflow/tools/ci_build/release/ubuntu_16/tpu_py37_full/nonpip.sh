@@ -36,7 +36,7 @@ export TF2_BEHAVIOR=1
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
-tag_filters="tpu,-no_tpu,-notpu,-no_oss,-no_oss_py37"
+tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
 bazel_args=(
   --config=opt \
@@ -54,6 +54,7 @@ bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"
 ctpu_up -s v2-8 -p tensorflow-testing-tpu
 
 test_args=(
+  --test_timeout=120,600,-1,-1 \
   --test_arg=--tpu="${TPU_NAME}" \
   --test_arg=--zone="${TPU_ZONE}" \
   --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \

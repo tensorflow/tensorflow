@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_KERNEL_STATS_UTILS_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_KERNEL_STATS_UTILS_H_
 
+#include <vector>
+
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 
@@ -41,6 +43,12 @@ struct KernelReportLessThanComparator {
 struct KernelReportEqualToComparator {
   bool operator()(const KernelReport& lhs, const KernelReport& rhs);
 };
+
+// Sorts kernel reorts by total duration descendingly.
+void SortKernelsByTotalDurationDesc(KernelStatsDb* kernel_stats_db);
+
+// Groups and aggregate common reports into destination KernelStatsDb.
+void GroupKernelReports(std::vector<KernelReport>* reports, KernelStatsDb* dst);
 
 }  // namespace profiler
 }  // namespace tensorflow

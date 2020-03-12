@@ -16,7 +16,8 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_split.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/profiler/internal/cpu/host_tracer_utils.h"
@@ -77,11 +78,11 @@ HostTracer::~HostTracer() { Stop().IgnoreError(); }
 
 Status HostTracer::Start() {
   if (recording_) {
-    return Status(error::INTERNAL, "TraceMeRecorder already started");
+    return errors::Internal("TraceMeRecorder already started");
   }
   recording_ = TraceMeRecorder::Start(host_trace_level_);
   if (!recording_) {
-    return Status(error::INTERNAL, "Failed to start TraceMeRecorder");
+    return errors::Internal("Failed to start TraceMeRecorder");
   }
   start_timestamp_ns_ = EnvTime::NowNanos();
   return Status::OK();
@@ -89,7 +90,7 @@ Status HostTracer::Start() {
 
 Status HostTracer::Stop() {
   if (!recording_) {
-    return Status(error::INTERNAL, "TraceMeRecorder not started");
+    return errors::Internal("TraceMeRecorder not started");
   }
   events_ = TraceMeRecorder::Stop();
   recording_ = false;
@@ -101,16 +102,18 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
   MakeCompleteEvents(&events_);
-  StepStatsCollector step_stats_collector(run_metadata->mutable_step_stats());
+
+  StepStats* step_stats = run_metadata->mutable_step_stats();
+  DeviceStepStats* dev_stats = step_stats->add_dev_stats();
+  dev_stats->set_device("/host:CPU");
+  auto* thread_names = dev_stats->mutable_thread_names();
 
   constexpr char kUserMetadataMarker = '#';
-  const string cpu_name = "/host:CPU";
-  for (auto& thread : events_) {
-    step_stats_collector.SaveThreadName(cpu_name, thread.thread.tid,
-                                        thread.thread.name);
-    for (auto& event : thread.events) {
+  for (TraceMeRecorder::ThreadEvents& thread : events_) {
+    thread_names->insert({thread.thread.tid, thread.thread.name});
+    for (TraceMeRecorder::Event& event : thread.events) {
       if (event.start_time && event.end_time) {
-        NodeExecStats* ns = new NodeExecStats;
+        NodeExecStats* ns = dev_stats->add_node_stats();
         if (event.name.back() != kUserMetadataMarker) {
           ns->set_node_name(std::move(event.name));
         } else {
@@ -128,12 +131,10 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
         ns->set_all_end_rel_micros((event.end_time - event.start_time) /
                                    EnvTime::kMicrosToNanos);
         ns->set_thread_id(thread.thread.tid);
-        step_stats_collector.Save(cpu_name, ns);
       }
     }
   }
   events_.clear();
-  step_stats_collector.Finalize();
   return Status::OK();
 }
 

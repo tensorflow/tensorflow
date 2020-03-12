@@ -48,6 +48,7 @@ from enum import Enum
 import gast
 # pylint:enable=g-bad-import-order
 
+from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
 
 
@@ -753,6 +754,12 @@ class AstToCfg(gast.NodeVisitor):
   def visit_Return(self, node):
     self._process_exit_statement(node, (gast.FunctionDef,))
 
+  def visit_Import(self, node):
+    self._process_basic_statement(node)
+
+  def visit_ImportFrom(self, node):
+    self._process_basic_statement(node)
+
   def visit_Expr(self, node):
     self._process_basic_statement(node)
 
@@ -843,6 +850,11 @@ class AstToCfg(gast.NodeVisitor):
     # However, the activity analysis accounts for this inconsistency,
     # so dataflow analysis produces the correct values.
     self.builder.enter_loop_section(node, node.iter)
+    # Also include the "extra loop test" annotation, to capture things like the
+    # control variable for return and break in for loops.
+    if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
+      self._process_basic_statement(
+          anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST))
     for stmt in node.body:
       self.visit(stmt)
     self.builder.exit_loop_section(node)

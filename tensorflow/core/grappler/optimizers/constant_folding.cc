@@ -127,7 +127,7 @@ bool MaybeRemoveControlInput(const string& old_input, NodeDef* node,
 
 bool HasTPUAttributes(const NodeDef& node) {
   AttrSlice attrs(node);
-  for (auto attr : attrs) {
+  for (const auto& attr : attrs) {
     if (attr.first.find("_tpu_") != attr.first.npos) {
       return true;
     }
@@ -212,8 +212,7 @@ string ConstantFolding::AddControlDependency(const string& input_name,
     // dependency is only triggered when the corresponding output is triggered.
     // We start by looking for an identity node connected to the output of the
     // switch node, and use it to anchor the control dependency.
-    auto outputs = node_map->GetOutputs(node.name());
-    for (const NodeDef* output : outputs) {
+    for (const NodeDef* output : node_map->GetOutputs(node.name())) {
       if (IsIdentity(*output) || IsIdentityNSingleInput(*output)) {
         if (IsSameInput(node.input(0), input_name)) {
           return AsControlDependency(*output);
@@ -384,7 +383,6 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         op != "TensorArraySizeV3") {
       continue;
     }
-
     const std::vector<OpInfo::TensorProperties>& output =
         properties.GetOutputProperties(node->name());
     const std::vector<OpInfo::TensorProperties>& input =
@@ -411,8 +409,16 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         continue;
       }
 
+      // TODO(rmlarsen): Remove this workaround for b/150861569
+      // The bug involves an expression of the form Shape(ExpandDims(x)
+      // with an incorrectly inferred zero-size first dimension.
+      if (op == "Shape") {
+        if (shape.dims() > 0 && shape.dim_size(0) == 0) continue;
+      }
+
       // Repurpose the existing node to be the constant.
       // Device placement is preserved.
+      graph_modified_ = true;
       node->set_op("Const");
       node->clear_attr();
       (*node->mutable_attr())["dtype"].set_type(type);
@@ -425,9 +431,8 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
       // the original graph.
       string ctrl_dep =
           AddControlDependency(node->input(0), graph_, node_map_.get());
+      node_map_->UpdateInput(node->name(), node->input(0), ctrl_dep);
       node->set_input(0, ctrl_dep);
-      node_map_->AddOutput(NodeName(ctrl_dep), node->name());
-
       // Done with the Shape/Size/Rank node, move to the next node.
       continue;
     }
@@ -459,6 +464,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
           continue;
         }
 
+        graph_modified_ = true;
         node->set_op("Const");
         *node->mutable_attr() = array_size->attr();
         node->set_input(0, AsControlDependency(NodeName(node->input(0))));
@@ -486,10 +492,11 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
         continue;
       }
 
+      // We make a copy because we mutate the nodes.
+      auto fanouts = node_map_->GetOutputs(shape_n_node->name());
       // Find all nodes consuming this shape and connect them through the new
       // constant node instead.
-      auto outputs = node_map_->GetOutputs(shape_n_node->name());
-      for (NodeDef* output : outputs) {
+      for (NodeDef* output : fanouts) {
         // Track whether there are any direct edges left between shape_n_node
         // and this output node after the transformation.
         bool direct_edges_exist = false;
@@ -519,6 +526,7 @@ Status ConstantFolding::MaterializeShapes(const GraphProperties& properties) {
             }
             *output->mutable_input(k) = const_name;
             node_map_->AddOutput(const_name, output->name());
+            graph_modified_ = true;
           }
           if (node_name == shape_n_node->name() && port != port_idx) {
             direct_edges_exist = true;
@@ -682,6 +690,7 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
     }
   }
 
+  // We make a copy here since we might mutate the set.
   const std::set<NodeDef*> outputs = node_map_->GetOutputs(node.name());
   for (NodeDef* output : outputs) {
     for (int k = 0; k < output->input_size(); ++k) {
@@ -913,11 +922,94 @@ Status ConstantFolding::MaterializeConstants(
 }
 
 bool ConstantFolding::IsFoldable(const NodeDef& node,
-                                 const GraphProperties* properties) const {
+                                 const GraphProperties* properties) {
+  string key = strings::StrCat(node.name(), "/", node.op());
+  auto it = maybe_foldable_nodes_.find(key);
+  if (it == maybe_foldable_nodes_.end()) {
+    it = maybe_foldable_nodes_
+             .emplace(std::move(key), MaybeFoldable(node, properties))
+             .first;
+  }
+  if (!it->second) {
+    return false;
+  } else {
+    return IsFoldableUncached(node, properties);
+  }
+}
+
+bool ConstantFolding::IsFoldableUncached(
+    const NodeDef& node, const GraphProperties* properties) const {
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
     return false;
   }
+  // We can only fold nodes if all their inputs are known statically, except in
+  // the case of a merge node that propagate the first inputs that becomes
+  // available, and therefore only requires a single constant input to be
+  // foldable.
+  bool merge_has_constant_input = false;
+  const bool is_merge = IsMerge(node);
+  for (const auto& input : node.input()) {
+    if (IsControlInput(input)) {
+      continue;
+    }
+    const NodeDef* input_node = node_map_->GetNode(input);
+    if (!input_node) {
+      return false;
+    }
+    bool is_const = IsReallyConstant(*input_node);
+    if (is_const) {
+      // Don't fold strings constants for now since this causes problems with
+      // checkpointing.
+      if (input_node->attr().count("dtype") == 0 ||
+          input_node->attr().at("dtype").type() == DT_STRING) {
+        return false;
+      }
+      // Special case: If a Merge node has at least one constant input that
+      // does not depend on a control input, we can fold it.
+      merge_has_constant_input |= !HasControlInputs(*input_node);
+    } else if (!is_merge) {
+      return false;
+    }
+  }
+  if (is_merge && !merge_has_constant_input) return false;
+
+  // If we know the output shapes, make sure that the outputs are small enough
+  // to materialize.
+  if (properties != nullptr && properties->HasOutputProperties(node.name())) {
+    const std::vector<OpInfo::TensorProperties>& input_props =
+        properties->GetInputProperties(node.name());
+    const std::vector<OpInfo::TensorProperties>& output_props =
+        properties->GetOutputProperties(node.name());
+    // Compute total size of inputs.
+    int64 input_size_bytes = 0;
+    for (const auto& input_prop : input_props) {
+      const PartialTensorShape input_shape(input_prop.shape());
+      if (input_shape.IsFullyDefined()) {
+        input_size_bytes +=
+            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
+      }
+    }
+    for (const auto& output_prop : output_props) {
+      const PartialTensorShape output_shape(output_prop.shape());
+      if (output_shape.IsFullyDefined()) {
+        const int64 num_bytes =
+            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
+        if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
+          // Do not fold nodes if the in-memory size of output is too large.
+          // Notice that this is not exactly the same check used in
+          // CreateNodeDef() where the actual encoded size is checked.
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+bool ConstantFolding::MaybeFoldable(const NodeDef& node,
+                                    const GraphProperties* properties) const {
   // Skip constants, they're already folded
   if (IsConstant(node)) {
     return false;
@@ -998,69 +1090,6 @@ bool ConstantFolding::IsFoldable(const NodeDef& node,
       nodes_whitelist_.find(node.name()) == nodes_whitelist_.end()) {
     return false;
   }
-
-  // We can only fold nodes if all their inputs are known statically, except in
-  // the case of a merge node that propagate the first inputs that becomes
-  // available, and therefore only requires a single constant input to be
-  // foldable.
-  bool merge_has_constant_input = false;
-  const bool is_merge = IsMerge(node);
-  for (const auto& input : node.input()) {
-    if (IsControlInput(input)) {
-      continue;
-    }
-    const NodeDef* input_node = node_map_->GetNode(input);
-    if (!input_node) {
-      return false;
-    }
-    bool is_const = IsReallyConstant(*input_node);
-    if (is_const) {
-      // Don't fold strings constants for now since this causes problems with
-      // checkpointing.
-      if (input_node->attr().count("dtype") == 0 ||
-          input_node->attr().at("dtype").type() == DT_STRING) {
-        return false;
-      }
-      // Special case: If a Merge node has at least one constant input that
-      // does not depend on a control input, we can fold it.
-      merge_has_constant_input |= !HasControlInputs(*input_node);
-    } else if (!is_merge) {
-      return false;
-    }
-  }
-  if (is_merge && !merge_has_constant_input) return false;
-
-  // If we know the output shapes, make sure that the outputs are small enough
-  // to materialize.
-  if (properties != nullptr && properties->HasOutputProperties(node.name())) {
-    const std::vector<OpInfo::TensorProperties>& input_props =
-        properties->GetInputProperties(node.name());
-    const std::vector<OpInfo::TensorProperties>& output_props =
-        properties->GetOutputProperties(node.name());
-    // Compute total size of inputs.
-    int64 input_size_bytes = 0;
-    for (const auto& input_prop : input_props) {
-      const PartialTensorShape input_shape(input_prop.shape());
-      if (input_shape.IsFullyDefined()) {
-        input_size_bytes +=
-            input_shape.num_elements() * DataTypeSize(input_prop.dtype());
-      }
-    }
-    for (const auto& output_prop : output_props) {
-      const PartialTensorShape output_shape(output_prop.shape());
-      if (output_shape.IsFullyDefined()) {
-        const int64 num_bytes =
-            output_shape.num_elements() * DataTypeSize(output_prop.dtype());
-        if (num_bytes > input_size_bytes && num_bytes > kMaxConstantSize) {
-          // Do not fold nodes if the in-memory size of output is too large.
-          // Notice that this is not exactly the same check used in
-          // CreateNodeDef() where the actual encoded size is checked.
-          return false;
-        }
-      }
-    }
-  }
-
   return true;
 }
 
@@ -1394,6 +1423,7 @@ Status ConstantFolding::FoldMergeNode(NodeDef* node, GraphDef* output_graph) {
     node_map_->AddNode(const_index->name(), const_index);
     node_map_->AddOutput(node->name(), const_index->name());
 
+    // We make a copy because we mutate the nodes.
     auto outputs = node_map_->GetOutputs(node->name());
     for (NodeDef* output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
@@ -1504,6 +1534,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   }
 
   if (const_nodes.size() > 1) {
+    // We make a copy because we mutate the nodes.
     auto outputs = node_map_->GetOutputs(node->name());
     for (NodeDef* output : outputs) {
       for (int i = 0; i < output->input_size(); i++) {
@@ -1591,20 +1622,20 @@ Status ConstantFolding::FoldGraph(
   // Delete the newly created nodes that don't feed anything.
   std::vector<int> nodes_to_delete;
   for (int i = 0; i < output->node_size(); i++) {
-    auto fanout = node_map_->GetOutputs(output->node(i).name());
+    const auto& fanout = node_map_->GetOutputs(output->node(i).name());
     if (fanout.empty()) nodes_to_delete.push_back(i);
   }
   EraseNodesFromGraph(std::move(nodes_to_delete), output);
 
-  for (const auto& node : graph_->node()) {
+  for (int i = 0; i < graph_->node_size(); ++i) {
+    NodeDef* node = graph_->mutable_node(i);
     // If no fetch nodes is provided, we conservatively
-    // keep all nodes in the original graph in case users need to fetch
-    // their values.
-    auto fanout = node_map_->GetOutputs(node.name());
+    // move all nodes in the original graph to the output, in case users need
+    // to fetch their values.
+    const auto& fanout = node_map_->GetOutputs(node->name());
     if (!fanout.empty() || !has_fetch_ ||
-        nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
-      auto added_node = output->add_node();
-      *added_node = node;
+        nodes_to_preserve_.find(node->name()) != nodes_to_preserve_.end()) {
+      *(output->add_node()) = std::move(*node);
     }
   }
   return Status::OK();
@@ -1781,7 +1812,7 @@ void ConstantFolding::ReplaceOperationWithSnapshot(
     int input_to_forward, const GraphProperties& properties, NodeDef* node,
     GraphDef* graph) {
   // If the graph contains no ops that mutate their inputs, we can
-  // use Identity insted of Snapshot.
+  // use Identity instead of Snapshot.
   if (!graph_contains_assign_or_inplace_op_) {
     ReplaceOperationWithIdentity(input_to_forward, properties, node, graph);
     return;
@@ -1888,6 +1919,7 @@ Status ConstantFolding::ReplaceOperationWithConstantTensor(DataType dtype,
                                                            TensorProto* value,
                                                            NodeDef* node,
                                                            GraphDef* graph) {
+  if (dtype == DT_VARIANT) return Status::OK();
   node->set_op("Const");
   node->clear_attr();
   (*node->mutable_attr())["dtype"].set_type(dtype);
@@ -1911,6 +1943,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const GraphProperties& properties,
     const TensorShapeProto& shape, NodeDef* node, GraphDef* graph) {
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
+  if (dtype == DT_VARIANT) return Status::OK();
   AttrValue tensor_attr;
   Status s = CreateConstantTensorAttrValue(dtype, value, shape, &tensor_attr);
   if (!s.ok()) {
@@ -1933,10 +1966,11 @@ Status ConstantFolding::SimplifyGraph(
     // generalize to only restrict certain simplifications.
     if (nodes_to_not_simplify->find(node->name()) ==
         nodes_to_not_simplify->end()) {
-      if (HasTPUAttributes(optimized_graph->node(i))) {
+      if (HasTPUAttributes(*node)) {
         nodes_to_not_simplify->insert(node->name());
         continue;
       }
+
       TF_RETURN_IF_ERROR(
           SimplifyNode(use_shape_info, node, optimized_graph, properties));
     }
@@ -2355,14 +2389,13 @@ bool ConstantFolding::MoveConstantsPastEnter(GraphDef* optimized_graph,
       OptimizedNodeExists(*input, "_enter")) {
     return false;
   }
-  auto fanouts = node_map_->GetOutputs(node_name);
   // Find non-constant nodes that consume the output of *node.
   std::vector<NodeDef*> consumers;
-  for (NodeDef* fanout : fanouts) {
+  for (const NodeDef* fanout : node_map_->GetOutputs(node_name)) {
     if (!IsConstant(*fanout)) {
       for (int i = 0; i < fanout->input_size(); ++i) {
         if (fanout->input(i) == node_name) {
-          consumers.push_back(fanout);
+          consumers.push_back(const_cast<NodeDef*>(fanout));
           break;
         }
       }
@@ -2399,9 +2432,9 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
     // If the optimization was already applied, the switch would have exactly
     // one Identity node consuming each of its outputs, each without any
     // non-control outputs.
-    auto fanouts = node_map_->GetOutputs(node->name());
+    const auto& fanouts = node_map_->GetOutputs(node->name());
     if (fanouts.size() == 2) {
-      for (NodeDef* fanout : fanouts) {
+      for (const NodeDef* fanout : fanouts) {
         if ((!IsIdentity(*fanout) && !IsIdentityNSingleInput(*fanout)) ||
             HasRegularOutputs(*fanout, *node_map_)) {
           already_optimized = false;
@@ -2416,8 +2449,7 @@ bool ConstantFolding::SimplifySwitch(GraphDef* optimized_graph, NodeDef* node) {
         SetTensorValue(DT_BOOL, false, &false_t).ok()) {
       // Copy the set of consumers of the switch as they will be manipulated
       // below.
-      const std::set<NodeDef*>& consumer_set =
-          node_map_->GetOutputs(node->name());
+      const auto& consumer_set = node_map_->GetOutputs(node->name());
       std::vector<NodeDef*> consumers(consumer_set.begin(), consumer_set.end());
       std::sort(consumers.begin(), consumers.end(),
                 [](const NodeDef* n1, const NodeDef* n2) {
@@ -3138,7 +3170,7 @@ bool ConstantFolding::ConstantPushDown(GraphProperties* properties,
       ctx.left_child_is_const ? node->input(1) : node->input(0);
   VLOG(1) << "input_c = " << input_c << "\ninput_x = " << input_x;
 
-  // Now we have identified the nodes to swap, updare the nodemap accordingly.
+  // Now we have identified the nodes to swap, update the nodemap accordingly.
   node_map_->UpdateInput(node->name(), input_c, input_x);
   node_map_->AddOutput(input_c, ctx.op_child->name());
   if (input_x != input_y) {
@@ -3648,6 +3680,7 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
     // Update output nodes consuming node:index to new const node.
     string old_input = absl::StrCat(node->name(), ":", index);
     int old_node_count = 0;
+    // We make a copy since the set might change.
     auto outputs = node_map_->GetOutputs(node->name());
     for (const auto& output : outputs) {
       for (int i = 0; i < output->input_size(); ++i) {
@@ -3683,8 +3716,9 @@ Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
-                                            const GrapplerItem& item,
+                                            GrapplerItem* item,
                                             GraphDef* optimized_graph) {
+  graph_ = &item->graph;
   node_map_.reset(new NodeMap(graph_));
   nodes_whitelist_.clear();
   // Fold fetch nodes iff it has a single fanout. Note that if a fetch node
@@ -3694,14 +3728,14 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   // replace the node with multiple constants (each for one fanout) with
   // new names, and as a result users would not be able to fetch the node any
   // more with the original node name.
-  for (const auto& fetch : item.fetch) {
+  for (const auto& fetch : item->fetch) {
     const NodeDef* fetch_node = node_map_->GetNode(fetch);
     if (fetch_node && NumOutputs(*fetch_node, graph_) == 1) {
       nodes_whitelist_.insert(fetch_node->name());
     }
   }
 
-  GraphProperties properties(item);
+  GraphProperties properties(*item);
   // It's possible to feed a placeholder with a tensor of any shape: make sure
   // that the shape inference deals with this conservatively unless we're in
   // aggressive mode.
@@ -3710,15 +3744,18 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
                                         /*aggressive_shape_inference=*/false,
                                         /*include_input_tensor_values=*/false,
                                         /*include_output_tensor_values=*/true);
+
   const bool can_use_shape_info = s.ok();
 
+  absl::flat_hash_set<string> nodes_to_not_simplify;
   if (can_use_shape_info) {
     TF_RETURN_IF_ERROR(MaterializeShapes(properties));
     TF_RETURN_IF_ERROR(MaterializeConstants(properties));
+    TF_RETURN_IF_ERROR(
+        FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
+  } else {
+    *optimized_graph = *graph_;
   }
-  absl::flat_hash_set<string> nodes_to_not_simplify;
-  TF_RETURN_IF_ERROR(
-      FoldGraph(properties, optimized_graph, &nodes_to_not_simplify));
   node_map_.reset(new NodeMap(optimized_graph));
   TF_RETURN_IF_ERROR(SimplifyGraph(can_use_shape_info, optimized_graph,
                                    &properties, &nodes_to_not_simplify));
@@ -3766,17 +3803,17 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   has_fetch_ = !item.fetch.empty();
   GrapplerItem item_to_optimize = item;
-  *optimized_graph = item.graph;
+  *optimized_graph = GraphDef();
+  item_to_optimize.graph.Swap(optimized_graph);
   int64 node_count;
   do {
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     graph_modified_ = false;
     item_to_optimize.graph.Swap(optimized_graph);
-    graph_ = &item_to_optimize.graph;
-    *optimized_graph = GraphDef();
-    node_count = graph_->node_size();
+    optimized_graph->Clear();
+    node_count = item_to_optimize.graph.node_size();
     TF_RETURN_IF_ERROR(
-        RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
+        RunOptimizationPass(cluster, &item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();

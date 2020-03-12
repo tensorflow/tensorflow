@@ -1023,6 +1023,8 @@ def func_graph_from_py_func(name,
 
   if add_control_dependencies:
     func_graph.control_outputs.extend(deps_control_manager.ops_which_must_run)
+    func_graph.collective_manager_ids_used = (
+        deps_control_manager.collective_manager_ids_used)
 
   return func_graph
 

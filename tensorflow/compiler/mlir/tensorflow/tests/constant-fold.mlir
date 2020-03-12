@@ -213,3 +213,21 @@ func @testRemoteDevice() -> tensor<2x2xi32> {
   // CHECK-NEXT:    return [[cst]] : tensor<2x2xi32>
   return %2: tensor<2x2xi32>
 }
+
+// Tests ops that variable shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testVariableShape
+func @testVariableShape(%arg0: tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.VariableShape"(%arg0) : (tensor<!tf.resource<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
+// Tests ops that tensor list shapes are correctly evaluated on static types.
+// CHECK-LABEL: func @testTensorListElementShape
+func @testTensorListElementShape(%arg0: tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32> {
+  %0 = "tf.TensorListElementShape"(%arg0) : (tensor<!tf.variant<tensor<2x4xf32>>>) -> tensor<2xi32>
+  // CHECK:         [[cst:%.*]] = "tf.Const{{.*}} dense<{{\[}}2, 4]> : tensor<2xi32>
+  // CHECK-NEXT:    return [[cst]] : tensor<2xi32>
+  return %0: tensor<2xi32>
+}

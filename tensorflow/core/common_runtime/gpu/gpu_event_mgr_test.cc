@@ -426,7 +426,6 @@ class EMBenchmarkHelper {
     params->step_id = 1;
     params->device = gpu_helper_->gpu();
     params->log_memory = false;
-    params->record_tensor_accesses = false;
     params->rendezvous = nullptr;
     params->collective_executor = nullptr;
     params->session_state = nullptr;  // ???

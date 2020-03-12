@@ -577,8 +577,8 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
-      model._make_train_function()
-
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
       model = keras.models.load_model(saved_model_dir)
 
@@ -964,7 +964,8 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
-      model._make_train_function()
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
       with test.mock.patch.object(logging, 'warning') as mock_log:

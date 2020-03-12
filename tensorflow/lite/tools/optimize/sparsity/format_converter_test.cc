@@ -230,6 +230,66 @@ TEST(FormatConverterTest, SimpleTestS1S0) {
   EXPECT_EQ(data_back, dense_values);
 }
 
+TEST(FormatConverterTest, 3DTestS0D1S2) {
+  const std::vector<int> dense_values = {6, 0, 9, 8, 0, 0, 0, 0, 5, 0, 0, 7};
+  const std::vector<int> dense_shape = {3, 2, 2};
+  const std::vector<int> traversal_order = {0, 1, 2};
+  const std::vector<TfLiteDimensionType> format = {
+      kTfLiteDimSparseCSR, kTfLiteDimDense, kTfLiteDimSparseCSR};
+  FormatConverter<int> converter(dense_shape, traversal_order, format);
+  converter.DenseToSparse(dense_values.data());
+
+  const auto& dim_metadata = converter.GetDimMetadata();
+  const std::vector<int> dm0_0 = {0, 2};
+  const std::vector<int> dm0_1 = {0, 2};
+  const std::vector<int> dm1 = {2};
+  const std::vector<int> dm2_0 = {0, 1, 3, 4, 5};
+  const std::vector<int> dm2_1 = {0, 0, 1, 0, 1};
+
+  EXPECT_EQ(dm0_0, dim_metadata[0]);
+  EXPECT_EQ(dm0_1, dim_metadata[1]);
+  EXPECT_EQ(dm1, dim_metadata[2]);
+  EXPECT_EQ(dm2_0, dim_metadata[4]);
+  EXPECT_EQ(dm2_1, dim_metadata[5]);
+
+  const auto& data = converter.GetData();
+  const std::vector<int> expected_data = {6, 9, 8, 5, 7};
+  EXPECT_EQ(expected_data, data);
+
+  converter.SparseToDense(expected_data.data());
+  const auto& data_back = converter.GetData();
+  EXPECT_EQ(data_back, dense_values);
+}
+
+TEST(FormatConverterTest, 3DTestD0D1S2) {
+  const std::vector<int> dense_values = {6, 0, 9, 8, 0, 0, 0, 0, 5, 0, 0, 7};
+  const std::vector<int> dense_shape = {3, 2, 2};
+  const std::vector<int> traversal_order = {0, 1, 2};
+  const std::vector<TfLiteDimensionType> format = {
+      kTfLiteDimDense, kTfLiteDimDense, kTfLiteDimSparseCSR};
+  FormatConverter<int> converter(dense_shape, traversal_order, format);
+  converter.DenseToSparse(dense_values.data());
+
+  const auto& dim_metadata = converter.GetDimMetadata();
+  const std::vector<int> dm0 = {3};
+  const std::vector<int> dm1 = {2};
+  const std::vector<int> dm2_0 = {0, 1, 3, 3, 3, 4, 5};
+  const std::vector<int> dm2_1 = {0, 0, 1, 0, 1};
+
+  EXPECT_EQ(dm0, dim_metadata[0]);
+  EXPECT_EQ(dm1, dim_metadata[2]);
+  EXPECT_EQ(dm2_0, dim_metadata[4]);
+  EXPECT_EQ(dm2_1, dim_metadata[5]);
+
+  const auto& data = converter.GetData();
+  const std::vector<int> expected_data = {6, 9, 8, 5, 7};
+  EXPECT_EQ(expected_data, data);
+
+  converter.SparseToDense(expected_data.data());
+  const auto& data_back = converter.GetData();
+  EXPECT_EQ(data_back, dense_values);
+}
+
 TEST(FormatConverterTest, 3DTestS0S1S2) {
   const std::vector<int> dense_values = {1, 7, 0, 0, 0, 5, 0, 0, 0, 0, 0, 0,
                                          0, 0, 0, 0, 0, 2, 0, 0, 4, 8, 3, 9};

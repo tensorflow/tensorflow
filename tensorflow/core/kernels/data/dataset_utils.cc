@@ -419,6 +419,13 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
   return Status::OK();
 }
 
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds) {
+  if (seeds.first == 0 && seeds.second == 0) {
+    return {random::New64(), random::New64()};
+  }
+  return seeds;
+}
+
 Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
                                     std::function<void()> register_fn,
                                     std::function<void()>* deregister_fn) {

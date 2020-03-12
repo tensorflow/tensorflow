@@ -339,6 +339,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "searchsorted_op_test",
+    size = "small",
+    timeout = "moderate",
+    srcs = ["searchsorted_op_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "svd_op_test",
     size = "medium",
     srcs = ["svd_op_test.py"],
@@ -1514,6 +1529,7 @@ cuda_py_test(
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -1534,6 +1550,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1558,6 +1575,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":test_utils",
         "//tensorflow/core:protos_all_py",
@@ -1650,6 +1668,7 @@ cuda_py_test(
         "no_rocm",
     ],
     xla_enable_strict_auto_jit = False,
+    xla_enabled = True,
     deps = [
         ":lstm",
         ":xla_test",

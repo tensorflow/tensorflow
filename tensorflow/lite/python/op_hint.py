@@ -35,9 +35,9 @@ Example:
 
   session = tf.compat.v1.Session()
 
-  graphdef_to_convert = tf.lite.convert_op_hints_to_stubs(session)
+  graphdef_to_convert = tf.lite.experimental.convert_op_hints_to_stubs(session)
   tflite_graph = tf.compat.v1.lite.toco_convert(
-      graphdef_to_convert, [image], [output])
+      graphdef_to_convert, [image], [output], allow_custom_ops=True)
   with open("/tmp/graph.fb", "wb") as fp:
     fp.write(tflite_graph)
 
@@ -60,7 +60,9 @@ Once you have built your whole tensorflow graph, you can run it and train it
 as usual, but after you have done that, you need to convert the graph into
 a form that replaces these subgraphs wrapped in identities to stub ops. These
 ops don't actually exist in the normal TensorFlow runtime, but will be
-understood by toco later.
+understood by toco later. The generated TensorFlow Lite flatbuffer file will
+contain a custom operator called "cool_activation". Developer needs to implement
+and register this operator in TensorFlow Lite in order to do inference.
 """
 
 # TODO(aselle): Make this use generic graph transformations.
@@ -585,7 +587,7 @@ class _LiteAggregateOperand(_LiteOperand):
 
     In particular, if you have 4 inputs to a hint stub, this will be the
     node that you can use as an output. I.e. you have 4 timesteps from a
-    static rnn, then a fused UnidriecitonalLSTM will expect 1 input with
+    static rnn, then a fused UnidirectionalLSTM will expect 1 input with
     all 4 time steps. So here we make a pack and return the output name of
     that pack.
 
@@ -1280,6 +1282,18 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
+def is_ophint_converted(graph_def):
+  if graph_def is None:
+    raise ValueError("Must provide the graph_def.")
+  ophint_converted = False
+  for node in graph_def.node:
+    attr = node.attr
+    if OpHint.FUNCTION_INPUT_INDEX_ATTR in attr:
+      ophint_converted = True
+      break
+  return ophint_converted
+
+
 @_tf_export(v1=["lite.experimental.convert_op_hints_to_stubs"])
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
@@ -1313,7 +1327,10 @@ def convert_op_hints_to_stubs(session=None,
 
 
 _allowed_symbols = [
-    "OpHint", "convert_op_hints_to_stubs", "convert_op_hints_to_stubs_new",
-    "find_all_hinted_output_nodes"
+    "OpHint",
+    "convert_op_hints_to_stubs",
+    "convert_op_hints_to_stubs_new",
+    "find_all_hinted_output_nodes",
+    "is_ophint_converted",
 ]
 remove_undocumented(__name__, _allowed_symbols)

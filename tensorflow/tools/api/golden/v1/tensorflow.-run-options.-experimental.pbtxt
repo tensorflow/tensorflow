@@ -14,5 +14,21 @@ tf_proto {
       label: LABEL_OPTIONAL
       type: TYPE_BOOL
     }
+    field {
+      name: "run_handler_pool_options"
+      number: 3
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.RunOptions.Experimental.RunHandlerPoolOptions"
+    }
+    nested_type {
+      name: "RunHandlerPoolOptions"
+      field {
+        name: "priority"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_INT64
+      }
+    }
   }
 }

@@ -136,7 +136,6 @@ class OpKernel {
 
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
-  virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
   // Initial time (in CPU cycles) we expect an operation to take.  Used to
   // determine whether an operation should be place in a threadpool.  Operations
@@ -155,6 +154,18 @@ class OpKernel {
 
   // Returns a pointer to the tensor stored inside constant ops.
   virtual const Tensor* const_tensor() const { return nullptr; }
+
+  // Returns true if this kernel must produce its ith output.
+  // REQUIRES: 0 <= i < num_inputs().
+  bool output_required(int i) const { return outputs_required_[i]; }
+
+  // Hints whether or not the ith output must be produced when running the
+  // kernel. By default, all outputs are required. The kernel implementation
+  // may ignore the hint.
+  // REQUIRES: 0 <= i < num_inputs().
+  void set_output_required(int i, bool is_required) {
+    outputs_required_[i] = is_required;
+  }
 
   // Updates the dynamic cost estimate, which is used to determine whether this
   // op is expensive. The new cost estimate is a weighted average of the old
@@ -223,6 +234,7 @@ class OpKernel {
   const bool is_deferred_;
   bool expensive_;
   std::atomic_uint_fast64_t cost_estimate_;
+  std::vector<bool> outputs_required_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -250,7 +262,6 @@ class AsyncOpKernel : public OpKernel {
   virtual void ComputeAsync(OpKernelContext* context, DoneCallback done) = 0;
 
   AsyncOpKernel* AsAsync() override { return this; }
-  const AsyncOpKernel* AsAsync() const override { return this; }
 
   void Compute(OpKernelContext* context) override;
 };
@@ -570,11 +581,11 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
-  GraphDef raw_graph GUARDED_BY(mu);
-  GraphDef optimized_graph GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs TF_GUARDED_BY(mu);
+  GraphDef raw_graph TF_GUARDED_BY(mu);
+  GraphDef optimized_graph TF_GUARDED_BY(mu);
 
-  bool dirty GUARDED_BY(mu);
+  bool dirty TF_GUARDED_BY(mu);
 
   GraphCollector() : dirty(false) {}
 
@@ -596,7 +607,7 @@ struct GraphCollector {
     dirty = true;
   }
 
-  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+  void ClearGraphs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     raw_graph.Clear();
     optimized_graph.Clear();
     partitioned_graphs.clear();
@@ -662,7 +673,6 @@ class OpKernelContext {
 
     bool track_allocations = false;
     bool log_memory = false;
-    bool record_tensor_accesses = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -677,8 +687,6 @@ class OpKernelContext {
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
     RendezvousInterface* rendezvous = nullptr;
-    const std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>*
-        create_rendezvous;
 
     // Mechanism for executing a collective op that needs to coordinate
     // with parallel instances running on other devices.
@@ -719,6 +727,7 @@ class OpKernelContext {
     std::function<void(std::function<void()>)>* runner = nullptr;
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
+    bool run_all_kernels_inline = false;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -732,6 +741,10 @@ class OpKernelContext {
     // For tracking actively running deferred ops.
     std::function<void()> inc_num_deferred_ops_function;
     std::function<void()> dec_num_deferred_ops_function;
+
+    // For implementing `OpKernelContext::output_required()`. If null, all
+    // outputs are required.
+    bool* outputs_required_array = nullptr;
   };
 
   // params must outlive the OpKernelContext.
@@ -850,6 +863,12 @@ class OpKernelContext {
   // If non-null, kernels should populate with any partition subgraphs created.
   GraphCollector* graph_collector() { return params_->graph_collector; }
 
+  // If True, hint that all kernels in functions called by this kernel, should
+  // be treated as "inexpensive", and hence executed on the scheduling thread.
+  bool run_all_kernels_inline() const {
+    return params_->run_all_kernels_inline;
+  }
+
   // Input to output forwarding.
 
   // Set the output Ref Tensor at output_index to be an alias of the
@@ -941,10 +960,9 @@ class OpKernelContext {
   // should call allocate_output(index, ...), set_output(index, ...),
   // set_output_ref(index, ...), or set the status to a non-ok value.
   // If it returns false, it may output, but is not required to do so.
-  // TODO(mrry): Convert this to return Status, and implement a string
-  // name version.
   bool output_required(int index) const {
-    return true;  // TODO(josh11b): implement
+    return !params_->outputs_required_array ||
+           params_->outputs_required_array[index];
   }
 
   // Allocation of tensors during kernel execution inside the Compute
@@ -1107,10 +1125,6 @@ class OpKernelContext {
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
   RendezvousInterface* rendezvous() const { return params_->rendezvous; }
-  Status create_rendezvous(const int64 step_id, const DeviceMgr* device_mgr,
-                           Rendezvous** r) const {
-    return (*params_->create_rendezvous)(step_id, device_mgr, r);
-  }
 
   CollectiveExecutor* collective_executor() const {
     return params_->collective_executor;
@@ -1206,11 +1220,6 @@ class OpKernelContext {
   // TODO(tucker): Add example usage.
   DeviceBase* device() const { return params_->device; }
 
-  // Retrieve list of referenced tensors in out_vector. Once this is
-  // called, it is not legal to reference any more tensors.  Should
-  // not be called from Op kernels.
-  void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
-
   // Per-step container for use by white-listed internal ops.
   ScopedStepContainer* step_container() const {
     return params_->step_container;
@@ -1239,25 +1248,26 @@ class OpKernelContext {
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
   void record_temp_memory_allocation(int64 size, const Tensor& t)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  int64 temp_memory_allocated() const
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
   void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
   int64 persistent_memory_allocated() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   std::vector<int64> persistent_alloc_ids() const
-      LOCKS_EXCLUDED(tracking_state_->stats_mu);
+      TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
-  void clear_recorded_memory() LOCKS_EXCLUDED(tracking_state_->stats_mu);
+  void clear_recorded_memory() TF_LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   bool input_is_ref(int index) const;
 
@@ -1292,13 +1302,6 @@ class OpKernelContext {
  private:
   bool record_memory_consumption_ = false;
 
-  // Internal method to add a tensor's buffer to the list of buffers
-  // referenced during the execution of the Op, so that GPUs may
-  // accurately track the memory that may not be reused until the Op
-  // execution completes.
-  void record_tensor_reference(const Tensor& tensor);
-  void really_record_tensor_reference(const Tensor& tensor);
-
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
                          Tensor* out_tensor,
@@ -1315,14 +1318,6 @@ class OpKernelContext {
   // called.
   void maybe_initialize_scope_id_set();
 
-  // This is called by PersistentTensor::AccessTensor whenever the
-  // wrapped tensor is retrieved, to ensure the runtime knows that the
-  // Tensor is being accessed within an Op. This is necessary for
-  // memory safety of devices like GPUs that queue Ops for
-  // asynchronous execution after the Compute() method completes.
-  friend class PersistentTensor;
-  void NotifyUseOfPersistentTensor(const Tensor& tensor);
-
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
   Params* params_;                  // not owned
@@ -1337,19 +1332,22 @@ class OpKernelContext {
   // recorded.
   struct TrackingState {
     mutable mutex mu;
-    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators GUARDED_BY(mu);
-
-    UniqueTensorReferences referenced_tensors GUARDED_BY(mu);
+    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
+        TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
-    int64 temp_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
 
-    int64 persistent_memory_allocated GUARDED_BY(stats_mu) = 0;
+    int64 persistent_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
     gtl::InlinedVector<std::pair<const void*, int64>, 2>
-        temp_tensor_buffer_and_size GUARDED_BY(stats_mu);
-    gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
+        temp_tensor_buffer_and_size TF_GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64, 2> persistent_alloc_ids TF_GUARDED_BY(stats_mu);
   };
   std::unique_ptr<TrackingState> tracking_state_;
+
+  // For access to `params_->op_kernel`.
+  friend void CheckNotInComputeAsync(OpKernelContext* ctx,
+                                     const char* correct_macro_name);
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1637,23 +1635,6 @@ inline bool OpKernelContext::input_is_ref(int index) const {
   return value.is_ref();
 }
 
-inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  DCHECK_EQ(params_->device->RequiresRecordingAccessedTensors(),
-            params_->record_tensor_accesses);
-  if (params_->record_tensor_accesses) {
-    really_record_tensor_reference(tensor);
-  }
-}
-
-inline void OpKernelContext::retrieve_accessed_tensors(
-    TensorReferenceVector* out_vector) {
-  if (params_->record_tensor_accesses) {
-    DCHECK(tracking_state_);
-    mutex_lock l(tracking_state_->mu);
-    tracking_state_->referenced_tensors.FreezeAndReturnReferences(out_vector);
-  }
-}
-
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
@@ -1668,17 +1649,9 @@ inline mutex* OpKernelContext::input_ref_mutex(int index) {
   return (*params_->inputs)[index].mutex_if_ref;
 }
 
-inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
-  if (t.IsInitialized()) {
-    record_tensor_reference(t);
-  }
-}
-
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
-  // No need to record_tensor_reference since the output must already
-  // have been set by a call that did so.
   return outputs_[index].tensor;
 }
 

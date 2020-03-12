@@ -2514,6 +2514,18 @@ xla_test(
 )
 
 xla_test(
+    name = "get_dimension_size_test",
+    srcs = ["get_dimension_size_test.cc"],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
     name = "triangular_solve_test",
     srcs = ["triangular_solve_test.cc"],
     tags = [

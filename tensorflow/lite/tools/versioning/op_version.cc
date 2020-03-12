@@ -25,7 +25,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
+namespace {
 
+// Get the number of dimensions of a tensor with idx of an operator op.
+inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
+  return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
+}
+}  // namespace
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
@@ -266,6 +272,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.options.strided_slice.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -293,9 +302,17 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+      if (op_sig.options.space_batch.num_dims != 4) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
-    case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SUB:
     case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_CONCATENATION:
@@ -430,6 +447,14 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.resize_bilinear.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
       }
+    } break;
+    // TODO(b/150176627): Add tests for GetOpSignature.
+    case BuiltinOperator_STRIDED_SLICE: {
+      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
+    } break;
+
+    case BuiltinOperator_SPACE_TO_BATCH_ND: {
+      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     default:

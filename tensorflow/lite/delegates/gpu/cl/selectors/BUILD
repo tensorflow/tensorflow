@@ -10,7 +10,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
-        "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_buffer_1x1",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_constants",
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_powervr",
@@ -40,6 +39,20 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "default_selector",
+    hdrs = ["default_selector.h"],
+    deps = [
+        ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:model_hints",
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/selectors/default:default_selector",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:status",
     ],
 )
 
@@ -84,10 +97,14 @@ cc_library(
         ":dw_convolution_selector",
         ":fully_connected_selector",
         ":simple_selectors",
+        ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:cl_device",
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
+        "//tensorflow/lite/delegates/gpu/cl:storage_type_util",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:elementwise",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/selectors:default_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:shape",
@@ -120,11 +137,24 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:resize",
         "//tensorflow/lite/delegates/gpu/cl/kernels:softmax",
         "//tensorflow/lite/delegates/gpu/cl/kernels:softmax1x1",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:space_to_depth",
         "//tensorflow/lite/delegates/gpu/cl/kernels:strided_slice",
         "//tensorflow/lite/delegates/gpu/cl/kernels:transpose",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:winograd",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
         "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
+    name = "subgraph",
+    srcs = ["subgraph.cc"],
+    hdrs = ["subgraph.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/cl:tensor_type",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/common:model",
     ],
 )

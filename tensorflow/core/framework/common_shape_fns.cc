@@ -12,132 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <unordered_set>
+#include "tensorflow/core/framework/common_shape_fns.h"
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
-#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/util/einsum_op_util.h"
 
 namespace tensorflow {
-
-Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
-                                      int64 dilation_rate, int64 stride,
-                                      Padding padding_type, int64* output_size,
-                                      int64* padding_before,
-                                      int64* padding_after) {
-  if (stride <= 0) {
-    return errors::InvalidArgument("Stride must be > 0, but got ", stride);
-  }
-  if (dilation_rate < 1) {
-    return errors::InvalidArgument("Dilation rate must be >= 1, but got ",
-                                   dilation_rate);
-  }
-
-  // See also the parallel implementation in GetWindowedOutputSizeFromDimsV2.
-  int64 effective_filter_size = (filter_size - 1) * dilation_rate + 1;
-  switch (padding_type) {
-    case Padding::VALID:
-      *output_size = (input_size - effective_filter_size + stride) / stride;
-      *padding_before = *padding_after = 0;
-      break;
-    case Padding::EXPLICIT:
-      *output_size = (input_size + *padding_before + *padding_after -
-                      effective_filter_size + stride) /
-                     stride;
-      break;
-    case Padding::SAME:
-      *output_size = (input_size + stride - 1) / stride;
-      const int64 padding_needed =
-          std::max(int64{0}, (*output_size - 1) * stride +
-                                 effective_filter_size - input_size);
-      // For odd values of total padding, add more padding at the 'right'
-      // side of the given dimension.
-      *padding_before = padding_needed / 2;
-      *padding_after = padding_needed - *padding_before;
-      break;
-  }
-  if (*output_size < 0) {
-    return errors::InvalidArgument(
-        "Computed output size would be negative: ", *output_size,
-        " [input_size: ", input_size,
-        ", effective_filter_size: ", effective_filter_size,
-        ", stride: ", stride, "]");
-  }
-  return Status::OK();
-}
-
-Status GetWindowedOutputSizeVerbose(int64 input_size, int64 filter_size,
-                                    int64 stride, Padding padding_type,
-                                    int64* output_size, int64* padding_before,
-                                    int64* padding_after) {
-  return GetWindowedOutputSizeVerboseV2(input_size, filter_size,
-                                        /*dilation_rate=*/1, stride,
-                                        padding_type, output_size,
-                                        padding_before, padding_after);
-}
-
-Status GetWindowedOutputSize(int64 input_size, int64 filter_size, int64 stride,
-                             Padding padding_type, int64* output_size,
-                             int64* padding_size) {
-  if (padding_type == Padding::EXPLICIT) {
-    return errors::Internal(
-        "GetWindowedOutputSize does not handle EXPLICIT padding; call "
-        "GetWindowedOutputSizeVerbose instead");
-  }
-  int64 padding_after_unused;
-  return GetWindowedOutputSizeVerbose(input_size, filter_size, stride,
-                                      padding_type, output_size, padding_size,
-                                      &padding_after_unused);
-}
-
-Status GetWindowedOutputSizeV2(int64 input_size, int64 filter_size,
-                               int64 dilation_rate, int64 stride,
-                               Padding padding_type, int64* output_size,
-                               int64* padding_size) {
-  if (padding_type == Padding::EXPLICIT) {
-    return errors::Internal(
-        "GetWindowedOutputSizeV2 does not handle EXPLICIT padding; call "
-        "GetWindowedOutputSizeVerboseV2 instead");
-  }
-  int64 padding_after_unused;
-  return GetWindowedOutputSizeVerboseV2(input_size, filter_size, dilation_rate,
-                                        stride, padding_type, output_size,
-                                        padding_size, &padding_after_unused);
-}
-
-Status Get3dOutputSize(const std::array<int64, 3>& input,
-                       const std::array<int64, 3>& window,
-                       const std::array<int64, 3>& strides,
-                       Padding padding_type, std::array<int64, 3>* output_ptr,
-                       std::array<int64, 3>* padding_ptr) {
-  for (size_t i = 0; i < input.size(); ++i) {
-    TF_RETURN_IF_ERROR(GetWindowedOutputSize(input[i], window[i], strides[i],
-                                             padding_type, &(*output_ptr)[i],
-                                             &(*padding_ptr)[i]));
-  }
-  return Status::OK();
-}
-
-Status Get3dOutputSizeV2(const std::array<int64, 3>& input,
-                         const std::array<int64, 3>& window,
-                         const std::array<int64, 3>& dilations,
-                         const std::array<int64, 3>& strides,
-                         Padding padding_type, std::array<int64, 3>* output_ptr,
-                         std::array<int64, 3>* padding_ptr) {
-  for (size_t i = 0; i < input.size(); ++i) {
-    TF_RETURN_IF_ERROR(GetWindowedOutputSizeV2(
-        input[i], window[i], dilations[i], strides[i], padding_type,
-        &(*output_ptr)[i], &(*padding_ptr)[i]));
-  }
-  return Status::OK();
-}
 
 namespace shape_inference {
 
@@ -950,10 +838,24 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
+  std::vector<int32> dilations;
+  if (!c->GetAttr("dilations", &dilations).ok()) {
+    dilations.resize(4, 1);
+  }
+
+  if (dilations.size() != 4) {
+    return errors::InvalidArgument(
+        "DepthwiseConv2D requires the dilations attribute to contain 4 values, "
+        "but got: ",
+        dilations.size());
+  }
+
   string data_format;
   Status s = c->GetAttr("data_format", &data_format);
   int32 stride_rows;
   int32 stride_cols;
+  int32 dilation_rows;
+  int32 dilation_cols;
   if (s.ok() && data_format == "NCHW") {
     // Canonicalize input shape to NHWC so the shape inference code below can
     // process it.
@@ -962,9 +864,13 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
                        c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
     stride_rows = strides[2];
     stride_cols = strides[3];
+    dilation_rows = dilations[2];
+    dilation_cols = dilations[3];
   } else {
     stride_rows = strides[1];
     stride_cols = strides[2];
+    dilation_rows = dilations[1];
+    dilation_cols = dilations[2];
   }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
@@ -991,10 +897,12 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   // in the kernel implementation.
   DimensionHandle output_rows, output_cols;
 
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, filter_rows_dim, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding, -1,
+      -1, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding, -1,
+      -1, &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCHW") {
@@ -1083,7 +991,11 @@ Status FusedBatchNormShape(shape_inference::InferenceContext* c) {
 
   bool is_training;
   TF_RETURN_IF_ERROR(c->GetAttr("is_training", &is_training));
-  int number_inputs = (is_training) ? 3 : 5;
+  float exponential_avg_factor;
+  if (!c->GetAttr("exponential_avg_factor", &exponential_avg_factor).ok()) {
+    exponential_avg_factor = 1.0f;  // default value
+  }
+  int number_inputs = (is_training && exponential_avg_factor == 1.0f) ? 3 : 5;
   string data_format_str;
   TF_RETURN_IF_ERROR(c->GetAttr("data_format", &data_format_str));
   TensorFormat data_format;
@@ -1176,16 +1088,8 @@ Status FusedBatchNormGradShape(shape_inference::InferenceContext* c) {
   c->set_output(0, x_backprop);
   c->set_output(1, c->Vector(channel_dim));
   c->set_output(2, c->Vector(channel_dim));
-  // Set the correct shapes for reserve_spaces
-  // so that gradients can be performed when
-  // the op is in a symbolic condition.
-  if (is_training) {
-    c->set_output(3, c->Vector(0));
-    c->set_output(4, c->Vector(0));
-  } else {
-    c->set_output(3, c->Vector(channel_dim));
-    c->set_output(4, c->Vector(channel_dim));
-  }
+  c->set_output(3, c->Vector(0));
+  c->set_output(4, c->Vector(0));
   return Status::OK();
 }
 
@@ -2326,7 +2230,7 @@ Status SparseReduceShapeFn(InferenceContext* c) {
     auto axes_vec = axes_tensor->flat<int32>();
 
     int64 ndims = shape_vec.size();
-    std::unordered_set<int64> axes;
+    absl::flat_hash_set<int64> axes;
     for (int i = 0; i < axes_vec.size(); i++) {
       axes.insert((axes_vec(i) + ndims) % ndims);
     }

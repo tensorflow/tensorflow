@@ -44,6 +44,9 @@ class Timespan {
   // Returns true if the Timespan represents an instant in time (duration 0).
   bool Instant() const { return duration_ps() == 0; }
 
+  // Returns true if this is an empty timespan.
+  bool Empty() const { return begin_ps() == 0 && duration_ps() == 0; }
+
   // Note for Overlaps() and Includes(Timespan& other) below:
   //   We have a design choice whether the end-point comparison should be
   //   inclusive or exclusive. We decide to go for inclusive. The implication

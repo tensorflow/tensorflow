@@ -369,7 +369,7 @@ TEST(CAPI, TensorHandleCopyBetweenTwoGPUDevicesAsync) {
 void TensorHandleSilentCopy(bool async,
                             TFE_ContextDevicePlacementPolicy global_policy,
                             TFE_ContextDevicePlacementPolicy thread_policy,
-                            bool mirror, bool cpu_op) {
+                            bool cpu_op) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_ContextOptions* opts = TFE_NewContextOptions();
@@ -392,12 +392,6 @@ void TensorHandleSilentCopy(bool async,
     TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
         hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    if (mirror) {
-      TFE_TensorHandleEnableImplicitMirroring(hcpu, status.get());
-      ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-      TFE_TensorHandleEnableImplicitMirroring(hgpu, status.get());
-      ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
-    }
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
     if (cpu_op) {
@@ -424,21 +418,11 @@ void TensorHandleSilentCopy(bool async,
 
     auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
         matmul->operation.get());
-    if (mirror) {
-      // The input handles should never change since they have been mirrored.
-      ASSERT_EQ(op->GetInput(0), arg0);
-      ASSERT_EQ(op->GetInput(1), arg1);
-    } else {
-      if (cpu_op) {
-        ASSERT_EQ(op->GetInput(0), arg0);
-        // The GPU handle should be replaced with a CPU copy
-        ASSERT_NE(op->GetInput(1), arg1);
-      } else {
-        // The CPU handle should be replaced with a GPU copy
-        ASSERT_NE(op->GetInput(0), arg0);
-        ASSERT_EQ(op->GetInput(1), arg1);
-      }
-    }
+
+    // The input handles should never change since they have been mirrored.
+    EXPECT_EQ(op->GetInput(0), arg0);
+    EXPECT_EQ(op->GetInput(1), arg1);
+
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
     TFE_DeleteTensorHandle(hgpu);
@@ -454,27 +438,19 @@ void TensorHandleSilentCopy(bool async,
 }
 TEST(CAPI, TensorHandleSilentCopy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicy) {
   TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 TEST(CAPI, TensorHandleSilentCopyLocalPolicyAsync) {
   TensorHandleSilentCopy(true, TFE_DEVICE_PLACEMENT_EXPLICIT,
-                         TFE_DEVICE_PLACEMENT_SILENT, false, false);
-}
-TEST(CAPI, TensorHandleMirrorCopy) {
-  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, true, false);
-}
-TEST(CAPI, TensorHandleMirrorCopyCpu) {
-  TensorHandleSilentCopy(false, TFE_DEVICE_PLACEMENT_SILENT,
-                         TFE_DEVICE_PLACEMENT_SILENT, true, true);
+                         TFE_DEVICE_PLACEMENT_SILENT, false);
 }
 
 void SetAndGetOpDevices(bool async) {
@@ -1600,6 +1576,54 @@ TEST(CAPI, TestTFE_OpGetAttrs) {
   TF_DeleteStatus(status);
   TFE_DeleteOp(var_op);
   TFE_DeleteOp(copy_op);
+  TFE_DeleteContext(ctx);
+}
+
+TEST(CAPI, TestTFE_OpAttrsSerialize) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_Op* var_op = TFE_NewOp(ctx, "VarHandleOp", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(var_op, "dtype", TF_INT64);
+  TFE_OpSetAttrShape(var_op, "shape", {}, 0, status);
+  TFE_OpAttrs attributes;
+  TFE_OpGetAttrs(var_op, &attributes);
+
+  TF_Buffer* serialized_attr_values = TF_NewBuffer();
+  TFE_OpAttrsSerialize(&attributes, serialized_attr_values, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  tensorflow::NameAttrList name_and_attrs;
+  ASSERT_TRUE(name_and_attrs.ParseFromArray(serialized_attr_values->data,
+                                            serialized_attr_values->length));
+  ASSERT_EQ("VarHandleOp", name_and_attrs.name());
+  ASSERT_EQ(tensorflow::DT_INT64,
+            name_and_attrs.attr().find("dtype")->second.type());
+  TF_DeleteBuffer(serialized_attr_values);
+
+  TFE_Op* second_var_op = TFE_NewOp(ctx, "VarHandleOp", status);
+
+  string serialized_dtype;
+  ASSERT_TRUE(name_and_attrs.attr().find("dtype")->second.SerializeToString(
+      &serialized_dtype));
+  TFE_OpSetAttrValueProto(
+      second_var_op, "dtype",
+      reinterpret_cast<const void*>(serialized_dtype.c_str()),
+      serialized_dtype.length(), status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  tensorflow::AttrValueMap attr_values;
+  auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
+      second_var_op->operation.get());
+  op->Attrs().FillAttrValueMap(&attr_values);
+  EXPECT_EQ(tensorflow::DT_INT64, attr_values.find("dtype")->second.type());
+
+  TF_DeleteStatus(status);
+  TFE_DeleteOp(var_op);
+  TFE_DeleteOp(second_var_op);
   TFE_DeleteContext(ctx);
 }
 

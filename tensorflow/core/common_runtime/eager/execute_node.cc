@@ -27,28 +27,29 @@ Status ExecuteNodeArgs::Init(
   // be decremented once execution is complete.
   const int n_inputs = op_inputs.size();
   if (n_inputs > 0) {
-    TensorHandle* const* op_inputs_array = &op_inputs[0];
-    TensorValue* tensor_args_array = &tensor_args_[0];
+    TensorHandle* const* op_inputs_flat = &op_inputs[0];
+    TensorValue* tensor_args_flat = &tensor_args_[0];
     for (int i = 0; i < n_inputs; ++i) {
-      TensorHandle* in = op_inputs_array[i];
-      if (!in->IsRemote()) {
-        TF_RETURN_IF_ERROR(
-            in->TensorValue(&tensor_args_array[i],
-                            ctx->CanonicalDevice(kernel->InputDevice(i))));
-      } else {
-        if (!has_remote_inputs_) {
-          has_remote_inputs_ = true;
+      TensorHandle* in = op_inputs_flat[i];
+      Device* d = kernel->InputDevice(i);
+      Status s = in->TensorValue(ctx->CanonicalDevice(d), &tensor_args_flat[i]);
+      if (!s.ok()) {
+#if !defined(IS_MOBILE_PLATFORM)
+        uint64 context_view_id = ctx->GetContextViewId();
+        if (in->IsRemote() || in->HasRemoteMirror(d, context_view_id)) {
+          if (!has_remote_inputs_) {
+            has_remote_inputs_ = true;
+          }
+          continue;
         }
+#endif
+        return s;
       }
     }
   }
 
+#if !defined(IS_MOBILE_PLATFORM)
   if (has_remote_inputs_) {
-#if defined(IS_MOBILE_PLATFORM)
-    return errors::Unimplemented(
-        "Eager's function execution with remote inputs is not available on "
-        "mobile devices.");
-#else   // !IS_MOBILE_PLATFORM
     serialize_remote_handle_ =
         [ctx, &op_inputs](const int i,
                           eager::RemoteTensorHandle* handle) -> Status {
@@ -63,8 +64,8 @@ Status ExecuteNodeArgs::Init(
       return ctx->RemoteMgr()->SerializeRemoteTensorHandle(
           op_inputs[i], handle, device, device->name());
     };
-#endif  // !IS_MOBILE_PLATFORM
   }
+#endif  // !IS_MOBILE_PLATFORM
   return Status::OK();
 }
 

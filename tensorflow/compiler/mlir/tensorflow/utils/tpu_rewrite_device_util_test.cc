@@ -129,6 +129,7 @@ std::string TopologyWithDeviceCoordinates(
   topology_proto.add_mesh_shape(2);
   topology_proto.add_mesh_shape(1);
   topology_proto.add_mesh_shape(1);
+  topology_proto.add_mesh_shape(1);
   topology_proto.set_num_tasks(2);
   topology_proto.set_num_tpu_devices_per_task(1);
   for (int device_coordinate : device_coordinates)
@@ -155,89 +156,100 @@ INSTANTIATE_TEST_SUITE_P(
             "failed to parse 'topology' attribute to TopologyProto"),
         std::make_tuple(4, 2, TopologyWithMeshShape({0}),
                         std::vector<int64_t>(),
-                        "'topology' 'mesh_shape' must be rank 3, got rank 1"),
+                        "'topology' 'mesh_shape' must be rank 4, got rank 1"),
         std::make_tuple(
-            2, 1, TopologyWithMeshShape({2, 0, 2}), std::vector<int64_t>(),
+            2, 1, TopologyWithMeshShape({2, 0, 1, 2}), std::vector<int64_t>(),
             "'topology' 'mesh_shape' dimension 1 must be positive, got 0"),
-        std::make_tuple(2, 1, TopologyWithMeshShapeAndTasks({1, 1, 1}, 1, 1),
+        std::make_tuple(2, 1, TopologyWithMeshShapeAndTasks({1, 1, 1, 1}, 1, 1),
                         std::vector<int64_t>(),
                         "number of tasks from available TPU devices must be "
                         "'num_tasks' in 'topology' (1), got 2"),
-        std::make_tuple(2, 1, TopologyWithMeshShapeAndTasks({1, 1, 1}, 2, 2),
+        std::make_tuple(2, 1, TopologyWithMeshShapeAndTasks({1, 1, 1, 1}, 2, 2),
                         std::vector<int64_t>(),
                         "number of TPU devices available per task must be "
                         "'num_tpu_devices_per_task' in 'topology' (2), got 1"),
         std::make_tuple(
             2, 1, TopologyWithDeviceCoordinates({}), std::vector<int64_t>(),
             "length of 'device_coordinates' in 'topology' must be 'num_tasks' "
-            "* 'num_tpus_per_task' * 3 (2 * 1 * 3), got 0"),
-        std::make_tuple(2, 1,
-                        TopologyWithDeviceCoordinates({-1, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (-1, 0, 0) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({2, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (2, 0, 0) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1,
-                        TopologyWithDeviceCoordinates({0, -1, 0, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (0, -1, 0) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 1, 0, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (0, 1, 0) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1,
-                        TopologyWithDeviceCoordinates({0, 0, -1, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (0, 0, -1) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 1, 1, 0, 0}),
-                        std::vector<int64_t>(),
-                        "device coordinate (0, 0, 1) in 'topology' is outside "
-                        "of mesh shape (2, 1, 1)"),
+            "* 'num_tpus_per_task' * 4 (2 * 1 * 4), got 0"),
         std::make_tuple(
-            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 0, 0}),
+            2, 1, TopologyWithDeviceCoordinates({-1, 0, 0, 0, 1, 0, 0, 0}),
             std::vector<int64_t>(),
-            "'topology' has duplicate device coordinate (0, 0, 0)")));
+            "device coordinate (-1, 0, 0, 0) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({2, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "device coordinate (2, 0, 0, 0) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, -1, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "device coordinate (0, -1, 0, 0) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 1, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "device coordinate (0, 1, 0, 0) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, -1, 1, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "device coordinate (0, 0, 0, -1) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 1, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "device coordinate (0, 0, 0, 1) in 'topology' is outside "
+            "of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 0, 0, 0, 0}),
+            std::vector<int64_t>(),
+            "'topology' has duplicate device coordinate (0, 0, 0, 0)")));
 
 INSTANTIATE_TEST_SUITE_P(
     BadGeneralDeviceAssignmentMetadata, ParameterizedMetadataTest,
     ::testing::Values(
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
+        std::make_tuple(2, 1,
+                        TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
                         std::vector<int64_t>(),
                         "length of 'device_assignment' must be 'num_replicas' "
-                        "* 'num_cores_per_replica' * 3 (2 * 1 * 3), got 0"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{-1, 0, 0, 0, 0, 0},
-                        "device coordinate (-1, 0, 0) in 'device_assignment' "
-                        "is outside of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{2, 0, 0, 0, 0, 0},
-                        "device coordinate (2, 0, 0) in 'device_assignment' is "
-                        "outside of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{0, -1, 0, 0, 0, 0},
-                        "device coordinate (0, -1, 0) in 'device_assignment' "
-                        "is outside of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{0, 1, 0, 0, 0, 0},
-                        "device coordinate (0, 1, 0) in 'device_assignment' is "
-                        "outside of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{0, 0, -1, 0, 0, 0},
-                        "device coordinate (0, 0, -1) in 'device_assignment' "
-                        "is outside of mesh shape (2, 1, 1)"),
-        std::make_tuple(2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-                        std::vector<int64_t>{0, 0, 1, 0, 0, 0},
-                        "device coordinate (0, 0, 1) in 'device_assignment' is "
-                        "outside of mesh shape (2, 1, 1)"),
+                        "* 'num_cores_per_replica' * 4 (2 * 1 * 4), got 0"),
         std::make_tuple(
-            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 1, 0, 0}),
-            std::vector<int64_t>{0, 0, 0, 0, 0, 0},
-            "'device_assignment' has duplicate device coordinate (0, 0, 0)")));
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{-1, 0, 0, 0, 0, 0, 0, 0},
+            "device coordinate (-1, 0, 0, 0) in 'device_assignment' "
+            "is outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{2, 0, 0, 0, 0, 0, 0, 0},
+            "device coordinate (2, 0, 0, 0) in 'device_assignment' is "
+            "outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{0, -1, 0, 0, 0, 0, 0, 0},
+            "device coordinate (0, -1, 0, 0) in 'device_assignment' "
+            "is outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{0, 1, 0, 0, 0, 0, 0, 0},
+            "device coordinate (0, 1, 0, 0) in 'device_assignment' is "
+            "outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{0, 0, 0, -1, 0, 0, 0, 0},
+            "device coordinate (0, 0, 0, -1) in 'device_assignment' "
+            "is outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(
+            2, 1, TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+            std::vector<int64_t>{0, 0, 0, 1, 0, 0, 0, 0},
+            "device coordinate (0, 0, 0, 1) in 'device_assignment' is "
+            "outside of mesh shape (2, 1, 1, 1)"),
+        std::make_tuple(2, 1,
+                        TopologyWithDeviceCoordinates({0, 0, 0, 0, 1, 0, 0, 0}),
+                        std::vector<int64_t>{0, 0, 0, 0, 0, 0, 0, 0},
+                        "'device_assignment' has duplicate device coordinate "
+                        "(0, 0, 0, 0)")));
 
 std::vector<std::string> MakeDeviceSet(int num_tasks,
                                        int num_devices_per_task) {
@@ -270,15 +282,17 @@ TEST(TPURewriteDeviceUtilTest,
     topology_proto.add_mesh_shape(2);
     topology_proto.add_mesh_shape(1);
     topology_proto.add_mesh_shape(1);
+    topology_proto.add_mesh_shape(1);
     topology_proto.set_num_tasks(1);
     topology_proto.set_num_tpu_devices_per_task(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
   }
 
   std::string topology_attr = topology_proto.SerializeAsString();
-  std::vector<int64_t> device_assignment_attr{1, 0, 0};
+  std::vector<int64_t> device_assignment_attr{1, 0, 0, 0};
 
   llvm::SmallVector<Device, 8> devices;
   std::vector<std::string> device_names =
@@ -292,7 +306,7 @@ TEST(TPURewriteDeviceUtilTest,
   ASSERT_FALSE(status_or.ok());
   EXPECT_EQ(status_or.status().error_message(),
             "no TPU device found for 'device_assignment' device coordinate (1, "
-            "0, 0)");
+            "0, 0, 0)");
 }
 
 TEST(TPURewriteDeviceUtilTest, ValidFullMeshDeviceAssignment) {
@@ -342,6 +356,7 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh2x2x2) {
   {
     topology_proto.add_mesh_shape(2);
     topology_proto.add_mesh_shape(2);
+    topology_proto.add_mesh_shape(1);
     topology_proto.add_mesh_shape(2);
     topology_proto.set_num_tasks(2);
     topology_proto.set_num_tpu_devices_per_task(4);
@@ -349,31 +364,40 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh2x2x2) {
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
-    topology_proto.add_device_coordinates(1);
-    topology_proto.add_device_coordinates(0);
-    topology_proto.add_device_coordinates(1);
-    topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
   }
 
   std::string topology_attr = topology_proto.SerializeAsString();
-  std::vector<int64_t> device_assignment_attr{
-      0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 1};
+  std::vector<int64_t> device_assignment_attr{0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0,
+                                              0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0,
+                                              0, 1, 1, 1, 0, 0, 1, 1, 0, 1};
 
   llvm::SmallVector<Device, 8> devices;
   std::vector<std::string> device_names =
@@ -433,11 +457,12 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh2x2x2) {
   EXPECT_EQ(computation_device_1.replica_device_ids(3), 7);
 }
 
-TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x3) {
+TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
   tpu::TopologyProto topology_proto;
   {
     topology_proto.add_mesh_shape(1);
     topology_proto.add_mesh_shape(2);
+    topology_proto.add_mesh_shape(1);
     topology_proto.add_mesh_shape(3);
     topology_proto.set_num_tasks(3);
     topology_proto.set_num_tpu_devices_per_task(2);
@@ -445,25 +470,31 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x3) {
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(2);
     topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(1);
+    topology_proto.add_device_coordinates(0);
     topology_proto.add_device_coordinates(2);
   }
 
   std::string topology_attr = topology_proto.SerializeAsString();
-  std::vector<int64_t> device_assignment_attr{0, 0, 1, 0, 1, 1, 0, 0, 2,
-                                              0, 1, 2, 0, 0, 0, 0, 1, 0};
+  std::vector<int64_t> device_assignment_attr{
+      0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 2, 0, 1, 0, 2, 0, 0, 0, 0, 0, 1, 0, 0};
 
   llvm::SmallVector<Device, 8> devices;
   std::vector<std::string> device_names =

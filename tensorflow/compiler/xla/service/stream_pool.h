@@ -56,7 +56,7 @@ class StreamPool {
   void ReturnStream(se::Stream* stream);
 
   tensorflow::mutex mu_;
-  std::vector<std::unique_ptr<se::Stream>> streams_ GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<se::Stream>> streams_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace xla
