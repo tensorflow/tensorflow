@@ -121,12 +121,6 @@ void SetMemory(NodeExecStatsInterface* stats, OpKernelContext* ctx) {
   stats->SetMemory(ctx);
 }
 
-void SetReferencedTensors(NodeExecStatsInterface* stats,
-                          const TensorReferenceVector& tensors) {
-  if (!stats) return;
-  stats->SetReferencedTensors(tensors);
-}
-
 }  // namespace nodestats
 
 class ExecutorImpl;
@@ -403,9 +397,6 @@ class ExecutorImpl : public Executor {
   LocalExecutorParams params_;
   GraphView gview_;
 
-  // A cached value of params_
-  bool device_record_tensor_accesses_ = false;
-
   // Root nodes (with no in edges) that should form the initial ready queue
   std::vector<const NodeItem*> root_nodes_;
 
@@ -638,11 +629,6 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(&graph, &cf_info));
-
-  // Cache this value so we make this virtual function call once, rather
-  // that O(# steps * # nodes per step) times.
-  device_record_tensor_accesses_ =
-      params_.device->RequiresRecordingAccessedTensors();
 
   for (auto& it : cf_info.unique_frame_names) {
     EnsureFrameInfo(it)->nodes = new std::vector<const NodeItem*>;
@@ -1444,8 +1430,6 @@ class ExecutorState {
 
   Status ProcessSync(const NodeItem& item, OpKernelContext::Params* params,
                      EntryVector* outputs,
-                     TensorReferenceVector* accessed_tensors,
-                     DeviceContext** device_context,
                      NodeExecStatsInterface* stats);
   void ProcessAsync(const NodeItem& item, const OpKernelContext::Params& params,
                     const TaggedNode& tagged_node, Entry* first_input,
@@ -1751,8 +1735,6 @@ bool MightTrace(const NodeItem& item,
 Status ExecutorState::ProcessSync(const NodeItem& item,
                                   OpKernelContext::Params* params,
                                   EntryVector* outputs,
-                                  TensorReferenceVector* accessed_tensors,
-                                  DeviceContext** device_context,
                                   NodeExecStatsInterface* stats) {
   Status s;
   OpKernelContext ctx(params, item.num_outputs);
@@ -1784,11 +1766,6 @@ Status ExecutorState::ProcessSync(const NodeItem& item,
     }
     nodestats::SetOpEnd(stats);
     s = ProcessOutputs(item, &ctx, outputs, stats);
-  }
-  if (TF_PREDICT_FALSE(impl_->device_record_tensor_accesses_) && s.ok()) {
-    // Get the list of all tensors accessed during the execution
-    ctx.retrieve_accessed_tensors(accessed_tensors);
-    *device_context = ctx.op_device_context();
   }
   nodestats::SetMemory(stats, &ctx);
   return s;
@@ -1833,15 +1810,6 @@ void ExecutorState::ProcessAsync(const NodeItem& item,
       PropagateOutputs(state->tagged_node, state->item, &outputs, &ready);
     }
     outputs.clear();
-    if (TF_PREDICT_FALSE(impl_->device_record_tensor_accesses_) && s.ok()) {
-      // Get the list of all tensors accessed during the execution
-      TensorReferenceVector accessed;
-      state->ctx.retrieve_accessed_tensors(&accessed);
-      nodestats::SetReferencedTensors(stats, accessed);
-      // callee takes ownership of the vector
-      device->ConsumeListOfAccessedTensors(state->ctx.op_device_context(),
-                                           accessed);
-    }
     const bool completed = NodeDone(s, &ready, stats, nullptr);
     delete state;
     if (completed) ScheduleFinish();
@@ -1905,7 +1873,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     params.device = device;
   }
   params.log_memory = log_memory_;
-  params.record_tensor_accesses = impl_->device_record_tensor_accesses_;
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
@@ -1988,7 +1955,6 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     Entry* first_input = input_tensors + item.input_start;
     outputs.clear();
 
-    TensorReferenceVector accessed_tensors;
     // Only execute this node if it is not dead or it is a send/recv
     // transfer node. For transfer nodes, we need to propagate the "dead"
     // bit even when the node is dead.
@@ -2028,15 +1994,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         ProcessAsync(item, params, tagged_node, first_input, stats);
         launched_asynchronously = true;
       } else {
-        DeviceContext* device_context = nullptr;
-        s = ProcessSync(item, &params, &outputs, &accessed_tensors,
-                        &device_context, stats);
-        if (!accessed_tensors.empty()) {
-          nodestats::SetReferencedTensors(stats, accessed_tensors);
-          // device_context is set above in `ProcessSync()`.
-          device->ConsumeListOfAccessedTensors(device_context,
-                                               accessed_tensors);
-        }
+        s = ProcessSync(item, &params, &outputs, stats);
       }
     }
 
