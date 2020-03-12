@@ -458,27 +458,29 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 1
+#define TFE_CUSTOM_DEVICE_VERSION 2
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
-  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
+                                             TFE_TensorHandle* tensor,
                                              TF_Status* status,
                                              void* device_info) = nullptr;
 
   // Method to copy a tensor from the custom device to a target device.
-  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
+                                               TFE_TensorHandle* tensor,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, const TFE_OpAttrs* attributes,
-                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
-                  void* device_info);
+  void (*execute)(TFE_Context* context, int num_inputs,
+                  TFE_TensorHandle** inputs, const char* operation_name,
+                  const TFE_OpAttrs* attributes, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);

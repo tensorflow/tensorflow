@@ -1710,8 +1710,9 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
 namespace {
 class CustomDeviceAPI : public tensorflow::CustomDevice {
  public:
-  CustomDeviceAPI(TFE_CustomDevice device, void* info, string name)
-      : device_(device), info_(info), name_(name) {}
+  CustomDeviceAPI(TFE_Context* context, TFE_CustomDevice device, void* info,
+                  string name)
+      : context_(context), device_(device), info_(info), name_(name) {}
 
   ~CustomDeviceAPI() override { device_.delete_device(info_); }
 
@@ -1725,7 +1726,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
         std::make_unique<tensorflow::TensorHandleInterface>(tensor)};
     TF_Status status;
     TFE_TensorHandle* result_handle =
-        device_.copy_tensor_to_device(&tensor_handle, &status, info_);
+        device_.copy_tensor_to_device(context_, &tensor_handle, &status, info_);
     if (!status.status.ok()) return status.status;
     *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
                   result_handle->handle.get())
@@ -1744,7 +1745,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle tensor_handle{
         std::make_unique<tensorflow::TensorHandleInterface>(tensor)};
     TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
-        &tensor_handle, target_device_name.c_str(), &status, info_);
+        context_, &tensor_handle, target_device_name.c_str(), &status, info_);
     if (!status.status.ok()) return status.status;
     *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
                   result_handle->handle.get())
@@ -1768,7 +1769,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
     TFE_OpAttrs attributes(&op->Attrs(), op->Name().c_str());
-    device_.execute(inputs.size(), inputs.data(), op->Name().c_str(),
+    device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
                     &attributes, num_retvals, outputs.data(), &status, info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
@@ -1787,6 +1788,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
   }
 
  private:
+  TFE_Context* context_;
   TFE_CustomDevice device_;
   void* info_;
   string name_;
@@ -1797,7 +1799,7 @@ void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
                               const char* device_name, void* device_info,
                               TF_Status* status) {
   auto custom_device =
-      std::make_unique<CustomDeviceAPI>(device, device_info, device_name);
+      std::make_unique<CustomDeviceAPI>(ctx, device, device_info, device_name);
   status->status =
       ctx->context->RegisterCustomDevice(device_name, std::move(custom_device));
 }
