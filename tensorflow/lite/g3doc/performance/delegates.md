@@ -1,7 +1,6 @@
 # TensorFlow Lite delegates
 
-_Note: Delegate API is still experimental and is subject to change._
-
+Note: Delegate API is still experimental and is subject to change.
 
 ## What is a TensorFlow Lite delegate?
 

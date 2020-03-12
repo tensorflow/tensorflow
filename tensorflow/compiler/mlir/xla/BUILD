@@ -35,7 +35,7 @@ filegroup(
         "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -455,7 +455,9 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -509,6 +511,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -689,7 +692,7 @@ tf_native_cc_binary(
 genrule(
     name = "operator_writer_inc",
     srcs = [
-        "@llvm-project//mlir:include/mlir/Analysis/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",

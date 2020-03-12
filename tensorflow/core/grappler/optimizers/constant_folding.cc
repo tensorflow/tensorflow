@@ -1919,6 +1919,7 @@ Status ConstantFolding::ReplaceOperationWithConstantTensor(DataType dtype,
                                                            TensorProto* value,
                                                            NodeDef* node,
                                                            GraphDef* graph) {
+  if (dtype == DT_VARIANT) return Status::OK();
   node->set_op("Const");
   node->clear_attr();
   (*node->mutable_attr())["dtype"].set_type(dtype);
@@ -1942,6 +1943,7 @@ Status ConstantFolding::ReplaceOperationWithConstant(
     double value, const GraphProperties& properties,
     const TensorShapeProto& shape, NodeDef* node, GraphDef* graph) {
   const DataType dtype = GetDataTypeFromNodeOrProps(*node, properties);
+  if (dtype == DT_VARIANT) return Status::OK();
   AttrValue tensor_attr;
   Status s = CreateConstantTensorAttrValue(dtype, value, shape, &tensor_attr);
   if (!s.ok()) {
@@ -1964,10 +1966,11 @@ Status ConstantFolding::SimplifyGraph(
     // generalize to only restrict certain simplifications.
     if (nodes_to_not_simplify->find(node->name()) ==
         nodes_to_not_simplify->end()) {
-      if (HasTPUAttributes(optimized_graph->node(i))) {
+      if (HasTPUAttributes(*node)) {
         nodes_to_not_simplify->insert(node->name());
         continue;
       }
+
       TF_RETURN_IF_ERROR(
           SimplifyNode(use_shape_info, node, optimized_graph, properties));
     }

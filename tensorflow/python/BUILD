@@ -207,6 +207,7 @@ py_library(
         "//tensorflow/python/profiler",
         "//tensorflow/python/profiler:profiler_client",
         "//tensorflow/python/profiler:profiler_v2",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:module_util",
         "//tensorflow/python/tools/api/generator:create_python_api",
@@ -2026,7 +2027,10 @@ py_library(
         "framework/python_memory_checker.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":_python_memory_checker_helper"],
+    deps = [
+        ":_python_memory_checker_helper",
+        "//tensorflow/python/profiler:traceme",
+    ],
 )
 
 tf_python_pybind_extension(

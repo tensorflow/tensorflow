@@ -622,26 +622,26 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
       return kTfLiteError;
     } else {
-      if (params_.Get<bool>("require_full_delegation")) {
-        bool fully_delegated = true;
-        if (interpreter_->execution_plan().size() != 1) {
+      bool fully_delegated = true;
+      if (interpreter_->execution_plan().size() != 1) {
+        fully_delegated = false;
+      } else {
+        int first_node_id = interpreter_->execution_plan()[0];
+        const TfLiteNode first_node =
+            interpreter_->node_and_registration(first_node_id)->first;
+        if (delegate.second.get() != first_node.delegate) {
           fully_delegated = false;
-        } else {
-          int first_node_id = interpreter_->execution_plan()[0];
-          const TfLiteNode first_node =
-              interpreter_->node_and_registration(first_node_id)->first;
-          if (delegate.second.get() != first_node.delegate) {
-            fully_delegated = false;
-          }
-        }
-
-        if (!fully_delegated) {
-          TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
-          return kTfLiteError;
         }
       }
-
-      TFLITE_LOG(INFO) << "Applied " << delegate.first << " delegate.";
+      if (params_.Get<bool>("require_full_delegation") && !fully_delegated) {
+        TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
+        return kTfLiteError;
+      }
+      const std::string delegate_status =
+          fully_delegated ? "completely" : "partially";
+      TFLITE_LOG(INFO) << "Applied " << delegate.first
+                       << " delegate, and the model graph will be "
+                       << delegate_status << " executed w/ the delegate.";
     }
   }
 

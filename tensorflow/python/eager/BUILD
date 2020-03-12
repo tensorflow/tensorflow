@@ -873,7 +873,7 @@ cuda_py_test(
     srcs = ["remote_execution_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 2,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
     ],

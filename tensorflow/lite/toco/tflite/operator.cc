@@ -235,6 +235,16 @@ class SpaceToBatchND
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    ::tflite::OpSignature op_sig =
+        GetVersioningOpSig(builtin_op(), op_signature);
+    op_sig.options.space_batch.num_dims =
+        input_array.shape().dimensions_count();
+    return ::tflite::GetBuiltinOperatorVersion(op_sig);
+  }
 };
 
 class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,

@@ -146,7 +146,7 @@ func @broadcast_in_dim_memref(%arg0: memref<1x2xi32>, %out: memref<1x2x2xi32>) -
 
 // CHECK-LABEL: func @broadcast_in_dim_zero_rank_memref
 func @broadcast_in_dim_zero_rank_memref(%arg0: memref<i32>, %out: memref<1x2x3xi32>) -> () {
-  "xla_lhlo.broadcast_in_dim"(%arg0, %out) : (memref<i32>, memref<1x2x3xi32>) -> ()
+  "xla_lhlo.broadcast_in_dim"(%arg0, %out) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (memref<i32>, memref<1x2x3xi32>) -> ()
   return
 }
 

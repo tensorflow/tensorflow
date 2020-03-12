@@ -787,9 +787,28 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
   return Status::OK();
 }
 
-void EagerContext::RegisterCustomDevice(const string& device_name,
-                                        std::unique_ptr<CustomDevice> device) {
-  custom_devices_.emplace(device_name, std::move(device));
+Status EagerContext::RegisterCustomDevice(
+    const string& device_name, std::unique_ptr<CustomDevice> device) {
+  DeviceNameUtils::ParsedName parsed;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
+      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
+      !parsed.has_type || !parsed.has_id) {
+    return errors::InvalidArgument(
+        device_name,
+        " could not be parsed as a device name. Use the full "
+        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
+        "format.");
+  }
+  Device* existing_physical_device = nullptr;
+  if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a physical device.");
+  }
+  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a custom device.");
+  }
+  return Status::OK();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

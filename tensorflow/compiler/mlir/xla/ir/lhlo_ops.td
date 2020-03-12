@@ -113,7 +113,7 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
       LHLO_Buffer:$lhs,
       LHLO_Buffer:$rhs,
       LHLO_Buffer:$out,
-      BroadcastDimAttr:$broadcast_dimensions
+      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 }
 
@@ -200,7 +200,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
     LHLO_PredBuffer:$out,
-    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
 }

@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -566,6 +567,16 @@ void BatchMatMulOp::getCanonicalizationPatterns(
 // BatchMatMulV2Op
 //===----------------------------------------------------------------------===//
 
+static LogicalResult Verify(BatchMatMulV2Op op) {
+  if (!HasRankAtLeast(op.x(), 2)) {
+    return op.emitOpError("requires lhs operand to have rank at least two");
+  }
+  if (!HasRankAtLeast(op.y(), 2)) {
+    return op.emitOpError("requires rhs operand to have rank at least two");
+  }
+  return success();
+}
+
 void BatchMatMulV2Op::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<BatchMatMulV2ToMatMul>(context);
@@ -988,6 +999,11 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
   setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
 
   return success();
+}
+
+StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // TODO(ezhulenev): Implement optimal layout selection.
+  return "";
 }
 
 //===----------------------------------------------------------------------===//

@@ -241,7 +241,7 @@ struct DepthwiseConvBasicKernel {
                     // Accumulate with 32 bits accumulator.
                     // In the nudging process during model quantization, we
                     // force real value of 0.0 be represented by a quantized
-                    // value. This guarentees that the input_offset is a int8,
+                    // value. This guarantees that the input_offset is a int8,
                     // even though it is represented using int32. int32 += int8
                     // * (int8 - int8) so the highest value we can get from each
                     // accumulation is [-127, 127] * ([-128, 127] -

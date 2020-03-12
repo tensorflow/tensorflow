@@ -37,7 +37,7 @@ if not __file__.endswith('tflite_runtime/interpreter.py'):
   _interpreter_wrapper = LazyLoader(
       "_interpreter_wrapper", globals(),
       "tensorflow.lite.python.interpreter_wrapper."
-      "tensorflow_wrap_interpreter_wrapper")
+      '_pywrap_tensorflow_interpreter_wrapper')
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
@@ -200,7 +200,7 @@ class Interpreter(object):
       self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+          _interpreter_wrapper.CreateWrapperFromFile(
               model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -210,7 +210,7 @@ class Interpreter(object):
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+          _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, self._custom_op_registerers))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')

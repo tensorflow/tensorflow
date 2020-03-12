@@ -9,6 +9,7 @@ package(
         "//nlp/nlx/i18n/pangloss:__subpackages__",
         "//nlp/nlx/infrastructure/multiscale:__subpackages__",
         "//nlp/projects/atc/tf/ops:__pkg__",
+        "//research/graph/convolutions/model:__subpackages__",
         "//research/socrates:__subpackages__",
         "//tensorflow:internal",
     ],
@@ -866,8 +867,8 @@ py_test(
 )
 
 py_test(
-    name = "ragged_string_ops_test",
-    srcs = ["ragged_string_ops_test.py"],
+    name = "strings_reduce_join_op_test",
+    srcs = ["strings_reduce_join_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

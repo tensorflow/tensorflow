@@ -452,6 +452,10 @@ about broadcasting
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   let hasCanonicalizer = 1;
 }
 
@@ -1055,6 +1059,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
     // TF_LayoutSensitiveInterface:
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }

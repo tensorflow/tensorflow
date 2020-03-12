@@ -56,13 +56,13 @@ py_library(
     srcs = ["metadata.py"],
     data = [
         "//tensorflow/lite/experimental/support/metadata:metadata_schema.fbs",
-        "@flatbuffers//:flatc",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
         ":metadata_schema_py",
         ":schema_py",
+        "//tensorflow/lite/experimental/support/metadata/flatbuffers_lib:_pywrap_flatbuffers",
         "//tensorflow/python:platform",
         "@flatbuffers//:runtime_py",
     ],

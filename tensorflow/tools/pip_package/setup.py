@@ -246,6 +246,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/cc')) +
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
@@ -295,13 +296,12 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',

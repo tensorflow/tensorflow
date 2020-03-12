@@ -189,6 +189,11 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
   tensorflow::thread::ThreadPool h2d_transfer_pool_;
 };
 
+// Converts a 2D set of Device objects indexed by [replica][partition] into an
+// xla::DeviceAssignment.
+StatusOr<DeviceAssignment> DevicesToDeviceAssignment(
+    absl::Span<const std::vector<Device*>> devices);
+
 // Holds a reference from Python to one or more device buffers.
 // A PyLocalBuffer can be either valid or invalid. An invalid buffer is one that
 // has never been initialized, or a buffer that has been deleted (e.g., by
@@ -307,25 +312,22 @@ class PyLocalBuffer {
   std::shared_ptr<HostValue> host_value_ TF_GUARDED_BY(mu_);
 };
 
+struct CompileOptions {
+  // The layouts of the arguments that the computation should expect.
+  absl::optional<std::vector<Shape>> argument_layouts;
+
+  // XLA's compilation time options.
+  ExecutableBuildOptions executable_build_options;
+};
+
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Wraps one or more XLA LocalExecutables (one per
 // partition, as specified by the build options).
 class PyLocalExecutable {
  public:
-  // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<PyLocalExecutable>> CompileForDevices(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options, PyLocalClient* client,
-      const std::vector<std::vector<Device*>>& device_assignment);
-
-  // TODO(phawkins): Deprecated. Delete once all callers have been updated to
-  // use the newer form.
   static StatusOr<std::unique_ptr<PyLocalExecutable>> Compile(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options, PyLocalClient* client,
-      absl::optional<DeviceAssignment> device_assignment);
+      const XlaComputation& computation, PyLocalClient* client,
+      CompileOptions options);
 
   PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
                     DeviceAssignment device_assignment, PyLocalClient* client);
@@ -364,14 +366,6 @@ class PyLocalExecutable {
 
   StatusOr<std::unique_ptr<PyLocalBuffer>> Execute(
       absl::Span<PyLocalBuffer* const> argument_handles) const;
-
-  // Execute on many replicas. Takes a sequence of argument lists (one argument
-  // list per replica) and returns a tuple of results (one result per replica).
-  // The number of argument lists must be equal to the replica count.
-  // The executable must have only one partition.
-  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
-  StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>> ExecutePerReplica(
-      absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) const;
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local

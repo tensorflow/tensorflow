@@ -13,14 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "std_string.i"
+#include <memory>
 
+#include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
+#include "tensorflow/core/common_runtime/function_optimization_registry.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 
-%{
-#define SWIG_FILE_WITH_INIT
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/python/optimize/sparsification_wrapper.h"
-%}
+namespace tensorflow {
 
+static function_optimization_registration::FunctionOptimizationPassRegistration
+    register_mlir_passes(std::make_unique<MlirFunctionOptimizationPass>());
 
-%include "tensorflow/lite/python/optimize/sparsification_wrapper.h"
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+                      MlirV1CompatGraphOptimizationPass);
+
+}  // namespace tensorflow

@@ -193,7 +193,7 @@ def : Pat<(TF_FloorModOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
 // input and result needs to ranked for computation of the broadcast dimensions.
 def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
           (HLO_BroadcastInDimOp $input,
-           (BinBroadcastDimensions $input, $result)),
+           (BinBroadcastDimensionsNonEmpty $input, $result)),
            [(AnyRankedTensor $result)]>;
 
 //===----------------------------------------------------------------------===//

@@ -503,11 +503,21 @@ typedef struct TFE_CustomDevice {
 // devices, so executing tf.functions which contain operations placed on custom
 // devices will fail.
 //
+// `device_name` must not name an existing physical or custom device. It must
+// follow the format:
+//
+//    /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
+//
+// If the device is successfully registered, `status` is set to TF_OK. Otherwise
+// the device is not usable. In case of a bad status, `device.delete_device` is
+// still called on `device_info` (i.e. the caller does not retain ownership).
+//
 // This API is highly experimental, and in particular is expected to change when
 // it starts supporting operations with attributes and when tf.function support
 // is added.
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
-                              const char* device_name, void* device_info);
+                              const char* device_name, void* device_info,
+                              TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,

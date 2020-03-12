@@ -88,11 +88,19 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
  private:
-  XlaOp UnaryOp(HloOpcode unop, XlaOp operand) override;
+  StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
+                                  int64 inferred_dimension) override;
+
+  StatusOr<XlaOp> InDimBroadcast(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> broadcast_dimensions) override;
 
   XlaOp BinaryOpNoBroadcast(
       HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
       absl::optional<ComparisonDirection> direction) override;
+
+  StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                 absl::Span<const XlaOp> operands) override;
 
   // Creates HLO dialect op and returns the result as an XlaOp.
   StatusOr<XlaOp> CreateOp(const std::string& op_name, const Shape& shape,

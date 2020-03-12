@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,18 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%{
-#include "tensorflow/lite/python/testdata/test_registerer.h"
-%}
+#include <memory>
 
-%include "tensorflow/lite/python/testdata/test_registerer.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
+
+namespace tensorflow {
+namespace {
+constexpr int kMlirGraphOptimizationPriority = 0;
+}
+
+static mlir_pass_registration::MlirOptimizationPassRegistration
+    register_mlir_graph_optimization_pass(
+        kMlirGraphOptimizationPriority,
+        std::make_unique<MlirGraphOptimizationPass>());
+
+}  // namespace tensorflow

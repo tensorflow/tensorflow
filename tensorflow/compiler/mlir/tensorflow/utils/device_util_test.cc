@@ -113,7 +113,7 @@ TEST(DeviceUtilTest, GetDevicesFromOpNoDevicesAttribute) {
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
 
-  llvm::SmallVector<DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   EXPECT_TRUE(mlir::succeeded(GetDevicesFromOp(*module_ref, &devices)));
 }
 
@@ -124,7 +124,7 @@ TEST(DeviceUtilTest, GetDevicesFromOpBadDevicesAttributeType) {
   mlir::Builder builder(*module_ref);
   module_ref->setAttr("tf.devices", builder.getBoolAttr(false));
 
-  llvm::SmallVector<DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   EXPECT_TRUE(mlir::failed(GetDevicesFromOp(*module_ref, &devices)));
 }
 
@@ -135,7 +135,7 @@ TEST(DeviceUtilTest, GetDevicesFromOpBadDevicesAttributeArraySubtype) {
   mlir::Builder builder(*module_ref);
   module_ref->setAttr("tf.devices", builder.getI32ArrayAttr({8}));
 
-  llvm::SmallVector<DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   EXPECT_TRUE(mlir::failed(GetDevicesFromOp(*module_ref, &devices)));
 }
 
@@ -148,7 +148,7 @@ TEST(DeviceUtilTest, GetDevicesFromOpBadDevicesInDevicesAttribute) {
                       builder.getDictionaryAttr(builder.getNamedAttr(
                           "bad_device", builder.getDictionaryAttr({}))));
 
-  llvm::SmallVector<DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   EXPECT_TRUE(mlir::failed(GetDevicesFromOp(*module_ref, &devices)));
 }
 
@@ -163,10 +163,12 @@ TEST(DeviceUtilTest, GetDevicesFromOpValidDeviceInDevicesAttribute) {
                             builder.getDictionaryAttr({}))});
   module_ref->setAttr("tf.devices", device_dict);
 
-  llvm::SmallVector<DeviceNameUtils::ParsedName, 8> devices;
+  mlir::TF::RuntimeDevices devices;
   EXPECT_TRUE(mlir::succeeded(GetDevicesFromOp(*module_ref, &devices)));
-  ASSERT_EQ(devices.size(), 1);
-  EXPECT_EQ(DeviceNameUtils::ParsedNameToString(devices[0]),
+
+  ASSERT_EQ(devices.NumDevices(), 1);
+  ASSERT_EQ(devices.device_names().size(), 1);
+  ASSERT_EQ(DeviceNameUtils::ParsedNameToString(devices.device_names()[0]),
             "/job:worker/replica:0/task:0/device:CPU:0");
 }
 
@@ -188,15 +190,18 @@ TEST(DeviceUtilTest, GetGpuDeviceMetadata) {
 
   module_ref->setAttr("tf.devices", builder.getDictionaryAttr(metadata));
 
+  mlir::TF::RuntimeDevices devices;
+  EXPECT_TRUE(mlir::succeeded(GetDevicesFromOp(*module_ref, &devices)));
+
   DeviceNameUtils::ParsedName parsed_name;
   DeviceNameUtils::ParseFullName(gpu0, &parsed_name);
-  auto meta_0 = GetGpuDeviceMetadata(*module_ref, parsed_name);
+  auto meta_0 = devices.GetGpuDeviceMetadata(parsed_name);
   ASSERT_TRUE(meta_0.hasValue());
   ASSERT_EQ(meta_0->cc_major().getInt(), 1);
   ASSERT_EQ(meta_0->cc_minor().getInt(), 2);
 
   DeviceNameUtils::ParseFullName(gpu1, &parsed_name);
-  auto meta_1 = GetGpuDeviceMetadata(*module_ref, parsed_name);
+  auto meta_1 = devices.GetGpuDeviceMetadata(parsed_name);
   ASSERT_FALSE(meta_1.hasValue());
 }
 

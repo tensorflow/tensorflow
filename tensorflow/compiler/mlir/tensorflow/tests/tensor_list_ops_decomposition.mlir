@@ -44,8 +44,8 @@ func @main() -> (tensor<f32>, tensor<i32>) {
 // initial size.
 
 // CHECK-LABEL: func @main
-// CHECK-SAME: (%[[ARG0:.*]]: tensor<i32>) -> (tensor<f32>, tensor<10xf32>)
-func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>) {
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>)
+func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>, tensor<i32>) {
   // CHECK-NEXT: "tf.Const"() {value = dense<[]> : tensor<0xi32>}
   %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
   // CHECK-NEXT: %[[NUM:.*]] = "tf.Const"() {value = dense<10> : tensor<i32>}
@@ -79,8 +79,10 @@ func @main(%arg0: tensor<i32>) -> (tensor<f32>, tensor<10xf32>) {
   // CHECK-NEXT: %[[ADDN2:.*]] = "tf.AddN"(%[[ADDN]], %[[ZEROS_LIKE]]) : (tensor<10xf32>, tensor<10xf32>) -> tensor<10xf32>
   %addn2 = "tf.AddN"(%addn, %zeros-like) : (tensor<!tf.variant<tensor<f32>>>, tensor<!tf.variant<tensor<f32>>>) -> tensor<!tf.variant<tensor<f32>>>
   %stack = "tf.TensorListStack"(%addn2, %elem_shape) : (tensor<!tf.variant<tensor<f32>>>, tensor<0xi32>) -> tensor<10xf32>
-  // CHECK-NEXT:  return %[[ELEM]], %[[ADDN2]] : tensor<f32>, tensor<10xf32>
-  return %get, %stack : tensor<f32>, tensor<10xf32>
+  // CHECK-NEXT: %[[LEN:.*]] = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %length = "tf.TensorListLength"(%addn2) : (tensor<!tf.variant<tensor<f32>>>) -> tensor<i32>
+  // CHECK-NEXT:  return %[[ELEM]], %[[ADDN2]], %[[LEN]] : tensor<f32>, tensor<10xf32>, tensor<i32>
+  return %get, %stack, %length : tensor<f32>, tensor<10xf32>, tensor<i32>
 }
 
 // -----
@@ -256,5 +258,20 @@ func @main(%arg0: tensor<*xi32>)  -> () {
   %max_size = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
   // expected-error @+1 {{unknown tensor list element shape}}
   %tl = "tf.EmptyTensorList"(%arg0, %max_size) : (tensor<*xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<*xf32>>>
+  return
+}
+
+// -----
+
+// Tests that the pass reports error on pushing elements to a fixed-size tenosr
+// list.
+
+func @main(%arg0: tensor<*xi32>)  -> () {
+  %elem_shape = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+  %num = "tf.Const"() {value = dense<10> : tensor<i32>} : () -> tensor<i32>
+  %tl = "tf.TensorListReserve"(%elem_shape, %num) : (tensor<0xi32>, tensor<i32>) -> tensor<!tf.variant<tensor<f32>>>
+  %elem = "tf._SomeOp"() : () -> tensor<f32>
+  // expected-error @+1 {{cannot push on a fixed-size tensor list}}
+  %push = "tf.TensorListPushBack"(%tl, %elem) : (tensor<!tf.variant<tensor<f32>>>, tensor<f32>) -> tensor<!tf.variant<tensor<f32>>>
   return
 }

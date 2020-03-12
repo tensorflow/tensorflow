@@ -24,7 +24,7 @@ filegroup(
         "ir/tf_op_interfaces.td",
         "ir/tf_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
     ],
 )
 
@@ -181,21 +181,6 @@ cc_library(
 )
 
 cc_library(
-    name = "tensorflow_structs",
-    srcs = [
-        "ir/tf_structs.cc",
-    ],
-    hdrs = [
-        "ir/tf_structs.h",
-    ],
-    deps = [
-        ":tensorflow_ops_inc_gen",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:IR",
-    ],
-)
-
-cc_library(
     name = "tensorflow",
     srcs = [
         "ir/control_flow_ops.cc",
@@ -209,6 +194,7 @@ cc_library(
         "ir/tf_ops.cc.inc",
         "ir/tf_ops.h.inc",
         "ir/tf_saved_model.cc",
+        "ir/tf_structs.cc",
         "ir/tf_verifiers.cc",
     ],
     hdrs = [
@@ -217,12 +203,13 @@ cc_library(
         "ir/tf_executor.h",
         "ir/tf_ops.h",
         "ir/tf_saved_model.h",
+        "ir/tf_structs.h",
         "ir/tf_traits.h",
         "ir/tf_verifiers.h",
         "transforms/bridge.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.h",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.h",
         "@llvm-project//mlir:include/mlir/Transforms/InliningUtils.h",
     ],
     includes = ["include"],
@@ -246,6 +233,7 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:TransformUtils",
@@ -424,6 +412,28 @@ cc_library(
         ":lower_tf_lib",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "graph_optimization_pass",
+    srcs = ["transforms/graph_optimization_pass.cc"],
+    hdrs = ["transforms/graph_optimization_pass.h"],
+    deps = [
+        ":tensorflow_passes",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "graph_optimization_pass_registration",
+    srcs = ["transforms/graph_optimization_pass_registration.cc"],
+    deps = [
+        ":graph_optimization_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
     ],
     alwayslink = 1,
 )
@@ -946,7 +956,7 @@ tf_native_cc_binary(
 genrule(
     name = "derived_attr_populator_inc",
     srcs = [
-        "@llvm-project//mlir:include/mlir/Analysis/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
@@ -1109,7 +1119,7 @@ cc_library(
     srcs = ["utils/tpu_rewrite_device_util.cc"],
     hdrs = ["utils/tpu_rewrite_device_util.h"],
     deps = [
-        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:array4d",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core:framework",
@@ -1140,7 +1150,7 @@ cc_library(
     srcs = ["utils/device_util.cc"],
     hdrs = ["utils/device_util.h"],
     deps = [
-        ":tensorflow_structs",
+        ":tensorflow",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
@@ -1235,5 +1245,6 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Support",
     ],
 )

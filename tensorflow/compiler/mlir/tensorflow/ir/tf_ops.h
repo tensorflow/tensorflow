@@ -19,7 +19,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 
-#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -29,6 +28,9 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_verifiers.h"

@@ -23,9 +23,11 @@ from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
@@ -88,8 +90,8 @@ class TPUStrategyTest(test.TestCase):
     @def_function.function
     def train_step():
       outputs = strategy.experimental_local_results(
-          strategy.experimental_run_v2(computation, args=([2., 2.],)))
-      outputs2 = strategy2.experimental_run_v2(
+          strategy.run(computation, args=([2., 2.],)))
+      outputs2 = strategy2.run(
           computation, args=([outputs[0]],))
       return outputs2
 
@@ -122,6 +124,35 @@ class TPUStrategyTest(test.TestCase):
     self.assertAllEqual(2., run_inference(1))  # Use TPU core 0.
     self.assertAllEqual(3., run_inference(1))  # Use TPU core 1.
 
+  def test_recover_from_compilation_failures(self):
+    # TODO(b/148150981): Stop skipping this test once recovery works
+    # for non-local TPU.
+    if FLAGS.tpu:
+      self.skipTest("Recovery fails for non-local TPU, see b/148150981")
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def compilation_failure_run():
+
+      def computation():
+        return random_ops.random_gamma([10], [0.5, 1.5])
+
+      return strategy.experimental_run_v2(computation)
+
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "TPU compilation failed"):
+      compilation_failure_run()
+
+    @def_function.function
+    def good_run():
+
+      def computation():
+        return random_ops.random_normal([10])
+
+      return strategy.experimental_run_v2(computation)
+
+    good_run()
+
   def test_computation_on_subset_cores(self):
     resolver = get_tpu_cluster_resolver()
     remote.connect_to_cluster(resolver)
@@ -140,7 +171,7 @@ class TPUStrategyTest(test.TestCase):
 
     # Computation on the 2nd core.
     device_assignment2 = device_assignment_lib.DeviceAssignment(
-        topology, [[[0, 0, 1]]])
+        topology, [[[0, 0, 0, 1]]])
     second_core_strategy = tpu_lib.TPUStrategy(
         resolver, device_assignment=device_assignment2)
 
@@ -150,9 +181,9 @@ class TPUStrategyTest(test.TestCase):
       def step_fn():
         return v + 1.0
 
-      all_core_strategy.experimental_run_v2(step_fn)
-      r1 = first_core_strategy.experimental_run_v2(step_fn)
-      r2 = second_core_strategy.experimental_run_v2(step_fn)
+      all_core_strategy.run(step_fn)
+      r1 = first_core_strategy.run(step_fn)
+      r2 = second_core_strategy.run(step_fn)
       return r1 + r2
 
     train_step()
@@ -171,7 +202,7 @@ class TPUStrategyTest(test.TestCase):
 
     # Strategy for the 2nd core.
     device_assignment2 = device_assignment_lib.DeviceAssignment(
-        topology, [[[0, 0, 1]]])
+        topology, [[[0, 0, 0, 1]]])
     second_core_strategy = tpu_lib.TPUStrategy(
         resolver, device_assignment=device_assignment2)
 

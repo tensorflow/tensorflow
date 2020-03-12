@@ -232,24 +232,6 @@ class DefFunctionTest(test.TestCase):
     with self.assertRaisesRegexp(errors.InvalidArgumentError, 'not compilable'):
       c.f1(inputs)
 
-  def testMustBeConstantPropagation(self):
-    if test.is_built_with_rocm():
-      return
-
-    @def_function.function(experimental_compile=True)
-    def f():
-      return constant_op.constant([0, 2, 1], dtype=dtypes.int32)
-
-    @def_function.function(experimental_compile=True)
-    def g(a, b):
-      return array_ops.transpose(a, b)
-
-    @def_function.function
-    def z():
-      return g(array_ops.ones([3, 4, 3], dtype=dtypes.float32), f())
-
-    z()
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution()

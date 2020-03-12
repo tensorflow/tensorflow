@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-%include "std_string.i"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
+namespace tensorflow {
 
-%{
-#define SWIG_FILE_WITH_INIT
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/model.h"
-#include "tensorflow/lite/python/optimize/calibration_wrapper.h"
-%}
+Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
+                                      mlir::ModuleOp module) {
+  if (!config_proto.experimental().enable_mlir_graph_optimization()) {
+    VLOG(1) << "Skipping MLIR Graph Optimization Pass"
+            << ", session flag not enabled";
+    return Status::OK();
+  }
 
+  // TODO(ezhulenev): Add something here.
 
-%include "tensorflow/lite/python/optimize/calibration_wrapper.h"
+  return Status::OK();
+}
+
+}  // namespace tensorflow

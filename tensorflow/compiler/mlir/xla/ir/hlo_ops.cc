@@ -438,8 +438,8 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                       operandRank));
   }
 
-  auto dimensions = *op.broadcast_dimensions();
-  auto dimensionsType = op.broadcast_dimensions()->getType();
+  auto dimensions = op.broadcast_dimensions();
+  auto dimensionsType = op.broadcast_dimensions().getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
     return op.emitOpError(llvm::formatv(

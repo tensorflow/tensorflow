@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -46,7 +45,6 @@ from tensorflow.python.ops.ragged.row_partition import RowPartition
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
-_eval_using_default_session = ops._eval_using_default_session
 _convert_row_partition = RowPartition._convert_row_partition
 # pylint: enable=protected-access
 
@@ -308,7 +306,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     values, row_partition = cls._convert_values_and_partition(
         values, row_partition, "partition")
-    if row_partition.has_cached_value_rowids():
+    if row_partition.has_precomputed_value_rowids():
       value_rowids_shape = row_partition.value_rowids().shape
       values.shape[:1].assert_is_compatible_with(value_rowids_shape)
     if validate:
@@ -380,9 +378,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     with ops.name_scope(name, "RaggedFromValueRowIds",
                         [values, value_rowids, nrows]):
       row_partition = RowPartition.from_value_rowids(
-          value_rowids,
+          value_rowids=value_rowids,
           nrows=nrows,
-          name=name,
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -428,8 +425,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
     with ops.name_scope(name, "RaggedFromRowSplits", [values, row_splits]):
       row_partition = RowPartition.from_row_splits(
-          row_splits,
-          name=name,
+          row_splits=row_splits,
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -471,8 +467,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
     with ops.name_scope(name, "RaggedFromRowLengths", [values, row_lengths]):
       row_partition = RowPartition.from_row_lengths(
-          row_lengths,
-          name=name,
+          row_lengths=row_lengths,
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -510,9 +505,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     with ops.name_scope(name, "RaggedFromRowStarts", [values, row_starts]):
       values = convert_to_tensor_or_ragged_tensor(values)
       row_partition = RowPartition.from_row_starts(
-          row_starts,
-          _nrows(values),
-          name=name,
+          row_starts=row_starts,
+          nvals=_nrows(values),
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -548,8 +542,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       raise TypeError("validate must have type bool")
     with ops.name_scope(name, "RaggedFromRowLimits", [values, row_limits]):
       row_partition = RowPartition.from_row_limits(
-          row_limits,
-          name=name,
+          row_limits=row_limits,
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -621,10 +614,9 @@ class RaggedTensor(composite_tensor.CompositeTensor):
           _get_optional_partition_dtype(values))
       nvals = _nvals_uniform_row_length(values, uniform_row_length)
       row_partition = RowPartition.from_uniform_row_length(
-          nvals,
-          uniform_row_length,
+          uniform_row_length=uniform_row_length,
+          nvals=nvals,
           nrows=nrows,
-          name=name,
           validate=validate,
           preferred_dtype=_get_optional_partition_dtype(values))
       return cls._from_row_partition(values, row_partition, validate=validate)
@@ -825,17 +817,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     TensorShape([2, None, 2])
 
     """
-    nrows = self._row_partition.nrows_as_dimension()
-    if self._row_partition.uniform_row_length() is not None:
-      row_length = tensor_util.constant_value(
-          self._row_partition.uniform_row_length())
-    else:
-      row_length = None
-
-    values_shape = self._values.shape
-    value_shape = values_shape[1:]
-    return tensor_shape.TensorShape([nrows,
-                                     row_length]).concatenate(value_shape)
+    nrows = self._row_partition.static_nrows
+    ncols = self._row_partition.static_uniform_row_length
+    value_shape = self._values.shape[1:]
+    return tensor_shape.TensorShape([nrows, ncols]).concatenate(value_shape)
 
   @property
   def ragged_rank(self):
@@ -873,6 +858,17 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     return self._values
 
   @property
+  def _nested_row_partitions(self):
+    """Returns the row partitions for this `RaggedTensor`."""
+    partitions = [self._row_partition]
+    rt_values = self.values
+    while isinstance(rt_values, RaggedTensor):
+      # pylint: disable=protected-access
+      partitions.append(rt_values._row_partition)
+      rt_values = rt_values.values
+    return tuple(partitions)
+
+  @property
   def row_splits(self):
     """The row-split indices for this ragged tensor's `values`.
 
@@ -893,7 +889,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     tf.Tensor([0 4 4 7 8 8], shape=(6,), dtype=int64)
 
     """
-    return self._row_partition.row_splits
+    return self._row_partition.row_splits()
 
   @property
   def uniform_row_length(self):
@@ -1006,7 +1002,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     tf.Tensor([0 0 0 0 2 2 2 3], shape=(8,), dtype=int64)
 
     """
-    return self._row_partition.value_rowids(name=name)
+    with ops.name_scope(name, "RaggedValueRowIds", [self]):
+      return self._row_partition.value_rowids()
 
   def nested_value_rowids(self, name=None):
     """Returns a tuple containing the value_rowids for all ragged dimensions.
@@ -1065,7 +1062,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     tf.Tensor(5, shape=(), dtype=int64)
 
     """
-    return self._row_partition.nrows(out_type=out_type, name=name)
+    with ops.name_scope(name, "RaggedNRows", [self]):
+      return self._row_partition.nrows(out_type=out_type)
 
   def row_starts(self, name=None):
     """Returns the start indices for rows in this ragged tensor.
@@ -1089,7 +1087,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     tf.Tensor([0 4 4 7 8], shape=(5,), dtype=int64)
 
     """
-    return self._row_partition.row_starts(name=name)
+    with ops.name_scope(name, "RaggedRowStarts", [self]):
+      return self._row_partition.row_starts()
 
   def row_limits(self, name=None):
     """Returns the limit indices for rows in this ragged tensor.
@@ -1113,7 +1112,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     tf.Tensor([4 4 7 8 8], shape=(5,), dtype=int64)
 
     """
-    return self._row_partition.row_limits(name=name)
+    with ops.name_scope(name, "RaggedRowLimits", [self]):
+      return self._row_partition.row_limits()
 
   def row_lengths(self, axis=1, name=None):
     """Returns the lengths of the rows in this ragged tensor.
@@ -1823,7 +1823,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       return "<tf.RaggedTensor %s>" % self.to_list()
     else:
       return "tf.RaggedTensor(values=%s, row_splits=%s)" % (
-          self._values, self._row_partition.row_splits)
+          self.values, self.row_splits)
 
   #=============================================================================
   # Eager Execution Mode
@@ -1858,8 +1858,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     """
     if not self._is_eager():
       raise ValueError("RaggedTensor.numpy() is only supported in eager mode.")
-    values = self._values.numpy()
-    splits = self._row_partition.row_splits.numpy()
+    values = self.values.numpy()
+    splits = self.row_splits.numpy()
     rows = [values[splits[i]:splits[i + 1]] for i in range(len(splits) - 1)]
     if not rows:
       return np.zeros((0, 0) + values.shape[1:], dtype=values.dtype)
@@ -1967,11 +1967,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return RaggedTensorSpec(
-        shape=self.shape,
-        dtype=self.dtype,
-        ragged_rank=self.ragged_rank,
-        row_splits_dtype=self._row_partition.dtype)
+    return RaggedTensorSpec.from_value(self)
 
   def _shape_invariant_to_type_spec(self, shape):
     return RaggedTensorSpec(shape, self.dtype, self.ragged_rank,
@@ -2500,10 +2496,10 @@ def _get_row_partition_type_tensor_pairs_tail(partition):
   Returns:
     A list of (row_partition_type, row_partition_tensor) pairs.
   """
-  if partition.has_cached_value_rowids():
+  if partition.has_precomputed_value_rowids():
     return ("VALUE_ROWIDS", partition.value_rowids())
   else:
-    return ("ROW_SPLITS", partition.row_splits)
+    return ("ROW_SPLITS", partition.row_splits())
 
 
 def _get_row_partition_type_tensor_pairs(rt_input):
@@ -2519,24 +2515,14 @@ def _get_row_partition_type_tensor_pairs(rt_input):
   Returns:
     A list of (row_partition_type, row_partition_tensor) pairs.
   """
-  partitions = _get_nested_row_partitions(rt_input)
+  partitions = rt_input._nested_row_partitions  # pylint: disable=protected-access
   tail = [_get_row_partition_type_tensor_pairs_tail(x) for x in partitions[1:]]
 
-  if partitions[0]._cached_value_rowids is not None:  # pylint: disable=protected-access
+  if partitions[0]._value_rowids is not None:  # pylint: disable=protected-access
     return [("FIRST_DIM_SIZE", partitions[0].nrows()),
             ("VALUE_ROWIDS", partitions[0].value_rowids())] + tail
   else:
-    return [("ROW_SPLITS", partitions[0].row_splits)] + tail
-
-
-def _get_nested_row_partitions(rt_input):
-  """Returns the ragged partitions from all levels of a tree."""
-  if isinstance(rt_input.values, RaggedTensor):
-    # pylint: disable=protected-access
-    return [rt_input._row_partition] + _get_nested_row_partitions(
-        rt_input.values)
-  # pylint: disable=protected-access
-  return [rt_input._row_partition]
+    return [("ROW_SPLITS", partitions[0].row_splits())] + tail
 
 
 def _shape_as_tensor(shape, dtype):
