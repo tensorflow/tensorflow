@@ -62,8 +62,8 @@ from tensorflow.python.frozen_keras.utils import generic_utils
 from tensorflow.python.frozen_keras.utils import layer_utils
 from tensorflow.python.frozen_keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
-from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
-from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
+from tensorflow.python.frozen_keras.utils.generic_utils import to_snake_case  # pylint: disable=unused-import
+from tensorflow.python.frozen_keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -273,7 +273,6 @@ class LegacyBaseLayer(module.Module):
         'batch_size',
         'weights',
         'activity_regularizer',
-        'autocast'
     }
     # Validate optional keyword arguments.
     generic_utils.validate_kwargs(kwargs, allowed_kwargs)
@@ -453,7 +452,7 @@ class LegacyBaseLayer(module.Module):
         Accepted values are constants defined in the class
         `tf.VariableAggregation`.
       **kwargs: Additional keyword arguments. Accepted values are `getter`,
-        `collections`, `experimental_autocast` and `caching_device`.
+        `collections` and `caching_device`.
 
     Returns:
       The created variable. Usually either a `Variable` or `ResourceVariable`
@@ -1011,7 +1010,7 @@ class LegacyBaseLayer(module.Module):
   @trackable.no_automatic_dependency_tracking
   def input_spec(self, value):
     for v in nest.flatten(value):
-      if v is not None and not isinstance(v, InputSpec):
+      if v is not None and not isinstance(v, input_spec.InputSpec):
         raise TypeError('Layer input_spec must be an instance of InputSpec. '
                         'Got: {}'.format(v))
     self._input_spec = value
@@ -2783,8 +2782,3 @@ class KerasHistory(
   # Added to maintain memory and performance characteristics of `namedtuple`
   # while subclassing.
   __slots__ = ()
-
-
-# Avoid breaking users who directly import this symbol from this file.
-# TODO(fchollet): remove this.
-InputSpec = input_spec.InputSpec  # pylint:disable=invalid-name
