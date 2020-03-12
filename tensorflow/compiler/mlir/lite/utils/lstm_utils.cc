@@ -415,7 +415,12 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       forget_layer_norm_coefficients_, cell_layer_norm_coefficients_,
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
-      builder_.getStringAttr("FULL"));
+      builder_.getStringAttr("FULL"),
+      /*input_to_input_intermediate=*/mlir::TypeAttr(),
+      /*input_to_forget_intermediate=*/mlir::TypeAttr(),
+      /*input_to_cell_intermediate=*/mlir::TypeAttr(),
+      /*input_to_output_intermediate=*/mlir::TypeAttr(),
+      /*effective_hidden_scale_intermediate=*/mlir::TypeAttr());
 
   // Cast the static shaped lstm result to FuncOp's signature -
   // Ranked but unknown 2nd dimension to support stacking these.

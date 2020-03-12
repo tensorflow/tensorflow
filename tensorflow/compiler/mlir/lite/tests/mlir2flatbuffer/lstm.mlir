@@ -192,7 +192,8 @@ func @main(tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, tensor<4 x f32>, t
 // CHECK-NEXT:       builtin_options_type: LSTMOptions,
 // CHECK-NEXT:       builtin_options: {
 // CHECK-EMPTY:
-// CHECK-NEXT:       }
+// CHECK-NEXT:       },
+// CHECK-NEXT:       intermediates: [ ]
 // CHECK-NEXT:     } ],
 // CHECK-NEXT:     name: "main"
 // CHECK-NEXT:   } ],

@@ -405,6 +405,11 @@ class Translator {
   // and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Buffer>> BuildBuffer(Operation* inst);
 
+  // Build TFLite tensor from the given type. This function is for tfl.lstm
+  // intermediates, which should have UniformQuantizedType.
+  Optional<BufferOffset<tflite::Tensor>> BuildTensorFromType(
+      mlir::Type type, const std::string& name);
+
   // Builds TFLite tensor from the given value. `buffer_idx` is index of the
   // corresponding buffer. Emits error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Tensor>> BuildTensor(Value value,
@@ -470,7 +475,8 @@ class Translator {
   // tensor indices. Emits an error and returns llvm::None on failure.
   Optional<BufferOffset<tflite::Operator>> BuildOperator(
       Operation* inst, const std::vector<int32_t>& operands,
-      const std::vector<int32_t>& results);
+      const std::vector<int32_t>& results,
+      const std::vector<int32_t>& intermediates);
 
   // Build a subgraph with a given name out of the region either corresponding
   // to a function's body or while op.
@@ -580,6 +586,34 @@ Optional<BufferOffset<tflite::Buffer>> Translator::BuildBuffer(
   auto buffer_data = builder_.CreateVector(
       reinterpret_cast<const uint8_t*>(tensor_data.data()), tensor_data.size());
   return tflite::CreateBuffer(builder_, buffer_data);
+}
+
+Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensorFromType(
+    mlir::Type type, const std::string& name) {
+  auto tensor_type = type.cast<TensorType>();
+
+  if (!tensor_type.hasStaticShape()) {
+    return llvm::None;
+  }
+  llvm::ArrayRef<int64_t> shape_ref = tensor_type.getShape();
+  std::vector<int32_t> shape(shape_ref.begin(), shape_ref.end());
+
+  auto element_type = tensor_type.getElementType();
+  tflite::TensorType tflite_element_type =
+      GetTFLiteType(tensor_type.getElementType()).ValueOrDie();
+  BufferOffset<tflite::QuantizationParameters> q_params;
+  auto qtype = element_type.dyn_cast<mlir::quant::UniformQuantizedType>();
+  if (!qtype) {
+    return llvm::None;
+  }
+  q_params = tflite::CreateQuantizationParameters(
+      builder_, /*min=*/0, /*max=*/0,
+      builder_.CreateVector<float>({static_cast<float>(qtype.getScale())}),
+      builder_.CreateVector<int64_t>({qtype.getZeroPoint()}));
+  return tflite::CreateTensor(
+      builder_, builder_.CreateVector(shape), tflite_element_type,
+      /*buffer=*/0, builder_.CreateString(name), q_params,
+      /*is_variable=*/false);
 }
 
 Optional<BufferOffset<tflite::Tensor>> Translator::BuildTensor(
@@ -934,7 +968,8 @@ uint32_t Translator::GetOpcodeIndex(const std::string& op_name,
 
 Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     Operation* inst, const std::vector<int32_t>& operands,
-    const std::vector<int32_t>& results) {
+    const std::vector<int32_t>& results,
+    const std::vector<int32_t>& intermediates) {
   const auto* dialect = inst->getDialect();
   if (!dialect) {
     inst->emitOpError("dialect is not registered");
@@ -987,7 +1022,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     std::string op_name = inst->getName().getStringRef().str();
     uint32_t opcode_index = GetOpcodeIndex(op_name, *builtin_code);
     auto offset = CreateFlatBufferOperator(inst, opcode_index, operands,
-                                           results, &builder_);
+                                           results, intermediates, &builder_);
     if (!offset) {
       inst->emitOpError("is not a supported TFLite op");
     }
@@ -1172,6 +1207,29 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
   bool failed_once = false;
   for (auto& inst : bb) {
     if (inst.isKnownTerminator()) break;
+    std::vector<int32_t> intermediates;
+    // Build intermediate tensors for tfl.lstm and insert these tensors into
+    // flatbuffer.
+    if (llvm::isa<mlir::TFL::LSTMOp>(inst)) {
+      std::vector<std::string> intermediate_names = {
+          "input_to_input_intermediate", "input_to_forget_intermediate",
+          "input_to_cell_intermediate", "input_to_output_intermediate",
+          "effective_hidden_scale_intermediate"};
+      for (const std::string& intermediate : intermediate_names) {
+        auto intermediate_attr = inst.getAttr(intermediate);
+        if (auto attr = intermediate_attr.dyn_cast_or_null<mlir::TypeAttr>()) {
+          Type qtype = attr.getValue();
+          auto tensor_or = BuildTensorFromType(
+              qtype, name_mapper_.GetUniqueName(intermediate).str());
+          if (!tensor_or.hasValue()) {
+            continue;
+          } else {
+            intermediates.push_back(tensors.size());
+            tensors.push_back(tensor_or.getValue());
+          }
+        }
+      }
+    }
 
     for (auto val : inst.getResults()) {
       std::string name = UniqueName(val);
@@ -1196,7 +1254,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
       results.push_back(tensor_index_map.lookup(result));
     }
 
-    if (auto tfl_operator = BuildOperator(&inst, operands, results))
+    if (auto tfl_operator =
+            BuildOperator(&inst, operands, results, intermediates))
       operators.push_back(*tfl_operator);
     else
       failed_once = true;
