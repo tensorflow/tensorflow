@@ -80,7 +80,7 @@ class EagerFunc(object):
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
       use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
-        NOTE(lithuak): see the note for `eager_py_func_without_tape_cache`.
+        NOTE(lithuak): see the note for `_eager_py_func`.
         This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
@@ -375,6 +375,25 @@ def _EagerPyFuncGrad(op, *dy):
         is_grad_func=True)
 
 
+# NOTE(lithuak): this function as a layer of indirection was added with one
+# specific purpose: as a workaround for github issue #35084.
+# It does all the same as `eager_py_func` used to do with one difference:
+# it can be used to instruct underlying EagerFunc not to use `tape_cache`
+# to avoid memory leak. When the issue #35084 is fixed - this function should
+# be removed, its body should be moved back to become the body of
+# `eager_py_func` and all the call sites should be reverted to
+# using `eager_py_func` without `use_tape_cache` argument of any value.
+def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+        func=func, inp=inp, Tout=Tout, eager=True, name=name,
+        use_tape_cache=use_tape_cache)
+
+  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
+                           name=name, use_tape_cache=use_tape_cache)
+
+
 @tf_export("py_function")
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
@@ -455,29 +474,7 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  if ops.executing_eagerly_outside_functions():
-    with ops.device(context.context().host_address_space()):
-      return _internal_py_func(
-          func=func, inp=inp, Tout=Tout, eager=True, name=name)
-
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
-
-
-# NOTE(lithuak): this function is here only as a workaround for github
-# issue #35084. It is almost identical to `eager_py_func` with one difference:
-# it instructs underlying EagerFunc not to use `tape_cache` to avoid memory
-# leak. When the issue #35084 is fixed - this function should be removed
-# and all the call sites should be changed back to using `eager_py_func`.
-def eager_py_func_without_tape_cache(func, inp, Tout, name=None):
-  if ops.executing_eagerly_outside_functions():
-    with ops.device(context.context().host_address_space()):
-      return _internal_py_func(
-          func=func, inp=inp, Tout=Tout, eager=True, name=name,
-          use_tape_cache=False)
-
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
-                           name=name, use_tape_cache=False)
-
+  _eager_py_func(func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
