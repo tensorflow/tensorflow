@@ -386,9 +386,8 @@ def _EagerPyFuncGrad(op, *dy):
 def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
   if ops.executing_eagerly_outside_functions():
     with ops.device(context.context().host_address_space()):
-      return _internal_py_func(
-        func=func, inp=inp, Tout=Tout, eager=True, name=name,
-        use_tape_cache=use_tape_cache)
+      return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
+                               name=name, use_tape_cache=use_tape_cache)
 
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
                            name=name, use_tape_cache=use_tape_cache)
@@ -474,7 +473,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  _eager_py_func(func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
+  return _eager_py_func(func=func, inp=inp, Tout=Tout,
+                        name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
