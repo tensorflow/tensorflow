@@ -1843,7 +1843,27 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.losses.get')
 def get(identifier):
-  """Retrieves a Keras loss function.
+  """Retrieves a Keras loss as a `function`/`Loss` class instance.
+
+  You can get loss as a `function` using parameter `identifier` as a string
+  of the loss function as shown in below example.
+  >>> loss = tf.keras.losses.get("categorical_crossentropy")
+  >>> type(loss)
+  function
+
+  You can get loss as a `Loss` class instance using parameter `identifier`
+  as a string of the class name of the loss.
+  >>> loss = tf.keras.losses.get("CategoricalCrossentropy")
+  >>> type(loss)
+  tensorflow.python.keras.losses.CategoricalCrossentropy
+
+  You can also specify `config` of the loss to this function by passing dict
+  containing `class_name` and `config` as an identifier.
+  >>> identifier = {"class_name": "CategoricalCrossentropy",
+  ...               "config": {"from_logits": True}}
+  >>> loss = tf.keras.losses.get(identifier)
+  >>> type(loss)
+  tensorflow.python.keras.losses.CategoricalCrossentropy
 
   Arguments:
     identifier: A loss identifier. One of None or string name of a loss
@@ -1851,7 +1871,7 @@ def get(identifier):
       a loss class instance
 
   Returns:
-    A Keras loss function/ `Loss` class instance.
+    A Keras loss as a `function`/ `Loss` class instance.
 
   Raises:
     ValueError: If `identifier` cannot be interpreted.
