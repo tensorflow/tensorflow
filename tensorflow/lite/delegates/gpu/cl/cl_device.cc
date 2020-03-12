@@ -297,10 +297,19 @@ bool MaliInfo::IsMidgard() const {
   return IsMaliT6xx() || IsMaliT7xx() || IsMaliT8xx();
 }
 
-bool MaliInfo::IsBifrost() const {
+bool MaliInfo::IsBifrostGen1() const {
   return gpu_version == MaliGPU::G31 || gpu_version == MaliGPU::G51 ||
-         gpu_version == MaliGPU::G71 || gpu_version == MaliGPU::G52 ||
-         gpu_version == MaliGPU::G72 || gpu_version == MaliGPU::G76;
+         gpu_version == MaliGPU::G71;
+}
+
+bool MaliInfo::IsBifrostGen2() const {
+  return gpu_version == MaliGPU::G52 || gpu_version == MaliGPU::G72;
+}
+
+bool MaliInfo::IsBifrostGen3() const { return gpu_version == MaliGPU::G76; }
+
+bool MaliInfo::IsBifrost() const {
+  return IsBifrostGen1() || IsBifrostGen2() || IsBifrostGen3();
 }
 
 bool MaliInfo::IsValhall() const {

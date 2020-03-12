@@ -324,7 +324,9 @@ ConvolutionTransposed::ConvolutionTransposed(
   }
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   if (dst_depth == 1 || dst_depth == 3) {
-    block_size_.y *= block_size_.z;
+    if (!device.IsMali()) {
+      block_size_.y *= block_size_.z;
+    }
     block_size_.z = 1;
   }
 }

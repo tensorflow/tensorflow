@@ -94,6 +94,9 @@ struct MaliInfo {
   bool IsMaliT7xx() const;
   bool IsMaliT8xx() const;
   bool IsMidgard() const;
+  bool IsBifrostGen1() const;
+  bool IsBifrostGen2() const;
+  bool IsBifrostGen3() const;
   bool IsBifrost() const;
   bool IsValhall() const;
 };
