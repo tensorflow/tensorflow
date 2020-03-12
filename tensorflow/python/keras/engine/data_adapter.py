@@ -777,7 +777,7 @@ class GeneratorDataAdapter(DataAdapter):
     # Need to build the Model on concrete input shapes.
     if model is not None and not model.built:
       concrete_x, _, _ = unpack_x_y_sample_weight(peek)
-      model.distribute_strategy.experimental_run_v2(
+      model.distribute_strategy.run(
           lambda x: model(x, training=False), args=(concrete_x,))
 
     self._first_batch_size = int(nest.flatten(peek)[0].shape[0])

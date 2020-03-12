@@ -92,7 +92,7 @@ class DistributedDumpingCallbackTest(
 
       caught_error = None
       try:
-        distribution.experimental_run_v2(train_step)
+        distribution.run(train_step)
       except errors.InvalidArgumentError as error:
         caught_error = error
       self.assertTrue(caught_error)
@@ -128,7 +128,7 @@ class DistributedDumpingCallbackTest(
           grads_and_vars = zip(grads, mini_model.weights)
           optimizer.apply_gradients(grads_and_vars)
 
-      distribution.experimental_run_v2(train_step)
+      distribution.run(train_step)
 
       updated_var_values = self.evaluate(mini_model.variables)
       num_devices = len(distribution.extended.worker_devices)
