@@ -855,9 +855,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
         return structure.to_tensor_list(output_spec, values)
 
-      return script_ops.eager_py_func(generator_py_func,
-                                      inp=[iterator_id_t],
-                                      Tout=flat_output_types)
+      return script_ops.eager_py_func_without_tape_cache(
+          generator_py_func, inp=[iterator_id_t], Tout=flat_output_types)
 
     def finalize_fn(iterator_id_t):
       """Releases host-side state for the iterator with ID `iterator_id_t`."""

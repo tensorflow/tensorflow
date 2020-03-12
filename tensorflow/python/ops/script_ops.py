@@ -70,7 +70,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout, is_grad_func):
+  def __init__(self, func, Tout, is_grad_func, use_tape_cache=True):
     """Constructs an EagerFunc.
 
     Args:
@@ -79,10 +79,14 @@ class EagerFunc(object):
         None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
+      use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
+        NOTE(lithuak): see the note for `eager_py_func_without_tape_cache`.
+        This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
+    self._use_tape_cache = use_tape_cache
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -146,7 +150,8 @@ class EagerFunc(object):
         else:
           outputs = _maybe_copy_to_context_device(
               self._convert(ret, dtype=self._out_dtypes[0]), device_name)
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    if self._use_tape_cache:
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
 
@@ -276,7 +281,8 @@ def _internal_py_func(func,
                       stateful=None,
                       eager=False,
                       is_grad_func=False,
-                      name=None):
+                      name=None,
+                      use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
     raise ValueError("Expected func to be callable, got func of type {}".format(
@@ -292,7 +298,7 @@ def _internal_py_func(func,
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout, is_grad_func)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
 
   # Tying the registered function's lifetime with the current default graph is
   # not reliable. For example, Estimator-based binaries may switch graphs in
@@ -455,6 +461,23 @@ def eager_py_func(func, inp, Tout, name=None):
           func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
+
+
+# NOTE(lithuak): this function is here only as a workaround for github
+# issue #35084. It is almost identical to `eager_py_func` with one difference:
+# it instructs underlying EagerFunc not to use `tape_cache` to avoid memory
+# leak. When the issue #35084 is fixed - this function should be removed
+# and all the call sites should be changed back to using `eager_py_func`.
+def eager_py_func_without_tape_cache(func, inp, Tout, name=None):
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func, inp=inp, Tout=Tout, eager=True, name=name,
+          use_tape_cache=False)
+
+  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
+                           name=name, use_tape_cache=False)
+
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
