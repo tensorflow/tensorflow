@@ -31,6 +31,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+static inline absl::string_view StringRefToView(llvm::StringRef ref) {
+  return {ref.data(), ref.size()};
+}
+
 // Dumps the MLIR module to disk.
 // This require the TF_DUMP_GRAPH_PREFIX to be set to a path that exist (or can
 // be created).
@@ -115,7 +119,7 @@ Status MlirFunctionOptimizationPass::Run(
 
   for (auto& pass_registration : registry_->passes()) {
     llvm::StringRef name = pass_registration.pass->name();
-    VLOG(2) << "Run MLIR graph optimization pass: " << absl::string_view(name);
+    VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
@@ -185,8 +189,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
   AddDevicesToOp(*module_ref, options.device_set);
 
   for (auto& pass_registration : registry_->passes()) {
-    absl::string_view name = pass_registration.pass->name();
-    VLOG(2) << "Run MLIR graph optimization pass: " << name;
+    llvm::StringRef name = pass_registration.pass->name();
+    VLOG(2) << "Run MLIR graph optimization pass: " << StringRefToView(name);
 
     if (VLOG_IS_ON(1)) {
       DumpModule(*module_ref, llvm::formatv("mlir_{0}_before_", name));
