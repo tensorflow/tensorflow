@@ -24,14 +24,11 @@ then
   GOPATH=$(go env GOPATH)
 fi
 
-# Check if it is running in git-bash
-ls -la / | grep git-bash.exe
-if [ $? -e "0" ]
-then
+# change GOPATH style
+if [ $1 == "win" ]; then
   GOPATH=${GOPATH//\\/\/}
   GOPATH=/${GOPATH//:/}
 fi
-
 
 cd $(dirname $0)
 for g in $(echo "${GOPATH//:/ }"); do
