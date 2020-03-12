@@ -18,14 +18,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
-
-using GraphConstArgIndicesCache =
-    absl::flat_hash_map<const Graph*, std::vector<bool>>;
 
 // Backwards dataflow analysis that finds nodes in a graph that must be
 // compile-time constants for us to be able to lower the graph to XLA.
@@ -38,24 +34,19 @@ using GraphConstArgIndicesCache =
 // `compile_time_const_nodes`, if `compile_time_const_nodes` is not null.
 //
 // Only propagate const-ness along edges for which `edge_filter` returns true.
-//
-// `cached_arg_indices` is a memoization cache used for nested invocations on
-// function calls, which caches what argument indices need to be constant for
-// each associated graph (e.g. called function).
 Status BackwardsConstAnalysis(
     const Graph& g, std::vector<bool>* compile_time_const_arg_indices,
     std::vector<bool>* compile_time_const_nodes,
     FunctionLibraryRuntime* flib_runtime,
-    std::function<bool(const Edge&)> edge_filter =
-        [](const Edge& e) { return true; },
-    GraphConstArgIndicesCache* cached_arg_indices = nullptr);
+    std::function<bool(const Edge&)> edge_filter = [](const Edge& e) {
+      return true;
+    });
 
 // Given an op kernel and function library runtime, return all the indices of
 // inputs that need to be compile time constant.
 Status GetCompileTimeConstInputs(const OpKernel* op_kernel,
                                  std::vector<int>* const_input_idxs,
-                                 FunctionLibraryRuntime* flib_runtime,
-                                 GraphConstArgIndicesCache* cached_arg_indices);
+                                 FunctionLibraryRuntime* flib_runtime);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_CONST_ANALYSIS_H_
