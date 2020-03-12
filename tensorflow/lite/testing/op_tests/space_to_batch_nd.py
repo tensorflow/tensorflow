@@ -55,6 +55,15 @@ def make_space_to_batch_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_paddings": [True, False],
       },
+      # 3D case.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 4, 4]],
+          "block_shape": [[2]],
+          "paddings": [[[0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
+      },
   ]
 
   def build_graph(parameters):
