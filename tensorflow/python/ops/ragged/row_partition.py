@@ -102,7 +102,8 @@ class RowPartition(composite_tensor.CompositeTensor):
   avoid unnecessary recomputation in eager mode.  (In graph mode, optimizations
   such as common subexpression elimination will typically prevent these
   unnecessary recomputations.)  To check which encodings are precomputed, use
-  `RowPartition.has_precomputed_<encoding>`.
+  `RowPartition.has_precomputed_<encoding>`.  To cache an additional
+  encoding, use `RowPartition.with_precomputed_<encoding>`.
   """
 
   #=============================================================================
@@ -897,6 +898,115 @@ class RowPartition(composite_tensor.CompositeTensor):
     """
     return self._nrows is not None
 
+  def with_precomputed_row_splits(self):
+    """Returns a copy of `self` with `row_splits` precomputed."""
+    return RowPartition(
+        row_splits=self.row_splits(),
+        row_lengths=self._row_lengths,
+        value_rowids=self._value_rowids,
+        nrows=self._nrows,
+        uniform_row_length=self._uniform_row_length,
+        internal=_row_partition_factory_key)
+
+  def with_precomputed_row_lengths(self):
+    """Returns a copy of `self` with `row_lengths` precomputed."""
+    return RowPartition(
+        row_splits=self._row_splits,
+        row_lengths=self.row_lengths(),
+        value_rowids=self._value_rowids,
+        nrows=self._nrows,
+        uniform_row_length=self._uniform_row_length,
+        internal=_row_partition_factory_key)
+
+  def with_precomputed_value_rowids(self):
+    """Returns a copy of `self` with `value_rowids` precomputed."""
+    return RowPartition(
+        row_splits=self._row_splits,
+        row_lengths=self._row_lengths,
+        value_rowids=self.value_rowids(),
+        nrows=self._nrows,
+        uniform_row_length=self._uniform_row_length,
+        internal=_row_partition_factory_key)
+
+  def with_precomputed_nrows(self):
+    """Returns a copy of `self` with `nrows` precomputed."""
+    return RowPartition(
+        row_splits=self._row_splits,
+        row_lengths=self._row_lengths,
+        value_rowids=self._value_rowids,
+        nrows=self.nrows(),
+        uniform_row_length=self._uniform_row_length,
+        internal=_row_partition_factory_key)
+
+  def merge_precomputed_encodings(self, other, validate=True):
+    """Returns a RowPartition that merges encodings from `self` and `other`.
+
+    Requires that `self` and `other` describe the same partition.
+
+    Args:
+      other: A `RowPartition` that encodes the same partition as `self`.
+      validate: If true, then add runtime checks to verify that `self` and
+        `other` encode the same row partition.
+
+    Returns:
+      A `RowPartition`.
+    """
+    # pylint: disable=protected-access
+    if (self is other or  # Fast path if row partitions are equal.
+        (self._row_splits is other._row_splits and
+         self._row_lengths is other._row_lengths and
+         self._value_rowids is other._value_rowids and
+         self._nrows is other._nrows and
+         self._uniform_row_length is other._uniform_row_length)):
+      return self
+
+    # Merge the component tensors.  We only need to validate one encoding.
+    # We merge less-expensive encodings first (to avoid expensive validation).
+    nrows, nrows_validated = _merge_tensors(self._nrows, other._nrows, "nrows",
+                                            validate)
+    uniform_row_length, uniform_row_length_validated = _merge_tensors(
+        self._uniform_row_length, other._uniform_row_length,
+        "uniform_row_length", validate)
+    if uniform_row_length_validated and nrows_validated:
+      validate = False  # Validation complete.
+    row_splits, row_splits_validated = _merge_tensors(self._row_splits,
+                                                      other._row_splits,
+                                                      "row_splits", validate)
+    if row_splits_validated:
+      validate = False  # Validation complete.
+    row_lengths, row_lengths_validated = _merge_tensors(self._row_lengths,
+                                                        other._row_lengths,
+                                                        "row_lengths", validate)
+    if row_lengths_validated:
+      validate = False  # Validation complete.
+    value_rowids, value_rowids_validated = _merge_tensors(
+        self._value_rowids, other._value_rowids, "value_rowids", validate)
+    if value_rowids_validated and nrows_validated:
+      validate = False  # Validation complete.
+    # TODO(edloper): If we make the row_splits encoding optional, then there
+    # will be cases where we need to do validation at this point -- e.g. if
+    # self has only row_splits and other has only value_rowids.  But for
+    # now, we are guaranteed to have done validation by this point.
+
+    # Avoid creating new RowPartition objects if we don't need to.
+    if (row_splits is self._row_splits and row_lengths is self._row_lengths and
+        value_rowids is self._value_rowids and nrows is self._nrows and
+        uniform_row_length is self._uniform_row_length):
+      return self
+    if (row_splits is other._row_splits and
+        row_lengths is other._row_lengths and
+        value_rowids is other._value_rowids and nrows is other._nrows and
+        uniform_row_length is other._uniform_row_length):
+      return other
+
+    return RowPartition(
+        row_splits=row_splits,
+        row_lengths=row_lengths,
+        value_rowids=value_rowids,
+        nrows=nrows,
+        uniform_row_length=uniform_row_length,
+        internal=_row_partition_factory_key)
+
   #=============================================================================
   # Composite Tensor
   #=============================================================================
@@ -1074,6 +1184,40 @@ def _assert_zero(tensor, message=None):
 
 def _cast_if_not_none(tensor, dtype):
   return None if tensor is None else math_ops.cast(tensor, dtype)
+
+
+def _merge_tensors(t1, t2, name, validate):
+  """Merge two optional Tensors with equal values into a single Tensor.
+
+  Args:
+    t1: tf.Tensor or None
+    t2: tf.Tensor or None
+    name: A name for the tensors (for error messages)
+    validate: If true, then check that `t1` is compatible with `t2` (if both are
+      non-None).
+
+  Returns:
+    A pair `(merged_value, validated)`:
+      * `merged_value` is `t1` if it is not None; or `t2` otherwise.
+      * `validated` is true if we validated that t1 and t2 are equal (either
+        by adding a check, or because t1 is t2).
+  """
+  if t1 is None:
+    return t2, False
+  elif t2 is None:
+    return t1, False
+  elif t1 is t2:
+    return t1, True
+  else:
+    err_msg = ("RowPartition.merge_precomuted_encodings: partitons "
+               "have incompatible %s" % name)
+    if not t1.shape.is_compatible_with(t2.shape):
+      raise ValueError(err_msg)
+    if validate:
+      checks = [check_ops.assert_equal(t1, t2, message=err_msg)]
+      return control_flow_ops.with_dependencies(checks, t1), True
+    else:
+      return t1, False
 
 
 _row_partition_factory_key = object()  # unique private object

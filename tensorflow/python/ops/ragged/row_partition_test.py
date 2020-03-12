@@ -481,6 +481,192 @@ class RowPartitionTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         partition = factory(**kwargs)
         self.evaluate(partition.row_splits())
 
+  @parameterized.named_parameters([
+      ('FromRowSplits', lambda: RowPartition.from_row_splits([0, 2, 8]),
+       ['row_splits']),
+      ('FromRowLengths', lambda: RowPartition.from_row_lengths([3, 0, 8]),
+       ['row_splits', 'row_lengths']),
+      ('FromValueRowIds',
+       lambda: RowPartition.from_value_rowids([0, 0, 3, 4, 4, 4]),
+       ['row_splits', 'value_rowids', 'row_lengths', 'nrows']),
+      ('FromRowStarts',
+       lambda: RowPartition.from_row_starts([0, 3, 7], nvals=10),
+       ['row_splits']),
+      ('FromRowLimits', lambda: RowPartition.from_row_limits([3, 7, 10]),
+       ['row_splits']),
+  ])
+  def testPrecomputedSplits(self, rp_factory, expected_encodings):
+    rp = rp_factory()
+    self.assertEqual(rp.has_precomputed_row_splits(),
+                     'row_splits' in expected_encodings)
+    self.assertEqual(rp.has_precomputed_row_lengths(),
+                     'row_lengths' in expected_encodings)
+    self.assertEqual(rp.has_precomputed_value_rowids(),
+                     'value_rowids' in expected_encodings)
+    self.assertEqual(rp.has_precomputed_nrows(), 'nrows' in expected_encodings)
+
+  def testWithPrecomputedSplits(self):
+    rp = RowPartition.from_row_splits([0, 2, 8])
+
+    rp_with_row_splits = rp.with_precomputed_row_splits()
+    self.assertTrue(rp_with_row_splits.has_precomputed_row_splits())
+
+    self.assertFalse(rp.has_precomputed_row_lengths())
+    rp_with_row_lengths = rp.with_precomputed_row_lengths()
+    self.assertTrue(rp_with_row_lengths.has_precomputed_row_lengths())
+
+    self.assertFalse(rp.has_precomputed_value_rowids())
+    rp_with_value_rowids = rp.with_precomputed_value_rowids()
+    self.assertTrue(rp_with_value_rowids.has_precomputed_value_rowids())
+
+    self.assertFalse(rp.has_precomputed_nrows())
+    rp_with_nrows = rp.with_precomputed_nrows()
+    self.assertTrue(rp_with_nrows.has_precomputed_nrows())
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='FromRowSplitsAndRowSplits',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          expected_encodings=['row_splits']),
+      dict(
+          testcase_name='FromRowSplitsAndUniformRowLength',
+          x=lambda: RowPartition.from_row_splits([0, 3, 6]),
+          y=lambda: RowPartition.from_uniform_row_length(3, nvals=6),
+          expected_encodings=['row_splits', 'uniform_row_length', 'nrows']),
+      dict(
+          testcase_name='FromRowSplitsAndRowLengths',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_row_lengths([3, 5]),
+          expected_encodings=['row_splits', 'row_lengths']),
+      dict(
+          testcase_name='FromRowSplitsAndValueRowIds',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_value_rowids([0, 0, 0, 1, 1, 1, 1, 1]),
+          expected_encodings=[
+              'row_splits', 'row_lengths', 'value_rowids', 'nrows'
+          ]),
+      dict(
+          testcase_name='FromRowSplitsAndRowSplitsPlusNRows',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_row_splits([0, 3, 8]).
+          with_precomputed_nrows(),
+          expected_encodings=['row_splits', 'nrows']),
+  ])
+  def testMergePrecomputedEncodings(self, x, y, expected_encodings):
+    x = x()
+    y = y()
+    for validate in (True, False):
+      result = x.merge_precomputed_encodings(y, validate)
+      self.assertEqual(result.has_precomputed_row_splits(),
+                       'row_splits' in expected_encodings)
+      self.assertEqual(result.has_precomputed_row_lengths(),
+                       'row_lengths' in expected_encodings)
+      self.assertEqual(result.has_precomputed_value_rowids(),
+                       'value_rowids' in expected_encodings)
+      self.assertEqual(result.has_precomputed_nrows(),
+                       'nrows' in expected_encodings)
+      self.assertEqual(result.uniform_row_length() is not None,
+                       'uniform_row_length' in expected_encodings)
+      for r in (x, y):
+        if (r.has_precomputed_row_splits() and
+            result.has_precomputed_row_splits()):
+          self.assertAllEqual(r.row_splits(), result.row_splits())
+        if (r.has_precomputed_row_lengths() and
+            result.has_precomputed_row_lengths()):
+          self.assertAllEqual(r.row_lengths(), result.row_lengths())
+        if (r.has_precomputed_value_rowids() and
+            result.has_precomputed_value_rowids()):
+          self.assertAllEqual(r.value_rowids(), result.value_rowids())
+        if r.has_precomputed_nrows() and result.has_precomputed_nrows():
+          self.assertAllEqual(r.nrows(), result.nrows())
+        if (r.uniform_row_length() is not None and
+            result.uniform_row_length() is not None):
+          self.assertAllEqual(r.uniform_row_length(),
+                              result.uniform_row_length())
+
+  def testMergePrecomputedEncodingsFastPaths(self):
+    # Same object: x gets returned as-is.
+    x = RowPartition.from_row_splits([0, 3, 8, 8])
+    self.assertIs(x.merge_precomputed_encodings(x), x)
+
+    # Same encoding tensor objects: x gets returned as-is.
+    y = RowPartition.from_row_splits(x.row_splits(), validate=False)
+    self.assertIs(x.merge_precomputed_encodings(y), x)
+
+  def testMergePrecomputedEncodingsWithMatchingTensors(self):
+    # The encoding tensors for `a` are a superset of the encoding tensors
+    # for `b`, and where they overlap, they the same tensor objects.
+    a = RowPartition.from_value_rowids([0, 0, 3, 4, 4, 4])
+    b = RowPartition.from_row_splits(a.row_splits(), validate=False)
+    self.assertIs(a.merge_precomputed_encodings(b), a)
+    self.assertIs(b.merge_precomputed_encodings(a), a)
+    self.assertIsNot(a, b)
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='RowSplitMismatch',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_row_splits([0, 3, 8, 9]),
+          message='incompatible row_splits'),
+      dict(
+          testcase_name='RowLengthMismatch',
+          x=lambda: RowPartition.from_row_lengths([2, 0, 2]),
+          y=lambda: RowPartition.from_row_lengths([2, 0, 2, 1]),
+          message='incompatible row_splits'),  # row_splits is checked first
+      dict(
+          testcase_name='ValueRowIdMismatch',
+          x=lambda: RowPartition.from_value_rowids([0, 3, 3, 4]),
+          y=lambda: RowPartition.from_value_rowids([0, 3, 4]),
+          message='incompatible value_rowids'),
+  ])
+  def testMergePrecomputedEncodingStaticErrors(self, x, y, message):
+    if context.executing_eagerly():
+      return
+    # Errors that are caught by static shape checks.
+    x = x()
+    y = y()
+    with self.assertRaisesRegexp(ValueError, message):
+      x.merge_precomputed_encodings(y).row_splits()
+    with self.assertRaisesRegexp(ValueError, message):
+      y.merge_precomputed_encodings(x).row_splits()
+
+  @parameterized.named_parameters([
+      dict(
+          testcase_name='NRowsMismatch',
+          x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
+          y=lambda: RowPartition.from_uniform_row_length(5, nvals=15),
+          message='incompatible nrows'),
+      dict(
+          testcase_name='UniformRowLengthMismatch',
+          x=lambda: RowPartition.from_uniform_row_length(5, nvals=20),
+          y=lambda: RowPartition.from_uniform_row_length(2, nvals=8),
+          message='incompatible uniform_row_length'),
+      dict(
+          testcase_name='RowSplitMismatch',
+          x=lambda: RowPartition.from_row_splits([0, 3, 8]),
+          y=lambda: RowPartition.from_row_splits([0, 5, 8]),
+          message='incompatible row_splits'),
+      dict(
+          testcase_name='RowLengthMismatch',
+          x=lambda: RowPartition.from_row_lengths([2, 0, 2]),
+          y=lambda: RowPartition.from_row_lengths([0, 0, 2]),
+          message='incompatible row_splits'),  # row_splits is checked first
+      dict(
+          testcase_name='ValueRowIdMismatch',
+          x=lambda: RowPartition.from_value_rowids([0, 3, 3]),
+          y=lambda: RowPartition.from_value_rowids([0, 0, 3]),
+          message='incompatible row_splits'),  # row_splits is checked first
+  ])
+  def testMergePrecomputedEncodingRuntimeErrors(self, x, y, message):
+    # Errors that are caught by runtime value checks.
+    x = x()
+    y = y()
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, message):
+      self.evaluate(x.merge_precomputed_encodings(y).row_splits())
+    with self.assertRaisesRegexp(errors.InvalidArgumentError, message):
+      self.evaluate(y.merge_precomputed_encodings(x).row_splits())
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class RowPartitionSpecTest(test_util.TensorFlowTestCase,
