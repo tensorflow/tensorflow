@@ -409,6 +409,7 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                int src_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
+  MEMDEBUG_CACHE_OP(col_ctx_->op_ctx->op_kernel().name().c_str());
   string send_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);
   int dst_idx =

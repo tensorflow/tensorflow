@@ -331,6 +331,14 @@ inline Value MapLhloOpToStdScalarOp<xla_lhlo::NegOp>(
 }
 
 template <>
+inline Value MapLhloOpToStdScalarOp<xla_lhlo::RsqrtOp>(
+    Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
+    OpBuilder* b) {
+  return MapLhloOpToStdScalarOpImpl<FloatType, ::mlir::RsqrtOp>{}(
+      loc, result_types, args, b);
+}
+
+template <>
 inline Value MapLhloOpToStdScalarOp<xla_lhlo::SelectOp>(
     Location loc, ArrayRef<Type> result_types, ArrayRef<Value> args,
     OpBuilder* b) {
@@ -414,12 +422,6 @@ struct XlaOpToStdScalarOp {
         op.getLoc(), comparison_direction, result_types, args, b);
   }
 };
-
-template <typename XlaOpTy>
-inline Value MapXlaOpToStdScalarOp(XlaOpTy xla_op, ArrayRef<Type> result_types,
-                                   ArrayRef<Value> args, OpBuilder* b) {
-  return XlaOpToStdScalarOp::map<XlaOpTy>(xla_op, result_types, args, b);
-}
 
 }  // namespace xla_lhlo
 }  // namespace mlir

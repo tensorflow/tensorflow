@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.util import nest
 
 
 ################################################################################
@@ -133,6 +134,14 @@ def dtype_name(dtype):
   if hasattr(dtype, "__name__"):
     return dtype.__name__
   return str(dtype)
+
+
+def check_dtype(arg, dtype):
+  """Check that arg.dtype == self.dtype."""
+  if arg.dtype.base_dtype != dtype:
+    raise TypeError(
+        "Expected argument to have dtype %s.  Found: %s in tensor %s" %
+        (dtype, arg.dtype, arg))
 
 
 def is_ref(x):
@@ -500,3 +509,77 @@ def use_operator_or_provided_hint_unless_contradicting(
     return False
   # pylint: enable=g-bool-id-comparison
   return None
+
+
+################################################################################
+# Utilities for blockwise operators.
+################################################################################
+
+
+def arg_is_blockwise(block_dimensions, arg, arg_split_dim):
+  """Detect if input should be interpreted as a list of blocks."""
+  # Tuples and lists of length equal to the number of operators may be
+  # blockwise.
+  if (isinstance(arg, (tuple, list)) and len(arg) == len(block_dimensions)):
+    # If the elements of the iterable are not nested, interpret the input as
+    # blockwise.
+    if not any(nest.is_nested(x) for x in arg):
+      return True
+    else:
+      arg_dims = [ops.convert_to_tensor(x).shape[arg_split_dim] for x in arg]
+      self_dims = [dim.value for dim in block_dimensions]
+
+      # If none of the operator dimensions are known, interpret the input as
+      # blockwise if its matching dimensions are unequal.
+      if all(self_d is None for self_d in self_dims):
+
+        # A nested tuple/list with a single outermost element is not blockwise
+        if len(arg_dims) == 1:
+          return False
+        elif any(dim != arg_dims[0] for dim in arg_dims):
+          return True
+        else:
+          raise ValueError(
+              "Parsing of the input structure is ambiguous. Please input "
+              "a blockwise iterable of `Tensor`s or a single `Tensor`.")
+
+      # If input dimensions equal the respective (known) blockwise operator
+      # dimensions, then the input is blockwise.
+      if all(self_d == arg_d or self_d is None
+             for self_d, arg_d in zip(self_dims, arg_dims)):
+        return True
+
+      # If input dimensions equals are all equal, and are greater than or equal
+      # to the sum of the known operator dimensions, interpret the input as
+      # blockwise.
+      # input is not blockwise.
+      self_dim = sum(self_d for self_d in self_dims if self_d is not None)
+      if all(s == arg_dims[0] for s in arg_dims) and arg_dims[0] >= self_dim:
+        return False
+
+      # If none of these conditions is met, the input shape is mismatched.
+      raise ValueError("Input dimension does not match operator dimension.")
+  else:
+    return False
+
+
+def split_arg_into_blocks(block_dims, block_dims_fn, arg, axis=-1):
+  """Split `x` into blocks matching `operators`'s `domain_dimension`.
+
+  Specifically, if we have a blockwise lower-triangular matrix, with block
+  sizes along the diagonal `[M_j, M_j] j = 0,1,2..J`,  this method splits `arg`
+  on `axis` into `J` tensors, whose shape at `axis` is `M_j`.
+
+  Args:
+    block_dims: Iterable of `TensorShapes`.
+    block_dims_fn: Callable returning an iterable of `Tensor`s.
+    arg: `Tensor`. `arg` is split into `J` tensors.
+    axis: Python `Integer` representing the axis to split `arg` on.
+
+  Returns:
+    A list of `Tensor`s.
+  """
+  block_sizes = [dim.value for dim in block_dims]
+  if any(d is None for d in block_sizes):
+    block_sizes = block_dims_fn()
+  return array_ops.split(arg, block_sizes, axis=axis)

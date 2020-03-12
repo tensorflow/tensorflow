@@ -236,12 +236,17 @@ void RunInference(Settings* s) {
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  switch (interpreter->tensor(input)->type) {
+  s->input_type = interpreter->tensor(input)->type;
+  switch (s->input_type) {
     case kTfLiteFloat32:
-      s->input_floating = true;
       resize<float>(interpreter->typed_tensor<float>(input), in.data(),
                     image_height, image_width, image_channels, wanted_height,
                     wanted_width, wanted_channels, s);
+      break;
+    case kTfLiteInt8:
+      resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
+                     image_height, image_width, image_channels, wanted_height,
+                     wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
       resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
@@ -253,7 +258,6 @@ void RunInference(Settings* s) {
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-
   auto profiler =
       absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
@@ -305,12 +309,18 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       s->number_of_results, threshold, &top_results, true);
+                       s->number_of_results, threshold, &top_results,
+                       s->input_type);
+      break;
+    case kTfLiteInt8:
+      get_top_n<int8_t>(interpreter->typed_output_tensor<int8_t>(0),
+                        output_size, s->number_of_results, threshold,
+                        &top_results, s->input_type);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
                          output_size, s->number_of_results, threshold,
-                         &top_results, false);
+                         &top_results, s->input_type);
       break;
     default:
       LOG(FATAL) << "cannot handle output type "

@@ -100,7 +100,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         traceme_metadata_(
             {{"autotune",
               num_parallel_calls == model::kAutotune ? "true" : "false"},
-             {"batch_size", strings::Printf("%lld", batch_size)},
+             {"batch_size",
+              strings::Printf("%lld", static_cast<long long>(batch_size))},
              {"drop_remainder", drop_remainder ? "true" : "false"}}) {
     input_->Ref();
   }
@@ -285,8 +286,8 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     TraceMeMetadata GetTraceMeMetadata() const override {
-      int64 parallelism = -1;
-      int64 max_batch_results = -1;
+      long long parallelism = -1;        // NOLINT
+      long long max_batch_results = -1;  // NOLINT
       // NOTE: We only set the parallelism value if the lock can be acquired
       // right away to avoid introducing tracing overhead.
       if (mu_->try_lock()) {

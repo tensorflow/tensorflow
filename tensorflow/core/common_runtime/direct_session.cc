@@ -1336,7 +1336,11 @@ Status DirectSession::CreateExecutors(
   func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
-      nullptr, custom_kernel_creator, session_metadata));
+      /*parent=*/nullptr, custom_kernel_creator, session_metadata,
+      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      }));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1381,11 +1385,6 @@ Status DirectSession::CreateExecutors(
     params.delete_kernel = [lib](OpKernel* kernel) {
       if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string()))
         delete kernel;
-    };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
     };
 
     optimizer.Optimize(lib, options_.env, device, &partition_graph,

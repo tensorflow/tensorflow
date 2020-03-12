@@ -169,14 +169,14 @@ class KernelAndDevice : public core::RefCounted {
 class KernelAndDeviceOp final : public KernelAndDevice {
  public:
   KernelAndDeviceOp(
-      tensorflow::Rendezvous* rendez, bool log_memory,
+      tensorflow::Rendezvous* rendezvous, bool log_memory,
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device)
       : KernelAndDevice(flr, runner, std::move(collective_executor),
                         host_cpu_device),
-        rendez_(rendez),
+        rendezvous_(rendezvous),
         log_memory_(log_memory),
         step_container_(0, [this](const string& name) {
           device_->resource_manager()->Cleanup(name).IgnoreError();
@@ -218,7 +218,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   gtl::InlinedVector<AllocatorAttributes, 4> input_alloc_attrs_;
   std::vector<Device*> input_devices_;
   gtl::InlinedVector<AllocatorAttributes, 1> output_alloc_attrs_;
-  Rendezvous* const rendez_;
+  Rendezvous* const rendezvous_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
   ScopedStepContainer step_container_;

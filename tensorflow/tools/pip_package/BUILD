@@ -33,6 +33,9 @@ transitive_hdrs(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/cc/saved_model:bundle_v2",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.

@@ -128,14 +128,21 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr,
                              const CustomKernelCreator* custom_kernel_creator) {
+  Rendezvous::Factory rendezvous_factory =
+      [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
+        *r = CreateRendezvous(step_id);
+        return Status::OK();
+      };
   if (lazy_copy_function_remote_inputs_) {
     pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   } else {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   }
 }
 
@@ -780,9 +787,28 @@ Status EagerContext::FindCustomDeviceFromName(const string& device_name,
   return Status::OK();
 }
 
-void EagerContext::RegisterCustomDevice(const string& device_name,
-                                        std::unique_ptr<CustomDevice> device) {
-  custom_devices_.emplace(device_name, std::move(device));
+Status EagerContext::RegisterCustomDevice(
+    const string& device_name, std::unique_ptr<CustomDevice> device) {
+  DeviceNameUtils::ParsedName parsed;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
+      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
+      !parsed.has_type || !parsed.has_id) {
+    return errors::InvalidArgument(
+        device_name,
+        " could not be parsed as a device name. Use the full "
+        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
+        "format.");
+  }
+  Device* existing_physical_device = nullptr;
+  if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a physical device.");
+  }
+  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a custom device.");
+  }
+  return Status::OK();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {

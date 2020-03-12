@@ -239,6 +239,8 @@ void EventForest::CreateEventGroup(
         root_event_node->AddStepName(group_name);
         event_group_name_map_[group_id] = std::move(group_name);
       }
+      // Only use the first root event type found.
+      if (!root_event_node_list->empty()) break;
     }
   }
 }
@@ -339,8 +341,8 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
         HostEventType::kKernelExecute,
         {StatType::kCorrelationId}}});
   const std::vector<int64 /*EventType*/> root_event_types(
-      {HostEventType::kHostTrainingLoopIteration, HostEventType::kTraceContext,
-       HostEventType::kFunctionRun, HostEventType::kSessionRun});
+      {HostEventType::kTraceContext, HostEventType::kFunctionRun,
+       HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});
   EventForest event_forest(connect_info_list, root_event_types,
                            CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {

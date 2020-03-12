@@ -62,6 +62,7 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":bfloat16",
+        ":local_client",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
@@ -168,6 +169,7 @@ cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
+    visibility = ["//tensorflow/compiler/xla:friends"],
     deps = [
         ":local_device_state",
         ":shared_device_buffer",
@@ -393,4 +395,26 @@ pybind_extension(
         ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
         "//conditions:default": [],
     }),
+)
+
+tf_cc_test(
+    name = "gpu_multistream_test",
+    srcs = ["gpu_multistream_test.cc"],
+    tags = [
+        # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
+        "no_oss",
+        "requires-gpu-nvidia",
+    ],
+    deps = [
+        ":local_client",
+        ":nvidia_gpu_device",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/client:executable_build_options",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/service:gpu_plugin",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:random",
+    ],
 )

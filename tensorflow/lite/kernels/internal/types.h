@@ -1088,10 +1088,11 @@ struct UnpackParams {
 struct LeakyReluParams {
   float alpha;
   int32 input_offset;
-  int32 alpha_offset;
   int32 output_offset;
-  int32 output_multiplier;
-  int output_shift;
+  int32 output_multiplier_alpha;
+  int32 output_shift_alpha;
+  int32 output_multiplier_identity;
+  int32 output_shift_identity;
 };
 
 template <typename P>

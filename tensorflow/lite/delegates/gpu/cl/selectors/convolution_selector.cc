@@ -88,13 +88,15 @@ Status SelectConvolutionPowerVR(const Convolution2DAttributes& attr,
 }
 
 Status SelectConvolutionMali(const Convolution2DAttributes& attr,
+                             const BHWC& dst_shape,
                              const CreationContext& creation_context,
                              const OperationDef& op_def,
                              std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, attr)) {
     ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(CreateConvBuffer1x1(creation_context, op_def, attr, &conv));
+    RETURN_IF_ERROR(
+        CreateConvBuffer1x1(creation_context, op_def, attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
     ConvPowerVR conv;
@@ -105,13 +107,14 @@ Status SelectConvolutionMali(const Convolution2DAttributes& attr,
 }
 
 Status SelectConvolutionWinogradMali(const Convolution2DAttributes& attr,
+                                     const BHWC& dst_shape,
                                      const CreationContext& creation_context,
                                      const OperationDef& op_def,
                                      std::unique_ptr<GPUOperation>* ptr) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
     ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(
-        CreateConvBuffer1x1Wino4x4To6x6(creation_context, op_def, attr, &conv));
+    RETURN_IF_ERROR(CreateConvBuffer1x1Wino4x4To6x6(creation_context, op_def,
+                                                    attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
     ConvPowerVR conv;
@@ -122,6 +125,7 @@ Status SelectConvolutionWinogradMali(const Convolution2DAttributes& attr,
 
   return OkStatus();
 }
+
 }  // namespace
 
 Status SelectConvolution(const Convolution2DAttributes& attr,
@@ -139,7 +143,8 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
     case Vendor::NVIDIA:
       return SelectConvolutionNVidia(attr, creation_context, op_def, ptr);
     case Vendor::MALI:
-      return SelectConvolutionMali(attr, creation_context, op_def, ptr);
+      return SelectConvolutionMali(attr, dst_shape, creation_context, op_def,
+                                   ptr);
     default:
       return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
                                      hints, ptr);
@@ -166,7 +171,8 @@ Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
       return OkStatus();
     }
     case Vendor::MALI:
-      return SelectConvolutionWinogradMali(attr, creation_context, op_def, ptr);
+      return SelectConvolutionWinogradMali(attr, dst_shape, creation_context,
+                                           op_def, ptr);
     default:
       return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
                                              op_def, hints, ptr);

@@ -28,7 +28,7 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
-include "mlir/Analysis/CallInterfaces.td"
+include "mlir/Interfaces/CallInterfaces.td"
 include "mlir/IR/OpBase.td"
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {

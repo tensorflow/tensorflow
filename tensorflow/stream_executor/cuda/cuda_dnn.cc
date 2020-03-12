@@ -2062,7 +2062,9 @@ port::Status CudnnSupport::DoCtcLossImpl(
       /*inputLengths=*/input_lengths_data.data(),
       /*costs=*/costs_data.opaque(), /*gradientsDesc=*/grads_desc.handle(),
       /*gradients=*/grads_data.opaque(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*algo=*/
+      RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
+                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
       /*ctcLossDesc=*/ctc_loss_desc.handle(),
       /*workspace=*/scratch_memory.opaque(),
       /*workSpaceSizeInBytes=*/scratch_memory.size()));
@@ -2620,8 +2622,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionFwdAlgo_t algo,
                         GetCudnnConvolutionForwardAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -2673,8 +2675,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdDataAlgo_t algo,
                         GetCudnnConvolutionBackwardDataAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -2725,8 +2727,8 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardFilterAlgorithm(
     bool specify_workspace_limit = scratch_allocator != nullptr;
     auto memory_limit_bytes =
         specify_workspace_limit
-            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), 0ll)
-            : 0ll;
+            ? std::max(scratch_allocator->GetMemoryLimitInBytes(), int64{0})
+            : int64{0};
     SE_ASSIGN_OR_RETURN(cudnnConvolutionBwdFilterAlgo_t algo,
                         GetCudnnConvolutionBackwardFilterAlgo(
                             cudnn, input_nd, filter, conv, output_nd,
@@ -3949,7 +3951,9 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
       /*labels=*/labels_data.data(),
       /*labelLengths=*/labels_lengths_data.data(),
       /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*algo=*/
+      RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
+                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
       /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes));
 #else

@@ -19,6 +19,7 @@ py_library(
         ":image",
         ":sequence",
         ":text",
+        ":timeseries",
     ],
 )
 
@@ -44,6 +45,19 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:data_utils",
+    ],
+)
+
+py_library(
+    name = "timeseries",
+    srcs = [
+        "timeseries.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -101,6 +115,19 @@ tf_py_test(
     deps = [
         ":text",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "timeseries_test",
+    size = "small",
+    srcs = ["timeseries_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":timeseries",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//third_party/py/numpy",
     ],
 )

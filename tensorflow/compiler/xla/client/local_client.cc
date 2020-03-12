@@ -346,6 +346,23 @@ StatusOr<std::vector<std::unique_ptr<LocalExecutable>>> LocalClient::Compile(
     VLOG(3) << "Set device ordinal to default value of: "
             << updated_options.device_ordinal();
   }
+  if (options.has_device_assignment()) {
+    if (options.device_assignment().replica_count() != options.num_replicas()) {
+      return InvalidArgument(
+          "Mismatched number of replicas for device "
+          "assignment and computation (%d vs %d).\n%s",
+          options.device_assignment().replica_count(), options.num_replicas(),
+          options.device_assignment().ToString());
+    }
+    if (options.device_assignment().computation_count() !=
+        options.num_partitions()) {
+      return InvalidArgument(
+          "Mismatched number of partitions for device "
+          "assignment and computation (%d vs %d).\n%s",
+          options.device_assignment().computation_count(),
+          options.num_partitions(), options.device_assignment().ToString());
+    }
+  }
   TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
                       local_service_->CompileExecutables(
                           computation, argument_layouts, updated_options));

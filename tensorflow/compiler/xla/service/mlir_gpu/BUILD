@@ -189,6 +189,7 @@ cc_library(
         ":failover_compiler",
         ":inject_errors_pass",
         ":mlir_compiler",
+        "//tensorflow/compiler/mlir/xla:hlo_utils",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/tests:codegen_test_base",

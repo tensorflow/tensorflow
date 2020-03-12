@@ -70,16 +70,15 @@ class ProfilerSessionWrapper {
     tensorflow::Status status;
     status = session_->CollectData(&xspace);
     session_.reset();
-    if (!status.ok()) {
-      tensorflow::MaybeRaiseRegisteredFromStatus(status);
-      return;
-    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+
     tensorflow::ProfileResponse response;
     tensorflow::ProfileRequest request = MakeProfileRequest(
         logdir_, tensorflow::profiler::GetCurrentTimeStampAsString(),
         tensorflow::port::Hostname());
-    tensorflow::profiler::ConvertXSpaceToProfileResponse(xspace, request,
-                                                         &response);
+    status = tensorflow::profiler::ConvertXSpaceToProfileResponse(
+        xspace, request, &response);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
 
     std::stringstream ss;  // Record LOG messages.
     status = tensorflow::profiler::SaveTensorboardProfile(

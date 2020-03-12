@@ -120,11 +120,6 @@ class DeviceBase {
 
   Env* env() const { return env_; }
 
-  // Override this to return true for devices that require an Op's
-  // compute method to save references to the temporary tensors it
-  // allocates until the Op execution completes
-  virtual bool RequiresRecordingAccessedTensors() const { return false; }
-
   struct CpuWorkerThreads {
     int num_threads = 0;
     thread::ThreadPool* workers = nullptr;

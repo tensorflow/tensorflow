@@ -76,17 +76,19 @@ inline void PerChannelDequantize(
   const int32 quantized_dimension = op_params.quantized_dimension;
   const int32 num_dims = input_shape.DimensionsCount();
   const int32* dims_data = input_shape.DimsData();
-  std::vector<int32> current_dim(num_dims, 0);
+  std::vector<int> current_dim(num_dims, 0);
 
   do {
-    size_t offset = ReducedOutputOffset(num_dims, dims_data, current_dim.data(),
-                                        0, nullptr);
+    size_t offset =
+        ReducedOutputOffset(num_dims, reinterpret_cast<const int*>(dims_data),
+                            current_dim.data(), 0, nullptr);
     const int channel = current_dim[quantized_dimension];
     const int32 val = input_data[offset];
     const float result =
         static_cast<float>(scale[channel] * (val - zero_point[channel]));
     output_data[offset] = result;
-  } while (NextIndex(num_dims, dims_data, current_dim.data()));
+  } while (NextIndex(num_dims, reinterpret_cast<const int*>(dims_data),
+                     current_dim.data()));
 }
 
 }  // namespace reference_ops

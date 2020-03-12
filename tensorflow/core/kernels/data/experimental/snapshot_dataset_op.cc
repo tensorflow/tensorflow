@@ -1206,7 +1206,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
           string snapshot_data_filename = io::JoinPath(
-              run_dir_, strings::Printf("%08llu.snapshot", next_file_index_));
+              run_dir_, strings::Printf(
+                            "%08llu.snapshot",
+                            static_cast<unsigned long long>(next_file_index_)));
           next_file_index_++;
           return snapshot_data_filename;
         }

@@ -1133,8 +1133,8 @@ func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
 
 // CHECK-LABEL: func @infeed_dequeue_tuple
 func @infeed_dequeue_tuple() -> (tensor<3xi32>, tensor<4xf32>) {
-// CHECK: [[AFTER_ALL:%.*]] = "xla_hlo.after_all"() : () -> !xla_hlo.token
-// CHECK: [[INFEED:%.*]] = "xla_hlo.infeed"([[AFTER_ALL]]) {infeed_config = ""} : (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>
+// CHECK: [[TOKEN:%.*]] = "xla_hlo.create_token"() : () -> !xla_hlo.token
+// CHECK: [[INFEED:%.*]] = "xla_hlo.infeed"([[TOKEN]]) {infeed_config = ""} : (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>
 // CHECK: [[INFEED_VAL:%.*]] = "xla_hlo.get_tuple_element"([[INFEED]]) {index = 0 : i32} : (tuple<tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token>) -> tuple<tensor<3xi32>, tensor<4xf32>>
 // CHECK: [[RES_1:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 0 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<3xi32>
 // CHECK: [[RES_2:%.*]] = "xla_hlo.get_tuple_element"([[INFEED_VAL]]) {index = 1 : i32} : (tuple<tensor<3xi32>, tensor<4xf32>>) -> tensor<4xf32>
@@ -1393,8 +1393,8 @@ func @one_hot(%indices: tensor<3xi32>, %on_value: tensor<f32>, %off_value: tenso
 // CHECK-SAME: [[VAL_0:%.*]]: tensor<3xi32>, [[VAL_1:%.*]]: tensor<4xf32>)
 func @outfeed_enqueue_tuple(%data_1: tensor<3xi32>, %data_2: tensor<4xf32>) -> () {
 // CHECK: [[TUPLE:%.*]] = "xla_hlo.tuple"([[VAL_0]], [[VAL_1]]) : (tensor<3xi32>, tensor<4xf32>) -> tuple<tensor<3xi32>, tensor<4xf32>>
-// CHECK: [[AFTER_ALL:%.*]] = "xla_hlo.after_all"() : () -> !xla_hlo.token
-// CHECK: "xla_hlo.outfeed"([[TUPLE]], [[AFTER_ALL]]) {outfeed_config = ""} : (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
+// CHECK: [[TOKEN:%.*]] = "xla_hlo.create_token"() : () -> !xla_hlo.token
+// CHECK: "xla_hlo.outfeed"([[TUPLE]], [[TOKEN]]) {outfeed_config = ""} : (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
   "tf.OutfeedEnqueueTuple"(%data_1, %data_2) : (tensor<3xi32>, tensor<4xf32>) -> ()
   return
 }
@@ -3653,3 +3653,105 @@ func @xla_dynamic_update_slice2(%arg0: tensor<4xf32>, %arg1: tensor<2xf32>, %arg
   %0 = "tf.XlaDynamicUpdateSlice"(%arg0, %arg1, %arg2) : (tensor<4xf32>, tensor<2xf32>, tensor<1xi32>) -> tensor<4xf32>
   return %0 : tensor<4xf32>
 }
+
+//===----------------------------------------------------------------------===//
+// Cumsum op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @cumsum_static
+// CHECK-SAME: [[X:%.*]]: tensor<4xf32>
+func @cumsum_static(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: [[AXIS:%.*]] = xla_hlo.constant dense<0> : tensor<i32>
+  // CHECK: [[CONVERT_X:%.*]] = "xla_hlo.convert"([[X]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: [[INIT:%.*]] = xla_hlo.constant dense<0.000000e+00> : tensor<f32>
+  // CHECK: [[REDUCE:%.*]] = "xla_hlo.reduce_window"([[CONVERT_X]], [[INIT]]) ( {
+  // CHECK: ^bb0([[A:%.*]]: tensor<f32>, [[B:%.*]]: tensor<f32>):
+  // CHECK:   [[SUM:%.*]] = xla_hlo.add [[A]], [[B]] : tensor<f32>
+  // CHECK:   "xla_hlo.return"([[SUM]]) : (tensor<f32>) -> ()
+  // CHECK: }) {padding = dense<{{\[\[}}3, 0]]> : tensor<1x2xi64>, window_dimensions = dense<4> : tensor<1xi64>, window_strides = dense<1> : tensor<1xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<4xf32>
+  // CHECK: [[CONVERT_REDUCE:%.*]] = "xla_hlo.convert"([[REDUCE]]) : (tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: return [[CONVERT_REDUCE]]
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = false, reverse = false} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_exclusive
+func @cumsum_exclusive(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = true, reverse = false} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_reverse
+func @cumsum_reverse(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumsum"(%arg0, %0) {exclusive = false, reverse = true} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+// CHECK-LABEL: func @cumsum_dynamic
+func @cumsum_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<i32>) -> tensor<?xf32> {
+  // CHECK: "tf.Cumsum"
+  %0 = "tf.Cumsum"(%arg0, %arg1) : (tensor<?xf32>, tensor<i32>) -> tensor<?xf32>
+  return %0 : tensor<?xf32>
+}
+
+//===----------------------------------------------------------------------===//
+// tf.BatchMatMulV2 op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @batchmatmulv2_broadcast_singleton_dimension
+func @batchmatmulv2_broadcast_singleton_dimension(%arg0: tensor<1x4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+  // CHECK:         [[BLHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<1x4x2xf32>) -> tensor<3x4x2xf32>
+  // CHECK:         [[BRHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<3x2x4xf32>) -> tensor<3x2x4xf32>
+  // CHECK:         [[BDST:%.+]] = "xla_hlo.dot_general"([[BLHS]], [[BRHS]]) {dot_dimension_numbers = {
+  // CHECK-SAME:      lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-SAME:    }} : (tensor<3x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  // CHECK:         return [[BDST]] : tensor<3x4x4xf32>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<1x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  return %0 : tensor<3x4x4xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_lhs_batch
+func @batchmatmulv2_lhs_batch(%arg0: tensor<3x4x2xf32>, %arg1: tensor<2x4xf32>) -> tensor<3x4x4xf32> {
+  // CHECK:         [[BLHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<3x4x2xf32>) -> tensor<3x4x2xf32>
+  // CHECK:         [[BRHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<2x4xf32>) -> tensor<3x2x4xf32>
+  // CHECK:         [[BDST:%.+]] = "xla_hlo.dot_general"([[BLHS]], [[BRHS]]) {dot_dimension_numbers = {
+  // CHECK-SAME:      lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-SAME:    }} : (tensor<3x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  // CHECK:         return [[BDST]] : tensor<3x4x4xf32>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<3x4x2xf32>, tensor<2x4xf32>) -> tensor<3x4x4xf32>
+  return %0 : tensor<3x4x4xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_rhs_batch
+func @batchmatmulv2_rhs_batch(%arg0: tensor<4x2xf32>, %arg1: tensor<3x2x4xf32>) -> tensor<3x4x4xf32> {
+  // CHECK:         [[BLHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[1, 2]> : tensor<2xi64>} : (tensor<4x2xf32>) -> tensor<3x4x2xf32>
+  // CHECK:         [[BRHS:%.+]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<[0, 1, 2]> : tensor<3xi64>} : (tensor<3x2x4xf32>) -> tensor<3x2x4xf32>
+  // CHECK:         [[BDST:%.+]] = "xla_hlo.dot_general"([[BLHS]], [[BRHS]]) {dot_dimension_numbers = {
+  // CHECK-SAME:      lhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      lhs_contracting_dimensions = dense<2> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_batching_dimensions = dense<0> : tensor<1xi64>,
+  // CHECK-SAME:      rhs_contracting_dimensions = dense<1> : tensor<1xi64>
+  // CHECK-SAME:    }} : (tensor<3x4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  // CHECK:         return [[BDST]] : tensor<3x4x4xf32>
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<4x2xf32>, tensor<3x2x4xf32>) -> tensor<3x4x4xf32>
+  return %0 : tensor<3x4x4xf32>
+}
+
+// CHECK-LABEL: func @batchmatmulv2_dynamic
+func @batchmatmulv2_dynamic(%arg0: tensor<?x4x2xf32>, %arg1: tensor<?x2x4xf32>) -> tensor<?x4x4xf32> {
+  // CHECK: "tf.BatchMatMulV2"
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {T = f32, adj_x = false, adj_y = false, device = ""} : (tensor<?x4x2xf32>, tensor<?x2x4xf32>) -> tensor<?x4x4xf32>
+  return %0 : tensor<?x4x4xf32>
+}
+

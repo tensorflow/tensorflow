@@ -164,11 +164,6 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
-  };
 
   Executor* executor;
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));

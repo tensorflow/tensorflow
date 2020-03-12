@@ -176,8 +176,9 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
 Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_padding_.x != 1;
-  const std::string code = GenerateConvPowerVR1x1(
-      definition_, stride_correction, conv_params_, linked_operations_);
+  const std::string code =
+      GenerateConv(*creation_context.device, definition_, stride_correction,
+                   conv_params_, linked_operations_);
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsPowerVR()) {
@@ -268,8 +269,8 @@ Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
                                  conv_params_.work_group_size);
 }
 
-std::string GenerateConvPowerVR1x1(
-    const OperationDef& op_def, bool stride_correction,
+std::string GenerateConv(
+    const CLDevice& device, const OperationDef& op_def, bool stride_correction,
     const ConvPowerVR::ConvParams& conv_params,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   std::string c = GetCommonDefines(op_def.precision);
@@ -455,19 +456,32 @@ std::string GenerateConvPowerVR1x1(
     }
   };
   const auto mode = TextureAddressMode::ZERO;
+  const bool conditional_read = device.IsMali();
   auto read_src = [&]() {
     for (int y = 0; y < block_size.y; ++y) {
       for (int x = 0; x < block_size.x; ++x) {
         if (buffer_type) {
           std::string id = std::to_string(y) + std::to_string(x);
-          std::string multiplier = is1x1
-                                       ? ""
-                                       : " * (FLT)(mx" + std::to_string(x) +
-                                             " && my" + std::to_string(y) + ")";
-          c += "    src" + id + " = " +
-               src_tensor.ReadAsType(conv_params.weights_data_type,
-                                     "src_a_" + id) +
-               multiplier + ";\n";
+          if (is1x1) {
+            c += "    src" + id + " = " +
+                 src_tensor.ReadAsType(conv_params.weights_data_type,
+                                       "src_a_" + id) +
+                 ";\n";
+          } else {
+            std::string condition =
+                "mx" + std::to_string(x) + " && my" + std::to_string(y);
+            if (conditional_read) {
+              c += "    src" + id + " = " + condition + " ? " +
+                   src_tensor.ReadAsType(conv_params.weights_data_type,
+                                         "src_a_" + id) +
+                   " : (FLT4)(0.0f);\n";
+            } else {
+              c += "    src" + id + " = " +
+                   src_tensor.ReadAsType(conv_params.weights_data_type,
+                                         "src_a_" + id) +
+                   " * (FLT)(" + condition + ");\n";
+            }
+          }
           c += "    src_a_" + id + " += src_layer_offset;\n";
         } else {
           std::string id = std::to_string(y) + std::to_string(x);

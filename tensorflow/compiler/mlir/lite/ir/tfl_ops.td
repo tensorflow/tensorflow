@@ -3240,7 +3240,15 @@ Ba et al. 'Layer Normalization'
     // Since this op is the FULL kernel only, constrain it.
     Confined<
       DefaultValuedAttr<TFL_LSTMKernelTypeAttr, "FULL">,
-      [TFL_LSTM_KT_FULL]>:$kernel_type
+      [TFL_LSTM_KT_FULL]>:$kernel_type,
+
+    // Types of the optional intermediate tensors, which exist for fully
+    // quantized LSTM op and hold the ranges of the intermediate tensors.
+    OptionalAttr<TypeAttr>:$input_to_input_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_forget_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_cell_intermediate,
+    OptionalAttr<TypeAttr>:$input_to_output_intermediate,
+    OptionalAttr<TypeAttr>:$effective_hidden_scale_intermediate
   );
 
   let results = (outs AnyTensor:$output);

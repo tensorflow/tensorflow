@@ -1,0 +1,21 @@
+{
+  "name": "Mobilenet_quantized",
+  "subgraph_metadata": [
+    {
+      "output_tensor_metadata": [
+        {
+          "associated_files": [
+            {
+              "name": "file2"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "associated_files": [
+    {
+      "name": "file1"
+    }
+  ]
+}

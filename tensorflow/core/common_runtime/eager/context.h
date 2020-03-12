@@ -446,8 +446,8 @@ class EagerContext : public core::RefCounted {
   Status FindCustomDeviceFromName(const string& device_name,
                                   CustomDevice** dev) const;
 
-  void RegisterCustomDevice(const string& name,
-                            std::unique_ptr<CustomDevice> device);
+  Status RegisterCustomDevice(const string& name,
+                              std::unique_ptr<CustomDevice> device);
 
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.

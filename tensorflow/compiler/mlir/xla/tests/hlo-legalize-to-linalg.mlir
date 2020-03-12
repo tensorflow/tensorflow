@@ -77,6 +77,17 @@ func @integer_remainder(%lhs: tensor<2x2xi32>,
 
 // -----
 
+// CHECK-LABEL: func @float_rsqrt
+func @float_rsqrt(%operand: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %tensor_result = "xla_hlo.rsqrt"(%operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK: linalg.generic
+  // CHECK: rsqrt
+  return %tensor_result : tensor<2x2xf32>
+}
+
+// -----
+
 // CHECK-LABEL: func @float_sub
 func @float_sub(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -240,7 +251,7 @@ func @broadcast(%operand: tensor<5x7x1xf32>) -> tensor<7x10x6x4x5xf32> {
 
 // -----
 
-// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> (0)>
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = affine_map<(d0, d1, d2) -> ()>
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: tensor<f32>) -> tensor<7x10x6xf32> {

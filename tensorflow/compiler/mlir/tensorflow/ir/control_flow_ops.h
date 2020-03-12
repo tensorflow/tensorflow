@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 
 namespace mlir {
 namespace TFControlFlow {

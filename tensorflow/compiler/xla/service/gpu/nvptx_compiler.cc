@@ -233,13 +233,14 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string filename :
+  for (const string full_filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
+    auto filename = tensorflow::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
-      matched_filename = filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
+      matched_filename = full_filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }

@@ -263,16 +263,6 @@ class PyTpuBuffer {
 // device-allocated literals. Wraps an XLA LocalExecutable.
 class PyTpuExecutable {
  public:
-  // Compiles a computation to an executable.
-  static StatusOr<std::unique_ptr<PyTpuExecutable>> CompileForDevices(
-      const XlaComputation& computation,
-      absl::optional<std::vector<Shape>> argument_layouts,
-      const ExecutableBuildOptions* build_options,
-      std::shared_ptr<PyTpuClient> client,
-      const std::vector<std::vector<std::shared_ptr<Device>>>&
-          device_assignment);
-
-  // TODO(phawkins): remove after changing callers to use the first overload.
   static StatusOr<std::unique_ptr<PyTpuExecutable>> Compile(
       const XlaComputation& computation,
       absl::optional<std::vector<Shape>> argument_layouts,
@@ -315,19 +305,11 @@ class PyTpuExecutable {
     return local_devices_;
   }
 
-  // TODO(power): Both Execute and ExecutePerReplica block and wait inside for
-  // computation to finish. Coordinate with JAX code change to see if we can
-  // make both Execute and ExecutePerReplica non-blocking.
+  // TODO(power): Both Execute and ExecutePerOnLocalDevices block and wait
+  // inside for computation to finish. Coordinate with JAX code change to see if
+  // we can make both Execute and ExecutePerReplica non-blocking.
   StatusOr<std::unique_ptr<PyTpuBuffer>> Execute(
       absl::Span<PyTpuBuffer* const> argument_handles);
-
-  // Execute on many replicas. Takes a sequence of argument lists (one argument
-  // list per replica) and returns a tuple of results (one result per replica).
-  // The number of argument lists must be equal to the replica count.
-  // The executable must have only one partition.
-  // TODO(cjfj): Remove this once JAX is moved to `ExecuteOnLocalDevices`.
-  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecutePerReplica(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local

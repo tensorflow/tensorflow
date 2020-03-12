@@ -188,6 +188,8 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       if (!InputsWithCorrectTypes(node, context,
                                   {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
         return false;
+
+      // Check dilation.
       const TfLiteDepthwiseConvParams* conv_params =
           reinterpret_cast<const TfLiteDepthwiseConvParams*>(
               node->builtin_data);
@@ -198,10 +200,19 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         if (conv_params->stride_height != 1 || conv_params->stride_width != 1)
           return false;
       }
+
+      // We currently only support depth_multiplier > 1 when:
+      // 1. dilation_factor == 1 AND
+      // 2. input_depth == 1
+      // TODO(b/143759564): Add support for general case.
+      const auto& input = context->tensors[node->inputs->data[0]];
+      const bool supported_depth_multiplier =
+          conv_params->depth_multiplier == 1 ||
+          (!dilation && input.dims->size == 4 && input.dims->data[3] == 1);
+
       return (IsActivationReluOrNone(conv_params->activation) &&
               conv_params->stride_height <= 3 &&
-              conv_params->stride_width <= 3 &&
-              conv_params->depth_multiplier == 1);
+              conv_params->stride_width <= 3 && supported_depth_multiplier);
     }
     case kTfLiteBuiltinReshape: {
       if (node->inputs->size > 2 ||

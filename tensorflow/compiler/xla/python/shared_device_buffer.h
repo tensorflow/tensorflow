@@ -93,20 +93,23 @@ class SharedDeviceBuffer {
   // buffers of the shaped_buffer.
   static std::shared_ptr<SharedDeviceBuffer> FromScopedShapedBuffer(
       ScopedShapedBuffer* shaped_buffer,
-      const std::shared_ptr<BufferDefinitionEvent>& definition_event);
+      absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+          definition_events);
 
   // Makes a tuple buffer. Does not initialize the tuple table.
   static StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeTuple(
       std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
       const Shape& on_host_shape, TransferManager* transfer_manager,
       se::DeviceMemoryAllocator* allocator, int device_ordinal,
-      std::shared_ptr<BufferDefinitionEvent> definition_event);
+      absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+          definition_events);
 
   // Makes an uninitialized array buffer.
   static StatusOr<std::shared_ptr<SharedDeviceBuffer>> MakeArray(
       Shape on_device_shape, TransferManager* transfer_manager,
       se::DeviceMemoryAllocator* allocator, int device_ordinal,
-      std::shared_ptr<BufferDefinitionEvent> definition_event);
+      absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+          definition_events);
 
   // Builds a ShapedBuffer view onto the buffers of 'tree'. We require but do
   // not verify that TransferManager::HostShapeToDeviceShape(on_host_shape) ==
@@ -126,19 +129,22 @@ class SharedDeviceBuffer {
   const absl::InlinedVector<se::DeviceMemoryBase, 1>& device_memory() const {
     return device_memory_;
   }
-  const std::shared_ptr<BufferDefinitionEvent> definition_event() const {
-    return definition_event_;
+  absl::Span<const std::shared_ptr<BufferDefinitionEvent>> definition_events()
+      const {
+    return definition_events_;
   }
 
   SharedDeviceBuffer() = default;
   SharedDeviceBuffer(se::DeviceMemoryAllocator* allocator, int device_ordinal,
                      absl::Span<se::DeviceMemoryBase const> device_memory,
                      std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
-                     std::shared_ptr<BufferDefinitionEvent> definition_event,
+                     absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+                         definition_events,
                      std::function<void()> on_delete_callback);
   SharedDeviceBuffer(absl::Span<se::OwningDeviceMemory> device_memory,
                      std::vector<std::shared_ptr<SharedDeviceBuffer>> children,
-                     std::shared_ptr<BufferDefinitionEvent> definition_event);
+                     absl::Span<const std::shared_ptr<BufferDefinitionEvent>>
+                         definition_events);
   ~SharedDeviceBuffer();
 
  private:
@@ -155,7 +161,8 @@ class SharedDeviceBuffer {
   // ready during multistream execution. May be nullptr, which is used in the
   // single-stream execution case where events are not necessary for buffer
   // event sequencing.
-  std::shared_ptr<BufferDefinitionEvent> definition_event_;
+  absl::InlinedVector<std::shared_ptr<BufferDefinitionEvent>, 2>
+      definition_events_;
 
   // A callback to call when the SharedDeviceBuffer is about to be destroyed.
   std::function<void()> on_delete_callback_;

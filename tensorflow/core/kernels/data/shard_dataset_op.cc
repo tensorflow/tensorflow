@@ -48,8 +48,9 @@ class ShardDatasetOp::Dataset : public DatasetBase {
         input_(input),
         require_non_empty_(require_non_empty),
         traceme_metadata_(
-            {{"index", strings::Printf("%lld", index)},
-             {"num_shards", strings::Printf("%lld", num_shards)}}) {
+            {{"index", strings::Printf("%lld", static_cast<long long>(index))},
+             {"num_shards",
+              strings::Printf("%lld", static_cast<long long>(num_shards))}}) {
     input_->Ref();
   }
 

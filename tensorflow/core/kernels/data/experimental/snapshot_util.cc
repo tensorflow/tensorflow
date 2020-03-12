@@ -36,6 +36,9 @@ namespace tensorflow {
 namespace data {
 namespace snapshot_util {
 
+/* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
+/* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+
 Writer::Writer(WritableFile* dest, const string& compression_type, int version,
                const DataTypeVector& dtypes)
     : dest_(dest), compression_type_(compression_type), version_(version) {
