@@ -91,6 +91,9 @@ std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
 // a single block.
 std::unique_ptr<Pass> createLhloCopyRemovalPass();
 
+// Lowers from LHLO dialect to parallel loops.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToParallelLoopsPass();
+
 }  // namespace xla_lhlo
 }  // namespace mlir
 

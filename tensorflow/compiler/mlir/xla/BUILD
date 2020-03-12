@@ -224,6 +224,23 @@ cc_library(
 )
 
 cc_library(
+    name = "lhlo_legalize_to_parallel_loops",
+    srcs = ["transforms/lhlo_legalize_to_parallel_loops.cc"],
+    deps = [
+        ":lhlo",
+        "@com_google_absl//absl/memory",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LoopOps",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_legalize_to_linalg",
     srcs = ["transforms/xla_legalize_to_linalg.cc"],
     deps = [
