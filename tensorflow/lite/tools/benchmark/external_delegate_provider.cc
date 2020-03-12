@@ -73,25 +73,22 @@ struct ExternalLib {
   using DestroyDelegatePtr = std::add_pointer<void(TfLiteDelegate*)>::type;
 
   // Open a given delegate library and load the create/destroy symbols
-  void load(const std::string library) {
-    if (!is_loaded) {
-      void* handle = LibSupport::Load(library.c_str());
-      if (handle == nullptr) {
-        TFLITE_LOG(INFO) << "Unable to load external delegate from : "
-                         << library;
-      } else {
-        create = reinterpret_cast<decltype(create)>(
-            LibSupport::GetSymbol(handle, "tflite_plugin_create_delegate"));
-        destroy = reinterpret_cast<decltype(destroy)>(
-            LibSupport::GetSymbol(handle, "tflite_plugin_destroy_delegate"));
-        is_loaded = create && destroy;
-      }
+  bool load(const std::string library) {
+    void* handle = LibSupport::Load(library.c_str());
+    if (handle == nullptr) {
+      TFLITE_LOG(INFO) << "Unable to load external delegate from : " << library;
+    } else {
+      create = reinterpret_cast<decltype(create)>(
+          LibSupport::GetSymbol(handle, "tflite_plugin_create_delegate"));
+      destroy = reinterpret_cast<decltype(destroy)>(
+          LibSupport::GetSymbol(handle, "tflite_plugin_destroy_delegate"));
+      return create && destroy;
     }
+    return false;
   }
 
   CreateDelegatePtr create{nullptr};
   DestroyDelegatePtr destroy{nullptr};
-  bool is_loaded{false};
 };
 }  // namespace
 
@@ -110,9 +107,6 @@ class ExternalDelegateProvider : public DelegateProvider {
       const BenchmarkParams& params) const final;
 
   std::string GetName() const final { return "EXTERNAL"; }
-
- private:
-  mutable ExternalLib delegate_lib_;
 };
 REGISTER_DELEGATE_PROVIDER(ExternalDelegateProvider);
 
@@ -147,9 +141,8 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
   std::string lib_path = params.Get<std::string>("external_delegate_path");
   if (!lib_path.empty()) {
-    delegate_lib_.load(lib_path);
-
-    if (delegate_lib_.is_loaded) {
+    ExternalLib delegate_lib;
+    if (delegate_lib.load(lib_path)) {
       // Parse delegate options
       const std::vector<std::string> options = SplitString(
           params.Get<std::string>("external_delegate_options"), ';');
@@ -171,9 +164,9 @@ TfLiteDelegatePtr ExternalDelegateProvider::CreateTfLiteDelegate(
 
       // Create delegate
       delegate =
-          TfLiteDelegatePtr(delegate_lib_.create(ckeys.data(), cvalues.data(),
-                                                 num_options, nullptr),
-                            delegate_lib_.destroy);
+          TfLiteDelegatePtr(delegate_lib.create(ckeys.data(), cvalues.data(),
+                                                num_options, nullptr),
+                            delegate_lib.destroy);
     }
   }
   return delegate;
