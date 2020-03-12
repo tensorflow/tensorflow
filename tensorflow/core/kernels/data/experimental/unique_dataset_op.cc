@@ -75,7 +75,7 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     Status Initialize(IteratorContext* ctx) override {
-      return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+      return dataset()->input_->MakeIterator(ctx, this, prefix(), &input_impl_);
     }
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -196,9 +196,9 @@ class UniqueDatasetOp::Dataset : public DatasetBase {
     };
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
       std::unordered_set<Tensor, TensorHash, TensorKeyEqual> unique_elements_
-          GUARDED_BY(mu_);
+          TF_GUARDED_BY(mu_);
   };
 
     const DatasetBase* const input_;

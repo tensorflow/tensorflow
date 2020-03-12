@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -347,74 +348,17 @@ TEST_F(OpKernelTest, MatchSignatureFailes) {
 
 class DummyDevice : public DeviceBase {
  public:
-  DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool RequiresRecordingAccessedTensors() const override { return save_; }
+  explicit DummyDevice(Env* env) : DeviceBase(env) {}
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
-
- private:
-  bool save_;
 };
-
-TEST_F(OpKernelTest, SaveTempFalse) {
-  Env* env = Env::Default();
-  OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
-  Status status;
-  std::unique_ptr<OpKernel> op(
-      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
-                     TF_GRAPH_DEF_VERSION, &status));
-  EXPECT_TRUE(status.ok());
-  params.op_kernel = op.get();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
-
-  Tensor t;
-  TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
-
-  TensorReferenceVector referenced_tensors;
-  ctx->retrieve_accessed_tensors(&referenced_tensors);
-  EXPECT_EQ(0, referenced_tensors.size());
-}
-
-TEST_F(OpKernelTest, SaveTempTrue) {
-  Env* env = Env::Default();
-  OpKernelContext::Params params;
-  params.record_tensor_accesses = true;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
-  Status status;
-  std::unique_ptr<OpKernel> op(
-      CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
-                     CreateNodeDef("Test1", {DT_FLOAT, DT_INT32}),
-                     TF_GRAPH_DEF_VERSION, &status));
-  EXPECT_TRUE(status.ok());
-  params.op_kernel = op.get();
-  auto ctx = absl::make_unique<OpKernelContext>(&params);
-
-  Tensor t;
-  TF_EXPECT_OK(ctx->allocate_temp(DT_FLOAT, TensorShape(), &t));
-
-  TensorReferenceVector referenced_tensors;
-  ctx->retrieve_accessed_tensors(&referenced_tensors);
-  EXPECT_EQ(1, referenced_tensors.size());
-  for (auto& ref : referenced_tensors) {
-    ref.Unref();
-  }
-}
 
 TEST_F(OpKernelTest, InputDtype) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
+  DummyDevice device(env);
+  params.device = &device;
   Status status;
   std::unique_ptr<OpKernel> op(
       CreateOpKernel(DEVICE_CPU, params.device, cpu_allocator(),
@@ -498,7 +442,6 @@ class ScopedAllocatorDevice : public DeviceBase {
 TEST_F(OpKernelTest, ScopedAllocationTest) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
   auto sa_device = absl::make_unique<ScopedAllocatorDevice>(env);
   params.device = sa_device.get();
   Status status;
@@ -787,10 +730,8 @@ REGISTER_KERNEL_BUILDER(Name("ListOut").Device(tensorflow::DEVICE_CPU),
 TEST_F(OpKernelBuilderTest, OpOutputList) {
   Env* env = Env::Default();
   OpKernelContext::Params params;
-  params.record_tensor_accesses = false;
-  auto device =
-      absl::make_unique<DummyDevice>(env, params.record_tensor_accesses);
-  params.device = device.get();
+  DummyDevice device(env);
+  params.device = &device;
   Status status;
   std::unique_ptr<OpKernel> op(CreateOpKernel(
       DEVICE_CPU, params.device, cpu_allocator(),
@@ -1065,7 +1006,7 @@ void BM_InputRangeHelper(int iters, const NodeDef& node_def,
                          const char* input_name, int expected_start,
                          int expected_stop) {
   Status status;
-  auto device = absl::make_unique<DummyDevice>(Env::Default(), false);
+  auto device = absl::make_unique<DummyDevice>(Env::Default());
 
   std::unique_ptr<OpKernel> op(CreateOpKernel(DEVICE_CPU, device.get(),
                                               cpu_allocator(), node_def,

@@ -127,14 +127,15 @@ TfLiteQuantizationParams GetLegacyQuantization(
 
 static constexpr const char kUnknownCustomOpName[] = "UnknownCustomOp";
 const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
-  const char* op_name = nullptr;
   if (op_reg.builtin_code == tflite::BuiltinOperator_CUSTOM) {
     const char* const custom_name = op_reg.custom_name;
-    op_name = custom_name ? custom_name : kUnknownCustomOpName;
-  } else {
-    op_name = tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+    return custom_name ? custom_name : kUnknownCustomOpName;
   }
-  return op_name;
+  if (op_reg.builtin_code == tflite::BuiltinOperator_DELEGATE &&
+      op_reg.custom_name) {
+    return op_reg.custom_name;
+  }
+  return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
 }
 
 }  // namespace
@@ -920,16 +921,13 @@ TfLiteStatus Subgraph::Invoke() {
       // This happens when an intermediate dynamic tensor is resized.
       // We don't have to prepare all the ops, but we need to recompute
       // the allocation plan.
-      //
-      // This is a workaround for b/127354079. It relies on the property that
-      // ArenaPlanner's behavior is deterministic. A better solution is being
-      // able to "Rewind" to a specific index in ArenaPlanner.
-      // TODO(b/127354079): Improve ArenaPlanner and remove this mechanism.
       if (next_execution_plan_index_to_plan_allocation_ >
           next_execution_plan_index_to_prepare_) {
-        next_execution_plan_index_to_plan_allocation_ = 0;
+        next_execution_plan_index_to_plan_allocation_ =
+            next_execution_plan_index_to_prepare_;
         if (memory_planner_) {
-          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+          TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocationsAfter(
+              next_execution_plan_index_to_plan_allocation_ - 1));
         }
       }
     }
@@ -1077,7 +1075,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 // to Interpreter.
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
-    const int* dims, TfLiteQuantization quantization, bool is_variable) {
+    const int* dims, TfLiteQuantization quantization, bool is_variable,
+    const size_t rank_dims_signature, const int* dims_signature) {
   // Ensure quantization cleanup on failure.
   ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
@@ -1117,6 +1116,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
   // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
   // if there are other required callers.
   tensor.quantization = *scoped_quantization.release();
+  tensor.dims_signature =
+      ConvertArrayToTfLiteIntArray(rank_dims_signature, dims_signature);
   return kTfLiteOk;
 }
 

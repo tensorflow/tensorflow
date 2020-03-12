@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package tensorflow.profiler;
 
+import "tensorflow/core/profiler/protobuf/kernel_stats.proto";
 import "tensorflow/core/profiler/protobuf/op_metrics.proto";
 import "tensorflow/core/profiler/protobuf/steps_db.proto";
 
@@ -99,4 +100,6 @@ message OpStats {
   StepDatabaseResult step_db = 4;
   // The run environment of this profiling session.
   RunEnvironment run_environment = 5;
+  // Kernel stats results from all GPUs.
+  KernelStatsDb kernel_stats_db = 6;
 }

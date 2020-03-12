@@ -140,14 +140,21 @@ def _make_coordinated_sloppy_dataset(apply_map, num_elements,
     coordination_events[x].clear()
     return x * x
 
-  def map_fn(x):
+  def fn(x):
     return script_ops.py_func(map_py_fn, [x], x.dtype)
 
   options = dataset_ops.Options()
   options.experimental_deterministic = False
   dataset = dataset_ops.Dataset.range(num_elements)
-  dataset = apply_map(dataset, map_fn, num_parallel_calls).with_options(options)
+  dataset = apply_map(dataset, fn, num_parallel_calls).with_options(options)
   return dataset, coordination_events
+
+
+class Foo(object):
+  """Dummy class used for invalid return value tests."""
+
+  def __init__(self):
+    pass
 
 
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -1007,8 +1014,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensors([1.0, 2.0, 3.0])
     with self.assertRaisesRegexp(
         TypeError, r"Unsupported return value from function passed to "
-        r"Dataset.map\(\): None."):
-      _ = apply_map(dataset, lambda x: None)
+        r"Dataset.map\(\)"):
+      _ = apply_map(dataset, lambda x: Foo)
 
   @combinations.generate(test_base.default_test_combinations())
   def testBrokenFunctionErrorOnInitialization(self):
@@ -1322,6 +1329,56 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           dataset,
           expected_output=expected_output,
           requires_initialization=True)
+
+  @combinations.generate(
+      combinations.times(
+          _test_combinations(),
+          combinations.combine(
+              local_determinism=[None, True, False],
+              global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, apply_map, local_determinism,
+                                   global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(1000))
+
+    def dataset_fn(delay_ms):
+
+      def sleep(x):
+        time.sleep(delay_ms / 1000)
+        return x
+
+      def map_function(x):
+        if math_ops.equal(x, 0):
+          return script_ops.py_func(sleep, [x], x.dtype)
+        else:
+          return x
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = apply_map(
+          dataset,
+          map_function,
+          num_parallel_calls=2,
+          deterministic=local_determinism)
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(
+        dataset_fn, expect_determinism, expected_elements=elements)
+
+  @combinations.generate(_test_combinations())
+  def testNoneComponent(self, apply_map):
+    dataset = dataset_ops.Dataset.from_tensors((42, None))
+
+    def map_function(x, y):
+      if y is None:
+        return x / 2
+      return x
+
+    dataset = apply_map(dataset, map_function)
+    self.assertDatasetProduces(dataset, expected_output=[21])
 
 
 if __name__ == "__main__":

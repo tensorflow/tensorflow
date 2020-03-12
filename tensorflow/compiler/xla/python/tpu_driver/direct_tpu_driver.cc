@@ -27,6 +27,12 @@
 namespace tpu_driver {
 namespace {
 
+// Enable the macro by default in the Google internal environment where the
+// libtpu.so is linked in statically.
+#ifdef PLATFORM_GOOGLE
+#define TPU_SHARED_LIBRARY_COMPILE_LINK 1
+#endif
+
 xla::Status CreateXlaStatus(::TpuStatus* status) {
   if (status->code == tensorflow::error::OK) {
     return xla::Status::OK();
@@ -136,6 +142,10 @@ class DirectCompiledProgramHandle : public CompiledProgramHandle {
         driver_fn_(driver_fn),
         event_(new DirectEvent(driver_fn, handle->event)) {}
 
+  ~DirectCompiledProgramHandle() override {
+    driver_fn_->TpuDriver_FreeCompiledProgramHandle(handle_);
+  }
+
   std::shared_ptr<Event> OnReady() override { return event_; }
 
   int64_t size_in_bytes() override {
@@ -235,12 +245,19 @@ class DirectTpuDriver : public TpuDriver {
     PrototypeTpuDriver_Initialize* initialize_fn;
     *reinterpret_cast<void**>(&initialize_fn) =
         dlsym(handle, "TpuDriver_Initialize");
-    initialize_fn(&driver_fn_);
+    initialize_fn(&driver_fn_, /*initialize=*/true);
 
     driver_ = driver_fn_.TpuDriver_Open("local://");
   }
 
-  ~DirectTpuDriver() override {}
+#ifdef TPU_SHARED_LIBRARY_COMPILE_LINK
+  DirectTpuDriver() {
+    TpuDriver_Initialize(&driver_fn_, /*initialize=*/false);
+    driver_ = driver_fn_.TpuDriver_Open("local://");
+  }
+#endif
+
+  ~DirectTpuDriver() override { driver_fn_.TpuDriver_Close(driver_); }
 
   void QuerySystemInfo(SystemInfo* system_info) override {
     ::TpuSystemInfo* info = driver_fn_.TpuDriver_QuerySystemInfo(driver_);
@@ -248,7 +265,12 @@ class DirectTpuDriver : public TpuDriver {
     driver_fn_.TpuDriver_FreeSystemInfo(info);
   }
 
-  xla::Status Reset() override { LOG(FATAL) << "Unimplemented."; }
+  xla::Status Reset() override {
+    auto tpu_status = driver_fn_.TpuDriver_Reset(driver_);
+    auto status = CreateXlaStatus(tpu_status);
+    driver_fn_.TpuDriver_FreeStatus(tpu_status);
+    return status;
+  }
 
   std::unique_ptr<BufferHandle> Allocate(
       int32_t core_id, MemoryRegion region, int64_t num_bytes,
@@ -304,11 +326,11 @@ class DirectTpuDriver : public TpuDriver {
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto tpu_events = MakeEventArray(wait_for);
+    auto* direct_bh = static_cast<DirectBufferHandle*>(handle.get());
     auto event = std::make_shared<DirectEvent>(
         &driver_fn_,
-        driver_fn_.TpuDriver_Deallocate(
-            driver_, static_cast<DirectBufferHandle*>(handle.get())->handle_,
-            wait_for.size(), tpu_events));
+        driver_fn_.TpuDriver_Deallocate(driver_, direct_bh->handle_,
+                                        wait_for.size(), tpu_events));
     delete[] tpu_events;
     return event;
   }
@@ -395,12 +417,11 @@ class DirectTpuDriver : public TpuDriver {
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto tpu_events = MakeEventArray(wait_for);
+    auto* direct_lph = static_cast<DirectLoadedProgramHandle*>(handle.get());
     auto event = std::make_shared<DirectEvent>(
         &driver_fn_,
-        driver_fn_.TpuDriver_UnloadProgram(
-            driver_,
-            static_cast<DirectLoadedProgramHandle*>(handle.get())->handle_,
-            wait_for.size(), tpu_events));
+        driver_fn_.TpuDriver_UnloadProgram(driver_, direct_lph->handle_,
+                                           wait_for.size(), tpu_events));
     delete[] tpu_events;
     return event;
   }
@@ -463,6 +484,15 @@ class DirectTpuDriver : public TpuDriver {
 xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterDirectTpuDriver(
     const TpuDriverConfig& config) {
   std::string shared_lib = config.worker().substr(strlen(kDirectProtocol));
+  if (shared_lib == "internal") {
+#ifdef TPU_SHARED_LIBRARY_COMPILE_LINK
+    return xla::StatusOr<std::unique_ptr<TpuDriver>>(
+        absl::make_unique<DirectTpuDriver>());
+#else
+    LOG(FATAL) << "Request to use compile-time linked TPU library, but did not "
+               << "link in appropriate library at compile time.";
+#endif
+  }
   return xla::StatusOr<std::unique_ptr<TpuDriver>>(
       absl::make_unique<DirectTpuDriver>(shared_lib));
 }

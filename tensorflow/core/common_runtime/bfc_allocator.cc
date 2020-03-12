@@ -269,7 +269,7 @@ size_t BFCAllocator::RoundedBytes(size_t bytes) {
 }
 
 bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
-    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
   // Do nothing if garbage collection is off.
   if (!garbage_collection_) {
     return false;
@@ -326,7 +326,7 @@ bool BFCAllocator::DeallocateFreeRegions(size_t rounded_bytes)
 
 void BFCAllocator::DeallocateRegions(
     const absl::flat_hash_set<void*>& region_ptrs)
-    EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
   // Explicitly remove the const qualifier as some compilers disallow passing
   // const_iterator to std::vector::erase(), which is used in
   // RemoveAllocationRegion().
@@ -382,7 +382,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
-    AddTraceMe("MemoryAllocation");
+    AddTraceMe("MemoryAllocation", num_bytes);
     return ptr;
   }
 
@@ -390,7 +390,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation");
+      AddTraceMe("MemoryAllocation", num_bytes);
       return ptr;
     }
   }
@@ -403,7 +403,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     if (MergeTimestampedChunks(rounded_bytes)) {
       ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
       if (ptr != nullptr) {
-        AddTraceMe("MemoryAllocation");
+        AddTraceMe("MemoryAllocation", num_bytes);
         return ptr;
       }
     }
@@ -417,7 +417,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation");
+      AddTraceMe("MemoryAllocation", num_bytes);
       return ptr;
     }
   }
@@ -441,22 +441,31 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   return nullptr;
 }
 
-void BFCAllocator::AddTraceMe(absl::string_view traceme_name) {
+void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
+                              int64 requested_bytes) {
+  // Internal users will see the memory profile with default trace level.
+  auto traceme_level = profiler::TraceMeLevel::kVerbose;
+#ifdef PLATFORM_GOOGLE
+  traceme_level = profiler::TraceMeLevel::kInfo;
+#endif
+
   tensorflow::profiler::TraceMe trace_me(
-      [&]() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
+      [&]() TF_EXCLUSIVE_LOCKS_REQUIRED(lock_) {
         AllocatorStats stats = stats_;
-        double fragmentation = GetFragmentation();
         int64 bytes_available =
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
         return absl::StrCat(traceme_name, "#allocator_name=", name_,
                             ",bytes_reserved=", stats.bytes_reserved,
                             ",bytes_allocated=", stats.bytes_in_use,
                             ",bytes_available=", bytes_available,
-                            ",fragmentation=", fragmentation,
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
+                            ",requested_bytes=", requested_bytes,
+#ifdef TENSORFLOW_MEM_DEBUG
+                            ",tf_op=", pending_op_name, ",id=", pending_step_id,
+#endif
                             "#");
       },
-      /*level=*/3);
+      traceme_level);
 }
 
 void* BFCAllocator::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
@@ -591,6 +600,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
 
+  int64 requested_bytes = ChunkFromHandle(h)->requested_size;
   MarkFree(h);
 
   // Consider coalescing it.
@@ -605,7 +615,7 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
     LOG(INFO) << "F: " << RenderOccupancy();
   }
 
-  AddTraceMe("MemoryDeallocation");
+  AddTraceMe("MemoryDeallocation", -requested_bytes);
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.

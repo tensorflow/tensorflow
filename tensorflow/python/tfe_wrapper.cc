@@ -26,8 +26,10 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/eager/dlpack.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/python/eager/pywrap_tensor_conversion.h"
 #include "tensorflow/python/eager/pywrap_tfe.h"
 #include "tensorflow/python/lib/core/py_exception_registry.h"
@@ -41,7 +43,6 @@ namespace py = pybind11;
 PYBIND11_MAKE_OPAQUE(TFE_Executor);
 PYBIND11_MAKE_OPAQUE(TFE_ContextOptions);
 PYBIND11_MAKE_OPAQUE(TFE_CancellationManager);
-PYBIND11_MAKE_OPAQUE(TFE_Profiler);
 
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringCounter0);
 PYBIND11_MAKE_OPAQUE(TFE_MonitoringCounter1);
@@ -317,11 +318,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       m, "TFE_MonitoringSampler2");
   py::class_<TFE_CancellationManager> TFE_CancellationManager_class(
       m, "TFE_CancellationManager");
-  py::class_<TFE_Profiler> TFE_Profiler_class(m, "TFE_Profiler");
 
   py::class_<TF_DeviceList> TF_DeviceList_class(m, "TF_DeviceList");
   py::class_<TF_Function> TF_Function_class(m, "TF_Function");
-  py::class_<TF_Buffer> TF_Buffer_class(m, "TF_Buffer");
 
   m.def("TFE_Py_RegisterExceptionClass", [](const py::handle& e) {
     return tensorflow::pyo_or_throw(TFE_Py_RegisterExceptionClass(e.ptr()));
@@ -338,6 +337,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
+  m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
 
   // // TFE_Context Logic
   m.def(
@@ -364,12 +364,13 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         return output;
       },
       py::return_value_policy::reference);
-  m.def("TFE_ContextAddFunction", [](py::handle& ctx, py::handle& func) {
+  m.def("TFE_HostAddressSpace", [](py::handle& o, TF_Buffer& buf) {
+    TFE_HostAddressSpace(tensorflow::InputTFE_Context(o), &buf);
+  });
+  m.def("TFE_ContextAddFunction", [](py::handle& ctx, TF_Function* func) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
-    SwigPyObject* sstable_swig = reinterpret_cast<SwigPyObject*>(func.ptr());
-    auto function = reinterpret_cast<TF_Function*>(sstable_swig->ptr);
-    TFE_ContextAddFunction(tensorflow::InputTFE_Context(ctx), function,
+    TFE_ContextAddFunction(tensorflow::InputTFE_Context(ctx), func,
                            status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
@@ -380,6 +381,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           TFE_ContextAddFunctionDef(tensorflow::InputTFE_Context(ctx),
                                     serialized_function_def, size,
                                     status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
+  m.def("TFE_ContextGetFunctionDef",
+        [](py::handle& ctx, const char* function_name, TF_Buffer& buf) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_ContextGetFunctionDef(tensorflow::InputTFE_Context(ctx),
+                                    function_name, &buf, status.get());
           tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
         });
   m.def("TFE_ContextRemoveFunction", [](py::handle& ctx, const char* name) {
@@ -465,6 +474,19 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
     return output;
   });
+  m.def("TFE_ContextSyncExecutors", [](py::handle& ctx) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+  });
+  m.def("TFE_ContextClearExecutors", [](py::handle& ctx) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TFE_ContextAsyncWait(tensorflow::InputTFE_Context(ctx), status.get());
+    // NOTE: different from TFE_ContextSyncExecutors that raises potential
+    // errors, deliberately ignore executor statuses in cleanup.
+  });
 
   // TFE_Executor logic
   m.def(
@@ -493,41 +515,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         return TFE_ContextGetExecutorForThread(tensorflow::InputTFE_Context(o));
       },
       py::return_value_policy::reference);
-
-  // Profiler Logic
-  m.def("TFE_NewProfiler", &TFE_NewProfiler,
-        py::return_value_policy::reference);
-  m.def("TFE_ProfilerIsOk", &TFE_ProfilerIsOk);
-  m.def("TFE_DeleteProfiler", &TFE_DeleteProfiler);
-  m.def("TFE_ProfilerSerializeToString",
-        [](TFE_Profiler& profiler, TF_Buffer& buf) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_ProfilerSerializeToString(&profiler, &buf, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
-  m.def("TFE_StartProfilerServer", &TFE_StartProfilerServer);
-  m.def(
-      "TFE_ProfilerClientStartTracing",
-      [](const char* service_addr, const char* logdir, const char* worker_list,
-         bool include_dataset_ops, int duration_ms, int num_tracing_attempts) {
-        tensorflow::Safe_TF_StatusPtr status =
-            tensorflow::make_safe(TF_NewStatus());
-        bool output = TFE_ProfilerClientStartTracing(
-            service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
-            num_tracing_attempts, status.get());
-        tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        return output;
-      });
-  m.def("TFE_ProfilerClientMonitor",
-        [](const char* service_addr, int duration_ms, int monitoring_level,
-           bool display_timestamp, TF_Buffer& result) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_ProfilerClientMonitor(service_addr, duration_ms, monitoring_level,
-                                    display_timestamp, &result, status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
 
   m.def("TFE_OpNameGetAttrType",
         [](py::handle& ctx, const char* op_or_function_name,
@@ -581,17 +568,16 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             &cancellation_manager, num_outputs);
       });
   m.def("TFE_Py_FastPathExecute", [](const py::args args) {
-    // First argument is a PyObject which is unused.
-    // https://docs.python.org/3/c-api/structures.html#METH_VARARGS
     // TFE_Py_FastPathExecute requires error checking prior to returning.
-    return tensorflow::pyo_or_throw(
-        TFE_Py_FastPathExecute_C(nullptr, args.ptr()));
+    return tensorflow::pyo_or_throw(TFE_Py_FastPathExecute_C(args.ptr()));
   });
   m.def("TFE_Py_RecordGradient",
         [](const py::handle& op_name, const py::handle& inputs,
-           const py::handle& attrs, const py::handle& results) {
+           const py::handle& attrs, const py::handle& results,
+           const py::handle& forward_pass_name_scope) {
           return tensorflow::pyo_or_throw(TFE_Py_RecordGradient(
-              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr()));
+              op_name.ptr(), inputs.ptr(), attrs.ptr(), results.ptr(),
+              forward_pass_name_scope.ptr()));
         });
   m.def("TFE_Py_UID", []() { return tensorflow::pyo_or_throw(TFE_Py_UID()); });
 
@@ -769,14 +755,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
-  m.def("TFE_InitializeTPUSystem",
-        [](const py::handle& ctx, const char* job, TF_Buffer& buf) {
-          tensorflow::Safe_TF_StatusPtr status =
-              tensorflow::make_safe(TF_NewStatus());
-          TFE_InitializeTPUSystem(tensorflow::InputTFE_Context(ctx), job, &buf,
-                                  status.get());
-          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
-        });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);
@@ -1069,13 +1047,50 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   // Util buffer helper functions
   m.def("TF_NewBufferFromString", &TF_NewBufferFromString,
         py::return_value_policy::reference);
-  m.def("TF_NewBuffer", &TF_NewBuffer, py::return_value_policy::reference);
-  m.def("TF_GetBuffer", [](TF_Buffer* buf) {
-    return tensorflow::pyo_or_throw(PyBytes_FromStringAndSize(
-        reinterpret_cast<const char*>(buf->data), buf->length));
+
+  // DLPack functions
+  m.def("TFE_ToDlpackCapsule", [](py::handle& o) {
+    PyObject* eager_tensor_pyobject_ptr = o.ptr();
+    TFE_TensorHandle* thandle = EagerTensor_Handle(eager_tensor_pyobject_ptr);
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    void* dlm_ptr = tensorflow::TFE_HandleToDLPack(thandle, status.get());
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+
+    py::capsule capsule(
+        dlm_ptr, tensorflow::kDlTensorCapsuleName, [](PyObject* capsule) {
+          if (PyCapsule_IsValid(capsule, tensorflow::kDlTensorCapsuleName)) {
+            void* dlm_rptr =
+                PyCapsule_GetPointer(capsule, tensorflow::kDlTensorCapsuleName);
+            if (dlm_rptr) {
+              tensorflow::TFE_CallDLManagedTensorDeleter(dlm_rptr);
+              PyCapsule_SetDestructor(capsule, nullptr);
+            }
+          }
+        });
+    return capsule;
   });
-  m.def("TF_DeleteBuffer", &TF_DeleteBuffer,
-        py::return_value_policy::reference);
+
+  m.def("TFE_FromDlpackCapsule", [](const py::capsule& pycapsule) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    if (absl::string_view(pycapsule.name()) !=
+        tensorflow::kDlTensorCapsuleName) {
+      status->status = tensorflow::errors::InvalidArgument(
+          "DLPack tensor must be a capsule with name \"dltensor\", got \"%s\". "
+          "Note that a DLPack tensor may be consumed at most once.",
+          absl::string_view(pycapsule.name()));
+      tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+    }
+    TFE_TensorHandle* thandle =
+        tensorflow::TFE_HandleFromDLPack(pycapsule, status.get());
+
+    tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+
+    PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
+    PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
+    return py::handle(EagerTensorFromHandle(thandle));
+  });
 
   // C API Enum
 

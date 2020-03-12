@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
@@ -264,30 +265,32 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
 }
 
 template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                               const RuntimeShape& input_shape,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
-  static const int32 alpha_value = q_alpha - params.alpha_offset;
   for (int i = 0; i < flat_size; ++i) {
     const int32 input_value = input_data[i] - params.input_offset;
+    int32 unclamped_output;
     if (input_value >= 0) {
-      output_data[i] = input_data[i];
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_identity,
+                             params.output_shift_identity);
     } else {
-      const int32 unclamped_output =
-          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                                     input_value * alpha_value,
-                                     params.output_multiplier,
-                                     params.output_shift);
-      const T clamped_output =
-          std::min(quantized_max, std::max(quantized_min, unclamped_output));
-      output_data[i] = static_cast<uint8>(clamped_output);
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_alpha,
+                             params.output_shift_alpha);
     }
+    const T clamped_output =
+        std::min(quantized_max, std::max(quantized_min, unclamped_output));
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -295,7 +298,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -307,7 +310,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[depth * i + c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
     }
@@ -1763,45 +1767,6 @@ inline void Dequantize(const RuntimeShape& input_shape,
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; i++) {
     output_data[i] = Eigen::half_impl::half_to_float(input_data[i]);
-  }
-}
-
-template <typename input_type, typename output_type>
-inline void Requantize(const input_type* input_data, int32_t size,
-                       int32_t effective_scale_multiplier,
-                       int32_t effective_scale_shift, int32_t input_zeropoint,
-                       int32_t output_zeropoint, output_type* output_data) {
-  ruy::profiler::ScopeLabel label("Requantize");
-  const bool same_scale =
-      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
-  if (same_scale) {
-    const bool mixed_type_int8_uint8 =
-        std::is_same<input_type, int8_t>::value &&
-        std::is_same<output_type, uint8_t>::value;
-    const bool mixed_type_uint8_int8 =
-        std::is_same<input_type, uint8_t>::value &&
-        std::is_same<output_type, int8_t>::value;
-    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
-    // Fast path to do requantization for the case when just a shift of 128 is
-    // needed.
-    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
-        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
-      for (int i = 0; i < size; ++i) {
-        output_data[i] = input_data[i] ^ 0x80;
-      }
-    }
-  }
-  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
-  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
-  for (int i = 0; i < size; ++i) {
-    const int32_t input = input_data[i] - input_zeropoint;
-    const int32_t output =
-        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
-                                      effective_scale_shift) +
-        output_zeropoint;
-    const int32_t clamped_output =
-        std::max(std::min(output, kMaxOutput), kMinOutput);
-    output_data[i] = static_cast<output_type>(clamped_output);
   }
 }
 

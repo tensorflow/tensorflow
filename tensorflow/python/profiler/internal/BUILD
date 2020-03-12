@@ -1,6 +1,8 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "py_test", "tf_binary_additional_data_deps", "tf_binary_additional_srcs")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "py_test")
 
 package(
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
@@ -75,10 +77,10 @@ cuda_py_test(
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_pywrap_traceme",
-    srcs = ["traceme_wrapper.cc"] + tf_binary_additional_srcs(),
-    data = tf_binary_additional_data_deps(),
+    srcs = ["traceme_wrapper.cc"],
+    features = ["-layering_check"],
     module_name = "_pywrap_traceme",
     visibility = [
         "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
@@ -86,21 +88,43 @@ pybind_extension(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_headers",
         "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_pywrap_scoped_annotation",
-    srcs = ["scoped_annotation_wrapper.cc"] + tf_binary_additional_srcs(),
-    data = tf_binary_additional_data_deps(),
+    srcs = ["scoped_annotation_wrapper.cc"],
+    features = ["-layering_check"],
     module_name = "_pywrap_scoped_annotation",
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core/profiler/lib:scoped_annotation",
+        "//tensorflow/core/profiler/lib:scoped_annotation_headers",
         "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_profiler",
+    srcs = ["profiler_wrapper.cc"],
+    features = ["-layering_check"],
+    module_name = "_pywrap_profiler",
+    visibility = [
+        "//tensorflow/python/eager:__pkg__",
+        "//tensorflow/python/profiler:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/convert:xplane_to_profile_response",
+        "//tensorflow/core/profiler/lib:profiler_session_headers",
+        "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/core/profiler/rpc/client:capture_profile",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
+        "//tensorflow/python:pybind11_status",
+        "@com_google_absl//absl/memory",
         "@pybind11",
     ],
 )

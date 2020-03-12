@@ -48,6 +48,11 @@ limitations under the License.
 #include "util/readline/readline.h"
 #endif
 
+#if defined(PLATFORM_WINDOWS)
+#include <io.h>
+#define isatty _isatty
+#endif
+
 namespace xla {
 namespace tools {
 namespace {

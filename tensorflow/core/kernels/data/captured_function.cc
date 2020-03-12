@@ -101,7 +101,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   };
 
   mutex mu_;
-  int64 processing_time_ GUARDED_BY(mu_) = 0;
+  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
 Status RunShortCircuit(const ShortCircuitInfo& info,
@@ -406,9 +406,10 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
 }
 
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator) {
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator) {
   std::vector<Tensor> return_values;
 
   TF_RETURN_IF_ERROR(inst_captured_func.RunWithBorrowedArgs(ctx, input_element,
@@ -427,7 +428,8 @@ Status MakeIteratorFromInputElement(
 
   // Create an iterator for the dataset that was returned by `f`.
   return returned_dataset->MakeIterator(
-      ctx, strings::StrCat(prefix, "[", thread_index, "]"), out_iterator);
+      ctx, parent, strings::StrCat(prefix, "[", thread_index, "]"),
+      out_iterator);
 }
 
 /* static */
@@ -539,7 +541,9 @@ Status CapturedFunction::Instantiate(
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &inst_opts.is_multi_device_function));
+  bool is_multi_device = false;
+  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
+  inst_opts.is_multi_device_function = is_multi_device;
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
@@ -603,7 +607,8 @@ Status CapturedFunction::Instantiate(
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
           new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this));
+                                           *ctx->runner(), this,
+                                           is_multi_device));
   return Status::OK();
 }
 
@@ -620,12 +625,13 @@ Status CapturedFunction::CheckExternalState() const {
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
-    CapturedFunction* captured_func)
+    CapturedFunction* captured_func, bool is_multi_device)
     : lib_(lib),
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      captured_func_(captured_func) {}
+      captured_func_(captured_func),
+      is_multi_device_(is_multi_device) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
 // handle releasing to the FunctionHandleCache. This is because in some cases
@@ -843,8 +849,10 @@ void InstantiatedCapturedFunction::RunAsync(
 }
 
 bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
-  return lib_->device()->device_type() != DEVICE_CPU ||
-         captured_func_->is_multi_device_function();
+  // Rendezvous should only be created by the FLR for non-CPU single-device
+  // functions. For multi-device functions the appropriate rendezvous will be
+  // created by the process FLR.
+  return lib_->device()->device_type() != DEVICE_CPU && !is_multi_device_;
 }
 
 CapturedFunction::CapturedFunction(
@@ -899,7 +907,7 @@ Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
     const FunctionDef* fdef;
     TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
     for (const auto& node : fdef->node_def()) {
-      // Check if the op has a kernel availabe for the current device.
+      // Check if the op has a kernel available for the current device.
       if (!KernelDefAvailable(current_device_type, node)) {
         *is_multi_device = true;
         return Status::OK();

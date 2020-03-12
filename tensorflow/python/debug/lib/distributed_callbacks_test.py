@@ -233,7 +233,7 @@ class DistributedDumpingCallbackTest(
       fit_executions = [
           execution.op_type
           for execution in executions
-          if "_distributed_function" in execution.op_type
+          if dumping_callback.is_op_type_function(execution.op_type)
       ]
       self.assertLen(fit_executions, epochs)
 

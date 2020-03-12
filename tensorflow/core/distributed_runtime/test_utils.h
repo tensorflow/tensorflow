@@ -62,7 +62,7 @@ class TestWorkerInterface : public WorkerInterface {
   }
 
   void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
-                     MutableRunGraphResponseWrapper* repsonse,
+                     MutableRunGraphResponseWrapper* response,
                      StatusCallback done) override {
     done(errors::Unimplemented("RunGraphAsync"));
   }

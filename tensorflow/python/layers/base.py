@@ -203,8 +203,8 @@ class Layer(base_layer.Layer):
     if dtype is None:
       # Indicates to infer dtype from inputs. When the V2 dtype behavior is
       # enabled, Keras layers default their dtype to floatx instead, so we pass
-      # an "infer" policy to keep the old V1 behavior.
-      dtype = policy.Policy('infer')
+      # an "_infer" policy to keep the old V1 behavior.
+      dtype = policy.Policy('_infer')
 
     if 'autocast' not in kwargs:
       kwargs['autocast'] = False
@@ -552,7 +552,7 @@ class Layer(base_layer.Layer):
     return outputs
 
   def __deepcopy__(self, memo):
-    no_copy = set(['_graph', '_thread_local'])
+    no_copy = set(['_graph', '_thread_local', '_metrics_lock'])
     shallow_copy = set(['_scope', '_always_reuse_variable_scope'])
     cls = self.__class__
     result = cls.__new__(cls)

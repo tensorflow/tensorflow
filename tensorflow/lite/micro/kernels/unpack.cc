@@ -94,8 +94,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return UnpackImpl<int8_t>(context, node, input, data->num, data->axis);
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by unpack.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by unpack.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
     }
   }
@@ -106,8 +106,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace unpack
 
 TfLiteRegistration* Register_UNPACK() {
-  static TfLiteRegistration r = {nullptr, nullptr, unpack::Prepare,
-                                 unpack::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = unpack::Prepare;
+  r.invoke = unpack::Eval;
   return &r;
 }
 

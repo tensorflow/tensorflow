@@ -2,6 +2,7 @@
 #   Tools for manipulating TensorFlow graphs.
 
 load("//tensorflow:tensorflow.bzl", "if_xla_available", "py_binary", "py_test", "tf_cc_test")
+load("//tensorflow/python/tools:tools.bzl", "saved_model_compile_aot")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -321,9 +322,19 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",
         "//tensorflow/python/debug:local_cli_wrapper",
+    ],
+)
+
+py_library(
+    name = "saved_model_aot_compile",
+    srcs = ["saved_model_aot_compile.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python",
         "//tensorflow/python:tf_optimizer",
     ] + if_xla_available(
         ["//tensorflow/compiler/tf2xla:tf2xla_proto_py"],
@@ -351,53 +362,51 @@ py_test(
     ],
 )
 
-genrule(
-    name = "aot_compiled_x_plus_y_gen",
-    srcs = [
+saved_model_compile_aot(
+    name = "aot_compiled_x_plus_y",
+    cpp_class = "XPlusY",
+    directory = "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo",
+    filegroups = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
-        "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb",
     ],
-    outs = [
-        "compiled_model.h",
-        "compiled_model.o",
-        "compiled_model_metadata.o",
-        "compiled_model_makefile.inc",
-    ],
-    cmd = (
-        "$(location :saved_model_cli) aot_compile_cpu " +
-        "--dir \"$$(dirname $(location //tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo/saved_model.pb))\" " +
-        "--output_prefix $(@D)/compiled_model " +
-        "--cpp_class CompiledModel " +
-        "--tag_set serve "
-    ),
-    tools = [
-        ":saved_model_cli",
-    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
 )
 
-cc_library(
-    name = "aot_compiled_x_plus_y",
-    srcs = if_xla_available([
-        ":compiled_model.o",
-        ":compiled_model_metadata.o",
-    ]),
-    hdrs = if_xla_available([
-        ":compiled_model.h",
-    ]),
-    deps = if_xla_available([
-        "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-        "//tensorflow/core/platform:types",
-    ]),
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic_frozen",
+    cpp_class = "VarsAndArithmeticFrozen",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic",
+    cpp_class = "VarsAndArithmetic",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+    variables_to_feed = "variable_x",
 )
 
 tf_cc_test(
-    name = "binary_using_aot_compiled_x_plus_y_test",
+    name = "aot_compiled_test",
     srcs = if_xla_available([
-        "binary_using_aot_compiled_x_plus_y_test.cc",
+        "aot_compiled_test.cc",
     ]),
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([
+        ":aot_compiled_vars_and_arithmetic",
+        ":aot_compiled_vars_and_arithmetic_frozen",
         ":aot_compiled_x_plus_y",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",

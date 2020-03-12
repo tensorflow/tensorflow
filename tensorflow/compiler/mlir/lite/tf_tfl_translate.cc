@@ -24,6 +24,7 @@ limitations under the License.
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Support/FileUtilities.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
@@ -32,8 +33,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
+#include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -130,12 +133,25 @@ int main(int argc, char **argv) {
   llvm::SourceMgr source_mgr;
   mlir::SourceMgrDiagnosticHandler sourceMgrHandler(source_mgr, &context);
 
-  StatusOr<mlir::OwningModuleRef> module =
-      tensorflow::LoadFromGraphdefOrMlirSource(
-          input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
-          debug_info_file, input_arrays, input_dtypes, input_shapes,
-          output_arrays,
-          /*prune_unused_nodes=*/true, &source_mgr, &context);
+  StatusOr<mlir::OwningModuleRef> module;
+
+  // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
+  // inside mlir is done.
+  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    if (input_mlir)
+      module = tensorflow::errors::InvalidArgument(
+          "Importing saved model should not have input_mlir set");
+    module = tensorflow::ImportSavedModel(import_saved_model_object_graph,
+                                          import_saved_model_signature_defs,
+                                          input_file_name, saved_model_tags,
+                                          saved_model_exported_names, &context);
+  } else {
+    module = tensorflow::LoadFromGraphdefOrMlirSource(
+        input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
+        debug_info_file, input_arrays, input_dtypes, input_shapes,
+        output_arrays,
+        /*prune_unused_nodes=*/true, &source_mgr, &context);
+  }
 
   // If errors occur, the library call in the above already logged the error
   // message. So we can just return here.
@@ -179,9 +195,19 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
-  pass_config.inline_functions = inline_functions;
+
+  // Currently we only do shape inference for saved model import.
+  if (import_saved_model_object_graph || import_saved_model_signature_defs) {
+    pass_config.shape_inference = true;
+  }
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // TODO(b/150901738): Move those into tf_tfl_translate.cc.
+  // Convert back to outlined while format for export back to flatbuffer.
+  if (pass_config.legalize_tf_while) {
+    pm.addPass(mlir::TFL::CreateWhileOutlinePass());
+  }
+  pm.addPass(mlir::TFL::CreateRuntimeTypeVerifyPass());
 
   std::string result;
   auto status = tensorflow::ConvertTFExecutorToTFLOrFlatbuffer(

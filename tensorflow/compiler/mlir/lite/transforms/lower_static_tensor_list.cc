@@ -23,14 +23,16 @@ limitations under the License.
 #include <climits>
 #include <cstdint>
 
+#include "absl/container/inlined_vector.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -57,6 +59,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/kernels/tensor_list.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -162,6 +168,86 @@ TF::SliceOp CreateSliceOpForTensorList(Location loc, Value input_list,
                                        start_position, slice_size);
 }
 
+// Converts tf.Const containing variant of type TensorList to a tensor of
+// primitive element types. Each of the individual tensor in the list is
+// converted to an ElementsAttr and then those are packed together using
+// tf.Pack op.
+struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      TF::ConstOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter &rewriter) const override {
+    // Verify that the opaque elements attribute contains tensor of type variant
+    // and scalar shape. The variant type should hold a TensorList.
+    auto opaque_attr = op.value().dyn_cast<OpaqueElementsAttr>();
+    if (!opaque_attr) return matchFailure();
+    tensorflow::Tensor tensor;
+    if (!tensorflow::ConvertToTensor(opaque_attr, &tensor).ok())
+      return matchFailure();
+    if (tensor.dtype() != tensorflow::DT_VARIANT) return matchFailure();
+    if (!tensorflow::TensorShapeUtils::IsScalar(tensor.shape()))
+      return matchFailure();
+
+    const tensorflow::TensorList *list =
+        tensor.scalar<tensorflow::Variant>()().get<tensorflow::TensorList>();
+    if (!list) return matchFailure();
+
+    // Verify output type is variant and contains exactly one ranked subtypes.
+    auto variant_ty =
+        getElementTypeOrSelf(op.getType()).dyn_cast<TF::VariantType>();
+    if (!variant_ty) return matchFailure();
+    ArrayRef<TensorType> subtypes = variant_ty.getSubtypes();
+    if (subtypes.size() != 1) return matchFailure();
+    RankedTensorType list_element_ty =
+        subtypes.front().dyn_cast<RankedTensorType>();
+    if (!list_element_ty) return matchFailure();
+
+    // Extract tensor elements for the TensorList and construct result type
+    // based on the number of elements and element shape.
+    const std::vector<tensorflow::Tensor> &tensors = list->tensors();
+    llvm::SmallVector<int64_t, 4> result_shape = {
+        static_cast<int64_t>(tensors.size())};
+    result_shape.append(list_element_ty.getShape().begin(),
+                        list_element_ty.getShape().end());
+    auto result_ty =
+        RankedTensorType::get(result_shape, list_element_ty.getElementType());
+
+    // If the list is empty, directly create the final result instead of
+    // creating the tf.Pack op. tf.Pack op requires at least one operand.
+    if (tensors.empty()) {
+      absl::InlinedVector<tensorflow::int64, 4> tf_shape;
+      tf_shape.reserve(result_shape.size());
+      for (int64_t dim : result_shape) {
+        tf_shape.push_back(dim);
+      }
+
+      tensorflow::Tensor tensor(list->element_dtype,
+                                tensorflow::TensorShape(tf_shape));
+      auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
+      if (!attr_or.ok()) return matchFailure();
+      rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.ValueOrDie());
+      return matchSuccess();
+    }
+
+    // Extract individual tensor list element and combine them using the tf.Pack
+    // op.
+    Location loc = op.getLoc();
+    llvm::SmallVector<Value, 4> values;
+    values.reserve(tensors.size());
+    for (const tensorflow::Tensor &tensor : tensors) {
+      auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
+      if (!attr_or.ok()) return matchFailure();
+
+      auto value = rewriter.create<TF::ConstOp>(loc, attr_or.ValueOrDie());
+      values.push_back(value);
+    }
+    rewriter.replaceOpWithNewOp<TF::PackOp>(
+        op, result_ty, values, /*axis=*/rewriter.getI64IntegerAttr(0));
+    return matchSuccess();
+  }
+};
+
 struct ConvertTensorListSetItem
     : public OpConversionPattern<TF::TensorListSetItemOp> {
   using OpConversionPattern::OpConversionPattern;
@@ -249,8 +335,9 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
     if (!(dtype.isF16() || dtype.isF32() || dtype.isF64() ||
-          dtype.isInteger(1) || dtype.isInteger(8) || dtype.isInteger(16) ||
-          dtype.isInteger(32) || dtype.isInteger(64))) {
+          dtype.isInteger(1) || dtype.isSignlessInteger(8) ||
+          dtype.isSignlessInteger(16) || dtype.isSignlessInteger(32) ||
+          dtype.isSignlessInteger(64))) {
       op.emitError(
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
@@ -260,6 +347,16 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
 
     Value element_shape = operands[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
+    // If the `element_shape` is a scalar, we know that it's dynamic shape
+    // and returns an error.
+    if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
+      if (shaped_type.getRank() == 0) {
+        op.emitError(
+            "requires element_shape to be 1D tensor during TF Lite "
+            "transformation pass");
+        return ConversionPattern::matchFailure();
+      }
+    }
 
     DenseIntElementsAttr dense_elem_attr;
     if (matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
@@ -615,7 +712,7 @@ struct ConvertTensorListStack
     if ((ranked_type && ranked_type.getRank() == 0) ||
         !matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
       // If no constant is spotted, just forward the operand.
-      rewriter.replaceOp(op, {input}, llvm::None);
+      rewriter.replaceOp(op, {input});
       return matchSuccess();
     }
 
@@ -768,7 +865,7 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
 
   OwningRewritePatternList patterns;
   patterns
-      .insert<ConvertEmptyTensorList, ConvertIdentity,
+      .insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
               ConvertTensorListFromTensor, ConvertTensorListGetItem,
               ConvertTensorListLength, ConvertTensorListPushBack,
               ConvertTensorListReserve, ConvertTensorListSetItem,

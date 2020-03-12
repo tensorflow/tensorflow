@@ -33,6 +33,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
@@ -52,6 +53,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
@@ -59,6 +61,10 @@ cc_binary(
     ],
 )
 
+# As with most target binaries that use flex, this should be built with the
+# `--config=monolithic` build flag, e.g.,
+#    bazel build --config=monolithic --config=android_arm64 \
+#        -c opt --cxxopt='--std=c++14' :benchmark_model_plus_flex
 tf_cc_binary(
     name = "benchmark_model_plus_flex",
     srcs = [
@@ -86,10 +92,12 @@ cc_test(
     args = [
         "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
         "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
+        "--string_graph=$(location //tensorflow/lite:testdata/string_input_model.bin)",
     ],
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/string_input_model.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -99,10 +107,25 @@ cc_test(
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/algorithm",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
+    name = "profiling_listener",
+    srcs = ["profiling_listener.cc"],
+    hdrs = ["profiling_listener.h"],
+    copts = common_copts,
+    deps = [
+        ":benchmark_model_lib",
+        "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/profiling:profile_summary_formatter",
+        "//tensorflow/lite/profiling:profiler",
     ],
 )
 
@@ -117,6 +140,7 @@ cc_library(
         "//conditions:default": [],
     }),
     deps = [
+        ":profiling_listener",
         ":benchmark_model_lib",
         ":benchmark_utils",
         ":delegate_provider_hdr",
@@ -124,17 +148,22 @@ cc_library(
         ":hexagon_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/nnapi:nnapi_util",
-        "//tensorflow/lite/profiling:profile_summarizer",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/tools/evaluation:utils",
-        "@com_google_absl//absl/base:core_headers",
-        "@com_google_absl//absl/strings",
-    ],
+    ] + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            ":xnnpack_delegate_provider",
+        ],
+    }),
 )
 
 cc_library(
@@ -256,6 +285,21 @@ cc_library(
         ":delegate_provider_hdr",
         ":logging",
         "//tensorflow/lite/tools/evaluation:utils",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "xnnpack_delegate_provider",
+    srcs = ["xnnpack_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":benchmark_model_lib",
+        ":delegate_provider_hdr",
+        ":logging",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ],
     alwayslink = 1,
 )

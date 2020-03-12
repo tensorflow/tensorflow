@@ -780,21 +780,29 @@ class CondV2Test(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
 
+    def update_v1():
+      v1.assign(v1)
+      return v1
+
+    def update_v2():
+      v2.assign(v2)
+      return v2
+
     @def_function.function
     def fn_with_cond():
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v1,
+          update_v1,
           lambda: constant_op.constant(0.),
           name="cond_1")
       cond_2 = cond_v2.cond_v2(
           constant_op.constant(False),
           lambda: constant_op.constant(0.),
-          lambda: v1,
+          update_v1,
           name="cond_2")
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v2,
+          update_v2,
           lambda: constant_op.constant(0.),
           name="cond_3")
       cond_4 = cond_v2.cond_v2(
@@ -841,24 +849,34 @@ class CondV2Test(test.TestCase):
 
     @def_function.function
     def fn_with_cond():
+
+      def update_v1():
+        v1.assign(v1)
+        return v1
+
+      def update_v2():
+        v2.assign(v2)
+        return v2
+
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v1,
+          update_v1,
           lambda: constant_op.constant(0.),
           name="cond_1")
       cond_2 = cond_v2.cond_v2(
           constant_op.constant(False),
           lambda: constant_op.constant(0.),
-          lambda: v1,
+          update_v1,
           name="cond_2")
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v2,
+          update_v2,
           lambda: constant_op.constant(0.),
           name="cond_3")
 
       @def_function.function
       def cond_4_false_branch():
+        v2.assign(v2)
         return v2
 
       cond_4 = cond_v2.cond_v2(

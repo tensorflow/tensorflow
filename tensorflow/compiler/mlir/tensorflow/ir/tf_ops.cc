@@ -35,7 +35,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -57,6 +57,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -292,6 +293,164 @@ static LogicalResult VerifyTypesCompatibility(
   return success();
 }
 
+//===----------------------------------------------------------------------===//
+// TF op helper functions to work with layout transformation.
+//===----------------------------------------------------------------------===//
+
+SmallVector<int64_t, 4> ReversePermutation(ArrayRef<int64_t> permutation) {
+  SmallVector<int64_t, 4> reverse(permutation.size());
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    reverse[permutation[i]] = i;
+  }
+  return reverse;
+}
+
+SmallVector<int64_t, 4> GetDataFormatPermutation(StringRef from, StringRef to) {
+  if (from == "NHWC" && to == "NCHW") {
+    return {0, 3, 1, 2};
+  } else if (from == "NCHW" && to == "NHWC") {
+    return {0, 2, 3, 1};
+  } else {
+    return {};
+  }
+}
+
+// Shuffle elements in the `attr` according to the permutation. Optional
+// `inner_size` allows to shuffle array attributes created from rank 2 tensors
+// on outer dimension only.
+ArrayAttr ShuffleArrayAttr(ArrayAttr attr, ArrayRef<int64_t> permutation,
+                           int inner_size = 1) {
+  if (attr.size() == 0) return attr;
+
+  assert(attr.size() % inner_size == 0);
+  assert(attr.size() / inner_size == permutation.size());
+
+  SmallVector<Attribute, 8> values{attr.begin(), attr.end()};
+  SmallVector<Attribute, 8> shuffled(values.size());
+
+  for (size_t i = 0; i < permutation.size(); ++i) {
+    for (size_t j = 0; j < inner_size; ++j) {
+      shuffled[i * inner_size + j] = values[permutation[i] * inner_size + j];
+    }
+  }
+
+  return ArrayAttr::get(shuffled, attr.getContext());
+}
+
+// Shuffle ranked tensor dimensions according to the permutation.
+Type ShuffleRankedTensorType(Type type, ArrayRef<int64_t> permutation) {
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    ArrayRef<int64_t> shape = ranked_type.getShape();
+    assert(permutation.size() == shape.size());
+
+    SmallVector<int64_t, 4> new_shape(permutation.size());
+    for (size_t i = 0; i < permutation.size(); ++i)
+      new_shape[i] = shape[permutation[i]];
+
+    return RankedTensorType::get(new_shape, ranked_type.getElementType());
+  }
+
+  return type;
+}
+
+static bool AreCancellablePermutations(DenseIntElementsAttr perm0,
+                                       DenseIntElementsAttr perm1) {
+  if (perm0.getNumElements() == 0 || perm1.getNumElements() == 0) return false;
+  if (perm0.getNumElements() != perm1.getNumElements()) return false;
+
+  SmallVector<int64_t, 8> perm0_values;
+  for (auto value : perm0.getIntValues())
+    perm0_values.push_back(value.getSExtValue());
+
+  SmallVector<int64_t, 8> perm1_values;
+  for (auto value : perm1.getIntValues())
+    perm1_values.push_back(value.getSExtValue());
+
+  for (int i = 0; i < perm0_values.size(); ++i) {
+    if (perm0_values[perm1_values[i]] != i) return false;
+  }
+
+  return true;
+}
+
+// Default implementation of `LayoutSensitiveInterface::UpdateDataFormat` for
+// layout sensitive operations that do not have any additional layout dependent
+// attributes besides `data_format` string.
+template <typename Op>
+LogicalResult UpdateDataFormat(StringRef data_format, Op *op) {
+  auto perm = GetDataFormatPermutation(op->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data format attribute.
+  op->setAttr("data_format", StringAttr::get(data_format, op->getContext()));
+
+  // Update types for all layout sensitive results.
+  auto layout_sensitive = cast<LayoutSensitiveInterface>(op->getOperation());
+  for (unsigned idx : layout_sensitive.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(ShuffleRankedTensorType(result.getType(), perm));
+  }
+
+  return success();
+}
+
+// Default implementation for folding operand transpose into the operation.
+// See `FoldOperandsTransposeInterface::FoldOperandsPermutation`.
+template <typename Op>
+LogicalResult FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation, Op *op,
+    ArrayRef<std::pair<StringRef, ArrayAttr>> shuffle_attrs = {}) {
+  MLIRContext *context = op->template getParentOfType<ModuleOp>().getContext();
+
+  // We only support NHWC <-> NCHW permutations.
+  static constexpr std::array<int64_t, 4> kNchwToNhwc = {0, 2, 3, 1};
+  static constexpr std::array<int64_t, 4> kNhwcToNchw = {0, 3, 1, 2};
+
+  // Operation data format after folding `permutation`.
+  StringRef target_data_format = [&]() -> StringRef {
+    if (op->data_format() == "NHWC" && permutation.equals(kNchwToNhwc)) {
+      return "NCHW";  // cancel NCHW->NHWC operand permutation
+    } else if (op->data_format() == "NCHW" && permutation.equals(kNhwcToNchw)) {
+      return "NHWC";  // cancel NHWC->NCHW operand permutation
+    } else {
+      return "";
+    }
+  }();
+  if (target_data_format.empty()) return failure();
+
+  // To fold operand `permutation` into the `op` we need shuffle all layout
+  // dependent attributes and types with a reverse permutation, and change
+  // operation data format to `target_data_format`.
+  //
+  // Example:
+  //   %1 = SomeOp(...)   {data_format = NHWC}
+  //   %2 = Transpose(%1) {permutation = NHWC->NCHW}
+  //   %3 = Op(%2)        {data_format = NCHW}
+  //
+  // To bypass %2 we have to change data format to shuffle data format from NCHW
+  // to NHWC, which is the reverse of operand permutation (function argument).
+  auto reverse_permutation =
+      GetDataFormatPermutation(op->data_format(), target_data_format);
+  if (reverse_permutation.empty()) return failure();
+
+  op->setAttr("data_format", StringAttr::get(target_data_format, context));
+
+  for (auto pair : shuffle_attrs) {
+    StringRef attr_name = pair.first;
+    ArrayAttr attr_value = pair.second;
+    op->setAttr(attr_name, ShuffleArrayAttr(attr_value, reverse_permutation));
+  }
+
+  auto fold = cast<FoldOperandsTransposeInterface>(op->getOperation());
+  for (unsigned idx : fold.GetLayoutDependentResults()) {
+    OpResult result = op->getOperation()->getResult(idx);
+    result.setType(
+        ShuffleRankedTensorType(result.getType(), reverse_permutation));
+  }
+
+  return success();
+}
+
 namespace {
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_canonicalize.inc"
 }  // namespace
@@ -408,6 +567,16 @@ void BatchMatMulOp::getCanonicalizationPatterns(
 // BatchMatMulV2Op
 //===----------------------------------------------------------------------===//
 
+static LogicalResult Verify(BatchMatMulV2Op op) {
+  if (!HasRankAtLeast(op.x(), 2)) {
+    return op.emitOpError("requires lhs operand to have rank at least two");
+  }
+  if (!HasRankAtLeast(op.y(), 2)) {
+    return op.emitOpError("requires rhs operand to have rank at least two");
+  }
+  return success();
+}
+
 void BatchMatMulV2Op::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.insert<BatchMatMulV2ToMatMul>(context);
@@ -510,9 +679,15 @@ static LogicalResult Verify(BroadcastToOp op) {
 // CastOp
 //===----------------------------------------------------------------------===//
 
-void CastOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
-                                         MLIRContext *context) {
-  results.insert<CastSameType>(context);
+//===----------------------------------------------------------------------===//
+// LeakyReluOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CastOp::fold(ArrayRef<Attribute> operands) {
+  // Cast with the same type is a no-op.
+  Value operand = getOperand();
+  if (getType() == operand.getType()) return operand;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -809,6 +984,26 @@ static LogicalResult Verify(OpT op) {
            << input_channels << " and " << filter_channels << ", respectively";
 
   return success();
+}
+
+LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
+  auto perm = GetDataFormatPermutation(this->data_format(), data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  return success();
+}
+
+StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
+  // TODO(ezhulenev): Implement optimal layout selection.
+  return "";
 }
 
 //===----------------------------------------------------------------------===//
@@ -1132,6 +1327,11 @@ static LogicalResult Verify(FusedBatchNormOp op) {
   return success();
 }
 
+LogicalResult FusedBatchNormV3Op::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::FoldOperandsPermutation(permutation, this);
+}
+
 //===----------------------------------------------------------------------===//
 // GatherV2Op
 //===----------------------------------------------------------------------===//
@@ -1303,6 +1503,15 @@ void LogOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// ReadVariableOp
+//===----------------------------------------------------------------------===//
+
+void ReadVariableOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ReadVariableOfCast>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // LogicalNotOp
 //===----------------------------------------------------------------------===//
 
@@ -1314,6 +1523,29 @@ void LogicalNotOp::getCanonicalizationPatterns(
 }
 
 //===----------------------------------------------------------------------===//
+// MatrixBandPartOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(MatrixBandPartOp op) {
+  if (!HasRankAtLeast(op.input(), 2)) {
+    return op.emitOpError()
+           << "requires `input` to have rank of at least 2, but found "
+           << op.input().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_lower(), 0)) {
+    return op.emitOpError()
+           << "requires `num_lower` to have 0 dimensions, but found "
+           << op.num_lower().getType();
+  }
+  if (!IsOfRankOrUnranked(op.num_upper(), 0)) {
+    return op.emitOpError()
+           << "requires `num_upper` to have 0 dimensions, but found "
+           << op.num_upper().getType();
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // MaxOp
 //===----------------------------------------------------------------------===//
 
@@ -1322,6 +1554,16 @@ void MaxOp::build(Builder *builder, OperationState &result, Value input,
   Type out_ty =
       InferReductionOpType(input, reduction_indices, keep_dims, builder);
   build(builder, result, out_ty, input, reduction_indices, keep_dims);
+}
+
+//===----------------------------------------------------------------------===//
+// MaxPoolOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MaxPoolOp::FoldOperandsPermutation(
+    ArrayRef<int64_t> permutation) {
+  return ::mlir::TF::FoldOperandsPermutation(
+      permutation, this, {{"strides", strides()}, {"ksize", ksize()}});
 }
 
 //===----------------------------------------------------------------------===//
@@ -1338,6 +1580,38 @@ static LogicalResult Verify(MaxPoolGradOp op) {
   if (!IsOfRankOrUnranked(op.grad(), 4)) {
     return op.emitOpError() << "requires grad to be rank 4";
   }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// MeanOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult MeanOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Reduction indices must be defined by a constant operation.
+  auto reduction_op =
+      dyn_cast_or_null<TF::ConstOp>(reduction_indices().getDefiningOp());
+  if (!reduction_op) return failure();
+
+  auto reductions_value = reduction_op.value().dyn_cast<DenseElementsAttr>();
+  if (!reductions_value) return failure();
+
+  // Prepare new reduction indices according to operand permutation.
+  SmallVector<int32_t, 4> shuffled_reduction;
+  llvm::transform(reductions_value.getIntValues(),
+                  std::back_inserter(shuffled_reduction),
+                  [&](APInt idx) { return permutation[idx.getSExtValue()]; });
+
+  // Add constant operation with a new reduction indices.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(shuffled_reduction.size(),
+                                          builder.getIntegerType(32));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_reduction);
+  auto shuffled_reduction_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new reduction indices.
+  setOperand(1, shuffled_reduction_op);
+
   return success();
 }
 
@@ -1484,6 +1758,46 @@ static LogicalResult Verify(PackOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// PadOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult PadOp::FoldOperandsPermutation(ArrayRef<int64_t> permutation) {
+  // Paddings must be defined by a constant operation.
+  auto paddings_op = dyn_cast_or_null<TF::ConstOp>(paddings().getDefiningOp());
+  if (!paddings_op) return failure();
+
+  auto paddings_value = paddings_op.value().dyn_cast<DenseElementsAttr>();
+  if (!paddings_value ||
+      paddings_value.getNumElements() != permutation.size() * 2)
+    return failure();
+
+  SmallVector<int32_t, 8> shuffled_paddings(paddings_value.getNumElements());
+  for (auto index_pair : llvm::enumerate(paddings_value.getIntValues())) {
+    size_t outer_idx = index_pair.index() / 2;
+    size_t inner_idx = index_pair.index() % 2;
+
+    shuffled_paddings[permutation[outer_idx] * 2 + inner_idx] =
+        index_pair.value().getSExtValue();
+  }
+
+  // Add constant operation with a new paddings.
+  OpBuilder builder(getOperation());
+  auto type = mlir::RankedTensorType::get(paddings_value.getType().getShape(),
+                                          builder.getIntegerType(32));
+  auto values = mlir::DenseIntElementsAttr::get(type, shuffled_paddings);
+  auto shuffled_paddings_op = builder.create<TF::ConstOp>(getLoc(), values);
+
+  // Use new paddings.
+  setOperand(1, shuffled_paddings_op);
+
+  // Change the result type.
+  getResult().setType(ShuffleRankedTensorType(getResult().getType(),
+                                              ReversePermutation(permutation)));
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ParseExampleV2Op
 //===----------------------------------------------------------------------===//
 
@@ -1531,6 +1845,36 @@ static LogicalResult Verify(ParseExampleV2Op op) {
   if (ragged_value_types_count != ragged_split_types_count) {
     return op.emitError() << "attribute 'ragged_value_types' should have same "
                           << "length as attribute 'ragged_split_types'";
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// PartitionedCallOp
+//===----------------------------------------------------------------------===//
+
+template <class OpClass>
+static LogicalResult VerifyPartitionedCall(OpClass op) {
+  auto module = op.template getParentOfType<ModuleOp>();
+  SymbolRefAttr func = op.getAttr("f").template cast<SymbolRefAttr>();
+
+  auto function =
+      dyn_cast_or_null<FuncOp>(SymbolTable::lookupSymbolIn(module, func));
+
+  if (!function) {
+    return op.emitError("'f' attribute refers to an undefined function: ")
+           << func;
+  }
+
+  FunctionType function_ty = function.getType();
+  int func_arg_count = function_ty.getNumInputs();
+  int arg_count = op.args().size();
+
+  if (arg_count != func_arg_count) {
+    return op.emitError() << "argument count mismatch: 'args' has " << arg_count
+                          << " arguments, but '" << func << "' expects "
+                          << func_arg_count;
   }
 
   return success();
@@ -1799,7 +2143,8 @@ LogicalResult VerifyShapeOperandAndResult(Operation *op, Type operand_type,
   }
 
   Type element_type = result_ranked_type.getElementType();
-  if (!element_type.isInteger(32) && !element_type.isInteger(64))
+  if (!element_type.isSignlessInteger(32) &&
+      !element_type.isSignlessInteger(64))
     return op->emitOpError("requires int32 or int64 return type for result")
            << variadic_idx_str;
 
@@ -2251,15 +2596,127 @@ constexpr const T &Clamp(const T &val, const T &low, const T &high) {
   return (val < low) ? low : (high < val) ? high : val;
 }
 
+// Checks if the `index` bit of `val` is set.
+template <class T>
+constexpr bool IsSet(const T &val, unsigned index) {
+  return (val & (1 << index)) != 0;
+}
+
+// Sets the `index` bit of `val`.
+template <class T>
+constexpr void Set(T &val, unsigned index) {
+  val |= (1 << index);
+}
+
+// Unset the `index` bit of `val`.
+template <class T>
+constexpr void Unset(T &val, unsigned index) {
+  val &= ~(1 << index);
+}
+
+// Copy the `src_index` bit of `src` to `dst_index` bit of `dst`.
+template <class T>
+constexpr void CopyBit(const T &src, unsigned src_index, T &dst,
+                       unsigned dst_index) {
+  if (IsSet(src, src_index))
+    Set(dst, dst_index);
+  else
+    Unset(dst, dst_index);
+}
+
+// The sparse spec of strided slice does not correspond to the number of
+// dimensions. For example, sparse spec for foo[..., 3:10] for foo of shape (2,
+// 4, 8) would have dims = 2.
+struct SparseSliceSpec {
+  int64_t dims;
+  int32_t begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask;
+  const ArrayRef<int64_t> &begin;
+  const ArrayRef<int64_t> &end;
+  const ArrayRef<int64_t> &strides;
+};
+
+// The dense spec of strided slice is the canonicalized version of sparse spec.
+// The number of dimensions of dense spec correspond to the number of dimensions
+// in operand tensor.
+struct DenseSliceSpec {
+  int64_t dims;
+  int32_t begin_mask, end_mask, shrink_axis_mask;
+  SmallVectorImpl<int64_t> &begin;
+  SmallVectorImpl<int64_t> &end;
+  SmallVectorImpl<int64_t> &strides;
+};
+
+// Make a sparse spec into a dense index spec.
+// The sparse spec does not correspond to the number of dimensions
+// Make a dense spec that corresponds to the number of dimensions
+//
+// For example suppose foo[...,3:, 2] on foo.shape=(2,2,3,4) then
+// we need to produce the missing begin_mask, end_mask for the first two
+// dimensions i.e. foo[:, :, 3:, 2].
+static void BuildDenseSliceSpec(const SparseSliceSpec &sparse,
+                                DenseSliceSpec *dense) {
+  // Build expanded dense begin, end, strides, begin_mask, end_mask, and
+  // shrink_axis_mask.
+  dense->begin.resize(dense->dims);
+  dense->end.resize(dense->dims);
+  dense->strides.resize(dense->dims);
+  dense->begin_mask = 0;
+  dense->end_mask = 0;
+  dense->shrink_axis_mask = 0;
+
+  // Count number of new_axis after ellipsis. This helps in calculating the
+  // number of dimensions ellipsis represents in the sparse spec.
+  bool ellipsis_seen = false;
+  int num_new_axis_after_ellipsis = 0;
+  for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
+    if (ellipsis_seen && IsSet(sparse.new_axis_mask, sparse_index))
+      num_new_axis_after_ellipsis++;
+    if (IsSet(sparse.ellipsis_mask, sparse_index)) ellipsis_seen = true;
+  }
+
+  int dense_index = 0;
+  for (int sparse_index = 0; sparse_index < sparse.dims; ++sparse_index) {
+    if (IsSet(sparse.new_axis_mask, sparse_index)) continue;
+    if (IsSet(sparse.ellipsis_mask, sparse_index)) {
+      auto next_index = std::min(dense->dims - (sparse.dims - sparse_index) +
+                                     1 + num_new_axis_after_ellipsis,
+                                 dense->dims);
+      // Expand ellipsis into the appropriate dense indices. From current index
+      // until next_index, all dimensions would have begin and end masks set and
+      // stride 1, i.e., get all elements in those dimensions.
+      for (; dense_index < next_index; ++dense_index) {
+        dense->begin[dense_index] = dense->end[dense_index] = 0;
+        dense->strides[dense_index] = 1;
+        Set(dense->begin_mask, dense_index);
+        Set(dense->end_mask, dense_index);
+      }
+      continue;
+    }
+    assert(dense_index < dense->dims);
+    // Copy over the sparse indices to dense indices if ellipsis_mask and
+    // new_axis_mask are not set.
+    dense->begin[dense_index] = sparse.begin[sparse_index];
+    dense->end[dense_index] = sparse.end[sparse_index];
+    dense->strides[dense_index] = sparse.strides[sparse_index];
+    CopyBit(sparse.begin_mask, sparse_index, dense->begin_mask, dense_index);
+    CopyBit(sparse.end_mask, sparse_index, dense->end_mask, dense_index);
+    CopyBit(sparse.shrink_axis_mask, sparse_index, dense->shrink_axis_mask,
+            dense_index);
+    dense_index++;
+  }
+}
+
 // For the given `input_shape`, calculates the sliced shape using the given
-// `begin`, `end`, and `stride` ranges and `begin_mask` and `end_mask` masks.
-// Updates the result back to `input_shape`. At the same time, canonicalizes
-// `begin`, `end`, and `strides. The calculation follows tf.StridedSlice op
-// semantics.
-static void CalculateSlicedShapeAndBoundRanges(
+// `begin`, `end`, and `stride` ranges and `begin_mask`, `end_mask`, and
+// `shrink_axis_mask` masks. Updates the result back to `input_shape`. If
+// `shrink_axis_mask` is not zero, this function will not drop the corresponding
+// dimensions in `input_shape`; it will turn them into 1s. At the same time,
+// canonicalizes `begin`, `end`, and `strides. The calculation follows
+// tf.StridedSlice op semantics.
+static void CalculateSlicedShapeFromDenseIndices(
     MutableArrayRef<int64_t> input_shape, int32_t begin_mask, int32_t end_mask,
-    MutableArrayRef<int64_t> begin, MutableArrayRef<int64_t> end,
-    MutableArrayRef<int64_t> stride) {
+    int32_t shrink_axis_mask, MutableArrayRef<int64_t> begin,
+    MutableArrayRef<int64_t> end, MutableArrayRef<int64_t> stride) {
   assert(input_shape.size() <= 32);  // Only 32-bit masks are supported.
 
   // Make sure ranges' ranks are consistent with the input.
@@ -2302,49 +2759,88 @@ static void CalculateSlicedShapeAndBoundRanges(
     if (interval_len != 0 && (interval_len < 0) == (stride_i < 0))
       size_i = (interval_len / stride_i) + (interval_len % stride_i != 0);
 
-    input_shape[i] = size_i;
     begin[i] = begin_i;
-    end[i] = end_i;
-    stride[i] = stride_i;
+    if (IsSet(shrink_axis_mask, i)) {
+      // Shrink this dimension. It means we only take the element at begin_i.
+      input_shape[i] = 1;
+      end[i] = begin_i + 1;
+      stride[i] = 1;
+    } else {
+      input_shape[i] = size_i;
+      end[i] = end_i;
+      stride[i] = stride_i;
+    }
   }
 }
 
-bool StridedSliceOp::GetSlicedBoundRanges(
-    ArrayRef<int64_t> shape, SmallVectorImpl<int64_t> *begin_indices,
-    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
-  if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
+// For the given `input_shape`, calculates the sliced shape using the given
+// `sparse_begin`, `sparse_end`, and `sparse_strides` ranges and `begin_mask`,
+// `end_mask`, `ellipsis_mask` , `new_axis_mask` and `shrink_axis_mask` masks.
+// Updates the result back to `input_shape`.
+static void CalculateSlicedShapeFromSparseIndices(
+    MutableArrayRef<int64_t> input_shape, ArrayRef<int64_t> sparse_begin,
+    ArrayRef<int64_t> sparse_end, ArrayRef<int64_t> sparse_strides,
+    int32_t begin_mask, int32_t end_mask, int32_t ellipsis_mask,
+    int32_t new_axis_mask, int32_t shrink_axis_mask,
+    SmallVectorImpl<int64_t> *begin, SmallVectorImpl<int64_t> *end,
+    SmallVectorImpl<int64_t> *stride) {
+  int64_t num_sparse_indices = sparse_begin.size();
+  SparseSliceSpec sparse = {num_sparse_indices, begin_mask,    end_mask,
+                            ellipsis_mask,      new_axis_mask, shrink_axis_mask,
+                            sparse_begin,       sparse_end,    sparse_strides};
 
+  // If no ellipsis_mask exists then an implicit ellipsis_mask at the end is
+  // inserted. This handles cases where foo[2:4] (foo.shape() = [4, 8]) yields
+  // a tensor of shape [2, 8], i.e., foo[2:4] is same as foo[2:4, ...].
+  if (sparse.ellipsis_mask == 0) {
+    Set(sparse.ellipsis_mask, sparse.dims);
+    sparse.dims++;
+  }
+
+  int64_t dims = input_shape.size();
+  DenseSliceSpec dense = {dims,
+                          /*begin_mask = */ 0,
+                          /*end_mask = */ 0,
+                          /*shrink_axis_mask = */ 0,
+                          *begin,
+                          *end,
+                          *stride};
+
+  BuildDenseSliceSpec(sparse, &dense);
+  CalculateSlicedShapeFromDenseIndices(input_shape, dense.begin_mask,
+                                       dense.end_mask, dense.shrink_axis_mask,
+                                       *begin, *end, *stride);
+}
+
+bool StridedSliceOp::GetSlicedBoundRanges(
+    SmallVectorImpl<int64_t> *slice_begin, SmallVectorImpl<int64_t> *slice_end,
+    SmallVectorImpl<int64_t> *slice_stride) {
   // TODO(hinsu): Support lowering for ops with dynamic begin and end values
   // when it is possible to derive indices based on mask attributes.
-  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
-  if (!matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
-      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
-      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+  DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;
+  if (!matchPattern(begin(), m_Constant(&sparse_begin_attr)) ||
+      !matchPattern(end(), m_Constant(&sparse_end_attr)) ||
+      !matchPattern(strides(), m_Constant(&sparse_strides_attr)))
     return false;
 
-  auto input_shape = llvm::to_vector<4>(shape);
-  int rank = input_shape.size();
+  auto input_ty = this->input().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty || !input_ty.hasStaticShape()) return false;
+  auto input_shape = llvm::to_vector<4>(input_ty.getShape());
 
-  begin_indices->clear();
-  begin_indices->reserve(rank);
-  end_indices->clear();
-  end_indices->reserve(rank);
-  strides->clear();
-  strides->reserve(rank);
+  SmallVector<int64_t, 4> sparse_begin, sparse_end, sparse_strides;
 
-  for (const APInt &index : begin_indices_attr)
-    begin_indices->push_back(index.getSExtValue());
-  for (const APInt &index : end_indices_attr)
-    end_indices->push_back(index.getSExtValue());
-  for (const APInt &stride : strides_attr)
-    strides->push_back(stride.getSExtValue());
+  for (const APInt &index : sparse_begin_attr)
+    sparse_begin.push_back(index.getSExtValue());
+  for (const APInt &index : sparse_end_attr)
+    sparse_end.push_back(index.getSExtValue());
+  for (const APInt &stride : sparse_strides_attr)
+    sparse_strides.push_back(stride.getSExtValue());
 
-  CalculateSlicedShapeAndBoundRanges(
-      input_shape, this->begin_mask().getZExtValue(),
-      this->end_mask().getZExtValue(), *begin_indices, *end_indices, *strides);
+  CalculateSlicedShapeFromSparseIndices(
+      input_shape, sparse_begin, sparse_end, sparse_strides,
+      begin_mask().getZExtValue(), end_mask().getZExtValue(),
+      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
+      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -2367,43 +2863,38 @@ static LogicalResult Verify(StridedSliceGradOp op) {
 }
 
 bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
-    SmallVectorImpl<int64_t> *shape, SmallVectorImpl<int64_t> *begin_indices,
-    SmallVectorImpl<int64_t> *end_indices, SmallVectorImpl<int64_t> *strides) {
-  if (this->ellipsis_mask().getZExtValue() ||
-      this->new_axis_mask().getZExtValue() ||
-      this->shrink_axis_mask().getZExtValue())
-    return false;  // TODO(antiagainst): support these masks
-
+    SmallVectorImpl<int64_t> *input_shape,
+    SmallVectorImpl<int64_t> *slice_begin, SmallVectorImpl<int64_t> *slice_end,
+    SmallVectorImpl<int64_t> *slice_stride) {
   DenseIntElementsAttr shape_attr;
-  DenseIntElementsAttr begin_indices_attr, end_indices_attr, strides_attr;
-  if (!matchPattern(this->shape(), m_Constant(&shape_attr)) ||
-      !matchPattern(this->begin(), m_Constant(&begin_indices_attr)) ||
-      !matchPattern(this->end(), m_Constant(&end_indices_attr)) ||
-      !matchPattern(this->strides(), m_Constant(&strides_attr)))
+  DenseIntElementsAttr sparse_begin_attr, sparse_end_attr, sparse_strides_attr;
+  if (!matchPattern(shape(), m_Constant(&shape_attr)) ||
+      !matchPattern(begin(), m_Constant(&sparse_begin_attr)) ||
+      !matchPattern(end(), m_Constant(&sparse_end_attr)) ||
+      !matchPattern(strides(), m_Constant(&sparse_strides_attr)))
     return false;
 
   int rank = std::distance(shape_attr.begin(), shape_attr.end());
 
-  shape->clear();
-  shape->reserve(rank);
-  begin_indices->clear();
-  begin_indices->reserve(rank);
-  end_indices->clear();
-  end_indices->reserve(rank);
-  strides->clear();
-  strides->reserve(rank);
+  input_shape->clear();
+  input_shape->reserve(rank);
+  for (const APInt &dim : shape_attr)
+    input_shape->push_back(dim.getSExtValue());
 
-  for (const APInt &dim : shape_attr) shape->push_back(dim.getSExtValue());
-  for (const APInt &index : begin_indices_attr)
-    begin_indices->push_back(index.getSExtValue());
-  for (const APInt &index : end_indices_attr)
-    end_indices->push_back(index.getSExtValue());
-  for (const APInt &stride : strides_attr)
-    strides->push_back(stride.getSExtValue());
+  SmallVector<int64_t, 4> sparse_begin, sparse_end, sparse_strides;
 
-  CalculateSlicedShapeAndBoundRanges(*shape, this->begin_mask().getZExtValue(),
-                                     this->end_mask().getZExtValue(),
-                                     *begin_indices, *end_indices, *strides);
+  for (const APInt &index : sparse_begin_attr)
+    sparse_begin.push_back(index.getSExtValue());
+  for (const APInt &index : sparse_end_attr)
+    sparse_end.push_back(index.getSExtValue());
+  for (const APInt &stride : sparse_strides_attr)
+    sparse_strides.push_back(stride.getSExtValue());
+
+  CalculateSlicedShapeFromSparseIndices(
+      *input_shape, sparse_begin, sparse_end, sparse_strides,
+      begin_mask().getZExtValue(), end_mask().getZExtValue(),
+      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
+      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -2421,6 +2912,19 @@ static LogicalResult Verify(TensorListReserveOp op) {
     return op.emitOpError("requires num_elements operand to be 0D tensor");
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// TensorListElementShapeOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult TensorListElementShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto variant_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::VariantType>();
+  if (variant_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(variant_type.getSubtypes()[0], width);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2480,6 +2984,33 @@ static LogicalResult Verify(TopKV2Op op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ToBoolOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+// If the input to ToBoolOp is a `tensor<i1>`, then the ToBoolOp is an identity
+// function and can be removed.
+class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
+  using OpRewritePattern<ToBoolOp>::OpRewritePattern;
+  PatternMatchResult matchAndRewrite(ToBoolOp op,
+                                     PatternRewriter &rewriter) const override {
+    if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
+      if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
+        rewriter.replaceOp(op, op.getOperand());
+        return matchSuccess();
+      }
+    }
+    return matchFailure();
+  }
+};
+}  // namespace
+
+void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ToBoolOfZeroDBoolTensor>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 
@@ -2525,23 +3056,46 @@ void TransposeOp::build(Builder *builder, OperationState &result, Value x,
                             perm);
 }
 
-OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(perm().getDefiningOp());
+namespace {
 
-  if (!const_perm) {
-    return {};
-  }
+OpFoldResult FoldIdentityTranspose(TransposeOp op) {
+  auto const_perm = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
+  if (!const_perm) return {};
 
   auto const_value = const_perm.value();
-
   const auto &elements = const_value.getValues<APInt>();
+
   for (auto it : llvm::enumerate(elements)) {
-    if (it.index() != it.value()) {
-      return {};
-    }
+    if (it.index() != it.value()) return {};
   }
 
-  return x();
+  return op.x();
+}
+
+OpFoldResult FoldCancellableTranspose(TransposeOp op) {
+  // Operand is a TransposeOp.
+  auto transpose = dyn_cast_or_null<TF::TransposeOp>(op.x().getDefiningOp());
+  if (!transpose) return {};
+
+  // Permutations defined by constant operations.
+  auto perm0 = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
+  auto perm1 = dyn_cast_or_null<TF::ConstOp>(transpose.perm().getDefiningOp());
+  if (!perm0 || !perm1) return {};
+
+  // With permutation indices that cancel each other
+  auto perm0_value = perm0.value().cast<DenseIntElementsAttr>();
+  auto perm1_value = perm1.value().cast<DenseIntElementsAttr>();
+  if (!AreCancellablePermutations(perm0_value, perm1_value)) return {};
+
+  return transpose.x();
+}
+
+}  // namespace
+
+OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
+  if (auto folded = FoldIdentityTranspose(*this)) return folded;
+  if (auto folded = FoldCancellableTranspose(*this)) return folded;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -2643,6 +3197,15 @@ static LogicalResult Verify(VariableShapeOp op) {
   }
 }
 
+OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
+  int width =
+      getType().cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
+  auto resource_type =
+      getElementTypeOrSelf(getOperand().getType()).cast<TF::ResourceType>();
+  if (resource_type.getSubtypes().empty()) return {};
+  return ConvertShapeToAttr(resource_type.getSubtypes()[0], width);
+}
+
 //===----------------------------------------------------------------------===//
 // WhileOp
 //===----------------------------------------------------------------------===//
@@ -2668,7 +3231,6 @@ static LogicalResult Verify(WhileOp op) {
     return op.emitOpError("requires cond function to have exactly one result");
 
   SmallVector<Type, 4> operands(op.getOperandTypes());
-  SmallVector<Type, 4> results(op.getResultTypes());
 
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
@@ -2676,7 +3238,7 @@ static LogicalResult Verify(WhileOp op) {
   std::pair<std::string, ArrayRef<Type>> typeLists[] = {
       {"operand", operands},
       {"body function result", bodyFuncType.getResults()},
-      {"result", results},
+      {"result", op.getResultTypes()},
       {"cond function input", condFuncType.getInputs()},
       {"body function input", bodyFuncType.getInputs()},
   };
@@ -2791,6 +3353,8 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 //===----------------------------------------------------------------------===//
 // TF Dialect
 //===----------------------------------------------------------------------===//
+
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.cc.inc"
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context) {

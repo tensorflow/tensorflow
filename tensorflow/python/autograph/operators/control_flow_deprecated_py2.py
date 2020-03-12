@@ -106,9 +106,8 @@ def _disallow_undefs_into_loop(*values):
   undefined = tuple(filter(special_values.is_undefined, values))
   if undefined:
     raise ValueError(
-        'TensorFlow requires that the following symbols must be defined'
-        ' before the loop: {}'.format(tuple(s.symbol_name for s in undefined)))
-
+        '{} must be defined before the loop.'.format(
+            ','.join(s.symbol_name for s in undefined)))
   for value in values:
     if special_values.is_undefined_return(value):
       # Assumption: the loop will only capture the variable which tracks the
@@ -253,7 +252,7 @@ def _verify_tf_cond_vars(body_vars, orelse_vars, symbol_names):
   assert isinstance(composite_body_vars, tuple)
   assert isinstance(composite_orelse_vars, tuple)
 
-  # TODO(kkimlabs): Make this more consistent.
+  # TODO(kkb): Make this more consistent.
   # The basic outputs should always be a tuple.
   if not isinstance(basic_body_vars, tuple):
     basic_body_vars = (basic_body_vars,)

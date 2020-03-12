@@ -8,10 +8,13 @@ ifeq ($(TARGET), bluepill)
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
   $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
+  # TODO(b/149943573): It may be worthwhile to remove -DNDEBUG if we can get the
+  # bluepill target to compile without it.
   PLATFORM_FLAGS = \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
+    -DNDEBUG \
     -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
@@ -27,10 +30,13 @@ ifeq ($(TARGET), bluepill)
     -Wvla \
     -Wall \
     -Wextra \
+    -Wsign-compare \
+    -Wdouble-promotion \
+    -Wshadow \
+    -Wunused-variable \
+    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-missing-field-initializers \
     -Wno-write-strings \
-    -Wno-sign-compare \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \

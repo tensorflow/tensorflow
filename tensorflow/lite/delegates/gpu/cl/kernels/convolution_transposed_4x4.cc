@@ -30,7 +30,7 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
+    const OperationDef& op_def, const LinearStorage& biases,
     const std::vector<ElementwiseOperation*>& linked_operations,
     ConvolutionTransposed4x4::WeightsUploadType weights_upload_type) {
   std::string c = GetCommonDefines(op_def.precision);
@@ -69,21 +69,26 @@ std::string GenerateConvolutionTransposedCode(
       break;
   }
 
-  const std::string pixel_stride = op_def.batch_support ? "dst_size.w" : "1";
-  if (need_local_mem) {  // we use fixed workgroup size when use local mem
-    c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
-  }
+  const std::string weights_space =
+      weights_upload_type ==
+              ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
+          ? "__constant"
+          : "__global";
+
+  const std::string pixel_stride =
+      op_def.IsBatchSupported() ? "dst_size.w" : "1";
+  c += "__attribute__((reqd_work_group_size(8, 4, 1)))\n";
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  c += "    __global FLT4* filters,\n";
-  c += "    __read_only image2d_t biases";
+  c += "    " + weights_space + " FLT4* filters,\n";
+  c += biases.GetDeclaration();
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size,             \n";
   c += "    int filter_offset          \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X0 = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -92,7 +97,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
   if (!need_local_mem) {
-    if (op_def.batch_support) {
+    if (op_def.IsBatchSupported()) {
       c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
            ">= "
            "dst_size.z) return;\n";
@@ -180,7 +185,8 @@ std::string GenerateConvolutionTransposedCode(
     c += "    weights_cache[local_id + 32] = filters[f_offset + local_id + "
          "32];\n";
   } else {  // GLOBAL_MEM
-    c += "    __global FLT4* weights_cache = filters + f_offset;\n";
+    c +=
+        "    " + weights_space + " FLT4* weights_cache = filters + f_offset;\n";
   }
   c += "    FLT4 src0 = " + read_src(0, 0) + ";\n";
   c += "    FLT4 src1 = " + read_src(1, 0) + ";\n";
@@ -209,7 +215,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "  }\n";
   c += "\n";
   if (need_local_mem) {
-    if (op_def.batch_support) {
+    if (op_def.IsBatchSupported()) {
       c += "  if (X0 * 2 * dst_size.w > dst_size.x || Y * 2 > dst_size.y || Z "
            ">= "
            "dst_size.z) return;\n";
@@ -218,14 +224,14 @@ std::string GenerateConvolutionTransposedCode(
            "return;\n";
     }
   }
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  X = X0 * 2 * dst_size.w + B - dst_size.w;\n";
   } else {
     c += "  X = X * 2 - 1;\n";
   }
   c += "  Y = Y * 2 - 1;\n";
   c += "\n";
-  c += "  FLT4 bias_val = READ_IMAGE(biases, smp_none, (int2)(Z, 0));\n";
+  c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  if (X >= 0 && Y >= 0) {\n";
   c += "    FLT4 result = TO_FLT4(r0) + bias_val;\n";
   LinkingContext context{"result", "X", "Y", "Z"};
@@ -266,6 +272,8 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device.IsNvidia()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else if (device.IsAMD()) {
+    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
   }
@@ -296,7 +304,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 Status ConvolutionTransposed4x4::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, linked_operations_, weights_upload_type_);
+      definition_, biases_, linked_operations_, weights_upload_type_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -333,16 +341,6 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvolutionTransposed4x4::Tune(const TuningParameters& params) {
-  if (weights_upload_type_ == WeightsUploadType::LOCAL_MEM_ASYNC ||
-      weights_upload_type_ == WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return OkStatus();
-  }
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
-                              &work_group_size_);
-}
-
 Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
@@ -371,6 +369,7 @@ Status CreateConvolutionTransposed4x4(
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition.GetDataType();
+  create_info.name = "biases";
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));

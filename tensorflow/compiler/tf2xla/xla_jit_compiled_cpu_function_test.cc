@@ -83,6 +83,90 @@ tf2xla::Config SumConfig() {
   return config;
 }
 
+GraphDef SumGraphVariable() {
+  constexpr char text_proto[] = R"pb(
+    node {
+      name: "x"
+      op: "VarHandleOp"
+      attr {
+        key: "dtype"
+        value { type: DT_INT32 }
+      }
+      attr {
+        key: "shared_name"
+        value { s: "myvar" }
+      }
+      attr {
+        key: "shape"
+        value { shape { dim { size: 1 } } }
+      }
+    }
+    node {
+      name: "read"
+      op: "ReadVariableOp"
+      input: "x"
+      attr {
+        key: "dtype"
+        value { type: DT_INT32 }
+      }
+    }
+    node {
+      name: "y"
+      op: "Placeholder"
+      attr {
+        key: "dtype"
+        value { type: DT_INT32 }
+      }
+    }
+    node {
+      name: "sum"
+      op: "Add"
+      input: "read"
+      input: "y"
+      attr {
+        key: "T"
+        value { type: DT_INT32 }
+      }
+    }
+    node {
+      name: "assign"
+      op: "AssignVariableOp"
+      input: "x"
+      input: "sum"
+      attr {
+        key: "dtype"
+        value { type: DT_INT32 }
+      }
+    }
+    # We use this identity op to make sure assign doesn't get pruned away.
+    node {
+      name: "out"
+      op: "Identity"
+      input: "y"
+      input: "^assign"
+      attr {
+        key: "T"
+        value { type: DT_INT32 }
+      }
+    })pb";
+  GraphDef graph;
+  CHECK(protobuf::TextFormat::ParseFromString(text_proto, &graph));
+  return graph;
+}
+
+tf2xla::Config SumConfigVariable() {
+  constexpr char text_proto[] = R"pb(feed { id { node_name: "y" } }
+                                     variable {
+                                       node_name: "myvar"
+                                       shape { dim { size: 1 } }
+                                       type: DT_INT32
+                                     }
+                                     fetch { id { node_name: "out" } })pb";
+  tf2xla::Config config;
+  CHECK(protobuf::TextFormat::ParseFromString(text_proto, &config));
+  return config;
+}
+
 TEST(XlaJitCompiledCpuFunction, Sum) {
   GraphDef graph_def = SumGraph();
   tf2xla::Config config = SumConfig();
@@ -126,6 +210,9 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   EXPECT_EQ(function.LookupResultIndex("x_name"), -1);
   EXPECT_EQ(function.LookupResultIndex("y_name"), -1);
 
+  EXPECT_EQ(0, function.num_variables());
+  EXPECT_EQ(function.LookupVariableIndex("x"), -1);
+
   // Check program shape.
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
@@ -138,6 +225,57 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   const xla::Shape& result = program_shape.result();
   ASSERT_EQ(result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(result), 1);
+  const xla::Shape& result0 = ShapeUtil::GetTupleElementShape(result, 0);
+  EXPECT_TRUE(ShapeUtil::Compatible(result0, s32));
+}
+
+TEST(XlaJitCompiledCpuFunction, SumVariable) {
+  GraphDef graph_def = SumGraphVariable();
+  tf2xla::Config config = SumConfigVariable();
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<XlaJitCompiledCpuFunction> jit,
+      XlaJitCompiledCpuFunction::Compile(graph_def, config,
+                                         xla::ExecutableBuildOptions()));
+  XlaCompiledCpuFunction function(jit->StaticData());
+
+  // Run the function and check results.
+  *static_cast<int32*>(function.arg_data(0)) = 10;
+  *static_cast<int32*>(function.arg_data(1)) = 32;
+  EXPECT_TRUE(function.Run());
+  EXPECT_EQ(function.error_msg(), "");
+  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 10);
+  EXPECT_EQ(*static_cast<int32*>(function.result_data(1)), 42);
+
+  // Run the function again.
+  *static_cast<int32*>(function.arg_data(0)) = 100;
+  *static_cast<int32*>(function.arg_data(1)) = 320;
+  EXPECT_TRUE(function.Run());
+  EXPECT_EQ(function.error_msg(), "");
+  EXPECT_EQ(*static_cast<int32*>(function.result_data(0)), 100);
+  EXPECT_EQ(*static_cast<int32*>(function.result_data(1)), 420);
+
+  // Check name to index lookups.
+  EXPECT_TRUE(function.HasNameIndices());
+
+  EXPECT_EQ(2, function.num_args());
+
+  EXPECT_EQ(1, function.num_variables());
+  EXPECT_EQ(function.LookupVariableIndex("myvar"), 1);
+
+  // Check program shape.
+  using xla::ShapeUtil;
+  const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
+  const xla::Shape s32_1 = ShapeUtil::MakeShape(xla::S32, {1});
+  ASSERT_TRUE(function.ProgramShape() != nullptr);
+  const xla::ProgramShape program_shape(*function.ProgramShape());
+  ASSERT_EQ(program_shape.parameters_size(), 2);
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32_1));
+
+  const xla::Shape& result = program_shape.result();
+  ASSERT_EQ(result.element_type(), xla::TUPLE);
+  ASSERT_EQ(ShapeUtil::TupleElementCount(result), 2);
   const xla::Shape& result0 = ShapeUtil::GetTupleElementShape(result, 0);
   EXPECT_TRUE(ShapeUtil::Compatible(result0, s32));
 }

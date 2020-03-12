@@ -54,6 +54,7 @@ TfLiteRegistration* Register_LOGICAL_OR();
 TfLiteRegistration* Register_LOGISTIC();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MAX_POOL_2D();
+TfLiteRegistration* Register_MEAN();
 TfLiteRegistration* Register_MINIMUM();
 TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_NEG();
@@ -76,6 +77,7 @@ TfLiteRegistration* Register_SQUARE();
 TfLiteRegistration* Register_STRIDED_SLICE();
 TfLiteRegistration* Register_SVDF();
 TfLiteRegistration* Register_UNPACK();
+TfLiteRegistration* Register_CIRCULAR_BUFFER();
 
 }  // namespace micro
 }  // namespace ops

@@ -50,7 +50,7 @@ class WorkerCachePartial : public WorkerCacheInterface {
   Status RefreshDeviceStatus(const string& device_name);
 
   typedef std::unordered_map<string, DeviceAttributes> StatusMap;
-  StatusMap device_status_cache_ GUARDED_BY(mu_);
+  StatusMap device_status_cache_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

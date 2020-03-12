@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -32,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
@@ -520,72 +520,6 @@ TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
   return createTFEDequeue(ctx, TF_VARIANT, queue, status);
 }
 
-void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
-  auto* status = TF_NewStatus();
-  TF_Tensor* t = TFE_TensorHandleResolve(handle, status);
-  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-
-  tensorflow::Tensor dst;
-  TF_CHECK_OK(TF_TensorToTensor(t, &dst));
-  LOG(INFO) << dst.DebugString();
-
-  TF_DeleteTensor(t);
-  TF_DeleteStatus(status);
-}
-
-void TFE_OpPrintDebugString(TFE_Op* op) {
-  VLOG(1) << "TFE_OpPrintDebugString() over " << op;
-  LOG(INFO) << op->operation.DebugString();
-}
-
-struct TFE_ExecuteOpNotification {
-  TFE_ExecuteOpNotification() : status(TF_NewStatus(), TF_DeleteStatus) {}
-  tensorflow::Notification n;
-  std::unique_ptr<tensorflow::Thread> thread;
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status;
-};
-
-TFE_ExecuteOpNotification* TFE_ExecuteOpInNewThread(TFE_Op* op,
-                                                    TFE_TensorHandle** retvals,
-                                                    int* num_retvals,
-                                                    TF_Status* status) {
-  TFE_ExecuteOpNotification* n = new TFE_ExecuteOpNotification;
-
-  n->thread.reset(op->operation.EagerContext().TFEnv()->StartThread(
-      tensorflow::ThreadOptions(), "ExecuteOpThread",
-      [op, retvals, num_retvals, n]() {
-        TFE_Execute(op, retvals, num_retvals, n->status.get());
-        n->n.Notify();
-      }));
-
-  return n;
-}
-
-void TFE_ExecuteOpNotificationWaitAndDelete(
-    TFE_ExecuteOpNotification* notification, TF_Status* status) {
-  if (notification == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passed in notification is a nullptr.");
-
-    return;
-  }
-  if (notification->thread == nullptr) {
-    status->status = tensorflow::errors::InvalidArgument(
-        "Passed in notification didn't start a thread correctly. Cleaning up "
-        "this notification. Please re-execute the operation to get a new "
-        "notification.");
-
-    delete notification;
-    return;
-  }
-
-  notification->n.WaitForNotification();
-
-  status->status = notification->status->status;
-
-  delete notification;
-}
-
 void TF_MakeInternalErrorStatus(TF_Status* status, const char* errMsg) {
   status->status = tensorflow::errors::Internal(errMsg);
 }
@@ -810,108 +744,6 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
   status->status = EnableCollectiveOps(server_def, ctx);
 }
 
-void MakeTPUInitializationFunctionDef(
-    const tensorflow::string& tpu_system_device_name,
-    tensorflow::FunctionDef* function_def) {
-  tensorflow::OpDef* signature_def(function_def->mutable_signature());
-  signature_def->set_name("_eager_context_tpu_initialization");
-  signature_def->set_is_stateful(true);
-  signature_def->add_control_output("ConfigureDistributedTPU");
-  tensorflow::OpDef_ArgDef* arg_def(signature_def->add_output_arg());
-  arg_def->set_name("topology_proto");
-  arg_def->set_type(tensorflow::DataType::DT_STRING);
-  tensorflow::NodeDef* configure_node_def(function_def->add_node_def());
-  configure_node_def->set_name("ConfigureDistributedTPU");
-  configure_node_def->set_op("ConfigureDistributedTPU");
-  (*configure_node_def->mutable_attr())["compilation_failure_closes_chips"]
-      .set_b(false);
-  configure_node_def->set_device(tpu_system_device_name);
-  tensorflow::NodeDef* identity_node_def(function_def->add_node_def());
-  identity_node_def->set_name("Identity");
-  identity_node_def->set_op("Identity");
-  identity_node_def->add_input("ConfigureDistributedTPU:topology:0");
-  (*identity_node_def->mutable_attr())["T"].set_type(
-      tensorflow::DataType::DT_STRING);
-  (*function_def->mutable_ret())["topology_proto"] = "Identity:output:0";
-  (*function_def->mutable_control_ret())["ConfigureDistributedTPU"] =
-      "ConfigureDistributedTPU";
-}
-
-// NOTE(iga): ConfigureDistributedTPU is dummy op whose sole purpose is to
-// trigger DistributedTPURewritePass. This pass actually adds real ops that
-// initialize the TPU system. Thus, we can't simply run ConfigureDistributedTPU
-// eagerly. We need to wrap it in a function and trigger the rewrite passes on
-// it. The easiest way to trigger a rewrite is to run it in a function.
-
-// Running initialization as an operation rather than calling the underlying C++
-// implementation directly allows us to run initialization on a remote device
-// without a separate communication channel.
-TF_CAPI_EXPORT extern void TFE_InitializeTPUSystem(TFE_Context* ctx,
-                                                   const char* job,
-                                                   TF_Buffer* tpu_topology,
-                                                   TF_Status* status) {
-  if (tpu_topology->data != nullptr) {
-    status->status = InvalidArgument("Passing non-empty TF_Buffer is invalid.");
-    return;
-  }
-  tensorflow::string tpu_system_device_name = tensorflow::strings::StrCat(
-      "/job:", job, "/replica:0/task:0/device:TPU_SYSTEM:0");
-  tensorflow::Device* tpu_system_device = nullptr;
-  tensorflow::Status lookup_status = ctx->context->FindDeviceFromName(
-      tpu_system_device_name.c_str(), &tpu_system_device);
-  if (!lookup_status.ok() || tpu_system_device == nullptr) {
-    // There are no TPUs to initialize.
-    status->status = tensorflow::errors::NotFound(tensorflow::strings::StrCat(
-        "No TPUs are associated with the specified job '", job, "'"));
-    return;
-  }
-  tensorflow::FunctionDef function_def;
-  MakeTPUInitializationFunctionDef(tpu_system_device->name().c_str(),
-                                   &function_def);
-  tensorflow::string function_name = function_def.signature().name();
-  status->status = ctx->context->AddFunctionDef(function_def);
-  if (!status->status.ok()) return;
-  tensorflow::EagerOperation call_op(ctx->context);
-  status->status =
-      call_op.Reset(function_name.c_str(), nullptr, false, nullptr);
-  if (!status->status.ok()) return;
-  status->status = call_op.SetDeviceName(tpu_system_device_name.c_str());
-  if (!status->status.ok()) return;
-  tensorflow::TensorHandle* remote_topology_handle;
-  int num_retvals = 1;
-  status->status =
-      tensorflow::EagerExecute(&call_op, &remote_topology_handle, &num_retvals);
-  if (!status->status.ok()) return;
-  tensorflow::TensorHandle* local_topology_handle = nullptr;
-  status->status = tensorflow::EagerCopyToDevice(
-      remote_topology_handle, ctx->context, &ctx->context->Executor(),
-      ctx->context->HostCPU(), false, &local_topology_handle);
-  remote_topology_handle->Unref();
-  if (!status->status.ok()) return;
-  const tensorflow::Tensor* topology_proto_tensor;
-  status->status = local_topology_handle->Tensor(&topology_proto_tensor);
-  if (!status->status.ok()) return;
-  status->status = ctx->context->RemoveFunction(function_name);
-  if (!status->status.ok()) return;
-  // The function ran, so we put the result in the return buffer.
-  tensorflow::string result =
-      topology_proto_tensor->flat<tensorflow::tstring>()(0);
-  local_topology_handle->Unref();
-  void* topology_data = tensorflow::port::Malloc(result.size());
-  tpu_topology->data = topology_data;
-  if (tpu_topology->data == nullptr) {
-    status->status = tensorflow::errors::ResourceExhausted(
-        "Failed to allocate memory for topology proto (", result.size(),
-        " bytes)");
-  }
-  memcpy(topology_data, result.c_str(), result.size());
-  tpu_topology->length = result.size();
-  tpu_topology->data_deallocator = [](void* data, size_t length) {
-    tensorflow::port::Free(data);
-  };
-  status->status = tensorflow::Status::OK();
-}
-
 TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
   TF_ShapeAndTypeList* result = new TF_ShapeAndTypeList;
   result->num_items = num_items;
@@ -985,12 +817,15 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  node_def.set_name(tfe_op->operation.Name());
-  node_def.set_op(tfe_op->operation.Name());
+  node_def.set_name(tfe_op->operation->Name());
+  node_def.set_op(tfe_op->operation->Name());
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tfe_op->operation.Attrs().FillAttrValueMap(node_def.mutable_attr());
+  tensorflow::down_cast<tensorflow::OperationInterface*>(
+      tfe_op->operation.get())
+      ->Attrs()
+      .FillAttrValueMap(node_def.mutable_attr());
 
   const tensorflow::OpRegistrationData* op_reg_data;
   status->status =

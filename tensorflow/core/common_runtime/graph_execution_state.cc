@@ -615,7 +615,7 @@ Status GraphExecutionState::InitBaseGraph(std::unique_ptr<Graph>&& new_graph) {
                     session_options_->config.allow_soft_placement(),
                 session_options_ != nullptr &&
                     session_options_->config.log_device_placement());
-  // TODO(mrry): Consider making the Placer cancelable.
+  // TODO(mrry): Consider making the Placer cancellable.
   TF_RETURN_IF_ERROR(placer.Run());
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -732,8 +732,9 @@ Status GraphExecutionState::OptimizeGraph(
     }
     grappler::VirtualCluster cluster(device_set_);
     GraphDef new_graph;
-    TF_RETURN_IF_ERROR(grappler::RunMetaOptimizer(
-        item, session_options_->config, cpu_device, &cluster, &new_graph));
+    TF_RETURN_IF_ERROR(
+        grappler::RunMetaOptimizer(std::move(item), session_options_->config,
+                                   cpu_device, &cluster, &new_graph));
 
     // Merge optimized graph function library with an original library.
     // Optimized graph might have new functions specialized for it's

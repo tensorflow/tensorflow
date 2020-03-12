@@ -128,7 +128,7 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
                          const int golden_input_data_size, float* output_data,
                          float* expected_output, float tolerance = 1e-5f) {
   TfLiteContext context;
-  PopulateContext(tensors, tensor_count, &context);
+  PopulateContext(tensors, tensor_count, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
@@ -209,7 +209,7 @@ void ValidateIntegerSVDFGoldens(const int batch_size, const int num_units,
                                 const int golden_input_data_size,
                                 int8_t* output_data, int8_t* expected_output) {
   TfLiteContext context;
-  PopulateContext(tensors, tensor_count, &context);
+  PopulateContext(tensors, tensor_count, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =

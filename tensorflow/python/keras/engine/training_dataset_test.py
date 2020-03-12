@@ -27,7 +27,7 @@ import six
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
@@ -63,8 +63,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -89,8 +88,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -107,8 +105,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
               validation_data=dataset, validation_steps=2)
 
     # Test with validation split
-    with self.assertRaisesRegexp(
-        ValueError, '`validation_split` argument is not supported when '):
+    with self.assertRaises(ValueError):
       model.fit(dataset,
                 epochs=1, steps_per_epoch=2, verbose=0,
                 validation_split=0.5, validation_steps=2)
@@ -124,19 +121,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
           verbose=0,
           sample_weight=sample_weight)
 
-    # Test invalid usage
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.fit(dataset, batch_size=10, epochs=1, steps_per_epoch=2,
-                verbose=0)
-
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.predict(dataset, batch_size=10, steps=2, verbose=0)
-    with self.assertRaisesRegexp(
-        ValueError, 'The `batch_size` argument must not be specified'):
-      model.evaluate(dataset, batch_size=10, steps=2, verbose=0)
-
     with self.assertRaisesRegexp(
         ValueError, '(you should not specify a target)|'
         '(`y` argument is not supported when using dataset as input.)'):
@@ -144,14 +128,11 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
                 epochs=1, steps_per_epoch=2, verbose=0)
 
     # With an infinite dataset, `steps_per_epoch`/`steps` argument is required.
-    with self.assertRaisesRegexp(
-        ValueError, 'the `steps_per_epoch` argument'):
+    with self.assertRaises(ValueError):
       model.fit(dataset, epochs=1, verbose=0)
-    with self.assertRaisesRegexp(ValueError,
-                                 'the `steps` argument'):
+    with self.assertRaises(ValueError):
       model.evaluate(dataset, verbose=0)
-    with self.assertRaisesRegexp(ValueError,
-                                 'the `steps` argument'):
+    with self.assertRaises(ValueError):
       model.predict(dataset, verbose=0)
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
@@ -168,8 +149,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     input_a_np = np.random.random((10, 3)).astype(dtype=np.float32)
     input_b_np = np.random.random((10, 3)).astype(dtype=np.float32)
@@ -184,14 +164,6 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     model.fit(dataset_tuple, epochs=1, steps_per_epoch=2, verbose=1)
     model.evaluate(dataset_tuple, steps=2, verbose=1)
-
-    predict_dataset_tuple = dataset_ops.Dataset.from_tensor_slices(
-        (input_a_np, input_b_np))
-    # TODO(b/123360757): Remove below assertion once predict() supports
-    # muti-input datasets.
-    with self.assertRaisesRegexp(ValueError,
-                                 'Error when checking model input'):
-      model.predict(predict_dataset_tuple, steps=1)
 
     # Test with dict
     input_dict = {'input_1': input_a_np, 'input_2': input_b_np}
@@ -225,8 +197,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         optimizer,
         loss,
         metrics=metrics,
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), np.float32)
     targets = np.zeros((10, 4), np.float32)
@@ -272,8 +243,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         optimizer,
         loss='sparse_categorical_crossentropy',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((10, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=10, dtype=np.int32)
@@ -297,8 +267,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         loss='mae',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((40, 2), dtype=np.float32)
     inputs[10:20, :] = 2
@@ -334,9 +303,8 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
         history.history['val_loss'],
         [inputs.sum() / 40, inputs.sum() / 40])
 
-  @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
-    with self.cached_session():
+    with ops.get_default_graph().as_default(), self.cached_session():
       model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
       model.compile(optimizer='rmsprop', loss='mse')
 
@@ -370,8 +338,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -394,8 +361,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -434,8 +400,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -458,15 +423,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     self.assertIn('10/10', lines[-1])
 
     self.assertLen(history.history['loss'], 2)
-    # The first epoch will invoke batch begin 11 times, since it doesn't know
-    # the cardinality. The second epoch should just invoke 10 times.
-    if (testing_utils.should_run_eagerly()
-        or testing_utils.should_run_tf_function()):
-      expected_batch_begin_count = 21
-    else:
-      expected_batch_begin_count = 20
-    self.assertEqual(batch_counter.batch_begin_count,
-                     expected_batch_begin_count)
+    self.assertEqual(batch_counter.batch_begin_count, 21)
     self.assertEqual(batch_counter.batch_end_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
@@ -479,8 +436,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model.compile(
         'rmsprop',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
     targets = np.random.randint(0, 4, size=100, dtype=np.int32)
@@ -535,8 +491,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     model = keras.Model(inp, out)
     model.compile(
         'rmsprop', loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 4), dtype=np.float32)
     targets = np.random.randint(0, 2, size=100, dtype=np.int32)
@@ -585,8 +540,7 @@ class TestMetricsWithDatasets(keras_parameterized.TestCase):
         loss='binary_crossentropy',
         metrics=['accuracy', metrics_module.BinaryAccuracy()],
         optimizer='rmsprop',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     np.random.seed(123)
     x = np.random.randint(10, size=(100, 4)).astype(np.float32)

@@ -230,6 +230,14 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
         ))
     self.assertAllClose([2. * 5. + 3. * 4.], self.evaluate(vp))
 
+  def testNonDifferentiableOpWithInputTangent(self):
+    x = constant_op.constant(1.)
+    with forwardprop.ForwardAccumulator(x, 2.) as acc1:
+      with forwardprop.ForwardAccumulator(x, 2.) as acc2:
+        y = array_ops.zeros_like(x)
+      self.assertIsNone(acc1.jvp(y))
+    self.assertIsNone(acc2.jvp(y))
+
   def testJVPFunctionUsedByAccumulatorForOps(self):
     previous_fn = forwardprop._jvp_dispatch
     try:
@@ -936,7 +944,7 @@ class ForwardpropTest(test.TestCase, parameterized.TestCase):
 
   # NOTE: assert_no_new_pyobjects_executing_eagerly fails flakily on this
   # test... could be something wrong with the test decorator, or some sort of
-  # nondeterminstic caching.
+  # nondeterministic caching.
   def testMirroredVariableWatched(self):
 
     def _replicated(input_tangent):
@@ -1067,7 +1075,7 @@ class HessianTests(test.TestCase, parameterized.TestCase):
        ("MapFn", False)])
   def testHessianOfVariables(self, use_pfor):
     model = core.Dense(1)
-    model.build([2])
+    model.build([None, 2])
 
     def _loss(*unused_args):
       input_value = constant_op.constant([[-0.5, 1.], [0.5, -1.]])

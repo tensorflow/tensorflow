@@ -13,6 +13,46 @@ exports_files(glob([
 ]))
 
 cc_library(
+    name = "modify_model_interface",
+    srcs = ["modify_model_interface.cc"],
+    hdrs = ["modify_model_interface.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:compatibility",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "modify_model_interface_test",
+    srcs = ["modify_model_interface_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":modify_model_interface",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_binary(
+    name = "modify_model_interface_main",
+    srcs = ["modify_model_interface_main.cc"],
+    deps = [
+        ":modify_model_interface",
+        ":quantize_model",
+    ],
+)
+
+cc_library(
     name = "quantization_wrapper_utils",
     srcs = ["quantization_wrapper_utils.cc"],
     hdrs = ["quantization_wrapper_utils.h"],
@@ -37,6 +77,7 @@ tf_cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -73,6 +114,7 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -87,6 +129,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -142,6 +185,7 @@ tf_cc_test(
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],
@@ -155,6 +199,7 @@ cc_library(
         ":quantization_utils",
         ":model_utils",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/container:flat_hash_map",
         "@flatbuffers",
         "//tensorflow/lite:framework",

@@ -128,7 +128,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
         IteratorContext::Params params(ctx);
         params.model = model_;
         return dataset()->input_->MakeIterator(
-            IteratorContext(std::move(params)), prefix(), &input_impl_);
+            IteratorContext(std::move(params)), this, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -166,7 +166,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!optimize_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
@@ -210,8 +210,8 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
       mutex mu_;
       condition_variable cond_var_;
       std::shared_ptr<model::Model> model_;
-      std::unique_ptr<Thread> optimize_thread_ GUARDED_BY(mu_);
-      bool cancelled_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<Thread> optimize_thread_ TF_GUARDED_BY(mu_);
+      bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::unique_ptr<IteratorBase> input_impl_;
     };
 

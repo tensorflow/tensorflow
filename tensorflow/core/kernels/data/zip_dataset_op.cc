@@ -121,7 +121,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       input_impls_.resize(dataset()->inputs_.size());
       for (size_t i = 0; i < input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
+            ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+            &input_impls_[i]));
       }
       return Status::OK();
     }
@@ -200,7 +201,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::vector<std::unique_ptr<IteratorBase>> input_impls_ GUARDED_BY(mu_);
+    std::vector<std::unique_ptr<IteratorBase>> input_impls_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<DatasetBase*> inputs_;

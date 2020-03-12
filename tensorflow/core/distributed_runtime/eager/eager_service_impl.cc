@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
@@ -119,6 +120,13 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   auto* r = env_->rendezvous_mgr->Find(request->context_id());
   auto session_name =
       tensorflow::strings::StrCat("eager_", request->context_id());
+  if (VLOG_IS_ON(2)) {
+    VLOG(2) << "Creating context on /job:" << request->server_def().job_name()
+            << "/task:" << request->server_def().task_index();
+    for (const auto& da : request->cluster_device_attributes()) {
+      VLOG(2) << "    " << da.name();
+    }
+  }
   TF_RETURN_IF_ERROR(env_->session_mgr->CreateSession(
       session_name, request->server_def(), request->cluster_device_attributes(),
       true));
@@ -228,6 +236,16 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
         request->context_id(), "> currently at view #", ctx->GetContextViewId(),
         " but received update request at view #", request->context_view_id(),
         ". View id should only be continuously incremented.");
+  }
+  if (request->cluster_device_attributes_size() == 0) {
+    // In this case, the client indicates that the updated `server_def` and
+    // device info is irrelevant to this worker, since it is not connected to
+    // the updated ones (likely due to device filter settings). The worker
+    // simply needs to update view ID and does not update other internal state.
+    ctx->IncrementContextViewId();
+    VLOG(1) << "Processing simplified UpdateContextRequest on "
+            << ctx->HostCPU()->name();
+    return Status::OK();
   }
   // TODO(b/143914772): Potential memory leak if rendezvous has pending
   // tensors for removed / replaced workers.
@@ -342,6 +360,34 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   {
     profiler::TraceMe activity("EagerService:RemoteTensorHandleInternal",
                                profiler::TraceMeLevel::kVerbose);
+    if (!operation.op_inputs().empty() && !operation.inputs().empty()) {
+      return errors::InvalidArgument(
+          "Both operation.inputs and operation.op_inputs are specified in the "
+          "same request.");
+    }
+    for (const auto& input : operation.op_inputs()) {
+      tensorflow::TensorHandle* handle;
+      if (input.has_remote_handle()) {
+        TF_RETURN_IF_ERROR(
+            eager_context->RemoteMgr()->DeserializeRemoteTensorHandle(
+                input.remote_handle(), &handle));
+        op->AddInput(handle);
+      } else {
+        Tensor tensor;
+        if (!ParseTensorProtoToTensor(input.tensor(), &tensor)) {
+          return errors::InvalidArgument("Invalid TensorProto: ",
+                                         input.tensor().DebugString());
+        } else {
+          TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+              std::move(tensor), nullptr, nullptr, eager_context, &handle));
+          op->AddInput(handle);
+        }
+      }
+      // Unref handle since it has a ref as an input now.
+      handle->Unref();
+    }
+    // TODO(b/150963957): Remove this once the migration from operation.inputs
+    // to operation.op_inputs completes.
     for (const auto& remote_handle : operation.inputs()) {
       tensorflow::TensorHandle* handle;
       TF_RETURN_IF_ERROR(
@@ -413,8 +459,11 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
       s = SendTensor(item.send_tensor(), context->Context());
     } else if (item.has_register_function()) {
       s = RegisterFunction(item.register_function(), context->Context());
-    } else {
+    } else if (item.has_cleanup_function()) {
       s = CleanupFunction(item.cleanup_function());
+    } else {
+      DCHECK(item.has_sync_remote_executor_for_stream());
+      s = executor.WaitForAllPendingNodes();
     }
 
     if (!s.ok()) {
@@ -510,7 +559,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
     }
 
     TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(tensor, &tensor_handle));
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+        std::move(tensor), nullptr, nullptr, eager_context, &tensor_handle));
     TensorHandle* copied_handle = nullptr;
     Device* device;
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(
@@ -536,7 +586,7 @@ tensorflow::Status EagerServiceImpl::GetServerContext(
     return errors::InvalidArgument(strings::Printf(
         "Unable to find a context_id matching the specified one "
         "(%llu). Perhaps the worker was restarted, or the context was GC'd?",
-        context_id));
+        static_cast<unsigned long long>(context_id)));
   }
 
   *server_context = iter->second;

@@ -115,7 +115,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
               cancelled_ = true;
             },
             &deregister_fn_));
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -151,8 +152,8 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       }
 
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      bool cancelled_ GUARDED_BY(mu_) = false;
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::function<void()> deregister_fn_;
     };
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
+#include "tensorflow/core/platform/stringprintf.h"
 
 namespace tensorflow {
 namespace data {
@@ -104,7 +106,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       : DatasetBase(DatasetContext(ctx)),
         input_(input),
         buffer_size_(buffer_size),
-        count_(count) {
+        count_(count),
+        traceme_metadata_(
+            {{"buffer_size",
+              strings::Printf("%lld", static_cast<long long>(buffer_size))}}) {
     input_->Ref();
   }
 
@@ -163,11 +168,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
 
-    string BuildTraceMeName() override {
-      return strings::StrCat(
-          this->prefix(), "#buffer_size=", this->dataset()->buffer_size_, "#");
-    }
-
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
@@ -176,7 +176,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       int64 num_log_entries = 0;
       if (!input_impl_ && epoch_ == 0) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
+            ctx, this, this->prefix(), &input_impl_));
       }
       while (input_impl_ && num_elements_ < this->dataset()->buffer_size_) {
         if (EnvTime::NowMicros() >
@@ -206,7 +206,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           int64 n = slices_.back()->end;
           slices_.push_back(absl::make_unique<Slice>(n, n));
           TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-              ctx, this->prefix(), &input_impl_));
+              ctx, this, this->prefix(), &input_impl_));
         }
         if (!end_of_input_sequence) {
           if (num_elements_ == 0) {
@@ -269,7 +269,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    void ResetRngs() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void ResetRngs() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       // Reset the generators based on the current iterator seeds.
       parent_generator_ = random::PhiloxRandom(seed_, seed2_);
       generator_ =
@@ -343,7 +343,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       // Restore the input iterator if it wasn't already exhausted.
       if (!reader->Contains(this->full_name(kEndOfInputSequence))) {
         TF_RETURN_IF_ERROR(this->dataset()->input_->MakeIterator(
-            ctx, this->prefix(), &input_impl_));
+            ctx, this, this->prefix(), &input_impl_));
         TF_RETURN_IF_ERROR(this->RestoreInput(ctx, reader, input_impl_));
       } else {
         input_impl_.reset();
@@ -395,9 +395,13 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       return Status::OK();
     }
 
+    TraceMeMetadata GetTraceMeMetadata() const override {
+      return this->dataset()->traceme_metadata_;
+    }
+
     mutex mu_;
-    int64 seed_ GUARDED_BY(mu_);
-    int64 seed2_ GUARDED_BY(mu_);
+    int64 seed_ TF_GUARDED_BY(mu_);
+    int64 seed2_ TF_GUARDED_BY(mu_);
 
    private:
     // Used to represent slices of `buffer_` that belong to different epochs.
@@ -413,26 +417,26 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
     };
 
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_random_samples_++;
       auto out = generator_();
       return out;
     }
 
-    std::unique_ptr<std::vector<Tensor>[]> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 epoch_ GUARDED_BY(mu_);
-    int64 num_elements_ GUARDED_BY(mu_);
+    std::unique_ptr<std::vector<Tensor>[]> buffer_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 epoch_ TF_GUARDED_BY(mu_);
+    int64 num_elements_ TF_GUARDED_BY(mu_);
     // Indices into `buffer_` indicating which data belongs to which epoch.
     // The slice at the front of the deque references data from the earliest
     // buffered epoch. It is an invariant that all slices reference
     // non-overlapping sections of `buffer_`.
-    std::deque<std::unique_ptr<Slice>> slices_ GUARDED_BY(mu_);
-    random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+    std::deque<std::unique_ptr<Slice>> slices_ TF_GUARDED_BY(mu_);
+    random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    int64 num_random_samples_ GUARDED_BY(mu_) = 0;
-    bool data_produced_ GUARDED_BY(mu_) = false;
+        TF_GUARDED_BY(mu_);
+    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
+    bool data_produced_ TF_GUARDED_BY(mu_) = false;
   };
 
   const DatasetBase* const input_;
@@ -441,6 +445,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   // fuse shuffle and repeat together, and make the shuffle dataset op
   // responsible for repeating as well.
   const int64 count_;
+  const TraceMeMetadata traceme_metadata_;
 };
 
 // A dataset that uses a pseudorandom sequence of seeds for the iterators

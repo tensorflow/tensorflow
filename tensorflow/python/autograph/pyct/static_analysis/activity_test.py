@@ -140,6 +140,27 @@ class ActivityAnalyzerTestBase(test.TestCase):
 
 class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
 
+  def test_import(self):
+
+    def test_fn():
+      import a, b.x, y as c, z.u as d  # pylint:disable=g-multiple-import,g-import-not-at-top,unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    scope = anno.getanno(node.body[0], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('a', 'b', 'c', 'd'))
+
+  def test_import_from(self):
+
+    def test_fn():
+      from x import a  # pylint:disable=g-import-not-at-top,unused-variable
+      from y import z as b  # pylint:disable=g-import-not-at-top,unused-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    scope = anno.getanno(node.body[0], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('a',))
+    scope = anno.getanno(node.body[1], anno.Static.SCOPE)
+    self.assertScopeIs(scope, (), ('b',))
+
   def test_print_statement(self):
 
     def test_fn(a):
@@ -389,6 +410,45 @@ class ActivityAnalyzerTest(ActivityAnalyzerTestBase):
     node, _ = self._parse_and_analyze(test_fn)
     fn_node = node
     self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('c',), ())
+
+  def test_raise_names_are_read(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      raise b
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('b',), ())
+    self.assertScopeIs(
+        anno.getanno(node.body[0], anno.Static.SCOPE), ('b',), ())
+
+  def test_except_exposes_names(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      try:
+        pass
+      except:  # pylint: disable=bare-except
+        b = c
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ('b',))
+
+  def test_except_hides_exception_var_name(self):
+
+    def test_fn(a, b, c):  # pylint: disable=unused-argument
+      try:
+        pass
+      except a as e:
+        b = e
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node
+    self.assertScopeIs(
+        anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('a',), ('b',))
 
   def test_aug_assign(self):
 

@@ -16,7 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for TF to XLA.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
@@ -193,7 +193,7 @@ def : Pat<(TF_FloorModOp AnyStaticShapeTensor:$l, AnyStaticShapeTensor:$r),
 // input and result needs to ranked for computation of the broadcast dimensions.
 def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
           (HLO_BroadcastInDimOp $input,
-           (BinBroadcastDimensions $input, $result)),
+           (BinBroadcastDimensionsNonEmpty $input, $result)),
            [(AnyRankedTensor $result)]>;
 
 //===----------------------------------------------------------------------===//
@@ -207,7 +207,8 @@ class DirectLogicalBinaryPat<Op FromOp, Op ToOp>
 
 foreach fromToBinPair = [[TF_LogicalAndOp, HLO_AndOp],
                          [TF_LogicalOrOp, HLO_OrOp],
-                         [TF_BitwiseOrOp, HLO_OrOp]] in
+                         [TF_BitwiseOrOp, HLO_OrOp],
+                         [TF_BitwiseAndOp, HLO_AndOp]] in
   def : DirectLogicalBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
 //===----------------------------------------------------------------------===//
@@ -344,6 +345,101 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
           (TF_TransposeOp $b, (TF_ConstOp (Get2DTransposePerm $transpose_b))),
           /*precision_config=*/(NullArrayAttr))>;
 
+
+//===----------------------------------------------------------------------===//
+// SparseMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+// Ignores the sparseness hints and translates tf.SparseMatMul to tf.MatMul
+// until we will have an implementation that can use the information.
+def SparseMatMulToMatMul : Pat<(TF_SparseMatMulOp $a, $b, $a_sparse, $b_sparse,
+                                $transpose_a, $transpose_b),
+                               (TF_MatMulOp $a, $b, $transpose_a,
+                                $transpose_b)>;
+
+//===----------------------------------------------------------------------===//
+// MatrixBandPart op pattern.
+//===----------------------------------------------------------------------===//
+
+class getIntegerAttr<string x>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(" # x # ")">;
+
+class GetDimensionSizeFromEnd<string dimFromEnd>: NativeCodeCall<
+  "$_builder.getI64IntegerAttr(GetDimensionSizeFromEnd($0, " # dimFromEnd # "))"
+  >;
+
+// TODO(b/149615308): Enable IotaOp usage as a child operation in a pattern
+// For now, this op needs to be created in C++ because the expected output type
+// cannot be inferred.
+class createIotaOp<string dim>: NativeCodeCall<
+  "$_builder.create<xla_hlo::IotaOp>($0.getOwner()->getLoc(), "
+  "Get2DTensorType($1), $_builder.getI64IntegerAttr(" # dim # "))">;
+
+// This op needs to be created in C++ because the generated Convert Op has no
+// way to specify shape information as an input. In the MatrixBandPart op
+// lowering, ConvertOp is not a root operation and the appropriate types cannot
+// be inferred, so we construct it manually.
+def createConvertOp: NativeCodeCall<
+  "CreateConvertOp(&($_builder), $0.getOwner()->getLoc(), $1, $2)">;
+
+// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Psuedocode is
+// shown below, given a tensor `input` with k dimensions [I, J, K, ..., M, N]
+// and two integers, `num_lower` and `num_upper`:
+//
+//   iota_m = { M x N matrix with 0,1,...M along the M dimension }
+//   iota_n = { M x N matrix with 0,1,...N along the N dimension }
+//   num_lower_or_m = (num_lower < 0) ? m : num_lower
+//   num_upper_or_n = (num_upper < 0) ? n : num_upper
+//   offset = iota_m - iota_n
+//   indicator = (-num_lower_or_m < offset) & (offset < num_upper_or_n)
+//   zero_matrix = { [I, J, K,...M, N] zero matrix }
+//   return (indicator ? input : zero_matrix)
+//
+// TODO(b/149961547): Support dynamic shaped `input` in MatrixBandPartOp.
+def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_upper),
+         [(HLO_ConstOp:$m_dim (GetDimensionSizeFromEnd<"0"> $input)),
+          (HLO_ConstOp:$n_dim (GetDimensionSizeFromEnd<"1"> $input)),
+          (HLO_SelectOp:$num_lower_or_m
+           (HLO_CompareOp
+            $num_lower, (HLO_ConstOp:$zero (ConstantSplat<"0"> $num_lower)),
+            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+           ),
+           $m_dim,
+           $num_lower
+          ),
+          (HLO_SelectOp:$num_upper_or_n
+           (HLO_CompareOp
+            $num_upper, $zero,
+            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT
+           ),
+           $n_dim,
+           $num_upper
+          ),
+          (HLO_SelectOp
+           (HLO_AndOp
+            (HLO_CompareOp
+             (HLO_NegOp
+              (createConvertOp $op, $num_lower_or_m, $input)
+             ),
+             (HLO_SubOp:$offset
+              (createIotaOp<"1"> $op, $input), (createIotaOp<"0"> $op, $input),
+              (NullDenseIntElementsAttr)
+             ),
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+            ),
+            (HLO_CompareOp
+             $offset,
+             (createConvertOp
+              $op, $num_upper_or_n, $input
+             ),
+             (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LE
+            ),
+            (BinBroadcastDimensions $offset, $input)
+           ),
+           $input,
+           (HLO_ConstOp (ConstantSplat<"0"> $input))
+          )]>;
+
 //===----------------------------------------------------------------------===//
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
@@ -355,16 +451,22 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // Relu op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support dynamic but ranked input by using scalar constants
-// along with broadcast_dimensions attribute. Similarly, Relu6 op with
-// non-static shape inputs can be lowered.
-def : Pat<(TF_ReluOp AnyStaticShapeTensor:$input),
-          (HLO_MaxOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                     (NullDenseIntElementsAttr))>;
+// TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
+// require HLO canonicalization of min and max on a tensor to ClampOp.
 
-def : Pat<(TF_Relu6Op AnyStaticShapeTensor:$input),
-          (HLO_ClampOp (HLO_ConstOp (ConstantSplat<"0"> $input)), $input,
-                       (HLO_ConstOp (ConstantSplat<"6"> $input)))>;
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_ReluOp AnyRankedTensor:$input),
+          (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
+                     (BinBroadcastDimensions $zero, $input)),
+          [(TF_SintOrFpTensor $input)]>;
+
+// TODO(hinsu): Lower unsinged and quantized types after supporting
+// them in GetScalarOfType.
+def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
+          (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,
+                       (HLO_ConstOp (GetScalarOfType<6> $input))),
+          [(TF_SintOrFpTensor $input)]>;
 
 // ReluGrad(gradients, features) = gradients * (features > 0)
 //
@@ -400,6 +502,20 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
+
+//===----------------------------------------------------------------------===//
+// PartitionedCall op patterns.
+//===----------------------------------------------------------------------===//
+
+def ArgTypesMatchCallee : Constraint<
+    CPred<"ArgTypesMatchCallee($0[0].getOwner(), $1, $2)">>;
+
+foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
+  def : Pat<(callOp:$op $args, FlatSymbolRefAttr:$f,
+             $config, $config_proto, $executor_type),
+            (CallOp $f, $args),
+          [(ArgTypesMatchCallee $op, $args, $f)]>;
+}
 
 //===----------------------------------------------------------------------===//
 // Ternary op patterns.
@@ -471,8 +587,8 @@ def : Pat<(TF_SignOp $x),
           )>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
-  "getElementTypeOrSelf($0.getType()).isIntOrFloat() && "
-  "getElementTypeOrSelf($1.getType()).isIntOrFloat() && "
+  "getElementTypeOrSelf($0.getType()).isSignlessIntOrFloat() && "
+  "getElementTypeOrSelf($1.getType()).isSignlessIntOrFloat() && "
   "getElementTypeOrSelf($0.getType()).getIntOrFloatBitWidth() == "
   "getElementTypeOrSelf($1.getType()).getIntOrFloatBitWidth()">,
   "element types must be integers or floats of same width">;
@@ -485,15 +601,18 @@ def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
 
 //===----------------------------------------------------------------------===//
-// RngUniform.
+// Random ops.
 //===----------------------------------------------------------------------===//
 
-// TODO(misard,phawkins): handle random number generator seeds/states correctly.
-def : Pat<(TF_RandomUniformOp:$old $shape, $seed, $seed2),
-          (HLO_RngUniformOp
+foreach srcDstOpPair = [[TF_RandomUniformOp, HLO_RngUniformOp],
+                        [TF_RandomStandardNormalOp, HLO_RngNormalOp]] in {
+// TODO(b/148269299): handle random number generator seeds/states correctly.
+def : Pat<(srcDstOpPair[0]:$old $shape, $seed, $seed2),
+          (srcDstOpPair[1]
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 0.0)">)),
             (HLO_ConstOp
               (NativeCodeCall<"$_builder.getFloatAttr(old.dtype(), 1.0)">)),
             (CastValueToI64 $old, $shape)),
-            [(IsShapedTensor $shape)]>;
+          [(IsShapedTensor $shape)]>;
+}

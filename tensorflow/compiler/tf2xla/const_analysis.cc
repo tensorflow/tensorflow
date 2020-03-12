@@ -85,10 +85,10 @@ Status CondConstInputIndices(
   return Status::OK();
 }
 
-Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
-                                 const OpDef* op_def,
-                                 std::vector<int>* const_input_idxs,
-                                 FunctionLibraryRuntime* flib_runtime) {
+Status GetCompileTimeConstInputs(
+    const NodeDef& node, const OpKernel* op_kernel, const OpDef* op_def,
+    std::vector<int>* const_input_idxs, FunctionLibraryRuntime* flib_runtime,
+    GraphConstArgIndicesCache* cached_arg_indices) {
   DCHECK(op_def != nullptr || op_kernel != nullptr);
   // TODO(b/124403063): Implement similar functionality for function call nodes.
   if (node.op() == "While" || node.op() == "StatelessWhile") {
@@ -106,10 +106,12 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
     std::vector<bool> compile_time_const_arg_indices(num_inputs);
     TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
         *(fcond->graph), &compile_time_const_arg_indices,
-        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+        /*compile_time_const_nodes=*/nullptr, flib_runtime,
+        [](const Edge&) { return true; }, cached_arg_indices));
     TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
         *(fbody->graph), &compile_time_const_arg_indices,
-        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+        /*compile_time_const_nodes=*/nullptr, flib_runtime,
+        [](const Edge&) { return true; }, cached_arg_indices));
     for (int i = 0; i < num_inputs; i++) {
       if (compile_time_const_arg_indices[i]) {
         // Check that this input is actually a loop invariant.
@@ -145,6 +147,22 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
     TF_RETURN_IF_ERROR(
         GetFunctionBodies(flib_runtime, node, "branches", &branch_bodies));
     return CondConstInputIndices(branch_bodies, const_input_idxs, flib_runtime);
+  } else if (node.op() == "PartitionedCall" ||
+             node.op() == "StatefulPartitionedCall") {
+    const FunctionBody* fbody;
+    TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "f", &fbody));
+    int num_inputs = fbody->fdef.signature().input_arg_size();
+    std::vector<bool> compile_time_const_arg_indices(num_inputs);
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fbody->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime,
+        [](const Edge&) { return true; }, cached_arg_indices));
+    for (int i = 0; i < num_inputs; i++) {
+      if (compile_time_const_arg_indices[i]) {
+        const_input_idxs->push_back(i);
+      }
+    }
+    return Status::OK();
   } else if (op_def != nullptr) {
     return XlaOpRegistry::CompileTimeConstantInputs(node, *op_def,
                                                     const_input_idxs);
@@ -154,12 +172,13 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
   }
 }
 
-Status GetCompileTimeConstInputs(const Node* node,
-                                 std::vector<int>* const_input_idxs,
-                                 FunctionLibraryRuntime* flib_runtime) {
+Status GetCompileTimeConstInputs(
+    const Node* node, std::vector<int>* const_input_idxs,
+    FunctionLibraryRuntime* flib_runtime,
+    GraphConstArgIndicesCache* cached_arg_indices) {
   return GetCompileTimeConstInputs(node->def(), /*op_kernel=*/nullptr,
                                    &node->op_def(), const_input_idxs,
-                                   flib_runtime);
+                                   flib_runtime, cached_arg_indices);
 }
 
 }  // namespace
@@ -170,13 +189,28 @@ Status BackwardsConstAnalysis(const Graph& g,
                               std::vector<bool>* compile_time_const_arg_indices,
                               std::vector<bool>* compile_time_const_nodes,
                               FunctionLibraryRuntime* flib_runtime,
-                              std::function<bool(const Edge&)> edge_filter) {
+                              std::function<bool(const Edge&)> edge_filter,
+                              GraphConstArgIndicesCache* cached_arg_indices) {
+  // Avoid exponential runtime by explicit memoization: can do this only
+  // for the nested calls which don't have `compile_time_const_nodes` set.
+  if (!compile_time_const_nodes && cached_arg_indices &&
+      cached_arg_indices->contains(&g)) {
+    VLOG(3) << "Memoized constant arg indices for the graph: " << &g;
+    *compile_time_const_arg_indices = cached_arg_indices->at(&g);
+    return Status::OK();
+  }
+
   std::vector<bool> compile_time_const_nodes_impl;
   if (compile_time_const_nodes) {
     CHECK_EQ(compile_time_const_nodes->size(), g.num_node_ids());
   } else {
     compile_time_const_nodes_impl.resize(g.num_node_ids());
     compile_time_const_nodes = &compile_time_const_nodes_impl;
+  }
+
+  GraphConstArgIndicesCache cached_arg_indices_impl;
+  if (!cached_arg_indices) {
+    cached_arg_indices = &cached_arg_indices_impl;
   }
 
   Status status;
@@ -221,7 +255,8 @@ Status BackwardsConstAnalysis(const Graph& g,
 
     // Mark any compile-time constant operator arguments as const.
     std::vector<int> const_input_idxs;
-    status = GetCompileTimeConstInputs(node, &const_input_idxs, flib_runtime);
+    status = GetCompileTimeConstInputs(node, &const_input_idxs, flib_runtime,
+                                       cached_arg_indices);
 
     if (!status.ok()) {
       return;
@@ -252,15 +287,19 @@ Status BackwardsConstAnalysis(const Graph& g,
   // acyclic graph.
   DFS(g, /*enter=*/{}, /*leave=*/visit, NodeComparatorName{},
       [](const Edge& edge) { return !edge.src()->IsNextIteration(); });
+  if (cached_arg_indices && compile_time_const_arg_indices) {
+    cached_arg_indices->emplace(&g, *compile_time_const_arg_indices);
+  }
   return status;
 }
 
-Status GetCompileTimeConstInputs(const OpKernel* op_kernel,
-                                 std::vector<int>* const_input_idxs,
-                                 FunctionLibraryRuntime* flib_runtime) {
+Status GetCompileTimeConstInputs(
+    const OpKernel* op_kernel, std::vector<int>* const_input_idxs,
+    FunctionLibraryRuntime* flib_runtime,
+    GraphConstArgIndicesCache* cached_arg_indices) {
   return GetCompileTimeConstInputs(op_kernel->def(), op_kernel,
                                    /*op_def=*/nullptr, const_input_idxs,
-                                   flib_runtime);
+                                   flib_runtime, cached_arg_indices);
 }
 
 }  // namespace tensorflow

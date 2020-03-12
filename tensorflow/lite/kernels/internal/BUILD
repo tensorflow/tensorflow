@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
+load("//tensorflow/lite/micro:build_def.bzl", "cc_library", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 
 package(
@@ -223,6 +223,8 @@ cc_library(
         "optimized/integer_ops/conv.h",
         "optimized/integer_ops/depthwise_conv.h",
         "optimized/integer_ops/depthwise_conv_3x3_filter.h",
+        "optimized/integer_ops/depthwise_conv_hybrid.h",
+        "optimized/integer_ops/depthwise_conv_hybrid_3x3_filter.h",
         "optimized/integer_ops/fully_connected.h",
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
@@ -230,6 +232,7 @@ cc_library(
         "optimized/integer_ops/softmax.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
+        "optimized/sparse_ops/fully_connected.h",
     ],
     copts = tflite_copts(),
     deps = [
@@ -353,7 +356,7 @@ cc_library(
     name = "quantization_util",
     srcs = ["quantization_util.cc"],
     hdrs = ["quantization_util.h"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         ":compatibility",
         ":round",
@@ -451,8 +454,10 @@ cc_library(
         "reference/quantize.h",
         "reference/reduce.h",
         "reference/reference_ops.h",
+        "reference/requantize.h",
         "reference/round.h",
         "reference/softmax.h",
+        "reference/sparse_ops/fully_connected.h",
         "reference/strided_slice.h",
         "reference/svdf.h",
     ],
@@ -471,6 +476,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -514,6 +520,7 @@ cc_library(
         "reference/quantize.h",
         "reference/reduce.h",
         "reference/reference_ops.h",
+        "reference/requantize.h",
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
@@ -533,6 +540,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/tools/optimize/sparsity:format_converter",
     ] + select({
         ":haswell": tflite_deps_intel,
         ":ios_x86_64": tflite_deps_intel,
@@ -591,6 +599,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":round",
+        "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
@@ -637,6 +646,7 @@ cc_library(
         ":neon_tensor_utils",
         ":portable_tensor_utils",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
     ],
 )
@@ -645,7 +655,7 @@ cc_library(
     name = "kernel_utils",
     srcs = ["kernel_utils.cc"],
     hdrs = ["kernel_utils.h"],
-    copts = tflite_copts(),
+    copts = tflite_copts() + micro_copts(),
     deps = [
         ":tensor_utils",
         "//tensorflow/lite/c:common",
@@ -834,6 +844,23 @@ cc_test(
 )
 
 cc_test(
+    name = "depthwiseconv_per_channel_quantized_16x8_test",
+    srcs = [
+        "depthwiseconv_per_channel_quantized_16x8_test.cc",
+    ],
+    shard_count = 2,
+    deps = [
+        ":common",
+        ":optimized_base",
+        ":quantization_util",
+        ":reference_base",
+        ":test_util",
+        ":types",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "resize_bilinear_test",
     srcs = ["resize_bilinear_test.cc"],
     deps = [
@@ -996,6 +1023,17 @@ cc_test(
     srcs = ["non_max_suppression_test.cc"],
     deps = [
         ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "per_channel_dequantize_test",
+    srcs = ["per_channel_dequantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],

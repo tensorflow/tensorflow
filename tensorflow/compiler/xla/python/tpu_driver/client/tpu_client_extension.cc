@@ -25,6 +25,11 @@ namespace xla {
 namespace py = pybind11;
 
 PYBIND11_MODULE(tpu_client_extension, m) {
+  // Initializes the NumPy API for the use of the types module.
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
+
   py::class_<PyTpuClient, std::shared_ptr<PyTpuClient>>(m, "TpuClient")
       .def_static("Get", &PyTpuClient::Get, py::arg("worker"))
       .def("device_count", &PyTpuClient::device_count)
@@ -32,6 +37,26 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def("devices", &PyTpuClient::devices)
       .def("local_devices", &PyTpuClient::local_devices)
       .def("host_id", &PyTpuClient::host_id)
+      .def("GetDefaultDeviceAssignment",
+           [](PyTpuClient* client, int num_replicas, int num_partitions)
+               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+             TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
+                                 client->GetDefaultDeviceAssignment(
+                                     num_replicas, num_partitions));
+             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             result.resize(num_replicas);
+             for (int r = 0; r < num_replicas; ++r) {
+               result[r].resize(num_partitions);
+               for (int p = 0; p < num_partitions; ++p) {
+                 int device_id = device_assignment(r, p);
+                 auto iter = client->id_to_device().find(device_id);
+                 CHECK(iter != client->id_to_device().end()) << device_id;
+                 result[r][p] = iter->second;
+               }
+             }
+             return result;
+           })
+      // TODO(skye): delete after all callers can handle 2D output
       .def("GetDefaultDeviceAssignment",
            [](PyTpuClient* client, int num_replicas)
                -> StatusOr<std::vector<std::shared_ptr<Device>>> {
@@ -96,9 +121,9 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           std::make_move_iterator(tree.leaves.end()));
 
             py::gil_scoped_release gil_release;
-            return PyTpuBuffer::FromLiterals(std::move(leaves), tree.shape,
-                                             std::move(py_buffer_ref),
-                                             std::move(client), device->id());
+            return PyTpuBuffer::FromLiterals(
+                std::move(leaves), tree.shape, std::move(py_buffer_ref),
+                std::move(client), std::move(device));
           })
       .def_static("make_tuple",
                   [](const std::vector<PyTpuBuffer*> buffers,
@@ -112,15 +137,15 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                           "Cannot make tuple on device '%s' with '%s' backend",
                           device->DebugString(), client->platform_name());
                     }
-                    return PyTpuBuffer::MakeTuple(buffers, client,
-                                                  device->id());
+                    return PyTpuBuffer::MakeTuple(buffers, std::move(client),
+                                                  std::move(device));
                   })
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(dst_device->id());
+             return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyTpuBuffer::Delete)
       .def("destructure", &PyTpuBuffer::DestructureTuple)
@@ -143,10 +168,7 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return LiteralToPython(std::move(literal));
            })
       .def("shape", &PyTpuBuffer::on_host_shape)
-      .def("device",
-           [](PyTpuBuffer* buffer) -> std::shared_ptr<Device> {
-             return buffer->client()->local_devices()[buffer->device_id()];
-           })
+      .def("device", &PyTpuBuffer::device)
       .def("platform", &PyTpuBuffer::platform_name)
       .def("is_deleted", [](const PyTpuBuffer& buffer) {
         return buffer.DeviceBuffer() == nullptr;
@@ -155,13 +177,32 @@ PYBIND11_MODULE(tpu_client_extension, m) {
   py::class_<PyTpuExecutable>(m, "TpuExecutable")
       .def_static("Compile", &PyTpuExecutable::Compile,
                   py::call_guard<py::gil_scoped_release>())
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyTpuClient> client,
+                     absl::optional<std::vector<std::vector<Device*>>>
+                         device_assignment)
+                      -> StatusOr<std::unique_ptr<PyTpuExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    absl::optional<DeviceAssignment> xla_device_assignment;
+                    if (device_assignment) {
+                      TF_ASSIGN_OR_RETURN(
+                          xla_device_assignment,
+                          DevicesToDeviceAssignment(*device_assignment));
+                    }
+                    return PyTpuExecutable::Compile(
+                        computation, argument_layouts, build_options, client,
+                        std::move(xla_device_assignment));
+                  })
+      .def("local_logical_device_ids",
+           &PyTpuExecutable::local_logical_device_ids)
       .def("local_devices", &PyTpuExecutable::local_devices)
       .def("SizeOfGeneratedCodeInBytes",
            &PyTpuExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyTpuExecutable::Delete)
       .def("Execute", &PyTpuExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      .def("ExecutePerReplica", &PyTpuExecutable::ExecutePerReplica,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
       .def("ExecuteOnLocalDevices", &PyTpuExecutable::ExecuteOnLocalDevices,
            py::call_guard<py::gil_scoped_release>(), py::arg("arguments"));

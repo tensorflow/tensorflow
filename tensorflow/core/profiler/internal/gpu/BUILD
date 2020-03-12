@@ -31,7 +31,6 @@ tf_cuda_library(
     ],
     deps = [
         ":cupti_utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
@@ -74,9 +73,9 @@ tf_cc_test_gpu(
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/profiler/internal:profiler_interface",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
-        "//tensorflow/core/profiler/utils:xplane_visitor",
     ],
 )
 

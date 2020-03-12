@@ -335,6 +335,10 @@ class Interpreter {
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
+  ///
+  /// NOTE: num_threads should be >= -1.
+  /// User may pass -1 to let the TFLite interpreter set the no of threads
+  /// available to itself.
   void SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
@@ -405,6 +409,11 @@ class Interpreter {
   /// of the profiler and must ensure its validity.
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
+
+  /// Same as SetProfiler except this interpreter takes ownership
+  /// of the provided profiler.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetProfiler(std::unique_ptr<Profiler> profiler);
 
   /// Gets the profiler used for op tracing.
   /// WARNING: This is an experimental API and subject to change.
@@ -492,6 +501,9 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
+  // Sets the profiler to all subgraphs.
+  void SetSubgraphProfiler(Profiler* profiler);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -506,6 +518,10 @@ class Interpreter {
   // WARNING: This is an experimental API and subject to change.
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
+
+  // Profiler that has been installed and is owned by this interpreter instance.
+  // Useful if client profiler ownership is burdensome.
+  std::unique_ptr<Profiler> owned_profiler_;
 
   bool allow_buffer_handle_output_ = false;
 

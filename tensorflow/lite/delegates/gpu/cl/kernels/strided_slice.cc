@@ -37,7 +37,7 @@ std::string GetStridedSliceCode(
       WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
-  const std::string dst_batch = op_def.batch_support ? "B" : "";
+  const std::string dst_batch = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -48,7 +48,7 @@ std::string GetStridedSliceCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -62,10 +62,10 @@ std::string GetStridedSliceCode(
   c += "  } \n";
   c += "  int s_x = X * stride.x + offset.x;\n";
   c += "  int s_y = Y * stride.y + offset.y;\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int s_b = B * stride.w + offset.w;\n";
   }
-  const std::string src_batch = op_def.batch_support ? "s_b" : "";
+  const std::string src_batch = op_def.IsBatchSupported() ? "s_b" : "";
   if (alignedx4) {
     c += "  int s_z = Z + offset.z;\n";
     c += "  FLT4 result = " +
@@ -77,7 +77,7 @@ std::string GetStridedSliceCode(
       c += "  {\n";
       const std::string channel = "(Z * 4 + " + std::to_string(i) + ")";
       c += "    int s_ch = " + channel + " * stride.z + offset.z;\n";
-      c += "    int s_z = s_ch >> 2;\n";
+      c += "    int s_z = min(s_ch >> 2, src_size.z - 1);\n";
       c += "    int s_z_rem = s_ch & 3;\n";
       c += "    FLT4 t = " +
            src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_batch) + ";\n";
@@ -86,7 +86,8 @@ std::string GetStridedSliceCode(
       c += "  }\n";
     }
   }
-  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  std::string x_3dcoord =
+      op_def.IsBatchSupported() ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", dst_batch);

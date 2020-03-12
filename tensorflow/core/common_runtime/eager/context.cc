@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
+#include "tensorflow/core/common_runtime/colocation_graph.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
@@ -48,7 +49,6 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
@@ -79,7 +79,7 @@ EagerContext::EagerContext(
     : default_device_placement_policy_(default_device_placement_policy),
       default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
-      host_cpu_device_(device_mgr->ListDevices()[0]),
+      host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
       thread_pool_(NewThreadPoolFromSessionOptions(opts)),
       custom_kernel_creator_(custom_kernel_creator),
@@ -101,7 +101,6 @@ EagerContext::EagerContext(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   eager_context_created->GetCell()->Set(true);
-  monitoring::StartExporter();
   InitPrioritizedDeviceTypeList();
   runner_ = [this](std::function<void()> closure) {
     this->thread_pool_->Schedule(std::move(closure));
@@ -129,14 +128,21 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr,
                              const CustomKernelCreator* custom_kernel_creator) {
+  Rendezvous::Factory rendezvous_factory =
+      [this](const int64 step_id, const DeviceMgr*, Rendezvous** r) {
+        *r = CreateRendezvous(step_id);
+        return Status::OK();
+      };
   if (lazy_copy_function_remote_inputs_) {
     pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   } else {
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
-        thread_pool, cluster_flr, custom_kernel_creator));
+        thread_pool, cluster_flr, custom_kernel_creator,
+        /*session_metadata=*/nullptr, std::move(rendezvous_factory)));
   }
 }
 
@@ -152,6 +158,106 @@ void EagerContext::InitPrioritizedDeviceTypeList() {
     }
   }
   prioritized_device_type_list_ = ds.PrioritizedDeviceTypeList();
+}
+
+namespace {
+// Using absl::StrJoin with lambda does not work in tf-lite builds.
+// TODO(b/148160441): Replace with absl::StrJoin once DeviceBase has operator<<.
+std::vector<string> DevicesToString(const PrioritizedDeviceVector& devices) {
+  std::vector<string> v;
+  v.reserve(devices.size());
+  for (const auto& p : devices) {
+    v.push_back(p.first->name());
+  }
+  return v;
+}
+
+std::vector<string> DeviceTypesToString(
+    const PrioritizedDeviceTypeVector& types) {
+  std::vector<string> v;
+  v.reserve(types.size());
+  for (const auto& p : types) {
+    v.push_back(p.first.type_string());
+  }
+  return v;
+}
+
+// Selects the "best" device that both exists and is supported.
+//
+// The `existing` argument specifies the available devices in the system, in
+// priority order. The `supported` argument specifies the supported device types
+// and their priorities, lower index types having higher priority.
+// Currently the type priority defined by the `supported` parameter takes
+// precedence over system device priorities from `existing`.
+//
+// TODO(b/148213212): Allow setting default device in eager context.
+Device* SelectBestMatchingDevice(const DeviceNameUtils::ParsedName& pattern,
+                                 const PrioritizedDeviceVector& existing,
+                                 const PrioritizedDeviceTypeVector& supported) {
+  for (const std::pair<DeviceType, int32>& prioritized_type : supported) {
+    for (const std::pair<Device*, int32>& prioritized_device : existing) {
+      Device* dev = prioritized_device.first;
+      if (DeviceType(dev->attributes().device_type()) ==
+              prioritized_type.first &&
+          DeviceNameUtils::IsCompleteSpecification(pattern,
+                                                   dev->parsed_name())) {
+        return dev;
+      }
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+Status EagerContext::SelectDevice(DeviceNameUtils::ParsedName preferred,
+                                  const PrioritizedDeviceTypeVector& supported,
+                                  const DataType dtype, Device** out) const {
+  DCHECK(out != nullptr);
+
+  // We always place string tensors on the CPU device if we're allowed to.
+  if (dtype == DT_STRING && AllowSoftPlacement()) {
+    preferred = HostCPU()->parsed_name();
+  }
+
+  // Select the first matching registered device from the supported device
+  // list. If nothing matches and soft placement is enabled, pick a suitable
+  // device from the available ones.
+  const PrioritizedDeviceVector& existing =
+      pflr()->device_set()->prioritized_devices();
+  *out = SelectBestMatchingDevice(preferred, existing, supported);
+  if (*out != nullptr) {
+    return Status::OK();
+  }
+
+  if (AllowSoftPlacement()) {
+    DeviceNameUtils::ParsedName soft_device_name = preferred;
+    soft_device_name.type.clear();
+    soft_device_name.has_type = false;
+    soft_device_name.has_id = false;
+    // TODO(b/148213746): Soft placement logic picks up another task if the
+    // requested does not exist.
+    *out = SelectBestMatchingDevice(soft_device_name, existing, supported);
+    if (*out != nullptr) {
+      return Status::OK();
+    }
+  }
+
+  if (DeviceNameUtils::HasSomeDetails(preferred)) {
+    return errors::InvalidArgument(
+        "Could not satisfy device specification '", preferred,
+        "'. enable_soft_placement=", AllowSoftPlacement(),
+        ". Supported device types [",
+        absl::StrJoin(DeviceTypesToString(supported), ", "),
+        "]. All available devices [",
+        absl::StrJoin(DevicesToString(existing), ", "), "].");
+  }
+  return errors::InvalidArgument(
+      "No supported device found in available devices [",
+      absl::StrJoin(DevicesToString(existing), ", "),
+      "]. enable_soft_placement=", AllowSoftPlacement(),
+      ". Supported devices types [",
+      absl::StrJoin(DeviceTypesToString(supported), ", "), "].");
 }
 
 void EagerContext::ResetClusterFLR(
@@ -485,6 +591,9 @@ Status EagerContext::RegisterExistingFunctionsOnRemoteWorkers(
       eager::RegisterFunctionOp* register_function =
           request->add_queue()->mutable_register_function();
       *register_function->mutable_function_def() = *function_defs[j];
+      StripDefaultAttributes(
+          *OpRegistry::Global(),
+          register_function->mutable_function_def()->mutable_node_def());
       auto* response = new eager::EnqueueResponse;
       eager_client->StreamingEnqueueAsync(
           request, response, [request, response](const Status& s) {
@@ -537,6 +646,10 @@ Status EagerContext::AddFunctionDef(const FunctionDef& fdef,
   return Status::OK();
 }
 
+const FunctionDef* EagerContext::GetFunctionDef(const string& function_name) {
+  return func_lib_def_.Find(function_name);
+}
+
 Status EagerContext::RemoveFunction(const string& func) {
   bool is_last_ref = false;
   {
@@ -560,6 +673,53 @@ Status EagerContext::RemoveFunction(const string& func) {
     return func_lib_def_.RemoveFunction(func);
   }
   return Status::OK();
+}
+
+Status EagerContext::SyncExecutors() {
+  StatusGroup sg;
+  // Synchronize on context default executor
+  sg.Update(default_executor_.WaitForAllPendingNodes());
+  default_executor_.ClearError();
+
+  // Synchronize thread local executors on client
+  std::unordered_map<std::thread::id, EagerExecutor*> executors_copy;
+  {
+    mutex_lock l(executor_map_mu_);
+    executors_copy = thread_local_executor_;
+  }
+  for (const auto& entry : executors_copy) {
+    sg.Update(entry.second->WaitForAllPendingNodes());
+    entry.second->ClearError();
+  }
+
+#if !defined(IS_MOBILE_PLATFORM)
+  // Synchronize executors on remote workers
+  eager::EnqueueRequest request;
+  request.set_context_id(GetContextId());
+  request.add_queue()->mutable_sync_remote_executor_for_stream();
+  BlockingCounter counter(static_cast<int>(remote_contexts_.size()));
+  std::vector<Status> statuses(remote_contexts_.size());
+
+  for (int i = 0; i < remote_contexts_.size(); i++) {
+    const auto& target = remote_contexts_[i];
+    core::RefCountPtr<eager::EagerClient> eager_client;
+    TF_RETURN_IF_ERROR(remote_eager_workers_->GetClient(target, &eager_client));
+
+    eager::EnqueueResponse* response = new eager::EnqueueResponse();
+    eager_client->StreamingEnqueueAsync(
+        &request, response,
+        [response, target, &counter, &s = statuses[i]](const Status& status) {
+          s = status;
+          delete response;
+          counter.DecrementCount();
+        });
+  }
+  counter.Wait();
+  for (const Status& s : statuses) {
+    sg.Update(s);
+  }
+#endif  // !IS_MOBILE_PLATFORM
+  return sg.as_summary_status();
 }
 
 core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
@@ -615,6 +775,40 @@ Status EagerContext::FindDeviceFromName(const char* device_name,
   }
 
   return status;
+}
+
+Status EagerContext::FindCustomDeviceFromName(const string& device_name,
+                                              CustomDevice** dev) const {
+  auto dev_it = custom_devices_.find(device_name);
+  if (dev_it == custom_devices_.end()) {
+    return errors::InvalidArgument(device_name, " unknown device.");
+  }
+  *dev = dev_it->second.get();
+  return Status::OK();
+}
+
+Status EagerContext::RegisterCustomDevice(
+    const string& device_name, std::unique_ptr<CustomDevice> device) {
+  DeviceNameUtils::ParsedName parsed;
+  if (!DeviceNameUtils::ParseFullName(device_name, &parsed) ||
+      !parsed.has_job || !parsed.has_replica || !parsed.has_task ||
+      !parsed.has_type || !parsed.has_id) {
+    return errors::InvalidArgument(
+        device_name,
+        " could not be parsed as a device name. Use the full "
+        "/job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num> "
+        "format.");
+  }
+  Device* existing_physical_device = nullptr;
+  if (FindDeviceFromName(device_name.c_str(), &existing_physical_device).ok()) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a physical device.");
+  }
+  if (!custom_devices_.emplace(device_name, std::move(device)).second) {
+    return errors::AlreadyExists(device_name,
+                                 " already registered as a custom device.");
+  }
+  return Status::OK();
 }
 
 bool EagerContext::OnSameTask(const Device* first, const Device* second) const {
@@ -698,14 +892,19 @@ Status EagerContext::GetClient(const string& remote_task,
   return Status::OK();
 }
 
-uint64 EagerContext::GetContextId() {
+uint64 EagerContext::GetContextId() const {
   tf_shared_lock l(remote_state_mu_);
   return context_id_;
 }
 
-uint64 EagerContext::GetContextViewId() {
+uint64 EagerContext::GetContextViewId() const {
   tf_shared_lock l(remote_state_mu_);
   return context_view_id_;
+}
+
+void EagerContext::IncrementContextViewId() {
+  mutex_lock l(remote_state_mu_);
+  context_view_id_ += 1;
 }
 
 // Set collective ops related state in the context. Passing nullptr to
@@ -716,7 +915,7 @@ Status EagerContext::StoreCollectiveOpsServer(
   collective_executor_mgr_.Reset(rpc_collective_executor_mgr);
 
   local_device_manager_.Reset(device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   InitPrioritizedDeviceTypeList();
   ClearCachesAndThreadExecutors();
@@ -748,6 +947,86 @@ Status EagerContext::StoreCollectiveOpsServer(
   DCHECK(server_ != nullptr);
 
   return Status::OK();
+}
+
+Status EagerContext::SetRemoteDeviceFilters(
+    const string& remote_worker, const std::vector<string>& device_filters) {
+  // Get fully specified task name for remote worker
+  string remote_worker_task_name;
+  DeviceNameUtils::ParsedName pw;
+  if (!DeviceNameUtils::ParseFullName(remote_worker, &pw)) {
+    return tensorflow::errors::InvalidArgument(
+        "Remote worker task name is invalid ", remote_worker);
+  }
+  // Force set a replica as the key in cluster device filters map. I.e., if the
+  // remote worker is `/job:worker/task:0` it then becomes
+  // `/job:worker/replica:0/task:0`.
+  pw.has_replica = true;
+  if (!DeviceNameUtils::GetTaskName(pw, &remote_worker_task_name)) {
+    return tensorflow::errors::InvalidArgument(
+        "Job name and task index must be specified for worker ", remote_worker);
+  }
+
+  std::vector<DeviceNameUtils::ParsedName> parsed_filters;
+  for (auto& filter : device_filters) {
+    DeviceNameUtils::ParsedName parsed_filter;
+    if (DeviceNameUtils::ParseFullName(filter, &parsed_filter)) {
+      parsed_filters.emplace_back(parsed_filter);
+    } else {
+      return tensorflow::errors::InvalidArgument("Invalid filter: ", filter);
+    }
+  }
+
+  if (VLOG_IS_ON(1)) {
+    VLOG(1) << "Setting device filters for " << remote_worker << ":";
+    for (auto& filter : device_filters) {
+      VLOG(1) << "  " << filter;
+    }
+  }
+  mutex_lock l(remote_state_mu_);
+  cluster_device_filters_.emplace(remote_worker_task_name, parsed_filters);
+  return Status::OK();
+}
+
+void EagerContext::FilterDevicesForRemoteWorkers(
+    const string& remote_worker,
+    const protobuf::RepeatedPtrField<DeviceAttributes>& device_attrs,
+    std::vector<bool>* filtered_device_mask) {
+  filtered_device_mask->resize(device_attrs.size());
+  std::fill(filtered_device_mask->begin(), filtered_device_mask->end(), false);
+
+  tf_shared_lock l(remote_state_mu_);
+  auto it = cluster_device_filters_.find(remote_worker);
+  // If no filters were specified, all devices should be visible to the worker
+  if (it == cluster_device_filters_.end() || it->second.empty()) {
+    std::fill(filtered_device_mask->begin(), filtered_device_mask->end(), true);
+    return;
+  }
+
+  const std::vector<DeviceNameUtils::ParsedName>& parsed_filters = it->second;
+  DeviceNameUtils::ParsedName parsed_remote_worker;
+  DeviceNameUtils::ParseFullName(remote_worker, &parsed_remote_worker);
+  for (int i = 0; i < device_attrs.size(); i++) {
+    DeviceNameUtils::ParsedName pn;
+    DeviceNameUtils::ParseFullName(device_attrs[i].name(), &pn);
+    if (DeviceNameUtils::IsSameAddressSpace(parsed_remote_worker, pn)) {
+      // If this device is on the remote worker itself, it should be visible
+      // regardless of device filters
+      filtered_device_mask->at(i) = true;
+      continue;
+    }
+    for (const auto& pf : parsed_filters) {
+      if ((!pn.has_job || !pf.has_job || pn.job == pf.job) &&
+          (!pn.has_replica || !pf.has_replica || pn.replica == pf.replica) &&
+          (!pn.has_task || !pf.has_task || pn.task == pf.task) &&
+          (!pn.has_type || !pf.has_type || pn.type == pf.type) &&
+          (!pn.has_id || !pf.has_id || pn.id == pf.id)) {
+        // Found a match, make it visible, stop processing more device filters
+        filtered_device_mask->at(i) = true;
+        break;
+      }
+    }
+  }
 }
 
 Status EagerContext::InitializeRemoteMaster(
@@ -872,7 +1151,7 @@ Status EagerContext::SetMasterContextState(
       ReadBoolFromEnvVar("TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC", true);
 
   local_device_manager_.Reset(local_device_mgr);
-  host_cpu_device_ = local_device_manager_.Get()->ListDevices()[0];
+  host_cpu_device_ = local_device_manager_.Get()->HostCPU();
 
   if (rendezvous_ != nullptr) rendezvous_->Unref();
   rendezvous_ = r;

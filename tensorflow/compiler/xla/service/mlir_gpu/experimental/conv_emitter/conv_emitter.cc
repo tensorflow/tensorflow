@@ -31,7 +31,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/AffineExpr.h"  // TF:llvm-project
 #include "mlir/IR/AffineMap.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
@@ -58,9 +58,10 @@ struct ShapeInfo {
   mlir::Type element_type;
 };
 
-ShapeInfo GetShapeInfo(const Shape& shape, int64 n_dim, int64 c_dim,
-                       absl::Span<const int64> spatial_dims,
-                       mlir::Builder builder) {
+ShapeInfo GetShapeInfo(
+    const Shape& shape, int64 n_dim, int64 c_dim,
+    absl::Span<const tensorflow::protobuf_int64> spatial_dims,
+    mlir::Builder builder) {
   ShapeInfo shape_info;
 
   std::vector<int64> physical_to_logical(
