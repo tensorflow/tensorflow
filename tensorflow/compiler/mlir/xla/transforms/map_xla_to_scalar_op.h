@@ -423,12 +423,6 @@ struct XlaOpToStdScalarOp {
   }
 };
 
-template <typename XlaOpTy>
-inline Value MapXlaOpToStdScalarOp(XlaOpTy xla_op, ArrayRef<Type> result_types,
-                                   ArrayRef<Value> args, OpBuilder* b) {
-  return XlaOpToStdScalarOp::map<XlaOpTy>(xla_op, result_types, args, b);
-}
-
 }  // namespace xla_lhlo
 }  // namespace mlir
 
