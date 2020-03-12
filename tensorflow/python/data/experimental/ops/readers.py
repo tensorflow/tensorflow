@@ -678,13 +678,13 @@ class CsvDatasetV2(dataset_ops.DatasetSource):
     self._save_configuration({
       "filenames": filenames,
       "record_defaults": record_defaults,
-      "compression_type": compression_type or "",
-      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+      "compression_type": compression_type,
+      "buffer_size": buffer_size,
       "header": header,
       "field_delim": field_delim,
       "use_quote_delim": use_quote_delim,
       "na_value": na_value,
-      "select_cols": select_cols or [],
+      "select_cols": select_cols,
     })
 
     self._filenames = ops.convert_to_tensor(

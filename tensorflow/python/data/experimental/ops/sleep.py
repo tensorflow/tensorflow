@@ -26,6 +26,7 @@ class _SleepDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, sleep_microseconds):
     self._input_dataset = input_dataset
+    
     self._save_configuration({
       "sleep_microseconds": sleep_microseconds,
     })

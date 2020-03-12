@@ -18,7 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import copy
 import functools
+import inspect
+import json
+import multiprocessing
+import os
 import sys
 import threading
 import warnings
@@ -94,6 +99,10 @@ ops.NotDifferentiable("ReduceDataset")
 # A constant that can be used to enable auto-tuning.
 AUTOTUNE = -1
 tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
+
+
+def parse_maybe_autotune_arg(arg):
+  return "AUTOTUNE" if arg == AUTOTUNE else arg
 
 
 @tf_export("data.Dataset", v1=[])
@@ -202,7 +211,6 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     if config is None:
       config = dict()
 
-    import inspect
     total_stack = inspect.stack()  # total complete stack
     total_depth = len(total_stack)  # length of total stack
 
@@ -211,12 +219,11 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
       func_name = frameinfo.f_code.co_name
       filename = frameinfo.f_code.co_filename
-      line_number = frameinfo.f_lineno  # of the call
-      # func_firstlineno = frameinfo.f_code.co_firstlineno
+      line_number = frameinfo.f_lineno
 
       return func_name, filename, line_number
 
-    def break_while(dataset_class, func_name, filename):
+    def break_while_cond(dataset_class, func_name, filename):
       # Operation Automatically added in `self._apply_options()`
       if str(dataset_class) in [
         "_MaxIntraOpParallelismDataset",
@@ -236,7 +243,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
       func_name, filename, line_number = extract_data(frame_id)
 
-      if break_while(self.__class__.__name__, func_name, filename):
+      if break_while_cond(self.__class__.__name__, func_name, filename):
         config["calling_context"] = dict()
         config["calling_context"]["function"] = func_name
         config["calling_context"]["filename"] = filename
@@ -1244,14 +1251,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Example:
       If we had the following files on our filesystem:
-      
+
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      
+
       If we pass "/path/to/dir/*.py" as the directory, the dataset
       would produce:
-      
+
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -1559,7 +1566,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
-      
+
         Note: error checking is done on a best-effort basis, and errors aren't
         guaranteed to be caught upon dataset creation. (e.g. providing in a
         placeholder tensor bypasses the early checking, and will instead result
@@ -3080,6 +3087,11 @@ class TensorDataset(DatasetSource):
 
   def __init__(self, element):
     """See `Dataset.from_tensors()` for details."""
+
+    self._save_configuration({
+      "element": element
+    })
+
     element = structure.normalize_element(element)
     self._structure = structure.type_spec_from_value(element)
     self._tensors = structure.to_tensor_list(self._structure, element)
@@ -3099,6 +3111,11 @@ class TensorSliceDataset(DatasetSource):
 
   def __init__(self, element):
     """See `Dataset.from_tensor_slices()` for details."""
+
+    self._save_configuration({
+      "element": element
+    })
+
     element = structure.normalize_element(element)
     batched_spec = structure.type_spec_from_value(element)
     self._tensors = structure.to_batched_tensor_list(batched_spec, element)
@@ -3126,6 +3143,11 @@ class SparseTensorSliceDataset(DatasetSource):
 
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
+
+    self._save_configuration({
+      "sparse_tensor": sparse_tensor
+    })
+
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
       raise TypeError(
           "`sparse_tensor` must be a `tf.SparseTensor` object. Was {}.".format(
@@ -3165,6 +3187,12 @@ class _VariantDataset(DatasetV2):
   """A Dataset wrapper around a `tf.variant`-typed function argument."""
 
   def __init__(self, dataset_variant, structure):
+
+  self._save_configuration({
+    "dataset_variant": dataset_variant,
+    "structure": structure
+  })
+
     self._structure = structure
     super(_VariantDataset, self).__init__(dataset_variant)
 
@@ -3535,6 +3563,14 @@ class _GeneratorDataset(DatasetSource):
         `init_func` immediately before a C++ iterator over this dataset is
         destroyed. The return value is ignored.
     """
+
+    self._save_configuration({
+      "init_args": init_args,
+      "init_func": str(init_func),
+      "next_func": str(next_func),
+      "finalize_func": str(finalize_func)
+    })
+
     self._init_args = init_args
 
     self._init_structure = structure.type_spec_from_value(init_args)
@@ -3577,6 +3613,11 @@ class ZipDataset(DatasetV2):
 
   def __init__(self, datasets):
     """See `Dataset.zip()` for details."""
+
+    self._save_configuration({
+      "num_input_ds": len(datasets)
+    })
+
     for ds in nest.flatten(datasets):
       if not isinstance(ds, DatasetV2):
         if isinstance(ds, list):
@@ -3600,9 +3641,9 @@ class ZipDataset(DatasetV2):
 
     config = dict()
 
-    config["inputs_ds"] = list()
-    for ds in self._datasets:
-      config["inputs_ds"].append(ds._serialize_configuration())
+    config["inputs_ds"] = [
+      ds._serialize_configuration() for ds in self._datasets
+    ]
 
     config.update(super(ZipDataset, self)._serialize_configuration())
     return config
@@ -3659,9 +3700,9 @@ class ConcatenateDataset(DatasetV2):
 
     config = dict()
 
-    config["input_ds"] = list()
-    for ds in self._input_datasets:
-      config["input_ds"].append(ds._serialize_configuration())
+    config["input_ds"] = [
+      ds._serialize_configuration() for ds in self._input_datasets
+    ]
 
     config.update(super(ConcatenateDataset, self)._serialize_configuration())
     return config
@@ -3680,8 +3721,9 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.repeat()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
-      "repeat_count": count
+      "count": count
     })
 
     if count is None:
@@ -3799,8 +3841,9 @@ class CacheDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, filename):
     """See `Dataset.cache()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
-      "cache_filename": filename
+      "filename": filename
     })
 
     self._filename = ops.convert_to_tensor(
@@ -3889,6 +3932,13 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     Raises:
       ValueError: if invalid arguments are provided.
     """
+
+    self._save_configuration({
+      "buffer_size": buffer_size,
+      "seed": seed,
+      "reshuffle_each_iteration": reshuffle_each_iteration,
+    })
+
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
         buffer_size, dtype=dtypes.int64, name="buffer_size")
@@ -3898,12 +3948,6 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
       self._reshuffle_each_iteration = True
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
-
-    self._save_configuration({
-      "buffer_size": buffer_size,
-      "seed": seed,
-      "reshuffle_each_iteration": reshuffle_each_iteration
-    })
 
     if tf2.enabled() and self._reshuffle_each_iteration and (
         context.executing_eagerly() or ops.inside_function()):
@@ -3930,8 +3974,9 @@ class TakeDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.take()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
-      "take_count": count
+      "count": count
     })
 
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
@@ -3948,8 +3993,9 @@ class SkipDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, count):
     """See `Dataset.skip()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
-      "skip_count": count
+      "count": count
     })
 
     self._count = ops.convert_to_tensor(count, dtype=dtypes.int64, name="count")
@@ -3966,6 +4012,7 @@ class ShardDataset(UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, num_shards, index):
     """See `Dataset.shard()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
       "num_shards": num_shards,
       "index": index
@@ -3988,6 +4035,7 @@ class BatchDataset(UnaryDataset):
   def __init__(self, input_dataset, batch_size, drop_remainder):
     """See `Dataset.batch()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
       "batch_size": batch_size,
       "drop_remainder": drop_remainder
@@ -4500,8 +4548,8 @@ class ParallelInterleaveDataset(UnaryDataset):
                deterministic=None):
     """See `Dataset.interleave()` for details."""
     self._input_dataset = input_dataset
-    _cycle_length = parse_maybe_autotune_arg(cycle_length)
 
+    _cycle_length = parse_maybe_autotune_arg(cycle_length)
     _num_parallel_calls = parse_maybe_autotune_arg(num_parallel_calls)
 
     self._save_configuration({
@@ -4666,6 +4714,7 @@ class WindowDataset(UnaryDataset):
   def __init__(self, input_dataset, size, shift, stride, drop_remainder):
     """See `window_dataset()` for more details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
       "size": size,
       "shift": shift,
@@ -4730,15 +4779,17 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, algorithm, cpu_budget):
     self._input_dataset = input_dataset
+
+    self._save_configuration({
+      "autotune_algorithm": algorithm.name,
+      "cpu_budget": cpu_budget,
+    })
+
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         algorithm=algorithm.value,
         cpu_budget=cpu_budget,
         **self._flat_structure)
-    self._save_configuration({
-      "autotune_algorithm": algorithm.name,
-      "cpu_budget": cpu_budget,
-    })
 
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
@@ -4747,6 +4798,12 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
   def __init__(self, input_dataset, optimizations, optimization_configs=None):
+
+    self._save_configuration({
+      "optimizations": optimizations,
+      "optimization_configs": optimization_configs,
+    })
+
     self._input_dataset = input_dataset
     if optimizations is None:
       optimizations = []
@@ -4760,11 +4817,6 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
         optimization_configs=optimization_configs,
         **self._flat_structure)
 
-    self._save_configuration({
-      "optimizations": optimizations,
-      "optimization_configs": optimization_configs,
-    })
-
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
@@ -4773,6 +4825,13 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, aggregator, prefix, counter_prefix):
     self._input_dataset = input_dataset
+
+    self._save_configuration({
+      "aggregator": aggregator,
+      "prefix": prefix,
+      "counter_prefix": counter_prefix,
+    })
+
     self._stats_aggregator = aggregator
     self._prefix = prefix
     self._counter_prefix = counter_prefix
@@ -4783,12 +4842,6 @@ class _SetStatsAggregatorDataset(UnaryUnchangedStructureDataset):
         self._counter_prefix,
         **self._flat_structure)
 
-    self._save_configuration({
-      "stats_aggregator": aggregator,
-      "prefix": prefix,
-      "counter_prefix": counter_prefix,
-    })
-
     super(_SetStatsAggregatorDataset, self).__init__(input_dataset,
                                                      variant_tensor)
 
@@ -4798,14 +4851,15 @@ class _MaxIntraOpParallelismDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, max_intra_op_parallelism):
     self._input_dataset = input_dataset
-    self._max_intra_op_parallelism = ops.convert_to_tensor(
-        max_intra_op_parallelism,
-        dtype=dtypes.int64,
-        name="max_intra_op_parallelism")
 
     self._save_configuration({
       "max_intra_op_parallelism": max_intra_op_parallelism,
     })
+
+    self._max_intra_op_parallelism = ops.convert_to_tensor(
+        max_intra_op_parallelism,
+        dtype=dtypes.int64,
+        name="max_intra_op_parallelism")
 
     variant_tensor = ged_ops.max_intra_op_parallelism_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -4820,12 +4874,13 @@ class _PrivateThreadPoolDataset(UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, num_threads):
     self._input_dataset = input_dataset
-    self._num_threads = ops.convert_to_tensor(
-        num_threads, dtype=dtypes.int64, name="num_threads")
 
     self._save_configuration({
       "num_threads": num_threads,
     })
+
+    self._num_threads = ops.convert_to_tensor(
+        num_threads, dtype=dtypes.int64, name="num_threads")
 
     variant_tensor = ged_ops.private_thread_pool_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -4872,6 +4927,11 @@ class _RestructuredDataset(UnaryDataset):
 
   def __init__(self, dataset, structure):
     self._input_dataset = dataset
+
+    self._save_configuration({
+      "numstructure_threads": structure,
+    })
+
     self._structure = structure
 
     variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access

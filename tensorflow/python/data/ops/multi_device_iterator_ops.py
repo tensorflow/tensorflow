@@ -40,6 +40,15 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
 
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, element_spec):
+
+     self._save_configuration({
+       "shard_num": shard_num,
+       "multi_device_iterator_resource": multi_device_iterator_resource,
+       "incarnation_id": incarnation_id,
+       "source_device": source_device,
+       "element_spec": element_spec,
+     })
+
     self._element_spec = element_spec
 
     multi_device_iterator_string_handle = (
@@ -57,6 +66,12 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     @function.defun(autograph=False)  # Pure graph code.
     def _remote_init_func():
       return functional_ops.remote_call(
+          target=source_device,
+          target=source_device,
+          target=source_device,
+          target=source_device,
+          target=source_device,
+          target=source_device,
           target=source_device,
           args=init_func_concrete.captured_inputs,
           Tout=[dtypes.string],
@@ -156,6 +171,12 @@ class _ReincarnatedPerDeviceGenerator(dataset_ops.DatasetV2):
   """
 
   def __init__(self, per_device_dataset, incarnation_id):
+
+    self._save_configuration({
+      "per_device_dataset": per_device_dataset,
+      "incarnation_id": incarnation_id,
+    })
+
     # pylint: disable=protected-access
     self._element_spec = per_device_dataset.element_spec
     self._init_func = per_device_dataset._init_func

@@ -35,6 +35,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, features, num_parallel_calls,
                deterministic):
     self._input_dataset = input_dataset
+    
     _num_parallel_calls = dataset_ops.parse_maybe_autotune_arg(
       num_parallel_calls
     )
@@ -42,6 +43,7 @@ class _ParseExampleDataset(dataset_ops.UnaryDataset):
     self._save_configuration({
       "features": features,
       "num_parallel_calls": _num_parallel_calls,
+      "deterministic": deterministic,
     })
 
     if not structure.are_compatible(

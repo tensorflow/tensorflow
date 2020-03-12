@@ -102,6 +102,11 @@ class _AssertCardinalityDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that assert the cardinality of its input."""
 
   def __init__(self, input_dataset, expected_cardinality):
+
+    self._save_configuration({
+      "expected_cardinality": expected_cardinality,
+    })
+
     self._input_dataset = input_dataset
     self._expected_cardinality = ops.convert_to_tensor(
         expected_cardinality, dtype=dtypes.int64, name="expected_cardinality")

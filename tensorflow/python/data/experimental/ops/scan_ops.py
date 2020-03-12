@@ -36,6 +36,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
                use_default_device=None):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
       "initial_state": initial_state,
       "scan_func": str(scan_func),

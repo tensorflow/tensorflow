@@ -33,6 +33,11 @@ class SingleThreadedFlatMapDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, map_func):
     """See `Dataset.flat_map()` for details."""
     self._input_dataset = input_dataset
+
+    self._save_configuration({
+      "map_func": str(map_func),
+    })
+
     self._map_func = dataset_ops.StructuredFunctionWrapper(
         map_func,
         self._transformation_name(),

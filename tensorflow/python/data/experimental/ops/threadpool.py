@@ -65,6 +65,7 @@ class _ThreadPoolDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, thread_pool):
     self._input_dataset = input_dataset
+    
     self._save_configuration({
       "thread_pool": thread_pool,
     })

@@ -88,8 +88,8 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
     """
 
     self._save_configuration({
+      "num_input_ds": len(list(datasets)),
       "num_experiments": num_experiments,
-      "input_datasets": len(list(datasets))
     })
 
     self._datasets = list(datasets)
@@ -103,6 +103,14 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
 
   def _inputs(self):
     return self._datasets
+
+  def _serialize_configuration(self):
+    config = super(_ChooseFastestDataset, self)._serialize_configuration()
+    config["input_ds"] = [
+      ds._serialize_configuration() for ds in self._datasets
+    ]
+
+    return config
 
   @property
   def element_spec(self):
@@ -182,6 +190,7 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
 
     self._save_configuration({
       "input_function_count": len(list(functions)),
+      "functions": [str(f) for f in functions],
       "ratio_numerator": ratio_numerator,
       "ratio_denominator": ratio_denominator,
       "num_elements_per_branch": num_elements_per_branch,

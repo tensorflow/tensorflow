@@ -99,6 +99,7 @@ class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, op_function, tag):
     self._input_dataset = input_dataset
+    
     self._save_configuration({
       "op_function": str(op_function),
       "tag": tag,

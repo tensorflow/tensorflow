@@ -250,6 +250,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
     self._input_dataset = input_dataset
+
     self._save_configuration({
       "key_func": str(key_func),
       "reducer": str(reducer),
@@ -378,6 +379,7 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
     self._input_dataset = input_dataset
+    
     self._save_configuration({
       "key_func": str(key_func),
       "reduce_func": str(reduce_func),

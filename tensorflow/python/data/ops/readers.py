@@ -114,8 +114,8 @@ class _TextLineDataset(dataset_ops.DatasetSource):
 
     self._save_configuration({
       "filenames": filenames,
-      "compression_type": compression_type or "",
-      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+      "compression_type": compression_type,
+      "buffer_size": buffer_size,
     })
 
     self._filenames = filenames
@@ -235,8 +235,8 @@ class _TFRecordDataset(dataset_ops.DatasetSource):
 
     self._save_configuration({
       "filenames": filenames,
-      "compression_type": compression_type or "",
-      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
+      "compression_type": compression_type,
+      "buffer_size": buffer_size,
     })
 
     self._filenames = filenames
@@ -266,13 +266,16 @@ class ParallelInterleaveDataset(dataset_ops.UnaryDataset):
                sloppy, buffer_output_elements, prefetch_input_elements):
     """See `tf.data.experimental.parallel_interleave()` for details."""
     self._input_dataset = input_dataset
+
+    _cycle_length = dataset_ops.parse_maybe_autotune_arg(cycle_length)
+
     self._save_configuration({
       "map_func": str(map_func),
       "cycle_length": cycle_length,
       "block_length": block_length,
       "sloppy": sloppy,
-      "buffer_output_elements": buffer_output_elements or (2 * block_length),
-      "prefetch_input_elements": prefetch_input_elements or (2 * cycle_length),
+      "buffer_output_elements": buffer_output_elements,
+      "prefetch_input_elements": prefetch_input_elements,
     })
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(
@@ -477,10 +480,10 @@ class _FixedLengthRecordDataset(dataset_ops.DatasetSource):
     self._save_configuration({
       "filenames": filenames,
       "record_bytes": record_bytes,
-      "header_bytes": header_bytes or 0,
-      "footer_bytes": footer_bytes or 0,
-      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
-      "compression_type": compression_type or "",
+      "header_bytes": header_bytes,
+      "footer_bytes": footer_bytes,
+      "buffer_size": buffer_size,
+      "compression_type": compression_type,
     })
 
     self._filenames = filenames
@@ -550,10 +553,10 @@ class FixedLengthRecordDatasetV2(dataset_ops.DatasetSource):
     self._save_configuration({
       "filenames": filenames,
       "record_bytes": record_bytes,
-      "header_bytes": header_bytes or 0,
-      "footer_bytes": footer_bytes or 0,
-      "buffer_size": buffer_size or _DEFAULT_READER_BUFFER_SIZE_BYTES,
-      "compression_type": compression_type or "",
+      "header_bytes": header_bytes,
+      "footer_bytes": footer_bytes,
+      "buffer_size": buffer_size,
+      "compression_type": compression_type,
       "num_parallel_reads": _num_parallel_reads,
     })
 

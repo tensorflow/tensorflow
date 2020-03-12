@@ -32,6 +32,7 @@ class _ShuffleAndRepeatDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, buffer_size, count=None, seed=None):
     self._input_dataset = input_dataset
+    
     self._save_configuration({
       "buffer_size": buffer_size,
       "count": count,

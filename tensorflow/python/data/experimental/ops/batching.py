@@ -407,6 +407,10 @@ class _DenseToRaggedDataset(dataset_ops.UnaryDataset):
         have their row_splits dtype changed.
     """
 
+    self._save_configuration({
+      "row_splits_dtype": row_splits_dtype,
+    })
+
     # Replace each TensorSpec in the input dataset's structure with a
     # corresponding RaggedTensorSpec.
     def to_ragged_spec(spec):

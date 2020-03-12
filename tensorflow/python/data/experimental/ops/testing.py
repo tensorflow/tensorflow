@@ -83,6 +83,11 @@ class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
   def __init__(self, input_dataset, transformations):
     """See `assert_next()` for details."""
     self._input_dataset = input_dataset
+
+    self._save_configuration({
+      "transformations": transformations,
+    })
+
     if transformations is None:
       raise ValueError("At least one transformation should be specified")
     self._transformations = ops.convert_to_tensor(
@@ -113,11 +118,14 @@ class _SleepDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset, sleep_microseconds):
     self._input_dataset = input_dataset
+
+    self._save_configuration({
+      "sleep_microseconds": sleep_microseconds,
+    })
+
     self._sleep_microseconds = sleep_microseconds
     variant_tensor = gen_experimental_dataset_ops.sleep_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._sleep_microseconds,
         **self._flat_structure)
     super(_SleepDataset, self).__init__(input_dataset, variant_tensor)
-
-

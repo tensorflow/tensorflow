@@ -60,6 +60,7 @@ class _SnapshotDataset(dataset_ops.UnaryUnchangedStructureDataset):
       "num_reader_threads": num_reader_threads,
       "reader_buffer_size": reader_buffer_size,
       "num_writer_threads": num_writer_threads,
+      "writer_buffer_size": writer_buffer_size,
       "shuffle_on_read": shuffle_on_read,
       "shuffle_seed": shuffle_seed,
       "mode": mode,
