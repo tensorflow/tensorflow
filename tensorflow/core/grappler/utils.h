@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -65,8 +66,8 @@ class NodeMap {
 
  private:
   const std::set<NodeDef*> empty_set_;
-  gtl::FlatMap<string, NodeDef*> nodes_;
-  gtl::FlatMap<string, std::set<NodeDef*>> outputs_;
+  absl::node_hash_map<string, NodeDef*> nodes_;
+  absl::node_hash_map<string, std::set<NodeDef*>> outputs_;
 };
 
 // A vector with a set. The set stores the same elements as the vector, and
@@ -220,6 +221,9 @@ bool HasRegularOutputs(const NodeDef& node, const NodeMap& node_map);
 
 // Returns true iff the node has at least one control output.
 bool HasControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Number of connected control inputs.
+int NumControlInputs(const NodeDef& node);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);

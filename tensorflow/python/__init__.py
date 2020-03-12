@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import tensorflow as tf
 """
 
@@ -47,17 +48,6 @@ import traceback
 import numpy as np
 
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python import _pywrap_utils
-from tensorflow.python import _pywrap_tfprof
-from tensorflow.python import _pywrap_events_writer
-from tensorflow.python import _pywrap_util_port
-from tensorflow.python import _pywrap_stat_summarizer
-from tensorflow.python import _pywrap_py_exception_registry
-from tensorflow.python import _pywrap_python_op_gen
-from tensorflow.python import _pywrap_kernel_registry
-from tensorflow.python import _pywrap_quantize_training
-from tensorflow.python import _pywrap_transform_graph
-from tensorflow.python import _pywrap_stacktrace_handler
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -106,14 +96,22 @@ from tensorflow.python.ops import sets
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
+from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.ragged import ragged_ops as _ragged_ops
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
+from tensorflow.python.profiler import profiler_client
+from tensorflow.python.profiler import profiler_v2
+from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+
+# Update the RaggedTensor package docs w/ a list of ops that support dispatch.
+ragged.__doc__ += _ragged_ops.ragged_dispatch.ragged_op_list()
 
 # Import to make sure the ops are registered.
 from tensorflow.python.ops import gen_audio_ops
@@ -165,6 +163,10 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.debug.lib import check_numerics_callback
 from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.ops import gen_debug_ops
+
+# DLPack
+from tensorflow.python.dlpack.dlpack import from_dlpack
+from tensorflow.python.dlpack.dlpack import to_dlpack
 
 # XLA JIT compiler APIs.
 from tensorflow.python.compiler.xla import jit

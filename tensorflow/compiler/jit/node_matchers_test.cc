@@ -125,7 +125,7 @@ TEST(NodeMatchers, CheckControlDependence) {
             "is any node");
 }
 
-TEST(NodeMatchers, ConstVaulue) {
+TEST(NodeMatchers, ConstValue) {
   Scope root = Scope::NewRootScope().ExitOnError();
   Output placeholder =
       ops::Placeholder(root.WithOpName("placeholder"), DT_FLOAT);

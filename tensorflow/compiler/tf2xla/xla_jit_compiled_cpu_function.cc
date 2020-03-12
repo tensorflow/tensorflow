@@ -49,9 +49,9 @@ xla::StatusOr<size_t> ComputeResultIndex(
   return result_slice.index();
 }
 
-// Collect names from `entries`, where T is one of tf2xla::{Feed,Fetch}. We hold
-// the actual strings in nonempty_names, and hold arrays of pointers in
-// name_ptrs, terminated by a nullptr entry.
+// Collect names from `entries`, where T is one of
+// tf2xla::{Feed,Fetch,Variable}. We hold the actual strings in nonempty_names,
+// and hold arrays of pointers in name_ptrs, terminated by a nullptr entry.
 template <typename T>
 void CollectNames(const T& entries, std::vector<string>* nonempty_names,
                   std::vector<const char*>* name_ptrs) {
@@ -117,8 +117,10 @@ XlaJitCompiledCpuFunction::Compile(
   // Compile the executable. The static_cast to the CpuExecutable subclass is
   // necessary since the raw function and buffer assignments are only available
   // there.
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::LocalExecutable> executable,
+  TF_ASSIGN_OR_RETURN(auto executables,
                       client->Compile(computation, arg_shapes, build_options));
+  TF_RET_CHECK(executables.size() == 1);
+  std::unique_ptr<xla::LocalExecutable> executable = std::move(executables[0]);
   const xla::cpu::CpuExecutable* cpu_executable =
       static_cast<xla::cpu::CpuExecutable*>(executable->executable());
   XlaCompiledCpuFunction::RawFunction raw_function =
@@ -152,14 +154,28 @@ XlaJitCompiledCpuFunction::Compile(
       &jit->static_data_, jit->arg_index_table_.data());
   XlaCompiledCpuFunction::set_static_data_num_args(
       &jit->static_data_, jit->arg_index_table_.size());
+  XlaCompiledCpuFunction::set_static_data_num_variables(&jit->static_data_,
+                                                        config.variable_size());
   XlaCompiledCpuFunction::set_static_data_result_index(&jit->static_data_,
                                                        result_index);
   // Optional metadata is collected and set below.
   CollectNames(config.feed(), &jit->nonempty_arg_names_, &jit->arg_names_);
+
+  auto variable_copy = config.variable();
+  for (auto& var : variable_copy) {
+    if (var.name().empty()) {
+      var.set_name(var.node_name());
+    }
+  }
+  CollectNames(variable_copy, &jit->nonempty_variable_names_,
+               &jit->variable_names_);
+
   CollectNames(config.fetch(), &jit->nonempty_result_names_,
                &jit->result_names_);
   XlaCompiledCpuFunction::set_static_data_arg_names(&jit->static_data_,
                                                     jit->arg_names_.data());
+  XlaCompiledCpuFunction::set_static_data_variable_names(
+      &jit->static_data_, jit->variable_names_.data());
   XlaCompiledCpuFunction::set_static_data_result_names(
       &jit->static_data_, jit->result_names_.data());
   XlaCompiledCpuFunction::set_static_data_program_shape(

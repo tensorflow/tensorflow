@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/core/platform/unbounded_work_queue.h"
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -58,7 +58,7 @@ class UnboundedWorkQueueTest : public ::testing::Test {
 
  private:
   mutex mu_;
-  int closure_count_ GUARDED_BY(mu_) = 0;
+  int closure_count_ TF_GUARDED_BY(mu_) = 0;
   condition_variable cond_var_;
   std::unique_ptr<UnboundedWorkQueue> work_queue_;
 };
@@ -86,7 +86,7 @@ TEST_F(UnboundedWorkQueueTest, MultipleClosuresSleepingRandomly) {
 TEST_F(UnboundedWorkQueueTest, NestedClosures) {
   constexpr int num_closures = 10;
   // Run `num_closures` closures, each of which runs `num_closures` closures.
-  RunMultipleCopiesOfClosure(num_closures, [this]() {
+  RunMultipleCopiesOfClosure(num_closures, [=]() {
     RunMultipleCopiesOfClosure(num_closures, []() {});
   });
   BlockUntilClosuresDone(num_closures * num_closures + num_closures);

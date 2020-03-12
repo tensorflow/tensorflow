@@ -14,17 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+
 #include <stdlib.h>
+
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 
 namespace {
 
-constexpr char kTestData[] = "core/platform/cloud/testdata/";
+string TestData() {
+  return io::JoinPath("tensorflow", "core", "platform", "cloud", "testdata");
+}
 
 class FakeEnv : public EnvWrapper {
  public:
@@ -78,13 +83,11 @@ class GoogleAuthProviderTest : public ::testing::Test {
 
 TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
   setenv("GOOGLE_APPLICATION_CREDENTIALS",
-         io::JoinPath(
-             io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(),
-             "service_account_credentials.json")
+         GetDataDependencyFilepath(
+             io::JoinPath(TestData(), "service_account_credentials.json"))
              .c_str(),
          1);
-  setenv("CLOUDSDK_CONFIG",
-         io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(),
+  setenv("CLOUDSDK_CONFIG", GetDataDependencyFilepath(TestData()).c_str(),
          1);  // Will not be used.
 
   auto oauth_client = new FakeOAuthClient;
@@ -121,8 +124,7 @@ TEST_F(GoogleAuthProviderTest, EnvironmentVariable_Caching) {
 }
 
 TEST_F(GoogleAuthProviderTest, GCloudRefreshToken) {
-  setenv("CLOUDSDK_CONFIG",
-         io::JoinPath(testing::TensorFlowSrcRoot(), kTestData).c_str(), 1);
+  setenv("CLOUDSDK_CONFIG", GetDataDependencyFilepath(TestData()).c_str(), 1);
 
   auto oauth_client = new FakeOAuthClient;
   std::vector<HttpRequest*> requests;

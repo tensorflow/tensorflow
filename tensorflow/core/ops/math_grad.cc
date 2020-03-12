@@ -78,7 +78,7 @@ REGISTER_OP_GRADIENT("Reciprocal", InvGrad);
 Status SquareGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {
-      FDH::Const("c", 2LL),
+      FDH::Const("c", int64{2}),
       {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
       {{"x2"}, "Mul", {"x", "two"}, {}, {"dy"}},  // x * 2
       {{"dx"}, "Mul", {"dy", "x2"}},              // dy * (x * 2)
@@ -579,6 +579,25 @@ Status XlogyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Xlogy", XlogyGrad);
 
+Status Xlog1pyGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      FDH::Const("const", 1.0f),
+      {{"one"}, "Cast", {"const"}, {{"SrcT", DT_FLOAT}, {"DstT", "$T"}}},
+      {{"zeros"}, "ZerosLike", {"x"}},
+      {{"yp1"}, "Add", {"y", "one"}},
+      {{"is_x_zero"}, "NotEqual", {"x", "zeros"}},
+      {{"is_zero_cast"}, "Cast", {"is_x_zero"},
+        {{"SrcT", DT_BOOL}, {"DstT", "$T"}}},
+      {{"safe_log1py"}, "Xlog1py", {"is_zero_cast", "y"}},
+      {{"xlog1pygrad"}, "Xdivy", {"x", "yp1"}},
+      {{"gx"}, "Mul", {"safe_log1py", "dz"}},
+      {{"gy"}, "Mul", {"xlog1pygrad", "dz"}},
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Xlog1py", Xlog1pyGrad);
+
 Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
@@ -600,7 +619,7 @@ REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
 Status SquaredDifferenceGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {
-      FDH::Const("c", 2LL),
+      FDH::Const("c", int64{2}),
       {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
       {{"x_sub_y"}, "Sub", {"x", "y"}},
       {{"two_x_sub_y"}, "Mul", {"two", "x_sub_y"}},  // 2 * (x - y)

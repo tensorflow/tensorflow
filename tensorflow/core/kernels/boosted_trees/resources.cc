@@ -285,7 +285,7 @@ void BoostedTreesEnsembleResource::AddBucketizedSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_bucketized_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_threshold(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);
@@ -310,7 +310,7 @@ void BoostedTreesEnsembleResource::AddCategoricalSplitNode(
   auto* node = AddLeafNodes(tree_id, split_entry, logits_dimension,
                             left_node_id, right_node_id);
   auto* new_split = node->mutable_categorical_split();
-  new_split->set_feature_id(candidate.feature_idx);
+  new_split->set_feature_id(candidate.feature_id);
   new_split->set_value(candidate.threshold);
   new_split->set_dimension_id(candidate.dimension_id);
   new_split->set_left_id(*left_node_id);
@@ -340,7 +340,7 @@ boosted_trees::Node* BoostedTreesEnsembleResource::AddLeafNodes(
         node->mutable_leaf());
   }
   node->mutable_metadata()->set_gain(candidate.gain);
-  // TODO(npononareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
+  // TODO(nponomareva): this is LAYER-BY-LAYER boosting; add WHOLE-TREE.
   if (logits_dimension == 1) {
     const float prev_logit_value = node->metadata().original_leaf().scalar();
     left_node->mutable_leaf()->set_scalar(prev_logit_value +

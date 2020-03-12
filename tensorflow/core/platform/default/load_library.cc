@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <dlfcn.h>
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 

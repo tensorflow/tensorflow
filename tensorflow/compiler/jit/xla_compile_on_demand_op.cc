@@ -99,7 +99,8 @@ Status XlaCompileOnDemandOp::MustArgumentBeConstant(
   // TODO(jmolloy): This could be expensive, so memoize.
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      op_kernel, &constant_input_indices, flib_runtime));
+      op_kernel, &constant_input_indices, flib_runtime,
+      /*cached_arg_indices=*/nullptr));
   *result = absl::c_binary_search(constant_input_indices, argument_idx);
   return Status::OK();
 }
@@ -193,10 +194,6 @@ Status XlaCompileOnDemandOp::Compile(
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  // Optimization: don't resolve constants. If we resolve constants we never
-  // emit them on the device, meaning that if they are needed by a following
-  // computation the host has to transfer them.
-  compile_options.resolve_compile_time_constants = false;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;

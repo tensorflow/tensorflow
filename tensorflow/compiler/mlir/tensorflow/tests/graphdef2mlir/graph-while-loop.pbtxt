@@ -4,10 +4,10 @@
 # to break the cycle.
 
 # CHECK-LABEL: func @main()
-# CHECK:    %[[NEXTITERATION:[0-9]+]]:3 = tf_executor.NextIteration.Source
-# CHECK:    tf_executor.Merge {{.*}} %[[NEXTITERATION]]#0
+# CHECK:    %[[NEXTITERATION:[a-z0-9]+]], %[[NEXTITERATION_token:[a-z0-9]+]], {{.*}} = tf_executor.NextIteration.Source
+# CHECK:    tf_executor.Merge {{.*}} %[[NEXTITERATION]]
 
-# CHECK:    tf_executor.NextIteration.Sink [%[[NEXTITERATION]]#1]
+# CHECK:    tf_executor.NextIteration.Sink [%[[NEXTITERATION_token]]]
 
 node {
   name: "Const"

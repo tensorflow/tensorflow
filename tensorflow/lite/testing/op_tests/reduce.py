@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -105,7 +105,7 @@ def make_reduce_tests(reduce_op,
             "input_shape": [[1, 8, 8, 4], [1, 8, 8, 3]],
             "axis": [
                 0, 1, 2, 3, [0], [1], [2], [3], [-1], [-2], [-3], [1, 2],
-                [0, 3], [1, 2, 3]
+                [0, 3], [1, 2, 3], [1, 3], [2, 3]
             ],
             "const_axis": [True],
             "keepdims": [True, False],

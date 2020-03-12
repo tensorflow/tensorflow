@@ -127,7 +127,10 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     // If there is ever an error associated with a group key, we store the error
     // status and invoke all waiting and future callbacks with this error
     // status.
-    if (gr->status.ok() && !gr->device_set.empty()) {
+    VLOG(2) << "gr device_type=" << gr->group.device_type
+            << " cp device_type=" << cp->group.device_type
+            << " current device=" << device;
+    if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
         gr->status = errors::Internal(
@@ -504,7 +507,7 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
       ir->shared.instance.task_names,    // NOLINT
       attributes,
       [this, gr, cp, ir, attributes, done](const Status& s)
-          EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
+          TF_EXCLUSIVE_LOCK_FUNCTION(ir->out_mu) {
             // Then we recover the lock in the callback thread that will hold it
             // through the rest of the call chain.  Signal the cv now, any
             // waiting threads will wake only when out_mu is released later.
@@ -604,7 +607,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
 
 void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
-    const InstanceRecCallback& done) NO_THREAD_SAFETY_ANALYSIS {
+    const InstanceRecCallback& done) TF_NO_THREAD_SAFETY_ANALYSIS {
   // This function serves merely to make a function call that should
   // be thread/mutex safe but violates the simple model applied by
   // static analysis, so we turn off analysis only within this
@@ -627,7 +630,7 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
   ir->known.resize(cp->group.group_size, false);
   InitInstanceSharedParams(
       gr, cp, ir,
-      [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
+      [this, ir, done](const Status& s) TF_UNLOCK_FUNCTION(ir->out_mu) {
         DCHECK(ir->out_mu_available);
         ir->status.Update(s);
         ir->out_mu.unlock();

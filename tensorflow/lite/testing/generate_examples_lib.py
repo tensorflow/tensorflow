@@ -34,7 +34,8 @@ import datetime
 import os
 import re
 import zipfile
-import tensorflow as tf
+
+import tensorflow.compat.v1 as tf
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -237,6 +238,7 @@ class Options(object):
     # test sets.
     # TODO(juhoha): Separate the state from the options.
     self.multi_gen_state = None
+    self.use_experimental_converter = False
 
 
 def _prepare_dir(options):

@@ -41,6 +41,7 @@ void MakeRuyMatrix(const MatrixParams<Scalar>& params, DataPointer data_ptr,
   // It does care whether we assign to it a Scalar* or a const Scalar*.
   dst->data = data_ptr;
   dst->zero_point = params.zero_point;
+  dst->cacheable = params.cacheable;
 }
 
 template <typename GemmParamsType, typename RuySpecType>

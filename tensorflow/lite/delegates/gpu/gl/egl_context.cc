@@ -131,17 +131,10 @@ Status CreateSurfacelessContext(EGLDisplay display, EGLContext shared_context,
 
 Status CreatePBufferContext(EGLDisplay display, EGLContext shared_context,
                             EglContext* egl_context) {
-  const EGLint attributes[] = {EGL_SURFACE_TYPE,
-                               EGL_PBUFFER_BIT,
-                               EGL_BLUE_SIZE,
-                               8,
-                               EGL_GREEN_SIZE,
-                               8,
-                               EGL_RED_SIZE,
-                               8,
-                               EGL_RENDERABLE_TYPE,
-                               EGL_OPENGL_ES3_BIT_KHR,
-                               EGL_NONE};
+  const EGLint attributes[] = {
+      EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,     EGL_BIND_TO_TEXTURE_RGB,
+      EGL_TRUE,         EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT_KHR,
+      EGL_NONE};
   EGLConfig config;
   RETURN_IF_ERROR(GetConfig(display, attributes, &config));
   return CreateContext(display, shared_context, config, egl_context);

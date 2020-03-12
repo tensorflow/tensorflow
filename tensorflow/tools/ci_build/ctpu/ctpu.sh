@@ -21,10 +21,12 @@
 function install_ctpu {
   PIP_CMD="${1:-pip}"
 
-  # TPUClusterResolver has a runtime dependency on these Python libraries when
-  # resolving a Cloud TPU. It's very likely we want these installed if we're
+  # TPUClusterResolver has a runtime dependency cloud-tpu-client when
+  # resolving a Cloud TPU. It's very likely we want this installed if we're
   # using CTPU.
-  "${PIP_CMD}" install --user --upgrade google-api-python-client oauth2client
+  # Replace cloud-tpu-client with google-api-python-client oauth2client to test
+  # the client at head.
+  "${PIP_CMD}" install --user --upgrade cloud-tpu-client
 
   wget -nv "https://dl.google.com/cloud_tpu/ctpu/latest/linux/ctpu"
   chmod a+x ctpu
@@ -44,7 +46,7 @@ function ctpu_up {
   local name="kokoro-tpu-${RANDOM}"
   local zone="us-central1-c"
   local size="v2-8"
-  local version="nightly-2.x"
+  local version="nightly"
   local project  # Project automatically detected from environment.
   local gcp_network  # Network needed only if project default is Legacy.
 
@@ -99,6 +101,8 @@ function ctpu_up {
 
   if [[ -v project ]]; then
     args+=("--project=${project}")
+    export TPU_PROJECT="${project}"
+    echo "${project}" > "${TF_ARTIFACTS_DIR}/tpu_project"
   fi
 
   ./ctpu up "${args[@]}"
@@ -108,16 +112,22 @@ function ctpu_up {
 function ctpu_delete {
   export TPU_NAME="$(cat "${TF_GFILE_DIR}/tpu_name")"
   export TPU_ZONE="$(cat "${TF_GFILE_DIR}/tpu_zone")"
-  # TODO(rsopher): conditionally save (and load) TPU_PROJECT if it was specified.
+  TPU_PROJECT_FILE="${TF_GFILE_DIR}/tpu_project"
+  if [ -f "${TPU_PROJECT_FILE}" ]; then
+    export TPU_PROJECT="$(cat ${TPU_PROJECT_FILE})"
+  else
+    export TPU_PROJECT="tensorflow-testing"
+  fi
 
   # Retry due to rare race condition where TPU creation hasn't propagated by
   # the time we try to delete it.
   for i in 1 2 3; do
     ./ctpu delete \
-      --project=tensorflow-testing \
+      --project=${TPU_PROJECT} \
       --zone="${TPU_ZONE}" \
       --name="${TPU_NAME}" \
       --tpu-only \
-      -noconf && break || sleep 60
+      -noconf && return 0 || sleep 60
   done
+  return 1
 }

@@ -22,7 +22,14 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def SingleResultAndOperandHaveSameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
+def SingleResultAndOperandHaveSameType : Constraint<
+  CPred<"$0.getType() == $1.getType()">>;
+
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
+
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
 
 //===----------------------------------------------------------------------===//
 // Add op patterns.
@@ -68,15 +75,6 @@ def BitcastSameType : Pat<(TF_BitcastOp:$res $arg), (replaceWithValue $arg),
 
 def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
-
-//===----------------------------------------------------------------------===//
-// Cast op patterns.
-//===----------------------------------------------------------------------===//
-
-def CastSameType : Pat<(TF_CastOp:$res $arg, $truncate),
-                       (replaceWithValue $arg),
-                       [(SingleResultAndOperandHaveSameElementType $res,
-                                                                   $arg)]>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.
@@ -181,3 +179,11 @@ def TruncateDivWithSqrtDivisor : Pat<(TF_TruncateDivOp $arg0,
 
 def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
                                (TF_MulNoNanOp (TF_RsqrtOp $arg1), $arg0)>;
+
+
+//===----------------------------------------------------------------------===//
+// Cast op followed by a ReadVariable op can be folded into the ReadVariable
+//===----------------------------------------------------------------------===//
+
+def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOneUse $output)]>;
+

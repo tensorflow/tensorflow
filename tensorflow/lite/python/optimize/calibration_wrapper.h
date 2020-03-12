@@ -68,6 +68,11 @@ class CalibrationWrapper {
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
                           bool allow_float, const char* operator_output_name);
 
+  // Writes the in-memory calibration results to the model flatbuffer. The
+  // produced model is as same as the original input model, but the min/max
+  // in the quantization field.
+  PyObject* Calibrate();
+
  private:
   // CalibrationWrapper is not copyable or assignable. We avoid the use of
   // CalibrationWrapper() = delete here for SWIG compatibility.
@@ -77,7 +82,8 @@ class CalibrationWrapper {
       std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
           error_reporter,
       std::unique_ptr<tflite::FlatBufferModel> model,
-      std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader);
+      std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+      std::unique_ptr<std::string> model_str_);
 
   CalibrationWrapper(const CalibrationWrapper& rhs);
 
@@ -89,6 +95,7 @@ class CalibrationWrapper {
   std::unique_ptr<tflite::ops::builtin::BuiltinOpResolver> resolver_;
   std::unique_ptr<tflite::FlatBufferModel> model_;
   std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader_;
+  std::unique_ptr<std::string> model_str_;
 };
 
 }  // namespace calibration_wrapper

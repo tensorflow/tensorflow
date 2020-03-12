@@ -82,7 +82,6 @@ class EmbeddingTest(keras_parameterized.TestCase):
 
     layer.set_weights([np.array([[1, 1], [2, 2]])])
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     outputs = model.predict(np.array([[0, 1, 0]], dtype='int32'))
     self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
@@ -113,7 +112,6 @@ class EmbeddingTest(keras_parameterized.TestCase):
     outputs = layer(outputs)
 
     model = keras.Model(inputs, outputs)
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     model.run_eagerly = testing_utils.should_run_eagerly()
     outputs = model.predict(
         ragged_factory_ops.constant([[1., 2., 2.], [0.], [1., 2.]],

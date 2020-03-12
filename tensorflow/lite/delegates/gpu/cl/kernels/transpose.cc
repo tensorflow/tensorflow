@@ -29,13 +29,15 @@ std::string GetTransposeCode(
     const OperationDef& op_def, const TransposeAttributes& attr,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
-      "src_data", {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
+      "src_data",
+      WHSBPoint{"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
       op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor(
-      "dst_data", {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
+      "dst_data",
+      WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -46,7 +48,7 @@ std::string GetTransposeCode(
   c += "    int src_channels,          \n";
   c += "    int dst_channels           \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -70,10 +72,10 @@ std::string GetTransposeCode(
   remap[attr.perm.c] = 3;
   if (attr.perm.c == 3) {  // optimized reading when no channels permutation
     const std::string bhw[] = {"B", "Y", "X"};
-    std::string src_b = op_def.batch_support ? bhw[remap[0]] : "";
+    std::string src_b = op_def.IsBatchSupported() ? bhw[remap[0]] : "";
     c += "  int s_y = " + bhw[remap[1]] + ";\n";
     c += "  int s_x = " + bhw[remap[2]] + ";\n";
-    c += "  FLT4 t =" + src_tensor.Read4D("s_x", "s_y", "Z", src_b) + ";\n";
+    c += "  FLT4 t =" + src_tensor.ReadWHSB("s_x", "s_y", "Z", src_b) + ";\n";
     c += "  temps[0] = t.x;\n";
     c += "  temps[1] = t.y;\n";
     c += "  temps[2] = t.z;\n";
@@ -83,13 +85,13 @@ std::string GetTransposeCode(
     c += "    int dst_channel = Z * 4 + i;\n";
     c += "    if (dst_channel < dst_channels) {;\n";
     const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
-    std::string src_b = op_def.batch_support ? bhwc[remap[0]] : "";
+    std::string src_b = op_def.IsBatchSupported() ? bhwc[remap[0]] : "";
     c += "      int s_y = " + bhwc[remap[1]] + ";\n";
     c += "      int s_x = " + bhwc[remap[2]] + ";\n";
     c += "      int s_c = " + bhwc[remap[3]] + ";\n";
     c += "      int s_z = s_c / 4;\n";
     c += "      int src_sub_ch = s_c % 4;\n";
-    c += "      FLT4 t =" + src_tensor.Read4D("s_x", "s_y", "s_z", src_b) +
+    c += "      FLT4 t =" + src_tensor.ReadWHSB("s_x", "s_y", "s_z", src_b) +
          ";\n";
     c += "      FLT t_ar[4] = {t.x, t.y, t.z, t.w};\n";
     c += "      temps[i] = t_ar[src_sub_ch];\n";
@@ -97,10 +99,11 @@ std::string GetTransposeCode(
     c += "  }\n";
   }
   c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
-  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  std::string x_3dcoord =
+      op_def.IsBatchSupported() ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", batch_id);
+  c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", batch_id);
   c += "}\n";
   return c;
 }
@@ -134,8 +137,8 @@ Status Transpose::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Channels()));
 
@@ -145,7 +148,7 @@ Status Transpose::BindArguments() {
 int3 Transpose::GetGridSize() const {
   const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Depth();
+  const int grid_z = dst_[0]->Slices();
   return int3(grid_x, grid_y, grid_z);
 }
 

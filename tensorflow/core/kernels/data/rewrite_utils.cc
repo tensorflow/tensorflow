@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/serialization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
@@ -125,7 +126,7 @@ Status ApplyRewrites(OpKernelContext* ctx,
   tensorflow::ConfigProto config;
   *config.mutable_graph_options()->mutable_rewrite_options() = config_factory();
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      *grappler_item, config, ctx->device(), &cluster, graph_def));
+      std::move(*grappler_item), config, ctx->device(), &cluster, graph_def));
 
   // Remove fake sinks after optimizations are done.
   //
@@ -151,6 +152,7 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       SerializationContext::ExternalStatePolicy::kIgnore;
   params.fail_if_unimplemented = false;
   params.serialize_data_tensors = false;
+  params.preserve_random_seeds = false;
   SerializationContext serialization_ctx(params);
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(
@@ -199,10 +201,12 @@ Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
       for (const auto& node : graph_def.node()) {
         if (node.name() == output_node) {
           node_def = &node;
+          break;
         }
       }
       if (node_def == nullptr) {
         VLOG(3) << "Failed to find node: " << output_node;
+        return;
       }
       uint64 hash = 0;
       Status s = HashNode(graph_def, *node_def, &hash);

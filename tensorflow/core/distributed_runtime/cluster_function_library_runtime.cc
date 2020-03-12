@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -223,6 +224,8 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   req->set_session_handle(worker_session_->session_name());
   req->set_create_worker_session_called(create_worker_session_called_);
   *req->mutable_graph_def() = std::move(gdef);
+  StripDefaultAttributes(*OpRegistry::Global(),
+                         req->mutable_graph_def()->mutable_node());
   req->mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);

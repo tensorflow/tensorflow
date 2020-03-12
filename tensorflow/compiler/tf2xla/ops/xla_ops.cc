@@ -84,7 +84,7 @@ lower: a boolean specifies whether the calculation is done with the lower
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  been argued that approximately logN sweeps are needed in practice (Ref: Golub &
   van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -116,7 +116,7 @@ a: the input tensor.
 
 max_iter: maximum number of sweep update, i.e., the whole lower triangular
   part or upper triangular part based on parameter lower. Heuristically, it has
-  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  been argued that approximately log(min (M, N)) sweeps are needed in practice
   (Ref: Golub & van Loan "Matrix Computation").
 
 epsilon: the tolerance ratio.
@@ -610,7 +610,7 @@ REGISTER_OP("XlaDequantize")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 Takes the packed uint32 input and unpacks the input to uint8 to do
-Dequantization on deivce.
+Dequantization on device.
 
 input: Input tensors whose types is uint32, shape is [d0, ..., dn].
 output: Output tensors whose types is bloat16. If transpose_output is true,
@@ -644,7 +644,7 @@ REGISTER_OP("XlaEinsum")
     .Doc(R"doc(
 An op which supports basic einsum op with 2 inputs and 1 output.
 
-This op has better TPU performnce since it doesn't have explicitly reshape and
+This op has better TPU performance since it doesn't have explicitly reshape and
 transpose operations as tf.einsum does.
 )doc");
 
@@ -664,6 +664,51 @@ REGISTER_OP("XlaReplicaId")
       return Status::OK();
     })
     .Doc("Replica ID.");
+
+REGISTER_OP("XlaGather")
+    .Input("operand: T")
+    .Input("start_indices: Tindices")
+    .Input("slice_sizes: Tindices")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Gather operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#gather
+operand: The array we're gathering from.
+start_indices: Array containing the starting indices of the slices we gather.
+dimension_numbers: A serialized xla::GatherDimensionNumbers proto.
+slice_sizes: slice_sizes[i] is the bounds for the slice on dimension i.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
+
+REGISTER_OP("XlaScatter")
+    .Input("operand: T")
+    .Input("scatter_indices: Tindices")
+    .Input("updates: T")
+    .Attr("update_computation: func")
+    .Attr("dimension_numbers: string")
+    .Attr("indices_are_sorted: bool")
+    .Attr("T: numbertype")
+    .Attr("Tindices: {int32, int64}")
+    .Output("output: T")
+    .SetShapeFn(UnchangedRank)
+    .Doc(R"doc(
+Wraps the XLA Scatter operator documented at
+  https://www.tensorflow.org/xla/operation_semantics#scatter.
+
+operand: Array to be scattered into.
+scatter_indices: Array containing the starting indices of the slices that must
+  be scattered to.
+updates: Array containing the values that must be used for scattering.
+update_computation: Computation to be used for combining the existing values in
+  the input array and the updates during scatter.
+dimension_numbers: A serialized xla::ScatterDimensionNumbers proto.
+indices_are_sorted: Boolean indicating if the indices are sorted.
+)doc");
 
 }  // namespace
 }  // namespace tensorflow

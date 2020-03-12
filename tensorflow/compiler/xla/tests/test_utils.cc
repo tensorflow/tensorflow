@@ -218,6 +218,23 @@ void PopulateWithFloatingPointData<bfloat16>(Literal* literal,
   }
 }
 
+// uniform_int_distribution is not defined for 8-bit integers.
+// Use 'short' for those types.
+template <typename IntT>
+struct RngT {
+  using type = IntT;
+};
+
+template <>
+struct RngT<int8> {
+  using type = int16;
+};
+
+template <>
+struct RngT<uint8> {
+  using type = uint16;
+};
+
 template <typename IntT>
 void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
                                     bool no_duplicates) {
@@ -230,7 +247,7 @@ void PopulateWithRandomIntegralData(Literal* literal, std::minstd_rand0* engine,
     std::shuffle(literal->data<IntT>().begin(), literal->data<IntT>().end(),
                  *engine);
   } else {
-    std::uniform_int_distribution<IntT> generator(
+    std::uniform_int_distribution<typename RngT<IntT>::type> generator(
         std::numeric_limits<IntT>::lowest(), std::numeric_limits<IntT>::max());
     for (IntT& value : literal->data<IntT>()) {
       value = generator(*engine);
@@ -324,9 +341,6 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
           }));
       break;
     }
-    // Token requires no data.
-    case TOKEN:
-      break;
     default:
       return Unimplemented("Unsupported type for fake literal generation: %s",
                            ShapeUtil::HumanString(shape));
@@ -341,7 +355,7 @@ void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
   CHECK(engine != nullptr);
   CHECK_EQ(literal->shape().element_type(),
            primitive_util::NativeToPrimitiveType<IntT>());
-  std::uniform_int_distribution<IntT> generator(min, max);
+  std::uniform_int_distribution<typename RngT<IntT>::type> generator(min, max);
   for (IntT& value : literal->data<IntT>()) {
     value = generator(*engine);
   }

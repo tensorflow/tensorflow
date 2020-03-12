@@ -192,8 +192,8 @@ TEST_F(GrpcDebugTest, SendMultipleDebugTensorsSynchronizedViaGrpcTest) {
 
   mutex mu;
   Notification all_done;
-  int tensor_count GUARDED_BY(mu) = 0;
-  std::vector<Status> statuses GUARDED_BY(mu);
+  int tensor_count TF_GUARDED_BY(mu) = 0;
+  std::vector<Status> statuses TF_GUARDED_BY(mu);
 
   const std::vector<string> urls({server_data_.url});
 

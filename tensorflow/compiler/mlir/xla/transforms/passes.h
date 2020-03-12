@@ -18,8 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "llvm/ADT/ArrayRef.h"
+#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 
 namespace mlir {
 
@@ -28,6 +29,7 @@ class ModuleOp;
 class Operation;
 template <typename T>
 class OpPassBase;
+class Pass;
 
 namespace xla_hlo {
 
@@ -53,7 +55,10 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
+
+// Lowers from HLO dialect to Linalg dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
 
 }  // namespace xla_hlo
 
@@ -63,10 +68,28 @@ namespace xla_lhlo {
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
 
 // Lowers from LHLO dialect to Linalg dialect.
-std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeLhloToLinalgPass();
 
-// Fuses linalg ops obtained after LHLO lowering.
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
+// Lowers from LHLO dialect to GPU dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToGpuPass();
+
+// Fuses linalg ops obtained after LHLO lowering. To enable fusion,
+// operations are first tiled.
+//
+// When 'use_parallel_loops' is set, the tiling will use loop.parallel
+// operations. Otherwise, loop.for operations are used.
+//
+// 'tile_sizes' provides the tile sizes to use for tiling. If the linalg
+// operation has more dimensions than tile sizes provided, 1 is used as
+// default.
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+    bool use_parallel_loops = false, ArrayRef<unsigned> tile_sizes = {});
+
+// Removes unnecessary LHLO copies which copy from the allocated buffers to the
+// block arguments. The block arguments are used instead of all uses of these
+// buffers. The buffers are freed. This pass only works in regions that contain
+// a single block.
+std::unique_ptr<Pass> createLhloCopyRemovalPass();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

@@ -38,6 +38,8 @@ class TensorDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, std::vector<Tensor> tensors)
       : DatasetBase(DatasetContext(ctx)), tensors_(std::move(tensors)) {
+    dtypes_.reserve(tensors_.size());
+    shapes_.reserve(tensors_.size());
     for (const Tensor& t : tensors_) {
       dtypes_.push_back(t.dtype());
       shapes_.emplace_back(t.shape().dim_sizes());
@@ -131,7 +133,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    bool produced_ GUARDED_BY(mu_);
+    bool produced_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<Tensor> tensors_;

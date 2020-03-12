@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -129,7 +129,10 @@ def make_binary_op_tests(options,
         name="input2",
         shape=parameters["input_shape_2"])
     out = binary_operator(input1, input2)
-    if parameters["activation"]:
+    # TODO(karimnosseir): Update condition after moving to new converter.
+    if parameters["activation"] and (not options.use_experimental_converter or
+                                     (parameters["dtype"] != tf.int32 and
+                                      parameters["dtype"] != tf.int64)):
       out = tf.nn.relu(out)
     return [input1, input2], [out]
 

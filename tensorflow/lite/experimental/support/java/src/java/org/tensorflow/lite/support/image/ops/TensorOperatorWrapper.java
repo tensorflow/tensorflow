@@ -15,8 +15,9 @@ limitations under the License.
 
 package org.tensorflow.lite.support.image.ops;
 
+import android.graphics.PointF;
 import org.checkerframework.checker.nullness.qual.NonNull;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.common.TensorOperator;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
@@ -36,6 +37,8 @@ public class TensorOperatorWrapper implements ImageOperator {
    * TensorOperator} could handle {@link TensorImage} objects by handling its underlying {@link
    * org.tensorflow.lite.support.tensorbuffer.TensorBuffer}.
    *
+   * <p>Requirement: The {@code op} should not change coordinate system when applied on an image.
+   *
    * @param op The created operator.
    */
   public TensorOperatorWrapper(TensorOperator op) {
@@ -45,8 +48,23 @@ public class TensorOperatorWrapper implements ImageOperator {
   @Override
   @NonNull
   public TensorImage apply(@NonNull TensorImage image) {
-    SupportPrecondtions.checkNotNull(image, "Op cannot apply on null image.");
+    SupportPreconditions.checkNotNull(image, "Op cannot apply on null image.");
     image.load(tensorOp.apply(image.getTensorBuffer()));
     return image;
+  }
+
+  @Override
+  public int getOutputImageHeight(int inputImageHeight, int inputImageWidth) {
+    return inputImageHeight;
+  }
+
+  @Override
+  public int getOutputImageWidth(int inputImageHeight, int inputImageWidth) {
+    return inputImageWidth;
+  }
+
+  @Override
+  public PointF inverseTransform(PointF point, int inputImageHeight, int inputImageWidth) {
+    return point;
   }
 }

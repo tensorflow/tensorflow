@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 
@@ -26,10 +26,6 @@ namespace builtin {
 class BuiltinOpResolver : public MutableOpResolver {
  public:
   BuiltinOpResolver();
-
-  const TfLiteRegistration* FindOp(tflite::BuiltinOperator op,
-                                   int version) const override;
-  const TfLiteRegistration* FindOp(const char* op, int version) const override;
 };
 
 }  // namespace builtin

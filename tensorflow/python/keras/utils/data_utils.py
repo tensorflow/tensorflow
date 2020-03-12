@@ -1,3 +1,4 @@
+# Lint as python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -41,9 +42,9 @@ import numpy as np
 import six
 from six.moves.urllib.error import HTTPError
 from six.moves.urllib.error import URLError
-from six.moves.urllib.request import urlopen
 
 from tensorflow.python.framework import ops
+from six.moves.urllib.request import urlopen
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
@@ -66,7 +67,7 @@ except ImportError:
 if sys.version_info[0] == 2:
 
   def urlretrieve(url, filename, reporthook=None, data=None):
-    """Replacement for `urlretrive` for Python 2.
+    """Replacement for `urlretrieve` for Python 2.
 
     Under Python 2, `urlretrieve` relies on `FancyURLopener` from legacy
     `urllib` module, known to have issues with proxy management.
@@ -74,12 +75,10 @@ if sys.version_info[0] == 2:
     Arguments:
         url: url to retrieve.
         filename: where to store the retrieved data locally.
-        reporthook: a hook function that will be called once
-            on establishment of the network connection and once
-            after each block read thereafter.
-            The hook will be passed three arguments;
-            a count of blocks transferred so far,
-            a block size in bytes, and the total size of the file.
+        reporthook: a hook function that will be called once on establishment of
+          the network connection and once after each block read thereafter. The
+          hook will be passed three arguments; a count of blocks transferred so
+          far, a block size in bytes, and the total size of the file.
         data: `data` argument passed to `urlopen`.
     """
 
@@ -284,15 +283,15 @@ def get_file(fname,
 
 
 def _makedirs_exist_ok(datadir):
-  if six.PY3:
-    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
-  else:
+  if six.PY2:
     # Python 2 doesn't have the exist_ok arg, so we try-except here.
     try:
       os.makedirs(datadir)
     except OSError as e:
       if e.errno != errno.EEXIST:
         raise
+  else:
+    os.makedirs(datadir, exist_ok=True)  # pylint: disable=unexpected-keyword-arg
 
 
 def _hash_file(fpath, algorithm='sha256', chunk_size=65535):

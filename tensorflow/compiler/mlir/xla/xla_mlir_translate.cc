@@ -17,29 +17,29 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Translation.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/status.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
-
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_use_tuple_arg_for_entry_function(
-    "emit-use-tuple-args-for-entry-function",
-    llvm::cl::desc("Emit HLO modules using tuples as args"),
+static llvm::cl::opt<bool> emit_use_tuple_arg(
+    "emit-use-tuple-args",
+    llvm::cl::desc(
+        "Emit HLO modules using tuples as args for the entry computation"),
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_always_return_tuple(
-    "emit-always-return-tuple",
-    llvm::cl::desc("Emit HLO modules always return tuple"),
+static llvm::cl::opt<bool> emit_return_tuple(
+    "emit-return-tuple",
+    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
     llvm::cl::init(false));
 
 namespace xla {
@@ -113,8 +113,7 @@ static mlir::LogicalResult MlirHloToHloTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg_for_entry_function,
-      emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -139,8 +138,7 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg_for_entry_function,
-      emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg, emit_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -154,10 +152,21 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
     return mlir::failure();
   }
 
-  output << statusOrHloModule.ValueOrDie()->ToString(
-      HloPrintOptions()
-          // We don't interpret or use layouts
-          .set_include_layout_in_shapes(false));
+  HloModule* hlo_module = statusOrHloModule.ValueOrDie().get();
+
+  // We don't interpret or use layouts
+  output << hlo_module->ToString(
+      HloPrintOptions().set_include_layout_in_shapes(false));
+
+  // Output alias information as comments in the HLO text.
+  hlo_module->input_output_alias_config().ForEachAlias(
+      [&](const ShapeIndex& output_index,
+          const HloInputOutputAliasConfig::Alias& alias) {
+        output << "// OutputIndex " << output_index.ToString()
+               << " aliases with input " << alias.parameter_number << " at "
+               << alias.parameter_index.ToString() << "\n";
+      });
+
   return mlir::success();
 }
 

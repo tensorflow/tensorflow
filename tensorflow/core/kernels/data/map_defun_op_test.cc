@@ -87,7 +87,7 @@ class MapDefunOpParams : public DatasetParams {
   int max_intra_op_parallelism_;
 };
 
-class MapDefunOpTest : public DatasetOpsTestBaseV2 {
+class MapDefunOpTest : public DatasetOpsTestBase {
  protected:
   // Creates a new `MapDefun` op kernel
   Status CreateMapDefunOpKernel(const MapDefunOpParams& params,

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.framework import errors
 
 # Trace of execution and memory usage.
@@ -46,7 +46,7 @@ class _NotOkStatusException(Exception):
     return "%s: %s" % (e.__class__.__name__, e)
 
 
-pywrap_tensorflow.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
+pywrap_tfe.TFE_Py_RegisterExceptionClass(_NotOkStatusException)
 
 
 class _FallbackException(Exception):
@@ -71,4 +71,4 @@ class _SymbolicException(Exception):
   pass
 
 
-pywrap_tensorflow.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)
+pywrap_tfe.TFE_Py_RegisterFallbackExceptionClass(_FallbackException)

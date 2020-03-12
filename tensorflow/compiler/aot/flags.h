@@ -25,8 +25,11 @@ namespace tensorflow {
 namespace tfcompile {
 
 // Flags for the tfcompile binary.  See *.cc file for descriptions.
+
 struct MainFlags {
   string graph;
+  string debug_info;
+  string debug_info_path_begin_marker;
   string config;
   bool dump_fetch_nodes = false;
   string target_triple;

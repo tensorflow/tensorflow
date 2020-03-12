@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
@@ -50,10 +50,15 @@ namespace {
 using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
-  std::unique_ptr<tflite::ModelT> copied_model =
-      absl::make_unique<tflite::ModelT>();
+  auto copied_model = absl::make_unique<tflite::ModelT>();
   model.UnPackTo(copied_model.get(), nullptr);
   return copied_model;
+}
+
+bool NoOpModel(const tflite::FlatBufferModel& model) {
+  return model->subgraphs()->size() == 1 &&
+         (!model->subgraphs()->begin()->operators() ||
+          model->subgraphs()->begin()->operators()->size() == 0);
 }
 
 inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
@@ -92,12 +97,14 @@ CalibrationWrapper::CalibrationWrapper(
     std::unique_ptr<tflite::interpreter_wrapper::PythonErrorReporter>
         error_reporter,
     std::unique_ptr<tflite::FlatBufferModel> model,
-    std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader)
+    std::unique_ptr<tflite::optimize::calibration::CalibrationReader> reader,
+    std::unique_ptr<std::string> model_str)
     : interpreter_(std::move(interpreter)),
       error_reporter_(std::move(error_reporter)),
       resolver_(std::move(resolver)),
       model_(std::move(model)),
-      reader_(std::move(reader)) {}
+      reader_(std::move(reader)),
+      model_str_(std::move(model_str)) {}
 
 CalibrationWrapper::~CalibrationWrapper() {}
 
@@ -193,10 +200,26 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   Py_RETURN_NONE;
 }
 
+PyObject* CalibrationWrapper::Calibrate() {
+  auto tflite_model = CreateMutableModel(*model_->GetModel());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
+  flatbuffers::FlatBufferBuilder builder;
+  auto loc = tflite::Model::Pack(builder, tflite_model.get());
+  tflite::FinishModelBuffer(builder, loc);
+  return python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
+}
+
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
                                             bool enable_mlir_quantizer) {
+  if (NoOpModel(*model_)) {
+    return python_utils::ConvertToPyString(model_str_->data(),
+                                           model_str_->size());
+  }
+
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
@@ -288,9 +311,16 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
     return nullptr;
   }
 
+  auto model_str = std::make_unique<std::string>(buf, length);
+  // If we are not going to use this string during quantization, reset the
+  // pointer and release the memory.
+  if (!NoOpModel(*model)) {
+    model_str.reset();
+  }
+
   auto wrapper = new CalibrationWrapper(
       std::move(interpreter), std::move(resolver), std::move(error_reporter),
-      std::move(model), std::move(reader));
+      std::move(model), std::move(reader), std::move(model_str));
   return wrapper;
 }
 

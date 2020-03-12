@@ -273,7 +273,9 @@ const Status& StatusOr<T>::status() const & {
 }
 template <typename T>
 Status StatusOr<T>::status() && {
-  return ok() ? Status::OK() : std::move(this->status_);
+  // Note that we copy instead of moving the status here so that
+  // ~StatusOrData() can call ok() without invoking UB.
+  return ok() ? Status::OK() : this->status_;
 }
 
 template <typename T>

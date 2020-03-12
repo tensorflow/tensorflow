@@ -323,6 +323,29 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(unknown_dim[0])
     self.assertLen(total_function_cache(func), 2)
 
+  def testInputShapeRelaxationOnInstanceMethod(self):
+    # Test that experimental_relax_shapes is passed during
+    # instance method bounding.
+    unknown_dim = [False]
+
+    class Foo(object):
+
+      @def_function.function(experimental_relax_shapes=True)
+      def func(self, a):
+        if a._shape_tuple()[0] is None:
+          unknown_dim[0] = True
+        return a + 1
+
+    foo = Foo()
+    foo.func(constant_op.constant([]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0]))
+    self.assertFalse(unknown_dim[0])
+
+    foo.func(constant_op.constant([1.0, 2.0]))
+    self.assertTrue(unknown_dim[0])
+
   def testCapturesVariables(self):
     a = variables.Variable(1.0, trainable=False)
     b = variables.Variable(1.0)
@@ -338,10 +361,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function()
     c = cc[0]
 
-    self.assertEqual(cf.variables, (a, b, c))
-    self.assertEqual(cf.trainable_variables, (b, c))
-    self.assertEqual(cf.graph.variables, (a, b, c))
-    self.assertEqual(cf.graph.trainable_variables, (b, c))
+    captured_variables = {v.ref() for v in (a, b, c)}
+    trainable_variables = {v.ref() for v in (b, c)}
+    self.assertEqual({v.ref() for v in cf.variables}, captured_variables)
+    self.assertEqual({v.ref() for v in cf.trainable_variables},
+                     trainable_variables)
+    self.assertEqual(cf.variables, cf.graph.variables)
+    self.assertEqual(cf.trainable_variables, cf.graph.trainable_variables)
 
   def testNestedInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
@@ -1544,10 +1570,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testColocateWithRespected(self):
     # TODO(b/113291792): Use multiple CPUs instead of a GPU.
     with ops.device('cpu:0'):
-      x = constant_op.constant(1.0)
+      x = array_ops.identity(1.0)
 
     with ops.device('gpu:0'):
-      y = constant_op.constant(1.0)
+      y = array_ops.identity(1.0)
 
     @def_function.function
     def foo():
@@ -2711,11 +2737,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_list():
       return [constant_op.constant(0.), constant_op.constant(1.)]
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.*() should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2791,11 +2813,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     def get_dict():
       return {'t1': constant_op.constant(0.), 't2': constant_op.constant(1.)}
 
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
+    expected_msg = '.* should not modify'
 
     with self.assertRaisesRegexp(ValueError, expected_msg):
 
@@ -2838,14 +2856,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       setdefault(get_dict())
 
   def testFunctionModifiesInputNest(self):
-    # Test on functions that modify structure of nested input arguments
-    expected_msg = (
-        'Function to be traced should not modify structure of input '
-        'arguments. Check if your function has list and dictionary '
-        'operations that alter input arguments, '
-        'such as `list.pop`, `list.append`')
-
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify.* should not modify'):
 
       @def_function.function
       def modify(n):
@@ -2859,7 +2871,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       modify(nested_input)
 
-    with self.assertRaisesRegexp(ValueError, expected_msg):
+    with self.assertRaisesRegexp(
+        ValueError, 'modify_same_flat.* should not modify'):
 
       # The flat list doesn't change whereas the true structure changes
       @def_function.function
@@ -2875,7 +2888,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    variable_refs = list({v.experimental_ref() for v in m.variables})
+    variable_refs = list({v.ref() for v in m.variables})
     self.assertLen(variable_refs, 2)
     del m
 
@@ -3138,6 +3151,66 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Cancellation after the function executes is a no-op.
     c_mgr.start_cancel()
 
+  def testAddFunctionCallback(self):
+    functions = []
+    def function_callback(f):
+      functions.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback)
+      x_float32 = numpy.array(3.0, dtype=numpy.float32)
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Function is already created. Executing it again should not invoke the
+      # function callback.
+      self.assertAllClose(plus_one(x_float32), 4.0)
+      self.assertLen(functions, 1)
+      # Signature change leads to a new Function being built.
+      x_float64 = numpy.array(3.0, dtype=numpy.float64)
+      self.assertAllClose(plus_one(x_float64), 4.0)
+      self.assertLen(functions, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testRemoveFunctionCallback(self):
+    functions_1 = []
+    def function_callback_1(f):
+      functions_1.append(f)
+
+    functions_2 = []
+    def function_callback_2(f):
+      functions_2.append(f)
+
+    @def_function.function
+    def plus_one(x):
+      return x + 1
+
+    try:
+      function.add_function_callback(function_callback_1)
+      function.add_function_callback(function_callback_2)
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float32)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 1)
+      function.remove_function_callback(function_callback_1)
+      # The 1st callback should not be invokved after remove_function_callback()
+      # is called.
+      self.assertAllClose(plus_one(numpy.array(3.0, dtype=numpy.float64)), 4.0)
+      self.assertLen(functions_1, 1)
+      self.assertLen(functions_2, 2)
+    finally:
+      function.clear_function_callbacks()
+
+  def testClearFunctionCallbacks(self):
+    function.add_function_callback(lambda f: None)
+    function.add_function_callback(lambda f: None)
+    self.assertLen(function._function_callbacks, 2)
+    function.clear_function_callbacks()
+    self.assertEmpty(function._function_callbacks)  # pylint:disable=protected-access
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -3166,9 +3239,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       return b, a
 
     with ops.device('/device:CPU:0'):
-      a = constant_op.constant(3.0)
+      a = array_ops.identity(3.0)
     with ops.device('/device:GPU:0'):
-      b = constant_op.constant(5.0)
+      b = array_ops.identity(5.0)
 
     m1, m2 = func(a, b)
     self.assertAllEqual(m1.numpy(), 5.0)
@@ -3233,9 +3306,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     devices = ['/device:CPU:0', '/device:GPU:0']
     for dev1, dev2 in itertools.product(devices, devices):
       with ops.device(dev1):
-        a = constant_op.constant(1.0)
+        a = array_ops.identity(1.0)
       with ops.device(dev2):
-        b = constant_op.constant(10.0)
+        b = array_ops.identity(10.0)
 
       ra, rb = func(a, b)
       self.assertEqual(ra.numpy(), 2.0)
@@ -3396,13 +3469,13 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:CPU:0'):
       rc0 = resource_variable_ops.ResourceVariable(2.0)
       rc1 = resource_variable_ops.ResourceVariable(3.0)
-      cc0 = constant_op.constant(5.0)
-      cc1 = constant_op.constant(7.0)
+      cc0 = array_ops.identity(5.0)
+      cc1 = array_ops.identity(7.0)
     with ops.device('/device:GPU:0'):
       rg0 = resource_variable_ops.ResourceVariable(11.0)
       rg1 = resource_variable_ops.ResourceVariable(13.0)
-      cg0 = constant_op.constant(17.0)
-      cg1 = constant_op.constant(19.0)
+      cg0 = array_ops.identity(17.0)
+      cg1 = array_ops.identity(19.0)
 
     # Make sure tensors are on expected devices.
     for tensor in [cc0, cc1]:
@@ -3435,7 +3508,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
 
   @test_util.run_gpu_only
-  def testArgumentPrunning(self):
+  def testArgumentPruning(self):
     """Tests functions taking unnecessary arguments."""
     with ops.device('/device:CPU:0'):
       c1 = constant_op.constant(5.0)

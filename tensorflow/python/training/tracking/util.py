@@ -940,17 +940,36 @@ class NameBasedSaverStatus(_LoadStatus):
   def __init__(self, checkpoint, graph_view):
     self._checkpoint = checkpoint
     self._graph_view = graph_view
+    self._optionally_restored = []
     # Keep a reference to the root, since graph_view might only have a weakref.
     self._root = graph_view.root
 
+  def add_to_optionally_restored(self, var):
+    """Add a variable to the list of optionally restored variables.
+
+    There are situations where certain variables should be ignored in assertions
+    such as assert_existing_objects_matched(). One example is that of a
+    checkpoint saved with train.Saver(), and restored with train.Checkpoint():
+    it is possible for the train.Saver() checkpoint to be missing the internal
+    `save_counter` variable, which we want to ignore on restore.
+
+    Args:
+      var: The variable to treat as optionally restored.
+    """
+    self._optionally_restored.append(var)
 
   def assert_consumed(self):
     """Raises an exception if any variables are unmatched."""
     unused_attributes = list(self._checkpoint.unused_attributes.items())
+    unused_attributes = [
+        a for a in unused_attributes
+        if all(a[0] is not x for x in self._optionally_restored)
+    ]
     if unused_attributes:
       unused_attribute_strings = [
           "\n    {}: {}".format(obj, attributes)
-          for obj, attributes in unused_attributes]
+          for obj, attributes in unused_attributes
+      ]
       raise AssertionError(
           "Some objects had attributes which were not restored:{}".format(
               "".join(unused_attribute_strings)))
@@ -1250,7 +1269,8 @@ class TrackableSaver(object):
       # The object graph proto does not exist in this checkpoint. Try the
       # name-based compatibility mode.
       restore_coordinator = _NameBasedRestoreCoordinator(
-          save_path=save_path, dtype_map=dtype_map)
+          save_path=save_path,
+          dtype_map=dtype_map)
       if not graph_building:
         for existing_trackable in self._graph_view.list_objects():
           # pylint: disable=protected-access
@@ -1259,7 +1279,8 @@ class TrackableSaver(object):
           existing_trackable._name_based_attribute_restore(restore_coordinator)
           # pylint: enable=protected-access
       return NameBasedSaverStatus(
-          restore_coordinator, graph_view=self._graph_view)
+          restore_coordinator,
+          graph_view=self._graph_view)
 
     if graph_building:
       if self._file_prefix_placeholder is None:
@@ -1446,14 +1467,15 @@ class CheckpointV1(tracking.AutoTrackable):
     """
     super(CheckpointV1, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)
@@ -1682,9 +1704,11 @@ class CheckpointV1(tracking.AutoTrackable):
     """
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables
-    # when graph building. Creating it earlier would lead to double
-    # initialization when executing eagerly.
+    # when graph building. Creating it earlier would lead to errors when using,
+    # say, train.Saver() to save the model before initializing it.
     self._maybe_create_save_counter()
+    if isinstance(status, NameBasedSaverStatus):
+      status.add_to_optionally_restored(self.save_counter)
     return status
 
 
@@ -1783,14 +1807,15 @@ class Checkpoint(tracking.AutoTrackable):
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Trackable, def_function.Function)):
+      setattr(self, k, v)
+      if not isinstance(
+          getattr(self, k), (base.Trackable, def_function.Function)):
         raise ValueError(
             ("`Checkpoint` was expecting a trackable object (an object "
              "derived from `TrackableBase`), got %s. If you believe this "
              "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
-      setattr(self, k, v)
     self._save_counter = None  # Created lazily for restore-on-create.
     self._save_assign_op = None
     self._saver = saver_with_op_caching(self)
@@ -1983,7 +2008,9 @@ class Checkpoint(tracking.AutoTrackable):
     """
     status = self._saver.restore(save_path=save_path)
     # Create the save counter now so it gets initialized with other variables
-    # when graph building. Creating it earlier would lead to double
-    # initialization when executing eagerly.
+    # when graph building. Creating it earlier would lead to errors when using,
+    # say, train.Saver() to save the model before initializing it.
     self._maybe_create_save_counter()
+    if isinstance(status, NameBasedSaverStatus):
+      status.add_to_optionally_restored(self.save_counter)
     return status

@@ -71,21 +71,21 @@ class BenchmarkListenerAdapter : public tflite::benchmark::BenchmarkListener {
   void OnBenchmarkStart(
       const tflite::benchmark::BenchmarkParams& params) override {
     if (on_benchmark_start_fn_ != nullptr) {
-      on_benchmark_start_fn_();
+      on_benchmark_start_fn_(user_data_);
     }
   }
 
   void OnSingleRunStart(tflite::benchmark::RunType runType) override {
     if (on_single_run_start_fn_ != nullptr) {
-      on_single_run_start_fn_(runType == tflite::benchmark::WARMUP
-                                  ? TfLiteBenchmarkWarmup
-                                  : TfLiteBenchmarkRegular);
+      on_single_run_start_fn_(user_data_, runType == tflite::benchmark::WARMUP
+                                              ? TfLiteBenchmarkWarmup
+                                              : TfLiteBenchmarkRegular);
     }
   }
 
   void OnSingleRunEnd() override {
     if (on_single_run_end_fn_ != nullptr) {
-      on_single_run_end_fn_();
+      on_single_run_end_fn_(user_data_);
     }
   }
 
@@ -93,17 +93,22 @@ class BenchmarkListenerAdapter : public tflite::benchmark::BenchmarkListener {
       const tflite::benchmark::BenchmarkResults& results) override {
     if (on_benchmark_end_fn_ != nullptr) {
       TfLiteBenchmarkResults* wrapper = new TfLiteBenchmarkResults{&results};
-      on_benchmark_end_fn_(wrapper);
+      on_benchmark_end_fn_(user_data_, wrapper);
       delete wrapper;
     }
   }
 
+  // Keep the user_data pointer provided when setting the callbacks.
+  void* user_data_;
+
   // Function pointers set by the TfLiteBenchmarkListenerSetCallbacks call.
   // Only non-null callbacks will be actually called.
-  void (*on_benchmark_start_fn_)();
-  void (*on_single_run_start_fn_)(TfLiteBenchmarkRunType runType);
-  void (*on_single_run_end_fn_)();
-  void (*on_benchmark_end_fn_)(TfLiteBenchmarkResults* results);
+  void (*on_benchmark_start_fn_)(void* user_data);
+  void (*on_single_run_start_fn_)(void* user_data,
+                                  TfLiteBenchmarkRunType runType);
+  void (*on_single_run_end_fn_)(void* user_data);
+  void (*on_benchmark_end_fn_)(void* user_data,
+                               TfLiteBenchmarkResults* results);
 };
 
 struct TfLiteBenchmarkListener {
@@ -121,10 +126,14 @@ void TfLiteBenchmarkListenerDelete(TfLiteBenchmarkListener* listener) {
 }
 
 void TfLiteBenchmarkListenerSetCallbacks(
-    TfLiteBenchmarkListener* listener, void (*on_benchmark_start_fn)(),
-    void (*on_single_run_start_fn)(TfLiteBenchmarkRunType runType),
-    void (*on_single_run_end_fn)(),
-    void (*on_benchmark_end_fn)(TfLiteBenchmarkResults* results)) {
+    TfLiteBenchmarkListener* listener, void* user_data,
+    void (*on_benchmark_start_fn)(void* user_data),
+    void (*on_single_run_start_fn)(void* user_data,
+                                   TfLiteBenchmarkRunType runType),
+    void (*on_single_run_end_fn)(void* user_data),
+    void (*on_benchmark_end_fn)(void* user_data,
+                                TfLiteBenchmarkResults* results)) {
+  listener->adapter->user_data_ = user_data;
   listener->adapter->on_benchmark_start_fn_ = on_benchmark_start_fn;
   listener->adapter->on_single_run_start_fn_ = on_single_run_start_fn;
   listener->adapter->on_single_run_end_fn_ = on_single_run_end_fn;

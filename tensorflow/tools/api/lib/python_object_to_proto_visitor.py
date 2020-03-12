@@ -46,7 +46,8 @@ _CORNER_CASES = {
         'message': {}
     },
     'train.LooperThread': {
-        'join': {}
+        'join': {},
+        'native_id': {}
     }
 }
 
@@ -79,11 +80,23 @@ if sys.version_info.major == 3:
     return (member == 'with_traceback' or member in ('name', 'value') and
             isinstance(cls, type) and issubclass(cls, enum.Enum))
 else:
-  _NORMALIZE_TYPE = {"<class 'abc.ABCMeta'>": "<type 'type'>"}
-  _NORMALIZE_ISINSTANCE = {}
+  _NORMALIZE_TYPE = {
+      "<class 'abc.ABCMeta'>":
+          "<type 'type'>",
+      "<class 'pybind11_type'>":
+          "<class 'pybind11_builtins.pybind11_type'>",
+  }
+  _NORMALIZE_ISINSTANCE = {
+      "<class 'pybind11_object'>":
+          "<class 'pybind11_builtins.pybind11_object'>",
+  }
 
   def _SkipMember(cls, member):  # pylint: disable=unused-argument
     return False
+
+
+if sys.version_info.major == 3 and sys.version_info.minor >= 8:
+  _NORMALIZE_TYPE["<class '_collections._tuplegetter'>"] = "<type 'property'>"
 
 
 def _NormalizeType(ty):

@@ -351,4 +351,98 @@ TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 
+TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_UINT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
+TEST(OpVersionTest, VersioningSVDFOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8,
+                                  TensorType_FLOAT32, TensorType_FLOAT32,
+                                  TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_SVDF,
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8,
+                                             TensorType_INT16, TensorType_INT32,
+                                             TensorType_INT16},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+}
+TEST(OpVersionTest, VersioningDepthwiseConv2DTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_DEPTHWISE_CONV_2D,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 4);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_DEPTHWISE_CONV_2D,
+      .input_types = std::vector<TensorType>{TensorType_INT8, TensorType_INT8},
+      .output_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_DEPTHWISE_CONV_2D,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  fake_op_sig.options.depthwise_conv_2d.dilation_w_factor = 2;
+  fake_op_sig.options.depthwise_conv_2d.dilation_h_factor = 2;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_DEPTHWISE_CONV_2D,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_FLOAT32},
+      .output_types = std::vector<TensorType>{TensorType_FLOAT32},
+  };
+  fake_op_sig.options.depthwise_conv_2d.dilation_w_factor = 1;
+  fake_op_sig.options.depthwise_conv_2d.dilation_h_factor = 1;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+}
+TEST(OpVersionTest, VersioningTileOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TILE,
+      .input_types = std::vector<TensorType>{TensorType_INT32},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TILE,
+      .input_types = std::vector<TensorType>{TensorType_STRING},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
 }  // namespace tflite

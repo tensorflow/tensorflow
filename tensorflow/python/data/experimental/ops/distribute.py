@@ -85,13 +85,18 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, num_replicas, use_fallback=True):
 
-    def recalculate_batch_size(output_shapes):
-      """Recalculates the output_shapes after dividing it by num_replicas."""
-      if len(output_shapes) < 1:
-        raise ValueError(
-            "Input shape should have at least one dimension. "
-            "Perhaps your input dataset is not batched?")
-      output_dims = [d.value for d in output_shapes.dims]
+    def recalculate_batch_size(output_shape):
+      """Recalculates the output_shape after dividing it by num_replicas."""
+      # If the output shape is unknown, we set the batch dimension to unknown.
+      if output_shape.rank is None:
+        return None
+
+      if len(output_shape) < 1:
+        raise ValueError("Expected a dataset whose elements have rank >= 1 "
+                         "but found a dataset whose elements are scalars. "
+                         "You can fix the issue by adding the `batch` "
+                         "transformation to the dataset.")
+      output_dims = [d.value for d in output_shape.dims]
 
       if output_dims[0] is not None and output_dims[0] % num_replicas == 0:
         return output_dims[0] // num_replicas
@@ -108,6 +113,7 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
     self._element_spec = nest.map_structure(
         rebatch, dataset_ops.get_structure(input_dataset))
+    input_dataset = dataset_ops.normalize_to_dense(input_dataset)
     variant_tensor = ged_ops.rebatch_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_replicas=num_replicas,

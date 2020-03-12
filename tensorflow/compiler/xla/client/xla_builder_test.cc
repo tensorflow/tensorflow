@@ -292,7 +292,7 @@ TEST_F(XlaBuilderTest, BinopHasInDimAndDegenerateBroadcast) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
 
   // The binary operation has in-dim broadcast and degenerate broadcast, should
-  // first do the in-dim broadcast then convert the degnerate broadcast into a
+  // first do the in-dim broadcast then convert the degenerate broadcast into a
   // reshape and a broadcast.
   //
   // Expected:
@@ -327,6 +327,17 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
   TF_ASSERT_OK_AND_ASSIGN(auto module, BuildHloModule(&b));
   EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Broadcast(op::Reshape(op::Broadcast())));
+}
+
+TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
+  BroadcastInDim(x, {-3, 3, 4},
+                 /*broadcast_dimensions=*/{0, 1, 2});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("shape's dimensions must not be < 0"));
 }
 
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {

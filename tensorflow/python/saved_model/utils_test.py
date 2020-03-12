@@ -57,7 +57,7 @@ class UtilsTest(test.TestCase):
     x = constant_op.constant(1, name="x")
     y = constant_op.constant(2, name="y")
     init_op_info = utils.build_tensor_info_from_op(my_init_fn(x, y))
-    self.assertEqual("PartitionedFunctionCall", init_op_info.name)
+    self.assertEqual("PartitionedCall", init_op_info.name)
     self.assertEqual(types_pb2.DT_INVALID, init_op_info.dtype)
     self.assertEqual(0, len(init_op_info.tensor_shape.dim))
 
@@ -163,7 +163,7 @@ class UtilsTest(test.TestCase):
   def testGetTensorFromInfoRaisesErrors(self):
     expected = array_ops.placeholder(dtypes.float32, 1, name="x")
     tensor_info = utils.build_tensor_info(expected)
-    tensor_info.name = "blah:0"  # Nonexistant name.
+    tensor_info.name = "blah:0"  # Nonexistent name.
     with self.assertRaises(KeyError):
       utils.get_tensor_from_tensor_info(tensor_info)
     tensor_info.ClearField("name")  # Malformed (missing encoding).

@@ -60,6 +60,7 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   auto* params = reinterpret_cast<TfLiteResizeBilinearParams*>(
       malloc(sizeof(TfLiteResizeBilinearParams)));
   params->align_corners = false;
+  params->half_pixel_centers = false;
   interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, params, resize_op,
                                      nullptr);
 

@@ -37,6 +37,7 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/IntrinsicsX86.h"
 #include "llvm/IR/LLVMContext.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -277,8 +278,12 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
-  if (copy->shape().IsTuple()) {
-    // kCopy shallow copies a tuple so just memcpy the top-level buffer.
+  if (copy->shape().IsTuple() ||
+      (copy->shape().IsArray() &&
+       LayoutUtil::Equal(copy->operand(0)->shape().layout(),
+                         copy->shape().layout()))) {
+    // If the layouts are equal this is just a memcpy. kCopy shallow copies a
+    // tuple so just memcpy the top-level buffer for tuples.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
   } else if (copy->shape().IsArray()) {
@@ -298,7 +303,7 @@ int IrEmitter::MinimumAlignmentForPrimitiveType(PrimitiveType primitive_type) {
   DCHECK_LE(byte_size, 16);
 
   // Allocations may be 8-byte aligned if part of a small block.
-  return std::min(8LL, byte_size);
+  return std::min(int64{8}, byte_size);
 }
 
 int64 IrEmitter::ByteSizeOf(const Shape& shape) const {
@@ -1159,7 +1164,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       /*instruction=*/*convolution, /*operands=*/{lhs, rhs},
       /*supported_types=*/{F16, F32, F64, C64, C128}));
 
-  // TODO(tonywy): Add PotentiallyImplementedAsMKLCovolution to support
+  // TODO(tonywy): Add PotentiallyImplementedAsMKLConvolution to support
   // different data layouts.
   if (PotentiallyImplementedAsEigenConvolution(*convolution,
                                                target_machine_features_)) {
@@ -1511,6 +1516,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
 }
 
 Status IrEmitter::HandleReplicaId(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
   llvm::Type* i8_ptr_type = llvm::Type::getInt8PtrTy(module_->getContext());
   llvm::FunctionType* replica_id_function_ty =
       llvm::FunctionType::get(b_.getVoidTy(),

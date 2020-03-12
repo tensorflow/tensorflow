@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
 import numbers
 import os
 import re
@@ -379,6 +380,16 @@ class TensorFlowBenchmark(Benchmark):
       lm1 = l - 1
       return (s[l//2] + s[lm1//2]) / 2.0
 
+    def _mean_and_stdev(x):
+      if not x:
+        return -1, -1
+      l = len(x)
+      mean = sum(x) / l
+      if l == 1:
+        return mean, -1
+      variance = sum([(e - mean) * (e - mean) for e in x]) / (l - 1)
+      return mean, math.sqrt(variance)
+
     median_delta = _median(deltas)
 
     benchmark_values = {
@@ -389,6 +400,10 @@ class TensorFlowBenchmark(Benchmark):
         "throughput": mbs / median_delta
     }
     self.report_benchmark(**benchmark_values)
+
+    mean_delta, stdev_delta = _mean_and_stdev(deltas)
+    unreported_extras["wall_time_mean"] = mean_delta
+    unreported_extras["wall_time_stdev"] = stdev_delta
     benchmark_values["extras"].update(unreported_extras)
     return benchmark_values
 

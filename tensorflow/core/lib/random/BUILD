@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
@@ -64,11 +69,18 @@ cc_library(
 
 cc_library(
     name = "random",
-    srcs = ["random.cc"],
     hdrs = ["random.h"],
+    visibility = [
+        "//tensorflow/c/eager:__pkg__",
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/core/lib/core:__pkg__",
+        "//tensorflow/core/lib/gtl:__pkg__",
+        "//tensorflow/core/lib/io:__pkg__",
+        "//tensorflow/core/lib/strings:__pkg__",
+        "//tensorflow/core/platform:__subpackages__",
+    ],
     deps = [
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:random",
     ],
 )
 
@@ -83,6 +95,23 @@ cc_library(
         "//tensorflow/core/platform:types",
     ],
     alwayslink = 1,
+)
+
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "distribution_sampler.cc",
+        "distribution_sampler.h",
+        "exact_uniform_int.h",
+        "philox_random.h",
+        "random.h",
+        "random_distributions.h",
+        "simple_philox.cc",
+        "simple_philox.h",
+        "weighted_picker.cc",
+        "weighted_picker.h",
+    ],
 )
 
 filegroup(
@@ -125,18 +154,6 @@ filegroup(
         "random_distributions.h",
         "simple_philox.h",
         "weighted_picker.h",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
-    name = "legacy_lib_random_all_srcs",
-    srcs = [
-        "distribution_sampler.cc",
-        "random.cc",
-        "random_distributions.cc",
-        "simple_philox.cc",
-        "weighted_picker.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

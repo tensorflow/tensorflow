@@ -111,7 +111,7 @@ def topological_sort(g):
       if op_in_degree[consumer] < 0:
         raise ValueError('consumer:%s degree mismatch'%consumer.name)
 
-  left_ops = set([op for (op, degree) in op_in_degree.items() if degree > 0])
+  left_ops = set(op for (op, degree) in op_in_degree.items() if degree > 0)
   if left_ops:
     return (True, left_ops)
   else:

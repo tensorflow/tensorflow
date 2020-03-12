@@ -31,7 +31,7 @@ limitations under the License.
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::Linear;
-using ::tflite::gpu::MultiplyScalarAttributes;
+using ::tflite::gpu::MultiplyAttributes;
 using ::tflite::gpu::OperationType;
 using ::tflite::gpu::Tensor;
 using ::tflite::gpu::TensorRef;
@@ -57,10 +57,10 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  MultiplyScalarAttributes attr;
+  MultiplyAttributes attr;
   attr.param = 2;
 
-  SingleOpModel model({ToString(OperationType::MULTIPLY_SCALAR), attr}, {input}, {output});
+  SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
@@ -79,18 +79,69 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
 
-  MultiplyScalarAttributes attr;
+  MultiplyAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;
   tensor.data = {2, 3};
   attr.param = std::move(tensor);
 
-  SingleOpModel model({ToString(OperationType::MULTIPLY_SCALAR), attr}, {input}, {output});
+  SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 6, 6, 12}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+
+- (void)testApplyMaskChannel1 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> mask;
+  mask.type = DataType::FLOAT32;
+  mask.ref = 1;
+  mask.shape = BHWC(1, 1, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::MUL), {}}, {input, mask}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  XCTAssertTrue(model.PopulateTensor(1, {2, 3}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({2, 4, 9, 12}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
+- (void)testApplyMaskEqualsToInputChannel {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> mask;
+  mask.type = DataType::FLOAT32;
+  mask.ref = 1;
+  mask.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 1, 2, 2);
+
+  SingleOpModel model({ToString(OperationType::MUL), {}}, {input, mask}, {output});
+  XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
+  XCTAssertTrue(model.PopulateTensor(1, {1, 2, 3, 4}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({1, 4, 9, 16}, model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 

@@ -180,44 +180,6 @@ string MemorySpaceString(MemorySpace memory_space) {
 
 namespace {
 
-bool IsPointerCheckDisabled() {
-  // We want to check pointers for validity normally, but the
-  // cudaPointerGetAttributes call actually returns an error if it is given a
-  // host pointer.  This confuses tools like cuda-memcheck and cuda-gdb.
-  //
-  // TF_DISABLE_GPU_POINTER_CHECKS gives us an escape hatch for reducing logspam
-  // when using cuda-memcheck and cuda-gdb.
-  return std::getenv("TF_DISABLE_GPU_POINTER_CHECKS") != nullptr;
-}
-
-// Checks that the pointer is to a location on the device it purports to be.
-// PtrT is one of CUdeviceptr or void*.  If it's a CUdeviceptr, then
-// cudaPointerGetAttributes should not fail, and return a memoryType of
-// cudaMemoryTypeDevice.
-template <typename PtrT>
-void CheckPointerIsValid(const PtrT ptr, absl::string_view name) {
-  static bool pointer_check_disabled = IsPointerCheckDisabled();
-
-  if (pointer_check_disabled) {
-    return;
-  }
-
-  bool is_host_ptr = !std::is_same<PtrT, CUdeviceptr>::value;
-  cudaPointerAttributes attributes;
-  cudaError_t err =
-      cudaPointerGetAttributes(&attributes, reinterpret_cast<const void*>(ptr));
-  CHECK(err == cudaSuccess || err == cudaErrorInvalidValue)
-      << "Unexpected CUDA error: " << cudaGetErrorString(err);
-
-  // If we failed, reset cuda error status to avoid poisoning cuda streams.
-  if (err != cudaSuccess) cudaGetLastError();
-  bool points_to_host_memory = (err == cudaErrorInvalidValue ||
-                                attributes.memoryType != cudaMemoryTypeDevice);
-  CHECK_EQ(is_host_ptr, points_to_host_memory) << absl::StreamFormat(
-      "%s pointer is not actually on %s: %p", name, is_host_ptr ? "CPU" : "GPU",
-      reinterpret_cast<const void*>(ptr));
-}
-
 // Call cuCtxtSynchronize and crash if it doesn't succeed.
 void SynchronizeOrDie() {
   FAIL_IF_CUDA_RES_ERROR(cuCtxSynchronize(),
@@ -1011,10 +973,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(host_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoH(host_dst, gpu_src, size),
       absl::StrFormat("failed to synchronous memcpy from device to host "
@@ -1030,10 +988,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           const void* host_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(host_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyHtoD(gpu_dst, host_src, size),
       absl::StrFormat(
@@ -1049,10 +1003,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                           CUdeviceptr gpu_src,
                                                           uint64 size) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   RETURN_IF_CUDA_RES_ERROR(
       cuMemcpyDtoD(gpu_dst, gpu_src, size),
       absl::StrFormat(
@@ -1070,10 +1020,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(host_dst, "dst");
-  }
   CUresult res = cuMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1094,10 +1040,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(host_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   CUresult res = cuMemcpyHtoDAsync(gpu_dst, host_src, size, stream);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(
@@ -1117,10 +1059,6 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    CUstream stream) {
   ScopedActivateContext activation(context);
-  if (size > 0) {
-    CheckPointerIsValid(gpu_src, "src");
-    CheckPointerIsValid(gpu_dst, "dst");
-  }
   CUresult result = cuMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != CUDA_SUCCESS) {
     LOG(ERROR) << absl::StrFormat(

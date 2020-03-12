@@ -18,13 +18,8 @@ limitations under the License.
 #ifndef LHLO_OPS
 #define LHLO_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
-#endif
 
 def LHLO_Dialect : Dialect {
   let name = "xla_lhlo";
@@ -36,18 +31,18 @@ def LHLO_Dialect : Dialect {
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
-def LHLO_IntBuffer : StaticShapeMemRefOf<[HLO_Int]>;
+def LHLO_IntBuffer : MemRefOf<[HLO_Int]>;
 
 // Any floating-point tensor types
-def LHLO_FpBuffer : StaticShapeMemRefOf<[AnyFloat]>;
+def LHLO_FpBuffer : MemRefOf<[AnyFloat]>;
 
 
-def LHLO_PredBuffer : StaticShapeMemRefOf<[HLO_Pred]>;
+def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 
 // Any integer or floating-point tensor types
-def LHLO_IntOrFpBuffer : StaticShapeMemRefOf<[HLO_Int, AnyFloat]>;
+def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : StaticShapeMemRefOf<[AnyFloat, AnyInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -60,14 +55,14 @@ def LHLO_BufferOrTuple : AnyTypeOf<[LHLO_Buffer, LHLO_TupleBuffer]>;
 class LHLO_Op<string mnemonic, list<OpTrait> traits> : Op<LHLO_Dialect,
                                                           mnemonic, traits>;
 
-def LHLO_ConstOp : BASE_HLO_ConstOp, LHLO_Op<"constant", []> {
+def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value,
     LHLO_Buffer:$output
   );
 }
 
-def LHLO_IotaOp : BASE_HLO_IotaOp, LHLO_Op<"iota", []> {
+def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
   let arguments = (ins I64Attr:$iota_dimension,
                    LHLO_Buffer:$output);
 }
@@ -87,13 +82,22 @@ def LHLO_AbsOp: LHLO_UnaryElementwiseOp<"abs">, BASE_HLO_AbsOp;
 
 def LHLO_CeilOp: LHLO_UnaryElementwiseOp<"ceil">, BASE_HLO_CeilOp;
 
-def LHLO_ConvertOp : LHLO_UnaryElementwiseOp<"convert">, BASE_HLO_ConvertOp;
+def LHLO_ConvertOp :  LHLO_Op<"convert", [SameOperandsShape]>, BASE_HLO_ConvertOp {
+  let arguments = (ins LHLO_Buffer:$input,
+                       LHLO_Buffer:$output);
+}
 
 def LHLO_CosOp: LHLO_UnaryElementwiseOp<"cos">, BASE_HLO_CosOp;
 
 def LHLO_ExpOp: LHLO_UnaryElementwiseOp<"exp">, BASE_HLO_ExpOp;
 
+def LHLO_LogOp: LHLO_UnaryElementwiseOp<"log">, BASE_HLO_LogOp;
+
 def LHLO_NegOp: LHLO_UnaryElementwiseOp<"neg">, BASE_HLO_NegOp;
+
+def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
+
+def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
 
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
@@ -109,7 +113,7 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
       LHLO_Buffer:$lhs,
       LHLO_Buffer:$rhs,
       LHLO_Buffer:$out,
-      BroadcastDimAttr:$broadcast_dimensions
+      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 }
 
@@ -150,6 +154,29 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [
 
   let regions = (region SizedRegion<1>:$body);
 }
+
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
+      NoSideEffect,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceWindowOp {
+
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    I64ElementsAttr:$window_dimensions,
+    // If strides or dilations attributes are missing then the default value is
+    // one for each of the input dimensions. Similarly, padding values are zero
+    // for both low and high in each of the dimensions, if not specified.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$base_dilations,
+    OptionalAttr<I64ElementsAttr>:$window_dilations,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
@@ -173,7 +200,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
     LHLO_PredBuffer:$out,
-    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
 }
@@ -265,6 +292,13 @@ def LHLO_ConvOp : LHLO_Op<"conv", []>, BASE_HLO_ConvOp {
   );
 }
 
+def LHLO_CopyOp: LHLO_Op<"copy", []>, BASE_HLO_CopyOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$output
+  );
+}
+
 def LHLO_DotOp: LHLO_Op<"dot", []>, BASE_HLO_DotOp {
   let arguments = (ins
     LHLO_Buffer:$lhs,
@@ -302,6 +336,21 @@ def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
     LHLO_Buffer:$on_false,
     LHLO_Buffer:$output
   );
+}
+
+def LHLO_SelectAndScatterOp: LHLO_Op<"select_and_scatter",
+      [NoSideEffect]>, BASE_HLO_SelectAndScatterOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$source,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    OptionalAttr<I64ElementsAttr>:$window_dimensions,
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$select, SizedRegion<1>:$scatter);
 }
 
 def LHLO_ReverseOp: LHLO_Op<"reverse", []>, BASE_HLO_ReverseOp {

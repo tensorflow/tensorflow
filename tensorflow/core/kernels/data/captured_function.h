@@ -39,11 +39,15 @@ namespace data {
 class CapturedFunction;
 class InstantiatedCapturedFunction;
 
+// Creates an iterator for a dataset which is created by applying the given
+// function to the given input element.
 Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
+    IteratorContext* ctx, const IteratorBase* parent,
+    const std::vector<Tensor>& input_element, int64 thread_index,
+    const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
+    std::unique_ptr<IteratorBase>* out_iterator);
 
+// Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);
 
@@ -98,8 +102,7 @@ class InstantiatedCapturedFunction {
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
-      CancellationManager* cancellation_manager,
-      CapturedFunction* captured_func);
+      CapturedFunction* captured_func, bool is_multi_device);
 
   // Determines whether a rendezvous object should be created when running the
   // instantiated function.
@@ -110,11 +113,11 @@ class InstantiatedCapturedFunction {
   FunctionLibraryRuntime* const lib_;
   const FunctionLibraryRuntime::Handle f_handle_;
   const DataTypeVector ret_types_;
-  // Note: Since we have no IteratorContext in `RunInstantiated`, we have to
-  // capture these at function instantiation time.
+  // Note: We capture the runner at function instantiation time to be able to
+  // run the function without `IteratorContext` via `RunInstantiated`.
   std::function<void(std::function<void()>)> captured_runner_;
-  CancellationManager* captured_cancellation_manager_;
   CapturedFunction* const captured_func_;
+  bool const is_multi_device_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
 };
@@ -128,6 +131,8 @@ struct ShortCircuitInfo {
 class FunctionMetadata {
  public:
   struct Params {
+    // TODO(jsimsa): Check if all callers can be switched to using the
+    // multi-device function backend and then get rid of this option.
     bool is_multi_device_function = false;
     bool use_inter_op_parallelism = true;
     bool use_default_device = true;
@@ -192,14 +197,14 @@ class CapturedFunction {
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        const string& argument_name,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, using provided
   // captured inputs.
   static Status Create(OpKernelContext* ctx,
-                       const std::shared_ptr<const FunctionMetadata> metadata,
+                       std::shared_ptr<const FunctionMetadata> metadata,
                        std::vector<Tensor>&& captured_inputs,
                        std::unique_ptr<CapturedFunction>* out_function);
 
@@ -258,7 +263,7 @@ class CapturedFunction {
   }
 
  private:
-  CapturedFunction(const std::shared_ptr<const FunctionMetadata> metadata,
+  CapturedFunction(std::shared_ptr<const FunctionMetadata> metadata,
                    std::vector<Tensor> captured_inputs);
 
   // Determines whether the captured function requires the use of the

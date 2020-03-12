@@ -242,8 +242,7 @@ void LogMessage::GenerateLogMessage() {
 
 void LogMessage::GenerateLogMessage() {
   static bool log_thread_id = EmitThreadIdFromEnv();
-  static EnvTime* env_time = tensorflow::EnvTime::Default();
-  uint64 now_micros = env_time->NowMicros();
+  uint64 now_micros = EnvTime::NowMicros();
   time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
   int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
   const size_t time_buffer_size = 30;

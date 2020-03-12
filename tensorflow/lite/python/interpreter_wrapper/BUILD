@@ -1,4 +1,5 @@
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -11,26 +12,30 @@ cc_library(
     hdrs = ["numpy.h"],
     deps = [
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
 cc_library(
     name = "interpreter_wrapper_lib",
     srcs = ["interpreter_wrapper.cc"],
-    hdrs = ["interpreter_wrapper.h"],
+    hdrs = [
+        "interpreter_wrapper.h",
+    ],
     deps = [
         ":numpy",
         ":python_error_reporter",
         ":python_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/lite/kernels:builtin_ops",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -42,7 +47,7 @@ cc_library(
     hdrs = ["python_error_reporter.h"],
     deps = [
         "//tensorflow/lite/core/api",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
@@ -53,18 +58,22 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
     ],
 )
 
-tf_py_wrap_cc(
-    name = "tensorflow_wrap_interpreter_wrapper",
+pybind_extension(
+    name = "_pywrap_tensorflow_interpreter_wrapper",
     srcs = [
-        "interpreter_wrapper.i",
-    ],
-    copts = ["-fexceptions"],
+        "interpreter_wrapper_pybind11.cc",
+    ] + tf_binary_additional_srcs(),
+    hdrs = ["interpreter_wrapper.h"],
+    module_name = "_pywrap_tensorflow_interpreter_wrapper",
     deps = [
         ":interpreter_wrapper_lib",
+        "//tensorflow/lite/experimental/tflite_api_dispatcher",
+        "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )

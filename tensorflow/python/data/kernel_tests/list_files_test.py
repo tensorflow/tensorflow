@@ -35,10 +35,12 @@ from tensorflow.python.util import compat
 class ListFilesTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
+    super(ListFilesTest, self).setUp()
     self.tmp_dir = tempfile.mkdtemp()
 
   def tearDown(self):
     shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(ListFilesTest, self).tearDown()
 
   def _touchTempFiles(self, filenames):
     for filename in filenames:

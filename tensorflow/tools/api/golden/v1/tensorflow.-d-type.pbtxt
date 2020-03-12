@@ -1,7 +1,8 @@
 path: "tensorflow.DType"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.dtypes.DType\'>"
-  is_instance: "<type \'object\'>"
+  is_instance: "<class \'tensorflow.python._dtypes.DType\'>"
+  is_instance: "<class \'pybind11_builtins.pybind11_object\'>"
   member {
     name: "as_datatype_enum"
     mtype: "<type \'property\'>"
@@ -68,7 +69,6 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'type_enum\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_compatible_with"

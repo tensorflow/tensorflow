@@ -275,7 +275,7 @@ def _EinsumGrad(op, grad):
         set(output_subs + other_subs + "."))
     # Obtain the input subscripts with the reduced axis labels removed. E.g.
     # "ac" in the above example.
-    left_subs = "".join([s for s in input_subs if s not in reduced_label_set])
+    left_subs = "".join(s for s in input_subs if s not in reduced_label_set)
 
     # Compute the gradient wrt the input, without accounting for the operation
     # "abc->ac". So, now we have the VJP of the operation "ac,cd->ad".
@@ -607,6 +607,7 @@ def _MatrixSolveLsGrad(op, grad):
 def _MatrixTriangularSolveGrad(op, grad):
   """Gradient for MatrixTriangularSolve."""
   a = op.inputs[0]
+  b = op.inputs[1]
   adjoint_a = op.get_attr("adjoint")
   lower_a = op.get_attr("lower")
   c = op.outputs[0]
@@ -620,7 +621,16 @@ def _MatrixTriangularSolveGrad(op, grad):
     grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
     grad_a = array_ops.matrix_band_part(grad_a, 0, -1)
-  return (grad_a, grad_b)
+  # If the static batch shapes are equal, we don't need to unbroadcast.
+  if (a.shape.is_fully_defined() and b.shape.is_fully_defined() and
+      a.shape[:-2] == b.shape[:-2]):
+    return grad_a, grad_b
+  a_shape = array_ops.shape(a)
+  b_shape = array_ops.shape(b)
+  ra, rb = array_ops.broadcast_gradient_args(a_shape[:-2], b_shape[:-2])
+  grad_a = array_ops.reshape(math_ops.reduce_sum(grad_a, axis=ra), a_shape)
+  grad_b = array_ops.reshape(math_ops.reduce_sum(grad_b, axis=rb), b_shape)
+  return grad_a, grad_b
 
 
 @ops.RegisterGradient("SelfAdjointEigV2")
@@ -735,7 +745,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     # only defined up a (k-dimensional) subspace. In practice, this can
     # lead to numerical instability when singular values are close but not
     # exactly equal.
-    # To avoid nan in cases with degenrate sigular values or zero sigular values
+    # To avoid nan in cases with degenerate sigular values or zero singular values
     # in calculating f and s_inv_mat, we introduce a Lorentz brodening.
 
     def _SafeReciprocal(x, epsilon=1E-20):

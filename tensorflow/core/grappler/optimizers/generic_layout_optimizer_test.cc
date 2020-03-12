@@ -179,9 +179,9 @@ void VerifyDataFormatAttributeMatch(const utils::NodeView* node,
 }
 
 TEST_F(GenericLayoutOptimizerTest, OptimizeSimpleConv2DGraph) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // A simple graph contains 1 "NHWC" Conv2D node, 2 input and 1 output nodes.
   Scope scope = Scope::NewRootScope();
 
@@ -245,9 +245,9 @@ TEST_F(GenericLayoutOptimizerTest, PreserveFetch) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 4, 2, "VALID", "");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
@@ -267,9 +267,9 @@ TEST_F(GenericLayoutOptimizerTest, EmptyDevice) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv =
       SimpleConv2D(&s, 4, 2, "VALID", "/job:w/replica:0/task:0/device:GPU:0");
@@ -290,9 +290,9 @@ TEST_F(GenericLayoutOptimizerTest, GPUDevice) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 4, 2, "VALID", "/CPU:0");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
@@ -312,9 +312,9 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, Connectivity) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   Scope scope = Scope::NewRootScope();
   auto conv = SimpleConv2D(&scope, 4, 2, "VALID", "/device:GPU:0");
   auto i1 = ops::Identity(scope.WithOpName("i1"), conv);
@@ -349,9 +349,9 @@ TEST_F(GenericLayoutOptimizerTest, Connectivity) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   Scope s = Scope::NewRootScope();
   auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME", /*dilated=*/false);
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
@@ -381,9 +381,9 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DBackpropInputNonConstInputSizes) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   Scope scope = Scope::NewRootScope().WithDevice("/device:GPU:0");
   auto conv = SimpleConv2D(&scope, 4, 2, "VALID", "/device:GPU:0");
   auto shape = ops::Shape(scope.WithOpName("shape"), conv);
@@ -434,9 +434,9 @@ TEST_F(GenericLayoutOptimizerTest, Conv2DDataFormatVecPermuteCollapse) {
 }
 
 TEST_F(GenericLayoutOptimizerTest, DoNotPruneNonAddedCancellableTransposes) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
   GrapplerItem item;
   {
     Scope scope = Scope::NewRootScope().WithDevice("/device:GPU:0");

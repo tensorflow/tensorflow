@@ -320,7 +320,6 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
                drop_remainder, use_legacy_function=False):
-    """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(

@@ -197,7 +197,8 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", i), &input_impls_[i]));
+              ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+              &input_impls_[i]));
         }
         return Status::OK();
       }
@@ -266,7 +267,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
             reader->ReadScalar(full_name("fastest_index"), &fastest_index_));
         if (fastest_index_ != -1) {
           TF_RETURN_IF_ERROR(dataset()->inputs_[fastest_index_]->MakeIterator(
-              ctx, strings::StrCat(prefix(), "_", fastest_index_),
+              ctx, this, strings::StrCat(prefix(), "[", fastest_index_, "]"),
               &fastest_input_impl_));
           TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, fastest_input_impl_));
         } else if (reader->Contains(full_name("input_impls_empty"))) {
@@ -299,11 +300,11 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       std::vector<histogram::Histogram> histograms_;
 
       mutex mu_;
-      int64 experiment_counter_ GUARDED_BY(mu_) = 0;
+      int64 experiment_counter_ TF_GUARDED_BY(mu_) = 0;
       int64 fastest_index_ = -1;
 
       std::vector<ThreadInfo> StartThreads(IteratorContext* ctx)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<ThreadInfo> threads(dataset()->inputs_.size());
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
@@ -317,11 +318,10 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       }
 
       void RunnerThread(IteratorContext* ctx, InvocationResult* result, int i) {
-        int64 start = Env::Default()->NowNanos();
+        int64 start = EnvTime::NowNanos();
         Status s = input_impls_[i]->GetNext(ctx, &result->out_tensors,
                                             &result->end_of_sequence);
-        histograms_[i].Add(
-            static_cast<double>(Env::Default()->NowNanos() - start));
+        histograms_[i].Add(static_cast<double>(EnvTime::NowNanos() - start));
 
         result->status = s;
         result->notification.Notify();
@@ -330,7 +330,7 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       // Select the fastest input to use based on the histograms of timings
       // of the completed threads. The input with the best 90th percentile
       // iteration time is selected.
-      void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SelectFastestInputIndex() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
         VLOG(2) << "90.0 percentile iteration time:";

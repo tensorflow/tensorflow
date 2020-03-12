@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorBlockLowerTriangular"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorCirculant"
     mtype: "<type \'type\'>"
   }
@@ -73,8 +77,16 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorTridiag"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorZeros"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
   }
   member_method {
     name: "adjoint"

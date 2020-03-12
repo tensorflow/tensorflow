@@ -548,7 +548,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   inputs.emplace_back("Mul", Tensor(DT_FLOAT, {1, WIDTH, HEIGHT, DEPTH}));
   std::vector<string> output_node_names = {"softmax"};
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info0;
   GraphTransferer gt0;
   gt0.EnableStrictCheckMode(false);
   ClockCycleProfiler prof0;
@@ -568,7 +567,6 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
   LOG(INFO) << "(0) node count: " << gfi0.node_info_size() << ", "
             << gfi0.const_node_info_size();
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info1;
   GraphTransferer gt1;
   gt1.EnableStrictCheckMode(true);
   ClockCycleProfiler prof1;

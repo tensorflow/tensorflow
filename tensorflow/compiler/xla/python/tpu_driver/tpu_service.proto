@@ -157,6 +157,10 @@ message CloseRequest {
 
 message CloseResponse {}
 
+message ResetRequest {}
+
+message ResetResponse {}
+
 message QuerySystemInfoRequest {}
 
 message QuerySystemInfoResponse {
@@ -169,6 +173,9 @@ service CloudTpuDriver {
 
   // Close the driver. Any outstanding requests will be terminated.
   rpc Close(CloseRequest) returns (CloseResponse);
+
+  // Reset the driver. All connected clients will be disconnected.
+  rpc Reset(ResetRequest) returns (ResetResponse);
 
   // Query the driver for current system performance information.
   rpc QuerySystemInfo(QuerySystemInfoRequest) returns (QuerySystemInfoResponse);

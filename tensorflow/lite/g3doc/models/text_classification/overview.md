@@ -93,7 +93,7 @@ Performance benchmark numbers are generated with the tool
 ## Use your training dataset
 
 Follow this
-[tutorial](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_customization/demo/text_classification.ipynb)
+[tutorial](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_maker/demo/text_classification.ipynb)
 to apply the same technique used here to train a text classification model using
 your own datasets. With the right dataset, you can create a model for use cases
 such as document categorization or toxic comments detection.

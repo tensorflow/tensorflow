@@ -41,6 +41,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 
+# Disable not-callable lint error, as the linter is unable to detect that
+# LossScale instances are callable.
+# pylint: disable=not-callable
+
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
@@ -119,10 +123,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    loss = ops.convert_to_tensor(5.)
+    loss = ops.convert_to_tensor_v2(5.)
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
-    loss = ops.convert_to_tensor(5., dtype='float16')
+    loss = ops.convert_to_tensor_v2(5., dtype='float16')
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
@@ -131,9 +135,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     scaled_grads = [
-        ops.convert_to_tensor(3.),
-        None,
-        ops.convert_to_tensor(-4., dtype='float16')
+        ops.convert_to_tensor_v2(3.), None,
+        ops.convert_to_tensor_v2(-4., dtype='float16')
     ]
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
@@ -310,6 +313,11 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
         'will be removed in the future.'):
       opt.add_slot(None, None)
 
+  def testPassingNoneToLossScale(self):
+    opt = gradient_descent.SGD()
+    with self.assertRaisesRegexp(ValueError, r'loss_scale cannot be None'):
+      loss_scale_optimizer.LossScaleOptimizer(opt, None)
+
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testGettingAndSettingLearningRate(self, strategy_fn):
@@ -365,10 +373,13 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     class MyOptimizer(gradient_descent.SGD):
 
-      def apply_gradients(self, grads_and_vars, name=None):
+      def apply_gradients(self, grads_and_vars, name=None,
+                          all_reduce_sum_gradients=True):
         for grad, _ in grads_and_vars:
           outer_self.assertIsInstance(grad, ops.Tensor)
-        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+        return super(MyOptimizer,
+                     self).apply_gradients(grads_and_vars, name,
+                                           all_reduce_sum_gradients)
 
     with create_mirrored_strategy().scope() as strategy:
       var = variables.Variable([5.0])

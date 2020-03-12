@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.keras.mixed_precision.experimental import policy as mp_policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
@@ -37,10 +39,6 @@ class PolicyTest(test.TestCase):
 
   @testing_utils.enable_v2_dtype_behavior
   def test_dtype_attributes(self):
-    policy = mp_policy.Policy('infer')
-    self.assertEqual(policy.compute_dtype, None)
-    self.assertEqual(policy.variable_dtype, None)
-
     for dtype in 'int32', 'bool', 'float16', 'float32':
       policy = mp_policy.Policy(dtype)
       self.assertEqual(policy.name, dtype)
@@ -53,9 +51,13 @@ class PolicyTest(test.TestCase):
       self.assertEqual(policy.compute_dtype, dtype)
       self.assertEqual(policy.variable_dtype, 'float32')
 
+    policy = mp_policy.Policy('_infer')
+    self.assertEqual(policy.compute_dtype, None)
+    self.assertEqual(policy.variable_dtype, None)
+
   @testing_utils.enable_v2_dtype_behavior
   def test_repr(self):
-    for policy in ('infer', 'float32', 'int8', 'mixed_bfloat16'):
+    for policy in ('float32', 'int8', 'mixed_bfloat16', '_infer'):
       self.assertEqual(repr(mp_policy.Policy(policy)),
                        '<Policy "%s", loss_scale=None>' % policy)
     self.assertEqual(repr(mp_policy.Policy('float16', loss_scale=2)),
@@ -135,15 +137,15 @@ class PolicyTest(test.TestCase):
     if base_layer_utils.v2_dtype_behavior_enabled():
       default_policy = 'float32'
     else:
-      default_policy = 'infer'
+      default_policy = '_infer'
     self.assertEqual(mp_policy.global_policy().name, default_policy)
     try:
       mp_policy.set_policy('mixed_float16')
       self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
       with ops.Graph().as_default():  # Policies are not associated with a graph
         self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
-      mp_policy.set_policy('infer')
-      self.assertEqual(mp_policy.global_policy().name, 'infer')
+      mp_policy.set_policy('_infer')
+      self.assertEqual(mp_policy.global_policy().name, '_infer')
       policy = mp_policy.Policy('mixed_bfloat16')
       mp_policy.set_policy(policy)
       self.assertIs(mp_policy.global_policy(), policy)
@@ -166,15 +168,39 @@ class PolicyTest(test.TestCase):
         mock_warn.assert_not_called()
 
   @testing_utils.enable_v2_dtype_behavior
+  def test_device_compatibility_warning(self):
+    with context.eager_mode():
+      device_compatibility_check._logged_compatibility_check = False
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn, \
+           test.mock.patch.object(tf_logging, 'info') as mock_info:
+        mp_policy.Policy('mixed_float16')
+      if mock_warn.called:
+        self.assertRegexpMatches(
+            mock_warn.call_args[0][0],
+            r'Mixed precision compatibility check \(mixed_float16\): WARNING.*')
+        mock_info.assert_not_called()
+      else:
+        self.assertRegexpMatches(
+            mock_info.call_args[0][0],
+            r'Mixed precision compatibility check \(mixed_float16\): OK.*')
+
+      # Assert message is only logged once
+      with test.mock.patch.object(tf_logging, 'warn') as mock_warn, \
+           test.mock.patch.object(tf_logging, 'info') as mock_info:
+        mp_policy.Policy('mixed_float16')
+      mock_warn.assert_not_called()
+      mock_info.assert_not_called()
+
+  @testing_utils.enable_v2_dtype_behavior
   def test_policy_scope(self):
     if base_layer_utils.v2_dtype_behavior_enabled():
       default_policy = 'float32'
     else:
-      default_policy = 'infer'
+      default_policy = '_infer'
     with mp_policy.policy_scope('mixed_float16'):
       self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
-      with mp_policy.policy_scope('infer'):
-        self.assertEqual(mp_policy.global_policy().name, 'infer')
+      with mp_policy.policy_scope('_infer'):
+        self.assertEqual(mp_policy.global_policy().name, '_infer')
       self.assertEqual(mp_policy.global_policy().name, 'mixed_float16')
     self.assertEqual(mp_policy.global_policy().name, default_policy)
 
@@ -186,7 +212,7 @@ class PolicyTest(test.TestCase):
         mp_policy.Policy('int16'),
         mp_policy.Policy('mixed_float16'),
         mp_policy.Policy('mixed_bfloat16'),
-        mp_policy.Policy('infer'),
+        mp_policy.Policy('_infer'),
         mp_policy.Policy('float32', loss_scale=2.),
         mp_policy.Policy('float32', loss_scale=None),
         mp_policy.Policy('mixed_float16', loss_scale=2.),
@@ -210,8 +236,8 @@ class PolicyTest(test.TestCase):
       new_policy = mp_policy.deserialize(config)
       self.assertEqual(str(policy), str(new_policy))
 
-    # Test "infer" policy
-    policy = mp_policy.Policy('infer')
+    # Test "_infer" policy
+    policy = mp_policy.Policy('_infer')
     config = mp_policy.serialize(policy)
     self.assertIsNone(config)
     new_policy = mp_policy.deserialize(config)
@@ -275,19 +301,20 @@ class PolicyTest(test.TestCase):
 
   @testing_utils.disable_v2_dtype_behavior
   def test_v1_dtype_behavior(self):
-    # Only the "infer" policy is allowed with V1 dtype behavior
-    with mp_policy.policy_scope(mp_policy.Policy('infer')):
-      pass
-
-    # Non-infer policies are not allowed with V1 dtype behavior
+    # Setting global policies are not allowed with V1 dtype behavior
     with self.assertRaisesRegexp(
         ValueError,
-        'global policy can only be set to a non-infer policy in TensorFlow 2'):
+        'global policy can only be set in TensorFlow 2'):
+      with mp_policy.policy_scope(mp_policy.Policy('_infer')):
+        pass
+    with self.assertRaisesRegexp(
+        ValueError,
+        'global policy can only be set in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('float32')):
         pass
     with self.assertRaisesRegexp(
         ValueError,
-        'global policy can only be set to a non-infer policy in TensorFlow 2'):
+        'global policy can only be set in TensorFlow 2'):
       with mp_policy.policy_scope(mp_policy.Policy('mixed_float16')):
         pass
 

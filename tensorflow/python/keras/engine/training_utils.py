@@ -229,7 +229,7 @@ class SliceAggregator(Aggregator):
   There is, however, some scheduling and context switching overhead which will
   offset the gains from pipelining the slice assignment. Below a given threshold
   it is faster to simply assign in the main thread rather than enqueue the
-  assigmnet in a side thread. The exact threshold will vary from system to
+  assignment in a side thread. The exact threshold will vary from system to
   system, but the time is not very sensitive to the exact transition so a value
   of 2 ** 14 was chosen which should be reasonable on most systems.
   """
@@ -253,7 +253,7 @@ class SliceAggregator(Aggregator):
     shape = (self.num_samples,) + batch_element.shape[1:]
     dtype = batch_element.dtype
     if isinstance(batch_element, ops.EagerTensor):
-      dtype = dtype.as_numpy_dtype()
+      dtype = dtype.as_numpy_dtype
 
     self.results = np.empty(shape=shape, dtype=dtype)
 
@@ -1010,8 +1010,8 @@ def standardize_weights(y,
           'an appropriate class weight could not be determined.')
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
-        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
-                                      K.floatx())
+        sample_weight = math_ops.cast(
+            ops.convert_to_tensor_v2(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1189,6 +1189,52 @@ def get_loss_function(loss):
       reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
+class RespectCompiledTrainableState(object):
+  """Set and restore trainable state if it has changed since compile.
+
+  The keras API guarantees that the value of each Layer's `trainable` property
+  at `Model.compile` time will be used when training that model. In order to
+  respect this requirement, it may be necessary to set the trainable value of
+  layers to their compile time values before beginning a training endpoint and
+  restore the values before returing from said endpoint. This scope checks if
+  any layer's trainable state has changed since Model compile, and performs this
+  set and un-set bookkeeping.
+
+  However, the trainable state of a layer changes quite infrequently, if ever,
+  for many kinds of workflows. Moreover, updating every layer in a model is an
+  expensive operation. As a result, we will only explicitly set and unset the
+  trainable state of a model if a trainable value has changed since compile.
+  """
+
+  def __init__(self, model):
+    self._model = model
+    self._current_trainable_state = None
+    self._compiled_trainable_state = None
+    self._should_set_trainable = False
+
+  def __enter__(self):
+    self._current_trainable_state = self._model._get_trainable_state()  # pylint: disable=protected-access
+    self._compiled_trainable_state = self._model._compiled_trainable_state  # pylint: disable=protected-access
+
+    # Check to see if any layer's trainable state has changed since `compile`.
+    for layer, trainable in self._compiled_trainable_state.items():
+      if (layer in self._current_trainable_state and
+          trainable != self._current_trainable_state[layer]):
+        self._should_set_trainable = True
+        break
+
+    # If so, restore the model to its compiled state.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._compiled_trainable_state)  # pylint: disable=protected-access
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    # If we set the values to their compiled state in __enter__, we need to
+    # restore the original values before leaving the scope.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._current_trainable_state)  # pylint: disable=protected-access
+    return False  # False values do not suppress exceptions
+
+
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
@@ -1311,7 +1357,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor(x)
+    x = ops.convert_to_tensor_v2(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1337,7 +1383,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor(target)
+      target = ops.convert_to_tensor_v2(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:
@@ -1460,7 +1506,7 @@ def prepare_loss_functions(loss, output_names):
 def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
-  The result loss weights will be populated on the trainging endpoint.
+  The result loss weights will be populated on the training endpoint.
 
   Arguments:
       training_endpoints: List of model training endpoints.

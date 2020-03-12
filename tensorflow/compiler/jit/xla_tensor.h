@@ -122,7 +122,7 @@ class XlaTensor {
   std::shared_ptr<se::Event> definition_event_;
   // A list of all streams for which the tensor's content is defined for any
   // newly enqueued command.
-  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ GUARDED_BY(mu_);
+  absl::InlinedVector<se::Stream*, 2> streams_defined_on_ TF_GUARDED_BY(mu_);
   mutex mu_;
 };
 

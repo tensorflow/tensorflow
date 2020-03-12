@@ -32,7 +32,6 @@ tf_kernel_library(
         "data_format_ops.cc",
         "depthtospace_op.cc",
         "dequantize_op.cc",
-        "determinant_ops.cc",
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
@@ -48,6 +47,7 @@ tf_kernel_library(
         "function_ops.cc",
         "gather_op.cc",
         "gather_op_helpers.h",
+        "gather_scatter_ops.cc",
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
@@ -55,6 +55,7 @@ tf_kernel_library(
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
+        "lower_upper_bound_ops.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
         "matrix_band_part_op.cc",
@@ -149,6 +150,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla/lib:util",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -161,7 +163,6 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:comparators",
         "//tensorflow/compiler/xla/client/lib:constants",
-        "//tensorflow/compiler/xla/client/lib:logdet",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:matrix",
@@ -286,6 +287,13 @@ cc_library(
     name = "if_while_utils",
     srcs = ["if_while_utils.cc"],
     hdrs = ["if_while_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:lib",
+    ],
 )
 
 tf_kernel_library(
