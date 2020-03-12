@@ -309,7 +309,8 @@ bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
-bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
+bazel build --define=no_tensorflow_py_deps=true \
+  ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
   die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
 
 ###########################################################################

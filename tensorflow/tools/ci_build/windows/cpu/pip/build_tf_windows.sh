@@ -140,7 +140,8 @@ bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
   --output_filter=^$ \
   tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
-bazel build -s --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
+  --define=no_tensorflow_py_deps=true \
   --output_filter=^$ \
   tensorflow/tools/pip_package:build_pip_package || exit $?
 
