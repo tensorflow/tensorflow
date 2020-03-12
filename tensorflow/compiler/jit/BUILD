@@ -184,6 +184,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_internal",
     "//tensorflow/core:dataset_ops_op_lib",
     "//tensorflow/core:framework",
+    "//tensorflow/core:framework_internal",
     "//tensorflow/core:functional_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",

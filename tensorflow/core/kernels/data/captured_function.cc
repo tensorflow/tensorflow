@@ -91,8 +91,6 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
     void SetOutput(int slot, const Tensor* tensor) override {}
 
-    void SetReferencedTensors(const TensorReferenceVector& tensors) override {}
-
     void SetScheduled(int64 nanos) override {}
 
    private:
