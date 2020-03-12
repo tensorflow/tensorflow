@@ -92,6 +92,7 @@ from tensorflow.python.ops import gen_sparse_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
@@ -2109,13 +2110,17 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
   """
   name = name if name else "reduce_variance"
   with ops.name_scope(name):
-    square_of_input = gen_math_ops.square(input_tensor)
-    mean_of_square = reduce_mean(square_of_input,
-    	                           axis=axis,
-    	                           keepdims=keepdims)
-    mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
-    square_of_mean = gen_math_ops.square(mean)
-    return mean_of_square - square_of_mean
+    if isinstance(input_tensor, ragged_tensor.RaggedTensor):
+      square_of_input = gen_math_ops.square(input_tensor)
+      mean_of_square = reduce_mean(square_of_input,
+      	                           axis=axis,
+      	                           keepdims=keepdims)
+      mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
+      square_of_mean = gen_math_ops.square(mean)
+      return mean_of_square - square_of_mean
+    means = reduce_mean(input_tensor, axis=axis, keepdims=True)
+    squared_deviations = gen_math_ops.square(input_tensor - means)
+    return reduce_mean(squared_deviations, axis=axis, keepdims=keepdims)
 
 
 @tf_export("math.reduce_std")
