@@ -3188,10 +3188,10 @@ class _VariantDataset(DatasetV2):
 
   def __init__(self, dataset_variant, structure):
 
-  self._save_configuration({
-    "dataset_variant": dataset_variant,
-    "structure": structure
-  })
+    self._save_configuration({
+      "dataset_variant": dataset_variant,
+      "structure": structure
+    })
 
     self._structure = structure
     super(_VariantDataset, self).__init__(dataset_variant)

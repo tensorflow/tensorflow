@@ -41,13 +41,13 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
   def __init__(self, shard_num, multi_device_iterator_resource, incarnation_id,
                source_device, element_spec):
 
-     self._save_configuration({
-       "shard_num": shard_num,
-       "multi_device_iterator_resource": multi_device_iterator_resource,
-       "incarnation_id": incarnation_id,
-       "source_device": source_device,
-       "element_spec": element_spec,
-     })
+    self._save_configuration({
+      "shard_num": shard_num,
+      "multi_device_iterator_resource": multi_device_iterator_resource,
+      "incarnation_id": incarnation_id,
+      "source_device": source_device,
+      "element_spec": element_spec,
+    })
 
     self._element_spec = element_spec
 
@@ -66,12 +66,6 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     @function.defun(autograph=False)  # Pure graph code.
     def _remote_init_func():
       return functional_ops.remote_call(
-          target=source_device,
-          target=source_device,
-          target=source_device,
-          target=source_device,
-          target=source_device,
-          target=source_device,
           target=source_device,
           args=init_func_concrete.captured_inputs,
           Tout=[dtypes.string],
