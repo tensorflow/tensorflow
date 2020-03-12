@@ -21,6 +21,7 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
@@ -507,6 +508,250 @@ class RandomTranslationTest(keras_parameterized.TestCase):
     config = layer.get_config()
     layer_1 = image_preprocessing.RandomTranslation.from_config(config)
     self.assertEqual(layer_1.name, layer.name)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class RandomTransformTest(keras_parameterized.TestCase):
+
+  def _run_random_transform_with_mock(self,
+                                      transform_matrix,
+                                      expected_output,
+                                      mode,
+                                      interpolation='bilinear'):
+    inp = np.arange(15).reshape((1, 5, 3, 1)).astype(np.float32)
+    with self.cached_session(use_gpu=True):
+      output = image_preprocessing.transform(
+          inp, transform_matrix, fill_mode=mode, interpolation=interpolation)
+    self.assertAllClose(expected_output, output)
+
+  def test_random_translation_reflect(self):
+    # reflected output is (dcba|abcd|dcba)
+
+    if compat.forward_compatible(2020, 3, 25):
+      # Test down shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 1., 2.],
+           [0., 1., 2.],
+           [3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'reflect')
+
+      # Test up shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11.],
+           [12., 13., 14.],
+           [12., 13., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'reflect')
+
+      # Test left shift by 1.
+      # reflected output is (dcba|abcd|dcba)
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 2., 2.],
+           [4., 5., 5.],
+           [7., 8., 8.],
+           [10., 11., 11.],
+           [13., 14., 14.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'reflect')
+
+      # Test right shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 0., 1.],
+           [3., 3., 4],
+           [6., 6., 7.],
+           [9., 9., 10.],
+           [12., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'reflect')
+
+  def test_random_translation_wrap(self):
+    # warpped output is (abcd|abcd|abcd)
+
+    if compat.forward_compatible(2020, 3, 25):
+      # Test down shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[12., 13., 14.],
+           [0., 1., 2.],
+           [3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'wrap')
+
+      # Test up shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11.],
+           [12., 13., 14.],
+           [0., 1., 2.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'wrap')
+
+      # Test left shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 2., 0.],
+           [4., 5., 3.],
+           [7., 8., 6.],
+           [10., 11., 9.],
+           [13., 14., 12.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'wrap')
+
+      # Test right shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[2., 0., 1.],
+           [5., 3., 4],
+           [8., 6., 7.],
+           [11., 9., 10.],
+           [14., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'wrap')
+
+  def test_random_translation_constant(self):
+    # constant output is (0000|abcd|0000)
+
+    if compat.forward_compatible(2020, 3, 25):
+      # Test down shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 0., 0.],
+           [0., 1., 2.],
+           [3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant')
+
+      # Test up shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11.],
+           [12., 13., 14.],
+           [0., 0., 0.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant')
+
+      # Test left shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 2., 0.],
+           [4., 5., 0.],
+           [7., 8., 0.],
+           [10., 11., 0.],
+           [13., 14., 0.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant')
+
+      # Test right shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 0., 1.],
+           [0., 3., 4],
+           [0., 6., 7.],
+           [0., 9., 10.],
+           [0., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(transform_matrix, expected_output,
+                                           'constant')
+
+  def test_random_translation_nearest_interpolation(self):
+    # nearest output is (aaaa|abcd|dddd)
+
+    if compat.forward_compatible(2020, 3, 25):
+      # Test down shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 0., 0.],
+           [0., 1., 2.],
+           [3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., -1., 0., 0.]])
+      self._run_random_transform_with_mock(
+          transform_matrix, expected_output,
+          mode='constant', interpolation='nearest')
+
+      # Test up shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[3., 4., 5.],
+           [6., 7., 8],
+           [9., 10., 11.],
+           [12., 13., 14.],
+           [0., 0., 0.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 0., 0., 1., 1., 0., 0.]])
+      self._run_random_transform_with_mock(
+          transform_matrix, expected_output,
+          mode='constant', interpolation='nearest')
+
+      # Test left shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[1., 2., 0.],
+           [4., 5., 0.],
+           [7., 8., 0.],
+           [10., 11., 0.],
+           [13., 14., 0.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., 1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(
+          transform_matrix, expected_output,
+          mode='constant', interpolation='nearest')
+
+      # Test right shift by 1.
+      # pyformat: disable
+      expected_output = np.asarray(
+          [[0., 0., 1.],
+           [0., 3., 4],
+           [0., 6., 7.],
+           [0., 9., 10.],
+           [0., 12., 13.]]).reshape((1, 5, 3, 1)).astype(np.float32)
+      # pyformat: enable
+      transform_matrix = np.asarray([[1., 0., -1., 0., 1., 0., 0., 0.]])
+      self._run_random_transform_with_mock(
+          transform_matrix, expected_output,
+          mode='constant', interpolation='nearest')
 
 
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
