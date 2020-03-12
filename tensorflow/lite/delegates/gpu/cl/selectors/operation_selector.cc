@@ -205,7 +205,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
         return OkStatus();
       } else {
         gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-        return SelectConvolution(attr, input_shape, creation_context, op_def,
+        return SelectConvolution(attr, output_shape, creation_context, op_def,
                                  hints, gpu_op);
       }
     }

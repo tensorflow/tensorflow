@@ -130,21 +130,21 @@ std::string GenerateBlockCoords(const int3& block_size,
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         const CLDevice& device)
+                         const CLDevice& device, const BHWC* dst_shape)
     : GPUOperation(definition),
       stride_padding_(attr.strides.w, attr.strides.h, -attr.padding.prepended.w,
                       -attr.padding.prepended.h),
       kernel_dilation_(attr.weights.shape.w, attr.weights.shape.h,
                        attr.dilations.w, attr.dilations.h),
-      conv_params_(GuessBestParams(device, definition, attr)) {}
+      conv_params_(GuessBestParams(device, definition, attr, dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
-                         const CLDevice& device)
+                         const CLDevice& device, const BHWC* dst_shape)
     : GPUOperation(definition),
       stride_padding_(1, 1, 0, 0),
       kernel_dilation_(1, 1, 1, 1),
-      conv_params_(GuessBestParams(device, definition, attr)) {}
+      conv_params_(GuessBestParams(device, definition, attr, dst_shape)) {}
 
 ConvPowerVR::ConvPowerVR(const OperationDef& definition)
     : GPUOperation(definition),
@@ -628,7 +628,7 @@ std::string GenerateConv(
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition, int src_depth,
     int dst_depth, bool x_kernel_is_1, bool y_kernel_is_1,
-    bool different_weights_for_height) const {
+    bool different_weights_for_height, const BHWC* dst_shape) const {
   ConvParams conv_params;
   conv_params.linear_hw = false;
   conv_params.weights_data_type =
@@ -741,17 +741,45 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
       conv_params.src_depth_loop_size = 2;
     }
   } else if (device.IsMali()) {
-    conv_params.block_size = int3(2, 1, 1);
+    int block_size = 2;
+    if (dst_shape) {
+      int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
+      block_size = GetRecommendedBlockSizeForConv(device, definition.precision,
+                                                  task_size);
+    }
+    if (!x_kernel_is_1 || !y_kernel_is_1) {
+      block_size = std::min(block_size, 4);
+    }
+    if (block_size == 8) {
+      if (dst_depth == 1 || dst_depth == 3) {
+        conv_params.block_size = int3(2, 2, 1);
+      } else {
+        conv_params.block_size = int3(2, 2, 2);
+      }
+    } else if (block_size == 4) {
+      if (dst_depth == 1 || dst_depth == 3) {
+        conv_params.block_size = int3(2, 2, 1);
+      } else {
+        conv_params.block_size = int3(2, 1, 2);
+      }
+    } else if (block_size == 2) {
+      conv_params.block_size = int3(2, 1, 1);
+    } else {
+      conv_params.block_size = int3(1, 1, 1);
+    }
+    conv_params.src_depth_loop_size = 1;
+    MaliInfo mali_info = device.GetInfo().mali_info;
+    if (src_depth % 2 == 0 && block_size <= 2 && !mali_info.IsMidgard()) {
+      conv_params.src_depth_loop_size = 2;
+    }
+    if (src_depth % 4 == 0 && block_size == 1 && !mali_info.IsMidgard() &&
+        definition.precision == CalculationsPrecision::F16) {
+      conv_params.src_depth_loop_size = 4;
+    }
     conv_params.work_group_size = int3(4, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.fixed_work_group_size = false;
-    conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
-    if (dst_depth % 2 == 0 || dst_depth >= 4) {
-      conv_params.block_size.z = 2;
-    } else {
-      conv_params.block_size.z = 1;
-    }
   } else {
     conv_params.block_size = int3(1, 1, 4);
     conv_params.work_group_size = int3(8, 2, 1);
@@ -779,7 +807,7 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
-    const Convolution2DAttributes& attr) const {
+    const Convolution2DAttributes& attr, const BHWC* dst_shape) const {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
@@ -791,16 +819,16 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
                              attr.padding.prepended.h == 0 &&
                              attr.padding.appended.h == 0;
   return GuessBestParams(device, definition, src_depth, dst_depth,
-                         x_kernel_is_1, y_kernel_is_1, false);
+                         x_kernel_is_1, y_kernel_is_1, false, dst_shape);
 }
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     const CLDevice& device, const OperationDef& definition,
-    const FullyConnectedAttributes& attr) const {
+    const FullyConnectedAttributes& attr, const BHWC* dst_shape) const {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvPowerVR::ConvParams params = GuessBestParams(
-      device, definition, src_depth, dst_depth, true, true, false);
+      device, definition, src_depth, dst_depth, true, true, false, dst_shape);
   params.work_group_size.x *= params.work_group_size.y;
   params.work_group_size.y = 1;
   params.block_size.x *= params.block_size.y;
@@ -810,11 +838,11 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
 
 ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
     const CLDevice& device, const OperationDef& definition,
-    const Convolution2DAttributes& attr) const {
+    const Convolution2DAttributes& attr, const BHWC* dst_shape) const {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvPowerVR::ConvParams params = GuessBestParams(
-      device, definition, src_depth, dst_depth, true, true, true);
+      device, definition, src_depth, dst_depth, true, true, true, dst_shape);
   params.block_size.x *= params.block_size.y;
   params.block_size.y = 1;
   return params;
@@ -823,26 +851,27 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         ConvPowerVR* result) {
-  *result = ConvPowerVR(definition, attr, *creation_context.device);
+                         ConvPowerVR* result, const BHWC* dst_shape) {
+  *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
-                         ConvPowerVR* result) {
-  *result = ConvPowerVR(definition, attr, *creation_context.device);
+                         ConvPowerVR* result, const BHWC* dst_shape) {
+  *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
 Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
-                                     ConvPowerVR* result) {
+                                     ConvPowerVR* result,
+                                     const BHWC* dst_shape) {
   *result = ConvPowerVR(definition);
   result->conv_params_ = result->GuessBestParamsWinograd(
-      *creation_context.device, definition, attr);
+      *creation_context.device, definition, attr, dst_shape);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
 }

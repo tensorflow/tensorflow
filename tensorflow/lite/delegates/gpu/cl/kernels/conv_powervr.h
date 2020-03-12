@@ -79,9 +79,11 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr, const CLDevice& device);
+              const Convolution2DAttributes& attr, const CLDevice& device,
+              const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
-              const FullyConnectedAttributes& attr, const CLDevice& device);
+              const FullyConnectedAttributes& attr, const CLDevice& device,
+              const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
 
   template <DataType T>
@@ -100,16 +102,17 @@ class ConvPowerVR : public GPUOperation {
   friend Status CreateConvPowerVR(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
-                                  ConvPowerVR* result);
+                                  ConvPowerVR* result, const BHWC* dst_shape);
 
   friend Status CreateConvPowerVR(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
-                                  ConvPowerVR* result);
+                                  ConvPowerVR* result, const BHWC* dst_shape);
 
   friend Status CreateConvPowerVRWino4x4To6x6(
       const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvPowerVR* result);
+      const Convolution2DAttributes& attr, ConvPowerVR* result,
+      const BHWC* dst_shape);
 
   friend std::string GenerateConv(
       const CLDevice& device, const OperationDef& op_def,
@@ -118,18 +121,22 @@ class ConvPowerVR : public GPUOperation {
 
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
-                             const Convolution2DAttributes& attr) const;
+                             const Convolution2DAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
-                             const FullyConnectedAttributes& attr) const;
+                             const FullyConnectedAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParamsWinograd(const CLDevice& device,
                                      const OperationDef& definition,
-                                     const Convolution2DAttributes& attr) const;
+                                     const Convolution2DAttributes& attr,
+                                     const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
                              bool y_kernel_is_1,
-                             bool different_weights_for_height) const;
+                             bool different_weights_for_height,
+                             const BHWC* dst_shape = nullptr) const;
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -206,17 +213,18 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         ConvPowerVR* result);
+                         ConvPowerVR* result, const BHWC* dst_shape = nullptr);
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
-                         ConvPowerVR* result);
+                         ConvPowerVR* result, const BHWC* dst_shape = nullptr);
 
 Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
-                                     ConvPowerVR* result);
+                                     ConvPowerVR* result,
+                                     const BHWC* dst_shape = nullptr);
 
 }  // namespace cl
 }  // namespace gpu
