@@ -43,7 +43,7 @@ class Status {
 
   /// \brief Create a status with the specified error code and msg as a
   /// human-readable string containing more detailed information.
-  Status(tensorflow::error::Code code, tensorflow::StringPiece msg);
+  Status(tensorflow::error::Code code, const tensorflow::StringPiece& msg);
 
   /// Copy the specified status.
   Status(const Status& s);
@@ -173,7 +173,7 @@ typedef std::function<void(const Status&)> StatusCallback;
 extern tensorflow::string* TfCheckOpHelperOutOfLine(
     const ::tensorflow::Status& v, const char* msg);
 
-inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
+inline tensorflow::string* TfCheckOpHelper(const ::tensorflow::Status& v,
                                            const char* msg) {
   if (v.ok()) return nullptr;
   return TfCheckOpHelperOutOfLine(v, msg);

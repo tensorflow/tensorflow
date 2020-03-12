@@ -87,7 +87,7 @@ class StatusLogSink : public TFLogSink {
 
 }  // namespace
 
-Status::Status(tensorflow::error::Code code, StringPiece msg) {
+Status::Status(tensorflow::error::Code code, const StringPiece& msg) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
