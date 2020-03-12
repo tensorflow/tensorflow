@@ -81,12 +81,6 @@ class Resizing(Layer):
     self.input_spec = InputSpec(ndim=4)
     super(Resizing, self).__init__(name=name, **kwargs)
 
-  def build(self, input_shape):
-    channel_axis = 3
-    channel_dim = int(input_shape[channel_axis])
-    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
-    self.built = True
-
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
         images=inputs,
@@ -135,12 +129,6 @@ class CenterCrop(Layer):
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
     super(CenterCrop, self).__init__(name=name, **kwargs)
-
-  def build(self, input_shape):
-    channel_axis = 3
-    channel_dim = int(input_shape[channel_axis])
-    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
-    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
