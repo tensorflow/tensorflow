@@ -233,7 +233,6 @@ py_library(
     name = "traceme",
     srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
     deps = [
         ":trace",
     ],
