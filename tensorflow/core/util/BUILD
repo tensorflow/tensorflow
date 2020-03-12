@@ -444,6 +444,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+    alwayslink = 1,
 )
 
 cc_library(
