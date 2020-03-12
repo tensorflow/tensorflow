@@ -90,8 +90,8 @@ class TPUStrategyTest(test.TestCase):
     @def_function.function
     def train_step():
       outputs = strategy.experimental_local_results(
-          strategy.experimental_run_v2(computation, args=([2., 2.],)))
-      outputs2 = strategy2.experimental_run_v2(
+          strategy.run(computation, args=([2., 2.],)))
+      outputs2 = strategy2.run(
           computation, args=([outputs[0]],))
       return outputs2
 
@@ -181,9 +181,9 @@ class TPUStrategyTest(test.TestCase):
       def step_fn():
         return v + 1.0
 
-      all_core_strategy.experimental_run_v2(step_fn)
-      r1 = first_core_strategy.experimental_run_v2(step_fn)
-      r2 = second_core_strategy.experimental_run_v2(step_fn)
+      all_core_strategy.run(step_fn)
+      r1 = first_core_strategy.run(step_fn)
+      r2 = second_core_strategy.run(step_fn)
       return r1 + r2
 
     train_step()

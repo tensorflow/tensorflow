@@ -500,7 +500,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def train_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.train_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -873,7 +873,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def test_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.test_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -1079,7 +1079,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def predict_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.predict_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
