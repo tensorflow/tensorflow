@@ -50,7 +50,10 @@ gentbl(
     tblgen = "@llvm-project//mlir:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
     td_includes = ["ir/hlo_utils.td"],
-    td_srcs = [":hlo_ops_td_files"],
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+    ],
 )
 
 gentbl(
@@ -193,19 +196,6 @@ cc_library(
 )
 
 cc_library(
-    name = "hlo_shape_derivation",
-    srcs = [],
-    hdrs = ["transforms/hlo_shape_derivation.h"],
-    deps = [
-        ":hlo",
-        ":lhlo",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Transforms",
-    ],
-)
-
-cc_library(
     name = "lhlo_legalize_to_affine",
     srcs = ["transforms/lhlo_legalize_to_affine.cc"],
     deps = [
@@ -311,7 +301,6 @@ cc_library(
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
         ":hlo",
-        ":hlo_shape_derivation",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
         "@com_google_absl//absl/memory",
