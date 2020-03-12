@@ -1267,6 +1267,7 @@ filegroup(
         "abi.h",
         "casts.h",
         "context.h",
+        "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
         "dynamic_annotations.h",
