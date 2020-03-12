@@ -21,7 +21,6 @@ from __future__ import print_function
 import copy
 import os
 import shutil
-import subprocess
 import tempfile
 import warnings
 import zipfile
@@ -29,10 +28,9 @@ import zipfile
 from flatbuffers.python import flatbuffers
 from tensorflow.lite.experimental.support.metadata import metadata_schema_py_generated as _metadata_fb
 from tensorflow.lite.experimental.support.metadata import schema_py_generated as _schema_fb
+from tensorflow.lite.experimental.support.metadata.flatbuffers_lib import _pywrap_flatbuffers
 from tensorflow.python.platform import resource_loader
 
-_FLATC_BINARY_PATH = resource_loader.get_path_to_datafile(
-    "../../../../../external/flatbuffers/flatc")
 _FLATC_TFLITE_METADATA_SCHEMA_FILE = resource_loader.get_path_to_datafile(
     "metadata_schema.fbs")
 
@@ -448,25 +446,20 @@ class MetadataDisplayer(object):
     associated_file_list = cls._parse_packed_associted_file_list(model_file)
     return cls(model_file, metadata_file, associated_file_list)
 
-  def export_metadata_json_file(self, export_dir):
-    """Converts the metadata into a json file.
-
-    Args:
-      export_dir: the directory that the json file will be exported to. The json
-        file will be named after the model file, but with ".json" as extension.
-    """
-    subprocess.check_call([
-        _FLATC_BINARY_PATH, "-o", export_dir, "--json",
-        _FLATC_TFLITE_METADATA_SCHEMA_FILE, "--", self._metadata_file,
-        "--strict-json"
-    ])
-    temp_name = os.path.join(
-        export_dir,
-        os.path.splitext(os.path.basename(self._metadata_file))[0] + ".json")
-    expected_name = os.path.join(
-        export_dir,
-        os.path.splitext(os.path.basename(self._model_file))[0] + ".json")
-    os.rename(temp_name, expected_name)
+  def get_metadata_json(self):
+    """Converts the metadata into a json string."""
+    opt = _pywrap_flatbuffers.IDLOptions()
+    opt.strict_json = True
+    parser = _pywrap_flatbuffers.Parser(opt)
+    with open(_FLATC_TFLITE_METADATA_SCHEMA_FILE) as f:
+      metadata_schema_content = f.read()
+    with open(self._metadata_file, "rb") as f:
+      metadata_file_content = f.read()
+    if not parser.parse(metadata_schema_content):
+      raise ValueError("Cannot parse metadata schema. Reason: " + parser.error)
+    with open(self._metadata_file, "rb") as f:
+      metadata_file_content = f.read()
+    return _pywrap_flatbuffers.generate_text(parser, metadata_file_content)
 
   def get_packed_associated_file_list(self):
     """Returns a list of associated files that are packed in the model.

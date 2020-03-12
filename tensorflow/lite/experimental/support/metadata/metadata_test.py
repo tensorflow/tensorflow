@@ -347,23 +347,16 @@ class MetadataDisplayerTest(MetadataTest):
     displayer = _metadata.MetadataDisplayer.with_model_file(self._model_file)
     self.assertIsInstance(displayer, _metadata.MetadataDisplayer)
 
-  def test_export_metadata_json_file_modelWithMetadata(self):
-    export_dir = self.create_tempdir().full_path
-
+  def test_get_metadata_json_modelWithMetadata(self):
     displayer = _metadata.MetadataDisplayer.with_model_file(self._model_file)
-    displayer.export_metadata_json_file(export_dir)
+    actual = displayer.get_metadata_json()
 
     # Verifies the generated json file.
     golden_json_file_path = resource_loader.get_path_to_datafile(
         "testdata/golden_json.json")
-    json_file_path = os.path.join(
-        export_dir,
-        os.path.splitext(os.path.basename(self._model_file))[0] + ".json")
-    with open(json_file_path, "r") as json_file, open(golden_json_file_path,
-                                                      "r") as golden_json_file:
-      json_contents = json_file.read()
-      golden_json_contents = golden_json_file.read()
-      self.assertEqual(json_contents, golden_json_contents)
+    with open(golden_json_file_path, "r") as f:
+      expected = f.read()
+    self.assertEqual(actual, expected)
 
   def test_get_packed_associated_file_list_modelWithMetadata(self):
     displayer = _metadata.MetadataDisplayer.with_model_file(self._model_file)
