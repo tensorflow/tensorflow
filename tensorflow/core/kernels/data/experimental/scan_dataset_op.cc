@@ -34,7 +34,6 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
   explicit ScanDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     FunctionMetadata::Params params;
-    params.is_multi_device_function = true;
     if (ctx->HasAttr("use_default_device")) {
       OP_REQUIRES_OK(ctx,
                      ctx->GetAttr("use_default_device", &use_default_device_));

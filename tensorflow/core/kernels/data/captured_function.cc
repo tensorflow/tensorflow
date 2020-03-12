@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -450,36 +451,40 @@ Status FunctionMetadata::Create(
       (*out_metadata)->func_.name(), &(*out_metadata)->lib_def_));
   TF_RETURN_IF_ERROR(CreateShortCircuitInfo(
       ctx, (*out_metadata)->func_, &(*out_metadata)->short_circuit_info_));
-  (*out_metadata)->ValidateMultiDevice();
-  return Status::OK();
-}
+  const FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(LookupFunction(*(*out_metadata)->lib_def(),
+                                    (*out_metadata)->func().name(), &fdef));
 
-void FunctionMetadata::ValidateMultiDevice() {
-  const FunctionDef* fdef = lib_def_->Find(func_.name());
-  if (is_multi_device_function_) {
-    auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
-    if (attr != fdef->attr().end() && attr->second.b()) {
-      LOG(WARNING)
-          << "Disabling multi-device execution for a function that uses the "
-          << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
-      is_multi_device_function_ = false;
-      return;
+  auto attr = fdef->attr().find(FunctionLibraryDefinition::kIntsOnDeviceAttr);
+  if (attr != fdef->attr().end() && attr->second.b()) {
+    LOG(WARNING)
+        << "Disabling multi-device execution for a function that uses the "
+        << FunctionLibraryDefinition::kIntsOnDeviceAttr << " attribute.";
+    (*out_metadata)->use_multi_device_function_ = false;
+    return Status::OK();
+  }
+  auto validate_arg = [](const OpDef::ArgDef& arg) {
+    if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
+      LOG(WARNING) << "Disabling multi-device execution for a function with "
+                      "a vector argument "
+                   << arg.name() << ".";
+      return false;
     }
-    auto validate_arg = [this](const OpDef::ArgDef& arg) {
-      if (!arg.number_attr().empty() || !arg.type_list_attr().empty()) {
-        LOG(WARNING) << "Disabling multi-device execution for a function with "
-                        "a vector argument "
-                     << arg.name() << ".";
-        is_multi_device_function_ = false;
-      }
-    };
-    for (const auto& arg : fdef->signature().input_arg()) {
-      validate_arg(arg);
-    }
-    for (const auto& arg : fdef->signature().output_arg()) {
-      validate_arg(arg);
+    return true;
+  };
+  for (const auto& arg : fdef->signature().input_arg()) {
+    if (!validate_arg(arg)) {
+      (*out_metadata)->use_multi_device_function_ = false;
+      return Status::OK();
     }
   }
+  for (const auto& arg : fdef->signature().output_arg()) {
+    if (!validate_arg(arg)) {
+      (*out_metadata)->use_multi_device_function_ = false;
+      return Status::OK();
+    }
+  }
+  return Status::OK();
 }
 
 /* static */
@@ -863,7 +868,7 @@ CapturedFunction::CapturedFunction(
 
 Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
                                        bool* is_multi_device) {
-  if (!metadata_->is_multi_device_function()) {
+  if (!metadata_->use_multi_device_function()) {
     *is_multi_device = false;
     return Status::OK();
   }
