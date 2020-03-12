@@ -144,4 +144,11 @@ cc_import(
     visibility = ["//visibility:public"],
 )
 
+cc_import(
+    name = "roctracer",
+    hdrs = glob(["rocm/include/roctracer/**",]),
+    shared_library = "rocm/lib/%{roctracer_lib}",
+    visibility = ["//visibility:public"],
+)
+
 %{copy_rules}
