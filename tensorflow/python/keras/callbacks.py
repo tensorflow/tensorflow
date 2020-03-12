@@ -1719,10 +1719,6 @@ class TensorBoard(Callback):
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
 
-    self._samples_seen = 0
-    self._samples_seen_at_last_write = 0
-    self._current_batch = 0
-
     # A collection of file writers currently in use, to be closed when
     # training ends for this callback. Writers are keyed by the
     # directory name under the root logdir: e.g., "train" or
