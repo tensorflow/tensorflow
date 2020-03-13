@@ -339,7 +339,10 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
         {StatType::kStepId, StatType::kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
-        {StatType::kCorrelationId}}});
+        {StatType::kCorrelationId}},
+       {HostEventType::kLocalExecutableExecuteOnLocalDevice,
+        HostEventType::kLocalExecutableExecute,
+        {StatType::kRunId}}});
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kTraceContext, HostEventType::kFunctionRun,
        HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});

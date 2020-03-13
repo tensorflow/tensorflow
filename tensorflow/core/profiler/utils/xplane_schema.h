@@ -74,6 +74,9 @@ enum HostEventType {
   kWhileOpStartBody,
   kForOp,
   kPartitionedCallOp,
+  // XLA related.
+  kLocalExecutableExecuteOnLocalDevice,
+  kLocalExecutableExecute,
   // tf.data related.
   kIteratorGetNextOp,
   // Virtual events for grouping.
