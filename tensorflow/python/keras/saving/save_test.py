@@ -37,7 +37,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
-if sys.version_info >= (3, 4):
+if sys.version_info >= (3, 6):
   import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -96,7 +96,7 @@ class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   @test_util.run_v2_only
   def test_save_load_tf_pathlib(self):
-    if sys.version_info >= (3, 4):
+    if sys.version_info >= (3, 6):
       path = pathlib.Path(self.get_temp_dir()) / 'model'
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)

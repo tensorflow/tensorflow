@@ -51,6 +51,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -1026,7 +1027,7 @@ class Network(base_layer.Layer):
      access specific variables, e.g. `model.get_layer("dense_1").kernel`.
 
     Arguments:
-        filepath: String, path to SavedModel or H5 file to save the model.
+        filepath: String, PathLike, path to SavedModel or H5 file to save the model.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
         include_optimizer: If True, save optimizer's state together.
@@ -1099,7 +1100,7 @@ class Network(base_layer.Layer):
     on the TensorFlow format.
 
     Arguments:
-        filepath: String, path to the file to save the weights to. When saving
+        filepath: String or PathLike, path to the file to save the weights to. When saving
             in TensorFlow format, this is the prefix used for checkpoint files
             (multiple files are generated). Note that the '.h5' suffix causes
             weights to be saved in HDF5 format.
@@ -1115,6 +1116,7 @@ class Network(base_layer.Layer):
         ValueError: For invalid/unknown format arguments.
     """
     self._assert_weights_created()
+    filepath = path_to_string(filepath)
     filepath_is_h5 = _is_hdf5_filepath(filepath)
     if save_format is None:
       if filepath_is_h5:
@@ -1197,9 +1199,9 @@ class Network(base_layer.Layer):
     which layers are assigned in the `Model`'s constructor.
 
     Arguments:
-        filepath: String, path to the weights file to load. For weight files in
-            TensorFlow format, this is the file prefix (the same as was passed
-            to `save_weights`).
+        filepath: String or PathLike, path to the weights file to load. For
+            weight files in TensorFlow format, this is the file prefix (the
+            same as was passed to `save_weights`).
         by_name: Boolean, whether to load weights by name or by topological
             order. Only topological loading is supported for weight files in
             TensorFlow format.
@@ -1228,6 +1230,7 @@ class Network(base_layer.Layer):
           'When calling model.load_weights, skip_mismatch can only be set to '
           'True when by_name is True.')
 
+    filepath = path_to_string(filepath)
     if _is_hdf5_filepath(filepath):
       save_format = 'h5'
     else:

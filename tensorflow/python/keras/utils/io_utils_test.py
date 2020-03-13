@@ -137,6 +137,22 @@ class TestIOUtils(keras_parameterized.TestCase):
       self.assertFalse(
           io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
+  def test_patH_to_string(self):
+    class PathLikeDummy:
+      def __fspath__(self):
+        return "dummypath"
+
+    dummy = object()
+    if sys.version_info >= (3, 6):
+      from pathlib import Path
+      # conversion of PathLike
+      self.assertEqual(path_to_string(Path("path")), "path")
+      self.assertEqual(path_to_string(PathLikeDummy()), "dummypath")
+
+    # pass-through, works for all versions of python
+    self.assertEqual(path_to_string("path"), "path")
+    self.assertTrue(path_to_string(dummy) is dummy)
+
 
 if __name__ == '__main__':
   test.main()

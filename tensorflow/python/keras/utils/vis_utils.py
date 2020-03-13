@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 import sys
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -283,6 +284,7 @@ def plot_model(model,
                      rankdir=rankdir,
                      expand_nested=expand_nested,
                      dpi=dpi)
+  to_file = path_to_string(to_file)
   if dot is None:
     return
   _, extension = os.path.splitext(to_file)

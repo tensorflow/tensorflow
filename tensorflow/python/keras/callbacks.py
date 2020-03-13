@@ -43,6 +43,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
@@ -1046,7 +1047,7 @@ class ModelCheckpoint(Callback):
   ```
 
   Arguments:
-      filepath: string, path to save the model file. `filepath` can contain
+      filepath: string or `PathLike`, path to save the model file. `filepath` can contain
         named formatting options, which will be filled the value of `epoch` and
         keys in `logs` (passed in `on_epoch_end`). For example: if `filepath` is
         `weights.{epoch:02d}-{val_loss:.2f}.hdf5`, then the model checkpoints
@@ -1089,7 +1090,7 @@ class ModelCheckpoint(Callback):
     super(ModelCheckpoint, self).__init__()
     self.monitor = monitor
     self.verbose = verbose
-    self.filepath = filepath
+    self.filepath = path_to_string(filepath)
     self.save_best_only = save_best_only
     self.save_weights_only = save_weights_only
     self.save_freq = save_freq
@@ -1766,7 +1767,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._supports_tf_logs = True
     self._validate_kwargs(kwargs)
 
-    self.log_dir = log_dir
+    self.log_dir = path_to_string(log_dir)
     self.histogram_freq = histogram_freq
     self.write_graph = write_graph
     self.write_images = write_images
@@ -2267,7 +2268,7 @@ class CSVLogger(Callback):
 
   def __init__(self, filename, separator=',', append=False):
     self.sep = separator
-    self.filename = filename
+    self.filename = path_to_string(filename)
     self.append = append
     self.writer = None
     self.keys = None
