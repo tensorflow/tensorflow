@@ -17,6 +17,7 @@ limitations under the License.
 package tensorflow
 
 import (
+	"fmt"
 	"runtime"
 	"unsafe"
 
@@ -57,6 +58,9 @@ func LoadSavedModel(exportDir string, tags []string, options *SessionOptions) (*
 		return nil, err
 	}
 	cExportDir := C.CString(exportDir)
+	if len(tags) == 0 {
+		return nil, fmt.Errorf("empty tags are not allowed")
+	}
 	cTags := make([]*C.char, len(tags))
 	for i := range tags {
 		cTags[i] = C.CString(tags[i])
