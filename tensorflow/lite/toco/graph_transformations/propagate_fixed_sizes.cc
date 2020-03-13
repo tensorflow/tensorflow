@@ -1343,9 +1343,9 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
-  const auto input_height = input_shape.dims(1);
-  const auto input_width = input_shape.dims(2);
+  CHECK_GE(input_shape.dimensions_count(), 3);
+  CHECK_LE(input_shape.dimensions_count(), 4);
+  int spatial_dims_num = input_shape.dimensions_count() - 2;
 
   const auto& block_shape_array = model->GetArray(op->inputs[1]);
   const auto& crops_array = model->GetArray(op->inputs[2]);
@@ -1355,35 +1355,38 @@ void ProcessBatchToSpaceNDOperator(Model* model, BatchToSpaceNDOperator* op) {
   QCHECK_EQ(crops_array_shape.dimensions_count(), 2);
 
   // We only support two dimensions.
-  QCHECK_EQ(block_shape_array_shape.dims(0), 2);
+  QCHECK_EQ(block_shape_array_shape.dims(0), spatial_dims_num);
   if (!block_shape_array.buffer) {
     return;
   }
   QCHECK(block_shape_array.data_type == ArrayDataType::kInt32);
   const auto& block_shape_data =
       block_shape_array.GetBuffer<ArrayDataType::kInt32>().data;
-  auto block_height = block_shape_data[0];
-  auto block_width = block_shape_data[1];
 
-  QCHECK_EQ(crops_array_shape.dims(0), 2);  // Number of block dimensions
+  QCHECK_EQ(crops_array_shape.dims(0), spatial_dims_num);
   QCHECK_EQ(crops_array_shape.dims(1), 2);  // Two parameters per dimension.
   if (!crops_array.buffer) {
     return;
   }
   QCHECK(crops_array.data_type == ArrayDataType::kInt32);
   const auto& crops_data = crops_array.GetBuffer<ArrayDataType::kInt32>().data;
-  const int crops_top = crops_data[0];
-  const int crops_bottom = crops_data[1];
-  const int crops_left = crops_data[2];
-  const int crops_right = crops_data[3];
-  const int output_height =
-      input_height * block_height - crops_top - crops_bottom;
-  const int output_width = input_width * block_width - crops_left - crops_right;
-  QCHECK_EQ(input_shape.dims(0) % (block_height * block_width), 0);
 
-  model->GetArray(op->outputs[0])
-      .copy_shape(Shape({input_shape.dims(0) / (block_height * block_width),
-                         output_height, output_width, input_shape.dims(3)}));
+  Shape output_shape(input_shape);
+  std::vector<int>* output_shape_data = output_shape.mutable_dims();
+  int output_batch_size = input_shape.dims(0);
+  for (int dim = 0; dim < spatial_dims_num; ++dim) {
+    // Number of batch must be multiple of (block_shape[dim]).
+    QCHECK_EQ(output_batch_size % block_shape_data[dim], 0);
+    output_batch_size = output_batch_size / block_shape_data[dim];
+    output_shape_data->at(dim + 1) =
+        input_shape.dims(dim + 1) * block_shape_data[dim] -
+        crops_data[dim * 2] - crops_data[dim * 2 + 1];
+  }
+  output_shape_data->at(0) = output_batch_size;
+  output_shape_data->at(input_shape.dimensions_count() - 1) =
+      input_shape.dims(input_shape.dimensions_count() - 1);
+
+  model->GetArray(op->outputs[0]).copy_shape(output_shape);
 }
 
 void ProcessGatherOperator(Model* model, GatherOperator* op) {

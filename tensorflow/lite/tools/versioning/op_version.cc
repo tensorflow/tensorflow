@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,6 +33,7 @@ inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
   return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
 }
 }  // namespace
+
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
     case BuiltinOperator_CONV_2D:
@@ -303,6 +305,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
       if (op_sig.options.space_batch.num_dims != 4) {
         return 3;
       }
@@ -314,7 +317,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_SUB:
-    case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_MAXIMUM:
@@ -453,7 +455,8 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
-    case BuiltinOperator_SPACE_TO_BATCH_ND: {
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND: {
       op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 

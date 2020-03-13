@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 
 #include <array>
-#include <cfloat>
 #include <string>
 #include <utility>
 
@@ -202,74 +201,6 @@ std::string GenerateConvBuffer1x1(
   return c;
 }
 
-// task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
-                                   const OperationDef& definition,
-                                   int task_size) {
-  const float task_size_per_cu =
-      task_size / static_cast<float>(device.GetInfo().compute_units_count);
-  int block_size = 1;
-  float threshold_1 = FLT_MAX;
-  float threshold_2 = FLT_MAX;
-  float threshold_4 = FLT_MAX;
-  if (!device.IsMali()) {
-    return 1;
-  }
-  MaliInfo mali_info = device.GetInfo().mali_info;
-  switch (definition.precision) {
-    case CalculationsPrecision::F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-        threshold_4 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-        threshold_4 = 256.0f * 16.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 6.0f;
-        threshold_4 = 256.0f * 16.0f;
-      }
-      break;
-    case CalculationsPrecision::F32_F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 3.0f;
-        threshold_4 = 256.0f * 32.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 8.0f;
-      }
-      break;
-    case CalculationsPrecision::F32:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 128.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 12.0f;
-      }
-      break;
-  }
-  if (task_size_per_cu <= threshold_1) {
-    block_size = 1;
-  } else if (task_size_per_cu <= threshold_2) {
-    block_size = 2;
-  } else if (task_size_per_cu <= threshold_4) {
-    block_size = 4;
-  } else {
-    block_size = 8;
-  }
-  return block_size;
-}
-
 ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
                                         const OperationDef& definition,
                                         const BHWC& shape, int src_depth,
@@ -295,7 +226,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
   int block_size =
-      GetRecommendedBlockSizeForConv(device, definition, task_size);
+      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;

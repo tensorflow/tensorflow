@@ -100,7 +100,8 @@ Status SelectConvolutionMali(const Convolution2DAttributes& attr,
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
     ConvPowerVR conv;
-    RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
+    RETURN_IF_ERROR(
+        CreateConvPowerVR(creation_context, op_def, attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
   return OkStatus();
@@ -118,8 +119,8 @@ Status SelectConvolutionWinogradMali(const Convolution2DAttributes& attr,
     *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
     ConvPowerVR conv;
-    RETURN_IF_ERROR(
-        CreateConvPowerVRWino4x4To6x6(creation_context, op_def, attr, &conv));
+    RETURN_IF_ERROR(CreateConvPowerVRWino4x4To6x6(creation_context, op_def,
+                                                  attr, &conv, &dst_shape));
     *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
   }
 

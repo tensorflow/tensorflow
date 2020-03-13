@@ -964,7 +964,7 @@ PYBIND11_MODULE(xla_extension, m) {
           py::arg("force_copy") = false)
       .def_static(
           "make_tuple",
-          [](const std::vector<PyLocalBuffer*> buffers,
+          [](std::vector<PyLocalBuffer*> buffers,
              std::shared_ptr<PyLocalClient> client,
              Device* device) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
             CHECK(device != nullptr);
@@ -1141,21 +1141,26 @@ PYBIND11_MODULE(xla_extension, m) {
              absl::Span<PyLocalBuffer* const> args)
               -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
             py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalBuffer> output,
-                                executable.Execute(args));
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::unique_ptr<PyLocalBuffer>> output,
+                executable.Execute(args, ExecuteOptions()));
             return WrapWithClient(executable.client()->shared_from_this(),
-                                  std::move(output));
+                                  std::move(output.front()));
           },
           py::arg("arguments"))
+      // TODO(phawkins): remove in favor of overload that returns a vector.
       .def(
-          "ExecuteOnLocalDevices",
+          "Execute",
           [](const PyLocalExecutable& executable,
-             absl::Span<const std::vector<PyLocalBuffer*>> args)
+             absl::Span<PyLocalBuffer* const> args, bool tuple_arguments)
               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
             py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
             TF_ASSIGN_OR_RETURN(
                 std::vector<std::unique_ptr<PyLocalBuffer>> output_buffers,
-                executable.ExecuteOnLocalDevices(args));
+                executable.Execute(args, options));
             std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
             outputs.reserve(output_buffers.size());
             for (auto& buffer : output_buffers) {
@@ -1164,7 +1169,56 @@ PYBIND11_MODULE(xla_extension, m) {
             }
             return outputs;
           },
+          py::arg("arguments"), py::arg("tuple_arguments"))
+      // TODO(phawkins): remove in favor of overload that returns a vector.
+      .def(
+          "ExecuteOnLocalDevices",
+          [](const PyLocalExecutable& executable,
+             absl::Span<const std::vector<PyLocalBuffer*>> args)
+              -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
+            py::gil_scoped_release gil_release;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
+                    output_buffers,
+                executable.ExecuteOnLocalDevices(args, ExecuteOptions()));
+            std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
+            outputs.reserve(output_buffers.size());
+            for (auto& buffers : output_buffers) {
+              outputs.push_back(
+                  WrapWithClient(executable.client()->shared_from_this(),
+                                 std::move(buffers.front())));
+            }
+            return outputs;
+          },
           py::arg("arguments"))
+      .def(
+          "ExecuteOnLocalDevices",
+          [](const PyLocalExecutable& executable,
+             absl::Span<const std::vector<PyLocalBuffer*>> args,
+             bool tuple_arguments)
+              -> StatusOr<
+                  std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>>> {
+            py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
+                    output_buffers,
+                executable.ExecuteOnLocalDevices(args, options));
+            std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> outputs;
+            outputs.resize(output_buffers.size());
+            for (int computation = 0; computation < output_buffers.size();
+                 ++computation) {
+              for (auto& buffer : output_buffers[computation]) {
+                outputs[computation].push_back(
+                    WrapWithClient(executable.client()->shared_from_this(),
+                                   std::move(buffer)));
+              }
+            }
+            return outputs;
+          },
+          py::arg("arguments"), py::arg("tuple_arguments"))
       .def(
           "get_hlo_modules",
           [](const PyLocalExecutable& executable)
