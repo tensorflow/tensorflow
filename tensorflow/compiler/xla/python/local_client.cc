@@ -597,9 +597,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     TF_RET_CHECK(input_buffer.size() == output_buffer.size())
         << "input: " << input_buffer.size()
         << " output: " << output_buffer.size();
-    TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
-        transfer_stream, dst_local_device->compute_stream(), input_buffer,
-        output_buffer));
+    if (input_buffer.size() != 0) {
+      TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
+          transfer_stream, dst_local_device->compute_stream(), input_buffer,
+          output_buffer));
+    }
   }
 
   // We hold on to the `src_device_buffer` until the transfer is finished.
