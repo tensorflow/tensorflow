@@ -285,6 +285,18 @@ class Conv3DTest(keras_parameterized.TestCase):
             input_shape=(None, 3, None, None, None),
             input_data=input_data)
 
+class GroupedConvTest(keras_parameterized.TestCase):
+  @parameterized.named_parameters(
+      ('Conv1D', keras.layers.Conv1D),
+      ('Conv2D', keras.layers.Conv2D),
+      ('Conv3D', keras.layers.Conv3D),
+  )
+  def test_group_conv_incorrect_use(self, layer):
+    with self.assertRaisesRegexp(ValueError, 'The number of filters'):
+      layer(16, 3, groups=3)
+    with self.assertRaisesRegexp(ValueError, 'The number of input channels'):
+      layer(16, 3, groups=4).build((32, 12, 12, 3))
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv3DTransposeTest(keras_parameterized.TestCase):
