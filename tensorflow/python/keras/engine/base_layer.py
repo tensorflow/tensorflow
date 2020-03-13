@@ -405,11 +405,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   @doc_controls.for_subclass_implementers
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
-    """This is where the layer's logic lives. The second parameter `kwargs`
-    is not used anywhere as of now. Note here that `call()` method in
-    `tf.keras` is little bit different from `keras` API. In `keras` API,
-    you can pass support masking for layers as additional arguements.
-    Whereas `tf.keras` has `compute_mask()` method to support masking.
+    """This is where the layer's logic lives.
+
+    The second parameter `kwargs` is not used anywhere as of now.
+
+    Note here that `call()` method in `tf.keras` is little bit different
+    from `keras` API. In `keras` API, you can pass support masking for
+    layers as additional arguements. Whereas `tf.keras` has `compute_mask()`
+    method to support masking.
 
     Arguments:
         inputs: Input tensor, or list/tuple of input tensors.
