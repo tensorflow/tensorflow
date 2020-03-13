@@ -307,7 +307,7 @@ cc_library(
     deps = [
         ":benchmark_model_lib",
         ":delegate_provider_hdr",
-        ":logging"
+        ":logging",
     ],
     alwayslink = 1,
 )
