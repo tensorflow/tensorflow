@@ -445,7 +445,6 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopOpsTransforms",
     ],
@@ -815,6 +814,7 @@ cc_library(
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -1020,6 +1020,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
