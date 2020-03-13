@@ -28,7 +28,7 @@ limitations under the License.
 //   br ^exit(%arg0)
 // ^bb2:
 //   %new_value = ...
-//   br ^exit(x)
+//   br ^exit(%new_value)
 // ^exit(%arg1):
 //   return %arg1;
 //
@@ -52,219 +52,359 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/transforms/buffer_assignment.h"
 #include "absl/memory/memory.h"
-#include "mlir/IR/Function.h"   // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"     // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"                 // TF:llvm-project
+#include "mlir/IR/Operation.h"                // TF:llvm-project
+#include "mlir/Pass/Pass.h"                   // TF:llvm-project
 
 namespace mlir {
 namespace xla {
-namespace detail {
+
+//===----------------------------------------------------------------------===//
+// BufferInsertPosition
+//===----------------------------------------------------------------------===//
+
+BufferInsertPosition::BufferInsertPosition(Operation* allocPosition)
+    : allocPosition(allocPosition) {}
+
+//===----------------------------------------------------------------------===//
+// BufferAssignmentLegalizer
+//===----------------------------------------------------------------------===//
+
+/// Creates a new assignment builder.
+BufferAssignmentLegalizer::BufferAssignmentLegalizer(Operation* op)
+    : operation(op), dominators(op) {}
+
+/// Computes the actual position to place allocs for the given value.
+BufferInsertPosition BufferAssignmentLegalizer::computeAllocPosition(
+    Value value) const {
+  if (auto arg = value.dyn_cast<BlockArgument>()) {
+    // This is a block argument which has to be allocated in the scope
+    // of its associated terminator.
+    auto domNode = dominators.getNode(arg.getOwner());
+    assert(domNode != nullptr & "Cannot find dominator info");
+    auto idomNode = domNode->getIDom();
+    assert(idomNode != nullptr & "There is no parent dominator");
+    return BufferInsertPosition(idomNode->getBlock()->getTerminator());
+  }
+  return BufferInsertPosition(value.getDefiningOp());
+}
 
 //===----------------------------------------------------------------------===//
 // BufferAssignmentAliasAnalysis
 //===----------------------------------------------------------------------===//
 
-/// Constructs a new alias analysis using the op provided.
-BufferAssignmentAliasAnalysis::BufferAssignmentAliasAnalysis(Operation* op) {
-  build(op->getRegions());
-}
+/// A straight-forward alias analysis which ensures that all aliases of all
+/// values will be determined. This is a requirement for the BufferAssignment
+/// class since you need to determine safe positions to place alloc and
+/// deallocs.
+class BufferAssignmentAliasAnalysis {
+ public:
+  using ValueSetT = SmallPtrSet<Value, 16>;
 
-/// Finds all immediate and indirect aliases this value could potentially
-/// have.
-BufferAssignmentAliasAnalysis::ValueSetT BufferAssignmentAliasAnalysis::resolve(
-    Value value) const {
-  ValueSetT result;
-  resolveRecursive(value, result);
-  return result;
-}
+ public:
+  /// Constructs a new alias analysis using the op provided.
+  BufferAssignmentAliasAnalysis(Operation* op) { build(op->getRegions()); }
 
-/// Recursively determines alias information for the given value. It stores
-/// all newly found potential aliases in the given result set.
-void BufferAssignmentAliasAnalysis::resolveRecursive(Value value,
-                                                     ValueSetT& result) const {
-  if (!result.insert(value).second) {
-    return;
+  /// Finds all immediate and indirect aliases this value could potentially
+  /// have. Note that the resulting set will also contain the value provided as
+  /// it is an alias of itself.
+  ValueSetT resolve(Value value) const {
+    ValueSetT result;
+    resolveRecursive(value, result);
+    return result;
   }
-  auto it = aliases.find(value);
-  if (it == aliases.end()) return;
-  for (auto alias : it->second) {
-    resolveRecursive(alias, result);
-  }
-}
 
-/// This function constructs a mapping from values to its immediate aliases. It
-/// iterates over all blocks, gets their predecessors, determines the values
-/// that will be passed to the corresponding block arguments and inserts them
-/// into map.
-void BufferAssignmentAliasAnalysis::build(MutableArrayRef<Region> regions) {
-  for (Region& region : regions) {
-    for (Block& block : region) {
-      // Iterate over all predecessor and get the mapped values to their
-      // corresponding block arguments values.
-      for (auto pred : block.getPredecessors()) {
-        // Determine the current successor index of the current predecessor.
-        unsigned successorIndex = std::distance(
-            pred->getSuccessors().begin(),
-            llvm::find_if(pred->getSuccessors(), [&](Block* successor) {
-              return successor == &block;
-            }));
-        // Get the terminator and the values that will be passed to our block.
-        auto successorOps =
-            pred->getTerminator()->getSuccessorOperands(successorIndex);
-        // Build the actual mapping of values to their immediate aliases.
-        for (auto arg : block.getArguments()) {
-          Value predecessorArgValue = successorOps[arg.getArgNumber()];
-          aliases[predecessorArgValue].insert(arg);
+ private:
+  /// Recursively determines alias information for the given value. It stores
+  /// all newly found potential aliases in the given result set.
+  void resolveRecursive(Value value, ValueSetT& result) const {
+    if (!result.insert(value).second) {
+      return;
+    }
+    auto it = aliases.find(value);
+    if (it == aliases.end()) return;
+    for (auto alias : it->second) {
+      resolveRecursive(alias, result);
+    }
+  }
+
+  /// This function constructs a mapping from values to its immediate aliases.
+  /// It iterates over all blocks, gets their predecessors, determines the
+  /// values that will be passed to the corresponding block arguments and
+  /// inserts them into map.
+  void build(MutableArrayRef<Region> regions) {
+    for (Region& region : regions) {
+      for (Block& block : region) {
+        // Iterate over all predecessor and get the mapped values to their
+        // corresponding block arguments values.
+        for (auto pred : block.getPredecessors()) {
+          // Determine the current successor index of the current predecessor.
+          unsigned successorIndex = std::distance(
+              pred->getSuccessors().begin(),
+              llvm::find_if(pred->getSuccessors(), [&](Block* successor) {
+                return successor == &block;
+              }));
+          // Get the terminator and the values that will be passed to our block.
+          auto successorOps =
+              pred->getTerminator()->getSuccessorOperands(successorIndex);
+          // Build the actual mapping of values to their immediate aliases.
+          for (auto arg : block.getArguments()) {
+            Value predecessorArgValue = successorOps[arg.getArgNumber()];
+            aliases[predecessorArgValue].insert(arg);
+          }
         }
       }
     }
   }
-}
-}  // namespace detail
+
+  /// Maps values to all immediate aliases this value can have.
+  llvm::DenseMap<Value, ValueSetT> aliases;
+};
 
 //===----------------------------------------------------------------------===//
 // BufferAssignmentPositions
 //===----------------------------------------------------------------------===//
 
-/// Creates a new positions tuple including alloc and dealloc positions.
-BufferAssignmentPositions::BufferAssignmentPositions(Operation* allocPosition,
-                                                     Operation* deallocPosition)
-    : allocPosition(allocPosition), deallocPosition(deallocPosition) {}
+/// Stores proper alloc and dealloc positions to place dialect-specific alloc
+/// and dealloc operations.
+struct BufferAssignmentPositions {
+ public:
+  BufferAssignmentPositions()
+      : allocPosition(nullptr), deallocPosition(nullptr) {}
+
+  /// Creates a new positions tuple including alloc and dealloc positions.
+  BufferAssignmentPositions(Operation* allocPosition,
+                            Operation* deallocPosition)
+      : allocPosition(allocPosition), deallocPosition(deallocPosition) {}
+
+  /// Returns the alloc position before which the alloc operation has to be
+  /// inserted.
+  Operation* getAllocPosition() const { return allocPosition; }
+
+  /// Returns the dealloc position after which the dealloc operation has to be
+  /// inserted.
+  Operation* getDeallocPosition() const { return deallocPosition; }
+
+ private:
+  Operation* allocPosition;
+  Operation* deallocPosition;
+};
+
+//===----------------------------------------------------------------------===//
+// BufferAssignmentAnalysis
+//===----------------------------------------------------------------------===//
+
+class BufferAssignmentAnalysis {
+ public:
+  using DeallocSetT = SmallPtrSet<Operation*, 2>;
+
+ public:
+  BufferAssignmentAnalysis(Operation* op)
+      : operation(op),
+        liveness(op),
+        dominators(op),
+        postDominators(op),
+        aliases(op) {}
+
+  /// Computes the actual positions to place allocs and deallocs for the given
+  /// value.
+  BufferAssignmentPositions computeAllocAndDeallocPositions(Value value) const {
+    if (value.use_empty()) {
+      return BufferAssignmentPositions(value.getDefiningOp(),
+                                       value.getDefiningOp());
+    }
+    // Get all possible aliases
+    auto possibleValues = aliases.resolve(value);
+    return BufferAssignmentPositions(getAllocPosition(value, possibleValues),
+                                     getDeallocPosition(value, possibleValues));
+  }
+
+  /// Finds all associated dealloc nodes for the alloc nodes using alias
+  /// information.
+  DeallocSetT findAssociatedDeallocs(AllocOp alloc) const {
+    DeallocSetT result;
+    auto possibleValues = aliases.resolve(alloc);
+    for (auto alias : possibleValues) {
+      for (auto user : alias.getUsers()) {
+        if (isa<DeallocOp>(user)) result.insert(user);
+      }
+    }
+    return result;
+  }
+
+  /// Dumps the buffer assignment information to the given stream.
+  void print(raw_ostream& os) const {
+    os << "// ---- Buffer Assignment -----\n";
+
+    for (Region& region : operation->getRegions())
+      for (Block& block : region)
+        for (Operation& operation : block)
+          for (Value result : operation.getResults()) {
+            BufferAssignmentPositions positions =
+                computeAllocAndDeallocPositions(result);
+            os << "Positions for ";
+            result.print(os);
+            os << "\n Alloc: ";
+            positions.getAllocPosition()->print(os);
+            os << "\n Dealloc: ";
+            positions.getDeallocPosition()->print(os);
+            os << "\n";
+          }
+  }
+
+ private:
+  /// Finds a proper placement block to store alloc/dealloc node according to
+  /// the algorithm descirbed at the top of the file. It supports dominator and
+  /// post-dominator analyses via template arguments.
+  template <typename AliasesT, typename DominatorT>
+  Block* findPlacementBlock(Value value, const AliasesT& aliases,
+                            const DominatorT& doms) const {
+    assert(!value.isa<BlockArgument>() & "Cannot place a block argument");
+    // Start with the current block the value is defined in.
+    Block* dom = value.getDefiningOp()->getBlock();
+    // Iterate over all aliases and their uses to find a safe placement block
+    // according to the given dominator information.
+    for (auto alias : aliases) {
+      for (auto user : alias.getUsers()) {
+        // Move upwards in the dominator tree to find an appropriate
+        // dominator block that takes the current use into account.
+        dom = doms.findNearestCommonDominator(dom, user->getBlock());
+      }
+    }
+    return dom;
+  }
+
+  /// Finds a proper alloc positions according to the algorithm described at the
+  /// top of the file.
+  template <typename AliasesT>
+  Operation* getAllocPosition(Value value, const AliasesT& aliases) const {
+    // Determine the actual block to place the alloc and get liveness
+    // information.
+    auto placementBlock = findPlacementBlock(value, aliases, dominators);
+    auto livenessInfo = liveness.getLiveness(placementBlock);
+
+    // We have to ensure that the alloc will be before the first use of all
+    // aliases of the given value. We first assume that there are no uses in the
+    // placementBlock and that we can safely place the alloc before the
+    // terminator at the end of the block.
+    Operation* startOperation = placementBlock->getTerminator();
+    // Iterate over all aliases and ensure that the startOperation will point to
+    // the first operation of all potential aliases in the placementBlock.
+    for (auto alias : aliases) {
+      auto aliasStartOperation = livenessInfo->getStartOperation(alias);
+      // Check whether the aliasStartOperation lies in the desired block and
+      // whether it is before the current startOperation. If yes, this will be
+      // the new startOperation.
+      if (aliasStartOperation->getBlock() == placementBlock &&
+          aliasStartOperation->isBeforeInBlock(startOperation)) {
+        startOperation = aliasStartOperation;
+      }
+    }
+    // startOperation is the first operation before which we can safely store
+    // the alloc taking all potential aliases into account.
+    return startOperation;
+  }
+
+  /// Finds a proper dealloc positions according to the algorithm described at
+  /// the top of the file.
+  template <typename AliasesT>
+  Operation* getDeallocPosition(Value value, const AliasesT& aliases) const {
+    // Determine the actual block to place the dealloc and get liveness
+    // information.
+    auto placementBlock = findPlacementBlock(value, aliases, postDominators);
+    auto livenessInfo = liveness.getLiveness(placementBlock);
+
+    // We have to ensure that the dealloc will be after the last use of all
+    // aliases of the given value. We first assume that there are no uses in the
+    // placementBlock and that we can safely place the dealloc at the beginning.
+    Operation* endOperation = &placementBlock->front();
+    // Iterate over all aliases and ensure that the endOperation will point to
+    // the last operation of all potential aliases in the placementBlock.
+    for (auto alias : aliases) {
+      auto aliasEndOperation =
+          livenessInfo->getEndOperation(alias, endOperation);
+      // Check whether the aliasEndOperation lies in the desired block and
+      // whether it is behind the current endOperation. If yes, this will be the
+      // new endOperation.
+      if (aliasEndOperation->getBlock() == placementBlock &&
+          endOperation->isBeforeInBlock(aliasEndOperation)) {
+        endOperation = aliasEndOperation;
+      }
+    }
+    // endOperation is the last operation behind which we can safely store the
+    // dealloc taking all potential aliases into account.
+    return endOperation;
+  }
+
+  /// The operation this transformation was constructed from.
+  Operation* operation;
+
+  /// The underlying liveness analysis to compute fine grained information about
+  /// alloc and dealloc positions.
+  Liveness liveness;
+
+  /// The dominator analysis to place allocs in the appropriate blocks.
+  detail::BufferAssignmentDominators<false> dominators;
+
+  /// The post dominator analysis to place deallocs in the appropriate blocks.
+  detail::BufferAssignmentDominators<true> postDominators;
+
+  /// The internal alias analysis to ensure that allocs and deallocs take all
+  /// their potential aliases into account.
+  BufferAssignmentAliasAnalysis aliases;
+};
 
 //===----------------------------------------------------------------------===//
 // BufferAssignment
 //===----------------------------------------------------------------------===//
 
-/// Finds a proper placement block to store alloc/dealloc node according to the
-/// algorithm descirbed at the top of the file. It supports dominator and
-/// post-dominator analyses via template arguments.
-template <typename AliasesT, typename DominatorT>
-static Block* findPlacementBlock(Value value, const AliasesT& aliases,
-                                 const DominatorT& doms) {
-  assert(!value.isa<BlockArgument>() & "Cannot place a block argument");
-  // Start with the current block the value is defined in.
-  Block* dom = value.getDefiningOp()->getBlock();
-  // Iterate over all aliases and their uses to find a safe placement block
-  // according to the given dominator information.
-  for (auto alias : aliases) {
-    for (auto user : alias.getUsers()) {
-      // Move upwards in the dominator tree to find an appropriate
-      // dominator block that takes the current use into account.
-      dom = doms.findNearestCommonDominator(dom, user->getBlock());
-    }
-  }
-  return dom;
-}
+/// The actual buffer assignment pass that moves alloc and dealloc nodes into
+/// the right positions. It uses the algorithm described at the top of the file.
+// TODO(dfki): create a templated version that allows to match dialect-specific
+// alloc/dealloc nodes and to insert dialect-specific dealloc node.
+struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
+  void runOnFunction() override {
+    // Get required analysis information first.
+    auto& analysis = getAnalysis<BufferAssignmentAnalysis>();
 
-/// Finds a proper alloc positions according to the algorithm described at the
-/// top of the file.
-template <typename AliasesT, typename DominatorT>
-static Operation* getAllocPosition(Value value, const Liveness& liveness,
-                                   const AliasesT& aliases,
-                                   const DominatorT& dominators) {
-  // Determine the actual block to place the alloc and get liveness information.
-  auto placementBlock = findPlacementBlock(value, aliases, dominators);
-  auto livenessInfo = liveness.getLiveness(placementBlock);
+    // Compute an initial placement of all nodes.
+    llvm::SmallDenseMap<Value, BufferAssignmentPositions, 16> placements;
+    getFunction().walk([&](AllocOp alloc) {
+      placements[alloc] = analysis.computeAllocAndDeallocPositions(alloc);
+    });
 
-  // We have to ensure that the alloc will be before the first use of all
-  // aliases of the given value. We first assume that there are no uses in the
-  // placementBlock and that we can safely place the alloc before the terminator
-  // at the end of the block.
-  Operation* startOperation = placementBlock->getTerminator();
-  // Iterate over all aliases and ensure that the startOperation will point to
-  // the first operation of all potential aliases in the placementBlock.
-  for (auto alias : aliases) {
-    auto aliasStartOperation = livenessInfo->getStartOperation(alias);
-    // Check whether the aliasStartOperation lies in the desired block and
-    // whether it is before the current startOperation. If yes, this will be the
-    // new startOperation.
-    if (aliasStartOperation->getBlock() == placementBlock &&
-        aliasStartOperation->isBeforeInBlock(startOperation)) {
-      startOperation = aliasStartOperation;
-    }
-  }
-  // startOperation is the first operation before which we can safely store the
-  // alloc taking all potential aliases into account.
-  return startOperation;
-}
+    // Move alloc (and dealloc - if any) nodes into the right places
+    // and insert dealloc nodes if necessary.
+    getFunction().walk([&](AllocOp alloc) {
+      // Find already associated dealloc nodes.
+      auto deallocs = analysis.findAssociatedDeallocs(alloc);
+      assert(deallocs.size() < 2 &
+             "Not supported number of associated dealloc operations");
 
-/// Finds a proper dealloc positions according to the algorithm described at the
-/// top of the file.
-template <typename AliasesT, typename DominatorT>
-static Operation* getDeallocPosition(Value value, const Liveness& liveness,
-                                     const AliasesT& aliases,
-                                     const DominatorT& postDominators) {
-  // Determine the actual block to place the dealloc and get liveness
-  // information.
-  auto placementBlock = findPlacementBlock(value, aliases, postDominators);
-  auto livenessInfo = liveness.getLiveness(placementBlock);
+      // Move alloc node to the right place.
+      BufferAssignmentPositions& positions = placements[alloc];
+      Operation* allocOperation = alloc.getOperation();
+      allocOperation->moveBefore(positions.getAllocPosition());
 
-  // We have to ensure that the dealloc will be after the last use of all
-  // aliases of the given value. We first assume that there are no uses in the
-  // placementBlock and that we can safely place the dealloc at the beginning.
-  Operation* endOperation = &placementBlock->front();
-  // Iterate over all aliases and ensure that the endOperation will point to the
-  // last operation of all potential aliases in the placementBlock.
-  for (auto alias : aliases) {
-    auto aliasEndOperation = livenessInfo->getEndOperation(alias, endOperation);
-    // Check whether the aliasEndOperation lies in the desired block and whether
-    // it is behind the current endOperation. If yes, this will be the new
-    // endOperation.
-    if (aliasEndOperation->getBlock() == placementBlock &&
-        endOperation->isBeforeInBlock(aliasEndOperation)) {
-      endOperation = aliasEndOperation;
-    }
-  }
-  // endOperation is the last operation behind which we can safely store the
-  // dealloc taking all potential aliases into account.
-  return endOperation;
-}
+      // If there is an existing dealloc, move it to the right place.
+      if (deallocs.size()) {
+        Operation* nextOp = positions.getDeallocPosition()->getNextNode();
+        if (!nextOp)
+          nextOp = &positions.getDeallocPosition()->getBlock()->back();
+        (*deallocs.begin())->moveBefore(nextOp);
+      } else {
+        // If there is no dealloc node, insert one in the right place.
+        OpBuilder builder(alloc);
+        builder.setInsertionPointAfter(positions.getDeallocPosition());
+        builder.create<DeallocOp>(allocOperation->getLoc(), alloc);
+      }
+    });
+  };
+};
 
-/// Creates a new BufferAssignment analysis.
-BufferAssignment::BufferAssignment(Operation* op)
-    : operation(op),
-      liveness(op),
-      dominators(op),
-      postDominators(op),
-      aliases(op) {}
-
-/// Computes the actual positions to place allocs and deallocs for the given
-/// value.
-BufferAssignmentPositions BufferAssignment::computeAllocAndDeallocPositions(
-    Value value) const {
-  // Check for an artifical case that a dead value is passed to this function
-  if (value.use_empty()) {
-    return BufferAssignmentPositions(value.getDefiningOp(),
-                                     value.getDefiningOp());
-  }
-  // Get all possible aliases
-  auto possibleValues = aliases.resolve(value);
-  return BufferAssignmentPositions(
-      getAllocPosition(value, liveness, possibleValues, dominators),
-      getDeallocPosition(value, liveness, possibleValues, postDominators));
-}
-
-/// Dumps the buffer assignment information in a human readable format.
-void BufferAssignment::dump() const { print(llvm::errs()); }
-
-/// Dumps the buffer assignment information to the given stream.
-void BufferAssignment::print(raw_ostream& os) const {
-  os << "// ---- Buffer Assignment -----\n";
-
-  for (Region& region : operation->getRegions())
-    for (Block& block : region)
-      for (Operation& operation : block)
-        for (Value result : operation.getResults()) {
-          BufferAssignmentPositions positions =
-              computeAllocAndDeallocPositions(result);
-          os << "Positions for ";
-          result.print(os);
-          os << "\n Alloc: ";
-          positions.getAllocPosition()->print(os);
-          os << "\n Dealloc: ";
-          positions.getDeallocPosition()->print(os);
-          os << "\n";
-        }
+std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass() {
+  return absl::make_unique<BufferAssignmentPass>();
 }
 
 /// A simple pass to print debug/test information for the buffer assignment
@@ -272,7 +412,7 @@ void BufferAssignment::print(raw_ostream& os) const {
 struct BufferAssignmentTestPass : mlir::FunctionPass<BufferAssignmentTestPass> {
   void runOnFunction() override {
     llvm::errs() << "Testing : " << getFunction().getName() << "\n";
-    getAnalysis<BufferAssignment>().print(llvm::errs());
+    getAnalysis<BufferAssignmentAnalysis>().print(llvm::errs());
   };
 };
 
