@@ -652,7 +652,7 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
                              input, output, data);
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 & int8/uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -680,10 +680,10 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int8 supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -734,7 +734,7 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -763,7 +763,7 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -834,10 +834,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int16 and int8 are supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int16 and int8 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -906,10 +906,10 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int16 and int8 are supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int16 and int8 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -930,7 +930,7 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
           CpuBackendContext::GetFromContext(context));
       return kTfLiteOk;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
           NumDimensions(input));
@@ -947,7 +947,7 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
                            GetTensorData<T>(output));
     return kTfLiteOk;
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
         NumDimensions(input));
     return kTfLiteError;
@@ -975,7 +975,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8_t and Int8_t are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -1033,7 +1033,7 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -1074,7 +1074,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 and uint8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -1123,7 +1123,7 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, int8 and uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -1141,9 +1141,9 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32 is supported currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
