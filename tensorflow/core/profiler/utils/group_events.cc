@@ -145,6 +145,11 @@ void EventNode::PropagateGroupId(int64 group_id) {
   group_id_ = group_id;
   SetGroupId(*visitor_, group_id, event_);
   for (const auto& child : children_) {
+    // Skip if it already belongs to a group. Some nodes may be added multiple
+    // times as child (e.g., sometimes async ops are executed synchronously and
+    // their nodes are added as child both in ConnectIntraThread and
+    // ConnectInterThread).
+    if (child->GetGroupId()) continue;
     child->PropagateGroupId(*group_id_);
   }
 }
