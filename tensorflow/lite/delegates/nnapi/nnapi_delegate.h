@@ -88,7 +88,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     // <max_number_delegated_partitions> of them will be actually accelerated.
     // The selection is currently done sorting partitions in decreasing order
     // of number of nodes and selecting them until the limit is reached.
-    int max_number_delegated_partitions = 0;
+    int max_number_delegated_partitions = 3;
   };
 
   // Uses default options.
