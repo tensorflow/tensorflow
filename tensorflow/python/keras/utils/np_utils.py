@@ -22,7 +22,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.utils.to_categorical')
-def to_categorical(y, num_classes=None, drop_first=False, dtype='float32'):
+def to_categorical(y, num_classes=None, dtype='float32', drop_first=False):
   """Converts a class vector (integers) to binary class matrix.
 
   E.g. for use with categorical_crossentropy.
