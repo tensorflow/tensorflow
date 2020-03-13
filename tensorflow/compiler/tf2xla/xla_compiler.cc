@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -1172,51 +1171,6 @@ Status XlaCompiler::BuildArguments(
   }
 
   return Status::OK();
-}
-
-Status XlaCompiler::CompileSingleOp(
-    const XlaCompiler::CompileOptions& options, const NodeDef& node_def,
-    absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types, CompilationResult* result) {
-  // TODO(b/74182462): We implement this by creating a new dummy Graph including
-  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  Status status;
-  // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
-
-  // Create dummy _Arg nodes. Link these to `node` and also via a control
-  // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < args.size(); ++i) {
-    Node* node;
-    string arg_name = absl::StrCat("_arg", i);
-    Status status =
-        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
-            .ControlInput(graph->source_node())
-            .Attr("T", args[i].kind == Argument::kResource ? DT_RESOURCE
-                                                           : args[i].type)
-            .Attr("index", i)
-            .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-    graph->AddEdge(node, 0, main_node, i);
-  }
-
-  // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < result_types.size(); ++i) {
-    Node* node;
-    string retval_name = absl::StrCat("_retval", i);
-    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
-                        .Input(main_node, i)
-                        .Attr("T", result_types[i])
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-  }
-  FixupSourceAndSinkEdges(graph.get());
-
-  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
 }
 
 namespace {
