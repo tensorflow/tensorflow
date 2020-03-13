@@ -186,6 +186,11 @@ def CheckGradConfigsToTest():
       Config([1, 15, 15, 2], [1, 3, 2, 1], [1, 15, 15, 2]),
       Config([2, 15, 16, 1], [3, 3, 1, 2], [2, 5, 5, 2], 3, padding="VALID"),
       Config([2, 5, 8, 1], [4, 3, 1, 2], [2, 5, 8, 2], dilations=[1, 2]),
+      # These cases test the kernels in depthwise_conv_op_gpu.h which are used
+      # if the input size is small.
+      Config([1, 3, 1, 2], [2, 1, 2, 1], [1, 3, 1, 2]),
+      Config([2, 2, 3, 2], [2, 1, 2, 1], [2, 2, 3, 2]),
+      Config([2, 2, 3, 1], [2, 2, 1, 1], [2, 2, 3, 1]),
   ]
 
 
