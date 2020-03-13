@@ -22,7 +22,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.utils.to_categorical')
-def to_categorical(y, num_classes=None, dtype='float32'):
+def to_categorical(y, num_classes=None, drop_first=False, dtype='float32'):
   """Converts a class vector (integers) to binary class matrix.
 
   E.g. for use with categorical_crossentropy.
@@ -35,20 +35,27 @@ def to_categorical(y, num_classes=None, dtype='float32'):
          [0., 1., 0., 0.],
          [0., 0., 1., 0.],
          [0., 0., 0., 1.]], dtype=float32)
+  >>> tf.keras.utils.to_categorical(y, num_classes=4, drop_first=True)
+  array([[0., 0., 0.],
+         [1., 0., 0.],
+         [0., 1., 0.],
+         [0., 0., 1.]], dtype=float32)
 
   Arguments:
       y: class vector to be converted into a matrix
           (integers from 0 to num_classes).
       num_classes: total number of classes.
+      drop_first: whether to drop the first column of the binary matrix.
+          Defaults to `False`.
       dtype: The data type expected by the input. Default: `'float32'`.
 
   Returns:
       A binary matrix representation of the input. The classes axis is placed
       last.
   """
-  y = np.array(y, dtype='int')
+  y = np.asarray(y, dtype='int')
   input_shape = y.shape
-  if input_shape and input_shape[-1] == 1 and len(input_shape) > 1:
+  if input_shape[-1] == 1 and len(input_shape) > 1:
     input_shape = tuple(input_shape[:-1])
   y = y.ravel()
   if not num_classes:
@@ -56,7 +63,11 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   n = y.shape[0]
   categorical = np.zeros((n, num_classes), dtype=dtype)
   categorical[np.arange(n), y] = 1
-  output_shape = input_shape + (num_classes,)
+  if drop_first:
+    categorical = categorical[:, 1:]
+    output_shape = input_shape + (num_classes - 1,)
+  else:
+    output_shape = input_shape + (num_classes,)
   categorical = np.reshape(categorical, output_shape)
   return categorical
 
