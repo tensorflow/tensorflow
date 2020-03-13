@@ -155,7 +155,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
     return static_cast<double>(env_->NowMicros()) / 1.0e6;
   }
 
-  Status InternalFlush() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status InternalFlush() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     for (const std::unique_ptr<Event>& e : queue_) {
       events_writer_->WriteEvent(*e);
     }
@@ -172,11 +172,11 @@ class SummaryFileWriter : public SummaryWriterInterface {
   uint64 last_flush_;
   Env* env_;
   mutex mu_;
-  std::vector<std::unique_ptr<Event>> queue_ GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Event>> queue_ TF_GUARDED_BY(mu_);
   // A pointer to allow deferred construction.
-  std::unique_ptr<EventsWriter> events_writer_ GUARDED_BY(mu_);
+  std::unique_ptr<EventsWriter> events_writer_ TF_GUARDED_BY(mu_);
   std::vector<std::pair<string, SummaryMetadata>> registered_summaries_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 }  // namespace

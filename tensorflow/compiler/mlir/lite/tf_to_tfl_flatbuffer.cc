@@ -169,7 +169,7 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     std::vector<std::string> exported_names =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
 
-    auto module = tensorflow::SavedModelToMlirImport(
+    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names), context);
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");
@@ -179,8 +179,8 @@ StatusOr<mlir::OwningModuleRef> ImportSavedModel(
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
 
-    auto module =
-        tensorflow::SavedModelV1ToMlirImport(input_filename, tags, context);
+    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, context);
 
     if (!module)
       return tensorflow::errors::InvalidArgument("fail to open input file");

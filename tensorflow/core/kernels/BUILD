@@ -325,15 +325,14 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
-        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
+        "//third_party/eigen3",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ],
+    ] + if_cuda_or_rocm([":gpu_utils"]),
     alwayslink = 1,
 )
 
@@ -1394,6 +1393,7 @@ tf_kernel_library(
 cc_library(
     name = "ragged_ops",
     deps = [
+        ":ragged_cross_op",
         ":ragged_gather_op",
         ":ragged_range_op",
         ":ragged_tensor_from_variant_op",
@@ -1545,6 +1545,15 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_kernel_library(
+    name = "ragged_cross_op",
+    srcs = ["ragged_cross_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -2270,6 +2279,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ],
 )
 
@@ -3981,6 +3991,48 @@ cc_library(
     }),
 )
 
+# TODO(annarev): conv_ops_3d_headers currently depends on android target build
+# from selected sources. We should switch to use granular dependencies instead.
+# Then, we can just depend on "conv3d".
+cc_library(
+    name = "conv_3d_mobile",
+    hdrs = [
+        "conv_3d.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_convolution_helpers.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
+        ":eigen_spatial_convolutions-inl",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+cc_library(
+    name = "conv_ops_3d_headers",
+    hdrs = [
+        "conv_ops_3d.h",
+    ],
+    deps = select({
+        "//tensorflow:android": [
+            ":conv_3d_mobile",
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            ":conv_3d",
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",
@@ -4079,13 +4131,12 @@ tf_kernel_library(
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
         ":fused_eigen_output_kernels",
-        ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
-    ]),
+    ]) + if_cuda_or_rocm([":gpu_utils"]),
 )
 
 tf_mkl_kernel_library(
@@ -4527,11 +4578,11 @@ tf_kernel_library(
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
+        ":conv_ops_3d_headers",
         ":bounds_check",
         ":conv_2d",
         ":conv_3d",
         ":eigen_contraction_kernel",
-        ":gpu_utils",
         ":image_resizer_state",
         ":fill_functor",
         ":fused_eigen_output_kernels",
@@ -4545,7 +4596,6 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/util/proto:proto_utils",
         "//tensorflow/stream_executor/gpu:gpu_asm_opts",
-        "//tensorflow/stream_executor/gpu:redzone_allocator",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4557,6 +4607,9 @@ tf_kernel_library(
         "//tensorflow/stream_executor:tf_allocator_adapter",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/core:stream_executor",
+    ]) + if_cuda_or_rocm([
+        ":gpu_utils",
+        "//tensorflow/stream_executor/gpu:redzone_allocator",
     ]),
 )
 
@@ -6504,6 +6557,7 @@ filegroup(
         "conv_2d.h",
         "conv_3d.h",
         "conv_ops.h",
+        "conv_ops_3d.h",
         "conv_ops_gpu.h",
         "data_format_ops.h",
         "depthtospace_op.h",

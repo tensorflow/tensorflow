@@ -87,20 +87,20 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
       return matchFailure();
 
     auto comparison_direction = op.comparison_direction();
-    CmpFPredicate compare_predicate =
-        llvm::StringSwitch<CmpFPredicate>(comparison_direction)
+    auto compare_predicate =
+        llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
             .Case("EQ", CmpFPredicate::OEQ)
             .Case("NE", CmpFPredicate::UNE)
             .Case("LT", CmpFPredicate::OLT)
             .Case("LE", CmpFPredicate::OLE)
             .Case("GT", CmpFPredicate::OGT)
             .Case("GE", CmpFPredicate::OGE)
-            .Default(CmpFPredicate::NumPredicates);
+            .Default(llvm::None);
 
-    if (compare_predicate == CmpFPredicate::NumPredicates)
-      return matchFailure();
+    if (!compare_predicate.hasValue()) return matchFailure();
 
-    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate, lhs, rhs);
+    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
+                                        rhs);
     return matchSuccess();
   }
 };

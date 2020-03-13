@@ -305,6 +305,11 @@ float4 GetMaskForLastPlane(int channels);
 // returns first work group from wgs that has size not bigger than max_wg_size
 // if no suitable groups among wgs, returns {1, 1, 1}
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
+
+// task_size as amount of FLT4 processed elements.
+int GetRecommendedBlockSizeForConv(const CLDevice& device,
+                                   CalculationsPrecision precision,
+                                   int task_size);
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

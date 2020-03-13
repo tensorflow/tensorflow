@@ -201,7 +201,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::vector<std::unique_ptr<IteratorBase>> input_impls_ GUARDED_BY(mu_);
+    std::vector<std::unique_ptr<IteratorBase>> input_impls_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<DatasetBase*> inputs_;

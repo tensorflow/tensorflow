@@ -25,7 +25,7 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 _sparsification_wrapper = LazyLoader(
     "_sparsification_wrapper", globals(),
     "tensorflow.lite.python.optimize."
-    "tensorflow_lite_wrap_sparsification_wrapper")
+    "_pywrap_tensorflow_lite_sparsification_wrapper")
 
 
 class Sparsifier(object):
@@ -38,7 +38,7 @@ class Sparsifier(object):
     """Constructor.
 
     Args:
-      model_content: Content of a TF-Lite Flatbuffer file.
+      model_content: Content of a TFLite Flatbuffer file.
 
     Raises:
       ValueError: If unable to open the model.
@@ -47,8 +47,7 @@ class Sparsifier(object):
       raise ValueError("`model_content` must be specified.")
     try:
       self._sparsifier = (
-          _sparsification_wrapper.SparsificationWrapper
-          .CreateWrapperCPPFromBuffer(model_content))
+          _sparsification_wrapper.SparsificationWrapper(model_content))
     except Exception as e:
       raise ValueError("Failed to parse the model: %s." % e)
     if not self._sparsifier:
@@ -59,6 +58,5 @@ class Sparsifier(object):
 
     Returns:
       A sparse model.
-
     """
     return self._sparsifier.SparsifyModel()

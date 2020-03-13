@@ -99,7 +99,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   // TODO(jeff,sanjay): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
+  std::unordered_map<string, WorkerState> workers_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace

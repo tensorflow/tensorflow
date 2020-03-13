@@ -1,4 +1,4 @@
-# Settings for XMOS XS3 based processors
+# Settings for XMOS XS3 based processors (xcore.ai, ...)
 
 #IMPORTANT: 
 # either install xmos tools 15.x on your system
@@ -6,9 +6,8 @@
 # simply run the docker container before calling make, etc.:
 # $ docker run -it -v$(pwd):/home/builder:z --rm xcoreai/build-tools:latest make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" <your make target>
 
-#TODO changing this file doesn't mark build as dirty
 ifeq ($(TARGET), xcore)
-  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -Wno-unknown-pragmas -Wno-unknown-attributes -report
+  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   

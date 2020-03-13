@@ -31,15 +31,14 @@ void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Matrix multiplication for quantized values using asymmetric quantization.
 void SseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride,
-    const float* __restrict__ per_channel_scale,
+    float* __restrict__ result, const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset);
 
 // Matrix multiplication for quantized values using symmetric quantization.

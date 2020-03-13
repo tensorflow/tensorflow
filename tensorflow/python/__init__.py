@@ -98,15 +98,20 @@ from tensorflow.python.ops.distributions import distributions
 from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.linalg.sparse import sparse
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.ops.ragged import ragged_ops as _ragged_ops
 from tensorflow.python.ops.signal import signal
 from tensorflow.python.profiler import profiler
 from tensorflow.python.profiler import profiler_client
 from tensorflow.python.profiler import profiler_v2
+from tensorflow.python.profiler import trace
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
 from tensorflow.python.tpu import api
 from tensorflow.python.user_ops import user_ops
 from tensorflow.python.util import compat
+
+# Update the RaggedTensor package docs w/ a list of ops that support dispatch.
+ragged.__doc__ += _ragged_ops.ragged_dispatch.ragged_op_list()
 
 # Import to make sure the ops are registered.
 from tensorflow.python.ops import gen_audio_ops

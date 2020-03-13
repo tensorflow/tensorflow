@@ -50,8 +50,7 @@ namespace {
 using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
-  std::unique_ptr<tflite::ModelT> copied_model =
-      absl::make_unique<tflite::ModelT>();
+  auto copied_model = absl::make_unique<tflite::ModelT>();
   model.UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }

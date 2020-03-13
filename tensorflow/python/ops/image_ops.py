@@ -143,7 +143,7 @@ the decode Ops to one of the cropping and resizing Ops.
 *   `tf.io.decode_and_crop_jpeg`
 *   `tf.io.decode_png`
 *   `tf.io.encode_jpeg`
-*   `tf.image.encode_png`
+*   `tf.io.encode_png`
 
 """
 from __future__ import absolute_import

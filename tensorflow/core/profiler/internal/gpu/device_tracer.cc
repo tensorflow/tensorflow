@@ -72,7 +72,8 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (kernel_name.empty()) {
     kernel_name = GetTraceEventTypeName(event.type);
   }
-  XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
+  XEventMetadata* event_metadata =
+      plane->GetOrCreateEventMetadata(std::move(kernel_name));
   XEventBuilder xevent = line->AddEvent(*event_metadata);
   xevent.SetTimestampNs(event.start_time_ns);
   xevent.SetEndTimestampNs(event.end_time_ns);
@@ -489,8 +490,9 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
 
     mutex m;
-    std::vector<CuptiTracerEvent> events GUARDED_BY(m);
-    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info GUARDED_BY(m);
+    std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
+    absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
+        TF_GUARDED_BY(m);
   };
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
 

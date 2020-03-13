@@ -229,6 +229,8 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("allowed_devices", &allowed_devices_));
 
   is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
 
@@ -239,7 +241,8 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
                                                    &resource_, attr));
     resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         context, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
   }
 }
 
@@ -252,7 +255,8 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
     ctx->set_output(0, handle);
   } else {
     ctx->set_output(0, resource_);

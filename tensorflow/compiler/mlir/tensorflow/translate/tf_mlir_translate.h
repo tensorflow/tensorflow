@@ -52,7 +52,7 @@ mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
 // Converts a TensorFlow SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
-mlir::OwningModuleRef SavedModelToMlirImport(
+mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context);
@@ -60,7 +60,7 @@ mlir::OwningModuleRef SavedModelToMlirImport(
 // Converts a TensorFlow V1 SavedModel stored in the directory with the given
 // `saved_model_dir` into a MLIR module. Creates MLIR entities into the
 // given MLIR `context`.
-mlir::OwningModuleRef SavedModelV1ToMlirImport(
+mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags, mlir::MLIRContext* context);
 

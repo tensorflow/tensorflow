@@ -22,27 +22,13 @@ limitations under the License.
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tflite/operator.h"
 #include "tensorflow/lite/toco/tooling_util.h"
+#include "tensorflow/lite/tools/versioning/runtime_version.h"
 
 namespace toco {
 namespace tflite {
 
-bool CompareVersion(const string& v1, const string& v2) {
-  const std::vector<string>& vec1 = absl::StrSplit(v1, '.');
-  const std::vector<string>& vec2 = absl::StrSplit(v2, '.');
-  int i = 0;
-  while (i < vec1.size() && i < vec2.size()) {
-    int v1_val, v2_val;
-    if (absl::SimpleAtoi(vec1[i], &v1_val) &&
-        absl::SimpleAtoi(vec2[i], &v2_val)) {
-      if (v1_val != v2_val) return v1_val < v2_val;
-    }
-    ++i;
-  }
-  // If there are remaining items in v2 not being compared, then v1 should
-  // precede v2.
-  return i < vec2.size();
-}
-
+// Deprecated and please register new ops/versions in
+// tflite/tools/versioning/op_version.cc".
 string GetMinimumRuntimeVersionForModel(const Model& model) {
   // Use this as the placeholder string if a particular op is not yet included
   // in any Tensorflow's RC/Final release source package. Once that op is
@@ -253,7 +239,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
       // doesn't have a minimum runtime version associated, continue.
       continue;
     }
-    if (CompareVersion(model_min_version, it->second)) {
+    if (::tflite::CompareRuntimeVersion(model_min_version, it->second)) {
       // Current min model runtime version should be bumped if we see a higher
       // op version.
       model_min_version = it->second;

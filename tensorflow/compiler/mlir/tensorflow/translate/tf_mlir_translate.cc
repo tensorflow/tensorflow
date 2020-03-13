@@ -116,7 +116,7 @@ mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
   return module_or.ConsumeValueOrDie();
 }
 
-mlir::OwningModuleRef SavedModelToMlirImport(
+mlir::OwningModuleRef SavedModelObjectGraphToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
@@ -137,7 +137,7 @@ mlir::OwningModuleRef SavedModelToMlirImport(
   return module_or.ConsumeValueOrDie();
 }
 
-mlir::OwningModuleRef SavedModelV1ToMlirImport(
+mlir::OwningModuleRef SavedModelSignatureDefsToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags, mlir::MLIRContext* context) {
   tensorflow::SavedModelBundle bundle;

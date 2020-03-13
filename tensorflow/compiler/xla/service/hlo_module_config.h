@@ -183,6 +183,12 @@ class HloModuleConfig {
     return &fusion_config_;
   }
 
+  const std::vector<std::vector<int64>>& dot_config() const {
+    return dot_config_;
+  }
+
+  std::vector<std::vector<int64>>* mutable_dot_config() { return &dot_config_; }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -213,7 +219,14 @@ class HloModuleConfig {
   FusionConfigCollection fusion_config_collection_ =
       FusionConfigCollection::kOff;
 
+  // Custom fusion configuration, where fusion_config_[c][v] control if node v
+  // in computation c must be fused to all its consumers (true) or not (false).
   std::vector<std::vector<bool>> fusion_config_;
+
+  // Custom dot canonicalization configuration, where dot_config_[v] control
+  // how to convert dot operation v (sorted topologically and by computation) to
+  // convolution.
+  std::vector<std::vector<int64>> dot_config_;
 };
 
 }  // namespace xla

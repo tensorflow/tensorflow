@@ -172,8 +172,9 @@ class XlaExecutableClosureStore {
 
  private:
   mutex mutex_;
-  int64 key_counter_ GUARDED_BY(mutex_);
-  absl::flat_hash_map<KeyT, XlaExecutableClosure> closures_ GUARDED_BY(mutex_);
+  int64 key_counter_ TF_GUARDED_BY(mutex_);
+  absl::flat_hash_map<KeyT, XlaExecutableClosure> closures_
+      TF_GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExecutableClosureStore);
 };

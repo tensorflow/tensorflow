@@ -133,7 +133,7 @@ class TensorDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    bool produced_ GUARDED_BY(mu_);
+    bool produced_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<Tensor> tensors_;

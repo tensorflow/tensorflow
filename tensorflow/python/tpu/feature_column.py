@@ -86,7 +86,10 @@ def embedding_column(categorical_column,
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of embedding_column, otherwise performence
+      may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the
@@ -196,7 +199,10 @@ def shared_embedding_columns(categorical_columns,
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of shared_embedding_columns, otherwise
+      performence may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the

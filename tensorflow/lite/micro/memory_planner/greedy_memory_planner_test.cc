@@ -248,7 +248,7 @@ TF_LITE_MICRO_TEST(TestOverlapCase) {
                           planner.AddBuffer(error_reporter, 20, 1, 2));
 
   planner.PrintMemoryPlan(error_reporter);
-  
+
   TF_LITE_MICRO_EXPECT_EQ(false, planner.DoAnyBuffersOverlap(error_reporter));
 
   TF_LITE_MICRO_EXPECT_EQ(120, planner.GetMaximumMemorySize());

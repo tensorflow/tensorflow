@@ -61,13 +61,13 @@ class DistributedValues(object):
 
   A subclass instance of DistributedValues is created when creating variables
   within a distribution strategy, iterating a `tf.Dataset` or through
-  `strategy.experimental_run_v2`.  This base class should never be instantiated
+  `strategy.run`.  This base class should never be instantiated
   directly.  DistributedValues contains a value per replica.  Depending on
   the subclass, the values could either be synced on update, synced on demand,
   or never synced.
 
   DistributedValues can be reduced to obtain single value across replicas,
-  as input into `experimental_run_v2` or the per replica values inspected
+  as input into `run` or the per replica values inspected
   using `experimental_local_results`.
 
   Example usage:
@@ -79,16 +79,16 @@ class DistributedValues(object):
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
   >>> distributed_values = next(dataset_iterator)
 
-  2. Returned by `experimental_run_v2`:
+  2. Returned by `run`:
 
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> @tf.function
   ... def run():
   ...   ctx = tf.distribute.get_replica_context()
   ...   return ctx.replica_id_in_sync_group
-  >>> distributed_values = strategy.experimental_run_v2(run)
+  >>> distributed_values = strategy.run(run)
 
-  3. As input into `experimental_run_v2`:
+  3. As input into `run`:
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -96,7 +96,7 @@ class DistributedValues(object):
   >>> @tf.function
   ... def run(input):
   ...   return input + 1.0
-  >>> updated_value = strategy.experimental_run_v2(run,
+  >>> updated_value = strategy.run(run,
   ...                                              args=(distributed_values,))
 
   4. Reduce value
@@ -1071,8 +1071,17 @@ ops.register_tensor_conversion_function(SyncOnReadVariable,
                                         _tensor_conversion_sync_on_read)
 
 
-def regroup(values, wrap_class=PerReplica):
-  """Makes a nest per-replica into a nest of PerReplica/Mirrored values."""
+def regroup(values, wrap_class=PerReplica, always_wrap=False):
+  """Makes a nest per-replica into a nest of PerReplica/Mirrored values.
+
+  Args:
+    values: Values to regroup
+    wrap_class: Class that `values` be wrapped in.
+    always_wrap: Always wrap the `values` in `wrap_class` even if the values
+        are the same except for DistributeVariable.
+  Returns:
+    Wrapped `values`.
+  """
   v0 = values[0]
 
   if isinstance(v0, list):
@@ -1124,14 +1133,16 @@ def regroup(values, wrap_class=PerReplica):
   #   devices), we want to return it. We check DistributedVariable
   #   specifically since it can look like it has a
   #   _distributed_container member since its members do.
+  if same_id and isinstance(v0, DistributedVariable):
+    return v0
   # * If v0 is a member of a distributed variable, in which case
   #   hasattr(v0, "_distributed_container") is true, we want to
   #   return the DistributedVariable that contains it using the
   #   _distributed_container logic below. This case can trigger
   #   same_id when there is only one device.
-  # * In any other situation, same_id means we return v0.
-  if same_id and (isinstance(v0, DistributedVariable) or
-                  not hasattr(v0, "_distributed_container")):
+  # * In any other situation, same_id means we return v0 unless `always_wrap` is
+  #   true.
+  if same_id and not always_wrap and not hasattr(v0, "_distributed_container"):
     return v0
 
   # Detect the case where each device has a parallel component of the

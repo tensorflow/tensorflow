@@ -265,30 +265,32 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
 }
 
 template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                               const RuntimeShape& input_shape,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
-  static const int32 alpha_value = q_alpha - params.alpha_offset;
   for (int i = 0; i < flat_size; ++i) {
     const int32 input_value = input_data[i] - params.input_offset;
+    int32 unclamped_output;
     if (input_value >= 0) {
-      output_data[i] = input_data[i];
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_identity,
+                             params.output_shift_identity);
     } else {
-      const int32 unclamped_output =
-          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                                     input_value * alpha_value,
-                                     params.output_multiplier,
-                                     params.output_shift);
-      const T clamped_output =
-          std::min(quantized_max, std::max(quantized_min, unclamped_output));
-      output_data[i] = static_cast<uint8>(clamped_output);
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_alpha,
+                             params.output_shift_alpha);
     }
+    const T clamped_output =
+        std::min(quantized_max, std::max(quantized_min, unclamped_output));
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -2028,12 +2030,24 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SpaceToBatchND");
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);
@@ -2045,13 +2059,14 @@ inline void SpaceToBatchND(
   const int output_batch_size = output_shape.Dims(0);
 
   const int block_shape_height = block_shape_data[0];
-  const int block_shape_width = block_shape_data[1];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int padding_top = paddings_data[0];
-  const int padding_left = paddings_data[2];
+  const int padding_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? paddings_data[2] : 0;
 
   // For uint8 quantized, the correct padding "zero value" is the output offset.
   const int32_t pad_value = params.output_offset;
-
   for (int out_b = 0; out_b < output_batch_size; ++out_b) {
     int input_batch = out_b % input_batch_size;
     int shift_w = (out_b / input_batch_size) % block_shape_width;

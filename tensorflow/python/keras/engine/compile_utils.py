@@ -31,17 +31,91 @@ from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.util import nest
 
 
-class LossesContainer(object):
+class Container(object):
+  """Base Container class."""
+
+  def __init__(self, output_names=None):
+    self._output_names = output_names
+
+  def _build(self, y_pred):
+    if self._output_names is None:
+      # In Subclass API, output names like 'output_1' are used for
+      # `Metric` names.
+      self._output_names = create_pseudo_output_names(y_pred)
+
+  def _conform_to_outputs(self, outputs, struct):
+    """Convenience method to conform `struct` to `outputs` structure.
+
+    Mappings performed:
+
+    (1) Map a dict to a list of outputs, using the output names.
+    (2) Fill missing keys in a dict w/ `None`s.
+    (3) Map a single item to all outputs.
+
+    Arguments:
+      outputs: Model predictions.
+      struct: Arbitrary nested structure (e.g. of labels, sample_weights,
+        losses, or metrics).
+
+    Returns:
+      Mapping of `struct` to `outputs` structure.
+    """
+    struct = map_to_output_names(outputs, self._output_names, struct)
+    struct = map_missing_dict_keys(outputs, struct)
+    # Allow passing one object that applies to all outputs.
+    if not nest.is_sequence(struct) and nest.is_sequence(outputs):
+      struct = nest.map_structure(lambda _: struct, outputs)
+    return struct
+
+  def _maybe_broadcast_to_outputs(self, outputs, objects):
+    """Determines if losses / metrics should be applied to all outputs.
+
+    NOTE: This method should only be called for Metrics / Losses, not for
+    y_true / sample_weight.
+
+    Arguments:
+      outputs: Model predictions.
+      objects: Arbitrary nested structure (e.g. of losses or metrics)
+
+    Returns:
+      Arbitrary nested structure of objects, maybe copied to each output.
+
+    Applies a Loss / Metric to all outputs.
+    """
+    if not self._should_broadcast(objects):
+      return objects
+
+    # When there is more than one Model output, this is needed to keep
+    # each Metric / Loss separate. When there is only one Model output,
+    # the user-supplied object should be used.
+    should_copy_objects = len(nest.flatten(outputs)) > 1
+
+    def _broadcast_fn():
+      if should_copy_objects:
+        return nest.map_structure(self._copy_object, objects)
+      return objects
+
+    return nest.map_structure(lambda _: _broadcast_fn(), outputs)
+
+  def _should_broadcast(self, objects):
+    raise NotImplementedError
+
+  def _copy_object(self, obj):
+    raise NotImplementedError
+
+
+class LossesContainer(Container):
   """A container class for losses passed to `Model.compile`."""
 
   def __init__(self, losses, loss_weights=None, output_names=None):
+    super(LossesContainer, self).__init__(output_names=output_names)
+
     # Keep user-supplied values untouched for recompiling and serialization.
     self._user_losses = losses
     self._user_loss_weights = loss_weights
 
     self._losses = losses
     self._loss_weights = loss_weights
-    self._output_names = output_names
     self._per_output_metrics = None  # Per-output losses become metrics.
     self._loss_metric = metrics_mod.Mean(name='loss')  # Total loss.
     self._built = False
@@ -59,32 +133,23 @@ class LossesContainer(object):
 
   def _build(self, y_pred):
     """One-time setup of loss objects."""
+    super(LossesContainer, self)._build(y_pred)
 
-    if self._output_names is None:
-      # In Subclass API,  output names like 'output_1' are used for
-      # `Metric` names.
-      self._output_names = create_pseudo_output_names(y_pred)
-
-    # Accept a dict of losses keyed by output_name when outputs are a flat
-    # list.
-    self._losses = map_to_output_names(y_pred, self._output_names, self._losses)
-    self._loss_weights = map_to_output_names(y_pred, self._output_names,
-                                             self._loss_weights)
-
-    # Broadcast single config values to apply to each output.
-    if not nest.is_sequence(self._losses):
-      self._losses = nest.map_structure(lambda output: self._losses, y_pred)
-    if not nest.is_sequence(self._loss_weights):
-      self._loss_weights = nest.map_structure(lambda output: self._loss_weights,
-                                              y_pred)
-
+    self._losses = self._maybe_broadcast_to_outputs(y_pred, self._losses)
+    self._losses = self._conform_to_outputs(y_pred, self._losses)
     self._losses = nest.map_structure(self._get_loss_object, self._losses)
-
-    # Now that structures have been checked, it is safe to flatten.
     self._losses = nest.flatten(self._losses)
+
+    self._loss_weights = self._maybe_broadcast_to_outputs(
+        y_pred, self._loss_weights)
+    self._loss_weights = self._conform_to_outputs(y_pred, self._loss_weights)
     self._loss_weights = nest.flatten(self._loss_weights)
 
-    # Create per-output loss metrics, but only for multi-output Models.
+    self._create_metrics()
+    self._built = True
+
+  def _create_metrics(self):
+    """Creates per-output loss metrics, but only for multi-output Models."""
     if len(self._output_names) == 1:
       self._per_output_metrics = [None]
     else:
@@ -95,8 +160,6 @@ class LossesContainer(object):
         else:
           self._per_output_metrics.append(
               metrics_mod.Mean(output_name + '_loss'))
-
-    self._built = True
 
   def __call__(self,
                y_true,
@@ -117,35 +180,22 @@ class LossesContainer(object):
     Returns:
       Tuple of `(total_loss, per_output_loss_list)`
     """
-    y_true = map_to_output_names(y_pred, self._output_names, y_true)
-    sample_weight = map_to_output_names(y_pred, self._output_names,
-                                        sample_weight)
+    y_true = self._conform_to_outputs(y_pred, y_true)
+    sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
       self._build(y_pred)
 
-    y_true = nest.flatten(y_true) if y_true is not None else []
     y_pred = nest.flatten(y_pred)
-
-    # TODO(omalleyt): Remove ambiguity here.
-    # This is currently needed to support passing only 1 loss and 1 target
-    # to a Functional Model with multiple outputs. However, this is
-    # ambiguous, especially with subclass, and we should reconsider how we
-    # support this.
-    if len(y_true) == 1 and len(y_pred) > 1:
-      y_true = y_true * len(y_pred)
-
+    y_true = nest.flatten(y_true)
     sample_weight = nest.flatten(sample_weight)
-    # Allows passing one sample-weight array for all outputs.
-    if len(sample_weight) == 1 and len(y_pred) > 1:
-      sample_weight = sample_weight * len(y_pred)
 
     loss_values = []  # Used for gradient calculation.
     loss_metric_values = []  # Used for loss metric calculation.
     zip_args = (y_true, y_pred, sample_weight, self._losses, self._loss_weights,
                 self._per_output_metrics)
     for y_t, y_p, sw, loss_obj, loss_weight, metric_obj in zip(*zip_args):
-      if loss_obj is None:  # Ok to have no loss for an output.
+      if y_t is None or loss_obj is None:  # Ok to have no loss for an output.
         continue
 
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
@@ -213,18 +263,25 @@ class LossesContainer(object):
     loss._allow_sum_over_batch_size = True  # pylint: disable=protected-access
     return loss
 
+  def _should_broadcast(self, obj):
+    return not nest.is_sequence(obj)
 
-class MetricsContainer(object):
+  def _copy_object(self, obj):
+    return obj  # Losses don't need to be copied.
+
+
+class MetricsContainer(Container):
   """A container class for metrics passed to `Model.compile`."""
 
   def __init__(self, metrics=None, weighted_metrics=None, output_names=None):
+    super(MetricsContainer, self).__init__(output_names=output_names)
+
     # Keep user-supplied values untouched for recompiling and serialization.
     self._user_metrics = metrics
     self._user_weighted_metrics = weighted_metrics
 
     self._metrics = metrics
     self._weighted_metrics = weighted_metrics
-    self._output_names = output_names
     self._built = False
 
   @property
@@ -236,22 +293,15 @@ class MetricsContainer(object):
 
   def _build(self, y_pred, y_true):
     """One-time setup of metric objects."""
+    super(MetricsContainer, self)._build(y_pred)
 
-    if self._output_names is None:
-      # Subclass output names like 'output_1' are used for `Metric` names.
-      self._output_names = create_pseudo_output_names(y_pred)
+    self._metrics = self._maybe_broadcast_to_outputs(y_pred, self._metrics)
+    self._metrics = self._conform_to_outputs(y_pred, self._metrics)
 
-    # If a single metric or flat list of metrics, apply to all outputs.
-    self._metrics = self._maybe_broadcast(self._metrics, y_pred)
-    self._weighted_metrics = self._maybe_broadcast(self._weighted_metrics,
-                                                   y_pred)
-
-    # Accept a dict of metrics keyed by output_name when outputs are a flat
-    # list.
-    self._metrics = map_to_output_names(y_pred, self._output_names,
-                                        self._metrics)
-    self._weighted_metrics = map_to_output_names(y_pred, self._output_names,
-                                                 self._weighted_metrics)
+    self._weighted_metrics = self._maybe_broadcast_to_outputs(
+        y_pred, self._weighted_metrics)
+    self._weighted_metrics = self._conform_to_outputs(y_pred,
+                                                      self._weighted_metrics)
 
     # Standardize on tuple since `tf.data` turns lists into `Tensor`s.
     # pylint: disable=protected-access
@@ -276,18 +326,7 @@ class MetricsContainer(object):
 
     # Assumes metrics, weighted_metrics have been flattened up to outputs.
     self._set_metric_names()
-
-    # Cache the flat order needed when returning metrics, for backwards compat.
-    self._metrics_in_order = []
-    for output_metrics, output_weighted_metrics in zip(self._metrics,
-                                                       self._weighted_metrics):
-      for m in nest.flatten(output_metrics):
-        if m is not None:
-          self._metrics_in_order.append(m)
-      for wm in nest.flatten(output_weighted_metrics):
-        if wm is not None:
-          self._metrics_in_order.append(wm)
-
+    self._create_ordered_metrics()
     self._built = True
 
   def _set_metric_names(self):
@@ -326,38 +365,38 @@ class MetricsContainer(object):
         metric_names.add(wm._name)
     # pylint: enable=protected-access
 
+  def _create_ordered_metrics(self):
+    """Cache the flat order needed when returning metrics, for backwards compat."""
+    self._metrics_in_order = []
+    for output_metrics, output_weighted_metrics in zip(self._metrics,
+                                                       self._weighted_metrics):
+      for m in nest.flatten(output_metrics):
+        if m is not None:
+          self._metrics_in_order.append(m)
+      for wm in nest.flatten(output_weighted_metrics):
+        if wm is not None:
+          self._metrics_in_order.append(wm)
+
   def update_state(self, y_true, y_pred, sample_weight=None):
     """Updates the state of per-output metrics."""
-    y_true = map_to_output_names(y_pred, self._output_names, y_true)
-    sample_weight = map_to_output_names(y_pred, self._output_names,
-                                        sample_weight)
-
-    flat_y_true = nest.flatten(y_true) if y_true is not None else []
-    flat_y_pred = nest.flatten(y_pred)
-
-    if not flat_y_true:
-      return  # Handle case where no targets are passed.
-
-    # TODO(omalleyt): Remove ambiguity here (see LossesContainer).
-    if len(flat_y_true) == 1 and len(flat_y_pred) > 1:
-      y_true = nest.map_structure(lambda _: flat_y_true[0], y_pred)
-      flat_y_true = nest.flatten(y_true)
+    y_true = self._conform_to_outputs(y_pred, y_true)
+    sample_weight = self._conform_to_outputs(y_pred, sample_weight)
 
     if not self._built:
-      # `_build` needs unflattened outputs and labels.
       self._build(y_pred, y_true)
 
-    y_true = flat_y_true
-    y_pred = flat_y_pred
-
+    y_pred = nest.flatten(y_pred)
+    y_true = nest.flatten(y_true) if y_true is not None else []
     sample_weight = nest.flatten(sample_weight)
-    # Allows passing one sample-weight array for all outputs.
-    if len(sample_weight) == 1 and len(y_pred) > 1:
-      sample_weight = sample_weight * len(y_pred)
 
     zip_args = (y_true, y_pred, sample_weight, self._metrics,
                 self._weighted_metrics)
     for y_t, y_p, sw, metric_objs, weighted_metric_objs in zip(*zip_args):
+      # Ok to have no metrics for an output.
+      if (y_t is None or (all(m is None for m in metric_objs) and
+                          all(wm is None for wm in weighted_metric_objs))):
+        continue
+
       y_t, y_p, sw = match_dtype_and_rank(y_t, y_p, sw)
       sw = apply_mask(y_p, sw)
 
@@ -432,30 +471,18 @@ class MetricsContainer(object):
 
     return metric_obj
 
-  def _maybe_broadcast(self, metrics, y_pred):
-    """If a flat list of Metrics is supplied, apply them to all outputs."""
+  def _should_broadcast(self, obj):
+    # e.g. 'mse'.
+    if not nest.is_sequence(obj):
+      return True
+    # e.g. ['mse'] or ['mse', 'mae'].
+    return (isinstance(obj, (list, tuple)) and
+            not any(nest.is_sequence(o) for o in obj))
 
-    def _should_broadcast(metrics):
-      # e.g. 'mse'.
-      if not nest.is_sequence(metrics):
-        return True
-      # e.g. ['mse'] or ['mse', 'mae'].
-      return (isinstance(metrics, (list, tuple)) and
-              not any(nest.is_sequence(m) for m in metrics))
-
-    if _should_broadcast(metrics):
-      copy_metrics = len(nest.flatten(y_pred)) > 1
-
-      def _maybe_copy(m):
-        if copy_metrics and isinstance(m, metrics_mod.Metric):
-          return m.__class__.from_config(m.get_config())
-        return m
-
-      metrics = nest.flatten(metrics)
-      return nest.map_structure(lambda _: [_maybe_copy(m) for m in metrics],
-                                y_pred)
-
-    return metrics
+  def _copy_object(self, obj):
+    if isinstance(obj, metrics_mod.Metric):
+      return obj.__class__.from_config(obj.get_config())
+    return obj  # Can be a function or `None`.
 
 
 def create_pseudo_output_names(outputs):
@@ -540,10 +567,10 @@ def map_to_output_names(y_pred, output_names, struct):
   Returns:
     `struct` mapped to a list in same order as `output_names`.
   """
-  outputs_are_flat_list = (
-      isinstance(y_pred, (list, tuple)) and
-      not any(nest.is_sequence(y_p) for y_p in y_pred))
   single_output = not nest.is_sequence(y_pred)
+  outputs_are_flat_list = (not single_output and
+                           isinstance(y_pred, (list, tuple)) and
+                           not any(nest.is_sequence(y_p) for y_p in y_pred))
 
   if (single_output or outputs_are_flat_list) and isinstance(struct, dict):
     output_names = output_names or create_pseudo_output_names(y_pred)
@@ -558,6 +585,16 @@ def map_to_output_names(y_pred, output_names, struct):
     return new_struct
   else:
     return struct
+
+
+def map_missing_dict_keys(y_pred, struct):
+  """Replaces missing dict keys in `struct` with `None` placeholders."""
+  if not isinstance(y_pred, dict) or not isinstance(struct, dict):
+    return struct
+  for k in y_pred.keys():
+    if k not in struct:
+      struct[k] = None
+  return struct
 
 
 def match_dtype_and_rank(y_t, y_p, sw):

@@ -73,6 +73,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "random_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "random_uniform"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "truncated_normal"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "zeros"
     mtype: "<type \'type\'>"
   }

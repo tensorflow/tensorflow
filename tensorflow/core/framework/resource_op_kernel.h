@@ -70,23 +70,23 @@ class ResourceOpKernel : public OpKernel {
     }
   }
 
-  void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
+  void Compute(OpKernelContext* context) override TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     if (resource_ == nullptr) {
       ResourceMgr* mgr = context->resource_manager();
       OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
       T* resource;
-      OP_REQUIRES_OK(
-          context,
-          mgr->LookupOrCreate<T>(cinfo_.container(), cinfo_.name(), &resource,
-                                 [this](T** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                                   Status s = CreateResource(ret);
-                                   if (!s.ok() && *ret != nullptr) {
-                                     CHECK((*ret)->Unref());
-                                   }
-                                   return s;
-                                 }));
+      OP_REQUIRES_OK(context,
+                     mgr->LookupOrCreate<T>(
+                         cinfo_.container(), cinfo_.name(), &resource,
+                         [this](T** ret) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                           Status s = CreateResource(ret);
+                           if (!s.ok() && *ret != nullptr) {
+                             CHECK((*ret)->Unref());
+                           }
+                           return s;
+                         }));
 
       Status s = VerifyResource(resource);
       if (TF_PREDICT_FALSE(!s.ok())) {
@@ -114,13 +114,14 @@ class ResourceOpKernel : public OpKernel {
  protected:
   // Variables accessible from subclasses.
   mutex mu_;
-  ContainerInfo cinfo_ GUARDED_BY(mu_);
-  T* resource_ GUARDED_BY(mu_) = nullptr;
+  ContainerInfo cinfo_ TF_GUARDED_BY(mu_);
+  T* resource_ TF_GUARDED_BY(mu_) = nullptr;
 
  private:
   // Must return a T descendant allocated with new that ResourceOpKernel will
   // take ownership of.
-  virtual Status CreateResource(T** resource) EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
+  virtual Status CreateResource(T** resource)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) = 0;
 
   // During the first Compute(), resource is either created or looked up using
   // shared_name. In the latter case, the resource found should be verified if
@@ -129,7 +130,7 @@ class ResourceOpKernel : public OpKernel {
   // inconsistent capacities.
   virtual Status VerifyResource(T* resource) { return Status::OK(); }
 
-  PersistentTensor handle_ GUARDED_BY(mu_);
+  PersistentTensor handle_ TF_GUARDED_BY(mu_);
 
   // Is the output of the operator of type DT_RESOURCE?
   bool has_resource_type_;

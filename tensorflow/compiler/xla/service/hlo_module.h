@@ -197,8 +197,8 @@ class HloModule {
   std::vector<HloComputation*> MakeComputationPostOrder() const;
 
   // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents.
-  std::vector<HloComputation*> MakeComputationSortedByContent() const;
+  // contents. The order is longer post order.
+  std::vector<HloComputation*> MakeComputationSorted() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -211,7 +211,7 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
-  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }

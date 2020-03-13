@@ -161,6 +161,10 @@ def EfficientNet(
 ):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
+  Reference paper:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
+    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.

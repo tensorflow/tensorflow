@@ -84,6 +84,7 @@ const HostEventTypeMap& GetHostEventTypeMap() {
       {"IteratorGetNextOp::DoCompute", kIteratorGetNextOp},
       // Virtual events for grouping.
       {"HostTrainingLoopIteration", kHostTrainingLoopIteration},
+      {"AsyncExecutorTraceContext", kAsyncExecutorTraceContext},
       // GPU related.
       {"KernelLaunch", kKernelLaunch},
       {"KernelExecute", kKernelExecute},

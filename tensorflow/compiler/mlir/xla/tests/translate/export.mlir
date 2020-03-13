@@ -161,6 +161,16 @@ func @main(%arg0: tensor<1xf32>) -> tensor<1x10xf32> {
 // -----
 
 // CHECK:  HloModule
+func @main() -> !xla_hlo.token {
+  %0 = "xla_hlo.create_token"() : () -> !xla_hlo.token
+  return %0 : !xla_hlo.token
+}
+
+// CHECK:  ROOT [[TOKEN:%.*]] = token[] after-all()
+
+// -----
+
+// CHECK:  HloModule
 func @main(%arg0: tensor<4xi32>) -> tensor<4xi32> {
   %0 = call @callee(%arg0, %arg0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
   %1 = call @callee(%0, %0) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>

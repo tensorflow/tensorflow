@@ -83,6 +83,7 @@ _TPU_REPLICATE_ATTR = "_tpu_replicate"
 _POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+_PIVOT_FOR_CLUSTER = "_pivot_for_cluster"
 
 
 def _tpu_system_device_name(job):
@@ -686,7 +687,7 @@ def outside_compilation(computation, *args, **kwargs):
   `tf.tpu.outside_compilation()` should be called inside a function that is
   passed to `tpu.split_compile_and_replicate()` -- this is implied when
   outside compilation is invoked inside a function passed to TPUStrategy
-  `experimental_run_v2()`. If invoked outside of TPUReplicateContext,
+  `run()`. If invoked outside of TPUReplicateContext,
   then this simply returns the result of `computation`, and therefore,
   would be a no-op. Note that outside compilation is different from
   `tf.distribute.experimental.TPUStrategy.merge_call()` as logic in
@@ -1206,6 +1207,8 @@ def split_compile_and_replicate(computation,
   else:
     cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
+  pivot._set_attr(_PIVOT_FOR_CLUSTER,  # pylint: disable=protected-access
+                  attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name)))
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
   try:

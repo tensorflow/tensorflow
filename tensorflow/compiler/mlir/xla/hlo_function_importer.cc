@@ -237,11 +237,9 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
     case HloOpcode::kBroadcast: {
       // Note that the HLO broadcast is more powerful than the XLA broadcast op.
       // BroadcastInDim offers a superset of the HLO op's functionality.
-      if (!instruction->dimensions().empty()) {
-        attributes.push_back(builder_->getNamedAttr(
-            "broadcast_dimensions",
-            ConvertDimensions(instruction->dimensions())));
-      }
+      attributes.push_back(
+          builder_->getNamedAttr("broadcast_dimensions",
+                                 ConvertDimensions(instruction->dimensions())));
       MakeAndReturn(BroadcastInDimOp);
     }
 #define MakeAndReturnBatchNormOp(batch_norm_op)                         \

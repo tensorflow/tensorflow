@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
@@ -33,6 +34,7 @@ struct TestUnfuseBatchNormPass : public FunctionPass<TestUnfuseBatchNormPass> {
 
     // Consider the xla_hlo dialect legal for tests.
     conversionTarget.addLegalDialect<XlaHloDialect>();
+    conversionTarget.addLegalDialect<StandardOpsDialect>();
     conversionTarget.addIllegalOp<xla_hlo::BatchNormInferenceOp>();
 
     PopulateUnfuseBatchNormPatterns(&getContext(), &conversionPatterns);

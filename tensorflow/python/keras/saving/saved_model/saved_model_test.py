@@ -661,8 +661,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
                         predictions)
 
-  @parameterized.named_parameters([('with_unrolling', True),
-                                   ('no_unrolling', False)])
+  @parameterized.named_parameters([
+      # TODO(b/148491963): Unrolling does not work with SavedModel
+      # ('with_unrolling', True),
+      ('no_unrolling', False)
+  ])
   def testSaveStatefulRNN(self, unroll):
     batch = 12
     timesteps = 10

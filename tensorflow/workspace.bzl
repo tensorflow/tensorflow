@@ -148,11 +148,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "ee54bd30c86d3d959f9367d5a969ba20ca58eea7fe865785d358d5f776b99b2f",
-        strip_prefix = "XNNPACK-5b5a0624a80655e40aff8e96de97706aeb008281",
+        sha256 = "100f675c099c74da46dea8da025f6f9b5e0307370f3dde506d11bd78b2b7d171",
+        strip_prefix = "XNNPACK-4ea95bef8cdd942895f23f5cc09c778d10500551",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/5b5a0624a80655e40aff8e96de97706aeb008281.zip",
-            "https://github.com/google/XNNPACK/archive/5b5a0624a80655e40aff8e96de97706aeb008281.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/4ea95bef8cdd942895f23f5cc09c778d10500551.zip",
+            "https://github.com/google/XNNPACK/archive/4ea95bef8cdd942895f23f5cc09c778d10500551.zip",
         ],
     )
 
@@ -189,11 +189,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         # TODO: Remove the patch when https://github.com/abseil/abseil-cpp/issues/326 is resolved
         # and when TensorFlow is build against CUDA 10.2
         patch_file = clean_dep("//third_party:com_google_absl_fix_mac_and_nvcc_build.patch"),
-        sha256 = "dfe63f014801d5bb1be64c0f94545e3a4a957916a2d353e49f7b746c25636198",  # SHARED_ABSL_SHA
-        strip_prefix = "abseil-cpp-b69c7d880caddfc25bf348dbcfe9d45fdd8bc6e6",
+        sha256 = "acd93f6baaedc4414ebd08b33bebca7c7a46888916101d8c0b8083573526d070",  # SHARED_ABSL_SHA
+        strip_prefix = "abseil-cpp-43ef2148c0936ebf7cb4be6b19927a9d9d145b8f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/b69c7d880caddfc25bf348dbcfe9d45fdd8bc6e6.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/b69c7d880caddfc25bf348dbcfe9d45fdd8bc6e6.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/43ef2148c0936ebf7cb4be6b19927a9d9d145b8f.tar.gz",
         ],
     )
 
@@ -201,11 +201,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "88e95180a7eae9acd3e79d2efeea1026eefad9f515a44418b63b189a1887108c",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-52a2fbbb008a47c5e3fb8ac1c65c2feecb0c511c",
+        sha256 = "3d9cbec40e27093956ad46a4482bb03f968964cabb7b9f35807fd80852ec026a",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-b733b8b680885c0fcdfddea5423171468609b5a6",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/52a2fbbb008a47c5e3fb8ac1c65c2feecb0c511c/eigen-52a2fbbb008a47c5e3fb8ac1c65c2feecb0c511c.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/52a2fbbb008a47c5e3fb8ac1c65c2feecb0c511c/eigen-52a2fbbb008a47c5e3fb8ac1c65c2feecb0c511c.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/b733b8b680885c0fcdfddea5423171468609b5a6/eigen-b733b8b680885c0fcdfddea5423171468609b5a6.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/b733b8b680885c0fcdfddea5423171468609b5a6/eigen-b733b8b680885c0fcdfddea5423171468609b5a6.tar.gz",
         ],
     )
 
@@ -597,8 +597,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "387c3f74fd8efdc0be464b0e1a8033cc1eeb739c"
-    LLVM_SHA256 = "5648d1bdd933f45aa6556cf104b32a0418121ce6961f5f47e8ef5bc6e428434f"
+    LLVM_COMMIT = "4016c6b07f2ade01c65750d1297f72b43f9eb244"
+    LLVM_SHA256 = "f67afc574c0f1bc3f43e256321c88f4feefb272d288d084ea6e99c509cb92141"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
