@@ -932,6 +932,53 @@ void optimized_ops_prefetch_write_l1_keep(const T* ptr) {
 #endif
 }
 
+// Similar to ARM instruction SQDMULH.
+// Similar to gemmlowp::SaturatingRoundingDoublingHighMul except
+// rounding to zero instead of to nearest (SQRDMULH).
+inline std::int16_t SaturatingDoublingHighMul(std::int16_t a, std::int16_t b) {
+  bool overflow = a == b && a == std::numeric_limits<std::int16_t>::min();
+  std::int32_t a_32(a);
+  std::int32_t b_32(b);
+  std::int32_t ab_32 = a_32 * b_32;
+  std::int16_t ab_x2_high16 = static_cast<std::int16_t>((ab_32) / (1 << 15));
+  return overflow ? std::numeric_limits<std::int16_t>::max() : ab_x2_high16;
+}
+
+// Similar to gemmlowp::SaturatingRoundingDoublingHighMul
+inline std::int16_t SaturatingRoundingDoublingHighMul(std::int16_t a, std::int16_t b) {
+  bool overflow = a == b && a == std::numeric_limits<std::int16_t>::min();
+  std::int32_t a_32(a);
+  std::int32_t b_32(b);
+  std::int32_t ab_32 = a_32 * b_32;
+  std::int16_t nudge = ab_32 >= 0 ? (1 << 14) : (1 - (1 << 14));
+  std::int16_t ab_x2_high16 =
+      static_cast<std::int16_t>((ab_32 + nudge) / (1 << 15));
+  return overflow ? std::numeric_limits<std::int16_t>::max() : ab_x2_high16;
+}
+
+inline int16_t SaturatingLeftShift(int16_t value, int amount) {
+  int32_t result = static_cast<int32_t>(value) * (1 << amount);
+  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
+  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
+  return result;
+}
+
+inline void DownScaleInt32ToInt16Multiplier(int32_t multiplier_int32,
+                                            int16_t* multiplier_int16) {
+  TFLITE_DCHECK_GE(multiplier_int32, 0);
+  static constexpr int32_t kRoundingOffset = 1 << 15;
+  if (multiplier_int32 >=
+      std::numeric_limits<int32_t>::max() - kRoundingOffset) {
+    *multiplier_int16 = std::numeric_limits<int16_t>::max();
+    return;
+  }
+  const int32_t result = (multiplier_int32 + kRoundingOffset) >> 16;
+  TFLITE_DCHECK_LE(result << 16, multiplier_int32 + kRoundingOffset);
+  TFLITE_DCHECK_GT(result << 16, multiplier_int32 - kRoundingOffset);
+  *multiplier_int16 = result;
+  TFLITE_DCHECK_EQ(*multiplier_int16, result);
+}
+
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_COMMON_H_

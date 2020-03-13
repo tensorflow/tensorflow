@@ -217,6 +217,14 @@ class MicroMutableOpResolver : public MicroOpResolver {
                       ParseOpData);
   }
 
+  TfLiteStatus AddHardSwish() {
+    // TODO(b/149408647): Replace ParseOpData with the operator specific parse
+    // function.
+    return AddBuiltin(BuiltinOperator_HARD_SWISH,
+                      *tflite::ops::micro::Register_HARD_SWISH(),
+                      ParseOpData);
+  }
+
   TfLiteStatus AddL2Normalization() {
     // TODO(b/149408647): Replace ParseOpData with the operator specific parse
     // function.

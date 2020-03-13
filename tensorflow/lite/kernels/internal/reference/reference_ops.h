@@ -2615,25 +2615,6 @@ inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
   }
 }
 
-inline int16_t SaturatingLeftShift(int16_t value, int amount) {
-  int32_t result = static_cast<int32_t>(value) * (1 << amount);
-  result = std::min<int32_t>(result, std::numeric_limits<int16_t>::max());
-  result = std::max<int32_t>(result, std::numeric_limits<int16_t>::min());
-  return result;
-}
-
-// Similar to ARM instruction SQDMULH.
-// Similar to gemmlowp::SaturatingRoundingDoublingHighMul except
-// rounding to zero instead of to nearest (SQRDMULH).
-inline std::int16_t SaturatingDoublingHighMul(std::int16_t a, std::int16_t b) {
-  bool overflow = a == b && a == std::numeric_limits<std::int16_t>::min();
-  std::int32_t a_32(a);
-  std::int32_t b_32(b);
-  std::int32_t ab_32 = a_32 * b_32;
-  std::int16_t ab_x2_high16 = static_cast<std::int16_t>((ab_32) / (1 << 15));
-  return overflow ? std::numeric_limits<std::int16_t>::max() : ab_x2_high16;
-}
-
 template <typename T>
 inline void HardSwish(const HardSwishParams& params,
                       const RuntimeShape& input_shape, const T* input_data,
