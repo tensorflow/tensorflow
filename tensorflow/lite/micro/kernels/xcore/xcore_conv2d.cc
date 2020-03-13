@@ -9,8 +9,17 @@ namespace micro {
 namespace xcore {
 namespace conv {
 
+    union padding_t {
+        padding_mode_t mode;
+        struct padding_data_t {
+            int8_t top;
+            int8_t left;
+            int8_t zero_point;
+        } data;
+    };
+
     typedef struct {
-        padding_mode_t padding_mode;
+        padding_t padding;
         int32_t C_in;
         int32_t C_out;
         int32_t K_h;
@@ -32,13 +41,23 @@ namespace conv {
         {
             std::string key(keys[i].ToString());
             
-            if (key.compare("padding") == 0)
+            if ((key.compare("pad") == 0) || (key.compare("padding") == 0))
             {
-                std::string padding_mode_str = values[i].ToString();
-                if (padding_mode_str.compare("VALID") == 0) 
-                    options->padding_mode = PADDING_VALID;
-                else 
-                    options->padding_mode = PADDING_SAME;
+                if (values[i].IsString())
+                {
+                    std::string padding_mode_str = values[i].ToString();
+                    if (padding_mode_str.compare("VALID") == 0) 
+                        options->padding.mode = PADDING_VALID;
+                    else 
+                        options->padding.mode = PADDING_SAME;
+                } 
+                else if (values[i].IsVector())
+                {
+                    auto vec = values[i].AsVector(); // values represent [top, left, zero_point]
+                    options->padding.data.top = vec[0].AsInt32();
+                    options->padding.data.left = vec[1].AsInt32();
+                    options->padding.data.zero_point = vec[2].AsInt32();
+                }
             }
             else if (key.compare("unpadded_shape") == 0)
             {
@@ -52,6 +71,12 @@ namespace conv {
                 options->stride_h = values[i].AsInt32();
             else if (key.compare("stride_w") == 0)
                 options->stride_w = values[i].AsInt32();
+            else if (key.compare("stride") == 0)
+            {
+                auto vec = values[i].AsVector(); // values represent [stride_h, stride_w]
+                options->stride_h = vec[0].AsInt32();
+                options->stride_w = vec[1].AsInt32();
+            }
             else if (key.compare("par_plan") == 0)
             {
                 auto jobs = values[i].AsVector();
@@ -128,7 +153,7 @@ namespace conv {
             init_params.K_w = op_data->options.K_w;
             init_params.C_in = input->dims->data[3]; // number of channels after padding
             init_params.C_out = op_data->options.C_out;
-            init_params.pad_mode = op_data->options.padding_mode;
+            init_params.pad_mode = op_data->options.padding.mode;
             init_params.zero_point = input->params.zero_point;
 
             region_params.top = 0;
@@ -237,7 +262,7 @@ namespace conv {
             init_params.K_w = op_data->options.K_w;
             init_params.C_in = op_data->options.C_in;
             init_params.C_out = op_data->options.C_out;
-            init_params.pad_mode = op_data->options.padding_mode;
+            init_params.pad_mode = op_data->options.padding.mode;
             init_params.zero_point = input->params.zero_point;
 
             region_params.top = 0;
@@ -362,6 +387,122 @@ namespace conv {
 
     } //namespace n1x1
 
+    //**************************************
+    //**************************************
+    //**************************************
+    // depthwise
+    //**************************************
+    //**************************************
+    //**************************************
+
+    namespace depthwise {
+
+        typedef struct {
+            Conv2DOptions options;
+            nn_conv2d_depthwise_plan_t plan;
+            nn_conv2d_depthwise_job_t job;
+        } OpData;
+
+        void* Init(TfLiteContext* context, const char* buffer, size_t length)
+        {
+            OpData* op_data = nullptr;
+            context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
+
+            if (buffer)
+                parse_options(buffer, length, &op_data->options);
+
+            return op_data;
+        }
+
+        TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+            TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
+            TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+
+            const TfLiteTensor* input = GetInput(context, node, 0);
+            const TfLiteTensor* weights = GetInput(context, node, 1);
+            const TfLiteTensor* output = GetOutput(context, node, 0);
+
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+
+            // set param values not parsed from custom options
+            op_data->options.C_in = input->dims->data[3];
+            op_data->options.C_out = output->dims->data[3];
+            op_data->options.K_h = weights->dims->data[0];
+            op_data->options.K_w = weights->dims->data[1];
+
+            nn_image_params_t params_in;
+            params_in.height = input->dims->data[1];
+            params_in.width = input->dims->data[2];
+            params_in.channels = op_data->options.C_in;
+
+            nn_image_params_t params_out;
+            params_out.height = output->dims->data[1];
+            params_out.width = output->dims->data[2];
+            params_out.channels = op_data->options.C_out;
+
+            int8_t window_start_row;
+            int8_t window_start_col;
+            int8_t zero_point;
+
+            if (op_data->options.padding.mode == PADDING_VALID) {
+                window_start_row = 0;
+                window_start_col = 0;
+                zero_point = input->params.zero_point;
+            }
+            else if (op_data->options.padding.mode == PADDING_SAME) {
+                window_start_row = -op_data->options.K_h / 2;
+                window_start_col = -op_data->options.K_w / 2;
+                zero_point = input->params.zero_point;
+            }
+            else
+            {
+                window_start_row = -op_data->options.padding.data.top;
+                window_start_col = -op_data->options.padding.data.left;
+                zero_point = op_data->options.padding.data.zero_point;
+            }
+
+            conv2d_depthwise_init(
+                &op_data->plan,
+                &op_data->job,
+                &params_in,
+                &params_out,
+                nullptr, //job_params
+                window_start_row,
+                window_start_col,
+                op_data->options.K_h,
+                op_data->options.K_w,
+                op_data->options.stride_h,
+                op_data->options.stride_w,
+                zero_point,
+                1 // job_count
+            );
+
+            return kTfLiteOk;
+        }
+
+
+        TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+            const TfLiteTensor* input = GetInput(context, node, 0);
+            const TfLiteTensor* weights = GetInput(context, node, 1);
+            const TfLiteTensor* bss = GetInput(context, node, 2);
+            TfLiteTensor* output = GetOutput(context, node, 0);
+
+            auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+
+            conv2d_depthwise(
+                output->data.int8, // Y
+                input->data.int8, // X,
+                weights->data.int8, // K
+                (nn_bss_block_t*) bss->data.i16, // BSS
+                &op_data->plan,
+                &op_data->job
+            );
+
+            return kTfLiteOk;
+        }
+
+    } //namespace depthwise
+
 }  // namespace conv
 
 
@@ -395,6 +536,15 @@ TfLiteRegistration* Register_Conv2D_1x1() {
     return &r;
 }
 
+TfLiteRegistration* Register_Conv2D_depthwise() {
+    static TfLiteRegistration r = {
+        conv::depthwise::Init,
+        nullptr,
+        conv::depthwise::Prepare,
+        conv::depthwise::Eval
+    };
+    return &r;
+}
 
 }  // namespace xcore
 }  // namespace micro
