@@ -881,12 +881,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
       weights = model.get_weights()
 
-      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
-      assert len(hist.epoch) >= patience
-
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
+
+      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
@@ -954,7 +952,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
   def test_RemoteMonitor(self):
     if requests is None:
-      return
+      self.skipTest('`requests` required to run this test')
+      return None
 
     monitor = keras.callbacks.RemoteMonitor()
     # This will raise a warning since the default address in unreachable:
@@ -1378,6 +1377,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
+      return None
     with self.cached_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1599,8 +1599,7 @@ def list_summaries(logdir):
     ValueError: If an event file contains an summary of unexpected kind.
   """
   result = _SummaryFile()
-  for (dirpath, dirnames, filenames) in os.walk(logdir):
-    del dirnames  # unused
+  for (dirpath, _, filenames) in os.walk(logdir):
     for filename in filenames:
       if not filename.startswith('events.out.'):
         continue
@@ -1741,8 +1740,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         callbacks=[tb_cbk])
 
     events_file_run_basenames = set()
-    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
-      del dirnames  # unused
+    for (dirpath, _, filenames) in os.walk(self.logdir):
       if any(fn.startswith('events.out.') for fn in filenames):
         events_file_run_basenames.add(os.path.basename(dirpath))
     self.assertEqual(events_file_run_basenames, {'train'})
