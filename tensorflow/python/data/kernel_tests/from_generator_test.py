@@ -268,7 +268,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([1, 2, 3], self.evaluate(get_next()))
     self.assertAllEqual([4, 5, 6], self.evaluate(get_next()))
-    with self.assertRaisesOpError(r"element of TypeSpec\(TensorShape\(\[3\]\), tf\.int64, None\) was expected"):
+    with self.assertRaisesOpError(r"element of TypeSpec\(TensorShape\(\[3\]\), "
+                                  r"tf\.int64, None\) was expected"):
       self.evaluate(get_next())
     self.assertAllEqual([11, 12, 13], self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -447,9 +448,9 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testFromGeneratorRaggedTensor(self):
 
     def generator():
-        yield ragged_factory_ops.constant([[1, 2], [3]],
-                                          dtype=dtypes.int64,
-                                          ragged_rank=1)
+      yield ragged_factory_ops.constant([[1, 2], [3]],
+                                        dtype=dtypes.int64,
+                                        ragged_rank=1)
 
     dataset = dataset_ops.Dataset.from_generator(
         generator,

@@ -410,8 +410,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def element_spec(self):
     """The type specification of an element of this dataset.
 
-    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
-    >>> dataset.element_spec
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3]).element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
 
     Returns:
@@ -713,7 +712,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     ...                   tf.RaggedTensorSpec(shape=(2, None), dtype=tf.int64)))
     >>>
     >>> list(dataset.take(1))
-    [(<tf.Tensor: shape=(), dtype=int64, numpy=42>, <tf.RaggedTensor [[1, 2], [3]]>)]
+    [(<tf.Tensor: shape=(), dtype=int64, numpy=42>,
+    <tf.RaggedTensor [[1, 2], [3]]>)]
 
     There is also a deprecated way to call `from_generator` by either with
     `output_types` argument alone or together with `output_shapes` argument.
@@ -777,15 +777,15 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     if output_spec is None:
       if output_shapes is None:
         output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
+            lambda _: tensor_shape.TensorShape(None), output_types)
       else:
         output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
+            output_types, tensor_shape.as_shape, output_shapes)
       output_spec = nest.map_structure_up_to(
-        output_types,
-        lambda shape, dtype: tensor_spec.TensorSpec(shape, dtype), # pylint: disable=unnecessary-lambda
-        output_shapes,
-        output_types)
+          output_types,
+          lambda shape, dtype: tensor_spec.TensorSpec(shape, dtype), # pylint: disable=unnecessary-lambda
+          output_shapes,
+          output_types)
 
     if args is None:
       args = ()
@@ -840,19 +840,19 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
           values = structure.normalize_element(values, dtypes=output_dtypes)
         except (TypeError, ValueError):
           six.reraise(TypeError, TypeError(
-            "`generator` yielded an element that did not match the expected "
-            "structure. The expected structure was %s, but the yielded "
-            "element was %s." % (serialize_structure(output_spec), values)),
+              "`generator` yielded an element that did not match the expected "
+              "structure. The expected structure was %s, but the yielded "
+              "element was %s." % (serialize_structure(output_spec), values)),
                       sys.exc_info()[2])
 
         values_spec = structure.type_spec_from_value(values)
 
         if not structure.are_compatible(values_spec, output_spec):
           raise TypeError(
-            "`generator` yielded an element of TypeSpec%s where an element "
-            "of TypeSpec%s was expected."
-            % (serialize_structure(values_spec),
-               serialize_structure(output_spec)))
+              "`generator` yielded an element of TypeSpec%s where an element "
+              "of TypeSpec%s was expected."
+              % (serialize_structure(values_spec),
+                 serialize_structure(output_spec)))
 
         return structure.to_tensor_list(output_spec, values)
 
@@ -2310,7 +2310,7 @@ class DatasetV1(DatasetV2):
   def from_generator(generator, output_types=None, output_shapes=None,
                      args=None, output_spec=None):
     return DatasetV1Adapter(DatasetV2.from_generator(
-      generator, output_types, output_shapes, args, output_spec))
+        generator, output_types, output_shapes, args, output_spec))
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
