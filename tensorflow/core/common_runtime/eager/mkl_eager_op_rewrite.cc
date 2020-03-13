@@ -213,7 +213,8 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
-  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
+  if (element != mkl_eager_ops_.end() &&
+      (dt == DT_FLOAT || dt == DT_BFLOAT16)) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
