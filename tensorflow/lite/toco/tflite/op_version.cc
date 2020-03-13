@@ -55,6 +55,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
       new std::map<std::pair<OperatorType, int>, string>({
           {{OperatorType::kAveragePool, 1}, "1.5.0"},
           {{OperatorType::kAveragePool, 2}, "1.14.0"},
+          {{OperatorType::kAveragePool, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kConv, 1}, "1.5.0"},
           {{OperatorType::kConv, 2}, "1.14.0"},
           {{OperatorType::kConv, 3}, "1.14.0"},
@@ -96,6 +97,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kLocalResponseNormalization, 1}, "1.5.0"},
           {{OperatorType::kMaxPool, 1}, "1.5.0"},
           {{OperatorType::kMaxPool, 2}, "1.14.0"},
+          {{OperatorType::kMaxPool, 3}, kPendingReleaseOpVersion},
           {{OperatorType::kMaximum, 1}, "1.14.0"},
           {{OperatorType::kMaximum, 2}, "1.14.0"},
           {{OperatorType::kMinimum, 1}, "1.14.0"},
