@@ -139,10 +139,10 @@ class Conv(Layer):
       filters = int(filters)
     self.filters = filters
     self.groups = groups
-    if filters and filters % self.groups != 0:
+    if filters is not None and filters % self.groups != 0:
       raise ValueError(
-          'The number of filters is not divisible by the number groups. '
-          '{} % {} = {}'.format(filters, groups, filters % groups))
+          'The number of filters must be evenly divisible by the number of '
+          'groups. Received: groups={}, filters={}'.format(groups, filters))
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
     if not all(self.kernel_size):
@@ -172,10 +172,12 @@ class Conv(Layer):
     input_channel = self._get_input_channel(input_shape)
     if input_channel % self.groups != 0:
       raise ValueError(
-          'The number of input channels is not divisible by the number of '
-          'channel group. {} % {} = {}'.format(input_channel, self.groups,
-                                               input_channel % self.groups))
-    kernel_shape = self.kernel_size + (input_channel // self.groups, self.filters)
+          'The number of input channels must be evenly divisible by the number '
+          'of groups. Received groups={}, but the input has {} channels '
+          '(full input shape is {}).'.format(self.groups, input_channel,
+                                             input_shape))
+    kernel_shape = self.kernel_size + (input_channel // self.groups,
+                                       self.filters)
 
     self.kernel = self.add_weight(
         name='kernel',
