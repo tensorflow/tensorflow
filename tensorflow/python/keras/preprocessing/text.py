@@ -23,16 +23,69 @@ from keras_preprocessing import text
 
 from tensorflow.python.util.tf_export import keras_export
 
-text_to_word_sequence = text.text_to_word_sequence
-one_hot = text.one_hot
 hashing_trick = text.hashing_trick
 Tokenizer = text.Tokenizer
 
-keras_export(
-    'keras.preprocessing.text.text_to_word_sequence')(text_to_word_sequence)
-keras_export('keras.preprocessing.text.one_hot')(one_hot)
-keras_export('keras.preprocessing.text.hashing_trick')(hashing_trick)
-keras_export('keras.preprocessing.text.Tokenizer')(Tokenizer)
+
+@keras_export('keras.preprocessing.text.text_to_word_sequence')
+def text_to_word_sequence(text,
+                          filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
+                          lower=True, split=" "):
+  """Converts a text to a sequence of words (or tokens).
+
+  This function transforms a string of text into a list of words
+  while ignoring `filters` which include punctuations by default.
+
+  >>> text = 'This is a sample sentence.'
+  >>> tf.keras.preprocessing.text.text_to_word_sequence(text)
+  ['this', 'is', 'a', 'sample', 'sentence']
+
+  Arguments:
+      text: Input text (string).
+      filters: list (or concatenation) of characters to filter out, such as
+          punctuation. Default: `'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'`,
+          includes basic punctuation, tabs, and newlines.
+      lower: boolean. Whether to convert the input to lowercase.
+      split: str. Separator for word splitting.
+
+  Returns:
+      A list of words (or tokens).
+  """
+  return text.text_to_word_sequence(
+      text, filters=filters, lower=lower, split=split)
+
+
+@keras_export('tf.keras.preprocessing.text.one_hot')
+def one_hot(text, n,
+            filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
+            lower=True,
+            split=' '):
+  """One-hot encodes a text into a list of word indexes of size `n`.
+
+  This function receives as input a string of text and returns a
+  list of encoded integers each corresponding to a word (or token)
+  in the given input string.
+
+  >>> text = 'This is a sample sentence.'
+  >>> tf.keras.preprocessing.text.one_hot(text, 20)
+  [4, 18, 1, 15, 17]
+
+  Arguments:
+      text: Input text (string).
+      n: int. Size of vocabulary.
+      filters: list (or concatenation) of characters to filter out, such as
+          punctuation. Default: ``!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n``,
+          includes basic punctuation, tabs, and newlines.
+      lower: boolean. Whether to set the text to lowercase.
+      split: str. Separator for word splitting.
+
+  Returns:
+      List of integers in `[1, n]`. Each integer encodes a word
+      (unicity non-guaranteed).
+  """
+  return text.one_hot(
+      text, n, filters=filters, lower=lower, split=split)
+
 
 # text.tokenizer_from_json is only available if keras_preprocessing >= 1.1.0
 try:
@@ -41,3 +94,6 @@ try:
       tokenizer_from_json)
 except AttributeError:
   pass
+
+keras_export('keras.preprocessing.text.hashing_trick')(hashing_trick)
+keras_export('keras.preprocessing.text.Tokenizer')(Tokenizer)
