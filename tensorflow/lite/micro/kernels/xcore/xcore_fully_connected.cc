@@ -8,19 +8,14 @@ namespace fully_connected {
 
     typedef struct {
         nn_fully_connected_plan_t plan;
-    } UserData;
+    } OpData;
 
     void* Init_16(TfLiteContext* context, const char* buffer, size_t length) 
     {
-        auto* user_data = new UserData();
+        OpData* op_data = nullptr;
+        context->AllocatePersistentBuffer(context, sizeof(OpData), (void**) &op_data);
 
-        return user_data;
-    }
-
-    void Free_16(TfLiteContext* context, void* buffer) {
-        auto* user_data = reinterpret_cast<UserData*>(buffer);
-
-        delete user_data;
+        return op_data;
     }
 
 
@@ -32,9 +27,9 @@ namespace fully_connected {
         int32_t C_in = weights->dims->data[1];
         int32_t C_out = weights->dims->data[0];
 
-        auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+        auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-        fully_connected_init(&user_data->plan, C_in, C_out);
+        fully_connected_init(&op_data->plan, C_in, C_out);
 
         return kTfLiteOk;
     }
@@ -47,14 +42,14 @@ namespace fully_connected {
 
         TfLiteTensor* output = GetOutput(context, node, 0);
 
-        auto* user_data = reinterpret_cast<UserData*>(node->user_data);
+        auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
         fully_connected_16(
             output->data.i16,
             weights->data.int8,
             input->data.int8,
             (data16_t*) bias_shift_scale->data.i16,
-            &user_data->plan
+            &op_data->plan
         );
 
         return kTfLiteOk;
@@ -67,7 +62,8 @@ namespace fully_connected {
 TfLiteRegistration* Register_FullyConnected_16() {
     static TfLiteRegistration r = {
         fully_connected::Init_16,
-        fully_connected::Free_16,
+        //fully_connected::Free_16,
+        nullptr,
         fully_connected::Prepare_16,
         fully_connected::Eval_16
     };

@@ -2,14 +2,14 @@
 #define TENSORFLOW_LITE_MICRO_KERNELS_XCORE_OPS_RESOLVER_H_
 
 #include "tensorflow/lite/micro/compatibility.h"
-#include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
+#include "tensorflow/lite/micro/kernels/all_ops_resolver.h"
 
 namespace tflite {
 namespace ops {
 namespace micro {
 namespace xcore {
 
-class XcoreOpsResolver : public MicroMutableOpResolver {
+class XcoreOpsResolver : public AllOpsResolver {
  public:
   XcoreOpsResolver();
 
