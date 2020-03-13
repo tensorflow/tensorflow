@@ -1196,7 +1196,8 @@ class Precision(Metric):
   >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
   >>> m.result().numpy()
   0.0
-  >>> # With top_k=2, it will calculate precision over y_true[:4] and y_pred[:4]
+
+  >>> # With top_k=4, it will calculate precision over y_true[:4] and y_pred[:4]
   >>> m = tf.keras.metrics.Precision(top_k=4)
   >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
   >>> m.result().numpy()
