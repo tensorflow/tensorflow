@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
@@ -205,7 +206,7 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     loss_scale_reciprocal = 1. / loss_scale
-    return [g * math_ops.cast(loss_scale_reciprocal, g.dtype) if g is not None
+    return [_multiply_gradient(g, loss_scale_reciprocal) if g is not None
             else None for g in grads]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
@@ -358,3 +359,15 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
+
+
+def _multiply_gradient(gradient, scale):
+  """Multiply a (possibly sparse) gradient by the given scale factor."""
+  scale = math_ops.cast(scale, gradient.dtype)
+  if isinstance(gradient, ops.IndexedSlices):
+    return ops.IndexedSlices(
+        gradient.values * scale,
+        gradient.indices,
+        dense_shape=gradient.dense_shape)
+  else:
+    return gradient * scale

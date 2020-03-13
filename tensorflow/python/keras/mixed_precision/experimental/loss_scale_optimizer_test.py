@@ -142,6 +142,19 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     grads = [self.evaluate(g) if g is not None else g for g in grads]
     self.assertEqual([1.5, None, -2.], grads)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testGetUnscaledSparseGradients(self):
+    opt = gradient_descent.SGD(2.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
+    sparse_scaled_grad = ops.IndexedSlices(
+        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+    sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
+    self.assertIsInstance(sparse_grad, ops.IndexedSlices)
+    self.assertAllEqual(
+        [[2., 1.], [4., 2.5]], self.evaluate(sparse_grad.values))
+
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
   def testDynamicLossScale(self, strategy_fn):
