@@ -331,7 +331,7 @@ __device__ void mergeShards(int num_shards, int k,
 }
 
 #if GOOGLE_CUDA
-__shared__ char shared_memory[];
+extern __shared__ char shared_memory[];
 #endif
 
 template <typename T>
