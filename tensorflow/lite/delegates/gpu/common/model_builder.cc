@@ -1415,8 +1415,7 @@ class MulOperationParser : public TFLiteOperationParser {
       }
       RETURN_IF_ERROR(ParseApplyMask(node, input_tensor0, input_tensor1, graph,
                                      reader));
-    }
-    else {
+    } else {
       // The runtime input tensor must be bound to 1st input and the constant
       // input tensor must be bound to 2nd input.
       int runtime_tensor = 0;
