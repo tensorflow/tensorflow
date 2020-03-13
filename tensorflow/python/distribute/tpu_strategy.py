@@ -85,28 +85,28 @@ def maybe_init_scope():
       yield
 
 
-def validate_experimental_run_function(fn):
-  """Validate the function passed into strategy.experimental_run_v2."""
+def validate_run_function(fn):
+  """Validate the function passed into strategy.run."""
 
   # We allow three types of functions/objects passed into TPUStrategy
-  # experimental_run_v2 in eager mode:
+  # run in eager mode:
   #   1. a user annotated tf.function
   #   2. a ConcreteFunction, this is mostly what you get from loading a saved
   #      model.
   #   3. a callable object and the `__call__` method itself is a tf.function.
   #
   # Otherwise we return an error, because we don't support eagerly running
-  # experimental_run_v2 in TPUStrategy.
+  # run in TPUStrategy.
 
-  if context.executing_eagerly() and not isinstance(
-      fn, def_function.Function) and not isinstance(
-          fn, function.ConcreteFunction) and not (callable(fn) and isinstance(
-              fn.__call__, def_function.Function)):
+  if context.executing_eagerly() \
+      and not isinstance(fn, def_function.Function) \
+      and not isinstance(fn, function.ConcreteFunction) \
+      and not (callable(fn) and isinstance(fn.__call__, def_function.Function)):
     raise NotImplementedError(
-        "TPUStrategy.experimental_run_v2(fn, ...) does not support pure eager "
+        "TPUStrategy.run(fn, ...) does not support pure eager "
         "execution. please make sure the function passed into "
-        "`strategy.experimental_run_v2` is a `tf.function` or "
-        "`strategy.experimental_run_v2` is called inside a `tf.function` if "
+        "`strategy.run` is a `tf.function` or "
+        "`strategy.run` is called inside a `tf.function` if "
         "eager behavior is enabled.")
 
 
@@ -135,10 +135,10 @@ class TPUStrategy(distribute_lib.Strategy):
 
     To run TF2 programs on TPUs, you can either use `.compile` and
     `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
-    training loop by calling `strategy.experimental_run_v2` directly. Note that
+    training loop by calling `strategy.run` directly. Note that
     TPUStrategy doesn't support pure eager execution, so please make sure the
-    function passed into `strategy.experimental_run_v2` is a `tf.function` or
-    `strategy.experimental_run_v2` is called inside a `tf.function` if eager
+    function passed into `strategy.run` is a `tf.function` or
+    `strategy.run` is called inside a `tf.function` if eager
     behavior is enabled.
 
     Args:
@@ -159,9 +159,9 @@ class TPUStrategy(distribute_lib.Strategy):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
+  def run(self, fn, args=(), kwargs=None, options=None):
     """See base class."""
-    validate_experimental_run_function(fn)
+    validate_run_function(fn)
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
@@ -208,7 +208,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):
+  def run(self, fn, args=(), kwargs=None, options=None):
     """Run `fn` on each replica, with the given arguments.
 
     Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
@@ -223,7 +223,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
     per-replica objects containing tensors or composite tensors.
 
     Users can pass strategy specific options to `options` argument. An example
-    to enable bucketizing dynamic shapes in `TPUStrategy.experimental_run_v2`
+    to enable bucketizing dynamic shapes in `TPUStrategy.run`
     is:
     ```python
 
@@ -242,7 +242,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
       output = tf.reduce_sum(inputs)
       return output
 
-      strategy.experimental_run_v2(step_fn, args=(next(iterator),),
+      strategy.run(step_fn, args=(next(iterator),),
                                    options=options)
     ```
 
@@ -259,7 +259,7 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
       structure can either be "per-replica" `Tensor` objects or `Tensor`s
       (for example, if running on a single replica).
     """
-    validate_experimental_run_function(fn)
+    validate_run_function(fn)
 
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
     options = options or distribute_lib.RunOptions()

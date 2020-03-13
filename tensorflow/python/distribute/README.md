@@ -67,7 +67,7 @@ def train_step(iterator):
     grads = tape.gradient(loss, model.variables)
     return grads
 
-  return tpu_strategy.experimental_run_v2(
+  return tpu_strategy.run(
       step_fn, args=(next(iterator),))
 
 # Run the loop body once on at dataset.

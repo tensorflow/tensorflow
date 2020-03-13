@@ -75,7 +75,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -104,7 +104,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -135,7 +135,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -178,7 +178,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -210,7 +210,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         return loss
 
       for _ in range(5):
-        distribution.experimental_run_v2(step_fn, args=(next(iterator),))
+        distribution.run(step_fn, args=(next(iterator),))
 
     train_step(input_iterator)
 
@@ -261,7 +261,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         optimizer.apply_gradients(zip(grads, model.variables))
         return loss
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(input_iterator),))
       return distribution.experimental_local_results(outputs)
 
@@ -314,7 +314,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         optimizer.apply_gradients(zip(grads, model.variables))
 
-      distribution.experimental_run_v2(step_fn, args=(inputs,))
+      distribution.run(step_fn, args=(inputs,))
 
     @def_function.function
     def compute_loss2(images, targets):
@@ -331,7 +331,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model2.variables)
         optimizer.apply_gradients(zip(grads, model2.variables))
 
-      distribution.experimental_run_v2(step_fn, args=(inputs,))
+      distribution.run(step_fn, args=(inputs,))
 
     inputs = next(input_iterator)
 
@@ -365,7 +365,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
@@ -408,7 +408,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
         grads = tape.gradient(loss, model.variables)
         return grads
 
-      outputs = distribution.experimental_run_v2(
+      outputs = distribution.run(
           step_fn, args=(next(iterator),))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)

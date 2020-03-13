@@ -531,7 +531,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         return grad_v1, grad_v2
       if context.executing_eagerly():
         run_fn = def_function.function(run_fn)
-      grad_v1, grad_v2 = distribution.experimental_run_v2(run_fn)
+
+      grad_v1, grad_v2 = distribution.run(run_fn)
       self.assertIsNotNone(grad_v1)
       self.assertIsNotNone(grad_v2)
 
@@ -1949,8 +1950,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           optimizer.apply_gradients(zip(grads, model.trainable_variables))
           return loss
 
-        per_replica_losses = distribution.experimental_run_v2(
-            step_fn, args=(dist_inputs,))
+        per_replica_losses = distribution.run(step_fn, args=(dist_inputs,))
         return distribution.reduce(
             reduce_util.ReduceOp.SUM, per_replica_losses, axis=None)
 

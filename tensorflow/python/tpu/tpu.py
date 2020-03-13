@@ -686,7 +686,7 @@ def outside_compilation(computation, *args, **kwargs):
   `tf.tpu.outside_compilation()` should be called inside a function that is
   passed to `tpu.split_compile_and_replicate()` -- this is implied when
   outside compilation is invoked inside a function passed to TPUStrategy
-  `experimental_run_v2()`. If invoked outside of TPUReplicateContext,
+  `run()`. If invoked outside of TPUReplicateContext,
   then this simply returns the result of `computation`, and therefore,
   would be a no-op. Note that outside compilation is different from
   `tf.distribute.experimental.TPUStrategy.merge_call()` as logic in
