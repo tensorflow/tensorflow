@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
-from tensorflow.python.framework import config
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
 
@@ -55,13 +54,7 @@ def canonicalize(d, default=None):
   # Fill in missing device fields using defaults.
   result = tf_device.DeviceSpec(
       replica=0, task=0, device_type="CPU", device_index=0)
-  # Try to deduce job, replica and task in case it's in a multi worker setup.
-  # TODO(b/151452748): Using list_logical_devices is not always safe since it
-  # may return remote devices as well, but we're already doing this elsewhere.
-  host_cpu = config.list_logical_devices("CPU")[0]
-  result = result.make_merged_spec(
-      tf_device.DeviceSpec.from_string(host_cpu.name))
-  if not result.job and ops.executing_eagerly_outside_functions():
+  if ops.executing_eagerly_outside_functions():
     # The default job is localhost if eager execution is enabled
     result = result.replace(job="localhost")
   if default:
