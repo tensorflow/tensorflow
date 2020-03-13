@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffects.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
@@ -96,7 +97,8 @@ def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
+def HLO_ConstOp : HLO_Op<"constant", [ConstantLike, NoSideEffect]>,
+                  BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value
   );

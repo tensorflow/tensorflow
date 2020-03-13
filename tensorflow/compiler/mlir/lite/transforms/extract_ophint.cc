@@ -426,7 +426,9 @@ void PreprocessTopoSortGraph(
 }
 
 bool IsSideEffectOp(Operation* op) {
-  if (op->hasNoSideEffect()) return false;
+  // TODO(riverriddle) Properly handle region side effects.
+  if (MemoryEffectOpInterface::hasNoEffect(op) && op->getNumRegions() == 0)
+    return false;
 
   // Identity op has no side effect.
   // Check the OperationName maybe more elegant here.

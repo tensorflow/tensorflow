@@ -98,7 +98,6 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
         extern_values.insert(extern_value);
         continue;
       }
-      assert(extern_value.getDefiningOp()->hasNoSideEffect());
       if (!const_none) {
         // Add constant at start of region.
         auto const_builder =
