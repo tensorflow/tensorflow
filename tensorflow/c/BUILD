@@ -242,7 +242,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            "//tensorflow/core:android_tensorflow_lib_lite",
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
         ],
         "//conditions:default": [
             "//tensorflow/core:framework",
@@ -698,4 +698,5 @@ tf_cuda_library(
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
+    alwayslink = 1,
 )

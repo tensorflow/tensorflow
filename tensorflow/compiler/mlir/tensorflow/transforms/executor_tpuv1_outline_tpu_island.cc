@@ -16,7 +16,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
@@ -133,9 +133,23 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
         /*executor_type=*/builder.getStringAttr(""));
     SmallVector<Value, 16> yield_operands(call_op.getResults());
     builder.create<YieldOp>(island_op.getLoc(), yield_operands);
+  }
 
-    // TODO(aminim): handle transitively referenced function and clone them in
-    // the new module.
+  // Outlined all the transitively called functions by moving them in the
+  // outlined module.
+  for (FuncOp func : outlined_module.getOps<FuncOp>()) {
+    func.walk([&](Operation *op) {
+      for (NamedAttribute attr : op->getAttrs()) {
+        auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
+        if (!symbol_ref) continue;
+        if (outlined_symbol_table.lookup<FuncOp>(symbol_ref.getValue()))
+          continue;
+        FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
+        callee.getOperation()->getBlock()->getOperations().remove(
+            callee.getOperation());
+        outlined_symbol_table.insert(callee);
+      }
+    });
   }
 }
 

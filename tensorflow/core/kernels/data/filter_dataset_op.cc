@@ -195,6 +195,7 @@ class FilterDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(mu_);
       if (input_impl_)
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -224,9 +225,9 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    int64 filtered_elements_ GUARDED_BY(mu_);
-    int64 dropped_elements_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    int64 filtered_elements_ TF_GUARDED_BY(mu_);
+    int64 dropped_elements_ TF_GUARDED_BY(mu_);
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 
@@ -236,10 +237,8 @@ class FilterDatasetOp::Dataset : public DatasetBase {
 
 FilterDatasetOp::FilterDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(
-      ctx, FunctionMetadata::Create(ctx, kPredicate, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
+                                               &func_metadata_));
   OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
               errors::InvalidArgument(
                   "predicate function has more than one return value."));

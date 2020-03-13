@@ -30,7 +30,7 @@ void ValidateDequantizeGoldens(TfLiteTensor* tensors, int tensors_size,
                                int output_length, float tolerance = 1e-5) {
   TfLiteContext context;
   ::tflite::ops::micro::AllOpsResolver resolver;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   // Version 2 of dequantize supports int8 quantization.
   const TfLiteRegistration* registration =

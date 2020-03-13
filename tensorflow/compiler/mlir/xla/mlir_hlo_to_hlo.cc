@@ -27,7 +27,7 @@ limitations under the License.
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
@@ -531,6 +531,12 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
       BroadcastInDim(value_map[op.operand()], Convert_ArrayRef(type.getShape()),
                      Convert_broadcast_dimensions(op.broadcast_dimensions()));
   return success();
+}
+
+LogicalResult ExportXlaOp(ScalarsToDimensionTensorOp op,
+                          OpLoweringContext ctx) {
+  // This op has no expression in the legacy export format.
+  return failure();
 }
 
 LogicalResult ExportXlaOp(DynamicBroadcastInDimOp op, OpLoweringContext ctx) {
@@ -1215,7 +1221,7 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
                  << "requires arg " << padding_arg_index
                  << " to be a scalar for use as a dynamic parameter";
 
-      if (!mlir::getElementTypeOrSelf(padding_arg_type).isa<IntegerType>())
+      if (!mlir::getElementTypeOrSelf(padding_arg_type).isSignlessInteger())
         return entry_func.emitError()
                << "requires arg " << padding_arg_index
                << " to be of an int type for use as a dynamic parameter";

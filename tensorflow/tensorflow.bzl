@@ -767,7 +767,7 @@ def tf_gen_op_wrapper_cc(
             out_ops_file + "_internal.cc",
         ],
         srcs = srcs,
-        tools = [":" + tool] + tf_binary_additional_srcs(),
+        exec_tools = [":" + tool] + tf_binary_additional_srcs(),
         cmd = ("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
                "$(location :" + out_ops_file + ".cc) " +
                str(include_internal_ops) + " " + api_def_args_str),
@@ -969,7 +969,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs + [hidden_file],
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str +
                    " @$(location " + hidden_file + ") > $@"),
         )
@@ -978,7 +978,7 @@ def tf_gen_op_wrapper_py(
             name = name + "_pygenrule",
             outs = [out],
             srcs = api_def_srcs,
-            tools = [tool_name] + tf_binary_additional_srcs(),
+            exec_tools = [tool_name] + tf_binary_additional_srcs(),
             cmd = ("$(location " + tool_name + ") " + api_def_args_str + " " +
                    op_list_arg + " " +
                    ("1" if op_list_is_whitelist else "0") + " > $@"),
@@ -1758,7 +1758,7 @@ def transitive_hdrs(name, deps = [], **kwargs):
 #
 # For:
 #   * Eigen: it's a header-only library.  Add it directly to your deps.
-#   * GRPC: add a direct dep on @grpc//:grpc++_public_hdrs.
+#   * GRPC: add a direct dep on @com_github_grpc_grpc//:grpc++_public_hdrs.
 #
 def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kwargs):
     _transitive_hdrs(name = name + "_gather", deps = deps)
@@ -2213,6 +2213,15 @@ def tf_py_test(
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
 
+    # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
+    # the difference between 'dep' and 'clean_dep(dep)'.
+    for to_add in [
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker",
+    ]:
+        if to_add not in deps and clean_dep(to_add) not in deps:
+            deps.append(clean_dep(to_add))
+
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY2AND3")
     py_test(
@@ -2228,10 +2237,7 @@ def tf_py_test(
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
-        deps = depset([
-            clean_dep("//tensorflow/python:extra_py_tests_deps"),
-            clean_dep("//tensorflow/python:gradient_checker"),
-        ] + deps + xla_test_true_list),
+        deps = depset(deps + xla_test_true_list),
         **kwargs
     )
 
@@ -2430,7 +2436,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         cmd =
             "$(location //tensorflow/tools/proto_text:gen_proto_text_functions) " +
             "$(@D) " + srcs_relative_dir + " $(SRCS)",
-        tools = [
+        exec_tools = [
             clean_dep("//tensorflow/tools/proto_text:gen_proto_text_functions"),
         ],
     )
@@ -2466,7 +2472,7 @@ def tf_version_info_genrule(name, out):
         cmd =
             "$(location //tensorflow/tools/git:gen_git_source) --generate $(SRCS) \"$@\" --git_tag_override=$${GIT_TAG_OVERRIDE:-}",
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
+        exec_tools = [clean_dep("//tensorflow/tools/git:gen_git_source")],
     )
 
 def tf_py_build_info_genrule(name, out, **kwargs):
@@ -2486,7 +2492,7 @@ def tf_py_build_info_genrule(name, out, **kwargs):
                 "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
             ]), ""),
         local = 1,
-        tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
+        exec_tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
         **kwargs
     )
 
@@ -2520,12 +2526,14 @@ def pybind_extension(
         linkopts = [],
         deps = [],
         defines = [],
+        additional_exported_symbols = [],
         visibility = None,
         testonly = None,
         licenses = None,
         compatible_with = None,
         restricted_to = None,
-        deprecation = None):
+        deprecation = None,
+        link_in_framework = False):
     """Builds a generic Python extension module."""
     _ignore = [module_name]
     p = name.rfind("/")
@@ -2537,15 +2545,22 @@ def pybind_extension(
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
     pyd_file = "%s%s.pyd" % (prefix, sname)
-    symbol = "init%s" % sname
-    symbol2 = "init_%s" % sname
-    symbol3 = "PyInit_%s" % sname
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
+
     exported_symbols_file = "%s-exported-symbols.lds" % name
     version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '%s' >$@" % exported_symbols_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
@@ -2554,11 +2569,17 @@ def pybind_extension(
     native.genrule(
         name = name + "_version_script",
         outs = [version_script_file],
-        cmd = "echo '{global:\n %s;\n %s;\n %s;\n local: *;};' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
+
+    # If we are to link to libtensorflow_framework.so, add
+    # it as a source.
+    if link_in_framework:
+        srcs += tf_binary_additional_srcs()
+
     cc_binary(
         name = so_file,
         srcs = srcs + hdrs,
@@ -2636,12 +2657,14 @@ def tf_python_pybind_extension(
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
     pybind_extension(
         name,
-        srcs + tf_binary_additional_srcs(),
+        srcs,
         module_name,
         features = features,
         copts = copts,
@@ -2649,6 +2672,7 @@ def tf_python_pybind_extension(
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
         defines = defines,
         visibility = visibility,
+        link_in_framework = True,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):
@@ -2691,6 +2715,9 @@ def if_cuda_or_rocm(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def tf_monitoring_deps():
+    return []
+
 def tf_jit_compilation_passes_extra_deps():
     return []
 
@@ -2706,3 +2733,27 @@ def tfcompile_extra_flags():
 def tf_external_workspace_visible(visibility):
     # External workspaces can see this target.
     return ["//visibility:public"]
+
+def _filegroup_as_file_impl(ctx):
+    out = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(
+        output = out,
+        content = "\n".join([f.short_path for f in ctx.files.dep]),
+    )
+    return DefaultInfo(files = depset([out]))
+
+_filegroup_as_file = rule(
+    implementation = _filegroup_as_file_impl,
+    attrs = {
+        "dep": attr.label(),
+    },
+)
+
+def filegroup_as_file(name, dep, visibility = []):
+    """Creates a filegroup ${name}_file which contains the file ${name}."""
+    _filegroup_as_file(name = name, dep = dep)
+    native.filegroup(
+        name = name + "_file",
+        srcs = [name],
+        visibility = visibility,
+    )

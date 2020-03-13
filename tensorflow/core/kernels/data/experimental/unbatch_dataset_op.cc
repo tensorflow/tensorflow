@@ -212,11 +212,11 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      int64 current_index_ GUARDED_BY(mu_);
-      int64 current_batch_size_ GUARDED_BY(mu_);
-      std::vector<Tensor> tensors_ GUARDED_BY(mu_);
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-      std::vector<TensorShape> shapes_ GUARDED_BY(mu_);
+      int64 current_index_ TF_GUARDED_BY(mu_);
+      int64 current_batch_size_ TF_GUARDED_BY(mu_);
+      std::vector<Tensor> tensors_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+      std::vector<TensorShape> shapes_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

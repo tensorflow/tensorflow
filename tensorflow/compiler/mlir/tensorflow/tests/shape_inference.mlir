@@ -45,6 +45,17 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %1 : tensor<*xf32>
   }
 
+// CHECK-LABEL: func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<?xf32>
+func @multiple_blocks_one_return(%arg0: tensor<?xf32>) -> tensor<*xf32> {
+  br ^bb1
+^bb1:
+// CHECK: %[[IDENTITY:.*]] = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<?xf32>
+// CHECK: return %[[IDENTITY]] : tensor<?xf32>
+  %ret = "tf.Identity"(%arg0) : (tensor<?xf32>) -> tensor<*xf32>
+  return %ret : tensor<*xf32>
+}
+
+
 // Tests the case where an inference opportunity relies on folding.
 
 // CHECK-LABEL: func @simple_folding
@@ -242,5 +253,29 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     // CHECK-NOT: Cast
     %0 = "tf.Cast"(%arg0) : (tensor<*xf32>) -> (tensor<*xf32>)
     return %0 : tensor<*xf32>
+  }
+
+  // CHECK-LABEL: func @while_variant
+  // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
+  func @while_variant(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant> {
+    // CHECK: tf.While
+    // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
+    %0 = "tf.While"(%arg0) {cond = @variant_cond_func, body = @variant_body_func, is_stateless = true} : (tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant>
+    // CHECK: tf.ZerosLike
+    // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
+    %1 = "tf.ZerosLike"(%0) : (tensor<!tf.variant>) -> tensor<!tf.variant>
+    // CHECK: tf.Identity
+    // CHECK-SAME: -> tensor<!tf.variant<tensor<16x1xf32>>>
+    %2 = "tf.Identity"(%1) : (tensor<!tf.variant>) -> tensor<!tf.variant>
+    return %2 : tensor<!tf.variant>
+  }
+  // CHECK-LABEL: func @variant_cond_func
+  func @variant_cond_func(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<i1> {
+    %0 = "tf._SomeOp"() : () -> tensor<i1>
+    return %0 : tensor<i1>
+  }
+  // CHECK-LABEL: func @variant_body_func
+  func @variant_body_func(%arg0: tensor<!tf.variant<tensor<16x1xf32>>>) -> tensor<!tf.variant<tensor<16x1xf32>>> {
+    return %arg0 : tensor<!tf.variant<tensor<16x1xf32>>>
   }
 }

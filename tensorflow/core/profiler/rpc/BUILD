@@ -1,3 +1,5 @@
+load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
@@ -7,7 +9,9 @@ cc_library(
     srcs = ["profiler_service_impl.cc"],
     hdrs = ["profiler_service_impl.h"],
     features = ["-layering_check"],
-    visibility = ["//tensorflow_serving/model_servers:__pkg__"],
+    visibility = tf_external_workspace_visible(
+        ["//tensorflow_serving/model_servers:__pkg__"],
+    ),
     deps = [
         "//tensorflow:grpc++",
         "//tensorflow/core:framework",

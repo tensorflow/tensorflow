@@ -128,7 +128,7 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     [Terminator, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
-    The `tf_executor.fetch` operation terminates the graph and returns values";
+    The `tf_executor.fetch` operation terminates the graph and returns values;
   }];
 
   let description = [{
@@ -165,7 +165,7 @@ def TfExecutor_IslandOp : TfExecutor_Op<"island",
     The `tf_executor.island` operation has a single region with a single block
     attached (only functional control flow is allowed). The block is terminated
     by a `tf_executor.yield` operation. The operands of the terminator
-    correspond to the result values of the `tf_executor.graph` operation. An
+    correspond to the result values of the `tf_executor.island` operation. An
     extra result of type `!tf_executor.control` is always produced by every
     `tf_executor.island`.
     Within an island, execution semantics follow standard sequential behavior as
@@ -299,7 +299,7 @@ def TfExecutor_SwitchNOp : TfExecutor_Op<"SwitchN",
         .SetShapeFn(SwitchNShape);
 
     For example:
-      %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+      %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
 
     Note: One additional result corresponds to the control output.
   }];

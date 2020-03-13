@@ -27,6 +27,7 @@ import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
+from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -158,6 +159,10 @@ class OptimizerV2(trackable.Trackable):
   `tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
   `tf.keras.losses.Reduction.SUM` for not.
 
+  To aggregate gradients yourself, call `apply_gradients` with
+  `all_reduce_sum_gradients` set to False. This is useful if you need to process
+  aggregated gradients.
+
   If you are not using these and you want to average gradients, you should use
   `tf.math.reduce_sum` to add up your per-example losses and then divide by the
   global batch size. Note that when using `tf.distribute.Strategy`, the first
@@ -218,11 +223,20 @@ class OptimizerV2(trackable.Trackable):
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:
 
-    - resource_apply_dense (update variable given gradient tensor is dense)
-    - resource_apply_sparse (update variable given gradient tensor is sparse)
-    - create_slots (if your optimizer algorithm requires additional variables)
+    - _resource_apply_dense (update variable given gradient tensor is dense)
+    - _resource_apply_sparse (update variable given gradient tensor is sparse)
+    - _create_slots (if your optimizer algorithm requires additional variables)
     - get_config (serialization of the optimizer, include all hyper parameters)
   """
+
+  # Subclasses should set this to True unless they override `apply_gradients`
+  # with a version that does not have the `all_reduce_sum_gradients` argument.
+  # Older versions of Keras did not have this argument so custom optimizers may
+  # have overridden `apply_gradients` without the `all_reduce_sum_gradients`
+  # argument. Keras only passes `all_reduce_sum_gradients` if this attribute is
+  # True.
+  # Note: This attribute will likely be removed in an upcoming release.
+  _HAS_ALL_REDUCE_SUM_GRAD = False
 
   def __init__(self, name, **kwargs):
     """Create a new Optimizer.
@@ -415,16 +429,36 @@ class OptimizerV2(trackable.Trackable):
       grads = self._clip_gradients(grads)
     return grads
 
-  def apply_gradients(self, grads_and_vars, name=None):
+  def apply_gradients(self,
+                      grads_and_vars,
+                      name=None,
+                      all_reduce_sum_gradients=True):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
     applies gradients.
 
+    The method sums gradients from all replicas in the presence of
+    `tf.distribute.Strategy` by default. You can aggregate gradients yourself by
+    passing `all_reduce_sum_gradients=False`.
+
+    Example:
+
+    ```python
+    grads = tape.gradient(loss, vars)
+    grads = tf.distribute.get_replica_context().all_reduce('sum', grads)
+    # Processing aggregated gradients.
+    optimizer.apply_gradients(zip(grads, vars), all_reduce_sum_gradients=False)
+
+    ```
+
     Args:
       grads_and_vars: List of (gradient, variable) pairs.
-      name: Optional name for the returned operation.  Default to the name
-        passed to the `Optimizer` constructor.
+      name: Optional name for the returned operation. Default to the name passed
+        to the `Optimizer` constructor.
+      all_reduce_sum_gradients: Whether to sum gradients from different
+        replicas in the presense of `tf.distribute.Strategy`. If False, it's
+        user responsibility to aggregate the gradients. Default to True.
 
     Returns:
       An `Operation` that applies the specified gradients. The `iterations`
@@ -448,22 +482,49 @@ class OptimizerV2(trackable.Trackable):
         # Distribution strategy does not support reducing an empty list of
         # gradients
         return control_flow_ops.no_op()
+
+      if distribute_ctx.in_cross_replica_context():
+        raise RuntimeError(
+            "`apply_gradients() cannot be called in cross-replica context. "
+            "Use `tf.distribute.Strategy.experimental_run_v2` to enter replica "
+            "context.")
+
       apply_state = self._prepare(var_list)
+      if all_reduce_sum_gradients:
+        reduced_grads = self._aggregate_gradients(grads_and_vars)
+        var_list = [v for _, v in grads_and_vars]
+        grads_and_vars = list(zip(reduced_grads, var_list))
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
-          kwargs={"name": name})
+          kwargs={
+              "name": name,
+          })
 
-  def _aggregate_gradients(self, distribution, grads_and_vars):
-    """Returns all-reduced gradients."""
-    return distribution.extended.batch_reduce_to(
-        ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+  def _aggregate_gradients(self, grads_and_vars):
+    """Returns all-reduced gradients.
+
+    Args:
+      grads_and_vars: List of (gradient, variable) pairs.
+
+    Returns:
+      A list of all-reduced gradients.
+    """
+    grads_and_vars = list(grads_and_vars)
+    def all_reduce_fn(distribution, grads_and_vars):
+      return distribution.extended.batch_reduce_to(
+          ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+    # We switch to a cross-replica context since there is a bug which causes
+    # IndexedSlices to be converted to dense tensors when all-reduced in a
+    # replica context.
+    # TODO(b/150507409): Do not switch to a cross-replica context once the bug
+    # is fixed.
+    if grads_and_vars:
+      return distribute_ctx.get_replica_context().merge_call(
+          all_reduce_fn, args=(grads_and_vars,))
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
-    reduced_grads = self._aggregate_gradients(distribution, grads_and_vars)
-    var_list = [v for _, v in grads_and_vars]
-    grads_and_vars = zip(reduced_grads, var_list)
 
     def apply_grad_to_update_var(var, grad):
       """Apply gradient to variable."""
@@ -493,6 +554,14 @@ class OptimizerV2(trackable.Trackable):
     update_ops = []
     with ops.name_scope(name or self._name, skip_on_eager=True):
       for grad, var in grads_and_vars:
+        # TODO(crccw): It's not allowed to assign PerReplica value to
+        # MirroredVariable.  Remove this after we relax this restriction.
+        def _assume_mirrored(grad):
+          if isinstance(grad, ds_values.PerReplica):
+            return ds_values.Mirrored(grad.values)
+          return grad
+
+        grad = nest.map_structure(_assume_mirrored, grad)
         # Colocate the update with variables to avoid unnecessary communication
         # delays. See b/136304694.
         with distribution.extended.colocate_vars_with(var):
@@ -551,6 +620,9 @@ class OptimizerV2(trackable.Trackable):
       return math_ops.cast(value, dtype)
     else:
       return value
+
+  def _create_slots(self, var_list):
+    pass
 
   def __getattribute__(self, name):
     """Overridden to support hyperparameter access."""
@@ -940,7 +1012,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices,
                                                **kwargs):
@@ -989,7 +1061,7 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       An `Operation` which updates the value of the variable.
     """
-    raise NotImplementedError()
+    raise NotImplementedError("Must be implemented in subclasses.")
 
   def _resource_scatter_add(self, x, i, v):
     with ops.control_dependencies(

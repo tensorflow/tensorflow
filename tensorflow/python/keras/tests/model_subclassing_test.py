@@ -99,8 +99,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=2)
     self.assertLen(model.layers, 2)
     self.assertLen(model.trainable_variables, 4)
@@ -122,8 +121,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     data = dataset_ops.DatasetV2.from_tensor_slices(({
         'a': np.ones((32, 10)),
@@ -340,7 +338,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     # Single-io
     model = testing_utils.SmallSubclassMLP(
         num_hidden=32, num_classes=4, use_bn=True, use_dp=True)
-    model._set_inputs(np.ones((3, 4)))  # need to build model first
+    model(np.ones((3, 4)))  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
     self.assertTrue('Trainable params: 356' in print_fn.contents)
@@ -348,8 +346,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     # Multi-io
     model = model_util.get_multi_io_subclass_model(
         num_classes=(5, 6), use_bn=True, use_dp=True)
-    model._set_inputs([np.ones((3, 4)),
-                       np.ones((3, 4))])  # need to build model first
+    model([np.ones((3, 4)), np.ones((3, 4))])  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
     self.assertTrue('Trainable params: 587' in print_fn.contents)
@@ -677,6 +674,8 @@ class CustomCallSignatureTests(test.TestCase):
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def test_training_no_default(self):
+    if not context.executing_eagerly():
+      return
     model = model_util.TrainingNoDefaultModel()
     arg = array_ops.ones([1, 1])
     model(arg, True)

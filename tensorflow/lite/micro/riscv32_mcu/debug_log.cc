@@ -9,7 +9,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// TODO(b/121324430): Add test for DebugLog fuctions
+// TODO(b/121324430): Add test for DebugLog functions
 // TODO(b/121275099): Remove dependency on debug_log once the platform supports
 // printf
 

@@ -571,8 +571,7 @@ void BackgroundWorker::Schedule(std::function<void()> work_item) {
 }
 
 void BackgroundWorker::WorkerLoop() {
-  tensorflow::ResourceTagger tag =
-      tensorflow::ResourceTagger(kTFDataResourceTag, "Background");
+  tensorflow::ResourceTagger tag(kTFDataResourceTag, "Background");
   while (true) {
     std::function<void()> work_item = nullptr;
     {
@@ -609,8 +608,7 @@ namespace {
 class RunnerImpl : public Runner {
  public:
   void Run(const std::function<void()>& f) override {
-    tensorflow::ResourceTagger tag =
-        tensorflow::ResourceTagger(kTFDataResourceTag, "Runner");
+    tensorflow::ResourceTagger tag(kTFDataResourceTag, "Runner");
     f();
 
     // NOTE: We invoke a virtual function to prevent `f` being tail-called, and

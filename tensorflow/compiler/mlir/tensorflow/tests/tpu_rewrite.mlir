@@ -5,7 +5,7 @@
 // expected-error@+1 {{requires attribute 'tf.versions'}}
 module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @missing_tf_versions() {
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -20,7 +20,7 @@ module attributes {tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_devices() {
     // expected-error@+1 {{error in fetching TPU compilation/execution devices: no TPU_SYSTEM devices found}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -36,7 +36,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @missing_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -51,7 +51,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'num_cores_per_replica'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = "", step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = "", step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -66,7 +66,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_num_cores_per_replica() {
     // expected-error@+1 {{requires attribute 'step_marker_location'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -81,7 +81,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_step_marker_location() {
     // expected-error@+1 {{requires attribute 'step_marker_location'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = 1, padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = 1, padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -96,7 +96,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @unparsable_step_marker_location() {
     // expected-error@+1 {{bad 'step_marker_location' attribute with value 'test'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "test", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "test", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -111,7 +111,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @missing_padding_map() {
     // expected-error@+1 {{requires attribute 'padding_map'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP"} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -126,7 +126,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_padding_map() {
     // expected-error@+1 {{requires attribute 'padding_map'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ""} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = "", topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -141,7 +141,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @bad_element_padding_map() {
     // expected-error@+1 {{bad 'padding_map' attribute at index 0, not a string}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [1]} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [1], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
@@ -155,12 +155,193 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @unparsable_element_padding_map() {
-    // expected-error@+1 {{bad 'padding_map' attribute at index 0 with value 'test'}}
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["test"]} : () -> ()
+    // expected-error@+1 {{bad 'padding_map' attribute at index 0 with value 'test': failed to parse to tpu::PaddingMap}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["test"], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     return
   }
   func @empty_func() {
     return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with missing `topology` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @missing_topology() {
+    // expected-error@+1 {{requires attribute 'topology'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with bad `topology` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_topology() {
+    // expected-error@+1 {{requires attribute 'topology'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = 1 : i32, device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with `topology` attribute resulting in device assignment error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @invalid_topology() {
+    // expected-error@+1 {{error in fetching TPU compilation/execution devices}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "test", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with missing `device_assignment` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @missing_device_assignment() {
+    // expected-error@+1 {{requires attribute 'device_assignment'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with bad `device_assignment` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_device_assignment() {
+    // expected-error@+1 {{requires attribute 'device_assignment'}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = "", input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with bad element in `device_assignment` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_element_device_assignment() {
+    // expected-error@+1 {{bad 'device_assignment' attribute at index 0, not an int}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [""], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// The following topology is used in subsequent test cases:
+// Proto debug string:
+//   mesh_shape: 1
+//   mesh_shape: 1
+//   mesh_shape: 1
+//   mesh_shape: 2
+//   num_tasks: 1
+//   num_tpu_devices_per_task: 2
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 1
+// Serialized string:
+//   "\0A\04\01\01\01\02\10\01\18\02\22\06\00\00\00\00\00\00\00\01"
+
+// -----
+
+// Tests `tf_device.launch_func` with `device_assignment` attribute resulting in device assignment error.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @invalid_device_assignment() {
+    // expected-error@+1 {{error in fetching TPU compilation/execution devices}}
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "\0A\03\01\01\02\10\01\18\02\22\06\00\00\00\00\00\01", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
+    return
+  }
+  func @empty_func() {
+    return
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with missing `input_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @missing_input_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{requires attribute 'input_sharding_configuration'}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = [], topology = "", device_assignment = [], output_sharding_configuration = []} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// The following op sharding is used in subsequent test cases:
+// Proto debug string:
+//   type: MAXIMAL
+//   tile_assignment_dimensions: 1
+//   tile_assignment_devices: 0
+// Serialized string:
+//   "\08\01\1A\01\01\22\01\00"
+
+// -----
+
+// Tests `tf_device.launch_func` with bad `input_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_input_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{requires attribute 'input_sharding_configuration'}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = "", output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with mismatched `input_sharding_configuration` attribute size.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @mismatched_size_input_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'input_sharding_configuration' attribute, expected array attribute of size 1, got size 0}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
   }
 }
 
@@ -171,11 +352,117 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   func @unsupported_operand_type(%arg0: tensor<?xi2>) {
     // expected-error@+1 {{failed to determine operand type at index 0: Converting i2 to DataType}}
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = []} : (tensor<?xi2>) -> tensor<?xi2>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi2>) -> tensor<?xi2>
     return
   }
   func @empty_func(%arg0: tensor<?xi2>) -> tensor<?xi2> {
     return %arg0 : tensor<?xi2>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with bad element in `input_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_element_input_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'input_sharding_configuration' attribute at index 0, not a string}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [1], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with unparsable element in `input_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @unparsable_element_input_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'input_sharding_configuration' attribute at index 0 with value 'test': failed to parse to xla::OpSharding}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["test"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with missing `output_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @missing_output_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{requires attribute 'output_sharding_configuration'}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_ENTRY", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with bad `output_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_output_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{requires attribute 'output_sharding_configuration'}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ""} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with mismatched `output_sharding_configuration` attribute size.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @mismatched_size_output_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'output_sharding_configuration' attribute, expected array attribute of size 1, got size 0}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = []} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+
+// Tests `tf_device.launch_func` with bad element in `output_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @bad_element_output_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'output_sharding_configuration' attribute at index 0, not a string}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = [1]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
+  }
+}
+
+// -----
+
+// Tests `tf_device.launch_func` with unparsable element in `output_sharding_configuration` attribute.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
+  func @unparsable_element_output_sharding_configuration(%arg0: tensor<?xi32>) {
+    // expected-error@+1 {{bad 'output_sharding_configuration' attribute at index 0 with value 'test': failed to parse to xla::OpSharding}}
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["test"]} : (tensor<?xi32>) -> tensor<?xi32>
+    return
+  }
+  func @empty_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
+    return %arg0 : tensor<?xi32>
   }
 }
 
@@ -191,7 +478,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @default_step_marker_location
   func @default_step_marker_location() {
-    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : () -> ()
+    "tf_device.launch_func"() {_tpu_replicate = "cluster0", device = "", func = @empty_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = [], output_sharding_configuration = []} : () -> ()
     // CHECK:      metadata
     // CHECK-SAME: num_replicas: 1
     // CHECK-SAME: num_cores_per_replica: 1
@@ -210,7 +497,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @unranked_shape_arg
   func @unranked_shape_arg(%arg0: tensor<*xi32>) -> tensor<*xi32> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>) -> tensor<*xi32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<*xi32>) -> tensor<*xi32>
     // CHECK:      metadata
     // CHECK-SAME: shape {\0A unknown_rank: true
 
@@ -228,7 +515,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @partial_shape_arg
   func @partial_shape_arg(%arg0: tensor<?x?x3xi32>) -> tensor<?x?x3xi32> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?x?x3xi32>) -> tensor<?x?x3xi32>
     // CHECK:      metadata
     // CHECK-SAME: args
     // CHECK-SAME: shape {\0A dim {\0A size: -1\0A }\0A dim {\0A size: -1\0A }\0A dim {\0A size: 3\0A }\0A }
@@ -259,7 +546,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @static_shape_arg
   func @static_shape_arg(%arg0: tensor<1x2x3xi32>) -> tensor<1x2x3xi32> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<1x2x3xi32>) -> tensor<1x2x3xi32>
     // CHECK:      metadata
     // CHECK-SAME: args
     // CHECK-SAME: shape
@@ -284,7 +571,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @resource_arg
   func @resource_arg(%arg0: tensor<*x!tf.resource>) -> tensor<*x!tf.resource> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<*x!tf.resource>) -> tensor<*x!tf.resource>
     // CHECK:      metadata
     // CHECK:      dtype: DT_RESOURCE
     // CHECK-SAME: kind: VARIABLE
@@ -303,7 +590,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @parameter_arg
   func @parameter_arg(%arg0: tensor<*xf32>) -> tensor<*xf32> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xf32>) -> tensor<*xf32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<*xf32>) -> tensor<*xf32>
     // CHECK:      metadata
     // CHECK:      dtype: DT_FLOAT
     // CHECK-SAME: kind: PARAMETER
@@ -363,7 +650,7 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @metadata
   func @metadata(%arg0: tensor<8xi32>) -> tensor<8xi32> {
-    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<8xi32>) -> tensor<8xi32>
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      metadata
     // CHECK-SAME: args
     // CHECK-SAME: dtype: DT_INT32
@@ -407,9 +694,8 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-NOT:  "tf.Shape"(%[[ARG_3]])
     // CHECK:      %[[ARG_0_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_0]])
     // CHECK:      %[[ARG_2_SHAPE:[0-9]*]] = "tf.Shape"(%[[ARG_2]])
-    %0 = "tf_device.launch_func"(%arg0, %arg1, %arg2, %arg3) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
+    %0 = "tf_device.launch_func"(%arg0, %arg1, %arg2, %arg3) {_tpu_replicate = "cluster0", device = "", func = @_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00", "\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<*xi32>, tensor<8xi32>, tensor<*xi32>, tensor<8xi32>) -> tensor<8xi32>
     // CHECK:      "tf._TPUCompileMlir"(%[[ARG_0_SHAPE]], %[[ARG_2_SHAPE]])
-    // CHECK-SAME: NumDynamicShapes = 2
 
     return %0: tensor<8xi32>
   }
@@ -429,18 +715,22 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
-    // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
-    // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:TPU:0"
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -472,16 +762,20 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: n = 2
     %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
       // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[RI_0]])
-      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-      // CHECK-SAME: NumDynamicShapes = 1
-      // CHECK-SAME: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
       // CHECK-SAME: metadata
       // CHECK-SAME: mlir_module
       // CHECK-SAME: func @main
       // CHECK-SAME: tf.B
       // CHECK-NOT: func = @tpu0_func
-      // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
-      %2 = "tf_device.launch_func"(%ri_0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: "tf_device.launch"
+      // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+      // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+      // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT: "tf.TPUExecute"(%[[RI_0]], %[[COMPILE_OUTPUT]]#1)
+      %2 = "tf_device.launch_func"(%ri_0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
 
       // CHECK: tf_device.return %[[EXECUTE_OUTPUT]]
       tf_device.return %2 : tensor<?xi32>
@@ -509,7 +803,7 @@ module attributes {tf.versions = {producer = 888 : i32}} {
   func @single_gpu_launch_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
 
-    %1 = "tf_device.launch_func"(%0) {device = "gpu0", func = @gpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {device = "gpu0", func = @gpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: tf_device.launch_func
     // CHECK-SAME: device = "gpu0"
     // CHECK-SAME: func = @gpu0_func
@@ -537,10 +831,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
@@ -548,7 +842,13 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @nested_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:CPU:0"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: device = "/job:worker/replica:0/task:0/device:TPU:0"
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -580,10 +880,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
@@ -591,7 +891,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -622,10 +925,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
@@ -635,7 +938,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: @referenced_func2
     // CHECK-SAME: tf.E
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -672,10 +978,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
@@ -684,7 +990,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-COUNT-1: func @referenced_func
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -716,27 +1025,33 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func0, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func0, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func0
-    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
-    %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func1, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
-    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.D
     // CHECK-NOT: func = @tpu0_func1
-    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -766,27 +1081,33 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE0_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE0_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE0_OUTPUT]]#1)
 
-    %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %2 = "tf_device.launch_func"(%1) {_tpu_replicate = "cluster1", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[EXECUTE0_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[EXECUTE0_OUTPUT]])
-    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE1_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[EXECUTE0_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
     // CHECK-SAME: tf.B
     // CHECK-NOT: func = @tpu0_func
-    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE1_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE1_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[EXECUTE0_OUTPUT]], %[[COMPILE1_OUTPUT]]#1)
 
     %3 = "tf.C"(%2) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE1_OUTPUT]])
@@ -812,10 +1133,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_OUTPUT:[0-9]*]] = "tf.A"
 
-    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
+    %1 = "tf_device.launch_func"(%0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[A_SHAPE_OUTPUT:[0-9]*]] = "tf.Shape"(%[[A_OUTPUT]])
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
-    // CHECK-SAME: NumDynamicShapes = 1
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"(%[[A_SHAPE_OUTPUT]])
     // CHECK-SAME: metadata
     // CHECK-SAME: mlir_module
     // CHECK-SAME: func @main
@@ -828,7 +1149,10 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
     // CHECK-SAME: tf.G
     // CHECK-SAME: func @referenced_func0
     // CHECK-SAME: tf.F
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"(%[[COMPILE_OUTPUT]]#0)
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"(%[[A_OUTPUT]], %[[COMPILE_OUTPUT]]#1)
 
     %2 = "tf.C"(%1) : (tensor<?xi32>) -> tensor<?xi32>
     // CHECK: %[[C_OUTPUT:[0-9]*]] = "tf.C"(%[[EXECUTE_OUTPUT]])
@@ -867,15 +1191,19 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 // -----
 
-// Tests that TPUCompilationResult operations are properly rewritten
+// Tests that TPUCompilationResult operations are properly rewritten.
 
 module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0"]} {
   // CHECK-LABEL: func @tpu_compilation_result
   func @tpu_compilation_result(%arg0: tensor<?xi32>) -> (tensor<?xi32>, tensor<!tf.string>, tensor<!tf.string>) {
 
-    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
-    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
-    %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = []} : (tensor<?xi32>) -> tensor<?xi32>
+    // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+    // CHECK-NEXT: "tf._TPUCompileMlir"
+    // CHECK: "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUCompileSucceededAssert"
+    // CHECK: %[[EXECUTE_OUTPUT:[0-9]*]] = "tf_device.launch"
+    // CHECK-NEXT: "tf.TPUExecute"
+    %1 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 1, step_marker_location = "", padding_map = [], topology = "", device_assignment = [], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<?xi32>) -> tensor<?xi32>
 
     %compile_result = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
     %compile_result2 = "tf.TPUCompilationResult"() {_tpu_replicate = "cluster0"} : () -> tensor<!tf.string>
@@ -894,32 +1222,176 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:wor
 
 // -----
 
-// Tests simple case of launch_func on TPU with replication with multiple logical cores.
+// Tests devices are set properly for non replicated model parallelism.
 
-module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:worker/replica:0/task:0/device:CPU:0", "/job:worker/replica:0/task:0/device:TPU_SYSTEM:0", "/job:worker/replica:0/task:0/device:TPU:0", "/job:worker/replica:0/task:0/device:TPU:1"]} {
-  // CHECK-LABEL: func @replicated_tpu_launch_func_with_multiple_logical_cores
-  func @replicated_tpu_launch_func_with_multiple_logical_cores(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    %0 = "tf.A"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    // CHECK: %[[REPLICATE:[0-9]*]]:2 = tf_device.replicate
-    // CHECK-SAME: ([%[[A_OUTPUT]], %[[ARG_0]]] as %[[RI_0:[a-z0-9]*]]: tensor<?xi32>)
-    // CHECK-SAME: n = 2
-    %1:2 = tf_device.replicate([%0, %arg0] as %ri_0: tensor<?xi32>) {n = 2 : i32} {
-      // CHECK: %[[COMPILE_OUTPUT:[0-9]*]]:2 = "tf._TPUCompileMlir"
-      // CHECK:       "tf_device.parallel_execute"()
-      // CHECK-NEXT:  %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
-      // CHECK-NEXT:  %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[ARG_1]], %[[COMPILE_OUTPUT]]#1)
-      // CHECK:  %[[LAUNCH:[0-9]*]] = "tf_device.launch"() ( {
-      // CHECK-NEXT:  %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[ARG_1]], %[[COMPILE_OUTPUT]]#1)
-      %2 = "tf_device.launch_func"(%ri_0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"]} : (tensor<?xi32>) -> tensor<?xi32>
-      tf_device.return %2 : tensor<?xi32>
-    }
-
-    %2 = "tf.C"(%1#1) : (tensor<?xi32>) -> tensor<?xi32>
-    return %2 : tensor<?xi32>
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @non_replicated_parallel_execute
+  func @non_replicated_parallel_execute(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+    // CHECK-NEXT:   "tf._TPUCompileMlir"()
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK:      "tf_device.launch"
+    // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+    // CHECK-NEXT:   tf_device.return
+    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
+    // CHECK:      "tf_device.parallel_execute"
+    // CHECK-NEXT:   "tf_device.launch"
+    // CHECK-NEXT:     "tf.TPUExecute"
+    // CHECK-NEXT:     tf_device.return
+    // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:0"
+    // CHECK:        "tf_device.launch"
+    // CHECK-NEXT:     "tf.TPUExecute"
+    // CHECK-NEXT:     tf_device.return
+    // CHECK-NEXT:   device = "/job:localhost/replica:0/task:0/device:TPU:1"
+    %0 = "tf_device.launch_func"(%arg0) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\01\01\02\10\01\18\02\22\08\00\00\00\00\00\00\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+    return %0 : tensor<8xi32>
   }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
 
-  func @tpu0_func(%arg0: tensor<?xi32>) -> tensor<?xi32> {
-    %0 = "tf.B"(%arg0) : (tensor<?xi32>) -> tensor<?xi32>
-    return %0 : tensor<?xi32>
+// -----
+
+// The following topology is used in subsequent test cases:
+// Proto debug string:
+//   mesh_shape: 1
+//   mesh_shape: 2
+//   mesh_shape: 1
+//   mesh_shape: 2
+//   num_tasks: 2
+//   num_tpu_devices_per_task: 2
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 1
+//   device_coordinates: 0
+//   device_coordinates: 1
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 0
+//   device_coordinates: 1
+//   device_coordinates: 0
+//   device_coordinates: 1
+// Serialized string:
+//   "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01"
+// -----
+
+// Tests devices are set properly for replicated model parallelism.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @replicated_parallel_execute
+  func @replicated_parallel_execute(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"()
+      // CHECK-NEXT:   tf_device.return
+      // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK-NEXT:   tf_device.return
+      // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.parallel_execute"
+      // CHECK-NEXT:   "tf_device.launch"
+      // CHECK-NEXT:     "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        "tf_device.launch"
+      // CHECK-NEXT:     "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_1"
+      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      tf_device.return %1 : tensor<8xi32>
+    }
+    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
+
+// -----
+
+// Tests devices are set properly for replicated model parallelism with
+// outputs to TPU computation placed on logical device 0.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_different_outputs
+  func @parallel_execute_with_different_outputs(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"()
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        "tf_device.launch"
+      // CHECK-NEXT:     "tf.TPUExecute"
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      %1 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>) -> tensor<8xi32>
+      tf_device.return %1 : tensor<8xi32>
+    }
+    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> tensor<8xi32> {
+    return %arg0 : tensor<8xi32>
+  }
+}
+
+// -----
+
+// Tests devices are set properly for replicated model parallelism with
+// TPU computation with maximal and replicated outputs.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_replicated_output
+  func @parallel_execute_with_replicated_output(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: devices =
+    // CHECK-SAME: TPU_REPLICATED_CORE_0 = ["/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1"]
+    // CHECK-SAME: TPU_REPLICATED_CORE_1 = ["/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU:0"]
+    %0:2, %1:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>) {n = 2 : i32} {
+      // CHECK-NEXT: %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK-NEXT:   "tf._TPUCompileMlir"()
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      "tf_device.launch"
+      // CHECK-NEXT:   "tf.TPUCompileSucceededAssert"(%[[COMPILE]]#0)
+      // CHECK:      device = "/job:localhost/replica:0/task:0/device:CPU:0"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]]:3 = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]]:2 = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_0_OUTPUT:[0-9]*]]:2 = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_0_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        %[[LAUNCH_1_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_1_OUTPUT:[0-9]*]] = "tf.TPUExecute"
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_1_OUTPUT]]
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      %1, %2 = "tf_device.launch_func"(%ri) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = ["\08\01\10\02\18\03"], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00"], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00", ""]} : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+      tf_device.return %1, %2 : tensor<*xi32>, tensor<*xi1>
+    }
+    return %0#0, %1#0 : tensor<*xi32>, tensor<*xi1>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>) {
+    %1, %2 = "tf.A"(%arg0) : (tensor<8xi32>) -> (tensor<*xi32>, tensor<*xi1>)
+    %3 = "tf.XlaSharding"(%2) { _XlaSharding = "" } : (tensor<*xi1>) -> tensor<*xi1>
+    return %1, %3 : tensor<*xi32>, tensor<*xi1>
   }
 }

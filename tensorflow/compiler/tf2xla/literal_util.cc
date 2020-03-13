@@ -27,6 +27,17 @@ Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
   xla::Shape xla_shape;
   TF_RETURN_IF_ERROR(TensorShapeToXLAShape(host_tensor.dtype(),
                                            host_tensor.shape(), &xla_shape));
+  return HostTensorToBorrowingLiteral(xla_shape, host_tensor, literal);
+}
+
+Status HostTensorToBorrowingLiteral(const xla::Shape& xla_shape,
+                                    const Tensor& host_tensor,
+                                    xla::BorrowingLiteral* literal) {
+  const auto& tshape = host_tensor.shape();
+  TF_RET_CHECK(tshape.IsFullyDefined() &&
+               tshape.dims() == xla_shape.dimensions_size() &&
+               tshape.dim_sizes() == xla_shape.dimensions())
+      << "Provided xla::Shape must have the same dims as the Tensor shape.";
   *literal = xla::BorrowingLiteral(
       static_cast<const char*>(DMAHelper::base(&host_tensor)), xla_shape);
   return Status::OK();

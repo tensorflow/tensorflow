@@ -29,8 +29,6 @@ py_library(
         "training_generator.py",
         "training_utils.py",
         "training_v1.py",
-        "training_v2.py",
-        "training_v2_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -67,7 +65,7 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
-        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/profiler:trace",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
@@ -185,7 +183,10 @@ tf_py_test(
     deps = [
         ":base_layer_utils",
         "//tensorflow/python:client_testlib",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -429,24 +430,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "training_v2_utils_test",
-    size = "medium",
-    srcs = ["training_v2_utils_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_oss",  # TODO(b/135021748) reenable
-        "notsan",
-    ],
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-tf_py_test(
     name = "network_test",
     size = "medium",
     srcs = ["network_test.py"],
@@ -457,10 +440,28 @@ tf_py_test(
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:models",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/utils:layer_utils",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_factory_ops",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -475,10 +476,36 @@ tf_py_test(
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/keras",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:combinations",
+        "//tensorflow/python/keras:regularizers",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/layers",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/keras/utils:tf_utils",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
         "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )
 

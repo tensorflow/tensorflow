@@ -19,6 +19,7 @@ limitations under the License.
 #define LHLO_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffects.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
@@ -42,7 +43,7 @@ def LHLO_PredBuffer : MemRefOf<[HLO_Pred]>;
 // Any integer or floating-point tensor types
 def LHLO_IntOrFpBuffer : MemRefOf<[HLO_Int, AnyFloat]>;
 
-def LHLO_Buffer : MemRefOf<[AnyFloat, AnyInteger]>;
+def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger]>;
 
 def LHLO_TupleBuffer : NestedTupleOf<[LHLO_Buffer]>;
 
@@ -97,6 +98,8 @@ def LHLO_NegOp: LHLO_UnaryElementwiseOp<"neg">, BASE_HLO_NegOp;
 
 def LHLO_RsqrtOp: LHLO_UnaryElementwiseOp<"rsqrt">, BASE_HLO_RsqrtOp;
 
+def LHLO_SqrtOp: LHLO_UnaryElementwiseOp<"sqrt">, BASE_HLO_SqrtOp;
+
 def LHLO_SignOp: LHLO_UnaryElementwiseOp<"sign">, BASE_HLO_SignOp;
 
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh">, BASE_HLO_TanhOp;
@@ -111,7 +114,7 @@ class LHLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
       LHLO_Buffer:$lhs,
       LHLO_Buffer:$rhs,
       LHLO_Buffer:$out,
-      BroadcastDimAttr:$broadcast_dimensions
+      OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
 }
 
@@ -152,6 +155,29 @@ def LHLO_ReduceOp: LHLO_Op<"reduce", [
 
   let regions = (region SizedRegion<1>:$body);
 }
+
+def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
+      NoSideEffect,
+      SingleBlockImplicitTerminator<"TerminatorOp">
+    ]>, BASE_HLO_ReduceWindowOp {
+
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    I64ElementsAttr:$window_dimensions,
+    // If strides or dilations attributes are missing then the default value is
+    // one for each of the input dimensions. Similarly, padding values are zero
+    // for both low and high in each of the dimensions, if not specified.
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$base_dilations,
+    OptionalAttr<I64ElementsAttr>:$window_dilations,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$body);
+}
+
 //===----------------------------------------------------------------------===//
 // XLA tuple op definitions.
 //===----------------------------------------------------------------------===//
@@ -175,7 +201,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
     LHLO_Buffer:$lhs,
     LHLO_Buffer:$rhs,
     LHLO_PredBuffer:$out,
-    BroadcastDimAttr:$broadcast_dimensions,
+    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions,
     HLO_ComparisonDirectionAttr:$comparison_direction
   );
 }
@@ -237,16 +263,6 @@ def LHLO_BroadcastInDimOp : LHLO_Op<"broadcast_in_dim",
       []>, BASE_HLO_BroadcastInDimOp {
   let arguments = (ins
     LHLO_Buffer:$operand,
-    LHLO_Buffer:$output,
-    BroadcastDimAttr:$broadcast_dimensions
-  );
-}
-
-def HLO_DynamicBroadcastInDimOp : LHLO_Op<"dynamic_broadcast_in_dim",
-      [NoSideEffect]>, BASE_HLO_DynamicBroadcastInDimOp {
-  let arguments = (ins
-    LHLO_Buffer:$operand,
-    HLO_BASE_DimensionTensor:$output_dimensions,
     LHLO_Buffer:$output,
     BroadcastDimAttr:$broadcast_dimensions
   );
@@ -321,6 +337,21 @@ def LHLO_SelectOp: LHLO_Op<"select", []>, BASE_HLO_SelectOp {
     LHLO_Buffer:$on_false,
     LHLO_Buffer:$output
   );
+}
+
+def LHLO_SelectAndScatterOp: LHLO_Op<"select_and_scatter",
+      [NoSideEffect]>, BASE_HLO_SelectAndScatterOp {
+  let arguments = (ins
+    LHLO_Buffer:$operand,
+    LHLO_Buffer:$source,
+    LHLO_Buffer:$init_value,
+    LHLO_Buffer:$out,
+    OptionalAttr<I64ElementsAttr>:$window_dimensions,
+    OptionalAttr<I64ElementsAttr>:$window_strides,
+    OptionalAttr<I64ElementsAttr>:$padding
+  );
+
+  let regions = (region SizedRegion<1>:$select, SizedRegion<1>:$scatter);
 }
 
 def LHLO_ReverseOp: LHLO_Op<"reverse", []>, BASE_HLO_ReverseOp {

@@ -3171,6 +3171,8 @@ class Graph(object):
     Raises:
       ValueError: if another function is defined with the same name.
     """
+    self._check_not_finalized()
+
     name = function.name
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
@@ -3455,6 +3457,8 @@ class Graph(object):
     Returns:
       A list of the new `Operation` objects.
     """
+    self._check_not_finalized()
+
     # Create all Operation objects before accessing their inputs since an op may
     # be created before its inputs.
     new_ops = [
@@ -5548,8 +5552,31 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+@tf_export(v1=["executing_eagerly_outside_functions"])
 def executing_eagerly_outside_functions():
-  """Returns True if executing eagerly, even if inside a graph function."""
+  """Returns True if executing eagerly, even if inside a graph function.
+
+  This function will check the outermost context for the program and see if
+  it is in eager mode. It is useful comparing to `tf.executing_eagerly()`,
+  which checks the current context and will return `False` within a
+  `tf.function` body. It can be used to build library that behave differently
+  in eager runtime and v1 session runtime (deprecated).
+
+  Example:
+
+  >>> tf.compat.v1.enable_eager_execution()
+  >>> @tf.function
+  ... def func():
+  ...   # A function constructs TensorFlow graphs, it does not execute eagerly,
+  ...   # but the outer most context is still eager.
+  ...   assert not tf.executing_eagerly()
+  ...   return tf.compat.v1.executing_eagerly_outside_functions()
+  >>> func()
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
+  Returns:
+    boolean, whether the outermost context is in eager mode.
+  """
   if context.executing_eagerly():
     return True
   else:
@@ -6715,3 +6742,9 @@ class _TensorIterator(object):
     return result
 
   next = __next__  # python2.x compatibility.
+
+
+def set_int_list_attr(op, attr_name, ints):
+  """TF internal method used to set a list(int) attribute in the node_def."""
+  ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
+  op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access

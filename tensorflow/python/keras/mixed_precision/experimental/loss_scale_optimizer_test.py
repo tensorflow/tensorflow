@@ -41,6 +41,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.tracking import util as trackable_utils
 
+# Disable not-callable lint error, as the linter is unable to detect that
+# LossScale instances are callable.
+# pylint: disable=not-callable
+
 
 # If called outside any strategy.scope() calls, this will return the default
 # strategy.
@@ -137,6 +141,19 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
     self.assertEqual([1.5, None, -2.], grads)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testGetUnscaledSparseGradients(self):
+    opt = gradient_descent.SGD(2.0)
+    opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
+    sparse_scaled_grad = ops.IndexedSlices(
+        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+    sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
+    self.assertIsInstance(sparse_grad, ops.IndexedSlices)
+    self.assertAllEqual([[2., 1.], [4., 2.5]],
+                        self.evaluate(sparse_grad.values))
 
   @parameterized.named_parameters(*TESTCASES)
   @test_util.run_in_graph_and_eager_modes
@@ -369,10 +386,13 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
 
     class MyOptimizer(gradient_descent.SGD):
 
-      def apply_gradients(self, grads_and_vars, name=None):
+      def apply_gradients(self, grads_and_vars, name=None,
+                          all_reduce_sum_gradients=True):
         for grad, _ in grads_and_vars:
           outer_self.assertIsInstance(grad, ops.Tensor)
-        return super(MyOptimizer, self).apply_gradients(grads_and_vars, name)
+        return super(MyOptimizer,
+                     self).apply_gradients(grads_and_vars, name,
+                                           all_reduce_sum_gradients)
 
     with create_mirrored_strategy().scope() as strategy:
       var = variables.Variable([5.0])

@@ -188,6 +188,13 @@ class DeterminismPolicy {
   Type determinism_;
 };
 
+// Resolves non-deterministic seeds if necessary, returning either the original
+// seeds or the resolved seeds.
+//
+// By TensorFlow convention, if both seeds are 0, they should be replaced with
+// non-deterministically chosen seeds.
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
+
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {
  public:

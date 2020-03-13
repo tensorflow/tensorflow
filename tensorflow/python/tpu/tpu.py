@@ -27,11 +27,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
-from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import auto_control_deps
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
@@ -83,6 +83,7 @@ _TPU_REPLICATE_ATTR = "_tpu_replicate"
 _POST_DEVICE_REWRITE_ATTR = "_post_device_rewrite"
 _TPU_COMPILATION_STATUS_ATTR = "_tpu_compilation_status"
 _OUTSIDE_COMPILATION_ATTR = "_xla_outside_compilation"
+_PIVOT_FOR_CLUSTER = "_pivot_for_cluster"
 
 
 def _tpu_system_device_name(job):
@@ -208,13 +209,14 @@ def _enclosing_tpu_device_assignment():
 
 
 @auto_control_deps.register_acd_resource_resolver
-def tpu_replicated_input_resolver(op, resource_inputs):
+def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
   """Replaces TPUReplicatedInput outputs with its inputs in resource_inputs."""
   # Ignore TPUReplicatedInput for ACD purposes since we will be directly adding
   # control deps on the replicated inputs.
   if op.type == "TPUReplicatedInput":
-    if resource_inputs:
-      resource_inputs.clear()
+    if resource_reads or resource_writes:
+      resource_reads.clear()
+      resource_writes.clear()
       return True
     else:
       return False
@@ -222,18 +224,21 @@ def tpu_replicated_input_resolver(op, resource_inputs):
   # with the actual replicated inputs. This allows ACD to correct add control
   # deps when there are multiple calls to `experimental_run_v2` in a
   # `tf.function`.
-  to_remove = []
-  to_add = []
-  for resource in resource_inputs:
-    if resource.op.type == "TPUReplicatedInput":
-      to_remove.append(resource)
-      to_add.extend(resource.op.inputs)
-  if not to_add and not to_remove:
-    return False
-  for t in to_remove:
-    resource_inputs.discard(t)
-  resource_inputs.update(to_add)
-  return True
+  def replace_with_unreplicated_resources(resource_inputs):
+    """Replaces handles in `resource_inputs` with their unreplicated inputs."""
+    to_remove = []
+    to_add = []
+    for resource in resource_inputs:
+      if resource.op.type == "TPUReplicatedInput":
+        to_remove.append(resource)
+        to_add.extend(resource.op.inputs)
+    for t in to_remove:
+      resource_inputs.discard(t)
+    resource_inputs.update(to_add)
+    return to_add or to_remove
+
+  return (replace_with_unreplicated_resources(resource_reads) or
+          replace_with_unreplicated_resources(resource_writes))
 
 
 class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
@@ -250,16 +255,6 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   `with ops.control_dependencies(None)` to build the variable's definition
   outside the replicated computation.
   """
-
-  class _TFBufferWrapper(object):
-    """An internal class to help manage the TF_Buffer lifetime."""
-
-    def __init__(self, buf_string):
-      self._buffer = pywrap_tf_session.TF_NewBufferFromString(
-          compat.as_bytes(buf_string))
-
-    def __del__(self):
-      pywrap_tf_session.TF_DeleteBuffer(self._buffer)
 
   def __init__(self, name, num_replicas, pivot):
     """Builds a new TPUReplicateContext.
@@ -285,7 +280,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._host_compute_core = []
     self._name = name
     self._name_as_bytes = compat.as_bytes(name)
-    self._tpu_relicate_attr_buf = self._TFBufferWrapper(
+    self._tpu_relicate_attr_buf = c_api_util.ScopedTFBuffer(
         attr_value_pb2.AttrValue(s=self._name_as_bytes).SerializeToString())
     self._unsupported_ops = []
     self._pivot = pivot
@@ -534,8 +529,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
         "_cloned" not in op.node_def.attr):
       raise ValueError("TPU computations cannot be nested on op (%s)" %
                        op)
-    op._set_attr_with_buf(
-        _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
+    op._set_attr_with_buf(_TPU_REPLICATE_ATTR,
+                          self._tpu_relicate_attr_buf.buffer)
     if self._outside_compilation_cluster:
       op._set_attr(
           _OUTSIDE_COMPILATION_ATTR,
@@ -692,7 +687,7 @@ def outside_compilation(computation, *args, **kwargs):
   `tf.tpu.outside_compilation()` should be called inside a function that is
   passed to `tpu.split_compile_and_replicate()` -- this is implied when
   outside compilation is invoked inside a function passed to TPUStrategy
-  `experimental_run_v2()`. If invoked outside of TPUReplicateContext,
+  `run()`. If invoked outside of TPUReplicateContext,
   then this simply returns the result of `computation`, and therefore,
   would be a no-op. Note that outside compilation is different from
   `tf.distribute.experimental.TPUStrategy.merge_call()` as logic in
@@ -1212,6 +1207,8 @@ def split_compile_and_replicate(computation,
   else:
     cluster_name = graph.unique_name("cluster")
   pivot = control_flow_ops.no_op(name=cluster_name + "/pivot")
+  pivot._set_attr(_PIVOT_FOR_CLUSTER,  # pylint: disable=protected-access
+                  attr_value_pb2.AttrValue(s=compat.as_bytes(cluster_name)))
   context = TPUReplicateContext(
       name=cluster_name, num_replicas=num_replicas, pivot=pivot)
   try:
@@ -1456,7 +1453,7 @@ def _postprocess_non_flat_outputs(outputs):
     # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
     # be rewritten away, leading to a runtime error.
     # TODO(phawkins): extend the rewrite to elide these nodes instead.
-    with ops.device(core(0)):
+    with ops.device(o.device if o.device else core(0)):
       o = array_ops.identity(o)
       # pylint: disable=protected-access
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))

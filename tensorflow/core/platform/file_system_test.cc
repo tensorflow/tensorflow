@@ -261,6 +261,14 @@ TEST(InterPlanetaryFileSystemTest, RecursivelyCreateAlreadyExistingDir) {
   // env_test.cc as well as in the modular filesystem tests.
 }
 
+TEST(InterPlanetaryFileSystemTest, HasAtomicMove) {
+  InterPlanetaryFileSystem ipfs;
+  const string dirname = io::JoinPath(kPrefix, "match-00/abc/00");
+  bool has_atomic_move;
+  TF_EXPECT_OK(ipfs.HasAtomicMove(dirname, &has_atomic_move));
+  EXPECT_EQ(has_atomic_move, true);
+}
+
 // A simple file system with a root directory and a single file underneath it.
 class TestFileSystem : public NullFileSystem {
  public:

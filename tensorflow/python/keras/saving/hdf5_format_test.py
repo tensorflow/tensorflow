@@ -577,8 +577,8 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
-      model._make_train_function()
-
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       keras.models.save_model(model, saved_model_dir, save_format=save_format)
       model = keras.models.load_model(saved_model_dir)
 
@@ -818,19 +818,23 @@ class TestWholeModelSaving(test.TestCase, parameterized.TestCase):
         evaluation_results['sparse_categorical_crossentropy'] +
         evaluation_results['custom_loss'], evaluation_results['loss'], 1e-6)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_save_uncompiled_model_with_optimizer(self):
-    saved_model_dir = self._save_model_dir()
-    save_format = testing_utils.get_save_format()
-    model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
-    # Set the model's optimizer but don't compile. This can happen if the model
-    # is trained with a custom training loop.
-    model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
-    model.save(saved_model_dir, save_format=save_format)
+    with self.cached_session() as session:
+      saved_model_dir = self._save_model_dir()
+      save_format = testing_utils.get_save_format()
+      model = keras.models.Sequential([keras.layers.Dense(1, input_shape=(3,))])
+      # Set the model's optimizer but don't compile. This can happen if the
+      # model is trained with a custom training loop.
+      model.optimizer = keras.optimizer_v2.rmsprop.RMSprop(lr=0.0001)
+      if not context.executing_eagerly():
+        session.run([v.initializer for v in model.variables])
+      model.save(saved_model_dir, save_format=save_format)
 
-    if save_format in ['tf', 'tensorflow']:
-      loaded = keras.models.load_model(saved_model_dir)
-      self.assertIsInstance(loaded.optimizer,
-                            keras.optimizer_v2.optimizer_v2.OptimizerV2)
+      if save_format in ['tf', 'tensorflow']:
+        loaded = keras.models.load_model(saved_model_dir)
+        self.assertIsInstance(loaded.optimizer,
+                              keras.optimizer_v2.optimizer_v2.OptimizerV2)
 
 
 # Factory functions to create models that will be serialized inside a Network.
@@ -960,7 +964,8 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
       model.add(keras.layers.Dense(2, input_shape=(3,)))
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer=optimizers.Adam(), metrics=['acc'])
-      model._make_train_function()
+      if not ops.executing_eagerly_outside_functions():
+        model._make_train_function()
       temp_dir = self.get_temp_dir()
       prefix = os.path.join(temp_dir, 'ckpt')
       with test.mock.patch.object(logging, 'warning') as mock_log:

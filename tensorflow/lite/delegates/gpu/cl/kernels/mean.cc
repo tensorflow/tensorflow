@@ -104,6 +104,9 @@ Mean& Mean::operator=(Mean&& operation) {
 }
 
 Status Mean::Compile(const CreationContext& creation_context) {
+  if (creation_context.device->IsAdreno3xx()) {
+    work_group_size_ = int3(16, 8, 1);
+  }
   const auto code =
       GetMeanKernelCode(definition_, linked_operations_, work_group_size_);
   return creation_context.cache->GetOrCreateCLKernel(

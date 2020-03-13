@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Matchers.h"  // TF:llvm-project
@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -66,13 +67,29 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   }
 };
 
+struct TensorFlowLiteOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the TFLite dialect we materialize inside a while regions as slightly
+  // more efficient computationally.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<WhileOp>(region->getParentOp());
+  }
+};
+
 TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
     : Dialect(/*name=*/"tfl", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
-  addInterfaces<TensorFlowLiteInlinerInterface>();
+  addInterfaces<TensorFlowLiteInlinerInterface,
+                TensorFlowLiteOpFolderDialectInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -275,7 +292,7 @@ Attribute ConstFoldBinaryOp(
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
                                         float_calculate, is_commutative);
 
-  if (elemType.isa<IntegerType>())
+  if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
                                           int_calculate, is_commutative);
 
@@ -723,12 +740,11 @@ static LogicalResult Verify(PackOp op) {
   }
 
   // Make sure all inputs have the same shape and element type.
-  // TODO(rahulsp): Simplify once b/135032064 is fixed.
-  for (Value operand : op.getOperands()) {
-    auto other_type = operand.getType().cast<ShapedType>();
-    if (input_type != other_type)
+  // TODO(b/135032063): Simplify once fixed.
+  for (Type operand_type : op.getOperandTypes()) {
+    if (failed(mlir::verifyCompatibleShape(input_type, operand_type)))
       return op.emitOpError("operands should be of the same type. got ")
-             << input_type << ", " << other_type;
+             << input_type << ", " << operand_type;
   }
 
   return success();
@@ -1271,6 +1287,20 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 4 && operands[0] == 35 && operands[1] == 36 &&
+      operands[2] == 37 && operands[3] == 38) {
+    return success();
+  }
+  return op.emitError(
+      "BidirectionalSequenceLSTMOp expected to have four stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
 // UnidirectionalSequenceRNNOp
 //===----------------------------------------------------------------------===//
 
@@ -1561,7 +1591,7 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            limit_tensor.getType().getRank() == 0 &&
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
-    if (elem_type.isa<IntegerType>()) {
+    if (elem_type.isSignlessInteger()) {
       auto start_attr = start_tensor.getValue<IntegerAttr>({});
       auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
       auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
@@ -1663,7 +1693,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
   // Do not try to fold elements attr of a quant type because
   // DenseElementsAttr does not support it.
-  if (!getType().cast<ShapedType>().getElementType().isIntOrFloat())
+  if (!getType().cast<ShapedType>().getElementType().isSignlessIntOrFloat())
     return nullptr;
 
   assert(perm_tensor.getType().getRank() == 1);
@@ -1872,6 +1902,7 @@ LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+#include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
                                                       Attribute value,

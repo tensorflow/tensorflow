@@ -177,7 +177,7 @@ def _cpu_backend_factory():
   return LocalBackend(platform='cpu', client=client)
 
 
-def _gpu_backend_factory():
+def _gpu_backend_factory(distributed_client=None, node_id=0):
   """Returns a GPU backend. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -197,8 +197,11 @@ def _gpu_backend_factory():
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.get_nvidia_gpu_client(asynchronous=True,
-                                      allocator_config=config)
+  client = _xla.get_nvidia_gpu_client(
+      asynchronous=True,
+      allocator_config=config,
+      distributed_client=distributed_client,
+      node_id=node_id)
   return LocalBackend(platform='gpu', client=client)
 
 
@@ -604,17 +607,17 @@ class Computation(object):
 #   def SizeOfGeneratedCodeInBytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
 #       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th replica.
+#         comprises the arguments for execution on the i'th local device.
 #
 #     Returns:
-#       A list of the computation's outputs for each replica, as a Buffer. If
-#       a shallow sequence of arguments was passed in for `arguments`, then the
-#       sole, zero'th replica's output is returned instead, as a Buffer.
+#       A list of the computation's outputs for each local device, as a Buffer.
+#       If a shallow sequence of arguments was passed in for `arguments`, then
+#       the sole, zero'th device's output is returned instead, as a Buffer.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -658,7 +661,7 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
+  return [out.to_py() for out in executable.ExecuteOnLocalDevices(arg_buffers)]
 
 
 class PaddingType(enum.Enum):
@@ -1189,12 +1192,12 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
-  def CustomCall(self,
-                 call_target_name,
-                 operands,
-                 shape_with_layout,
-                 operand_shapes_with_layout,
-                 opaque=None):
+  def CustomCallWithLayout(self,
+                           call_target_name,
+                           operands,
+                           shape_with_layout,
+                           operand_shapes_with_layout,
+                           opaque=None):
     """Enqueues a custom call operation onto the computation.
 
     Args:
@@ -1213,6 +1216,10 @@ class ComputationBuilder(object):
     return ops.CustomCall(self._builder, call_target_name,
                           list(operands), shape_with_layout,
                           list(operand_shapes_with_layout), opaque)
+
+  # TODO(phawkins): remove CustomCall after callers are updated to use
+  # CustomCallWithLayout.
+  CustomCall = CustomCallWithLayout
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1635,6 +1642,7 @@ FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
+    'PopulationCount',
     'Clz',
     'Abs',
     'Exp',
@@ -1698,6 +1706,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Igamma',
+    'IgammaGradA',
     'Igammac',
     'Complex',
     'NextAfter',
@@ -1719,6 +1728,7 @@ _OTHER_OPS = [
     'Rev',
     'Select',
     'SliceInDim',
+    'TopK',
 ]
 
 

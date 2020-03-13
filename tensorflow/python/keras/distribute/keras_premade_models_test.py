@@ -64,7 +64,7 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
     with distribution.scope():
       model = linear.LinearModel()
       opt = gradient_descent.SGD(learning_rate=0.1)
-      model.compile(opt, 'mse', experimental_run_tf_function=True)
+      model.compile(opt, 'mse')
       if data_fn == get_numpy:
         inputs, output = get_numpy()
         hist = model.fit(inputs, output, epochs=5)
@@ -82,8 +82,7 @@ class KerasPremadeModelsTest(test.TestCase, parameterized.TestCase):
       dnn_opt = adagrad.Adagrad(learning_rate=0.1)
       wide_deep_model.compile(
           optimizer=[linear_opt, dnn_opt],
-          loss='mse',
-          experimental_run_tf_function=True)
+          loss='mse')
       if data_fn == get_numpy:
         inputs, output = get_numpy()
         hist = wide_deep_model.fit(inputs, output, epochs=5)

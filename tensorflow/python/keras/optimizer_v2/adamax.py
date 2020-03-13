@@ -42,6 +42,8 @@ class Adamax(optimizer_v2.OptimizerV2):
       ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
 
+  _HAS_ALL_REDUCE_SUM_GRAD = True
+
   def __init__(self,
                learning_rate=0.001,
                beta_1=0.9,

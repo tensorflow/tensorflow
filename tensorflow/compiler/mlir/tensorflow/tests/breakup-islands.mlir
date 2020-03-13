@@ -3,6 +3,10 @@
 
 // All tests also test for idempotence.
 
+// Test that external functions aren't processed (used to crash).
+// CHECK-LABEL: func @unused_external_func
+func @unused_external_func()
+
 func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
   %graph:2 = tf_executor.graph {
     %island:3 = tf_executor.island {
@@ -273,6 +277,70 @@ func @empty_island_multiple_data_results(%arg0: tensor<*xf32>, %arg1: tensor<*xi
       tf_executor.yield %arg0, %arg1 : tensor<*xf32>, tensor<*xi32>
     }
     tf_executor.fetch
+  }
+  return
+}
+
+// The following tests check that certain control dependencies between islands
+// and certain tf_executor ops are added correctly.
+
+// CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
+// CHECK: tf_executor.NextIteration.Sink [{{.*}}] {{.*}}, %[[CONTROL]]
+func @next_iteration_sink_control_input() {
+  tf_executor.graph {
+    %source:3 = tf_executor.NextIteration.Source : tensor<*xi32>
+    %island:2 = tf_executor.island {
+      %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
+      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      tf_executor.yield %const : tensor<*xi32>
+    }
+    tf_executor.NextIteration.Sink[%source#1] %island#0 : tensor<*xi32>
+    tf_executor.fetch %island#0 : tensor<*xi32>
+  }
+  return
+}
+
+// CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
+// CHECK: tf_executor.LoopCond {{.*}}, %[[CONTROL]]
+func @loop_cond_control_input() {
+  tf_executor.graph {
+    %island:2 = tf_executor.island {
+      %const = "tf.Const"() {value = dense<1> : tensor<i1>} : () -> tensor<*xi1>
+      %print = "tf.Print"(%const) : (tensor<*xi1>) -> (tensor<*xi1>)
+      tf_executor.yield %const : tensor<*xi1>
+    }
+    %loop_cond:2 = tf_executor.LoopCond %island#0 : tensor<*xi1>
+    tf_executor.fetch %loop_cond#0 : tensor<*xi1>
+  }
+  return
+}
+
+// CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
+// CHECK: tf_executor.Enter {{.*}}, %[[CONTROL]]
+func @enter_control_input() {
+  tf_executor.graph {
+    %island:2 = tf_executor.island {
+      %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
+      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      tf_executor.yield %const : tensor<*xi32>
+    }
+    %enter:2 = tf_executor.Enter %island#0 frame "some/frame" : tensor<*xi32>
+    tf_executor.fetch %enter#0 : tensor<*xi32>
+  }
+  return
+}
+
+// CHECK: %[[CONTROL:[^ ,]*]] = tf_executor.island wraps "tf.Print"
+// CHECK: tf_executor.SwitchN {{.*}}, {{.*}} of {{[0-9]*}} (%[[CONTROL]])
+func @switchn_control_input(%arg1: tensor<i32>) {
+  tf_executor.graph {
+    %island:2 = tf_executor.island {
+      %const = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<*xi32>
+      %print = "tf.Print"(%const) : (tensor<*xi32>) -> (tensor<*xi32>)
+      tf_executor.yield %const : tensor<*xi32>
+    }
+    %switchn:4 = tf_executor.SwitchN %island#0, %arg1 of 3: tensor<*xi32>
+    tf_executor.fetch %switchn#0 : tensor<*xi32>
   }
   return
 }

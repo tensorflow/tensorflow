@@ -228,7 +228,9 @@ REGISTER_OP("ResizeArea")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float, double,"
+        "bfloat16}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
@@ -237,7 +239,9 @@ REGISTER_OP("ResizeBicubic")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float, double,"
+        "bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -262,7 +266,7 @@ REGISTER_OP("ResizeBilinear")
     .Output("resized_images: float")
     .Attr(
         "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
-        "float, double}")
+        "float, double, bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -337,7 +341,9 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: T")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, half, float,"
+        "double, bfloat16}")
     .Attr("align_corners: bool = false")
     .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
@@ -1022,7 +1028,6 @@ REGISTER_OP("GenerateBoundingBoxProposals")
       return Status::OK();
     });
 
-// TODO(ringwalt): Add a "fill_mode" attr with "constant", "mirror", etc.
 // TODO(ringwalt): Add a "fill_constant" argument for constant mode (default 0).
 // V2 op supports output_shape. V1 op is in contrib.
 REGISTER_OP("ImageProjectiveTransformV2")
@@ -1031,6 +1036,7 @@ REGISTER_OP("ImageProjectiveTransformV2")
     .Input("output_shape: int32")
     .Attr("dtype: {uint8, int32, int64, float16, float32, float64}")
     .Attr("interpolation: string")
+    .Attr("fill_mode: string = 'CONSTANT'")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;

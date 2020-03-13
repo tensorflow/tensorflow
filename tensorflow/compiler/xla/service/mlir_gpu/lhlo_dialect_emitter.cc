@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -112,6 +112,9 @@ Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
       break;
     case HloOpcode::kSign:
       func_builder.create<lhlo::SignOp>(loc, rets, args, attrs);
+      break;
+    case HloOpcode::kSqrt:
+      func_builder.create<lhlo::SqrtOp>(loc, rets, args, attrs);
       break;
     case HloOpcode::kSubtract:
       func_builder.create<lhlo::SubOp>(loc, rets, args, attrs);

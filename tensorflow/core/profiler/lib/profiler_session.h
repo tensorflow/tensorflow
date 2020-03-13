@@ -41,18 +41,19 @@ class ProfilerSession {
       const profiler::ProfilerOptions& options);
   static std::unique_ptr<ProfilerSession> Create();
 
-  // Deletes an exsiting Profiler and enables starting a new one.
+  // Deletes an existing Profiler and enables starting a new one.
   ~ProfilerSession();
 
-  tensorflow::Status Status() LOCKS_EXCLUDED(mutex_);
+  tensorflow::Status Status() TF_LOCKS_EXCLUDED(mutex_);
 
   tensorflow::Status CollectData(profiler::XSpace* space)
-      LOCKS_EXCLUDED(mutex_);
+      TF_LOCKS_EXCLUDED(mutex_);
 
   tensorflow::Status CollectData(RunMetadata* run_metadata)
-      LOCKS_EXCLUDED(mutex_);
+      TF_LOCKS_EXCLUDED(mutex_);
 
-  tensorflow::Status SerializeToString(string* content) LOCKS_EXCLUDED(mutex_);
+  tensorflow::Status SerializeToString(string* content)
+      TF_LOCKS_EXCLUDED(mutex_);
 
  private:
   // Constructs an instance of the class and starts profiling
@@ -63,12 +64,12 @@ class ProfilerSession {
   ProfilerSession& operator=(const ProfilerSession&) = delete;
 
   std::vector<std::unique_ptr<profiler::ProfilerInterface>> profilers_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 
   // True if the session is active.
-  bool active_ GUARDED_BY(mutex_);
+  bool active_ TF_GUARDED_BY(mutex_);
 
-  tensorflow::Status status_ GUARDED_BY(mutex_);
+  tensorflow::Status status_ TF_GUARDED_BY(mutex_);
   const uint64 start_time_ns_;
   mutex mutex_;
 };

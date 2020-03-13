@@ -580,6 +580,9 @@ class AsynchronousCopyOrdering {
   // Adds an asynchronous copy.
   void AddCopy(const AsynchronousCopy& copy);
 
+  // Removes an asynchronous copy. CHECKs that it is removed.
+  void RemoveCopy(const AsynchronousCopy& copy);
+
   // Returns true if the addition of an asynchronous copy in the the given time
   // interval would violate the asynchronous copy ordering. E.g., consider the
   // following scenario:
@@ -636,13 +639,13 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   //        Segment    Segment   Segment
   //
   // start_time and end_time are the start and end logical times of the segment.
-  // last_use_time is the time of the last use for this buffer (Use3 in the
-  // figure). latest_prefetch_time is the latest time we can schedule the
-  // CopyDone for a prefetch.
+  // use_times is a sorted sequence of the times of all uses.
+  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
+  // prefetch.
   struct AllocationRequest {
     int64 start_time;
     int64 end_time;
-    int64 last_use_time;
+    const std::vector<int64>* use_times;
     int64 latest_prefetch_time;
     int64 size;
     HloUse use;
@@ -693,11 +696,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       const AllocationRequest& request,
       const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
-      int64 end_time, int64 last_use_time,
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+      int64 end_time, const std::vector<int64>& use_times,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
@@ -735,11 +738,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                     int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
-  // These methods are used for delaying committing the chunk candidate until
-  // the entire live range of the buffer has been considered.
+  // This method is used for committing the chunk candidate but adding it to
+  // pending_chunks_ so that we can "uncommit" them in case we need to roll back
+  // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
                           const ChunkCandidate& chunk_candidate);
-  void CommitPendingChunks();
+  // If we need to remove the allocations for this allocation sequence, this
+  // removes pending chunks and asynchronous copies in the respective pending
+  // buffers from the interval trees.
+  void UncommitPendingChunks();
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

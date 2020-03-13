@@ -58,10 +58,20 @@ class ConvPowerVR : public GPUOperation {
   };
 
   struct ConvParams {
+    // Usually we use this combinations for CalculationPrecision:
+    // F32: all F32
+    // F16: all F16
+    // F32_F16: all besides accumulator is F16, including weights
+    // But for PowerVR we can achieve better performance in F32_F16 with F32
+    // weights, so for PowerVR in this kernel we have F32 weights for
+    // F32_F16 precision mode
+    DataType weights_data_type;  // used for weights and biases
     int3 block_size;
     int3 work_group_size;
     int3 work_group_launch_order;
     bool fixed_work_group_size;
+    bool linear_hw;
+    bool different_weights_for_height;
     int src_depth_loop_size;
     WeightsUploadType weights_upload_type;
     bool x_kernel_is_1;
@@ -69,14 +79,22 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr, const CLDevice& device);
+              const Convolution2DAttributes& attr, const CLDevice& device,
+              const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
-              const FullyConnectedAttributes& attr, const CLDevice& device);
+              const FullyConnectedAttributes& attr, const CLDevice& device,
+              const BHWC* dst_shape = nullptr);
+  explicit ConvPowerVR(const OperationDef& definition);
 
   template <DataType T>
   Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                     const ::tflite::gpu::Tensor<Linear, T>& biases,
                     CLContext* context);
+  template <DataType T>
+  Status UploadDataForWinograd4x4To6x6(
+      const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+      CLContext* context);
+
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -84,28 +102,41 @@ class ConvPowerVR : public GPUOperation {
   friend Status CreateConvPowerVR(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
-                                  ConvPowerVR* result);
+                                  ConvPowerVR* result, const BHWC* dst_shape);
 
   friend Status CreateConvPowerVR(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
-                                  ConvPowerVR* result);
+                                  ConvPowerVR* result, const BHWC* dst_shape);
 
-  friend std::string GenerateConvPowerVR1x1(
-      const OperationDef& op_def, bool stride_correction,
-      const ConvParams& conv_params,
+  friend Status CreateConvPowerVRWino4x4To6x6(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const Convolution2DAttributes& attr, ConvPowerVR* result,
+      const BHWC* dst_shape);
+
+  friend std::string GenerateConv(
+      const CLDevice& device, const OperationDef& op_def,
+      bool stride_correction, const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
-                             const Convolution2DAttributes& attr) const;
+                             const Convolution2DAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
-                             const FullyConnectedAttributes& attr) const;
+                             const FullyConnectedAttributes& attr,
+                             const BHWC* dst_shape = nullptr) const;
+  ConvParams GuessBestParamsWinograd(const CLDevice& device,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr,
+                                     const BHWC* dst_shape = nullptr) const;
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
-                             bool y_kernel_is_1) const;
+                             bool y_kernel_is_1,
+                             bool different_weights_for_height,
+                             const BHWC* dst_shape = nullptr) const;
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -127,11 +158,27 @@ Status ConvPowerVR::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
-  create_info.data_type = definition_.precision == CalculationsPrecision::F16
-                              ? DataType::FLOAT16
-                              : DataType::FLOAT32;
+  create_info.data_type = conv_params_.weights_data_type;
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
+
+template <DataType T>
+Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+    CLContext* context) {
+  ::tflite::gpu::Tensor<OHWI, T> wino_weights;
+  RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
+  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = conv_params_.weights_data_type;
+  create_info.aligned_size = weights.shape.o;
+  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
+  bias.shape = Linear(weights.shape.o);
+  bias.data.resize(weights.shape.o, 0.0f);
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, bias, context, &biases_));
   return OkStatus();
 }
 
@@ -141,7 +188,7 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
-  const bool f32_weights = definition_.precision != CalculationsPrecision::F16;
+  const bool f32_weights = conv_params_.weights_data_type == DataType::FLOAT32;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
@@ -166,12 +213,18 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
-                         ConvPowerVR* result);
+                         ConvPowerVR* result, const BHWC* dst_shape = nullptr);
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const FullyConnectedAttributes& attr,
-                         ConvPowerVR* result);
+                         ConvPowerVR* result, const BHWC* dst_shape = nullptr);
+
+Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr,
+                                     ConvPowerVR* result,
+                                     const BHWC* dst_shape = nullptr);
 
 }  // namespace cl
 }  // namespace gpu

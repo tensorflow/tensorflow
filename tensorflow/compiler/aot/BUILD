@@ -64,6 +64,7 @@ cc_library(
         "@llvm-project//llvm:powerpc_code_gen",  # fixdeps: keep
         "@llvm-project//llvm:target",
         "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep
+        "//tensorflow/core:regexp_internal",
     ] + if_llvm_aarch64_available([
         "//third_party/llvm/llvm-project/llvm:aarch64_target",  # fixdeps: keep
     ]),
@@ -84,6 +85,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",  # fixdeps: keep
         "@llvm-project//llvm:x86_code_gen",  # fixdeps: keep

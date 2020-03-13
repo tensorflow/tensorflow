@@ -108,7 +108,8 @@ class SingleThreadedExecutorImpl : public Executor {
       KernelState& kernel_state = kernels_[kernel_index];
       node_to_index_map[n] = kernel_index;
 
-      TF_RETURN_IF_ERROR(params_.create_kernel(n->def(), &kernel_state.kernel));
+      TF_RETURN_IF_ERROR(
+          params_.create_kernel(n->properties(), &kernel_state.kernel));
       kernel_state.num_inputs = n->num_inputs();
       kernel_state.num_outputs = n->num_outputs();
 
@@ -242,9 +243,7 @@ class SingleThreadedExecutorImpl : public Executor {
     Device* device = params_.device;
     params.device = device;
     params.log_memory = false;              // TODO(mrry): Too severe?
-    params.record_tensor_accesses = false;  // TODO(mrry): Too severe?
     params.rendezvous = args.rendezvous;
-    params.create_rendezvous = &(params_.rendezvous_factory);
     params.session_state = args.session_state;
     params.tensor_store = args.tensor_store;
     params.cancellation_manager = args.cancellation_manager;
@@ -258,6 +257,7 @@ class SingleThreadedExecutorImpl : public Executor {
 
     Args::Runner runner_copy = args.runner;
     params.runner = &runner_copy;
+    params.run_all_kernels_inline = args.run_all_kernels_inline;
     params.stats_collector = args.stats_collector;
 
     // NOTE(mrry): We are assuming that the graph is loopless and condless.

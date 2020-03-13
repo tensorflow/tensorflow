@@ -18,21 +18,68 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 
-def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
+def HLO_Int : SignlessIntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
 
 // The broadcasting dimensions correspond to a tuple that describes how a
 // smaller rank shape is broadcast into a larger rank shape. For example,
 // given a 2x3x4 cuboid and a 3x4 matrix, a broadcasting tuple (1,2) means
 // matching the matrix to dimensions 1 and 2 of the cuboid.
-def BroadcastDimAttr : OptionalAttr<I64ElementsAttr>;
+defvar BroadcastDimAttr = I64ElementsAttr;
+
+//===----------------------------------------------------------------------===//
+// XLA on tensors type definitions.
+//===----------------------------------------------------------------------===//
+
+// Token type.
+def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
+
+// Any integer tensor types
+def HLO_IntTensor : TensorOf<[HLO_Int]>;
+
+// Any floating-point tensor types
+def HLO_FpTensor : TensorOf<[AnyFloat]>;
+
+def HLO_PredTensor : TensorOf<[HLO_Pred]>;
+
+def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
+
+def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
+
+def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
+
+def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
 
 // Dynamic representation of a shape vector as a tensor. Ideally this would be
 // an index type (as it stores indices) but that is currently disallowed in
 // MLIR.
-def HLO_BASE_DimensionTensor : ShapedContainerType<
-    [AnyInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
+def HLO_DimensionTensor : ShapedContainerType<
+    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
     "a 1D tensor of dimensions">;
+
+// In general, static shaped tensor constraints should be avoided unless
+// it is for a legacy op which is only correct with static shapes.
+def HLO_StaticShapeTensor : StaticShapeTensorOf<[
+      AnyFloat, AnySignlessInteger, AnyComplex]>;
+
+//===----------------------------------------------------------------------===//
+// XLA on tensors combined type definitions.
+//===----------------------------------------------------------------------===//
+
+// Any integer or floating-point tensor types
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
+
+// Any integer or predicate tensor types
+def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
+
+// Any floating-point or complex tensor types
+def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
+
+// Any int, floating-point or complex tensor types
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
+
+// Any pred, int or floating-point tensor types
+def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
 
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
@@ -710,8 +757,8 @@ class BASE_HLO_AllToAllOp {
     AllToAll is a collective operation that sends data from all cores to all
     cores. It has two phases:
     - The scatter phase. On each core, the operand is split into `split_count`
-      number of blocks along the `split_dimensions`, and the blocks are
-      scattered to all cores, e.g., the i-th block is send to the i-th core.
+      number of blocks along the `split_dimension`, and the blocks are
+      scattered to all cores, e.g., the i-th block is sent to the i-th core.
     - The gather phase. Each core concatenates the received blocks along the
       `concat_dimension`.
 
@@ -725,7 +772,7 @@ class BASE_HLO_AllToAllOp {
       will be concatenated in the same order of 1, 2, 3. Then, another AllToAll
       will be applied within replicas 4, 5, 0, and the concatenation order is
       also 4, 5, 0. If `replica_groups` is empty, all replicas belong to one
-      group, in the concatenation order of their appearance.
+      group, and the concatenation order is the numerical order (0, 1, 2, ...).
 
     Prerequisites:
     - The dimension size of the operand on the split_dimension is divisible by
@@ -814,22 +861,6 @@ class BASE_HLO_BroadcastInDimOp  {
     The scalar value will be broadcast to every element in the target shape.
 
     See https://www.tensorflow.org/xla/broadcasting.
-  }];
-}
-
-class BASE_HLO_DynamicBroadcastInDimOp  {
-  string summary = "Broadcast a tensor into the given dynamic shape by adding dimensions.";
-
-  string description = [{
-    This is a generalization of the BroadcastInDimOp which accepts its output
-    dimensions as an argument. It should eventually supercede the statically
-    shaped original, but is being phased as a separate op in order to support
-    compatibility with lowerings and translations that precede dynamic
-    shapes.
-
-    Note that the `broadcast_dimensions` attribute is optional and if omitted,
-    it is assumed to be an ordered, right-aligned mapping from input to
-    output dimensions.
   }];
 }
 

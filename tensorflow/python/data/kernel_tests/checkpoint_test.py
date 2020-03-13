@@ -20,7 +20,10 @@ from __future__ import print_function
 import os
 
 from absl.testing import parameterized
-
+from tensorflow.python.data.experimental.ops import grouping
+from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.experimental.ops import take_while_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -31,6 +34,7 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -372,6 +376,160 @@ class CheckpointTest(test_base.DatasetTestBase, parameterized.TestCase):
       for j in range(2):
         self.assertEqual(i * 2 + j, self.evaluate(get_next()))
       checkpoint.save(file_prefix=checkpoint_prefix)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testSaveRestoreReshuffleDataset(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.shuffle(10, reshuffle_each_iteration=True)
+    iterator = iter(dataset)
+    ckpt = trackable_utils.Checkpoint(
+        step=variables.Variable(0), iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=3)
+
+    iter1 = [next(iterator).numpy() for _ in range(5)]
+
+    manager.save()
+    iter2 = [next(iterator).numpy() for _ in range(5)]
+
+    ckpt.restore(manager.latest_checkpoint)
+    iter3 = [next(iterator).numpy() for _ in range(5)]
+
+    self.assertNotEqual(iter1, iter2)
+    self.assertCountEqual(iter2, iter3)
+
+  def _assertNotCheckpointable(self, dataset):
+    iterator = iter(dataset)
+    ckpt = trackable_utils.Checkpoint(
+        step=variables.Variable(0), iterator=iterator)
+    manager = checkpoint_management.CheckpointManager(
+        ckpt, self.get_temp_dir(), max_to_keep=3)
+    with self.assertRaises(errors.FailedPreconditionError):
+      manager.save()
+
+  @staticmethod
+  def _statefulInt64Func(_):
+    return random_ops.random_uniform((), 0, 1, dtypes.int64)
+
+  @staticmethod
+  def _statefulBoolFunc(_):
+    return random_ops.random_uniform((), 0, 1, dtypes.int64) < 1
+
+  @staticmethod
+  def _statefulDatasetFunc(_):
+    x = random_ops.random_uniform((), 0, 1, dtypes.int64)
+    return dataset_ops.Dataset.range(x)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulFilterNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.filter(self._statefulBoolFunc)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulFlatMapNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.flat_map(self._statefulDatasetFunc)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulInterleaveNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.interleave(self._statefulDatasetFunc)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulMapNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(self._statefulBoolFunc)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulParallelInterleaveNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.interleave(
+        self._statefulDatasetFunc, num_parallel_calls=2)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulParallelMapNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(self._statefulBoolFunc, num_parallel_calls=2)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulGroupByReducerNotCheckpointable(self):
+    stateful_key_func = self._statefulInt64Func
+    key_func = lambda _: math_ops.cast(0, dtypes.int64)
+    stateful_init_func = self._statefulBoolFunc
+    init_func = lambda x: True
+    stateful_reduce_func = lambda _, x: self._statefulBoolFunc(x)
+    reduce_func = lambda _, x: True
+    stateful_finalize_func = self._statefulBoolFunc
+    finalize_func = lambda x: True
+
+    test_cases = [
+        (stateful_key_func, init_func, reduce_func, finalize_func),
+        (key_func, stateful_init_func, reduce_func, finalize_func),
+        (key_func, init_func, stateful_reduce_func, finalize_func),
+        (key_func, init_func, reduce_func, stateful_finalize_func),
+    ]
+    for key_func, init_func, reduce_func, finalize_func in test_cases:
+      dataset = dataset_ops.Dataset.range(10)
+      reducer = grouping.Reducer(init_func, reduce_func, finalize_func)
+      dataset = dataset.apply(grouping.group_by_reducer(key_func, reducer))
+      self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulGroupByWindowNotCheckpointable(self):
+    stateful_key_func = self._statefulInt64Func
+    key_func = lambda _: math_ops.cast(0, dtypes.int64)
+    stateful_reduce_func = lambda _, x: self._statefulDatasetFunc(x)
+    reduce_func = lambda _, x: x
+    stateful_window_func = self._statefulInt64Func
+    window_func = lambda x: math_ops.cast(0, dtypes.int64)
+
+    test_cases = [
+        (stateful_key_func, reduce_func, window_func),
+        (key_func, stateful_reduce_func, window_func),
+        (key_func, reduce_func, stateful_window_func),
+    ]
+    for key_func_fn, reduce_func_fn, window_func in test_cases:
+      dataset = dataset_ops.Dataset.range(10)
+      dataset = dataset.apply(
+          grouping.group_by_window(
+              key_func_fn, reduce_func_fn, window_size_func=window_func))
+      self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulMapAndBatchNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(self._statefulBoolFunc)
+    dataset = dataset.batch(2)
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulExperimentalParallelInterleaveNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(
+        interleave_ops.parallel_interleave(self._statefulDatasetFunc, 2))
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulScanNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+
+    def stateful_scan(state, element):
+      return state, self._statefulBoolFunc(element)
+
+    dataset = dataset.apply(scan_ops.scan(0, stateful_scan))
+    self._assertNotCheckpointable(dataset)
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testStatefulTakeWhileNotCheckpointable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.apply(take_while_ops.take_while(self._statefulBoolFunc))
+    self._assertNotCheckpointable(dataset)
 
 
 if __name__ == "__main__":

@@ -299,7 +299,7 @@ Status RewriteIdentityNAndInputsOutputs(
   // Rewrite IdentityN node and associated inputs and outputs. For inputs and
   // outputs that don't lead to a terminal node, a new Identity node is created
   // and those inputs and outputs are rewritten to use the new Identity node as
-  // their outputs and inputs respectively. For the remaining nodes, the ouputs
+  // their outputs and inputs respectively. For the remaining nodes, the outputs
   // have their inputs updated with the adjusted port, from the IdentityN node
   // having less inputs.
   struct NodeOutputUpdate {

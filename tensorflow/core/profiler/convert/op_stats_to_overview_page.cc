@@ -77,16 +77,21 @@ void ComputeDeviceTips(HardwareType hardware_type,
   const string& device_name = HardwareType_Name(hardware_type);
   string timeline_name =
       (hardware_type == tensorflow::profiler::TPU) ? "TPU core" : device_name;
-  *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
-      "op_profile (identify the time-consuming operations executed on the ",
-      device_name, ")"));
+  string op_stats_toolname = (hardware_type == tensorflow::profiler::TPU)
+                                 ? "op_profile"
+                                 : "tensorflow_stats";
+  *re->add_device_tips() = MakeOverviewPageTip(
+      absl::StrCat(op_stats_toolname,
+                   " (identify the time-consuming operations "
+                   "executed on the ",
+                   device_name, ")"));
   *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
       "trace_viewer (look at the activities on the timeline of each ",
       timeline_name, " in the trace view)"));
 }
 
 void ComputeFaqTips(OverviewPageRecommendation* re) {
-  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the Cloud tools FAQ");
+  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the TF2 Profiler FAQ");
 }
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
@@ -225,23 +230,19 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
-  OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
-  InputPipelineAnalysisResult input_analysis =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(input_analysis.step_details());
-  OverviewPageRecommendation recommendation = ComputeGenericRecommendation(
-      bottleneck, op_stats.device_op_metrics_db().precision_stats());
-  SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
-                          &recommendation);
-
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
-  *overview_page.mutable_analysis() = analysis;
-  *overview_page.mutable_input_analysis() = input_analysis;
-  *overview_page.mutable_recommendation() = recommendation;
+  *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
+  *overview_page.mutable_input_analysis() =
+      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
+      bottleneck, op_stats.device_op_metrics_db().precision_stats());
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          overview_page.mutable_recommendation());
   return overview_page;
 }
 

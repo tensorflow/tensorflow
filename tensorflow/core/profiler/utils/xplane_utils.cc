@@ -219,9 +219,9 @@ void NormalizeTimeLine(XSpace* space, uint64 start_time_ns) {
 }
 
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
+  RemoveEmptyLines(dst_plane);
   XPlaneVisitor src(&src_plane);
   XPlaneBuilder dst(dst_plane);
-  RemoveEmptyLines(dst_plane);
   src.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
     XStatMetadata* stat_metadata = dst.GetOrCreateStatMetadata(stat.Name());
     XStat* new_stat = dst.FindOrAddMutableStat(stat_metadata->id());
@@ -276,6 +276,14 @@ void MergePlanes(const XPlane& src_plane, XPlane* dst_plane) {
       });
     });
   });
+}
+
+uint64 GetStartTimestampNs(const XPlane& plane) {
+  int64 plane_timestamp = 0;
+  for (const auto& line : plane.lines()) {
+    plane_timestamp = std::min<int64>(plane_timestamp, line.timestamp_ns());
+  }
+  return plane_timestamp;
 }
 
 }  // namespace profiler

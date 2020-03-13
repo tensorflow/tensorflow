@@ -1,0 +1,10 @@
+HloModule Iota
+
+ ENTRY %Iota() -> s64[10, 5] {
+  ROOT %iota = s64[10, 5]{1,0} iota(), iota_dimension=0
+}
+
+//  CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
+//  CHECK:   "xla_lhlo.iota"(%[[OUT]])
+//  CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
+//  CHECK: }

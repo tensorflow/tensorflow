@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "include/pybind11/cast.h"
 #include "include/pybind11/numpy.h"
 #include "include/pybind11/pybind11.h"
 #include "include/pybind11/pytypes.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
+#include "tensorflow/compiler/xla/client/lib/sorting.h"
 #include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -39,6 +41,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/cpu_device.h"
+#include "tensorflow/compiler/xla/python/distributed/client.h"
+#include "tensorflow/compiler/xla/python/distributed/distributed.h"
+#include "tensorflow/compiler/xla/python/distributed/service.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/nvidia_gpu_device.h"
@@ -69,7 +74,7 @@ namespace {
 
 struct Uniquer {
   absl::Mutex mu;
-  NameUniquer name_uniquer GUARDED_BY(mu);
+  NameUniquer name_uniquer TF_GUARDED_BY(mu);
 };
 
 Uniquer* GetUniquer() {
@@ -150,16 +155,6 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   CustomCallTargetRegistry::Global()->Register(
       fn_name, static_cast<void*>(capsule), platform);
   return Status::OK();
-}
-
-StatusOr<std::shared_ptr<Device>> LookupDeviceOrdinal(
-    PyLocalClient* client, int device_ordinal, absl::string_view caller_name) {
-  if (device_ordinal < 0 || device_ordinal >= client->local_device_count()) {
-    return InvalidArgument(
-        "%s got bad device_ordinal: %d (num_local_devices=%d)", caller_name,
-        device_ordinal, client->local_device_count());
-  }
-  return client->local_devices()[device_ordinal];
 }
 
 // PEP 3118 buffer protocol implementation.
@@ -349,7 +344,10 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
+  // TODO(phawkins): remove CustomCall after callers are updated to use
+  // CustomCallWithLayout.
   ops.def("CustomCall", &CustomCallWithLayout);
+  ops.def("CustomCallWithLayout", &CustomCallWithLayout);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
   ops.def("DotGeneral", &DotGeneral, py::arg("lhs"), py::arg("rhs"),
@@ -451,6 +449,7 @@ void BuildOpsSubmodule(py::module* m) {
       },
       py::arg("builder"), py::arg("operands"), py::arg("dimension") = -1,
       py::arg("comparator") = absl::nullopt);
+  ops.def("TopK", &TopK, py::arg("input"), py::arg("k"));
   ops.def("Transpose", &Transpose);
   ops.def("TriangularSolve", &TriangularSolve);
   ops.def("Tuple", &Tuple);
@@ -458,6 +457,8 @@ void BuildOpsSubmodule(py::module* m) {
 
   ops.def("Igamma", &Igamma);
   ops.def("Igammac", &Igammac);
+  ops.def("IgammaGradA", &IgammaGradA);
+  ops.def("RandomGammaGrad", &RandomGammaGrad);
   ops.def("RegularizedIncompleteBeta", &RegularizedIncompleteBeta);
 
 #define BINARY_OP(op)                                                 \
@@ -494,6 +495,7 @@ void BuildOpsSubmodule(py::module* m) {
 
 #define UNARY_OP(op) ops.def(#op, &op)
   UNARY_OP(Not);
+  UNARY_OP(PopulationCount);
   UNARY_OP(Clz);
   UNARY_OP(Abs);
   UNARY_OP(Exp);
@@ -544,9 +546,7 @@ class TraceMeContextManager {
   void Enter() {
     if (IsEnabled()) {
       std::string name(name_);
-      // TODO(skye): we can use kwargs_.empty() once we upgrade to pybind11 2.4
-      // in workspace.bzl
-      if (kwargs_.size() != 0) {
+      if (!kwargs_.empty()) {
         absl::StrAppend(&name, "#");
         bool first = true;
         for (const auto& entry : kwargs_) {
@@ -756,7 +756,7 @@ PYBIND11_MODULE(xla_extension, m) {
   // Literals
   py::class_<Literal, std::shared_ptr<Literal>>(m, "Literal")
       .def("__repr__", &Literal::ToString);
-  py::class_<LiteralSlice>(m, "LiteralSlice");
+  py::class_<LiteralSlice> literal_slice(m, "LiteralSlice");
   py::implicitly_convertible<Literal, LiteralSlice>();
   py::implicitly_convertible<BorrowingLiteral, LiteralSlice>();
 
@@ -782,7 +782,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("computation_count", &DeviceAssignment::computation_count)
       .def("__repr__", &DeviceAssignment::ToString);
 
-  py::class_<Device, std::shared_ptr<Device>>(
+  py::class_<Device, ClientAndPtr<Device>>(
       m, "Device",
       "A descriptor of an available device.\n\nSubclasses are used to "
       "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
@@ -824,12 +824,12 @@ PYBIND11_MODULE(xla_extension, m) {
             return LiteralToPython(std::move(literal_shared));
           });
 
-  py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
+  py::class_<CpuDevice, Device, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
         return absl::StrFormat("CpuDevice(id=%i)", device.id());
       });
 
-  py::class_<GpuDevice, Device, std::shared_ptr<GpuDevice>>(m, "GpuDevice")
+  py::class_<GpuDevice, Device, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i)", device.id());
       });
@@ -852,16 +852,33 @@ PYBIND11_MODULE(xla_extension, m) {
   py::class_<PyLocalClient, std::shared_ptr<PyLocalClient>>(m, "LocalClient")
       .def("device_count", &PyLocalClient::device_count)
       .def("local_device_count", &PyLocalClient::local_device_count)
-      .def("devices", &PyLocalClient::devices)
-      .def("local_devices", &PyLocalClient::local_devices)
+      .def("devices",
+           [](std::shared_ptr<PyLocalClient> client) {
+             std::vector<ClientAndPtr<Device>> devices;
+             devices.reserve(client->devices().size());
+             for (const auto& device : client->devices()) {
+               devices.push_back(WrapWithClient(client, device.get()));
+             }
+             return devices;
+           })
+      .def("local_devices",
+           [](std::shared_ptr<PyLocalClient> client) {
+             std::vector<ClientAndPtr<Device>> devices;
+             devices.reserve(client->local_devices().size());
+             for (Device* device : client->local_devices()) {
+               devices.push_back(WrapWithClient(client, device));
+             }
+             return devices;
+           })
       .def("host_id", &PyLocalClient::host_id)
       .def("GetDefaultDeviceAssignment",
-           [](PyLocalClient* client, int num_replicas, int num_partitions)
-               -> StatusOr<std::vector<std::vector<std::shared_ptr<Device>>>> {
+           [](std::shared_ptr<PyLocalClient> client, int num_replicas,
+              int num_partitions)
+               -> StatusOr<std::vector<std::vector<ClientAndPtr<Device>>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                                  client->GetDefaultDeviceAssignment(
                                      num_replicas, num_partitions));
-             std::vector<std::vector<std::shared_ptr<Device>>> result;
+             std::vector<std::vector<ClientAndPtr<Device>>> result;
              result.resize(num_replicas);
              for (int r = 0; r < num_replicas; ++r) {
                result[r].resize(num_partitions);
@@ -869,24 +886,24 @@ PYBIND11_MODULE(xla_extension, m) {
                  int device_id = device_assignment(r, p);
                  auto iter = client->id_to_device().find(device_id);
                  CHECK(iter != client->id_to_device().end()) << device_id;
-                 result[r][p] = iter->second;
+                 result[r][p] = WrapWithClient(client, iter->second);
                }
              }
              return result;
            })
       // TODO(skye): delete after all callers can handle 2D output
       .def("GetDefaultDeviceAssignment",
-           [](PyLocalClient* client, int num_replicas)
-               -> StatusOr<std::vector<std::shared_ptr<Device>>> {
+           [](std::shared_ptr<PyLocalClient> client,
+              int num_replicas) -> StatusOr<std::vector<ClientAndPtr<Device>>> {
              TF_ASSIGN_OR_RETURN(DeviceAssignment device_assignment,
                                  client->GetDefaultDeviceAssignment(
                                      num_replicas, /*num_partitions=*/1));
-             std::vector<std::shared_ptr<Device>> result;
+             std::vector<ClientAndPtr<Device>> result;
              for (int i = 0; i < num_replicas; ++i) {
                int device_id = device_assignment(i, 0);
                auto iter = client->id_to_device().find(device_id);
                CHECK(iter != client->id_to_device().end()) << device_id;
-               result.push_back(iter->second);
+               result.push_back(WrapWithClient(client, iter->second));
              }
              return result;
            })
@@ -905,16 +922,17 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("get_cpu_client", &GetCpuClient, py::arg("asynchronous") = true);
   m.def("get_nvidia_gpu_client", &GetNvidiaGpuClient,
         py::arg("asynchronous") = true,
-        py::arg("allocator_config") = GpuAllocatorConfig());
+        py::arg("allocator_config") = GpuAllocatorConfig(),
+        py::arg("distributed_client") = nullptr, py::arg("node_id") = 0);
 
-  py::class_<PyLocalBuffer> buffer(m, "PyLocalBuffer");
+  py::class_<PyLocalBuffer, ClientAndUniquePtr<PyLocalBuffer>> buffer(
+      m, "PyLocalBuffer");
   buffer
       .def_static(
           "from_python",
           [](const pybind11::object& argument,
-             std::shared_ptr<PyLocalClient> client,
-             std::shared_ptr<Device> device,
-             bool force_copy) -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
+             std::shared_ptr<PyLocalClient> client, Device* device,
+             bool force_copy) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
             CHECK(device != nullptr);
             auto iter = client->id_to_device().find(device->id());
             if (iter->second != device) {
@@ -935,36 +953,57 @@ PYBIND11_MODULE(xla_extension, m) {
                 GlobalPyRefManager()->ManageReference(std::move(c->array));
 
             py::gil_scoped_release gil_release;
-            return PyLocalBuffer::FromHostBuffer(
-                c->buf_ptr, c->shape, force_copy, std::move(py_buffer_ref),
-                std::move(client), std::move(device));
+            TF_ASSIGN_OR_RETURN(
+                std::unique_ptr<PyLocalBuffer> buffer,
+                PyLocalBuffer::FromHostBuffer(c->buf_ptr, c->shape, force_copy,
+                                              std::move(py_buffer_ref),
+                                              client.get(), device));
+            return WrapWithClient(std::move(client), std::move(buffer));
           },
           py::arg("argument"), py::arg("client"), py::arg("device"),
           py::arg("force_copy") = false)
-      .def_static("make_tuple",
-                  [](const std::vector<PyLocalBuffer*> buffers,
-                     std::shared_ptr<PyLocalClient> client,
-                     std::shared_ptr<Device> device)
-                      -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
-                    CHECK(device != nullptr);
-                    auto iter = client->id_to_device().find(device->id());
-                    if (iter->second != device) {
-                      return InvalidArgument(
-                          "Cannot make tuple on device '%s' with '%s' backend",
-                          device->DebugString(), client->platform_name());
-                    }
-                    return PyLocalBuffer::MakeTuple(buffers, std::move(client),
-                                                    std::move(device));
-                  })
+      .def_static(
+          "make_tuple",
+          [](std::vector<PyLocalBuffer*> buffers,
+             std::shared_ptr<PyLocalClient> client,
+             Device* device) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
+            CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot make tuple on device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
+            TF_ASSIGN_OR_RETURN(
+                std::unique_ptr<PyLocalBuffer> buffer,
+                PyLocalBuffer::MakeTuple(buffers, client.get(), device));
+            return WrapWithClient(std::move(client), std::move(buffer));
+          })
       .def("copy_to_device",
-           [](PyLocalBuffer* buffer, std::shared_ptr<Device> dst_device) {
-             CHECK(dst_device != nullptr);
+           [](PyLocalBuffer* buffer, const ClientAndPtr<Device>& dst_device)
+               -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
+             CHECK(dst_device.get() != nullptr);
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
-             return buffer->CopyToDevice(std::move(dst_device));
+             TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalBuffer> out,
+                                 buffer->CopyToDevice(dst_device.get()));
+             return WrapWithClient(dst_device.client, std::move(out));
            })
       .def("delete", &PyLocalBuffer::Delete)
-      .def("destructure", &PyLocalBuffer::DestructureTuple)
+      .def("destructure",
+           [](const PyLocalBuffer& buffer)
+               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
+             TF_ASSIGN_OR_RETURN(
+                 std::vector<std::unique_ptr<PyLocalBuffer>> parts,
+                 buffer.DestructureTuple());
+             std::vector<ClientAndUniquePtr<PyLocalBuffer>> output;
+             output.reserve(parts.size());
+             for (auto& part : parts) {
+               output.push_back(WrapWithClient(
+                   buffer.client()->shared_from_this(), std::move(part)));
+             }
+             return std::move(output);
+           })
       .def("block_host_until_ready",
            [](PyLocalBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();
@@ -996,7 +1035,11 @@ PYBIND11_MODULE(xla_extension, m) {
             return LiteralToPython(std::move(literal));
           })
       .def("shape", &PyLocalBuffer::on_host_shape)
-      .def("device", &PyLocalBuffer::device)
+      .def("device",
+           [](const PyLocalBuffer& buffer) {
+             return WrapWithClient(buffer.client()->shared_from_this(),
+                                   buffer.device());
+           })
       .def("platform", &PyLocalBuffer::platform_name)
       .def("is_deleted",
            [](const PyLocalBuffer& buffer) {
@@ -1022,24 +1065,160 @@ PYBIND11_MODULE(xla_extension, m) {
   PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
   buffer_type->tp_as_buffer = &PyLocalBufferProcs;
 
-  py::class_<PyLocalExecutable>(m, "LocalExecutable")
-      .def_static("Compile", &PyLocalExecutable::Compile,
-                  py::call_guard<py::gil_scoped_release>())
-      .def_static("Compile", &PyLocalExecutable::CompileForDevices,
-                  py::call_guard<py::gil_scoped_release>())
+  py::class_<PyLocalExecutable, ClientAndUniquePtr<PyLocalExecutable>>
+      executable(m, "LocalExecutable");
+  executable
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyLocalClient> client,
+                     absl::optional<DeviceAssignment> device_assignment)
+                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    CompileOptions options;
+                    options.argument_layouts = std::move(argument_layouts);
+                    if (build_options) {
+                      options.executable_build_options = *build_options;
+                    }
+                    if (device_assignment) {
+                      options.executable_build_options.set_device_assignment(
+                          *device_assignment);
+                    }
+                    TF_ASSIGN_OR_RETURN(
+                        std::unique_ptr<PyLocalExecutable> executable,
+                        PyLocalExecutable::Compile(computation, client.get(),
+                                                   std::move(options)));
+                    return WrapWithClient(std::move(client),
+                                          std::move(executable));
+                  })
+      .def_static("Compile",
+                  [](const XlaComputation& computation,
+                     absl::optional<std::vector<Shape>> argument_layouts,
+                     const ExecutableBuildOptions* build_options,
+                     std::shared_ptr<PyLocalClient> client,
+                     absl::optional<std::vector<std::vector<Device*>>>
+                         device_assignment)
+                      -> StatusOr<ClientAndUniquePtr<PyLocalExecutable>> {
+                    py::gil_scoped_release gil_release;
+                    CompileOptions options;
+                    options.argument_layouts = std::move(argument_layouts);
+                    if (build_options) {
+                      options.executable_build_options = *build_options;
+                    }
+                    if (device_assignment) {
+                      TF_ASSIGN_OR_RETURN(
+                          DeviceAssignment xla_assignment,
+                          DevicesToDeviceAssignment(*device_assignment));
+                      options.executable_build_options.set_device_assignment(
+                          xla_assignment);
+                    }
+                    TF_ASSIGN_OR_RETURN(
+                        std::unique_ptr<PyLocalExecutable> executable,
+                        PyLocalExecutable::Compile(computation, client.get(),
+                                                   std::move(options)));
+                    return WrapWithClient(std::move(client),
+                                          std::move(executable));
+                  })
       .def("local_logical_device_ids",
            &PyLocalExecutable::local_logical_device_ids)
-      .def("local_devices", &PyLocalExecutable::local_devices)
+      .def("local_devices",
+           [](const PyLocalExecutable& executable) {
+             std::vector<ClientAndPtr<Device>> devices;
+             devices.reserve(executable.local_devices().size());
+             for (Device* device : executable.local_devices()) {
+               devices.push_back(WrapWithClient(
+                   executable.client()->shared_from_this(), device));
+             }
+             return devices;
+           })
       .def("SizeOfGeneratedCodeInBytes",
            &PyLocalExecutable::SizeOfGeneratedCodeInBytes)
       .def("Delete", &PyLocalExecutable::Delete)
-      .def("Execute", &PyLocalExecutable::Execute,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      // TODO(phawkins): remove when all callers switch to ExecuteOnLocalDevices
-      .def("ExecutePerReplica", &PyLocalExecutable::ExecutePerReplica,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
-      .def("ExecuteOnLocalDevices", &PyLocalExecutable::ExecuteOnLocalDevices,
-           py::call_guard<py::gil_scoped_release>(), py::arg("arguments"))
+      .def(
+          "Execute",
+          [](const PyLocalExecutable& executable,
+             absl::Span<PyLocalBuffer* const> args)
+              -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
+            py::gil_scoped_release gil_release;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::unique_ptr<PyLocalBuffer>> output,
+                executable.Execute(args, ExecuteOptions()));
+            return WrapWithClient(executable.client()->shared_from_this(),
+                                  std::move(output.front()));
+          },
+          py::arg("arguments"))
+      // TODO(phawkins): remove in favor of overload that returns a vector.
+      .def(
+          "Execute",
+          [](const PyLocalExecutable& executable,
+             absl::Span<PyLocalBuffer* const> args, bool tuple_arguments)
+              -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
+            py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::unique_ptr<PyLocalBuffer>> output_buffers,
+                executable.Execute(args, options));
+            std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
+            outputs.reserve(output_buffers.size());
+            for (auto& buffer : output_buffers) {
+              outputs.push_back(WrapWithClient(
+                  executable.client()->shared_from_this(), std::move(buffer)));
+            }
+            return outputs;
+          },
+          py::arg("arguments"), py::arg("tuple_arguments"))
+      // TODO(phawkins): remove in favor of overload that returns a vector.
+      .def(
+          "ExecuteOnLocalDevices",
+          [](const PyLocalExecutable& executable,
+             absl::Span<const std::vector<PyLocalBuffer*>> args)
+              -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
+            py::gil_scoped_release gil_release;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
+                    output_buffers,
+                executable.ExecuteOnLocalDevices(args, ExecuteOptions()));
+            std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
+            outputs.reserve(output_buffers.size());
+            for (auto& buffers : output_buffers) {
+              outputs.push_back(
+                  WrapWithClient(executable.client()->shared_from_this(),
+                                 std::move(buffers.front())));
+            }
+            return outputs;
+          },
+          py::arg("arguments"))
+      .def(
+          "ExecuteOnLocalDevices",
+          [](const PyLocalExecutable& executable,
+             absl::Span<const std::vector<PyLocalBuffer*>> args,
+             bool tuple_arguments)
+              -> StatusOr<
+                  std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>>> {
+            py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
+                    output_buffers,
+                executable.ExecuteOnLocalDevices(args, options));
+            std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> outputs;
+            outputs.resize(output_buffers.size());
+            for (int computation = 0; computation < output_buffers.size();
+                 ++computation) {
+              for (auto& buffer : output_buffers[computation]) {
+                outputs[computation].push_back(
+                    WrapWithClient(executable.client()->shared_from_this(),
+                                   std::move(buffer)));
+              }
+            }
+            return outputs;
+          },
+          py::arg("arguments"), py::arg("tuple_arguments"))
       .def(
           "get_hlo_modules",
           [](const PyLocalExecutable& executable)
@@ -1200,7 +1379,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .def("ClearSharding", &XlaBuilder::ClearSharding);
 
   m.def("BufferToDLPackManagedTensor", BufferToDLPackManagedTensor);
-  m.def("DLPackManagedTensorToBuffer", DLPackManagedTensorToBuffer);
+  m.def("DLPackManagedTensorToBuffer",
+        [](const py::capsule& tensor, std::shared_ptr<PyLocalClient> client)
+            -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
+          TF_ASSIGN_OR_RETURN(
+              std::unique_ptr<PyLocalBuffer> buffer,
+              DLPackManagedTensorToBuffer(tensor, client.get()));
+          return WrapWithClient(std::move(client), std::move(buffer));
+        });
 
   py::enum_<TriangularSolveOptions::Transpose>(
       m, "TriangularSolveOptions_Transpose")
@@ -1239,6 +1425,16 @@ PYBIND11_MODULE(xla_extension, m) {
 
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
+
+  py::class_<DistributedRuntimeService,
+             std::unique_ptr<DistributedRuntimeService>>
+      distributed_runtime_service(m, "DistributedRuntimeService");
+  py::class_<DistributedRuntimeClient,
+             std::shared_ptr<DistributedRuntimeClient>>
+      distributed_runtime_client(m, "DistributedRuntimeClient");
+
+  m.def("get_distributed_runtime_service", &GetDistributedRuntimeService);
+  m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

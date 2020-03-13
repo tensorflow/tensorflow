@@ -178,6 +178,7 @@ class Layer(base_layer.Layer):
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
+    self._build_input_shape = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
@@ -245,6 +246,15 @@ class Layer(base_layer.Layer):
     # Manage initial weight values if passed.
     self._initial_weights = kwargs.get('weights', None)
 
+    # Whether the layer will track any layers that is set as attribute on itself
+    # as sub-layers, the weights from the sub-layers will be included in the
+    # parent layer's variables() as well.
+    # Default to True, which means auto tracking is turned on. Certain subclass
+    # might want to turn it off, like Sequential model.
+    self._auto_track_sub_layers = True
+
+  @trackable.no_automatic_dependency_tracking
+  @generic_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -259,6 +269,8 @@ class Layer(base_layer.Layer):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
+    if not hasattr(self.build, '_is_default'):
+      self._build_input_shape = input_shape
     self.built = True
 
   @doc_controls.for_subclass_implementers
@@ -366,7 +378,7 @@ class Layer(base_layer.Layer):
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
-      # The policy is "infer", so we infer the policy from the variable dtype.
+      # The policy is "_infer", so we infer the policy from the variable dtype.
       self._dtype_policy = policy.Policy(dtype.base_dtype.name)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
@@ -455,7 +467,7 @@ class Layer(base_layer.Layer):
         self._non_trainable_weights.append(variable)
     return variable
 
-  @base_layer_utils.default
+  @generic_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -593,7 +605,7 @@ class Layer(base_layer.Layer):
         lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
-  @base_layer_utils.default
+  @generic_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -1784,7 +1796,7 @@ class Layer(base_layer.Layer):
           "Layer {self.name} is casting an input tensor from dtype "
           "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
           "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          "because it's dtype defaults to floatx.\n\n"
+          'because its dtype defaults to floatx.\n\n'
           ""
           "If you intended to run this layer in {layer_dtype}, you can safely "
           "ignore this warning. If in doubt, this warning is likely only an "
@@ -2251,10 +2263,7 @@ class Layer(base_layer.Layer):
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
-
-    # Sequential models use a separate layer tracking mechanism, so skip the
-    # logic defined here for tracking layers.
-    if (self.__class__.__name__ != 'Sequential' and
+    if (getattr(self, '_auto_track_sub_layers', True) and
         (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty

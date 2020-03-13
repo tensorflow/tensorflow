@@ -55,7 +55,7 @@ __global__ void CheckNumericsKernel(const T* __restrict__ data, int size,
 }
 
 // V2 of CheckNumericsKernel for GPU.
-// Unlike CheckNumericsKernel (V1), this kernel disinguishes -Inf and +Inf.
+// Unlike CheckNumericsKernel (V1), this kernel distinguishes -Inf and +Inf.
 // The 3 elements of `abnormal_detected` are used to signify NaN, -Inf and +Inf,
 // respectively.
 template <typename T>
