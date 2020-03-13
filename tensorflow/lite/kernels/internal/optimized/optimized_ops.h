@@ -3973,7 +3973,7 @@ inline void LocalResponseNormalization(
   // In a few cases, the pow computation could benefit from speedups.
   if (op_params.beta == 1) {
     data_out.array() = data_in.array() * data_out.array().inverse();
-  } else if (op_params.beta == 0.5) {
+  } else if (op_params.beta == 0.5f) {
     data_out.array() = data_in.array() * data_out.array().sqrt().inverse();
   } else {
     data_out.array() = data_in.array() * data_out.array().pow(-op_params.beta);
@@ -4079,7 +4079,7 @@ inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
 
 inline int32_t QuantizeSoftmaxOutput(uint8_t* output_data, float prob_rescaled,
                                      int32_t zero_point) {
-  return static_cast<int32_t>(prob_rescaled + 0.5);
+  return static_cast<int32_t>(prob_rescaled + 0.5f);
 }
 
 inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
