@@ -294,6 +294,51 @@ static LogicalResult VerifyTypesCompatibility(
 }
 
 //===----------------------------------------------------------------------===//
+// Helper functions detect device capabilities from RuntimeDevices.
+//===----------------------------------------------------------------------===//
+
+namespace {
+using DeviceNameUtils = ::tensorflow::DeviceNameUtils;
+using ParsedName = ::tensorflow::DeviceNameUtils::ParsedName;
+
+bool IsGpuDevice(const DeviceNameUtils::ParsedName &device) {
+  return device.type == ::tensorflow::DEVICE_GPU;
+}
+
+}  // namespace
+
+// Returns true if at least one GPU device is available at runtime.
+bool CanUseGpuDevice(const RuntimeDevices &devices) {
+  return llvm::any_of(devices.device_names(), IsGpuDevice);
+}
+
+// Returns true if all of the GPUs available at runtime support TensorCores
+// (NVIDIA compute capability >= 7.0).
+bool CanUseTensorCores(const RuntimeDevices &devices) {
+  auto has_tensor_cores = [&](const DeviceNameUtils::ParsedName &device) {
+    auto md = devices.GetGpuDeviceMetadata(device);
+    return md ? md->cc_major().getInt() >= 7 : false;
+  };
+  return llvm::all_of(
+      llvm::make_filter_range(devices.device_names(), IsGpuDevice),
+      has_tensor_cores);
+}
+
+// Returns true if operation does not have explicit device placement that would
+// prevent it from running on GPU device.
+bool CanUseGpuDevice(Operation *op) {
+  auto device_attr = op->getAttrOfType<StringAttr>("device");
+  if (!device_attr || device_attr.getValue().empty()) return true;
+
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_attr.getValue().str(), &device))
+    return false;
+
+  // We can't use GPU if operation explicitly placed on non-GPU device.
+  return !device.has_type || device.type == ::tensorflow::DEVICE_GPU;
+}
+
+//===----------------------------------------------------------------------===//
 // TF op helper functions to work with layout transformation.
 //===----------------------------------------------------------------------===//
 
@@ -1002,8 +1047,56 @@ LogicalResult Conv2DOp::UpdateDataFormat(StringRef data_format) {
 }
 
 StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
-  // TODO(ezhulenev): Implement optimal layout selection.
-  return "";
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Input must be a tensor.
+  auto input_ty = input().getType().dyn_cast<TensorType>();
+  if (!input_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = input_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // For f32/f16 data type decision depends on the filter size in spatial
+  // dimensions, for other data types we keep current data format.
+  if (!input_ty.getElementType().isF32() && !input_ty.getElementType().isF16())
+    return data_format();
+
+  // Keep current data format if filter rank is unknown or not equal to 4.
+  auto filter_ty = filter().getType().dyn_cast<RankedTensorType>();
+  if (!filter_ty || filter_ty.getRank() != 4) return data_format();
+
+  const int64_t d0 = filter_ty.getDimSize(0);
+  const int64_t d1 = filter_ty.getDimSize(1);
+
+  auto all_ones = [](ArrayAttr arr) -> bool {
+    return llvm::all_of(arr, [](Attribute attr) -> bool {
+      return attr.cast<IntegerAttr>().getInt() == 1;
+    });
+  };
+
+  // Convolutions with 1x1 filter and with strides and dilations all ones, can
+  // be computed as a GEMM in NHWC data format, and can be up to ~2x times
+  // faster than convolution in NCHW.
+  const bool one_by_one = d0 == 1 && d1 == 1;
+  const bool trivial_strides = all_ones(strides());
+  const bool trivial_dilations = all_ones(dilations());
+
+  // TODO(ezhulenev): This might lead to excessive transposes in the final IR,
+  // if the ratio of 1x1 convolutions to regular convolutions is close to 1:1.
+  // Also FusedBatchNorm in training mode prefers NCHW data format. Check if all
+  // users can efficiently use NHWC data format?
+  if (one_by_one && trivial_strides && trivial_dilations) {
+    return "NHWC";
+  }
+
+  // If filter spatial dimensions are unknown or not 1x1 we prefer NCHW, because
+  // it's the fastest option on NVIDIA GPUs with cuDNN library support.
+  return "NCHW";
 }
 
 //===----------------------------------------------------------------------===//
