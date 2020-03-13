@@ -765,7 +765,7 @@ class EmbeddingLookupSparseTest(test.TestCase):
         embedding_sum = embedding_ops.embedding_lookup_sparse(
             x, sp_ids, sp_weights, combiner=combiner)
 
-        tf_embedding_sum = embedding_sum.numpy()
+        tf_embedding_sum = embedding_sum.eval()
         self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
         self.assertAllClose(tf_embedding_sum[1], np.ones(5))
         self.assertAllClose(tf_embedding_sum[2], np.zeros(5))
