@@ -770,8 +770,7 @@ class CategoricalAccuracy(MeanMetricWrapper):
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
-  `acc = dot(sample_weight, (y_true == argmax(y_pred)) / n_pred`
-  where `n_pred = len(y_true)` 
+  `acc = np.dot(sample_weight, np.equal(y_true, np.argmax(y_pred, axis=1))`
 
   You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
