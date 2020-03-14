@@ -26,8 +26,8 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional as conv_layers
-from tensorflow.python.layers import normalization as normalization_layers
+from tensorflow.python.keras.legacy_tf_layers import convolutional as conv_layers
+from tensorflow.python.keras.legacy_tf_layers import normalization as normalization_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops

@@ -29,6 +29,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
+#include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // TF:llvm-project
 #include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"

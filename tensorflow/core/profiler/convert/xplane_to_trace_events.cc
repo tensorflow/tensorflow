@@ -36,17 +36,6 @@ Device BuildDeviceAndResource(const XPlaneVisitor& plane) {
   return device;
 }
 
-// Returns true if the given stat shouldn't be shown in the trace viewer.
-bool IsInternalStat(StatType stat_type) {
-  switch (stat_type) {
-    case StatType::kKernelDetails:
-    case StatType::kLevel0:
-      return true;
-    default:
-      return false;
-  }
-}
-
 }  // namespace
 
 void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit) {
@@ -98,7 +87,7 @@ void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace) {
 
         xevent.ForEachStat([&](const XStatVisitor& stat) {
           if (stat.ValueCase() == XStat::VALUE_NOT_SET) return;
-          if (stat.Type() && IsInternalStat(StatType(*stat.Type()))) return;
+          if (IsInternalStat(stat.Type())) return;
           args[string(stat.Name())] = stat.ToString();
         });
       });

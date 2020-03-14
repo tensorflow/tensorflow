@@ -30,6 +30,7 @@ filegroup(
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
         "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
     ],
 )
@@ -223,6 +224,7 @@ cc_library(
         ":validators",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",

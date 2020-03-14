@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffects.td"
 include "mlir/Transforms/LoopLikeInterface.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
@@ -596,7 +597,7 @@ def TFL_ConcatenationOp : TFL_Op<"concatenation",
   let verifier = [{ return Verify(*this); }];
 }
 
-def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
+def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [ConstantLike, NoSideEffect,
     FirstAttrDerivedResultType]> {
   let summary = "Constant pseudo op.";
 

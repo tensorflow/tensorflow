@@ -36,6 +36,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -881,12 +882,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
       weights = model.get_weights()
 
-      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
-      hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
-      assert len(hist.epoch) >= patience
-
       # This should allow training to go for at least `patience` epochs
       model.set_weights(weights)
+
+      stopper = keras.callbacks.EarlyStopping(monitor='acc', patience=patience)
       hist = model.fit(data, labels, callbacks=[stopper], verbose=0, epochs=20)
       assert len(hist.epoch) >= patience
 
@@ -954,7 +953,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
   def test_RemoteMonitor(self):
     if requests is None:
-      return
+      self.skipTest('`requests` required to run this test')
+      return None
 
     monitor = keras.callbacks.RemoteMonitor()
     # This will raise a warning since the default address in unreachable:
@@ -1378,6 +1378,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
+      return None
     with self.cached_session():
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=TRAIN_SAMPLES,
@@ -1599,8 +1600,7 @@ def list_summaries(logdir):
     ValueError: If an event file contains an summary of unexpected kind.
   """
   result = _SummaryFile()
-  for (dirpath, dirnames, filenames) in os.walk(logdir):
-    del dirnames  # unused
+  for (dirpath, _, filenames) in os.walk(logdir):
     for filename in filenames:
       if not filename.startswith('events.out.'):
         continue
@@ -1741,8 +1741,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         callbacks=[tb_cbk])
 
     events_file_run_basenames = set()
-    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
-      del dirnames  # unused
+    for (dirpath, _, filenames) in os.walk(self.logdir):
       if any(fn.startswith('events.out.') for fn in filenames):
         events_file_run_basenames.add(os.path.basename(dirpath))
     self.assertEqual(events_file_run_basenames, {'train'})
@@ -2065,6 +2064,31 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  # Test case that replicates a Github issue.
+  # https://github.com/tensorflow/tensorflow/issues/37543
+  def test_TensorBoard_autoTrace_profileTwiceGraphMode(self):
+    ops.disable_eager_execution()
+    inp = keras.Input((1,))
+    out = keras.layers.Dense(units=1)(inp)
+    model = keras.Model(inp, out)
+
+    model.compile(gradient_descent.SGD(1), 'mse')
+
+    model.fit(
+        np.zeros((64, 1)),
+        np.zeros((64, 1)),
+        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=1)],
+    )
+    # Verifies trace exists in the first train_dir.
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    model.fit(
+        np.zeros((64, 1)),
+        np.zeros((64, 1)),
+        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=2)],
+    )
+    # Verifies trace exists in the second train_dir.
     self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):

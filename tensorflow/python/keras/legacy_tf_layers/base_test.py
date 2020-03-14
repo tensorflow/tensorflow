@@ -30,8 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.keras.engine import input_spec
-from tensorflow.python.layers import base as base_layers
-from tensorflow.python.layers import core as core_layers
+from tensorflow.python.keras.legacy_tf_layers import base as base_layers
+from tensorflow.python.keras.legacy_tf_layers import core as core_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
