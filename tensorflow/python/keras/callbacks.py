@@ -117,7 +117,9 @@ def configure_callbacks(callbacks,
       verbose=verbose,
       mode=mode)
 
-  callback_list.model.stop_training = False
+  if not hasattr(callback_list.model, 'stop_training'):
+    callback_list.model.stop_training = False
+
   return callback_list
 
 

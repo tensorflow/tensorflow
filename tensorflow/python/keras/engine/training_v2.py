@@ -741,7 +741,8 @@ class TrainingContext(object):
         model, 'samples' if use_samples else 'steps')
     progbar.params = callbacks.params
     progbar.params['verbose'] = verbose
-    callbacks.model.stop_training = False
+    if not hasattr(callbacks.model, 'stop_training'):
+      callbacks.model.stop_training = False
     callbacks._call_begin_hook(mode)
     progbar.on_train_begin()
 
