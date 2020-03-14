@@ -35,7 +35,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
-
+from tensorflow.python.framework import errors_impl
 
 
 class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
@@ -247,8 +247,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([1, 2, 3], self.evaluate(get_next()))
     self.assertAllEqual([4, 5, 6], self.evaluate(get_next()))
-    with self.assertRaisesOpError(r"The expected structure was "
-                                  r"\(TensorShape\(\[3\]\), tf\.int64, None\)"):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertAllEqual([7, 8, 9], self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -268,8 +267,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertAllEqual([1, 2, 3], self.evaluate(get_next()))
     self.assertAllEqual([4, 5, 6], self.evaluate(get_next()))
-    with self.assertRaisesOpError(r"element of TypeSpec\(TensorShape\(\[3\]\), "
-                                  r"tf\.int64, None\) was expected"):
+    with self.assertRaises(errors_impl.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertAllEqual([11, 12, 13], self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
