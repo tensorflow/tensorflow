@@ -56,9 +56,7 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 
