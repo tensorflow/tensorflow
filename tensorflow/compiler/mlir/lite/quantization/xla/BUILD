@@ -9,6 +9,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//tensorflow/compiler/aot/...",
         "//tensorflow/compiler/mlir/...",
         "//tensorflow/compiler/mlir/lite/...",
     ],
@@ -37,4 +38,26 @@ cc_library(
         "@llvm-project//mlir:StandardOps",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "quantize",
+    srcs = [
+        "quantize.cc",
+    ],
+    hdrs = [
+        "quantize.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/tf2xla:mlir_tf2xla",
+        "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
+        "//tensorflow/compiler/tf2xla/kernels:xla_ops",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/core/platform:status",
+    ],
 )
