@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import pooling as pooling_layers
+from tensorflow.python.keras.legacy_tf_layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
