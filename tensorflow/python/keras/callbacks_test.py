@@ -36,6 +36,7 @@ from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -2063,6 +2064,31 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
         },
     )
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+
+  # Test case that replicates a Github issue.
+  # https://github.com/tensorflow/tensorflow/issues/37543
+  def test_TensorBoard_autoTrace_profileTwiceGraphMode(self):
+    ops.disable_eager_execution()
+    inp = keras.Input((1,))
+    out = keras.layers.Dense(units=1)(inp)
+    model = keras.Model(inp, out)
+
+    model.compile(gradient_descent.SGD(1), 'mse')
+
+    model.fit(
+        np.zeros((64, 1)),
+        np.zeros((64, 1)),
+        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=1)],
+    )
+    # Verifies trace exists in the first train_dir.
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    model.fit(
+        np.zeros((64, 1)),
+        np.zeros((64, 1)),
+        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=2)],
+    )
+    # Verifies trace exists in the second train_dir.
     self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):
