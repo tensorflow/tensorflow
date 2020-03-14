@@ -1576,6 +1576,20 @@ class NestedNetworkTest(keras_parameterized.TestCase):
     res = reversed_model({'a': a_val, 'b': b_val})
     self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
 
+  def test_dict_mapping_single_input(self):
+    b = input_layer_lib.Input(shape=(1,), name='b')
+    outputs = b * 2
+    model = training_lib.Model(b, outputs)
+
+    b_val = array_ops.ones((1, 1))
+    extra_val = array_ops.ones((1, 10))
+
+    inputs = {'a': extra_val, 'b': b_val}
+    res = model(inputs)
+
+    # Check that 'b' was used and 'a' was ignored.
+    self.assertEqual(res.shape.as_list(), [1, 1])
+
 
 @combinations.generate(combinations.keras_mode_combinations())
 class AddLossTest(keras_parameterized.TestCase):
