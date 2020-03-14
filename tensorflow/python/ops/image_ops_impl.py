@@ -3252,24 +3252,19 @@ def rgb_to_yuv(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
-  You need to scale your RGB images if their pixel values are not in the
-  required range. Below given example illustrates preprocessing of each channel
-  of images before feeding them to `rgb_to_yuv`.
 
   Usage Example:
 
-  >>> rgb_images = tf.random.uniform(shape=[100,64,64,3], maxval=255)
-  >>> preprocessed_rgb_images = tf.truediv(
-  ...   tf.subtract(
-  ...     rgb_images,
-  ...     tf.reduce_min(rgb_images)
-  ...   ),
-  ...   tf.subtract(
-  ...     tf.reduce_max(rgb_images),
-  ...     tf.reduce_min(rgb_images)
-  ...   )
-  ... )
-  >>> yub_tensor_images = tf.image.rgb_to_yuv(preprocessed_rgb_images)
+  >>> x = [[[0.1, 0.2, 0.3],
+  ...       [0.4, 0.5, 0.6]],
+  ...     [[0.7, 0.8, 0.9],
+  ...       [0.10, 0.11, 0.12]]]
+  >>> tf.image.rgb_to_yuv(x)
+  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
+  array([[[ 0.1815    ,  0.05831515, -0.07149857],
+          [ 0.4815    ,  0.05831517, -0.07149856]],
+         [[ 0.7815    ,  0.05831515, -0.07149857],
+          [ 0.10815   ,  0.00583152, -0.00714985]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
