@@ -4071,16 +4071,20 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
+template <typename T>
+inline int32_t QuantizeSoftmaxOutput(float prob_rescaled, int32_t zero_point) {
   const int32_t prob_rnd = static_cast<int32_t>(std::round(prob_rescaled));
   return prob_rnd + zero_point;
 }
 
-inline int32_t QuantizeSoftmaxOutput(uint8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
+#if !__aarch64__
+// With ARM64, rounding is faster than add + truncation.
+template <>
+inline int32_t QuantizeSoftmaxOutput<uint8_t>(float prob_rescaled,
+                                              int32_t zero_point) {
   return static_cast<int32_t>(prob_rescaled + 0.5f);
 }
+#endif
 
 inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
                                        float beta) {
@@ -4123,7 +4127,7 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput(output_data, prob_rescaled, params.zero_point);
+          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
       output_data[j] = static_cast<T>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
