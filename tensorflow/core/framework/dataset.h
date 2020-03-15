@@ -59,7 +59,7 @@ class GraphDefBuilder;
 class Node;
 class EparallaxTensorIndex;
 
-string ToStringV(std::vector<EparallaxTensorIndex*> indices);
+string ToString(std::vector<EparallaxTensorIndex*> indices);
 
 class EparallaxTensorIndex {
  public:
@@ -71,14 +71,9 @@ class EparallaxTensorIndex {
     local_index_ = local_index;
   }
 
-  ~EparallaxTensorIndex() {
-    LOG(INFO) << ToString();
-    //delete parent_indices_;
-  }
-
   string ToString() const {
-    return iterator_id() + "(" + ToStringV(*parent_indices()) + ", " +
-           std::to_string(local_index()) + ")";
+    return iterator_id() + "(" + tensorflow::ToString(*parent_indices()) +
+        ", " + std::to_string(local_index()) + ")";
   }
 
   string iterator_id() const { return iterator_id_; }
@@ -87,8 +82,10 @@ class EparallaxTensorIndex {
   }
   int64 local_index() const { return local_index_; }
 
-  friend bool operator==(const EparallaxTensorIndex& index_1, const EparallaxTensorIndex& index_2);
-  friend bool operator!=(const EparallaxTensorIndex& index_1, const EparallaxTensorIndex& index_2);
+  friend bool operator==(const EparallaxTensorIndex& index_1,
+                         const EparallaxTensorIndex& index_2);
+  friend bool operator!=(const EparallaxTensorIndex& index_1,
+                         const EparallaxTensorIndex& index_2);
 
  private:
   string iterator_id_;
@@ -110,7 +107,7 @@ inline bool operator==(const EparallaxTensorIndex& index_1,
   }
 }
 
-string ToStringV(std::vector<EparallaxTensorIndex*> indices) {
+string ToString(std::vector<EparallaxTensorIndex*> indices) {
   string ret = "<";
   for (auto it=indices.begin(); it!=indices.end(); it++) {
     ret = ret + (*it)->ToString() + ", ";
@@ -126,11 +123,9 @@ inline bool operator!=(const EparallaxTensorIndex& index_1,
 inline bool operator==(const std::vector<EparallaxTensorIndex*>& indices_1,
                        const std::vector<EparallaxTensorIndex*>& indices_2) {
   if (indices_1.size() != indices_2.size()) return false;
-
   for (int64 i=0; i<indices_1.size(); i++) {
     if (*indices_1[i] != *indices_2[i]) return false;
   }
-
   return true;
 }
 
@@ -157,11 +152,6 @@ inline std::ostream& operator<<(std::ostream& os,
   os << ">";
   return os;
 }
-
-struct IndexedTensors {
-  std::vector<Tensor>* tensors;
-  EparallaxTensorIndex* index;
-};
 
 namespace data {
 
@@ -381,21 +371,18 @@ class GraphDefBuilderWrapper {
 class StatsAggregator;
 class FunctionHandleCache;
 
-//TODO(KG): memory management
-//TODO(KG): index tree
-//TODO(KG): Remove stale indices of repeat()
 typedef std::map<string, std::vector<EparallaxTensorIndex*>*> IndexTree;
 class MultiLevelIndexTree {
  public:
   void Push(EparallaxTensorIndex* index) {
-    std::vector<EparallaxTensorIndex*>* indices = Get(index->iterator_id(),
-                                                    ToStringV(*index->parent_indices()));
+    std::vector<EparallaxTensorIndex*>* indices = Get(
+        index->iterator_id(), ToString(*index->parent_indices()));
     indices->push_back(index);
   }
 
   bool Contains(EparallaxTensorIndex *index) {
-    std::vector<EparallaxTensorIndex*>* indices = Get(index->iterator_id(),
-                                                    ToStringV(*index->parent_indices()));
+    std::vector<EparallaxTensorIndex*>* indices = Get(
+        index->iterator_id(), ToString(*index->parent_indices()));
     for (auto buffered_index : *indices) {
       if (*index == *buffered_index) {
         return true;
@@ -412,63 +399,9 @@ class MultiLevelIndexTree {
       tree = it.second;
       if (key.substr(0, iterator_id.length()) == iterator_id) {
         if (key.length() > iterator_id.length()) {
-          //for (EparallaxTensorIndex* index : *tree) {
-          //  LOG(INFO) << "Clearing " << *index;
-          //  delete index;
-          //}
           tree->clear();
         }
-      } /*else if (key.length() < iterator_id.length()) {
-        for (auto it = tree->begin(); it != tree->end();) {
-          bool found = false;
-          for (auto index : *Get(iterator_id)) {
-            if (ContainsAncestor(*it, index)) {
-              found = true;
-              break;
-            }
-          }
-          if (found) {
-            LOG(INFO) << "Deleted index: " << **it;
-            tree->erase(it);
-          } else {
-            it++;
-          }
-        }
-      }*/
-    }
-  }
-
-  bool ContainsAncestor(EparallaxTensorIndex* index,
-                        EparallaxTensorIndex* ancestor) {
-    bool found = false;
-    for (auto parent_index : *index->parent_indices()) {
-      if (*parent_index == *ancestor) {
-        found = true;
-        break;
-      } else if (ContainsAncestor(parent_index, ancestor)) {
-        found = true;
-        break;
       }
-    }
-    return found;
-  }
-
-  void Clear(string iterator_id) {
-    Get(iterator_id)->clear();
-  }
-
-  void ClearChildren(string iterator_id) {
-    return;
-  }
-
-  IndexTree* Get(string iterator_id) {
-    auto it = tree_.find(iterator_id);
-    if (it == tree_.end()) {
-      IndexTree* tree = new IndexTree;
-      tree_.insert(std::make_pair(iterator_id, tree));
-      return tree;
-    } else {
-      return it->second;
     }
   }
 
@@ -516,8 +449,7 @@ class IndexManager {
     infertile_indices_(std::make_shared<MultiLevelIndexTree>()),
     last_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
     current_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
-    offset_map_(std::make_shared<std::map<string, int64>>())
-  {
+    offset_map_(std::make_shared<std::map<string, int64>>()) {
     string username = "kyunggeun-lee";
     ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/index/index_ckpt";
     Restore();
@@ -537,25 +469,8 @@ class IndexManager {
   void SetShardID(int64 index);
 
  protected:
-  bool AlreadyProcessedInternal(EparallaxTensorIndex* index) EXCLUSIVE_LOCKS_REQUIRED(*mu_);
-
-  bool IsParentShuffle(EparallaxTensorIndex* index) {
-    for (auto parent_index : *index->parent_indices()) {
-      size_t pos = parent_index->iterator_id().find_last_of("::");
-      string optype = parent_index->iterator_id().substr(pos+1);
-      if (optype.find("Shuffle") != std::string::npos) {
-        //LOG(INFO) << "Shuffled";
-        return true;
-      }
-      /*for (auto grand_parent_index : *parent_index->parent_indices()) {
-        if (IsShuffled(grand_parent_index)) {
-          //LOG(INFO) << "Shuffled";
-          return true;
-        }
-      }*/
-    }
-    return false;
-  }
+  bool AlreadyProcessedInternal(EparallaxTensorIndex* index)
+      EXCLUSIVE_LOCKS_REQUIRED(*mu_);
 
   void Restore() {
     std::ifstream ckpt_file(ckpt_file_path_.data());
@@ -581,7 +496,6 @@ class IndexManager {
     if(ckpt_file.is_open()){
       for (auto processed_indices : processed_indices_->GetAll()) {
         for (auto processed_index : *processed_indices) {
-          //LOG(INFO) << "Saving " << *processed_index;
           ckpt_file << "processed_index:" << *processed_index << "\n";
         }
       }

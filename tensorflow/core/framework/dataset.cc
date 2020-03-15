@@ -423,11 +423,12 @@ void IndexManager::NotifyFinished(EparallaxTensorIndex* index) {
     EparallaxTensorIndex* processed_index = processed_indices_buffer.back();
     processed_indices_buffer.pop_back();
     processed_indices_->Push(processed_index);
-    LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Processing finished: " << *processed_index;
+    //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Processing finished: " << *processed_index;
 
     auto parent_indices = processed_index->parent_indices();
-    for (auto issued_index : *issued_indices_->Get(processed_index->iterator_id(),
-          ToStringV(*processed_index->parent_indices()))) {
+    for (auto issued_index : *issued_indices_->Get(
+          processed_index->iterator_id(),
+          ToString(*processed_index->parent_indices()))) {
       if (*issued_index->parent_indices() == *parent_indices &&
           !AlreadyProcessedInternal(issued_index)) {
         //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Still Not processed " << *issued_index;
@@ -454,7 +455,8 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
   EparallaxTensorIndex* out_index;
 
   int64 last_local_index = -1;
-  for (auto issued_index : *issued_indices_->Get(prefix, ToStringV(*parent_indices))) {
+  for (auto issued_index : *issued_indices_->Get(
+        prefix, ToString(*parent_indices))) {
     if (*issued_index->parent_indices() == *parent_indices &&
         issued_index->local_index() > last_local_index) {
       last_local_index = issued_index->local_index();
@@ -484,12 +486,12 @@ EparallaxTensorIndex* IndexManager::IssueNewIndex(
     auto last_index = last_index_map_->find(out_index->iterator_id());
     if (last_index != last_index_map_->end()) {
       for (auto last_parent_index : *last_index->second->parent_indices()) {
-        LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Infertile: " << *last_parent_index;
+        //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Infertile: " << *last_parent_index;
         infertile_indices_->Push(last_parent_index);
       }
     }
   }
-  LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Issued " << *out_index;
+  //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Issued " << *out_index;
   return out_index;
 }
 
@@ -497,42 +499,34 @@ bool IndexManager::AlreadyProcessed(EparallaxTensorIndex* index) {
   mutex_lock l(*mu_);
   bool already_processed = AlreadyProcessedInternal(index);
   if (already_processed) {
-    LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Index is already processed; Skipping.";
-    LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
+    //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Index is already processed; Skipping.";
+    //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
   }
   return already_processed;
-}
-
-bool IndexManager::AlreadyProcessedInternal(EparallaxTensorIndex* index)
-  EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
-  return processed_indices_->Contains(index);
 }
 
 void IndexManager::ResetParentIndex(string iterator_id) {
   mutex_lock l(*mu_);
   processed_indices_->ClearParent(iterator_id);
-  //processed_indices_->Clear(iterator_id);
   issued_indices_->ClearParent(iterator_id);
-  //issued_indices_->Clear(iterator_id);
   infertile_indices_->ClearParent(iterator_id);
-  //infertile_indices_->Clear(iterator_id);
   /*
-  LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Processed indices";
+  //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Processed indices";
   for (auto vec : processed_indices_->GetAll()) {
     for (auto index : *vec) {
-      LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
+      //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
     }
   }
-  LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Issued indices";
+  //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Issued indices";
   for (auto vec : issued_indices_->GetAll()) {
     for (auto index : *vec) {
-      LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
+      //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
     }
   }
-  LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Infertile indices";
+  //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << "Infertile indices";
   for (auto vec : infertile_indices_->GetAll()) {
     for (auto index : *vec) {
-      LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
+      //LOG(INFO) << "[" << std::this_thread::get_id() << "] " << *index;
     }
   }*/
   std::ofstream ckpt_file;
