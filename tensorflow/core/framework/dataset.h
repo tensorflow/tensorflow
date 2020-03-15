@@ -19,8 +19,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 #include <fstream>
-#include <iostream>
-#include <thread>
+#include <cstdlib>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -450,8 +449,9 @@ class IndexManager {
     last_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
     current_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
     offset_map_(std::make_shared<std::map<string, int64>>()) {
-    string username = "kyunggeun-lee";
-    ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/index/index_ckpt";
+    string username(std::getenv("USER"));
+    ckpt_file_path_ = "/tmp/eparallax-" + username +
+                      "/checkpoint/index/index_ckpt";
     Restore();
   }
 
@@ -470,7 +470,9 @@ class IndexManager {
 
  protected:
   bool AlreadyProcessedInternal(EparallaxTensorIndex* index)
-      EXCLUSIVE_LOCKS_REQUIRED(*mu_);
+      EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    return processed_indices_->Contains(index);
+  }
 
   void Restore() {
     std::ifstream ckpt_file(ckpt_file_path_.data());
