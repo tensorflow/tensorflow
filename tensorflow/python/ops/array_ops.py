@@ -1802,6 +1802,8 @@ def sparse_mask(a, mask_indices, name=None):
 def unique(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
+  See also `tf.unique_with_counts`
+
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
   also returns a tensor `idx` the same size as `x` that contains the index
@@ -1846,6 +1848,8 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 @tf_export("unique_with_counts")
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
+
+  See also `tf.unique`
 
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
