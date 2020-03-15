@@ -42,14 +42,118 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+// GpuTracer for ROCm GPU.
+class GpuTracer : public profiler::ProfilerInterface {
+ public:
+  GpuTracer() { VLOG(1) << "GpuTracer created."; }
+  ~GpuTracer() override {}
+
+  // GpuTracer interface:
+  Status Start() override;
+  Status Stop() override;
+  Status CollectData(RunMetadata* run_metadata) override;
+  Status CollectData(XSpace* space) override;
+  profiler::DeviceType GetDeviceType() override {
+    return profiler::DeviceType::kGpu;
+  }
+
+ private:
+  Status DoStart();
+  Status DoStop();
+  Status DoCollectData(RunMetadata* run_metadata);
+  Status DoCollectData(XSpace* space);
+
+  enum State {
+    kNotStarted,
+    kStartedOk,
+    kStartedError,
+    kStoppedOk,
+    kStoppedError
+  };
+  State profiling_state_ = State::kNotStarted;
+};
+
+Status GpuTracer::DoStart() { return Status::OK(); }
+
+Status GpuTracer::Start() {
+  Status status = DoStart();
+  if (status.ok()) {
+    profiling_state_ = State::kStartedOk;
+    return Status::OK();
+  } else {
+    profiling_state_ = State::kStartedError;
+    return status;
+  }
+}
+
+Status GpuTracer::DoStop() { return Status::OK(); }
+
+Status GpuTracer::Stop() {
+  if (profiling_state_ == State::kStartedOk) {
+    Status status = DoStop();
+    profiling_state_ = status.ok() ? State::kStoppedOk : State::kStoppedError;
+  }
+  return Status::OK();
+}
+
+Status GpuTracer::DoCollectData(RunMetadata* run_metadata) {
+  return Status::OK();
+}
+
+Status GpuTracer::CollectData(RunMetadata* run_metadata) {
+  switch (profiling_state_) {
+    case State::kNotStarted:
+      VLOG(1) << "No trace data collected, session wasn't started";
+      return Status::OK();
+    case State::kStartedOk:
+      return errors::FailedPrecondition("Cannot collect trace before stopping");
+    case State::kStartedError:
+      LOG(ERROR) << "Cannot collect, roctracer failed to start";
+      return Status::OK();
+    case State::kStoppedError:
+      VLOG(1) << "No trace data collected";
+      return Status::OK();
+    case State::kStoppedOk: {
+      DoCollectData(run_metadata);
+      return Status::OK();
+    }
+  }
+  return errors::Internal("Invalid profiling state: ", profiling_state_);
+}
+
+Status GpuTracer::DoCollectData(XSpace* space) { return Status::OK(); }
+
+Status GpuTracer::CollectData(XSpace* space) {
+  switch (profiling_state_) {
+    case State::kNotStarted:
+      VLOG(1) << "No trace data collected, session wasn't started";
+      return Status::OK();
+    case State::kStartedOk:
+      return errors::FailedPrecondition("Cannot collect trace before stopping");
+    case State::kStartedError:
+      LOG(ERROR) << "Cannot collect, roctracer failed to start";
+      return Status::OK();
+    case State::kStoppedError:
+      VLOG(1) << "No trace data collected";
+      return Status::OK();
+    case State::kStoppedOk: {
+      DoCollectData(space);
+      return Status::OK();
+    }
+  }
+  return errors::Internal("Invalid profiling state: ", profiling_state_);
+}
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
     const profiler::ProfilerOptions& options) {
-  return nullptr;
+  if (options.device_type != profiler::DeviceType::kGpu &&
+      options.device_type != profiler::DeviceType::kUnspecified)
+    return nullptr;
+  return absl::make_unique<profiler::GpuTracer>();
 }
 
-auto register_gpu_tracer_factory = [] {
+auto register_rocm_gpu_tracer_factory = [] {
   RegisterProfilerFactory(&CreateGpuTracer);
   return 0;
 }();
