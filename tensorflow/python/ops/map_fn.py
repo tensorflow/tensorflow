@@ -53,7 +53,7 @@ def map_fn(fn,
            fn_output_signature=None):
   """Transforms `elems` by applying `fn` to each element unstacked on axis 0.
 
-  See also `tf.scan`
+  See also `tf.scan`.
 
   `map_fn` unstacks `elems` on axis 0 to obtain a sequence of elements;
   calls `fn` to transform each element; and then stacks the transformed

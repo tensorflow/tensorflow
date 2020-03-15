@@ -194,7 +194,7 @@ def eye(num_rows,
         name=None):
   """Construct an identity matrix, or a batch of matrices.
 
-  See also `tf.ones`, `tf.zeros`, `tf.fill`, `tf.one_hot`
+  See also `tf.ones`, `tf.zeros`, `tf.fill`, `tf.one_hot`.
 
   ```python
   # Construct one identity matrix.

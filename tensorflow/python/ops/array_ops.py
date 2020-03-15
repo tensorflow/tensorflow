@@ -199,7 +199,7 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 def fill(dims, value, name=None):
   r"""Creates a tensor filled with a scalar value.
 
-  See also `tf.ones`, `tf.zeros`, `tf.one_hot`, `tf.eye`
+  See also `tf.ones`, `tf.zeros`, `tf.one_hot`, `tf.eye`.
 
   This operation creates a tensor of shape `dims` and fills it with `value`.
 
@@ -761,7 +761,7 @@ def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
 
-  See also `tf.shape`
+  See also `tf.shape`.
 
   Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
@@ -994,7 +994,7 @@ def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
 
-  See also `tf.strided_slice`
+  See also `tf.strided_slice`.
 
   This operation extracts a slice of size `size` from a tensor `input_` starting
   at the location specified by `begin`. The slice `size` is represented as a
@@ -1058,7 +1058,7 @@ def strided_slice(input_,
                   name=None):
   """Extracts a strided slice of a tensor (generalized python array indexing).
 
-  See also `tf.slice`
+  See also `tf.slice`.
 
   **Instead of calling this op directly most users will want to use the
   NumPy-style slicing syntax (e.g. `tensor[..., 3:4:-1, tf.newaxis, 3]`), which
@@ -1802,7 +1802,7 @@ def sparse_mask(a, mask_indices, name=None):
 def unique(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
-  See also `tf.unique_with_counts`
+  See also `tf.unique_with_counts`.
 
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
@@ -1849,7 +1849,7 @@ unique.__doc__ = gen_array_ops.unique.__doc__
 def unique_with_counts(x, out_idx=dtypes.int32, name=None):
   """Finds unique elements in a 1-D tensor.
 
-  See also `tf.unique`
+  See also `tf.unique`.
 
   This operation returns a tensor `y` containing all of the unique elements
   of `x` sorted in the same order that they occur in `x`. This operation
@@ -2698,7 +2698,7 @@ def _tag_zeros_tensor(fun):
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
-  See also `tf.zeros_like`, `tf.ones`, `tf.fill`, `tf.eye`
+  See also `tf.zeros_like`, `tf.ones`, `tf.fill`, `tf.eye`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to zero.
@@ -3874,7 +3874,7 @@ def one_hot(indices,
             name=None):
   """Returns a one-hot tensor.
 
-  See also `tf.fill`, `tf.eye`
+  See also `tf.fill`, `tf.eye`.
 
   The locations represented by indices in `indices` take value `on_value`,
   while all other locations take value `off_value`.
