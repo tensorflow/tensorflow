@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_is_configured_compat",
+    "if_rocm_is_configured_compat",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -25,12 +26,12 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = [
+    cuda_deps = if_cuda_is_configured_compat([
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
-    ],
+    ]) + if_rocm_is_configured_compat([
+    ]),
     deps = [
-        ":cupti_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
@@ -43,7 +44,12 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
-    ],
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ] + if_cuda_is_configured_compat([
+        ":cupti_utils",
+    ]) + if_rocm_is_configured_compat([
+    ]),
     alwayslink = 1,
 )
 
