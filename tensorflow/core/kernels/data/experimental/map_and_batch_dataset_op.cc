@@ -247,10 +247,11 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             --waiting_;
           }
           std::swap(result, batch_results_.front());
+          parent_indices->push_back(result->index);
           batch_results_.pop_front();
           cond_var_->notify_all();
         }
-        return ProcessResult(ctx, result, out_tensors, end_of_sequence, parent_indices);
+        return ProcessResult(ctx, result, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -306,6 +307,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           output_allocated = false;
           status = Status::OK();
           status_offset = -1;
+          index = nullptr;
         }
 
         // UpdateStatus updates the batch's aggregate Status.
@@ -331,6 +333,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         bool output_allocated GUARDED_BY(mu);
         Status status GUARDED_BY(mu);
         int64 status_offset GUARDED_BY(mu);
+        EparallaxTensorIndex* index GUARDED_BY(mu_);
         // Counts the number of outstanding calls for this batch.
         int64 num_calls;  // access guarded by owner's mutex
       };
@@ -357,14 +360,16 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                         int64 offset) LOCKS_EXCLUDED(*mu_) {
         // Get the next input element.
         std::vector<Tensor> input_element;
+        EparallaxTensorIndex* index;
         bool end_of_input;
         Status status =
-            this->GetNextFromInput(input_impl_, ctx.get(), &input_element, &end_of_input);
+            input_impl_->GetNext(ctx.get(), &input_element, &end_of_input, index);
         bool return_early;
         {
           mutex_lock l(result->mu);
           result->end_of_input = result->end_of_input || end_of_input;
           result->status.Update(status);
+          result->index = index;
           return_early = result->end_of_input || !result->status.ok();
         }
         if (return_early) {
@@ -493,7 +498,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       Status ProcessResult(IteratorContext* ctx,
                            const std::shared_ptr<BatchResult>& result,
                            std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) {
+                           bool* end_of_sequence) {
         mutex_lock l(result->mu);
         if (result->num_elements == 0) {
           if (result->status.ok() || errors::IsOutOfRange(result->status)) {
