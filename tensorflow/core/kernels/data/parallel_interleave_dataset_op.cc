@@ -330,7 +330,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     struct Result {
       Status status;
       std::vector<Tensor> return_values;
-      EparallaxTensorIndex* index;
+      EparallaxTensorIndex* index = nullptr;
       // Indicates whether the result is ready to be consumed.
       bool is_ready = false;
     };
@@ -346,7 +346,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       // The actual input element.
       std::vector<Tensor> inputs;
 
-      EparallaxTensorIndex* index;
+      EparallaxTensorIndex* index = nullptr;
       // Iterator created from the input element.
       std::unique_ptr<IteratorBase> iterator;
       mutex mu;
@@ -400,7 +400,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             if (element->results.front()->is_ready) {
               // We found a result.
               std::swap(*result, element->results.front());
-              (*result)->index = element->index;
               element->results.pop_front();
               AdvancePosition();
               cond_var_->notify_all();
@@ -570,8 +569,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       bool end_of_input = false;
       for (int64 i = 0; i < num_results; ++i) {
         auto result = std::make_shared<Result>();
-        result->status = this->GetNextFromInput(element->iterator, 
-            ctx.get(), &result->return_values, &end_of_input);
+        result->status = element->iterator->GetNext(
+            ctx.get(), &result->return_values, &end_of_input, result->index);
         if (end_of_input) {
           break;
         }

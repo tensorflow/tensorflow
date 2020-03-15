@@ -592,16 +592,21 @@ class IndexManager {
     line = line.substr(1, line.length()-1);
     size_t pos = 0;
     int level = 0;
+    int level2 = 0;
     bool found = false;
     std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*>;
     while (true) {
-      if (line[pos] == '(') {
+      if (level2 == 0 && line[pos] == '(') {
         level++;
         found = true;
-      } else if (line[pos] == ')') {
+      } else if (level2 == 0 && line[pos] == ')') {
         level--;
         found = true;
-      } else if (found && level == 0) {
+      } else if (line[pos] == '[') {
+        level2++;
+      } else if (line[pos] == ']') {
+        level2--;
+      } else if (found && level == 0 && level2 == 0) {
         v->push_back(DeserializeIndex(line.substr(0, pos)));
         if (line.length() - pos < 4) {
           break;
@@ -609,7 +614,6 @@ class IndexManager {
           line = line.substr(pos+2);
           pos = 0;
           found = false;
-          level = 0;
         }
       }
       pos++;
