@@ -97,11 +97,11 @@ def _NumpyDiv(ref, indices, updates):
 
 
 def _NumpyMin(ref, indices, updates):
-  return _NumpyScatterNd(ref, indices, updates, lambda p, u: min(p, u))
+  return _NumpyScatterNd(ref, indices, updates, min)
 
 
 def _NumpyMax(ref, indices, updates):
-  return _NumpyScatterNd(ref, indices, updates, lambda p, u: max(p, u))
+  return _NumpyScatterNd(ref, indices, updates, max)
 
 
 class StatefulScatterNdTest(test.TestCase):
