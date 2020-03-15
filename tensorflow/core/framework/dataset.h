@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <fstream>
 #include <iostream>
+#include <thread>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
