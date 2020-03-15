@@ -51,7 +51,11 @@ class PosixRandomAccessFile : public RandomAccessFile {
  public:
   PosixRandomAccessFile(const string& fname, int fd)
       : filename_(fname), fd_(fd) {}
-  ~PosixRandomAccessFile() override { close(fd_); }
+  ~PosixRandomAccessFile() override {
+    if (close(fd_) < 0) {
+      LOG(ERROR) << "close() failed: " << strerror(errno);
+    }
+  }
 
   Status Name(StringPiece* result) const override {
     *result = filename_;
@@ -229,7 +233,9 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
     } else {
       result->reset(new PosixReadOnlyMemoryRegion(address, st.st_size));
     }
-    close(fd);
+    if (close(fd) < 0) {
+      s = IOError(fname, errno);
+    }
   }
   return s;
 }
@@ -256,7 +262,9 @@ Status PosixFileSystem::GetChildren(const string& dir,
       result->push_back(entry->d_name);
     }
   }
-  closedir(d);
+  if (closedir(d) < 0) {
+    return IOError(dir, errno);
+  }
   return Status::OK();
 }
 
