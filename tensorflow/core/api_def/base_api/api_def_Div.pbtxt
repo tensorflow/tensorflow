@@ -4,5 +4,13 @@ op {
   description: <<END
 *NOTE*: `Div` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+This operation takes two tensors `x` and `y` and returns a tensor whose values 
+are divison of `x` by `y`.
+For Example:
+
+>> x = tf.constant([12,2], dtype = tf.int16)
+>> y = tf.constant([3,2], dtype=tf.int16)
+>> tf.math.divide(x,y)
+<tf.Tensor: shape=(2,), dtype=float32, numpy=array([4., 1.], dtype=float32)>
 END
 }
