@@ -990,6 +990,8 @@ def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
 
+  See also `tf.strided_slice`
+
   This operation extracts a slice of size `size` from a tensor `input_` starting
   at the location specified by `begin`. The slice `size` is represented as a
   tensor shape, where `size[i]` is the number of elements of the 'i'th dimension
@@ -1051,6 +1053,8 @@ def strided_slice(input_,
                   var=None,
                   name=None):
   """Extracts a strided slice of a tensor (generalized python array indexing).
+
+  See also `tf.slice`
 
   **Instead of calling this op directly most users will want to use the
   NumPy-style slicing syntax (e.g. `tensor[..., 3:4:-1, tf.newaxis, 3]`), which
