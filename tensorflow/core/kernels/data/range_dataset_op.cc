@@ -94,9 +94,10 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       next_ = params.dataset->start_;
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       if ((dataset()->step_ > 0 && next_ >= dataset()->stop_) ||
           (dataset()->step_ < 0 && next_ <= dataset()->stop_)) {

@@ -108,9 +108,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
    public:
     explicit EmptyIterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       *end_of_sequence = true;
       return Status::OK();
     }
@@ -140,9 +141,10 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       if (!input_impl_) {
         *end_of_sequence = true;
@@ -213,16 +215,18 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
       do {
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
         }
-        Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(
+            input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         DCHECK(!*end_of_sequence || out_tensors->empty());
         if (first_call_ && *end_of_sequence) {
           // If the first call to GetNext() fails because the end

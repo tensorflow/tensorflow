@@ -112,9 +112,10 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
 
       if (!input_impl_) {
@@ -124,7 +125,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
 
       std::vector<Tensor> result;
       result.clear();
-      TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, ctx, &result, end_of_sequence, parent_indices));
+      TF_RETURN_IF_ERROR(this->GetNextFromInput(
+            input_impl_, ctx, &result, end_of_sequence, parent_indices));
       if (*end_of_sequence) {
         input_impl_.reset();
         return Status::OK();
@@ -137,7 +139,8 @@ class ShardDatasetOp::Dataset : public DatasetBase {
              next_index_ < dataset()->num_shards_) {
         std::vector<Tensor> unused_result;
 
-        Status s = this->GetNextFromInput(input_impl_, ctx, &unused_result, end_of_sequence, parent_indices);
+        Status s = this->GetNextFromInput(
+            input_impl_, ctx, &unused_result, end_of_sequence, parent_indices);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
               "There aren't enough elements in this dataset for each shard "

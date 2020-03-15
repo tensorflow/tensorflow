@@ -123,17 +123,19 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             IteratorContext(std::move(params)), prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         IteratorContext::Params params(ctx);
         {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
           params.model = model_;
         }
-        return this->GetNextFromInput(input_impl_, IteratorContext(std::move(params)),
-                                    out_tensors, end_of_sequence, parent_indices);
+        return this->GetNextFromInput(
+            input_impl_, IteratorContext(std::move(params)), out_tensors,
+            end_of_sequence, parent_indices);
       }
 
      protected:

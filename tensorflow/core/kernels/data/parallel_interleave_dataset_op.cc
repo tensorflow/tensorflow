@@ -249,9 +249,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       std::shared_ptr<Result> result;
       {
         mutex_lock l(*mu_);

@@ -104,10 +104,12 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-      return this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      return this->GetNextFromInput(
+          input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
     }
 
    protected:

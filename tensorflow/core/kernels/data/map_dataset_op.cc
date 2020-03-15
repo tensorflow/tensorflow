@@ -132,16 +132,18 @@ class MapDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       // NOTE(mrry): This method is thread-safe as long as
       // `input_impl_` and `f` are thread-safe. However, if multiple
       // threads enter this method, outputs may be observed in a
       // non-deterministic order.
 
       std::vector<Tensor> args;
-      TF_RETURN_IF_ERROR(this->GetNextFromInput(input_impl_, ctx, &args, end_of_sequence, parent_indices));
+      TF_RETURN_IF_ERROR(this->GetNextFromInput(
+            input_impl_, ctx, &args, end_of_sequence, parent_indices));
       if (*end_of_sequence || args.empty()) {
         return Status::OK();
       }

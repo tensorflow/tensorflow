@@ -242,9 +242,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // It is implemented so that it matches the deterministic interleave
     // unless getting the next element would block and we are allowed to be
     // sloppy.
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(EnsureWorkerThreadsStarted(ctx));
       while (!cancelled_) {

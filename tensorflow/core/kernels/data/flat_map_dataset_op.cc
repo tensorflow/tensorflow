@@ -116,10 +116,10 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence,
-                           std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       do {
         if (!input_impl_) {
@@ -149,16 +149,14 @@ class FlatMapDatasetOp::Dataset : public DatasetBase {
         captured_func_inputs_.clear();
         do {
           parent_indices->clear();
-          std::vector<EparallaxTensorIndex*> parent_indices_buffer;
-          TF_RETURN_IF_ERROR(this->GetNextFromInput(
-                input_impl_, ctx, &captured_func_inputs_, end_of_sequence, &parent_indices_buffer));
+          TF_RETURN_IF_ERROR(input_impl_->GetNext(
+              ctx, &captured_func_inputs_, end_of_sequence,
+              current_element_index_));
           element_index_++;
           if (*end_of_sequence) {
             input_impl_.reset();
             return Status::OK();
           }
-          CHECK(parent_indices_buffer.size() == 1);
-          current_element_index_ = parent_indices_buffer.back();
         } while (captured_func_inputs_.empty());
 
         TF_RETURN_IF_ERROR(BuildCurrentElementIteratorLocked(ctx));

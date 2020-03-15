@@ -94,9 +94,10 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
           *end_of_sequence = true;
@@ -120,8 +121,8 @@ class UnbatchDatasetOp : public UnaryDatasetOpKernel {
           current_index_ = 0;
           current_batch_size_ = 0;
           tensors_.clear();
-          TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, &tensors_, end_of_sequence, parent_indices));
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              input_impl_, ctx, &tensors_, end_of_sequence, parent_indices));
           if (!*end_of_sequence) {
             for (size_t i = 0; i < tensors_.size(); ++i) {
               if (tensors_[i].dims() == 0) {

@@ -191,9 +191,10 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         do {
           if (current_group_iterator_) {
@@ -217,8 +218,9 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
           // group, or reach the end.
           while (!end_of_input_) {
             std::vector<Tensor> next_input_element;
-            TF_RETURN_IF_ERROR(
-                this->GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_, parent_indices));
+            TF_RETURN_IF_ERROR(this->GetNextFromInput(
+                input_impl_, ctx, &next_input_element, &end_of_input_,
+                parent_indices));
 
             if (!end_of_input_) {
               // Run the key function on the input element to identify its

@@ -449,9 +449,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         if (iterator_ == nullptr) {
           experimental::SnapshotMetadataRecord metadata;
@@ -481,7 +482,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
         }
 
-        return this->GetNextFromInput(iterator_, ctx, out_tensors, end_of_sequence);
+        return this->GetNextFromInput(
+            iterator_, ctx, out_tensors, end_of_sequence);
       }
 
      protected:
@@ -532,9 +534,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+        Status GetNextInternal(
+            IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+            bool* end_of_sequence,
+            std::vector<EparallaxTensorIndex*>* parent_indices) override {
           absl::Time start = absl::Now();
           mutex_lock l(mu_);
           if (!background_threads_started_) {
@@ -760,9 +763,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+        Status GetNextInternal(
+            IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+            bool* end_of_sequence,
+            std::vector<EparallaxTensorIndex*>* parent_indices) override {
           absl::Time start = absl::Now();
 
           bool first_call;
@@ -835,10 +839,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return snapshot_data_filename;
         }
 
-        Status FillBuffer(IteratorContext* ctx, std::vector<EparallaxTensorIndex*>* parent_indices) LOCKS_EXCLUDED(mu_) {
+        Status FillBuffer(IteratorContext* ctx,
+                          std::vector<EparallaxTensorIndex*>* parent_indices)
+            LOCKS_EXCLUDED(mu_) {
           BufferElement elem;
-          TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, &elem.value, &elem.end_of_sequence, parent_indices));
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              input_impl_, ctx, &elem.value, &elem.end_of_sequence,
+              parent_indices));
 
           mutex_lock l(mu_);
           next_elem_ = std::move(elem);
@@ -1048,10 +1055,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
         }
 
-        Status GetNextInternal(IteratorContext* ctx,
-                               std::vector<Tensor>* out_tensors,
-                               bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-          return this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+        Status GetNextInternal(
+            IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+            bool* end_of_sequence,
+            std::vector<EparallaxTensorIndex*>* parent_indices) override {
+          return this->GetNextFromInput(
+              input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
         }
 
        private:

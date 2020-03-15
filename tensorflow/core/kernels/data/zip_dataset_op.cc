@@ -128,9 +128,10 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         *end_of_sequence = true;
@@ -140,8 +141,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       out_tensors->reserve(dataset()->output_dtypes().size());
       for (const auto& input_impl : input_impls_) {
         std::vector<Tensor> input_tensors;
-        TF_RETURN_IF_ERROR(
-            this->GetNextFromInput(input_impl, ctx, &input_tensors, end_of_sequence, parent_indices));
+        TF_RETURN_IF_ERROR(this->GetNextFromInput(
+            input_impl, ctx, &input_tensors, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           break;
         }

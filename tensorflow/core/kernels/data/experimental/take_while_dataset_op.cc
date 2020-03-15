@@ -127,17 +127,18 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_captured_func_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         }
         if (*end_of_sequence) {
           mutex_lock l(mu_);

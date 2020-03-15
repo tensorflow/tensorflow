@@ -136,7 +136,8 @@ inline bool operator!=(const std::vector<EparallaxTensorIndex*>& indices_1,
 inline std::ostream& operator<<(std::ostream& os,
                                 const std::vector<EparallaxTensorIndex*>& t);
 
-inline std::ostream& operator<<(std::ostream& os, const EparallaxTensorIndex& t) {
+inline std::ostream& operator<<(std::ostream& os,
+                                const EparallaxTensorIndex& t) {
   os << t.iterator_id() << "(" << *t.parent_indices() << ", " <<
         t.local_index() << ")";
   return os;
@@ -409,14 +410,16 @@ class MultiLevelIndexTree {
     auto it = tree_.find(iterator_id);
     if (it == tree_.end()) {
       IndexTree* tree = new IndexTree;
-      std::vector<EparallaxTensorIndex*>* q = new std::vector<EparallaxTensorIndex*>;
+      std::vector<EparallaxTensorIndex*>* q =
+          new std::vector<EparallaxTensorIndex*>;
       tree->insert(std::make_pair(parent_indices, q));
       tree_.insert(std::make_pair(iterator_id, tree));
       return q;
     } else {
       IndexTree* tree = it->second;
       if (tree->find(parent_indices) == tree->end()) {
-        std::vector<EparallaxTensorIndex*>* q = new std::vector<EparallaxTensorIndex*>;
+        std::vector<EparallaxTensorIndex*>* q =
+            new std::vector<EparallaxTensorIndex*>;
         tree->insert(std::make_pair(parent_indices, q));
         return q;
       } else {
@@ -446,8 +449,10 @@ class IndexManager {
     processed_indices_(std::make_shared<MultiLevelIndexTree>()),
     issued_indices_(std::make_shared<MultiLevelIndexTree>()),
     infertile_indices_(std::make_shared<MultiLevelIndexTree>()),
-    last_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
-    current_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
+    last_index_map_(
+        std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
+    current_index_map_(
+        std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
     offset_map_(std::make_shared<std::map<string, int64>>()) {
     string username(std::getenv("USER"));
     ckpt_file_path_ = "/tmp/eparallax-" + username +
@@ -493,7 +498,8 @@ class IndexManager {
 
   void Save() {
     std::ofstream ckpt_file;
-    string ckpt_file_path = ckpt_file_path_ + "_" + std::to_string(shard_index_);
+    string ckpt_file_path = ckpt_file_path_ + "_" +
+        std::to_string(shard_index_);
     ckpt_file.open(ckpt_file_path.data());
     if(ckpt_file.is_open()){
       for (auto processed_indices : processed_indices_->GetAll()) {
@@ -511,7 +517,8 @@ class IndexManager {
     int level = 0;
     int level2 = 0;
     bool found = false;
-    std::vector<EparallaxTensorIndex*>* v = new std::vector<EparallaxTensorIndex*>;
+    std::vector<EparallaxTensorIndex*>* v =
+        new std::vector<EparallaxTensorIndex*>;
     while (true) {
       if (level2 == 0 && line[pos] == '(') {
         level++;
@@ -585,8 +592,10 @@ class IndexManager {
   std::shared_ptr<MultiLevelIndexTree> processed_indices_ GUARDED_BY(*mu_);
   std::shared_ptr<MultiLevelIndexTree> issued_indices_ GUARDED_BY(*mu_);
   std::shared_ptr<MultiLevelIndexTree> infertile_indices_ GUARDED_BY(*mu_);
-  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> last_index_map_ GUARDED_BY(*mu_);
-  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> current_index_map_ GUARDED_BY(*mu_);
+  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> last_index_map_
+      GUARDED_BY(*mu_);
+  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> current_index_map_
+      GUARDED_BY(*mu_);
   std::shared_ptr<std::map<string, int64>> offset_map_ GUARDED_BY(*mu_);
   int64 shard_index_;
   string ckpt_file_path_;
@@ -847,7 +856,6 @@ class IteratorBase {
                  bool* end_of_sequence) {
     EparallaxTensorIndex* unused_index;
     Status s = GetNext(ctx, out_tensors, end_of_sequence, unused_index);
-    //delete unused_index;
     return s;
   }
 
@@ -860,9 +868,6 @@ class IteratorBase {
                  bool* end_of_sequence) {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
-
-  /*virtual Status GetItem(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence, EparallaxTensorIndex* index) = 0;*/
 
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
@@ -1178,8 +1183,6 @@ class DatasetBaseIterator : public IteratorBase {
     return GetNextFromInput(input_impl, &ctx, out_tensors, end_of_sequence,
                             parent_indices);
   }
-  /*Status GetItem(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                 bool* end_of_sequence, EparallaxTensorIndex* index) final;*/
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     if (params_.dataset->IsStateful()) {

@@ -100,9 +100,10 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
           i_(0),
           n_(params.dataset->tensors_[0].dim_size(0)) {}
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       int64 index = 0;
       {
         mutex_lock l(mu_);

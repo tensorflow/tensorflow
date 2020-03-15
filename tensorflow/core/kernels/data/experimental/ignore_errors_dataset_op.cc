@@ -82,19 +82,22 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+          Status s = this->GetNextFromInput(
+              input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           while (!s.ok()) {
             out_tensors->clear();
-            s = this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+            s = this->GetNextFromInput(
+                input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
           }
         }
         if (*end_of_sequence) {

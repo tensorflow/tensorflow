@@ -133,9 +133,10 @@ class WindowDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       const int64 window_size = dataset()->window_size_;
       const int64 window_shift = dataset()->window_shift_;
       const int64 window_stride = dataset()->window_stride_;
@@ -155,8 +156,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
           for (size_t i = buffer_.size(); i < target_size && !*end_of_sequence;
                ++i) {
             std::vector<Tensor> element;
-            Status status =
-                this->GetNextFromInput(input_impl_, ctx, &element, end_of_sequence, parent_indices);
+            Status status = this->GetNextFromInput(
+                input_impl_, ctx, &element, end_of_sequence, parent_indices);
             if (!*end_of_sequence) {
               RecordBufferEnqueue(ctx, element);
               buffer_.emplace_back(std::move(element), status);
@@ -191,7 +192,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
             bool end_of_input;
             std::vector<Tensor> element;
             // Ignore non-error status of discarded elements.
-            this->GetNextFromInput(input_impl_, ctx, &element, &end_of_input, parent_indices).IgnoreError();
+            this->GetNextFromInput(input_impl_, ctx, &element, &end_of_input,
+                                   parent_indices).IgnoreError();
             if (end_of_input) {
               input_impl_.reset();
             }

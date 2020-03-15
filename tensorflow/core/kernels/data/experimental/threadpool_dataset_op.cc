@@ -198,11 +198,13 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
             IteratorContext(CreateParams(ctx)), prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-        return this->GetNextFromInput(input_impl_, IteratorContext(CreateParams(ctx)),
-                                    out_tensors, end_of_sequence, parent_indices);
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
+        return this->GetNextFromInput(
+            input_impl_, IteratorContext(CreateParams(ctx)), out_tensors,
+            end_of_sequence, parent_indices);
       }
 
      protected:
@@ -307,15 +309,17 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         IteratorContext::Params params(ctx);
         auto max_parallelism = dataset()->max_intra_op_parallelism_;
         params.runner =
             RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
-        return this->GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
-                                    out_tensors, end_of_sequence, parent_indices);
+        return this->GetNextFromInput(
+            input_impl_, IteratorContext{std::move(params)}, out_tensors,
+            end_of_sequence, parent_indices);
       }
 
      protected:
@@ -408,17 +412,19 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         thread::ThreadPool* pool = dataset()->thread_pool_.get();
         IteratorContext::Params params(ctx);
         params.runner = [pool](std::function<void()> c) {
           pool->Schedule(std::move(c));
         };
         params.runner_threadpool_size = dataset()->num_threads_;
-        return this->GetNextFromInput(input_impl_, IteratorContext{std::move(params)},
-                                    out_tensors, end_of_sequence, parent_indices);
+        return this->GetNextFromInput(
+            input_impl_, IteratorContext{std::move(params)}, out_tensors,
+            end_of_sequence, parent_indices);
       }
 
      protected:

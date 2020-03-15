@@ -231,9 +231,10 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_captured_func_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         std::shared_ptr<BatchResult> result;
         {
           mutex_lock l(*mu_);
@@ -362,8 +363,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         std::vector<Tensor> input_element;
         EparallaxTensorIndex* index;
         bool end_of_input;
-        Status status =
-            input_impl_->GetNext(ctx.get(), &input_element, &end_of_input, index);
+        Status status = input_impl_->GetNext(
+            ctx.get(), &input_element, &end_of_input, index);
         bool return_early;
         {
           mutex_lock l(result->mu);

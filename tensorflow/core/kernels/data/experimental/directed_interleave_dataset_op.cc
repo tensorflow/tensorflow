@@ -155,9 +155,10 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         if (!selector_input_impl_) {
           *end_of_sequence = true;
@@ -167,8 +168,9 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
         while (true) {
           std::vector<Tensor> selector_result;
           *end_of_sequence = false;
-          TF_RETURN_IF_ERROR(this->GetNextFromInput(selector_input_impl_, 
-              ctx, &selector_result, end_of_sequence, parent_indices));
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              selector_input_impl_, ctx, &selector_result, end_of_sequence,
+              parent_indices));
           if (*end_of_sequence) {
             selector_input_impl_.reset();
             for (auto& data_input_impl : data_input_impls_) {
@@ -187,7 +189,8 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
           if (data_input_impls_[selected_input]) {
             bool end_of_selected_input = false;
             TF_RETURN_IF_ERROR(this->GetNextFromInput(
-                data_input_impls_[selected_input], ctx, out_tensors, &end_of_selected_input));
+                data_input_impls_[selected_input], ctx, out_tensors,
+                &end_of_selected_input));
 
             if (!end_of_selected_input) {
               return Status::OK();

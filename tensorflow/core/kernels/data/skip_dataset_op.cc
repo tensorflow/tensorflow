@@ -94,9 +94,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
    public:
     explicit EmptyIterator(const Params& params)
         : DatasetIterator<Dataset>(params) {}
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       *end_of_sequence = true;
       return Status::OK();
     }
@@ -127,9 +128,10 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
 
       if (!input_impl_) {
@@ -143,8 +145,9 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       while (i_ < dataset()->count_) {
         // Fetch and throw away Tensors.
         std::vector<Tensor> dummy_out_tensors;
-        TF_RETURN_IF_ERROR(
-            this->GetNextFromInput(input_impl_, ctx, &dummy_out_tensors, end_of_sequence, parent_indices));
+        TF_RETURN_IF_ERROR(this->GetNextFromInput(
+            input_impl_, ctx, &dummy_out_tensors, end_of_sequence,
+            parent_indices));
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
@@ -155,8 +158,8 @@ class SkipDatasetOp::Dataset : public DatasetBase {
       }
 
       // Return GetNext() on the underlying iterator.
-      TF_RETURN_IF_ERROR(
-          this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+      TF_RETURN_IF_ERROR(this->GetNextFromInput(
+          input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
       if (*end_of_sequence) {
         input_impl_.reset();
       }

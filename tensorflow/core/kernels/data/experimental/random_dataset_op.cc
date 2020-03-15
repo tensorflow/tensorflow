@@ -96,9 +96,10 @@ class RandomDatasetOp : public DatasetOpKernel {
             parent_generator_(dataset()->seed_, dataset()->seed2_),
             generator_(&parent_generator_) {}
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
         out_tensors->emplace_back(ctx->allocator({}), DT_INT64,
                                   TensorShape({}));

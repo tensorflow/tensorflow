@@ -90,11 +90,13 @@ class WrapperDataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
-      return this->GetNextFromInput(dataset()->real_iterator_, ctx, out_tensors,
-                                                end_of_sequence, parent_indices);
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      return this->GetNextFromInput(
+          dataset()->real_iterator_, ctx, out_tensors, end_of_sequence,
+          parent_indices);
     }
 
    protected:
@@ -346,9 +348,10 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // The first num_elements_per_branch * num_branches iterations, we run
       // experiments on the branches, using (branch_index_, experiment_counter_)
       // to keep track of which experiment we're on.
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         {  // Locking scope
           mutex_lock l(mu_);
           if (branch_index_ < dataset()->captured_funcs_.size()) {
@@ -358,7 +361,8 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
                                                      /*is_experiment=*/true));
             }
 
-            Status s = GetNextFromExperiment(ctx, out_tensors, end_of_sequence, parent_indices);
+            Status s = GetNextFromExperiment(
+                ctx, out_tensors, end_of_sequence, parent_indices);
             experiment_counter_++;
 
             if (experiment_counter_ >= dataset()->num_elements_per_branch_) {
@@ -378,7 +382,8 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           }
         }
 
-        return this->GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
+        return this->GetNextFromInput(current_iterator_, ctx, out_tensors,
+                                      end_of_sequence, parent_indices);
       }
 
      protected:
@@ -437,16 +442,17 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      Status GetNextFromExperiment(IteratorContext* ctx,
-                                   std::vector<Tensor>* out_tensors,
-                                   bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices)
+      Status GetNextFromExperiment(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
         int64 start = ctx->env()->NowNanos();
-        Status s =
-            this->GetNextFromInput(current_iterator_, ctx, out_tensors, end_of_sequence);
+        Status s = this->GetNextFromInput(current_iterator_, ctx, out_tensors,
+                                          end_of_sequence, parent_indices);
 
         if (experiment_counter_ > 0) {
           // Ignore the first experiment when benchmarking. It may be an outlier

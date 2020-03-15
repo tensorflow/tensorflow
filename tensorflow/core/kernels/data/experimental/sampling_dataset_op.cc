@@ -112,9 +112,10 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         bool rand_val_hit;
         do {
           {
@@ -124,7 +125,8 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
               return Status::OK();
             }
             TF_RETURN_IF_ERROR(
-                this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+                this->GetNextFromInput(input_impl_, ctx, out_tensors,
+                                       end_of_sequence, parent_indices));
           }
           if (*end_of_sequence) {
             mutex_lock l(mu_);

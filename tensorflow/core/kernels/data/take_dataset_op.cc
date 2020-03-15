@@ -77,8 +77,10 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
  public:
   explicit EmptyIterator(const Params& params)
       : DatasetIterator<TakeDataset>(params) {}
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
     *end_of_sequence = true;
     return Status::OK();
   }
@@ -109,16 +111,18 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
     return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
   }
 
-  Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                         bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+  Status GetNextInternal(
+      IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+      bool* end_of_sequence,
+      std::vector<EparallaxTensorIndex*>* parent_indices) override {
     mutex_lock l(mu_);  // TODO(mrry): Make locking less conservative.
     if (!input_impl_) {
       *end_of_sequence = true;
       return Status::OK();
     }
     while (dataset()->count_ < 0 || i_ < dataset()->count_) {
-      TF_RETURN_IF_ERROR(
-          this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+      TF_RETURN_IF_ERROR(this->GetNextFromInput(
+          input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
       if (!*end_of_sequence) {
         ++i_;
         return Status::OK();

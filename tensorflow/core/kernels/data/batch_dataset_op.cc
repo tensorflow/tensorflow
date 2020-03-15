@@ -131,9 +131,10 @@ class BatchDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       // Each row of `batch_elements` is a tuple of tensors from the
       // input iterator.
       std::vector<std::vector<Tensor>> batch_elements;
@@ -147,8 +148,9 @@ class BatchDatasetOp::Dataset : public DatasetBase {
         *end_of_sequence = false;
         for (int i = 0; i < dataset()->batch_size_ && !*end_of_sequence; ++i) {
           std::vector<Tensor> batch_element_tuple;
-          TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, &batch_element_tuple, end_of_sequence, parent_indices));
+          TF_RETURN_IF_ERROR(this->GetNextFromInput(
+              input_impl_, ctx, &batch_element_tuple, end_of_sequence,
+              parent_indices));
           if (!*end_of_sequence) {
             batch_elements.emplace_back(std::move(batch_element_tuple));
           } else {

@@ -114,9 +114,10 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
           ctx, strings::StrCat(prefix(), "[0]"), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
         *end_of_sequence = true;
@@ -124,7 +125,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
       }
       while (i_ < 2) {
         TF_RETURN_IF_ERROR(
-            this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
+            this->GetNextFromInput(
+              input_impl_, ctx, out_tensors, end_of_sequence, parent_indices));
         if (!*end_of_sequence) {
           return Status::OK();
         }

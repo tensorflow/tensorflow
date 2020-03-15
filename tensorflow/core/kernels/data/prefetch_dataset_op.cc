@@ -143,10 +143,10 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence,
-                           std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       const auto& stats_aggregator = ctx->stats_aggregator();
       {
         mutex_lock l(mu_);
@@ -188,7 +188,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
             static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
-      return this->GetNextFromInput(input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
+      return this->GetNextFromInput(
+          input_impl_, ctx, out_tensors, end_of_sequence, parent_indices);
     }
 
    protected:
@@ -275,7 +276,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                    bool* end_of_sequence,
-                   std::vector<EparallaxTensorIndex*>* parent_indices) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   std::vector<EparallaxTensorIndex*>* parent_indices)
+        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         stats_aggregator->AddToHistogram(
@@ -377,7 +379,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         bool end_of_sequence;
         BufferElement buffer_element;
         buffer_element.status = input_impl_->GetNext( 
-            ctx.get(), &buffer_element.value, &end_of_sequence, buffer_element.index);
+            ctx.get(), &buffer_element.value, &end_of_sequence,
+            buffer_element.index);
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(mu_);
           prefetch_thread_finished_ = true;

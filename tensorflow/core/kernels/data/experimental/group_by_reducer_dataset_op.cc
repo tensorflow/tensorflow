@@ -212,16 +212,18 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
 
         // Iterate through the input dataset, keying input elements to reducers.
         while (!end_of_input_) {
           std::vector<Tensor> next_input_element;
           TF_RETURN_IF_ERROR(
-              this->GetNextFromInput(input_impl_, ctx, &next_input_element, &end_of_input_));
+              this->GetNextFromInput(
+                input_impl_, ctx, &next_input_element, &end_of_input_));
 
           if (!end_of_input_) {
             // Run the key function on the input element.

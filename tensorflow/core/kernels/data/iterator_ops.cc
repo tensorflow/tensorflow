@@ -74,16 +74,17 @@ Status IteratorResource::GetNext(OpKernelContext* ctx,
     do {
       IteratorContext::Params params(ctx);
       params.flr = captured_state->flr;
-      params.function_handle_cache = captured_state->function_handle_cache.get();
+      params.function_handle_cache =
+          captured_state->function_handle_cache.get();
       params.resource_mgr = &captured_state->resource_mgr;
       params.thread_factory = unbounded_thread_pool_.get_thread_factory();
       params.thread_pool = &unbounded_thread_pool_;
       params.cancellation_manager = &captured_state->cancellation_manager;
       params.index_manager = index_manager_;
       std::function<void()> deregister_fn;
-      TF_RETURN_IF_ERROR(ConnectCancellationManagers(ctx->cancellation_manager(),
-                                                     params.cancellation_manager,
-                                                     &deregister_fn));
+      TF_RETURN_IF_ERROR(ConnectCancellationManagers(
+          ctx->cancellation_manager(), params.cancellation_manager,
+          &deregister_fn));
       auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
       s = captured_state->iterator->GetNext(IteratorContext(std::move(params)),
                                             out_tensors, end_of_sequence,
@@ -449,7 +450,7 @@ class ToSingleElementOp : public AsyncOpKernel {
         background_worker_(ctx->env(), "tf_data_to_single_element") {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
+    // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -559,7 +560,7 @@ class ReduceDatasetOp : public AsyncOpKernel {
   }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
+    // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
     background_worker_.Schedule(std::bind(
@@ -904,7 +905,7 @@ void IteratorGetNextOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
+  // The call to `iterator->GetNext()` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(
@@ -953,7 +954,7 @@ void IteratorGetNextAsOptionalOp::ComputeAsync(OpKernelContext* ctx,
   IteratorResource* iterator;
   OP_REQUIRES_OK_ASYNC(
       ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-  // The call to `this->GetNextFromInput(iterator, )` may block and depend on an
+  // The call to `iterator->GetNext()` may block and depend on an
   // inter-op thread pool thread, so we issue the call from the
   // owned thread pool.
   background_worker_.Schedule(std::bind(

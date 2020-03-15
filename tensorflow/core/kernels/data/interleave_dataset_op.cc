@@ -138,9 +138,10 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status GetNextInternal(IteratorContext* ctx,
-                           std::vector<Tensor>* out_tensors,
-                           bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+    Status GetNextInternal(
+        IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+        bool* end_of_sequence,
+        std::vector<EparallaxTensorIndex*>* parent_indices) override {
       mutex_lock l(mu_);
       while (!end_of_input_ || num_open_ > 0) {
         if (current_elements_[cycle_index_].iterator) {
@@ -233,7 +234,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx].iterator) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx].iterator));
+          TF_RETURN_IF_ERROR(SaveInput(
+              writer, current_elements_[idx].iterator));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
               args_list_[idx].size()));
@@ -266,7 +268,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           TF_RETURN_IF_ERROR(MakeIteratorFromInputElement(
               ctx, args_list_[idx], idx, *instantiated_captured_func_, prefix(),
               &current_elements_[idx].iterator));
-          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, current_elements_[idx].iterator));
+          TF_RETURN_IF_ERROR(RestoreInput(
+              ctx, reader, current_elements_[idx].iterator));
         } else {
           current_elements_[idx].iterator.reset();
         }

@@ -156,14 +156,15 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
             ctx, &instantiated_captured_func_);
       }
 
-      Status GetNextInternal(IteratorContext* ctx,
-                             std::vector<Tensor>* out_tensors,
-                             bool* end_of_sequence, std::vector<EparallaxTensorIndex*>* parent_indices) override {
+      Status GetNextInternal(
+          IteratorContext* ctx, std::vector<Tensor>* out_tensors,
+          bool* end_of_sequence,
+          std::vector<EparallaxTensorIndex*>* parent_indices) override {
         mutex_lock l(mu_);
 
         std::vector<Tensor> next_element;
-        TF_RETURN_IF_ERROR(
-            this->GetNextFromInput(input_impl_, ctx, &next_element, end_of_sequence, parent_indices));
+        TF_RETURN_IF_ERROR(this->GetNextFromInput(
+            input_impl_, ctx, &next_element, end_of_sequence, parent_indices));
         if (*end_of_sequence) {
           return Status::OK();
         }
