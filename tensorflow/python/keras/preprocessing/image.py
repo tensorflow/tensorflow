@@ -452,7 +452,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
   # (std, mean, and principal components if ZCA whitening is applied)
   datagen.fit(x_train)
   # fits the model on batches with real-time data augmentation:
-  model.fit_generator(datagen.flow(x_train, y_train, batch_size=32),
+  model.fit(datagen.flow(x_train, y_train, batch_size=32),
                       steps_per_epoch=len(x_train) / 32, epochs=epochs)
   # here's a more "manual" example
   for e in range(epochs):
@@ -486,7 +486,7 @@ class ImageDataGenerator(image.ImageDataGenerator):
           target_size=(150, 150),
           batch_size=32,
           class_mode='binary')
-  model.fit_generator(
+  model.fit(
           train_generator,
           steps_per_epoch=2000,
           epochs=50,
