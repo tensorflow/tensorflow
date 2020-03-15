@@ -535,7 +535,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
   
-  See also `tf.size`.
+  See also `tf.size`, `tf.rank`.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
   This represents the minimal set of known information at definition time.
@@ -758,6 +758,8 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
 def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
+
+  See also `tf.shape`
 
   Returns a 0-D `int32` `Tensor` representing the rank of `input`.
 
