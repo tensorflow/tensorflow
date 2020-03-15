@@ -71,7 +71,8 @@ class EparallaxTensorIndex {
   }
 
   ~EparallaxTensorIndex() {
-    delete parent_indices_;
+    LOG(INFO) << ToString();
+    //delete parent_indices_;
   }
 
   string ToString() const {
@@ -507,7 +508,15 @@ class MultiLevelIndexTree {
 
 class IndexManager {
  public:
-  IndexManager() {
+  IndexManager() :
+    mu_(std::make_shared<mutex>()),
+    processed_indices_(std::make_shared<MultiLevelIndexTree>()),
+    issued_indices_(std::make_shared<MultiLevelIndexTree>()),
+    infertile_indices_(std::make_shared<MultiLevelIndexTree>()),
+    last_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
+    current_index_map_(std::make_shared<std::map<string, EparallaxTensorIndex*>>()),
+    offset_map_(std::make_shared<std::map<string, int64>>())
+  {
     string username = "kyunggeun-lee";
     ckpt_file_path_ = "/tmp/eparallax-" + username + "/checkpoint/index/index_ckpt";
     Restore();
@@ -527,7 +536,7 @@ class IndexManager {
   void SetShardID(int64 index);
 
  protected:
-  bool AlreadyProcessedInternal(EparallaxTensorIndex* index);
+  bool AlreadyProcessedInternal(EparallaxTensorIndex* index) EXCLUSIVE_LOCKS_REQUIRED(*mu_);
 
   bool IsParentShuffle(EparallaxTensorIndex* index) {
     for (auto parent_index : *index->parent_indices()) {
@@ -557,7 +566,7 @@ class IndexManager {
         val = line.substr(delimiter_pos + 1);
         if (key == "processed_index") {
           EparallaxTensorIndex* index = DeserializeIndex(val);
-          processed_indices_.Push(index);
+          processed_indices_->Push(index);
         }
       }
       ckpt_file.close();
@@ -569,7 +578,7 @@ class IndexManager {
     string ckpt_file_path = ckpt_file_path_ + "_" + std::to_string(shard_index_);
     ckpt_file.open(ckpt_file_path.data());
     if(ckpt_file.is_open()){
-      for (auto processed_indices : processed_indices_.GetAll()) {
+      for (auto processed_indices : processed_indices_->GetAll()) {
         for (auto processed_index : *processed_indices) {
           //LOG(INFO) << "Saving " << *processed_index;
           ckpt_file << "processed_index:" << *processed_index << "\n";
@@ -651,13 +660,13 @@ class IndexManager {
   }
 
  private:
-  mutex mu_;
-  MultiLevelIndexTree processed_indices_ GUARDED_BY(mu_);
-  MultiLevelIndexTree issued_indices_ GUARDED_BY(mu_);
-  MultiLevelIndexTree infertile_indices_ GUARDED_BY(mu_);
-  std::map<string, EparallaxTensorIndex*> last_index_map_ GUARDED_BY(mu_);
-  std::map<string, EparallaxTensorIndex*> current_index_map_ GUARDED_BY(mu_);
-  std::map<string, int64> offset_map_ GUARDED_BY(mu_);
+  std::shared_ptr<mutex> mu_;
+  std::shared_ptr<MultiLevelIndexTree> processed_indices_ GUARDED_BY(*mu_);
+  std::shared_ptr<MultiLevelIndexTree> issued_indices_ GUARDED_BY(*mu_);
+  std::shared_ptr<MultiLevelIndexTree> infertile_indices_ GUARDED_BY(*mu_);
+  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> last_index_map_ GUARDED_BY(*mu_);
+  std::shared_ptr<std::map<string, EparallaxTensorIndex*>> current_index_map_ GUARDED_BY(*mu_);
+  std::shared_ptr<std::map<string, int64>> offset_map_ GUARDED_BY(*mu_);
   int64 shard_index_;
   string ckpt_file_path_;
 };
@@ -774,7 +783,7 @@ class IteratorContext {
     thread::ThreadPoolInterface* thread_pool = nullptr;
 
     // Indexing manager.
-    IndexManager* index_manager = nullptr;
+    std::shared_ptr<IndexManager> index_manager = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -823,7 +832,7 @@ class IteratorContext {
 
   thread::ThreadPoolInterface* thread_pool() { return params_.thread_pool; }
 
-  IndexManager* index_manager() { return params_.index_manager; }
+  std::shared_ptr<IndexManager> index_manager() { return params_.index_manager; }
 
   Params params() { return params_; }
 
@@ -917,7 +926,7 @@ class IteratorBase {
                  bool* end_of_sequence) {
     EparallaxTensorIndex* unused_index;
     Status s = GetNext(ctx, out_tensors, end_of_sequence, unused_index);
-    delete unused_index;
+    //delete unused_index;
     return s;
   }
 

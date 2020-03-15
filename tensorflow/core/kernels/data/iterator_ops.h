@@ -43,7 +43,8 @@ class IteratorResource : public ResourceBase {
         iterator_state_(std::make_shared<State>(
             std::move(flib_def), std::move(pflr), flr, /*iterator=*/nullptr)),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes),
+        index_manager_(std::make_shared<IndexManager>()) {}
 
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);
@@ -86,7 +87,7 @@ class IteratorResource : public ResourceBase {
   mutex mu_;
   const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
-  IndexManager index_manager_ GUARDED_BY(mu_);
+  std::shared_ptr<IndexManager> index_manager_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
 };
