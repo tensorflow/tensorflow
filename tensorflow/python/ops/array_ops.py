@@ -199,6 +199,8 @@ def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
 def fill(dims, value, name=None):
   r"""Creates a tensor filled with a scalar value.
 
+  See also `tf.ones`, `tf.zeroes`, `tf.one_hot`, `tf.eye`
+
   This operation creates a tensor of shape `dims` and fills it with `value`.
 
   For example:
@@ -2692,6 +2694,8 @@ def _tag_zeros_tensor(fun):
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
+  See also `tf.zeros_like`, `tf.ones`, `tf.fill`, `tf.eye`
+
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to zero.
 
@@ -2941,7 +2945,7 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to one (1).
 
-  See also `tf.ones_like`.
+  See also `tf.ones_like`, `tf.zeroes`, `tf.fill`, `tf.eye`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to one.
@@ -3865,6 +3869,8 @@ def one_hot(indices,
             dtype=None,
             name=None):
   """Returns a one-hot tensor.
+
+  See also `tf.fill`, `tf.eye`
 
   The locations represented by indices in `indices` take value `on_value`,
   while all other locations take value `off_value`.
