@@ -3213,16 +3213,16 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
 
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
-	// P100, only ttry to vectorize+coales memory access when the
-	// tile size fit exactly and dtypes <= 32 bits
-	((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
-	 // On V100, only try to vectorize+coales memory access for
-	 // rows of even size.  For odd row sizes, every other row
-	 // isn't aligned, so it can't be vectorized.
-	 (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
+        // P100, only ttry to vectorize+coales memory access when the
+        // tile size fit exactly and dtypes <= 32 bits
+        ((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
+         // On V100, only try to vectorize+coales memory access for
+         // rows of even size.  For odd row sizes, every other row
+         // isn't aligned, so it can't be vectorized.
+         (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
       return kLinearStridedIndexingX;
     } else if (!reduction_dimensions.is_row_reduction &&
-	       IsUnrollingColumnReductionBeneficial(
+               IsUnrollingColumnReductionBeneficial(
                    unnested_hlo, input_shape,
                    reduction_dimensions.dimensions[2])) {
       return kLinearIndexingX;
