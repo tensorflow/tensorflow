@@ -128,9 +128,9 @@ void SseMatrixBatchVectorMultiplyAccumulate(
       // Postamble for 4x 8-bit inputs.
       if (col < (m_cols & ~3)) {
         const __m128i vec_32x4 = _mm_cvtepi8_epi32(
-            _mm_cvtsi32_si128(*reinterpret_cast<const int*>(vectors + col)));
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col)));
         const __m128i row_32x4 = _mm_cvtepi8_epi32(
-            _mm_cvtsi32_si128(*reinterpret_cast<const int*>(row_ptr + col)));
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col)));
         // dotprod += vec · row
         dotprod_32x4 =
             _mm_add_epi32(dotprod_32x4, _mm_mullo_epi32(vec_32x4, row_32x4));

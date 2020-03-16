@@ -2261,9 +2261,6 @@ def gpu_py_test(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
-    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
-    # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
     if "additional_deps" in kwargs:
@@ -2272,8 +2269,26 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_name += "_gpu"
             test_tags = test_tags + tf_gpu_tests_tags()
+        if xla_enable_strict_auto_jit:
+            tf_py_test(
+                name = test_name + "_xla_" + config,
+                size = size,
+                srcs = srcs,
+                args = args,
+                data = data,
+                flaky = flaky,
+                grpc_enabled = grpc_enabled,
+                kernels = kernels,
+                main = main,
+                shard_count = shard_count,
+                tags = test_tags + ["xla", "manual"],
+                xla_enabled = xla_enabled,
+                xla_enable_strict_auto_jit = True,
+                **kwargs
+            )
+        if config == "gpu":
+            test_name += "_gpu"
         tf_py_test(
             name = test_name,
             size = size,
@@ -2392,10 +2407,24 @@ def gpu_py_tests(
         **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+    if xla_enable_strict_auto_jit:
+        py_tests(
+            name = name + "_xla",
+            size = size,
+            srcs = srcs,
+            data = data,
+            grpc_enabled = grpc_enabled,
+            kernels = kernels,
+            prefix = prefix,
+            shard_count = shard_count,
+            tags = test_tags + ["xla", "manual"],
+            xla_enabled = xla_enabled,
+            xla_enable_strict_auto_jit = True,
+            **kwargs
+        )
     py_tests(
         name = name,
         size = size,

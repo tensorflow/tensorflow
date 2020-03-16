@@ -13,13 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for XLA.
+// This is the operation definition file for XLA HLO ops which map to the
+// traditional definition in xla_data.proto (or are aligned with the goals
+// thereof).
+// See: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/xla_data.proto
 
 #ifndef HLO_OPS
 #define HLO_OPS
 
 include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
+include "mlir/Interfaces/SideEffects.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
@@ -39,64 +43,11 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
 }
 
 //===----------------------------------------------------------------------===//
-// XLA type definitions.
-//===----------------------------------------------------------------------===//
-
-// Token type.
-def HLO_Token : Type<CPred<"$_self.isa<TokenType>()">, "token">;
-
-// Any integer tensor types
-def HLO_IntTensor : TensorOf<[HLO_Int]>;
-
-// Any floating-point tensor types
-def HLO_FpTensor : TensorOf<[AnyFloat]>;
-
-def HLO_PredTensor : TensorOf<[HLO_Pred]>;
-
-def HLO_Tensor : TensorOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
-
-def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
-
-def HLO_Tuple : NestedTupleOf<[HLO_Tensor, HLO_Token]>;
-
-def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
-
-// Dynamic representation of a shape vector as a tensor. Ideally this would be
-// an index type (as it stores indices) but that is currently disallowed in
-// MLIR.
-def HLO_DimensionTensor : ShapedContainerType<
-    [AnySignlessInteger], And<[IsTensorTypePred, HasAnyRankOfPred<[1]>]>,
-    "a 1D tensor of dimensions">;
-
-// In general, static shaped tensor constraints should be avoided unless
-// it is for a legacy op which is only correct with static shapes.
-def HLO_StaticShapeTensor : StaticShapeTensorOf<[
-      AnyFloat, AnySignlessInteger, AnyComplex]>;
-
-//===----------------------------------------------------------------------===//
-// XLA combined type definitions.
-//===----------------------------------------------------------------------===//
-
-// Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
-
-// Any integer or predicate tensor types
-def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
-
-// Any floating-point or complex tensor types
-def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
-
-// Any int, floating-point or complex tensor types
-def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
-
-// Any pred, int or floating-point tensor types
-def HLO_PredIntOrFpTensor : TensorOf<[HLO_Pred, HLO_Int, AnyFloat]>;
-
-//===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
 //===----------------------------------------------------------------------===//
 
-def HLO_ConstOp : HLO_Op<"constant", [NoSideEffect]>, BASE_HLO_ConstOp {
+def HLO_ConstOp : HLO_Op<"constant", [ConstantLike, NoSideEffect]>,
+                  BASE_HLO_ConstOp {
   let arguments = (ins
     ElementsAttr:$value
   );
@@ -144,10 +95,24 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
-      Type TensorType>: HLO_Op<mnemonic, traits> {
-
+      Type TensorType>: HLO_Op<mnemonic,
+        !listconcat(traits, [InferShapedTypeOpInterface])> {
     let arguments = (ins TensorType:$operand);
     let results = (outs TensorType);
+    let extraClassDeclaration = [{
+      static  LogicalResult inferReturnTypeComponents(
+          MLIRContext* context, Optional<Location> location,
+          ValueRange operands, ArrayRef<NamedAttribute> attributes,
+          RegionRange regions,
+          SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+        return failure();
+      }
+      LogicalResult reifyReturnTypeShapes(
+          OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+        return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                           &reifiedReturnShapes);
+      }
+    }];
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
@@ -286,7 +251,7 @@ def HLO_RealOp: HLO_Op<
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
-        HLO_Op<mnemonic, traits> {
+        HLO_Op<mnemonic, !listconcat(traits, [InferShapedTypeOpInterface])> {
   let arguments = (ins
     HLO_Tensor:$lhs,
     HLO_Tensor:$rhs,
@@ -297,6 +262,20 @@ class HLO_BinaryElementwiseOp<string mnemonic, list<OpTrait> traits> :
     "Builder *builder, OperationState &result, Value left, Value  right, "
     "DenseIntElementsAttr broadcast_dimensions"
   >];
+
+  let extraClassDeclaration = [{
+    static  LogicalResult inferReturnTypeComponents(
+        MLIRContext* context, Optional<Location> location, ValueRange operands,
+        ArrayRef<NamedAttribute> attributes, RegionRange regions,
+        SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+      return failure();
+    }
+    LogicalResult reifyReturnTypeShapes(
+        OpBuilder& builder, SmallVectorImpl<Value>& reifiedReturnShapes) {
+      return deriveShapeFromFirstOperand(&builder, getOperation(),
+                                         &reifiedReturnShapes);
+    }
+  }];
 
   let results = (outs HLO_Tensor);
   let parser = [{ return mlir::impl::parseOneResultSameOperandTypeOp(parser, result); }];

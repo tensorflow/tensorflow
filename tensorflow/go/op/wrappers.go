@@ -12181,7 +12181,7 @@ func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
 //     convert $src.gif -coalesce $dst.gif
 //
 // This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-// `tf.image.decode_image`.
+// `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
@@ -15489,7 +15489,7 @@ func DecodePngDtype(value tf.DataType) DecodePngAttr {
 // of color channels.
 //
 // This op also supports decoding JPEGs and non-animated GIFs since the interface
-// is the same, though it is cleaner to use `tf.image.decode_image`.
+// is the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The PNG-encoded image.
@@ -42751,7 +42751,7 @@ func DecodeJpegDctMethod(value string) DecodeJpegAttr {
 //
 //
 // This op also supports decoding PNGs and non-animated GIFs since the interface is
-// the same, though it is cleaner to use `tf.image.decode_image`.
+// the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The JPEG-encoded image.
@@ -44772,6 +44772,19 @@ func Lu(scope *Scope, input tf.Output, optional ...LuAttr) (lu tf.Output, p tf.O
 	return op.Output(0), op.Output(1)
 }
 
+// ImageProjectiveTransformV2Attr is an optional argument to ImageProjectiveTransformV2.
+type ImageProjectiveTransformV2Attr func(optionalAttr)
+
+// ImageProjectiveTransformV2FillMode sets the optional fill_mode attribute to value.
+//
+// value: Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+// If not specified, defaults to "CONSTANT"
+func ImageProjectiveTransformV2FillMode(value string) ImageProjectiveTransformV2Attr {
+	return func(m optionalAttr) {
+		m["fill_mode"] = value
+	}
+}
+
 // Applies the given transform to each of the images.
 //
 // If one row of `transforms` is `[a0, a1, a2, b0, b1, b2, c0, c1]`, then it maps
@@ -44790,11 +44803,14 @@ func Lu(scope *Scope, input tf.Output, optional ...LuAttr) (lu tf.Output, p tf.O
 //
 // Returns 4-D with shape
 // `[batch, new_height, new_width, channels]`.
-func ImageProjectiveTransformV2(scope *Scope, images tf.Output, transforms tf.Output, output_shape tf.Output, interpolation string) (transformed_images tf.Output) {
+func ImageProjectiveTransformV2(scope *Scope, images tf.Output, transforms tf.Output, output_shape tf.Output, interpolation string, optional ...ImageProjectiveTransformV2Attr) (transformed_images tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"interpolation": interpolation}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ImageProjectiveTransformV2",
 		Input: []tf.Input{

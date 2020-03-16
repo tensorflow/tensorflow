@@ -227,7 +227,13 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
-    return TensorStorageType::BUFFER;
+    const MaliInfo mali_info = gpu.GetInfo().mali_info;
+    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
+        mali_info.IsValhall()) {
+      return TensorStorageType::TEXTURE_2D;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
   } else if (gpu.IsNvidia()) {
     return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
                                      : TensorStorageType::BUFFER;

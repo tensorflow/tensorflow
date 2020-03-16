@@ -77,6 +77,8 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "Output session module proto."},
       {"mlir_components", &flags->mlir_components,
        "The MLIR components to enable. Currently only Bridge is supported."},
+      {"quantize", &flags->quantize,
+       "If set, quantization will be applied before HLO code generation."},
       {"gen_name_to_index", &flags->gen_name_to_index,
        "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
       {"gen_program_shape", &flags->gen_program_shape,

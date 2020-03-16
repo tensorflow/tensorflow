@@ -1847,11 +1847,7 @@ void ExecutorState::ProcessConstTensor(const NodeItem& item,
 void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   profiler::TraceMe activity(
       [&] {
-        int64 id = step_id_;
-        if (step_container_ && step_container_->step_id()) {
-          id = step_container_->step_id();
-        }
-        return absl::StrCat("ExecutorState::Process#id=", id,
+        return absl::StrCat("ExecutorState::Process#id=", step_id_,
                             ",iter_num=", tagged_node.input_iter, "#");
       },
       2);

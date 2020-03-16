@@ -293,9 +293,11 @@ class PolicyTest(test.TestCase):
       mixed_precision.enable_mixed_precision_graph_rewrite(
           gradient_descent.SGD(1.))
       with self.assertRaisesRegexp(
-          ValueError, 'the mixed precision graph rewrite has already been '
-                      'enabled'):
+          ValueError, 'cannot be set to "mixed_float16", .* the mixed '
+                      'precision graph rewrite has already been enabled'):
         mp_policy.set_policy('mixed_float16')
+      with mp_policy.policy_scope('float64'):
+        pass  # Non-mixed policies are allowed
     finally:
       mixed_precision.disable_mixed_precision_graph_rewrite()
 

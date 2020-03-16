@@ -87,11 +87,11 @@ TEST(GpuMultiStream, Basics) {
             /*buffer_reference=*/nullptr, client.get(), device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
+    ExecuteOptions options;
+    options.untuple_result = true;
     TF_ASSERT_OK_AND_ASSIGN(
-        auto out_buffer,
-        executable->Execute({in_buffer0.get(), in_buffer1.get()}));
-
-    TF_ASSERT_OK_AND_ASSIGN(auto out_buffers, out_buffer->DestructureTuple());
+        auto out_buffers,
+        executable->Execute({in_buffer0.get(), in_buffer1.get()}, options));
 
     TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0]->ToLiteral());
     LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);

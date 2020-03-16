@@ -10,6 +10,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
+        "//learning/pathways/data_parallel/tf2xla/...",
         "//tensorflow/compiler/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//tensorflow/python/...",
@@ -25,6 +26,7 @@ filegroup(
         "ir/tf_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
     ],
 )
 
@@ -229,6 +231,7 @@ cc_library(
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:CallOpInterfacesIncGen",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
@@ -444,7 +447,6 @@ cc_library(
     srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
-        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LoopOpsTransforms",
     ],
@@ -801,9 +803,8 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:Support",
     ],
     alwayslink = 1,
@@ -814,6 +815,7 @@ cc_library(
     deps = [
         ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
+        "@llvm-project//mlir:AllPassesAndDialects",
     ],
 )
 
@@ -957,6 +959,7 @@ genrule(
     name = "derived_attr_populator_inc",
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         "ir/tf_generated_ops.td",
         "ir/tf_op_base.td",
@@ -1019,6 +1022,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

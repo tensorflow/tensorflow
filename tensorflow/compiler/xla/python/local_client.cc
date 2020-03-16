@@ -319,7 +319,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::FromHostBuffer(
 }
 
 /* static */ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::MakeTuple(
-    const std::vector<PyLocalBuffer*> buffers, PyLocalClient* client,
+    absl::Span<PyLocalBuffer* const> buffers, PyLocalClient* client,
     Device* device) {
   TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
                       device->GetLocalDeviceState());
@@ -597,9 +597,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     TF_RET_CHECK(input_buffer.size() == output_buffer.size())
         << "input: " << input_buffer.size()
         << " output: " << output_buffer.size();
-    TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
-        transfer_stream, dst_local_device->compute_stream(), input_buffer,
-        output_buffer));
+    if (input_buffer.size() != 0) {
+      TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
+          transfer_stream, dst_local_device->compute_stream(), input_buffer,
+          output_buffer));
+    }
   }
 
   // We hold on to the `src_device_buffer` until the transfer is finished.
@@ -716,14 +718,27 @@ const std::string& PyLocalExecutable::name() const {
   }
 }
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
+StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+PyLocalExecutable::ExecuteHelper(
     absl::Span<PyLocalBuffer* const> argument_handles, int replica,
-    int partition, const RunId& run_id) const {
+    int partition, const RunId& run_id, const ExecuteOptions& options) const {
   const int device_id = (*device_assignment_)(replica, partition);
   Device* device = LookupDevice(*client_, device_id);
+
+  std::unique_ptr<PyLocalBuffer> tuple_buffer;
+  std::vector<PyLocalBuffer*> tupled_arguments;
+  if (options.tuple_arguments) {
+    TF_ASSIGN_OR_RETURN(tuple_buffer, PyLocalBuffer::MakeTuple(
+                                          argument_handles, client_, device));
+    tupled_arguments = {tuple_buffer.get()};
+    argument_handles = tupled_arguments;
+  }
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_state()->device_ordinal();
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat("LocalExecutable::Execute#run_id=", run_id.ToInt(),
+                        "#");
+  });
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -763,16 +778,16 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     event->WaitForEventOnStream(device_state->compute_stream());
   }
 
-  ExecutableRunOptions options;
-  options.set_stream(device_state->compute_stream());
-  options.set_host_to_device_stream(device_state->host_to_device_stream());
-  options.set_allocator(client_->allocator());
-  options.set_intra_op_thread_pool(
+  ExecutableRunOptions run_options;
+  run_options.set_stream(device_state->compute_stream());
+  run_options.set_host_to_device_stream(device_state->host_to_device_stream());
+  run_options.set_allocator(client_->allocator());
+  run_options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
-  options.set_device_assignment(device_assignment_.get());
-  options.set_run_id(run_id);
-  options.set_rng_seed(device_state->GetNewPrngSeed());
-  options.set_gpu_executable_run_options(client_->gpu_run_options());
+  run_options.set_device_assignment(device_assignment_.get());
+  run_options.set_run_id(run_id);
+  run_options.set_rng_seed(device_state->GetNewPrngSeed());
+  run_options.set_gpu_executable_run_options(client_->gpu_run_options());
 
   // The choice of where we wait is arbitrary; the reason for the wait is pacing
   // to avoid problems such as memory fragmentation and running ahead too far,
@@ -785,7 +800,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   int executable_idx = executables_.size() > 1 ? partition : 0;
 
   StatusOr<ScopedShapedBuffer> result_buffer_or_status =
-      executables_[executable_idx]->RunAsync(argument_buffer_ptrs, options);
+      executables_[executable_idx]->RunAsync(argument_buffer_ptrs, run_options);
 
   VLOG(1) << "Replica " << replica << " partition " << partition
           << " completed; ok=" << result_buffer_or_status.ok();
@@ -817,13 +832,19 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
       device_state->compute_stream(),
       std::make_tuple(executables_[executable_idx], compute_reservation,
                       device_assignment_));
-  return absl::make_unique<PyLocalBuffer>(
+  std::vector<std::unique_ptr<PyLocalBuffer>> outputs;
+  outputs.push_back(absl::make_unique<PyLocalBuffer>(
       result_buffer.on_host_shape(), result_buffer.on_device_shape(),
-      std::move(out_buffer), client_, device);
+      std::move(out_buffer), client_, device));
+  if (options.untuple_result && result_buffer.on_host_shape().IsTuple()) {
+    TF_ASSIGN_OR_RETURN(outputs, outputs.front()->DestructureTuple());
+  }
+  return outputs;
 }
 
-StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
-    absl::Span<PyLocalBuffer* const> argument_handles) const {
+StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+PyLocalExecutable::Execute(absl::Span<PyLocalBuffer* const> argument_handles,
+                           const ExecuteOptions& options) const {
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute()",
@@ -836,14 +857,18 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::Execute(
   }
   VLOG(1) << "Executing computation " << name();
   return ExecuteHelper(argument_handles, /*replica=*/0, /*partition=*/0,
-                       RunId());
+                       RunId(), options);
 }
 
-StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>
+StatusOr<std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>>
 PyLocalExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles) const {
-  tensorflow::profiler::TraceMe traceme(
-      "LocalExecutable::ExecuteOnLocalDevices");
+    absl::Span<const std::vector<PyLocalBuffer*>> argument_handles,
+    const ExecuteOptions& options) const {
+  RunId run_id;
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat(
+        "LocalExecutable::ExecuteOnLocalDevices#run_id=", run_id.ToInt(), "#");
+  });
 
   const int num_local_devices = local_devices_.size();
 
@@ -857,9 +882,9 @@ PyLocalExecutable::ExecuteOnLocalDevices(
 
   VLOG(1) << "Executing computation " << name()
           << "; num_replicas=" << num_replicas()
-          << " num_partitions=" << num_partitions()
-          << " num_local_devices=" << num_local_devices;
-  std::vector<StatusOr<std::unique_ptr<PyLocalBuffer>>> results(
+          << " num_partitions=" << num_partitions() << " num_local_devices=8"
+          << num_local_devices;
+  std::vector<StatusOr<std::vector<std::unique_ptr<PyLocalBuffer>>>> results(
       num_local_devices);
   if (num_local_devices == 1) {
     // Fast-path if there is only one device — run the computation on the
@@ -867,9 +892,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
     const int replica = local_logical_device_ids_[0].first;
     const int partition = local_logical_device_ids_[0].second;
     results[0] =
-        ExecuteHelper(argument_handles[0], replica, partition, RunId());
+        ExecuteHelper(argument_handles[0], replica, partition, run_id, options);
   } else {
-    RunId run_id;
     absl::Mutex mu;
     int running = num_local_devices;
     int failed = 0;
@@ -881,8 +905,8 @@ PyLocalExecutable::ExecuteOnLocalDevices(
       Device* device = local_devices_[i];
       const LocalDeviceState& device_state = *device->local_device_state();
       device_state.execute_thread()->Schedule([&, replica, partition, i] {
-        results[i] =
-            ExecuteHelper(argument_handles[i], replica, partition, run_id);
+        results[i] = ExecuteHelper(argument_handles[i], replica, partition,
+                                   run_id, options);
 
         absl::MutexLock lock(&mu);
         --running;
@@ -923,7 +947,7 @@ PyLocalExecutable::ExecuteOnLocalDevices(
   }
   VLOG(1) << "Replicated execution complete.";
 
-  std::vector<std::unique_ptr<PyLocalBuffer>> wrapped_results(
+  std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>> wrapped_results(
       num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
     const int replica = local_logical_device_ids_[i].first;

@@ -640,7 +640,7 @@ struct LegalizeUnidirectionalSequenceLstm : public RewritePattern {
                                                rewriter.getStringAttr("TANH")));
     // cell_clip.
     attributes.push_back(
-        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(10.0)));
+        rewriter.getNamedAttr("cell_clip", rewriter.getF32FloatAttr(0.0)));
     // proj_clip.
     attributes.push_back(
         rewriter.getNamedAttr("proj_clip", rewriter.getF32FloatAttr(0.0)));

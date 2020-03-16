@@ -32,16 +32,17 @@ class GroupByReducerDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit GroupByReducerDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    FunctionMetadata::Params params;
-    params.is_multi_device_function = true;
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", params,
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "key_func", /*params=*/{},
                                                  &key_func_metadata_));
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "init_func", params,
-                                                 &init_func_metadata_));
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "reduce_func", params,
-                                                 &reduce_func_metadata_));
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "finalize_func", params,
-                                                 &finalize_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "init_func", /*params=*/{},
+                                            &init_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "reduce_func", /*params=*/{},
+                                            &reduce_func_metadata_));
+    OP_REQUIRES_OK(ctx,
+                   FunctionMetadata::Create(ctx, "finalize_func", /*params=*/{},
+                                            &finalize_func_metadata_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
   }

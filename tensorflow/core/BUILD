@@ -2256,7 +2256,6 @@ filegroup(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
-        "//tensorflow/core/framework:unique_tensor_references.h",
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
     ],

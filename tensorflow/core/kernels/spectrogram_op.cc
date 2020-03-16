@@ -72,6 +72,9 @@ class AudioSpectrogramOp : public OpKernel {
 
     std::vector<float> input_for_channel(sample_count);
     for (int64 channel = 0; channel < channel_count; ++channel) {
+      OP_REQUIRES(context, spectrogram.Reset(),
+                  errors::InvalidArgument("Failed to Reset()"));
+
       float* output_slice =
           output_flat + (channel * output_height * output_width);
       for (int i = 0; i < sample_count; ++i) {

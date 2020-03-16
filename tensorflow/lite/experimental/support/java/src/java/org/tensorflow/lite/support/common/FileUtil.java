@@ -55,7 +55,8 @@ public class FileUtil {
    * Loads labels from the label file into a list of strings.
    *
    * <p>A legal label file is the plain text file whose contents are split into lines, and each line
-   * is an individual value. The file should be in assets of the context.
+   * is an individual value. The empty lines will be ignored. The file should be in assets of the
+   * context.
    *
    * @param context The context holds assets.
    * @param filePath The path of the label file, relative with assets directory.
@@ -102,7 +103,9 @@ public class FileUtil {
     try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, cs))) {
       String line;
       while ((line = reader.readLine()) != null) {
-        labels.add(line);
+        if (line.trim().length() > 0) {
+          labels.add(line);
+        }
       }
       return labels;
     }

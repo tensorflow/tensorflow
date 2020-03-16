@@ -1536,5 +1536,40 @@ void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
   os << "<unknown xla_hlo type>";
 }
 
+//===----------------------------------------------------------------------===//
+// Shape inference
+//===----------------------------------------------------------------------===//
+
+LogicalResult deriveShapeFromFirstOperand(
+    OpBuilder* builder, Operation* op,
+    SmallVectorImpl<Value>* reifiedReturnShapes) {
+  Value operand = op->getOperand(0);
+  ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
+  if (!operand_type) {
+    op->emitOpError() << "first operand is not a shaped type";
+    return failure();
+  }
+  auto loc = op->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  auto shape_scalar_type = builder->getIntegerType(64);
+  for (auto element : llvm::enumerate(operand_type.getShape())) {
+    if (element.value() == ShapedType::kDynamicSize) {
+      Value dim = builder->create<DimOp>(loc, operand, element.index());
+      shape_values.push_back(
+          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+    } else {
+      shape_values.push_back(builder->create<ConstantOp>(
+          loc, builder->getI64IntegerAttr(element.value())));
+    }
+  }
+  *reifiedReturnShapes =
+      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
+          loc,
+          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
+          shape_values)};
+  return success();
+}
+
 }  // namespace xla_hlo
 }  // namespace mlir

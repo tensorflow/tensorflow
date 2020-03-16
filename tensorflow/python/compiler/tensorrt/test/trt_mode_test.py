@@ -128,8 +128,8 @@ class ExplicitBatchTest(TrtModeTestBase):
   def ShouldRunTest(self, run_params):
     # Only run for TRT 6 and above.
     ver = get_linked_tensorrt_version()
-    return ver[0] >= 6 and (
-        not run_params.use_calibration), "test >=TRT6 and non-calibration"
+    return run_params.is_v2 and ver[0] >= 6 and (
+        not run_params.use_calibration), "test v2, >=TRT6 and non-calibration"
 
 
 class DynamicShapesTest(TrtModeTestBase):
@@ -165,8 +165,8 @@ class DynamicShapesTest(TrtModeTestBase):
   def ShouldRunTest(self, run_params):
     # Only run for TRT 6 and above.
     ver = get_linked_tensorrt_version()
-    return ver[0] >= 6 and (
-        not run_params.use_calibration), "test >=TRT6 and non-calibration"
+    return run_params.is_v2 and ver[0] >= 6 and (
+        not run_params.use_calibration), "test v2 >=TRT6 and non-calibration"
 
 
 if __name__ == "__main__":

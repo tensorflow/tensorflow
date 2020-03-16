@@ -27,7 +27,6 @@ limitations under the License.
 namespace {
 
 struct LoggingDevice {
-  TFE_Context* ctx;
   tensorflow::string device_name;
   tensorflow::string underlying_device;
   // Set to true whenever a TensorHandle is copied onto the device
@@ -48,7 +47,7 @@ void LoggedTensorDeallocator(void* data, size_t len, void* arg) {
 }
 
 TFE_TensorHandle* MakeLoggedTensorHandle(
-    TFE_Context* ctx, const tensorflow::string& logging_device_name,
+    TFE_Context* context, const tensorflow::string& logging_device_name,
     std::unique_ptr<LoggedTensor> t, TF_Status* status) {
   std::vector<int64_t> shape(TFE_TensorHandleNumDims(t->tensor, status));
   if (TF_GetCode(status) != TF_OK) return nullptr;
@@ -58,23 +57,25 @@ TFE_TensorHandle* MakeLoggedTensorHandle(
   }
   auto dtype = TFE_TensorHandleDataType(t->tensor);
   return TFE_NewTensorHandleFromDeviceMemory(
-      ctx, logging_device_name.c_str(), dtype, shape.data(), shape.size(),
+      context, logging_device_name.c_str(), dtype, shape.data(), shape.size(),
       t.release(), 1, &LoggedTensorDeallocator, nullptr, status);
 }
 
-TFE_TensorHandle* CopyToLoggingDevice(TFE_TensorHandle* tensor,
+TFE_TensorHandle* CopyToLoggingDevice(TFE_Context* context,
+                                      TFE_TensorHandle* tensor,
                                       TF_Status* status, void* device_info) {
   LoggingDevice* dev = reinterpret_cast<LoggingDevice*>(device_info);
   TFE_TensorHandle* t = TFE_TensorHandleCopyToDevice(
-      tensor, dev->ctx, dev->underlying_device.c_str(), status);
+      tensor, context, dev->underlying_device.c_str(), status);
   if (TF_GetCode(status) != TF_OK) return nullptr;
   auto dst = std::make_unique<LoggedTensor>(t);
   *(dev->arrived_flag) = true;
-  return MakeLoggedTensorHandle(dev->ctx, dev->device_name, std::move(dst),
+  return MakeLoggedTensorHandle(context, dev->device_name, std::move(dst),
                                 status);
 }
 
-TFE_TensorHandle* CopyTensorFromLoggingDevice(TFE_TensorHandle* tensor,
+TFE_TensorHandle* CopyTensorFromLoggingDevice(TFE_Context* context,
+                                              TFE_TensorHandle* tensor,
                                               const char* target_device_name,
                                               TF_Status* status,
                                               void* device_info) {
@@ -83,13 +84,13 @@ TFE_TensorHandle* CopyTensorFromLoggingDevice(TFE_TensorHandle* tensor,
   return nullptr;
 }
 
-void LoggingDeviceExecute(int num_inputs, TFE_TensorHandle** inputs,
-                          const char* operation_name,
+void LoggingDeviceExecute(TFE_Context* context, int num_inputs,
+                          TFE_TensorHandle** inputs, const char* operation_name,
                           const TFE_OpAttrs* attributes, int* num_outputs,
                           TFE_TensorHandle** outputs, TF_Status* s,
                           void* device_info) {
   LoggingDevice* dev = reinterpret_cast<LoggingDevice*>(device_info);
-  TFE_Op* op(TFE_NewOp(dev->ctx, operation_name, s));
+  TFE_Op* op(TFE_NewOp(context, operation_name, s));
   if (TF_GetCode(s) != TF_OK) return;
   TFE_OpAddAttrs(op, attributes);
   TFE_OpSetDevice(op, dev->underlying_device.c_str(), s);
@@ -117,7 +118,7 @@ void LoggingDeviceExecute(int num_inputs, TFE_TensorHandle** inputs,
   }
   for (int i = 0; i < *num_outputs; ++i) {
     auto logged_tensor = std::make_unique<LoggedTensor>(unwrapped_outputs[i]);
-    outputs[i] = MakeLoggedTensorHandle(dev->ctx, dev->device_name,
+    outputs[i] = MakeLoggedTensorHandle(context, dev->device_name,
                                         std::move(logged_tensor), s);
   }
   *(dev->executed_flag) = true;
@@ -136,7 +137,6 @@ void RegisterLoggingDevice(TFE_Context* context, const char* name,
   custom_device.delete_device = &DeleteLoggingDevice;
   custom_device.execute = &LoggingDeviceExecute;
   LoggingDevice* device = new LoggingDevice;
-  device->ctx = context;
   device->arrived_flag = arrived_flag;
   device->executed_flag = executed_flag;
   device->device_name = name;
@@ -286,6 +286,76 @@ TEST(CUSTOM_DEVICE, MakeVariable) {
   ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
   ASSERT_EQ(111., *static_cast<float*>(TF_TensorData(resolved_value.get())));
 
+  // Free the backing buffer for the variable.
+  op.reset(TFE_NewOp(context.get(), "DestroyResourceOp", status.get()));
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  num_retvals = 0;
+  TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+}
+
+TEST(CUSTOM_DEVICE, AccessVariableOnWrongDevice) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
+      TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  std::unique_ptr<TFE_Context, decltype(&TFE_DeleteContext)> context(
+      TFE_NewContext(opts.get(), status.get()), TFE_DeleteContext);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  bool arrived = false;
+  bool executed = false;
+  const char* name = "/job:localhost/replica:0/task:0/device:CUSTOM:0";
+  RegisterLoggingDevice(context.get(), name, &arrived, &executed, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+
+  // Create a variable handle placed on the custom device.
+  std::unique_ptr<TFE_Op, decltype(&TFE_DeleteOp)> op(
+      TFE_NewOp(context.get(), "VarHandleOp", status.get()), TFE_DeleteOp);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  TFE_OpSetAttrShape(op.get(), "shape", {}, 0, status.get());
+  TFE_OpSetAttrString(op.get(), "container", "", 0);
+  TFE_OpSetAttrString(op.get(), "shared_name", "", 0);
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  TFE_TensorHandle* var_handle = nullptr;
+  int num_retvals = 1;
+  executed = false;
+  TFE_Execute(op.get(), &var_handle, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+  auto handle_cleaner = tensorflow::gtl::MakeCleanup(
+      [var_handle]() { TFE_DeleteTensorHandle(var_handle); });
+
+  // Assign to the variable, copying to the custom device.
+  std::unique_ptr<TFE_TensorHandle, decltype(&TFE_DeleteTensorHandle)> one(
+      TestScalarTensorHandle(111.f), TFE_DeleteTensorHandle);
+  op.reset(TFE_NewOp(context.get(), "AssignVariableOp", status.get()));
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpAddInput(op.get(), one.get(), status.get());
+  TFE_OpSetDevice(op.get(), name, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  executed = false;
+  num_retvals = 0;
+  TFE_Execute(op.get(), nullptr, &num_retvals, status.get());
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  ASSERT_TRUE(executed);
+
+  // Read the variable's value.
+  op.reset(TFE_NewOp(context.get(), "ReadVariableOp", status.get()));
+  TFE_OpAddInput(op.get(), var_handle, status.get());
+  TFE_OpSetAttrType(op.get(), "dtype", TF_FLOAT);
+  ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
+  executed = false;
+  num_retvals = 1;
+  TFE_TensorHandle* var_value = nullptr;
+  TFE_Execute(op.get(), &var_value, &num_retvals, status.get());
+  EXPECT_FALSE(TF_GetCode(status.get()) == TF_OK)
+      << "Execution should fail because the variable is being used on the "
+         "wrong device.";
   // Free the backing buffer for the variable.
   op.reset(TFE_NewOp(context.get(), "DestroyResourceOp", status.get()));
   TFE_OpAddInput(op.get(), var_handle, status.get());

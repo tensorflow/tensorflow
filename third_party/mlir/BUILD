@@ -144,6 +144,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/AffineOps/AffineOps.td",
         "include/mlir/Dialect/AffineOps/AffineOpsBase.td",
+        "include/mlir/Interfaces/SideEffects.td",
         "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
@@ -173,6 +174,7 @@ filegroup(
     name = "LoopOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/LoopOps/LoopOps.td",
+        "include/mlir/Interfaces/SideEffects.td",
         "include/mlir/Transforms/LoopLikeInterface.td",
         ":OpBaseTdFiles",
     ],
@@ -540,6 +542,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -617,6 +620,7 @@ filegroup(
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/LLVMOps.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -861,6 +865,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/NVVMOps.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -928,6 +933,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -974,6 +980,7 @@ filegroup(
     srcs = [
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ] + glob(["include/mlir/Dialect/SPIRV/*.td"]),
 )
@@ -1181,6 +1188,7 @@ cc_library(
         "lib/Dialect/SPIRV/SPIRVLowering.cpp",
         "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
         "lib/Dialect/SPIRV/Transforms/LowerABIAttributesPass.cpp",
+        "lib/Dialect/SPIRV/Transforms/UpdateVCEPass.cpp",
     ],
     hdrs = [
         "include/mlir/Dialect/SPIRV/Passes.h",
@@ -1290,7 +1298,45 @@ cc_library(
         ":IR",
         ":LoopLikeOpInterfaceIncGen",
         ":LoopOps",
+        ":SideEffects",
         ":StandardOps",
+        ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
+gentbl(
+    name = "DerivedAttributeOpInterfaceIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/Interfaces/DerivedAttributeOpInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/Interfaces/DerivedAttributeOpInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Interfaces/DerivedAttributeOpInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
+cc_library(
+    name = "DerivedAttributeOpInterface",
+    srcs = [
+        "lib/Interfaces/DerivedAttributeOpInterface.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Interfaces/DerivedAttributeOpInterface.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":DerivedAttributeOpInterfaceIncGen",
+        ":IR",
         ":Support",
         "@llvm-project//llvm:support",
     ],
@@ -1913,6 +1959,7 @@ cc_library(
 
 cc_library(
     name = "AllPassesAndDialects",
+    srcs = ["@org_tensorflow//third_party/mlir:mlir-auto-init.cpp"],
     deps = [
         ":AllPassesAndDialectsNoRegistration",
     ],
@@ -2153,6 +2200,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/QuantOps/QuantOps.td",
         "include/mlir/Dialect/QuantOps/QuantPredicates.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -2219,6 +2267,7 @@ filegroup(
     srcs = [
         "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
         "include/mlir/Dialect/QuantOps/QuantPredicates.td",
+        "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -2685,11 +2734,11 @@ exports_files(
         "include/mlir/Interfaces/CallInterfaces.td",
         "include/mlir/Interfaces/ControlFlowInterfaces.h",
         "include/mlir/Interfaces/ControlFlowInterfaces.td",
+        "include/mlir/Interfaces/SideEffects.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Dialect/StandardOps/IR/Ops.td",
         "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/IR/OpBase.td",
-        "include/mlir/Interfaces/SideEffects.td",
         "include/mlir/Transforms/InliningUtils.h",
     ],
     visibility = ["@llvm-project//mlir:friends"],

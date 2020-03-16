@@ -154,7 +154,10 @@ tf_cuda_library(
         "c_api.h",
     ],
     copts = tf_copts(),
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+        "//third_party/llvm/llvm-project:__subpackages__",
+    ],
     deps = [
         ":c_api_internal",
         ":tf_attrtype",
@@ -698,4 +701,5 @@ tf_cuda_library(
         # TODO(b/74620627): remove when _USE_C_SHAPES is removed
         "//tensorflow/python:cpp_shape_inference_proto_cc",
     ],
+    alwayslink = 1,
 )

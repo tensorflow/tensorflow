@@ -81,10 +81,6 @@ class NodeExecStatsInterface {
   // output slot.
   virtual void SetOutput(int slot, const Tensor* tensor) = 0;
 
-  // Records information about the tensors that were accessed during the
-  // execution of this node.
-  virtual void SetReferencedTensors(const TensorReferenceVector& tensors) = 0;
-
   // Records the absolute time in nanoseconds at which this node became
   // runnable (i.e. was scheduled for execution).
   virtual void SetScheduled(int64 nanos) = 0;
@@ -113,7 +109,6 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   bool TrackAllocations() const override { return true; }
   void SetMemory(OpKernelContext* ctx) override;
   void SetOutput(int slot, const Tensor* tensor) override;
-  void SetReferencedTensors(const TensorReferenceVector& tensors) override;
   void SetScheduled(int64 nanos) override;
 
  private:

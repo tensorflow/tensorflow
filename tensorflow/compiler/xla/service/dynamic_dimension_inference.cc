@@ -584,10 +584,13 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           HloInstruction* operand_dynamic_size,
           DimensionConstraint constraint) -> Status {
         HloInstruction* reshape = hlo;
-        TF_RET_CHECK(reshape->shape().rank() > 0)
-            << "Reshaping a dynamic dimension into a scalar, which has "
-               "undefined behavior. The offending instruction is: "
-            << reshape->ToString();
+        if (reshape->shape().rank() == 0) {
+          VLOG(0) << "Reshaping a dynamic dimension into a scalar, which has "
+                     "undefined behavior when input size is 0. The offending "
+                     "instruction is: "
+                  << reshape->ToString();
+          return Status::OK();
+        }
         auto common_factors = CommonFactors(operand->shape().dimensions(),
                                             reshape->shape().dimensions());
         int64 input_dim_start = -1;

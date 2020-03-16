@@ -416,6 +416,7 @@ cc_library(
     hdrs = ["util.h"],
     copts = TFLITE_DEFAULT_COPTS + tflite_copts(),
     deps = [
+        ":kernel_api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -432,6 +433,7 @@ cc_test(
     deps = [
         ":util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
     ],
 )
