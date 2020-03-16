@@ -88,14 +88,18 @@ void CheckOutputData(const T* test_output, const T* reference_output,
   // We either check for bit exactness (against the reference quantized version)
   // or for general accuracy, allowing off-by-one (against the float reference).
   if (be_exacting) {
-    ASSERT_TRUE(std::abs(min_diff) == 0 && std::abs(max_diff) == 0);
+    ASSERT_EQ(std::abs(min_diff), 0);
+    ASSERT_EQ(std::abs(max_diff), 0);
   } else {
     // For small numbers of samples, the estimates of the means vary more.
     // Rather than widen the tolerances, we skip the smaller tests.
-    ASSERT_TRUE(((std::abs(mean_diff) < 2e-2f && mean_abs_diff < 3e-2f) ||
-                 buffer_size < 10000) &&
-                std::abs(median_diff) == 0 && std::abs(min_diff) <= 1 &&
-                std::abs(max_diff) <= 1);
+    if (buffer_size >= 10000) {
+      ASSERT_LT(std::abs(mean_diff), 2e-2f);
+      ASSERT_LT(mean_abs_diff, 3e-2f);
+    }
+    ASSERT_EQ(std::abs(median_diff), 0);
+    ASSERT_LE(std::abs(min_diff), 1);
+    ASSERT_LE(std::abs(max_diff), 1);
   }
 }
 

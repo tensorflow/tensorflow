@@ -175,7 +175,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
-      with ops.name_scope("Initializer"), ops.device(None):
+      with ops.name_scope("Initializer"):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
             name="initial_value", dtype=dtype)

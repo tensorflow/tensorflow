@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/xla/ir/mlir_hlo_builder.h"
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
@@ -39,6 +40,19 @@ static std::string ToString(mlir::Type ty) {
   return str;
 }
 
+// Returns 1D 64-bit dense elements attribute with the given values.
+static mlir::DenseIntElementsAttr GetI64ElementsAttr(
+    absl::Span<const int64> values, mlir::Builder* builder) {
+  auto ty = mlir::RankedTensorType::get({static_cast<int64_t>(values.size())},
+                                        builder->getIntegerType(64));
+  llvm::SmallVector<int64_t, 4> mlir_values;
+  mlir_values.reserve(values.size());
+  for (const auto& value : values) {
+    mlir_values.push_back(value);
+  }
+  return mlir::DenseIntElementsAttr::get(ty, mlir_values);
+}
+
 MlirHloBuilder::~MlirHloBuilder() = default;
 
 StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
@@ -53,22 +67,63 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
   return XlaOp(handle, this);
 }
 
-XlaOp MlirHloBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
-  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
-    TF_ASSIGN_OR_RETURN(
-        Shape shape, ShapeInference::InferUnaryOpShape(unop, *operand_shape));
+StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
+                                                XlaOp operand,
+                                                int64 inferred_dimension) {
+  TF_RETURN_IF_ERROR(first_error());
 
-    mlir::Value value = GetValue(operand);
-    mlir::OperationState state(loc_, GetMlirOpName(unop));
-    state.addOperands(value);
-    TF_ASSIGN_OR_RETURN(
-        mlir::Type ty,
-        ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
-    state.addTypes(ty);
-    mlir::Operation* op = builder_.createOperation(state);
-    return MakeXlaOp(op->getResult(0));
+  if (inferred_dimension != -1)
+    return Unimplemented("inferred_dimension not yet supported for Reshape op");
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::Value value = GetValue(operand);
+  auto op = builder_.create<mlir::xla_hlo::ReshapeOp>(loc_, ty, value);
+  return MakeXlaOp(op.getResult());
+}
+
+StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
+    const Shape& shape, XlaOp operand,
+    absl::Span<const int64> broadcast_dimensions) {
+  TF_RETURN_IF_ERROR(first_error());
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::Value value = GetValue(operand);
+  auto op = builder_.create<mlir::xla_hlo::BroadcastInDimOp>(
+      loc_, ty, value, GetI64ElementsAttr(broadcast_dimensions, &builder_));
+  return MakeXlaOp(op.getResult());
+}
+
+XlaOp MlirHloBuilder::BinaryOpNoBroadcast(
+    HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+    absl::optional<ComparisonDirection> direction) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    if (direction.has_value())
+      return Unimplemented("direction attribute not yet supported");
+    return CreateOp(GetMlirOpName(binop), shape, {lhs, rhs}, /*attributes=*/{});
   });
+}
+
+StatusOr<XlaOp> MlirHloBuilder::AddOpWithShape(
+    HloOpcode opcode, const Shape& shape, absl::Span<const XlaOp> operands) {
+  return CreateOp(GetMlirOpName(opcode), shape,
+                  llvm::makeArrayRef<XlaOp>(operands.data(), operands.size()),
+                  /*attributes=*/{});
+}
+
+StatusOr<XlaOp> MlirHloBuilder::CreateOp(
+    const std::string& op_name, const Shape& shape,
+    llvm::ArrayRef<XlaOp> operands,
+    llvm::ArrayRef<mlir::NamedAttribute> attributes) {
+  llvm::SmallVector<mlir::Value, 4> operand_values;
+  operand_values.reserve(operands.size());
+  for (XlaOp xla_op : operands) {
+    operand_values.push_back(GetValue(xla_op));
+  }
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         shape, builder_));
+  mlir::OperationState state(loc_, op_name, operand_values, {ty}, attributes);
+  mlir::Operation* op = builder_.createOperation(state);
+  return MakeXlaOp(op->getResult(0));
 }
 
 StatusOr<const Shape*> MlirHloBuilder::GetShapePtr(XlaOp op) const {

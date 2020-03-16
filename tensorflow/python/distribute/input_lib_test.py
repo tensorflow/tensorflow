@@ -585,7 +585,7 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
       """Sums the `PerReplica` values in the `per_replica_features` map."""
 
       def map_fn(per_replica_values):
-        per_replica_sums = distribution.experimental_run_v2(
+        per_replica_sums = distribution.run(
             (lambda x: math_ops.reduce_sum(x.values)) if all(
                 map(sparse_tensor.is_sparse, per_replica_values.values)) else
             math_ops.reduce_sum, (per_replica_values,))
@@ -1048,7 +1048,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function(input_signature=[type_spec])
     def process_inputs(inputs):
-      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+      distribution.run(lambda inputs: inputs, args=(inputs,))
 
     for x in ds:
       process_inputs(x)
@@ -1073,7 +1073,7 @@ class InputTypeSpecTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function(input_signature=[dist_dataset.element_spec])
     def process_inputs(inputs):
-      distribution.experimental_run_v2(lambda inputs: inputs, args=(inputs,))
+      distribution.run(lambda inputs: inputs, args=(inputs,))
 
     for x in dist_dataset:
       process_inputs(x)

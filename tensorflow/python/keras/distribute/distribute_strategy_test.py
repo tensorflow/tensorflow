@@ -232,6 +232,8 @@ tpu_strategies = [
     strategy_combinations.tpu_strategy_one_step
 ]
 
+all_strategies = strategies_minus_tpu + tpu_strategies
+
 
 def strategy_minus_tpu_combinations():
   return combinations.combine(
@@ -531,7 +533,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         return grad_v1, grad_v2
       if context.executing_eagerly():
         run_fn = def_function.function(run_fn)
-      grad_v1, grad_v2 = distribution.experimental_run_v2(run_fn)
+
+      grad_v1, grad_v2 = distribution.run(run_fn)
       self.assertIsNotNone(grad_v1)
       self.assertIsNotNone(grad_v2)
 
@@ -1571,6 +1574,112 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.evaluate(inputs, targets)
 
   @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_distributed_dataset(self, distribution):
+    with distribution.scope():
+
+      class CBCounter(keras.callbacks.Callback):
+
+        def __init__(self):
+          self.epochs = 0
+          self.train_batches = 0
+          self.test_batches = 0
+
+        def on_epoch_end(self, batch, logs=None):
+          self.epochs += 1
+
+        def on_train_batch_end(self, batch, logs=None):
+          self.train_batches += 1
+
+        def on_test_batch_end(self, batch, logs=None):
+          self.test_batches += 1
+
+      model = keras.Sequential([keras.layers.Dense(1)])
+      model.compile('sgd', 'mse')
+      cb_counter = CBCounter()
+
+      x, y = np.ones((100, 10)), np.ones((100, 1))
+      ds = dataset_ops.DatasetV2.from_tensor_slices((x, y))
+      ds = ds.batch(10).repeat(2)
+      ds = distribution.experimental_distribute_dataset(ds)
+
+      val_ds = dataset_ops.DatasetV2.from_tensor_slices((x, y))
+      val_ds = val_ds.batch(20)
+      val_ds = distribution.experimental_distribute_dataset(val_ds)
+
+      model.fit(
+          ds,
+          steps_per_epoch=10,
+          validation_data=val_ds,
+          validation_steps=5,
+          epochs=2,
+          callbacks=[cb_counter])
+
+      self.assertEqual(cb_counter.train_batches, 20)
+      self.assertEqual(cb_counter.test_batches, 10)
+      self.assertEqual(cb_counter.epochs, 2)
+
+      # Check for `steps_per_epoch`.
+      if distribution.num_replicas_in_sync > 1:
+        with self.assertRaisesRegexp(ValueError,
+                                     'distributed dataset, you must specify'):
+          model.fit(ds, epochs=2)
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_distributed_datasets_from_function(self, distribution):
+    with distribution.scope():
+
+      class CBCounter(keras.callbacks.Callback):
+
+        def __init__(self):
+          self.epochs = 0
+          self.train_batches = 0
+          self.test_batches = 0
+
+        def on_epoch_end(self, batch, logs=None):
+          self.epochs += 1
+
+        def on_train_batch_end(self, batch, logs=None):
+          self.train_batches += 1
+
+        def on_test_batch_end(self, batch, logs=None):
+          self.test_batches += 1
+
+      model = keras.Sequential([keras.layers.Dense(1)])
+      model.compile('sgd', 'mse')
+      cb_counter = CBCounter()
+
+      def make_dataset(_):
+        x, y = np.ones((100, 10)), np.ones((100, 1))
+        ds = dataset_ops.DatasetV2.from_tensor_slices((x, y))
+        ds = ds.batch(5).repeat()
+        return ds
+
+      ds = distribution.experimental_distribute_datasets_from_function(
+          make_dataset)
+      val_ds = distribution.experimental_distribute_datasets_from_function(
+          make_dataset)
+
+      model.fit(
+          ds,
+          steps_per_epoch=10,
+          validation_data=val_ds,
+          validation_steps=5,
+          epochs=2,
+          callbacks=[cb_counter])
+
+      self.assertEqual(cb_counter.train_batches, 20)
+      self.assertEqual(cb_counter.test_batches, 10)
+      self.assertEqual(cb_counter.epochs, 2)
+
+      # Check for `steps_per_epoch`.
+      if distribution.num_replicas_in_sync > 1:
+        with self.assertRaisesRegexp(ValueError,
+                                     'distributed dataset, you must specify'):
+          model.fit(ds, epochs=2)
+
+  @combinations.generate(
       combinations.times(
           all_strategy_combinations_minus_default()))
   def test_distribution_strategy_one_dimensional(self, distribution):
@@ -1949,8 +2058,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
           optimizer.apply_gradients(zip(grads, model.trainable_variables))
           return loss
 
-        per_replica_losses = distribution.experimental_run_v2(
-            step_fn, args=(dist_inputs,))
+        per_replica_losses = distribution.run(step_fn, args=(dist_inputs,))
         return distribution.reduce(
             reduce_util.ReduceOp.SUM, per_replica_losses, axis=None)
 

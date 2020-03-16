@@ -5,7 +5,6 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_binary_additional_srcs",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -556,7 +555,8 @@ cc_library(
 
 pybind_extension(
     name = "_pywrap_py_utils",
-    srcs = ["utils/py_utils_wrapper.cc"] + tf_binary_additional_srcs(),
+    srcs = ["utils/py_utils_wrapper.cc"],
+    link_in_framework = True,
     module_name = "_pywrap_py_utils",
     deps = [
         ":py_utils",

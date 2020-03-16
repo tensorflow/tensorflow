@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -31,7 +32,8 @@ LogicalResult ConstantFoldFallbackHook(
     SmallVectorImpl<Attribute>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
   // the original semantics.
-  if (!inst->hasNoSideEffect()) return failure();
+  if (inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
+    return failure();
 
   // If any of the result types are variants, don't try to constant fold them.
   // This creates opaque variant constants which lose information and would

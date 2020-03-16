@@ -16,10 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_XLA_SHARDING_UTIL_H_
 
-#include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 
@@ -27,7 +30,7 @@ extern const char* const kXlaShardingAttrName;
 extern const char* const kInputShardingAttr;
 extern const char* const kOutputShardingAttr;
 
-// Parse "_XlaSharding" attribute from operation, if it exists.
+// Parses "_XlaSharding" attribute from operation, if it exists.
 llvm::Optional<mlir::StringRef> ParseShardingAttribute(
     mlir::Operation* operation);
 
@@ -38,6 +41,27 @@ llvm::Optional<mlir::StringRef> ParseShardingAttribute(
 llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4>
 ExtractInputsForLogicalDevices(int num_logical_cores,
                                mlir::tf_device::LaunchFuncOp launch_func);
+
+// Extracts a list of OpSharding that represent output sharding configuration
+// of `tf_device.launch`.
+mlir::LogicalResult ParseAndValidateOutputSharding(
+    mlir::tf_device::LaunchFuncOp launch_func,
+    mlir::SmallVector<xla::OpSharding, 4>* output_sharding_list);
+
+// Retrieves output types for TPUExecute op representing execution for provided
+// logical device id. TPUExecute op for different logical device may have
+// different outputs depending on the output sharding configuration.
+mlir::SmallVector<mlir::Type, 4> GetOutputTypesForLogicalDeviceComputation(
+    const int logical_device_id,
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    mlir::tf_device::LaunchFuncOp launch_func);
+
+// Remaps outputs of `tf_device.parallel_execute` op that represent concurrent
+// execution of the `tf_device.launch_func` with its users.
+void RemapOutputsFromLogicalDevices(
+    llvm::ArrayRef<xla::OpSharding> output_sharding_config,
+    mlir::tf_device::LaunchFuncOp launch_func,
+    mlir::tf_device::ParallelExecuteOp parallel_execute);
 
 }  // namespace tensorflow
 

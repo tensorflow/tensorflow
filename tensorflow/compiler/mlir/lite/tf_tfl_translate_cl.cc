@@ -24,14 +24,14 @@ opt<std::string> input_file_name(llvm::cl::Positional,
                                  llvm::cl::init("-"));
 
 // NOLINTNEXTLINE
-opt<bool> import_saved_model(
-    "savedmodel-to-mlir",
+opt<bool> import_saved_model_object_graph(
+    "savedmodel-objectgraph-to-mlir",
     llvm::cl::desc("Import a saved model to its MLIR representation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
-opt<bool> import_saved_model_v1(
-    "savedmodel-v1-to-mlir",
+opt<bool> import_saved_model_signature_defs(
+    "savedmodel-signaturedefs-to-mlir",
     llvm::cl::desc("Import a saved model V1 to its MLIR representation"),
     llvm::cl::value_desc("dir"));
 

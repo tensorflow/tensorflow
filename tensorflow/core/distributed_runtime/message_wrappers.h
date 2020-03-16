@@ -737,6 +737,9 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
   RunStepResponse* response_;  // Not owned.
 };
 
+bool ParseTensorProtoToTensor(const TensorProto& tensor_proto,
+                              Tensor* out_tensor);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_

@@ -38,6 +38,7 @@ package_group(
         "//learning/brain/tools/tf_replay/...",
         "//tensorflow/...",
         "//tensorflow_models/...",
+        "//third_party/mlperf/submissions/training/v0_7/models/...",
     ],
 )
 
@@ -237,11 +238,11 @@ cc_library(
     features = ["fully_static_link"],
     linkstatic = 1,
     visibility = [":friends"],
-    # Note, we specifically remove MKL dependencies so the standalone does
-    # not require the MKL binary blob.
+    # Note, we specifically removed MKL and multithreaded dependencies so the
+    # standalone does not require the MKL binary blob or threading libraries.
     #
-    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of absl/strings:cord when
-    # we update absl to a newer version.
+    # TODO(ebrevdo): Remove tf_additoinal_tensor_coding_deps in favor of
+    # absl/strings:cord when we update absl to a newer version.
     deps = [
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
@@ -695,6 +696,7 @@ cc_library(
     srcs = ["mlir_bridge_pass.cc"],
     hdrs = ["mlir_bridge_pass.h"],
     deps = [
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:device_util",
@@ -714,6 +716,7 @@ cc_library(
     ],
     deps = [
         ":mlir_bridge_pass",
+        "//tensorflow/compiler/mlir:mlir_graph_optimization_pass_registration",
         "//tensorflow/core:core_cpu",
     ],
     alwayslink = 1,

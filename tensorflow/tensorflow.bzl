@@ -2216,6 +2216,15 @@ def tf_py_test(
     if grpc_enabled:
         deps = deps + tf_additional_grpc_deps_py()
 
+    # NOTE(ebrevdo): This is a workaround for depset() not being able to tell
+    # the difference between 'dep' and 'clean_dep(dep)'.
+    for to_add in [
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:gradient_checker",
+    ]:
+        if to_add not in deps and clean_dep(to_add) not in deps:
+            deps.append(clean_dep(to_add))
+
     # Python version placeholder
     kwargs.setdefault("srcs_version", "PY2AND3")
     py_test(
@@ -2231,10 +2240,7 @@ def tf_py_test(
         tags = tags,
         visibility = [clean_dep("//tensorflow:internal")] +
                      additional_visibility,
-        deps = depset([
-            clean_dep("//tensorflow/python:extra_py_tests_deps"),
-            clean_dep("//tensorflow/python:gradient_checker"),
-        ] + deps + xla_test_true_list),
+        deps = depset(deps + xla_test_true_list),
         **kwargs
     )
 
@@ -2523,12 +2529,14 @@ def pybind_extension(
         linkopts = [],
         deps = [],
         defines = [],
+        additional_exported_symbols = [],
         visibility = None,
         testonly = None,
         licenses = None,
         compatible_with = None,
         restricted_to = None,
-        deprecation = None):
+        deprecation = None,
+        link_in_framework = False):
     """Builds a generic Python extension module."""
     _ignore = [module_name]
     p = name.rfind("/")
@@ -2540,15 +2548,22 @@ def pybind_extension(
         prefix = name[:p + 1]
     so_file = "%s%s.so" % (prefix, sname)
     pyd_file = "%s%s.pyd" % (prefix, sname)
-    symbol = "init%s" % sname
-    symbol2 = "init_%s" % sname
-    symbol3 = "PyInit_%s" % sname
+    exported_symbols = [
+        "init%s" % sname,
+        "init_%s" % sname,
+        "PyInit_%s" % sname,
+    ] + additional_exported_symbols
+
     exported_symbols_file = "%s-exported-symbols.lds" % name
     version_script_file = "%s-version-script.lds" % name
+
+    exported_symbols_output = "\n".join(["_%s" % symbol for symbol in exported_symbols])
+    version_script_output = "\n".join([" %s;" % symbol for symbol in exported_symbols])
+
     native.genrule(
         name = name + "_exported_symbols",
         outs = [exported_symbols_file],
-        cmd = "echo '_%s\n_%s\n_%s' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '%s' >$@" % exported_symbols_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
@@ -2557,11 +2572,17 @@ def pybind_extension(
     native.genrule(
         name = name + "_version_script",
         outs = [version_script_file],
-        cmd = "echo '{global:\n %s;\n %s;\n %s;\n local: *;};' >$@" % (symbol, symbol2, symbol3),
+        cmd = "echo '{global:\n%s\n local: *;};' >$@" % version_script_output,
         output_licenses = ["unencumbered"],
         visibility = ["//visibility:private"],
         testonly = testonly,
     )
+
+    # If we are to link to libtensorflow_framework.so, add
+    # it as a source.
+    if link_in_framework:
+        srcs += tf_binary_additional_srcs()
+
     cc_binary(
         name = so_file,
         srcs = srcs + hdrs,
@@ -2639,12 +2660,14 @@ def tf_python_pybind_extension(
         visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
+    Please do not use it anywhere else as it may behave unexpectedly. b/146445820
+
     It is used for targets under //third_party/tensorflow/python that link
     against libtensorflow_framework.so and pywrap_tensorflow_internal.so.
     """
     pybind_extension(
         name,
-        srcs + tf_binary_additional_srcs(),
+        srcs,
         module_name,
         features = features,
         copts = copts,
@@ -2652,6 +2675,7 @@ def tf_python_pybind_extension(
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
         defines = defines,
         visibility = visibility,
+        link_in_framework = True,
     )
 
 def tf_pybind_cc_library_wrapper(name, deps, visibility = None):

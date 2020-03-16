@@ -371,24 +371,24 @@ class KerasLayerTest(keras_parameterized.TestCase):
       self.assertEqual(layer(x).dtype, 'float64')
       self.assertEqual(layer.v.dtype, 'float64')
 
-      layer = mp_test_util.MultiplyLayer(dtype=policy.Policy('infer'))
+      layer = mp_test_util.MultiplyLayer(dtype=policy.Policy('_infer'))
       config = layer.get_config()
       self.assertIsNone(config['dtype'])
       layer = mp_test_util.MultiplyLayer.from_config(config)
-      # If a layer is serialized with the "infer" policy, when deserialized into
-      # TF 2 it will have the global policy instead of "infer". This is because
-      # "infer" is serialized into None, and passing dtype=None in TensorFlow 2
-      # indicates to use the global policy.
+      # If a layer is serialized with the "_infer" policy, when deserialized
+      # into TF 2 it will have the global policy instead of "_infer". This is
+      # because "_infer" is serialized into None, and passing dtype=None in
+      # TensorFlow 2 indicates to use the global policy.
       self.assertEqual(layer.dtype, 'float32')
       self.assertEqual(layer(x).dtype, 'float32')
       self.assertEqual(layer.v.dtype, 'float32')
 
-      layer = mp_test_util.MultiplyLayer(dtype=policy.Policy('infer',
+      layer = mp_test_util.MultiplyLayer(dtype=policy.Policy('_infer',
                                                              loss_scale=2.))
       config = layer.get_config()
       self.assertEqual(config['dtype'],
                        {'class_name': 'Policy',
-                        'config': {'name': 'infer',
+                        'config': {'name': '_infer',
                                    'loss_scale': {
                                        'class_name': 'FixedLossScale',
                                        'config': {'loss_scale_value': 2.0}}}})

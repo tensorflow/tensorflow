@@ -3,7 +3,9 @@
 The following is an incomplete list of pre-trained models optimized to work with
 TensorFlow Lite.
 
-To get started choosing a model, visit <a href="../models">Models</a>.
+To get started choosing a model, visit <a href="../models">Models</a> page with
+end-to-end examples, or pick a [TensorFlow Lite model from TensorFlow Hub]
+(https://tfhub.dev/s?deployment-format=lite).
 
 Note: The best model for a given application depends on your requirements. For
 example, some applications might benefit from higher accuracy, while others
@@ -21,6 +23,9 @@ For more information about image classification, see
 classification models offer the smallest model size and fastest performance, at
 the expense of accuracy. The performance values are measured on Pixel 3 on
 Android 10.
+
+You can find many [quantized models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification&q=quantized)
+from TensorFlow Hub and get more model information there.
 
 Model name                  | Paper and model                                                                                                                                                                   | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | NNAPI
 --------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | ---------: | -------------: | -------------: | -------------: | ----:
@@ -60,6 +65,9 @@ performance. <a href="../performance/gpu">GPU acceleration</a> requires the use
 of floating point models. The performance values are measured on Pixel 3 on
 Android 10.
 
+You can find many [image classification models](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification)
+from TensorFlow Hub and get more model information there.
+
 Model name            | Paper and model                                                                                                                                                                           | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | GPU    | NNAPI
 --------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: | ---------: | -------------: | -------------: | -------------: | -----: | ----:
 DenseNet              | [paper](https://arxiv.org/abs/1608.06993), [tflite&pb](https://storage.googleapis.com/download.tensorflow.org/models/tflite/model_zoo/upload_20180427/densenet_2018_04_27.tgz)            | 43.6 Mb    | 64.2%          | 85.6%          | 195 ms         | 60 ms  | 1656 ms
@@ -94,6 +102,9 @@ The following image classification models were created using
 <a href="https://cloud.google.com/automl/">Cloud AutoML</a>. The performance
 values are measured on Pixel 3 on Android 10.
 
+You can find these models in [TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&q=MnasNet)
+and get more model information there.
+
 Model Name       | Paper and model                                                                                                                                                | Model size | Top-1 accuracy | Top-5 accuracy | CPU, 4 threads | GPU     | NNAPI
 ---------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------: | ---------: | -------------: | -------------: | -------------: | ------: | ----:
 MnasNet_0.50_224 | [paper](https://arxiv.org/abs/1807.11626), [tflite&pb](https://storage.cloud.google.com/download.tensorflow.org/models/tflite/mnasnet_0.5_224_09_07_2018.tgz)  | 8.5 Mb     | 68.03%         | 87.79%         | 9.5 ms         | 5.9 ms  | 16.6 ms
@@ -114,44 +125,37 @@ Accuracy numbers were computed using the
 For more information about object detection, see
 <a href="../models/object_detection/overview.md">Object detection</a>.
 
-The object detection model we currently host is
-**coco_ssd_mobilenet_v1_1.0_quant_2018_06_29**.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download
-model and labels</a>
+Please find [object detection models](https://tfhub.dev/s?deployment-format=lite&module-type=image-object-detection)
+from TensorFlow Hub.
 
 ## Pose estimation
 
 For more information about pose estimation, see
 <a href="../models/pose_estimation/overview.md">Pose estimation</a>.
 
-The pose estimation model we currently host is
-**multi_person_mobilenet_v1_075_float**.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/multi_person_mobilenet_v1_075_float.tflite">Download
-model</a>
+Please find [pose estimation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-pose-detection)
+from TensorFlow Hub.
 
 ## Image segmentation
 
 For more information about image segmentation, see
 <a href="../models/segmentation/overview.md">Segmentation</a>.
 
-The image segmentation model we currently host is **deeplabv3_257_mv_gpu**.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download
-model</a>
+Please find [image segmentation models](https://tfhub.dev/s?deployment-format=lite&module-type=image-segmentation)
+from TensorFlow Hub.
 
 ## Question and Answer
 
 For more information about text classification with Mobile BERT, see
 <a href="../models/bert_qa/overview.md">Question And Answer</a>.
 
+Please find [Mobile BERT model](https://tfhub.dev/tensorflow/mobilebert/1) from
+TensorFlow Hub.
+
 ## Smart reply
 
 For more information about smart reply, see
 <a href="../models/smart_reply/overview.md">Smart reply</a>.
 
-The smart reply model we currently host is **smartreply_1.0_2017_11_01**.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/smartreply_1.0_2017_11_01.zip">Download
-model</a>
+Please find [Smart Reply model](https://tfhub.dev/tensorflow/smartreply/1) from
+TensorFlow Hub.

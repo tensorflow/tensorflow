@@ -32,14 +32,14 @@ int GetNumAvailableGPUs(
   int num_eligible_gpus = 0;
 
 #if TENSORFLOW_USE_ROCM
-  if(min_cuda_compute_capability.first!=0 || 
-    min_cuda_compute_capability.second!=0) {
+  if (min_cuda_compute_capability.first != 0 ||
+      min_cuda_compute_capability.second != 0) {
     LOG(ERROR) << "GetNumAvailableGPUs() should receive zero "
-      "min_cuda_compute_capability";
+                  "min_cuda_compute_capability";
     return 0;
   }
-#endif  
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
+#endif
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   if (ValidateGPUMachineManager().ok()) {
     se::Platform* gpu_manager = GPUMachineManager();
     if (gpu_manager != nullptr) {
@@ -61,26 +61,26 @@ int GetNumAvailableGPUs(
         }
 #else
         num_eligible_gpus++;
-#endif        
+#endif
       }
     }
   }
-#if GOOGLE_CUDA  
+#if GOOGLE_CUDA
   LOG(INFO)
       << "Number of eligible GPUs (core count >= 8, compute capability >= "
       << min_cuda_compute_capability.first << "."
       << min_cuda_compute_capability.second << "): " << num_eligible_gpus;
 #else
-    LOG(INFO) << "Number of eligible GPUs: " << num_eligible_gpus;
+  LOG(INFO) << "Number of eligible GPUs: " << num_eligible_gpus;
 #endif
 
-#else // GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
+#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   LOG(INFO)
       << "Number of eligible GPUs (core count >= 8, compute capability >= "
       << min_cuda_compute_capability.first << "."
       << min_cuda_compute_capability.second << "): " << num_eligible_gpus
       << " (Note: TensorFlow was not compiled with CUDA or ROCm support)";
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   return num_eligible_gpus;
 }
 

@@ -838,10 +838,24 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
         strides.size());
   }
 
+  std::vector<int32> dilations;
+  if (!c->GetAttr("dilations", &dilations).ok()) {
+    dilations.resize(4, 1);
+  }
+
+  if (dilations.size() != 4) {
+    return errors::InvalidArgument(
+        "DepthwiseConv2D requires the dilations attribute to contain 4 values, "
+        "but got: ",
+        dilations.size());
+  }
+
   string data_format;
   Status s = c->GetAttr("data_format", &data_format);
   int32 stride_rows;
   int32 stride_cols;
+  int32 dilation_rows;
+  int32 dilation_cols;
   if (s.ok() && data_format == "NCHW") {
     // Canonicalize input shape to NHWC so the shape inference code below can
     // process it.
@@ -850,9 +864,13 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
                        c->Dim(input_shape, 3), c->Dim(input_shape, 1)}});
     stride_rows = strides[2];
     stride_cols = strides[3];
+    dilation_rows = dilations[2];
+    dilation_cols = dilations[3];
   } else {
     stride_rows = strides[1];
     stride_cols = strides[2];
+    dilation_rows = dilations[1];
+    dilation_cols = dilations[2];
   }
 
   DimensionHandle batch_size_dim = c->Dim(input_shape, 0);
@@ -879,10 +897,12 @@ Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   // in the kernel implementation.
   DimensionHandle output_rows, output_cols;
 
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_rows_dim, filter_rows_dim, stride_rows, padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(
-      c, in_cols_dim, filter_cols_dim, stride_cols, padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding, -1,
+      -1, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding, -1,
+      -1, &output_cols));
 
   ShapeHandle output_shape;
   if (data_format == "NCHW") {

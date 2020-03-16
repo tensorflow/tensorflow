@@ -1372,11 +1372,11 @@ def resize_images_v2(images,
   >>> tf.image.resize(image[0], [3,5]).shape.as_list()
   [3, 5, 1]
 
-  When 'antialias' is true, the sampling filter will anti-alias the input image
+  When `antialias` is true, the sampling filter will anti-alias the input image
   as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
-  'antialias' has no effect when upsampling an image:
+  `antialias` has no effect when upsampling an image:
 
   >>> a = tf.image.resize(image, [5,10])
   >>> b = tf.image.resize(image, [5,10], antialias=True)
@@ -1386,8 +1386,8 @@ def resize_images_v2(images,
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
-  *   <b>`'bilinear'`</b>: [Bilinear interpolation.](
-    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
@@ -1405,9 +1405,9 @@ def resize_images_v2(images,
     sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-    'antialias' has no effect when used with nearest neighbor interpolation.
+    `antialias` has no effect when used with nearest neighbor interpolation.
   *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
-    'antialias' has no effect when used with area interpolation; it
+    `antialias` has no effect when used with area interpolation; it
     always anti-aliases.
   *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
     For synthetic images (especially those lacking proper prefiltering), less
@@ -2510,7 +2510,7 @@ tf_export(
         gen_image_ops.extract_jpeg_shape)
 
 
-@tf_export('image.encode_png')
+@tf_export('io.encode_png', 'image.encode_png')
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 

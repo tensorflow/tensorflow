@@ -9,6 +9,7 @@ package(
         "//nlp/nlx/i18n/pangloss:__subpackages__",
         "//nlp/nlx/infrastructure/multiscale:__subpackages__",
         "//nlp/projects/atc/tf/ops:__pkg__",
+        "//research/graph/convolutions/model:__subpackages__",
         "//research/socrates:__subpackages__",
         "//tensorflow:internal",
     ],
@@ -300,6 +301,27 @@ py_library(
 )
 
 py_library(
+    name = "row_partition",
+    srcs = ["row_partition.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":segment_id_ops",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
     name = "ragged_tensor",
     srcs = ["ragged_tensor.py"],
     srcs_version = "PY2AND3",
@@ -307,7 +329,7 @@ py_library(
         ":ragged_config",
         ":ragged_tensor_value",
         ":ragged_util",
-        ":segment_id_ops",
+        ":row_partition",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:composite_tensor",
@@ -322,6 +344,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:tf2",
         "//tensorflow/python:type_spec",
         "//tensorflow/python:util",
         "//third_party/py/numpy",
@@ -462,9 +485,40 @@ py_library(
 
 py_test(
     name = "ragged_tensor_test",
+    srcs = ["ragged_tensor_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":ragged",  # fixdeps: keep
+        ":ragged_factory_ops",
+        ":ragged_math_ops",
+        ":ragged_tensor",
+        ":ragged_tensor_value",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "ragged_getitem_test",
     size = "medium",
     timeout = "long",
-    srcs = ["ragged_tensor_test.py"],
+    srcs = ["ragged_getitem_test.py"],
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
@@ -479,12 +533,41 @@ py_test(
         ":ragged_tensor_value",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/eager:context",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "row_partition_test",
+    srcs = ["row_partition_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":ragged",  # fixdeps: keep
+        ":row_partition",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/eager:context",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -784,8 +867,8 @@ py_test(
 )
 
 py_test(
-    name = "ragged_string_ops_test",
-    srcs = ["ragged_string_ops_test.py"],
+    name = "strings_reduce_join_op_test",
+    srcs = ["strings_reduce_join_op_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

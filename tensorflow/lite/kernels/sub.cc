@@ -237,13 +237,13 @@ void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
   if (output->type == kTfLiteInt32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, int32_t);
+        TF_LITE_SUB(reference_ops, BroadcastSub4DSlow, int32_t);
       } else {
         TF_LITE_SUB(reference_ops, SubWithActivation, int32_t);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, int32_t);
+        TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow, int32_t);
       } else {
         TF_LITE_SUB(optimized_ops, SubWithActivation, int32_t);
       }
@@ -251,13 +251,13 @@ void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
   } else if (output->type == kTfLiteFloat32) {
     if (kernel_type == kReference) {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, float);
+        TF_LITE_SUB(reference_ops, BroadcastSub4DSlow, float);
       } else {
         TF_LITE_SUB(reference_ops, SubWithActivation, float);
       }
     } else {
       if (data->requires_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, float);
+        TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow, float);
       } else {
         TF_LITE_SUB(optimized_ops, SubWithActivation, float);
       }
@@ -321,13 +321,13 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   } else {
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(reference_ops, BroadcastSub4DSlow, int16_t);
       } else {
         TF_LITE_SUB(reference_ops, Sub16, int16_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(optimized_ops, BroadcastSub4DSlow, int16_t);
       } else {
         TF_LITE_SUB(optimized_ops, Sub16, int16_t);
       }

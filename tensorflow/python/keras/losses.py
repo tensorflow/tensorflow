@@ -861,7 +861,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1387,7 +1387,7 @@ def categorical_hinge(y_true, y_pred):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1843,15 +1843,34 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.losses.get')
 def get(identifier):
-  """Retrieves a Keras loss function.
+  """Retrieves a Keras loss as a `function`/`Loss` class instance.
+
+  The `identifier` may be the string name of a loss function or `Loss` class.
+
+  >>> loss = tf.keras.losses.get("categorical_crossentropy")
+  >>> type(loss)
+  <class 'function'>
+  >>> loss = tf.keras.losses.get("CategoricalCrossentropy")
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
+
+  You can also specify `config` of the loss to this function by passing dict
+  containing `class_name` and `config` as an identifier. Also note that the
+  `class_name` must map to a `Loss` class
+
+  >>> identifier = {"class_name": "CategoricalCrossentropy",
+  ...               "config": {"from_logits": True}}
+  >>> loss = tf.keras.losses.get(identifier)
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
   Arguments:
     identifier: A loss identifier. One of None or string name of a loss
-      function/class or loss configuration dictionary or a loss function or
-      a loss class instance
+      function/class or loss configuration dictionary or a loss function or a
+      loss class instance
 
   Returns:
-    A Keras loss function/ `Loss` class instance.
+    A Keras loss as a `function`/ `Loss` class instance.
 
   Raises:
     ValueError: If `identifier` cannot be interpreted.

@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/hlo_shape_derivation.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_hlo_to_lhlo_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -139,13 +138,14 @@ class HloToLhloOpConverter : public ConversionPattern {
         buffer_args.push_back(
             InsertAllocAndDealloc(op->getLoc(), result.value(), &rewriter));
       } else {
-        Value shape_value = ShapeDerivation<HloOpTy>::impl::deriveShapeFromOp(
-            op, result.index(), &rewriter);
-        if (!shape_value) {
+        SmallVector<Value, 1> results_shape;
+        auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
+        if (!shape_type_op) return matchFailure();
+        if (failed(
+                shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
           return matchFailure();
-        }
         buffer_args.push_back(InsertDynamicAllocAndDealloc(
-            op->getLoc(), result.value(), shape_value, &rewriter));
+            op->getLoc(), result.value(), results_shape.front(), &rewriter));
       }
     }
     rewriter.create<xla_hlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
@@ -463,6 +463,7 @@ void populateHLOToLHLOConversionPattern(MLIRContext* context,
       HloToLhloOpConverter<xla_hlo::MulOp>,
       HloToLhloOpConverter<xla_hlo::NegOp>,
       HloToLhloOpConverter<xla_hlo::RemOp>,
+      HloToLhloOpConverter<xla_hlo::RsqrtOp>,
       HloToLhloOpConverter<xla_hlo::SelectOp>,
       HloToLhloOpConverter<xla_hlo::SignOp>,
       HloToLhloOpConverter<xla_hlo::SqrtOp>,

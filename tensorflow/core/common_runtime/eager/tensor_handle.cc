@@ -55,13 +55,13 @@ const int32 kInvalidOutputNum = -1;
 #endif
 }  // namespace
 
-void TensorHandle::SetResourceHandleDtypeAndShape(
-    std::vector<DtypeAndPartialTensorShape>&& dtypes_and_shapes) {
-  handle_dtypes_and_shapes_ = std::move(dtypes_and_shapes);
+void TensorHandle::SetResourceHandleInfo(
+    ResourceHandleInfo&& resource_handle_info) {
+  resource_handle_info_ = std::move(resource_handle_info);
 }
 
-Status TensorHandle::GetResourceHandleDtypesAndShapes(
-    std::vector<DtypeAndPartialTensorShape>* result) {
+Status TensorHandle::GetResourceHandleInfoImpl(
+    std::function<void()> set_resource_info) {
   if (dtype != DT_RESOURCE) {
     return errors::InvalidArgument(
         "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
@@ -70,20 +70,40 @@ Status TensorHandle::GetResourceHandleDtypesAndShapes(
   }
 
   if (IsRemote()) {
-    *result = handle_dtypes_and_shapes_;
+    set_resource_info();
     return Status::OK();
   }
 
   // Wait for this TensorHandle to be ready.
-  profiler::TraceMe activity(
-      "TensorHandle::GetResourceHandleDtypesAndShapes WaitReady",
-      profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity("TensorHandle::GetResourceHandleInfo WaitReady",
+                             profiler::TraceMeLevel::kInfo);
   auto& data = absl::get<LocalTensorHandleData>(data_);
-  TF_RETURN_IF_ERROR(
-      data.WaitReady("TensorHandle::GetResourceHandleDtypesAndShapes"));
+  TF_RETURN_IF_ERROR(data.WaitReady("TensorHandle::GetResourceHandleInfo"));
 
-  *result = handle_dtypes_and_shapes_;
+  set_resource_info();
   return Status::OK();
+}
+
+Status TensorHandle::GetResourceHandleInfo(ResourceHandleInfo* result) {
+  auto get_resource_info = [result, this]() {
+    *result = resource_handle_info_;
+  };
+  return GetResourceHandleInfoImpl(get_resource_info);
+}
+
+Status TensorHandle::GetResourceHandleDtypesAndShapes(
+    std::vector<DtypeAndPartialTensorShape>* result) {
+  auto get_resource_info = [result, this]() {
+    *result = resource_handle_info_.dtypes_and_shapes;
+  };
+  return GetResourceHandleInfoImpl(get_resource_info);
+}
+
+Status TensorHandle::GetResourceAllowedDevices(std::vector<string>* result) {
+  auto get_resource_info = [result, this]() {
+    *result = resource_handle_info_.allowed_devices;
+  };
+  return GetResourceHandleInfoImpl(get_resource_info);
 }
 
 Status TensorHandle::CreateLocalHandle(const tensorflow::Tensor& t,
@@ -145,8 +165,9 @@ TensorHandle::TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
           GetResourceDevice(t.flat<class ResourceHandle>()(0), ctx)),
       ctx_(ctx),
       implicit_mirroring_(true),
-      handle_dtypes_and_shapes_(
-          t.flat<class ResourceHandle>()(0).dtypes_and_shapes()),
+      resource_handle_info_(
+          {t.flat<class ResourceHandle>()(0).dtypes_and_shapes(),
+           t.flat<class ResourceHandle>()(0).allowed_devices()}),
       data_(absl::in_place_type<LocalTensorHandleData>, std::move(t)) {
   DVLOG(3) << "Creating Local TensorHandle: " << this
            << " device: " << VariantDeviceDebugString(device_)
@@ -669,7 +690,8 @@ Status TensorHandle::SetTensor(tensorflow::Tensor&& t, const Device* d) {
 
     if (t.dtype() == DT_RESOURCE && t.NumElements() > 0) {
       auto& resource_handle = t.flat<class ResourceHandle>()(0);
-      handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
+      resource_handle_info_ = {resource_handle.dtypes_and_shapes(),
+                               resource_handle.allowed_devices()};
     }
     auto& data = absl::get<LocalTensorHandleData>(data_);
     return data.SetTensor(std::move(t));

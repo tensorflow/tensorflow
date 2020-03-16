@@ -305,6 +305,35 @@ class InfNanMonitorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertIsNone(alert.graph_execution_trace_index)
 
   @parameterized.named_parameters(
+      ("Shape",
+       debug_event_pb2.TensorDebugMode.SHAPE,
+       # [tensor_id, dtype, rank, element_cont, ...shape_truncate_6]
+       [[-1, 1, 2, 6, 3, 2, 0, 0, 0, 0],
+        [-1, 10, 1, 7, 7, 0, 0, 0, 0, 0]]),
+  )
+  def testInfNanMonitorOnExecutionUnderModeWithNoInfNanInfo(
+      self,
+      tensor_debug_mode,
+      debug_tensor_values):
+    mock_reader = test.mock.MagicMock()
+    monitor = debug_events_monitors.InfNanMonitor(mock_reader)
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 1, "BarOp", output_tensor_device_ids=[0, 1])
+
+    execution = debug_events_reader.Execution(
+        execution_digest,
+        "worker01",
+        ["a1", "b2", "e3"],
+        tensor_debug_mode,
+        graph_id=None,
+        input_tensor_ids=[12, 34],
+        output_tensor_ids=[56, 78],
+        debug_tensor_values=debug_tensor_values)
+    monitor.on_execution(60, execution)
+
+    self.assertEmpty(monitor.alerts())
+
+  @parameterized.named_parameters(
       ("FloatsScalarWithInfAndNan", np.inf, np.float32, 1, 0, 1, 0),
       ("Floats2DWithInfAndNan", [[0, np.nan, np.nan, -np.inf]
                                 ], np.float32, 4, 1, 0, 2),

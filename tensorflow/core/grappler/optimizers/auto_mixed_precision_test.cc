@@ -79,8 +79,8 @@ class AutoMixedPrecisionTest : public GrapplerTest {
     // If GPUs are available, require that they all satisfy the min arch.
     gpu_available_ = (num_gpus > 0);
 #if GOOGLE_CUDA
-    gpu_available_ = gpu_available_ && 
-      (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
+    gpu_available_ =
+        gpu_available_ && (num_gpus == GetNumAvailableGPUs(kMinGPUArch));
 #endif
     if (gpu_available_) {
       virtual_cluster_.reset(new SingleMachine(/* timeout_s = */ 10, 1, 1));

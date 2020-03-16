@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
+#include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/dw_convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/fully_connected_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/simple_selectors.h"
@@ -64,10 +65,12 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
   const bool suitable_attributes =
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
-  const int min_depth = 32;
+  // Mali among other devices has smaller SIMD line size
+  const int min_depth = device.IsMali() ? 16 : 32;
+  const int min_hw = device.IsMali() ? 32 : 128;
   const bool recommended_channels =
       dst_depth % 4 == 0 && src_depth >= min_depth && dst_depth >= min_depth;
-  const bool recommended_hw = tiles_x * tiles_y >= 128;
+  const bool recommended_hw = tiles_x * tiles_y >= min_hw;
   return suitable_attributes && recommended_channels && recommended_hw;
 }
 
@@ -141,23 +144,6 @@ Status WinogradFromNode(const CreationContext& creation_context,
   return OkStatus();
 }
 
-std::unique_ptr<GPUOperation>* InitSingleOpSubgraph(
-    const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-    const std::vector<Value<TensorRef<BHWC>>*>& outputs,
-    GPUOperationsSubgraph* gpu_subgraph) {
-  gpu_subgraph->operations.clear();
-  gpu_subgraph->new_tensors.clear();
-  gpu_subgraph->operations.push_back({});
-  for (int i = 0; i < inputs.size(); ++i) {
-    gpu_subgraph->operations[0].input_ids.push_back(i);
-  }
-  for (int i = 0; i < outputs.size(); ++i) {
-    gpu_subgraph->operations[0].output_ids.push_back(i);
-  }
-
-  return &gpu_subgraph->operations[0].operation;
-}
-
 }  // namespace
 
 Status GPUOperationFromNode(const CreationContext& creation_context,
@@ -219,7 +205,7 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
         return OkStatus();
       } else {
         gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-        return SelectConvolution(attr, input_shape, creation_context, op_def,
+        return SelectConvolution(attr, output_shape, creation_context, op_def,
                                  hints, gpu_op);
       }
     }
@@ -363,8 +349,8 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       return OkStatus();
     }
     default:
-      return UnimplementedError(
-          absl::StrCat("No selector for ", node.operation.type));
+      return SelectDefault(creation_context, op_def, hints, inputs, outputs,
+                           node, gpu_subgraph);
   }
 }
 

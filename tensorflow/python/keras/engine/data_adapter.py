@@ -33,6 +33,7 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -680,7 +681,8 @@ class DatasetAdapter(DataAdapter):
 
   @staticmethod
   def can_handle(x, y=None):
-    return isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
+    return (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) or
+            _is_distributed_dataset(x))
 
   def __init__(self,
                x,
@@ -714,6 +716,11 @@ class DatasetAdapter(DataAdapter):
     return None
 
   def should_recreate_iterator(self):
+    # Since DistributedDatasets have no cardinality, the user must provide
+    # all steps that need to be run, calling `.repeat()` as needed.
+    if _is_distributed_dataset(self._dataset):
+      return False
+
     # If user doesn't supply `steps`, or if they supply `steps` that
     # exactly equals the size of the `Dataset`, create a new iterator
     # each epoch.
@@ -730,10 +737,18 @@ class DatasetAdapter(DataAdapter):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "dataset as input.")
 
-    size = cardinality.cardinality(self._dataset).numpy()
-    if size == cardinality.INFINITE and steps is None:
-      raise ValueError("When providing an infinite dataset, you must specify "
-                       "the number of steps to run.")
+    if steps is None:
+      if _is_distributed_dataset(self._dataset):
+        raise ValueError("When providing a distributed dataset, you must "
+                         "specify the number of steps to run.")
+
+      size = cardinality.cardinality(self._dataset).numpy()
+      if size == cardinality.INFINITE and steps is None:
+        raise ValueError(
+            "When providing an infinite dataset, you must specify "
+            "the number of steps to run (if you did not intend to ."
+            "create an infinite dataset, make sure to not call "
+            "`repeat()` on the dataset).")
 
 
 class GeneratorDataAdapter(DataAdapter):
@@ -777,7 +792,7 @@ class GeneratorDataAdapter(DataAdapter):
     # Need to build the Model on concrete input shapes.
     if model is not None and not model.built:
       concrete_x, _, _ = unpack_x_y_sample_weight(peek)
-      model.distribute_strategy.experimental_run_v2(
+      model.distribute_strategy.run(
           lambda x: model(x, training=False), args=(concrete_x,))
 
     self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
@@ -1113,7 +1128,10 @@ class DataHandler(object):
     if class_weight:
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
     self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
-    self._dataset = strategy.experimental_distribute_dataset(dataset)
+
+    if not _is_distributed_dataset(dataset):
+      dataset = strategy.experimental_distribute_dataset(dataset)
+    self._dataset = dataset
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
@@ -1399,3 +1417,10 @@ def _scipy_sparse_to_sparse_tensor(t):
   indices = np.concatenate(
       (np.expand_dims(row, axis=1), np.expand_dims(col, axis=1)), axis=1)
   return sparse_tensor.SparseTensor(indices, data, shape)
+
+
+def _is_distributed_dataset(ds):
+  # TODO(b/151165986): Use public APIs.
+  return isinstance(
+      ds,
+      (input_lib.DistributedDataset, input_lib.DistributedDatasetsFromFunction))

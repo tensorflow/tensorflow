@@ -39,6 +39,7 @@ tf_cc_test(
         "compare.hlo",
         "const.hlo",
         "copy.hlo",
+        "copy_transpose.hlo",
         "cos.hlo",
         "exp.hlo",
         "fused_reduce.hlo",

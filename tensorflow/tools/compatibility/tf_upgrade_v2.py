@@ -829,7 +829,7 @@ class TFAPIChangeSpec(ast_edits.NoUpdateSpec):
         "custom training loop, note the following changes in methods: "
         "make_dataset_iterator->experimental_distribute_dataset, "
         "experimental_make_numpy_iterator->experimental_make_numpy_dataset, "
-        "extended.call_for_each_replica->experimental_run_v2, "
+        "extended.call_for_each_replica->run, "
         "reduce requires an axis argument, "
         "unwrap->experimental_local_results "
         "experimental_initialize and experimental_finalize no longer needed ")

@@ -1,4 +1,8 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_cuda_library",
+)
 load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
@@ -303,6 +307,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/kernels:ops_util",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -353,6 +358,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
     ] + tf_protos_grappler(),
+    alwayslink = 1,
 )
 
 tf_cc_test(

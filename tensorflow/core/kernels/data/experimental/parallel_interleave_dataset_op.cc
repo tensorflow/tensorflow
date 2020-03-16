@@ -1145,10 +1145,8 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
     OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx),
       op_version_(ctx->HasAttr(kDeterministic) ? 2 : 1) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
+                                               &func_metadata_));
   if (op_version_ == 2) {
     std::string deterministic;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));

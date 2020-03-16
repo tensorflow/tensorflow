@@ -1287,6 +1287,20 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 4 && operands[0] == 35 && operands[1] == 36 &&
+      operands[2] == 37 && operands[3] == 38) {
+    return success();
+  }
+  return op.emitError(
+      "BidirectionalSequenceLSTMOp expected to have four stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
 // UnidirectionalSequenceRNNOp
 //===----------------------------------------------------------------------===//
 

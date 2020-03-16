@@ -95,8 +95,8 @@ llvm::Optional<StringRef> ParseInputSharding(const FuncOp func,
 llvm::Optional<StringRef> ParseReturnValueSharding(FuncOp func,
                                                    const int output_index,
                                                    const OpOperand& operand) {
-  if (auto sharding_op =
-          llvm::dyn_cast<TF::XlaShardingOp>(operand.get().getDefiningOp())) {
+  if (auto sharding_op = llvm::dyn_cast_or_null<TF::XlaShardingOp>(
+          operand.get().getDefiningOp())) {
     return tensorflow::ParseShardingAttribute(sharding_op.getOperation());
   }
 

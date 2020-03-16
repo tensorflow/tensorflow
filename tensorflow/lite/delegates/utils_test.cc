@@ -24,81 +24,52 @@ namespace tflite {
 namespace delegates {
 namespace {
 
-using ::testing::ElementsAreArray;
-
-void ReportError(TfLiteContext* context, const char* format, ...) {}
-
-TEST(UtilsTest, PruneContinuousSubsets_NoSubsets) {
+TEST(UtilsTest, CreateNewTensorWithDifferentTypeTest) {
+  std::vector<TfLiteTensor> tensors(2);
+  // Data about original tensor.
+  // The same shape should be reflected in tensors[1] later.
+  tensors[0].dims = TfLiteIntArrayCreate(2);
+  tensors[0].dims->data[0] = 2;
+  tensors[0].dims->data[1] = 3;
+  tensors[0].type = kTfLiteFloat32;
+  // To simulate a valid TFLite Context.
   TfLiteContext context;
-  context.ReportError = ReportError;
-  std::vector<int> original_indices = {};
+  context.AddTensors = [](struct TfLiteContext*, int tensors_to_add,
+                          int* first_new_tensor_index) {
+    // The util should be adding exactly one tensor to the graph.
+    if (tensors_to_add != 1) {
+      return kTfLiteError;
+    }
+    // This ensures that the 'new tensor' is the second tensor in the vector
+    // above.
+    *first_new_tensor_index = 1;
+    return kTfLiteOk;
+  };
+  context.ResizeTensor = [](struct TfLiteContext*, TfLiteTensor* tensor,
+                            TfLiteIntArray* new_size) {
+    // Ensure dimensions are the same as the original tensor.
+    if (new_size->size != 2 || new_size->data[0] != 2 || new_size->data[1] != 3)
+      return kTfLiteError;
+    tensor->dims = new_size;
+    return kTfLiteOk;
+  };
+  context.tensors = tensors.data();
 
-  ASSERT_EQ(PruneContinuousSubsets(&context, 5, nullptr), kTfLiteError);
+  TfLiteTensor* new_tensor = nullptr;
+  int new_tensor_index = -1;
+  EXPECT_EQ(CreateNewTensorWithDifferentType(
+                &context, /**original_tensor_index**/ 0,
+                /**new_type**/ kTfLiteUInt8, &new_tensor, &new_tensor_index),
+            kTfLiteOk);
+  EXPECT_EQ(new_tensor_index, 1);
+  EXPECT_NE(new_tensor, nullptr);
+  EXPECT_NE(new_tensor->dims, nullptr);
+  EXPECT_EQ(new_tensor->type, kTfLiteUInt8);
+  EXPECT_EQ(new_tensor->allocation_type, kTfLiteArenaRw);
 
-  ASSERT_EQ(PruneContinuousSubsets(&context, 0, &original_indices), kTfLiteOk);
-  ASSERT_TRUE(original_indices.empty());
-
-  ASSERT_EQ(PruneContinuousSubsets(&context, 2, &original_indices), kTfLiteOk);
-  ASSERT_TRUE(original_indices.empty());
-}
-
-TEST(UtilsTest, PruneContinuousSubsets_SingleSubset) {
-  TfLiteContext context;
-  std::vector<int> original_indices = {0, 1, 2, 3};
-
-  std::vector<int> indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 1, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({0, 1, 2, 3}));
-
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 0, &indices), kTfLiteOk);
-  ASSERT_TRUE(indices.empty());
-
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 2, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({0, 1, 2, 3}));
-}
-
-TEST(UtilsTest, PruneContinuousSubsets_MultipleSubsets) {
-  TfLiteContext context;
-  // 5 subsets: (0, 1), (3, 4, 5), (7), (10, 11), (19).
-  std::vector<int> original_indices = {0, 1, 3, 4, 5, 7, 10, 11, 19};
-
-  std::vector<int> indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 4, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({0, 1, 3, 4, 5, 7, 10, 11}));
-
-  // Only the longest subset is selected.
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 1, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({3, 4, 5}));
-
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 0, &indices), kTfLiteOk);
-  ASSERT_TRUE(indices.empty());
-
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 1000, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({0, 1, 3, 4, 5, 7, 10, 11, 19}));
-}
-
-TEST(UtilsTest, PruneContinuousSubsets_UnsortedIndices) {
-  TfLiteContext context;
-  // 5 subsets: (0, 1), (3, 4, 5), (7), (10, 11), (19).
-  std::vector<int> original_indices = {5, 7, 4, 10, 11, 19, 0, 1, 3};
-
-  std::vector<int> indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 4, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({0, 1, 3, 4, 5, 7, 10, 11}));
-
-  // Only the longest subset is selected.
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 1, &indices), kTfLiteOk);
-  EXPECT_THAT(indices, ElementsAreArray({3, 4, 5}));
-
-  indices = original_indices;
-  ASSERT_EQ(PruneContinuousSubsets(&context, 0, &indices), kTfLiteOk);
-  ASSERT_TRUE(indices.empty());
+  // Cleanup.
+  TfLiteIntArrayFree(tensors[0].dims);
+  TfLiteIntArrayFree(tensors[1].dims);
 }
 
 }  // namespace

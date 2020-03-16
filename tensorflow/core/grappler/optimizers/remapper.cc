@@ -285,7 +285,7 @@ bool IsGpuCompatible(const RemapperContext& ctx,
 #if TENSORFLOW_USE_ROCM
   // ROCm does not support _FusedConv2D
   return false;
-#endif  
+#endif
   const GraphDef* graph = ctx.graph_view.graph();
   const NodeDef& contraction_node = graph->node(matched.contraction);
   if (!IsConv2D(contraction_node)) return false;
