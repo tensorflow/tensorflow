@@ -1477,6 +1477,7 @@ tf_xla_py_test(
     # Times out in fastbuild mode.
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
+        "no_rocm",
         "optonly",
     ],
     deps = [
