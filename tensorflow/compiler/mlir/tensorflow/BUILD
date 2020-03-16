@@ -1010,7 +1010,6 @@ cc_library(
         ":error_util",
         ":tensorflow_dialect_registration",
         ":tensorflow_passes",
-        ":tf_dialect_passes",
         ":translate_utils",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
