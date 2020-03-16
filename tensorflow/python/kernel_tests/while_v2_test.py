@@ -1175,34 +1175,6 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     Fn()
 
-  def testInheritParentNameScope(self):
-
-    @def_function.function
-    def F():
-      with ops.name_scope("foo"):
-
-        def Cond(unused_i):
-          with ops.name_scope("cond"):
-            actual_name_scope = ops.get_name_scope()
-            expected_name_scope = "foo/while/cond"
-            assert actual_name_scope == expected_name_scope, (
-                "%s does not match %s" %
-                (actual_name_scope, expected_name_scope))
-          return False
-
-        def Body(i):
-          with ops.name_scope("body"):
-            actual_name_scope = ops.get_name_scope()
-            expected_name_scope = "foo/while/body"
-            assert actual_name_scope == expected_name_scope, (
-                "%s does not match %s" %
-                (actual_name_scope, expected_name_scope))
-          return i
-
-        return while_v2.while_loop(Cond, Body, [0.])
-
-    F()
-
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)
