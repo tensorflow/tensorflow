@@ -193,6 +193,7 @@ tf_py_test(
     srcs = ["data_adapter_test.py"],
     python_version = "PY3",
     tags = [
+        "no_oss_py38",  # TODO(b/150615192)
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
     deps = [
