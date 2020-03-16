@@ -105,6 +105,7 @@ versions {
 
 # CHECK: func @main
 # CHECK: "tf.PartitionedCall"()
+# CHECK-SAME: Tout = ["tfdtype$DT_UINT8"]
 # CHECK-SAME: f = @[[FUNCTION:[A-Za-z0-9_]*]]
 # CHECK: func @[[FUNCTION]]() -> tensor<ui8>
 # CHECK: return {{.*}} : tensor<ui8>

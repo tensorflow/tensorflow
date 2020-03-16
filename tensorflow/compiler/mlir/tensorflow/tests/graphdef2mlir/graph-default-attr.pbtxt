@@ -1,15 +1,14 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
 # Verify that the data_format attributes is pulled from the default value in the
 # registry when not present in the GraphDef
 # CHECK:  tf.Conv2D
 # CHECK-SAME: data_format = "NHWC"
 
-# Verify that we don't import derived attributes as these will be added only on
-# export.
+# Verify that we can also pull some attributes that are needed to be able to
+# create a Graph in memory, like `T`.
 # CHECK: tf.MaxPool
-# CHECK-NOT: T = f32
-# CHECK-SAME: : (tensor<?x112x112x32xf32>) -> tensor<?x56x56x32xf32>
+# CHECK-SAME: T = f32
 
 node {
   name: "input"
