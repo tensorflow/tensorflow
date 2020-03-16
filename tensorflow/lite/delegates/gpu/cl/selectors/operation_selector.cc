@@ -279,6 +279,12 @@ Status GPUOperationFromNode(const CreationContext& creation_context,
       auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
       return SelectPReLU(attr, creation_context, op_def, gpu_op);
     }
+    case OperationType::QUANTIZE_AND_DEQUANTIZE: {
+      auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
+          node.operation.attributes);
+      return SelectQuantizeAndDequantize(attr, creation_context, op_def,
+                                         gpu_op);
+    }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
       SelectReLU(creation_context, attr, op_def, gpu_op);

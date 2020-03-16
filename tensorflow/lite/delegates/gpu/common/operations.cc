@@ -118,6 +118,8 @@ std::string ToString(enum OperationType op) {
       return "pow";
     case OperationType::PRELU:
       return "prelu";
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
+      return "quantize_and_dequantize";
     case OperationType::RELU:
       return "relu";
     case OperationType::RESHAPE:
@@ -183,6 +185,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
+          {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},
