@@ -166,8 +166,14 @@ using AddressVector = absl::InlinedVector<llvm::AllocaInst*, 1>;
 class ReductionCodegenInfo {
  public:
   explicit ReductionCodegenInfo(KernelMappingScheme mapping_scheme,
+                                int num_partial_results,
                                 bool is_row_reduction)
-      : mapping_scheme_(mapping_scheme), is_row_reduction_(is_row_reduction) {}
+      : mapping_scheme_(mapping_scheme), num_partial_results_(num_partial_results), is_row_reduction_(is_row_reduction) {
+    if (num_partial_results > 1) {
+      CHECK_EQ(num_partial_results,
+               (mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX()));
+    }
+  }
 
   const KernelMappingScheme& GetKernelMappingScheme() const {
     return mapping_scheme_;
@@ -203,6 +209,7 @@ class ReductionCodegenInfo {
     return reduction_input_addresses_;
   }
 
+  int GetNumPartialResults() const { return num_partial_results_; }
   bool IsRowReduction() const { return is_row_reduction_; }
 
   // Gets a pointer to a mutable shared cache used by reduction.
@@ -221,6 +228,7 @@ class ReductionCodegenInfo {
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;
+  int num_partial_results_;
   bool is_row_reduction_;
 };
 
