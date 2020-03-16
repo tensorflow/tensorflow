@@ -11,7 +11,10 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["src/testdata/add.bin"])
+exports_files([
+    "src/testdata/add.bin",
+    "src/testdata/add_unknown_dimensions.bin",
+])
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
@@ -20,7 +23,7 @@ JAVA_SRCS = glob([
 
 # Building tensorflow-lite.aar including 4 variants of .so
 # To build an aar for release, run below command:
-# bazel build --cxxopt='-std=c++11' -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+# bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
 #   tensorflow/lite/java:tensorflow-lite
 aar_with_jni(
     name = "tensorflow-lite",
@@ -198,7 +201,6 @@ java_test(
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
         "src/testdata/invalid_model.bin",
-        "src/testdata/quantized.bin",
         "src/testdata/string.bin",
         "src/testdata/uint8.bin",
         "src/testdata/with_custom_op.lite",
@@ -226,6 +228,7 @@ java_test(
     ],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/add_unknown_dimensions.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
@@ -300,6 +303,7 @@ java_test(
         "src/testdata/add.bin",
         "src/testdata/int32.bin",
         "src/testdata/int64.bin",
+        "src/testdata/quantized.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [

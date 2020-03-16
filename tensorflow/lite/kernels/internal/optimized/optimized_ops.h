@@ -1313,17 +1313,12 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
 
   std::fill_n(output_data, output_rows * output_cols, 0.0f);
 
-#ifdef TFLITE_WITH_RUY_GEMV
+  // The scratch buffer must have the same size as the output.
+  TFLITE_DCHECK_EQ(accum_scratch_shape.FlatSize(), output_shape.FlatSize());
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
-      output_data, /*result_stride=*/1, context);
-#else
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      filter_data, filter_rows, filter_cols, gemm_input_data,
-      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
-      /*result_stride=*/1);
-#endif
+      output_data, context);
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
@@ -1336,69 +1331,109 @@ inline void HybridConvPerChannel(
     const RuntimeShape& bias_shape, const float* bias_data,
     const RuntimeShape& output_shape, float* output_data,
     const RuntimeShape& im2col_shape, int8_t* im2col_data,
-    const float* per_channel_scale, int32_t* input_offset) {
+    const float* per_channel_scale, int32_t* input_offset,
+    const RuntimeShape& scratch_shape, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* cpu_backend_context) {
+  ruy::profiler::ScopeLabel label("ConvHybridPerChannel");
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
-  const float output_activation_min = params.float_activation_min;
-  const float output_activation_max = params.float_activation_max;
+  const int dilation_width_factor = params.dilation_width_factor;
+  const int dilation_height_factor = params.dilation_height_factor;
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
 
-  const int batch_size = input_shape.Dims(0);
+  const int8* gemm_input_data = nullptr;
+  const RuntimeShape* gemm_input_shape = nullptr;
   const int filter_width = filter_shape.Dims(2);
   const int filter_height = filter_shape.Dims(1);
-
-  const int8_t* gemm_input_data = nullptr;
-  int num_input;
+  const bool need_dilated_im2col =
+      dilation_width_factor != 1 || dilation_height_factor != 1;
   const bool need_im2col = stride_width != 1 || stride_height != 1 ||
                            filter_width != 1 || filter_height != 1;
 
-  if (need_im2col) {
+  const int batch_size = input_shape.Dims(0);
+
+  if (need_dilated_im2col) {
     TFLITE_DCHECK(im2col_data);
+    optimized_ops::DilatedIm2col(params, input_shape, input_data, filter_shape,
+                                 output_shape, im2col_data, input_offset,
+                                 batch_size);
+    gemm_input_data = im2col_data;
+    gemm_input_shape = &im2col_shape;
+  } else if (need_im2col) {
     Im2col(params, filter_height, filter_width, input_offset, batch_size,
            input_shape, input_data, im2col_shape, im2col_data);
     gemm_input_data = im2col_data;
-    num_input = im2col_shape.FlatSize();
+    gemm_input_shape = &im2col_shape;
   } else {
     TFLITE_DCHECK(!im2col_data);
     gemm_input_data = input_data;
-    num_input = input_shape.FlatSize();
+    gemm_input_shape = &input_shape;
   }
 
   const int filter_rows = filter_shape.Dims(0);
   const int filter_cols = FlatSizeSkipDim(filter_shape, 0);
 
-  const int gemm_input_cols = filter_cols;
-  const int gemm_input_rows = num_input / gemm_input_cols;
+  const int gemm_input_rows = gemm_input_shape->Dims(3);
+  const int gemm_input_cols = FlatSizeSkipDim(*gemm_input_shape, 3);
+  const int output_rows = output_shape.Dims(3);
+  const int output_cols =
+      output_shape.Dims(0) * output_shape.Dims(1) * output_shape.Dims(2);
 
-  const int output_cols = output_shape.Dims(3);
-  const int output_rows = FlatSizeSkipDim(output_shape, 3);
-  TFLITE_DCHECK_EQ(output_cols, filter_rows);
-  TFLITE_DCHECK_EQ(output_rows, gemm_input_rows);
-  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_cols);
-
-  const int rows_per_batch = gemm_input_rows / batch_size;
-
-  // MatrixBatchVectorMultiplyAccumulate assumes that each row of the second
-  // input matrix has its own scale factor and zero point.
-  // This code duplicates the scale factors and zero point for each row in the
-  // same batch.
-  for (int i = gemm_input_rows - 1; i >= 0; --i) {
-    scaling_factors_ptr[i] = scaling_factors_ptr[i / rows_per_batch];
-    input_offset[i] = input_offset[i / rows_per_batch];
+  TFLITE_DCHECK_EQ(output_rows, filter_rows);
+  TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
+  TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
+  TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+  TFLITE_DCHECK_EQ(scratch_shape.FlatSize(), output_shape.FlatSize());
+  if (!compute_row_sums || *compute_row_sums) {
+    memset(row_sums, 0, sizeof(int32_t) * filter_rows);
+    tensor_utils::ReductionSumVector(filter_data, row_sums, filter_rows,
+                                     filter_cols);
+    if (compute_row_sums) {
+      *compute_row_sums = false;
+    }
   }
 
-  std::fill_n(output_data, output_rows * output_cols, 0.0f);
+  cpu_backend_gemm::MatrixParams<int8> lhs_params;
+  lhs_params.rows = filter_rows;
+  lhs_params.cols = filter_cols;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
 
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      filter_data, filter_rows, filter_cols, gemm_input_data,
-      scaling_factors_ptr, /*n_batch=*/gemm_input_rows, output_data,
-      /*result_stride=*/1, per_channel_scale, input_offset);
+  cpu_backend_gemm::MatrixParams<int8> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = gemm_input_rows;
+  rhs_params.cols = gemm_input_cols;
 
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
+  cpu_backend_gemm::MatrixParams<int32> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = output_rows;
+  dst_params.cols = output_cols;
+
+  // TODO(b/149003801): Use hybrid gemm once supported in Ruy.
+  cpu_backend_gemm::GemmParams<int32_t, int32_t> gemm_params;
+  cpu_backend_gemm::Gemm(lhs_params, filter_data, rhs_params, gemm_input_data,
+                         dst_params, scratch, gemm_params, cpu_backend_context);
+
+  MatrixMap<float> out_mat(output_data, filter_rows, output_cols);
+  MatrixMap<int32_t> in_mat(scratch, filter_rows, output_cols);
+  VectorMap<const float> bias_data_vec(bias_data, filter_rows, 1);
+  VectorMap<int32_t> row_sums_vec(row_sums, filter_rows, 1);
+  VectorMap<const float> per_channel_scale_vec(per_channel_scale, filter_rows,
+                                               1);
+  const int cols_per_batch = output_cols / batch_size;
+  for (int c = 0; c < output_cols; c++) {
+    const int b = c / cols_per_batch;
+    const float input_scale = scaling_factors_ptr[b];
+    const int32_t zero_point = input_offset[b];
+    out_mat.col(c) =
+        (((in_mat.col(c) - (row_sums_vec * zero_point))
+              .cast<float>()
+              .cwiseProduct((per_channel_scale_vec * input_scale))) +
+         bias_data_vec)
+            .cwiseMin(params.float_activation_max)
+            .cwiseMax(params.float_activation_min);
+  }
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -3938,7 +3973,7 @@ inline void LocalResponseNormalization(
   // In a few cases, the pow computation could benefit from speedups.
   if (op_params.beta == 1) {
     data_out.array() = data_in.array() * data_out.array().inverse();
-  } else if (op_params.beta == 0.5) {
+  } else if (op_params.beta == 0.5f) {
     data_out.array() = data_in.array() * data_out.array().sqrt().inverse();
   } else {
     data_out.array() = data_in.array() * data_out.array().pow(-op_params.beta);
@@ -4036,16 +4071,20 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
+template <typename T>
+inline int32_t QuantizeSoftmaxOutput(float prob_rescaled, int32_t zero_point) {
   const int32_t prob_rnd = static_cast<int32_t>(std::round(prob_rescaled));
   return prob_rnd + zero_point;
 }
 
-inline int32_t QuantizeSoftmaxOutput(uint8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
-  return static_cast<int32_t>(prob_rescaled + 0.5);
+#if !__aarch64__
+// With ARM64, rounding is faster than add + truncation.
+template <>
+inline int32_t QuantizeSoftmaxOutput<uint8_t>(float prob_rescaled,
+                                              int32_t zero_point) {
+  return static_cast<int32_t>(prob_rescaled + 0.5f);
 }
+#endif
 
 inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
                                        float beta) {
@@ -4088,7 +4127,7 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput(output_data, prob_rescaled, params.zero_point);
+          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
       output_data[j] = static_cast<T>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
@@ -4929,12 +4968,24 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BatchToSpaceND");
 
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
@@ -4945,10 +4996,12 @@ inline void BatchToSpaceND(
   const int input_height = input1_shape.Dims(1);
   const int input_batch_size = input1_shape.Dims(0);
 
-  const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int crops_top = crops_data[0];
-  const int crops_left = crops_data[2];
+  const int crops_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
     const int out_batch = in_batch % output_batch_size;

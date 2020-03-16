@@ -182,6 +182,7 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -548,7 +549,6 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -613,12 +613,12 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "@gemmlowp",
     ],
 )
 
@@ -626,6 +626,28 @@ cc_library(
     name = "lstm_shared",
     hdrs = ["lstm_shared.h"],
     copts = tflite_copts(),
+)
+
+# For internal usage by shared libraries only.
+cc_library(
+    name = "builtin_ops_all_linked",
+    srcs = ["register.cc"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
+    copts = tflite_copts(),
+    # Limit visibility to TFLite only.
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -636,13 +658,11 @@ cc_library(
         "fully_connected.h",
         "register.h",
     ],
-    copts = tflite_copts(),
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
     ],
-    alwayslink = 1,
 )
 
 # The builtin_ops target will resolve to optimized kernels when available. This

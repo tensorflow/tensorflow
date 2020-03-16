@@ -227,7 +227,7 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, input, output, &data));
 
-  // Inputs and outputs share the same type, guarenteed by the converter.
+  // Inputs and outputs share the same type, guaranteed by the converter.
   switch (input->type) {
     case kTfLiteFloat32:
       AverageEvalFloat(context, node, params, &data, input, output);
@@ -239,8 +239,8 @@ TfLiteStatus AverageEval(TfLiteContext* context, TfLiteNode* node) {
       return AverageEvalInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Input type %s is not currently supported",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Input type %s is not currently supported",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -263,8 +263,8 @@ TfLiteStatus MaxEval(TfLiteContext* context, TfLiteNode* node) {
       MaxEvalQuantizedUInt8(context, node, params, &data, input, output);
       break;
     default:
-      context->ReportError(context, "Type %s not currently supported.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context, "Type %s not currently supported.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;

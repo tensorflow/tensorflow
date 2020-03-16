@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 
 #include "google/protobuf/any.pb.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -37,6 +38,10 @@ namespace tensorflow {
 namespace profiler {
 
 namespace {
+
+// If the use of low-precision ops is less than this percentage threshold, a
+// statement of suggestion will be made.
+constexpr double kLowPrecisionPercentThreshold = 10;
 
 OverviewPageTip MakeOverviewPageTip(const string& text) {
   OverviewPageTip tip;
@@ -72,16 +77,21 @@ void ComputeDeviceTips(HardwareType hardware_type,
   const string& device_name = HardwareType_Name(hardware_type);
   string timeline_name =
       (hardware_type == tensorflow::profiler::TPU) ? "TPU core" : device_name;
-  *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
-      "op_profile (identify the time-consuming operations executed on the ",
-      device_name, ")"));
+  string op_stats_toolname = (hardware_type == tensorflow::profiler::TPU)
+                                 ? "op_profile"
+                                 : "tensorflow_stats";
+  *re->add_device_tips() = MakeOverviewPageTip(
+      absl::StrCat(op_stats_toolname,
+                   " (identify the time-consuming operations "
+                   "executed on the ",
+                   device_name, ")"));
   *re->add_device_tips() = MakeOverviewPageTip(absl::StrCat(
       "trace_viewer (look at the activities on the timeline of each ",
       timeline_name, " in the trace view)"));
 }
 
 void ComputeFaqTips(OverviewPageRecommendation* re) {
-  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the Cloud tools FAQ");
+  *re->add_faq_tips() = MakeOverviewPageTip("Refer to the TF2 Profiler FAQ");
 }
 
 void ComputeDocumentationTips(OverviewPageRecommendation* re) {
@@ -89,6 +99,23 @@ void ComputeDocumentationTips(OverviewPageRecommendation* re) {
       "https://www.tensorflow.org/guide/"
       "data_performance",
       "Better performance with the tf.data API");
+}
+
+std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
+  uint64 total_compute_ps =
+      precision_stats.compute_16bit_ps() + precision_stats.compute_32bit_ps();
+  if (total_compute_ps > 0) {
+    double percent_16bit =
+        (100.0 * precision_stats.compute_16bit_ps()) / total_compute_ps;
+    if (percent_16bit < kLowPrecisionPercentThreshold) {
+      return absl::StrCat(
+          "Only ", absl::StrFormat("%.1lf", percent_16bit),
+          "% of device computation is 16 bit. So you might want to replace "
+          "more 32-bit Ops by 16-bit Ops to improve performance (if the "
+          "reduced accuracy is acceptable).");
+    }
+  }
+  return "";
 }
 
 }  // namespace
@@ -106,7 +133,8 @@ void SetCommonRecommendation(const string& input_classification,
 }
 
 OverviewPageRecommendation ComputeGenericRecommendation(
-    const BottleneckAnalysis& bottleneck) {
+    const BottleneckAnalysis& bottleneck,
+    const PrecisionStats& precision_stats) {
   OverviewPageRecommendation re;
   GenericRecommendation generic;
   generic.set_kernel_launch_bottleneck(
@@ -114,14 +142,15 @@ OverviewPageRecommendation ComputeGenericRecommendation(
   generic.set_kernel_launch_statement(bottleneck.kernel_launch_statement());
   generic.set_all_other_bottleneck(bottleneck.all_other_classification());
   generic.set_all_other_statement(bottleneck.all_other_statement());
+  generic.set_precision_statement(GeneratePrecisionStatement(precision_stats));
   re.mutable_recommendation()->PackFrom(generic);
   return re;
 }
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
-  OpMetricsDb metrics_db =
-      CreateTfMetricsDbFromHloMetricsDb(op_stats.device_op_metrics_db());
+  OpMetricsDb metrics_db = CreateTfMetricsDbFromHloMetricsDb(
+      op_stats.device_op_metrics_db(), /*with_idle=*/false);
   uint64 total_device_time_ps = metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
@@ -137,6 +166,20 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
   }
+  SetRemarks(op_stats, &analysis);
+  uint64 total_device_compute_ps =
+      op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
+      op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps();
+  analysis.set_device_compute_16bit_percent(
+      100.0 *
+      SafeDivide(
+          op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps(),
+          total_device_compute_ps));
+  analysis.set_device_compute_32bit_percent(
+      100.0 *
+      SafeDivide(
+          op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
+          total_device_compute_ps));
   return analysis;
 }
 
@@ -187,24 +230,33 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
-  OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
-  InputPipelineAnalysisResult input_analysis =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(input_analysis.step_details());
-  OverviewPageRecommendation recommendation =
-      ComputeGenericRecommendation(bottleneck);
-  SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
-                          &recommendation);
-
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
-  *overview_page.mutable_analysis() = analysis;
-  *overview_page.mutable_input_analysis() = input_analysis;
-  *overview_page.mutable_recommendation() = recommendation;
+  *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
+  *overview_page.mutable_input_analysis() =
+      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
+      bottleneck, op_stats.device_op_metrics_db().precision_stats());
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          overview_page.mutable_recommendation());
   return overview_page;
+}
+
+void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis) {
+  if (op_stats.step_db().step_sequence_size() == 0) {
+    analysis->set_remark_text(
+        "WARNING: No step markers observed and hence the step time is actually "
+        "unknown. This may happen if your profiling duration is shorter than "
+        "the step time. In that case, you may try to profile longer.");
+    analysis->set_remark_color("red");
+  } else {
+    analysis->set_remark_text("");
+    analysis->set_remark_color("black");
+  }
 }
 
 }  // namespace profiler

@@ -338,7 +338,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-      const absl::optional<int64>& channel_id);
+      const absl::optional<int64>& channel_id, bool use_global_device_ids);
 
   // Returns true if the AllReduce does no communication, so it's equivalent
   // to a mem copy.
@@ -359,6 +359,18 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
   // unconstrained AllReduce instructions (checked by HloVerifier).
   bool constrain_layout() const { return constrain_layout_; }
 
+  // Returns true if the ids in the ReplicaGroup config represent a global id of
+  // (replica_id * partition_count + partition_id) instead of a replica id.
+  // This enables more flexible grouping of devices if this all-reduce is both
+  // cross-partition and cross-replica.
+  //
+  // For example with 2 replicas and 4 partitions,
+  // replica_groups={{0,1,4,5},{2,3,6,7}}, use_global_device_ids=true means that
+  // group[0] = (0,0), (0,1), (1,0), (1,1)
+  // group[1] = (0,2), (0,3), (1,2), (1,3)
+  // where each pair is (replica_id, partition_id).
+  bool use_global_device_ids() const { return use_global_device_ids_; }
+
  protected:
   std::vector<string> ExtraAttributesToStringImpl(
       const HloPrintOptions& options) const override;
@@ -376,6 +388,7 @@ class HloAllReduceInstruction : public HloCollectiveInstruction {
       HloCloneContext* context) const override;
 
   bool constrain_layout_;
+  bool use_global_device_ids_;
 };
 
 class HloAllToAllInstruction : public HloCollectiveInstruction {

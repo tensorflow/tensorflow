@@ -67,11 +67,12 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_ops  # pylint: disable=unused-import
+from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
@@ -80,9 +81,9 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.protobuf import compare
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.python.util.compat import collections_abc
 
 
 # If the below import is made available through the BUILD rule, then this
@@ -636,7 +637,7 @@ def assert_no_new_pyobjects_executing_eagerly(func=None, warmup_iters=2):
 
         # There should be no new Python objects hanging around.
         obj_count_by_type = _get_object_count_by_type() - obj_count_by_type
-        # In some cases (specifacally on MacOS), new_count is somehow
+        # In some cases (specifically on MacOS), new_count is somehow
         # smaller than previous_count.
         # Using plain assert because not all classes using this decorator
         # have assertLessEqual
@@ -766,7 +767,7 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
 
   def build_ref_graph(obj, graph, reprs, blacklist):
-    """Builds a reference graph as <referrer> -> <list of refferents>.
+    """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
       obj: The object to start from. The graph will be built by recursively
@@ -1017,6 +1018,21 @@ def build_as_function_and_v1_graph(func=None):
   return decorator
 
 
+def run_in_async_and_sync_mode(f):
+  """Execute the test in async mode and sync mode."""
+
+  @parameterized.named_parameters([("Async", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, async_mode, *args, **kwargs):
+    if async_mode:
+      with context.execution_mode(context.ASYNC):
+        f(self, *args, **kwargs)
+    else:
+      with context.execution_mode(context.SYNC):
+        f(self, *args, **kwargs)
+  return decorator
+
+
 def eager_lazy_remote_copy_on_and_off(f):
   """Execute the test method w/o lazy tensor copy for function remote inputs."""
 
@@ -1136,7 +1152,7 @@ def run_in_graph_and_eager_modes(func=None,
         run_eagerly(self, **kwargs)
       ops.dismantle_graph(graph_for_eager_test)
 
-    return decorated
+    return tf_decorator.make_decorator(f, decorated)
 
   if func is not None:
     return decorator(func)
@@ -1394,7 +1410,7 @@ def run_gpu_only(func=None):
 def run_cuda_only(func=None):
   """Execute the decorated test only if a GPU is available.
 
-  This function is intended to be applied to tests that require the precense
+  This function is intended to be applied to tests that require the presence
   of a CUDA GPU. If a CUDA GPU is absent, it will simply be skipped.
 
   Args:
@@ -1583,7 +1599,7 @@ class FakeEagerSession(object):
     self._test_case = test_case
 
   def run(self, fetches, *args, **kwargs):
-    """Evalaute `fetches`.
+    """Evaluate `fetches`.
 
     Fail if additional args are specified.
 
@@ -2474,6 +2490,13 @@ class TensorFlowTestCase(googletest.TestCase):
     `a` and `b` can be arbitrarily nested structures. A layer of a nested
     structure can be a `dict`, `namedtuple`, `tuple` or `list`.
 
+    Note: the implementation follows
+    [`numpy.allclose`](https://docs.scipy.org/doc/numpy/reference/generated/numpy.allclose.html)
+    (and numpy.testing.assert_allclose). It checks whether two arrays are
+    element-wise equal within a tolerance. The relative difference
+    (`rtol * abs(b)`) and the absolute difference `atol` are added together
+    to compare against the absolute difference between `a` and `b`.
+
     Args:
       a: The expected numpy `ndarray`, or anything that can be converted into a
         numpy `ndarray` (including Tensor), or any arbitrarily nested of
@@ -2619,10 +2642,10 @@ class TensorFlowTestCase(googletest.TestCase):
       msg: Optional message to report on failure.
     """
     try:
-      self.assertAllEqual(a, b, msg)
+      self.assertAllEqual(a, b)
     except AssertionError:
       return
-    raise AssertionError("The two values are equal at all elements")
+    raise AssertionError("The two values are equal at all elements. %s" % msg)
 
   @py_func_if_in_function
   def assertAllGreater(self, a, comparison_target):

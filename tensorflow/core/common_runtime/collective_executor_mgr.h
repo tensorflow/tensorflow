@@ -72,7 +72,8 @@ class CollectiveExecutorMgr : public CollectiveExecutorMgrInterface {
  private:
   mutex exec_mu_;
   // Map from step_id to CollectiveExecutor
-  gtl::FlatMap<int64, CollectiveExecutor*> executor_table_ GUARDED_BY(exec_mu_);
+  gtl::FlatMap<int64, CollectiveExecutor*> executor_table_
+      TF_GUARDED_BY(exec_mu_);
 };
 
 }  // namespace tensorflow

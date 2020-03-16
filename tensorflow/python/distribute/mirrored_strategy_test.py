@@ -42,7 +42,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
-from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
@@ -356,7 +355,9 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
     with distribution.scope():
       result = distribution.extended.call_for_each_replica(model_fn)
-      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertEqual(
+          (0, 1),
+          self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testFunctionInCallForEachReplicaInsideAnotherFunction(self, distribution):
@@ -372,7 +373,9 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
     with distribution.scope():
       result = step()
-      self.assertEqual((0, 1), self.evaluate(result.values))
+      self.assertEqual(
+          (0, 1),
+          self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
   def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
@@ -711,21 +714,33 @@ class MirroredVariableUpdateTest(test.TestCase):
       mirrored_var_result = self.evaluate(
           mirrored_var.assign_add(6.0, read_value=True))
       self.assertEqual(7.0, mirrored_var_result)
-      self.assertEqual(7.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(7.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          7.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          7.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
       # read_value == False
       self.evaluate(mirrored_var.assign_add(2.0, read_value=False))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(9.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          9.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          9.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignAddMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -777,12 +792,18 @@ class MirroredVariableUpdateTest(test.TestCase):
       self.assertEqual(5.0, self.evaluate(mirrored_var))
       mirrored_var_result = self.evaluate(mirrored_var.assign_sub(2.0))
       self.assertEqual(3.0, mirrored_var_result)
-      self.assertEqual(3.0, self.evaluate(mirrored_var.values[0]))
-      self.assertEqual(3.0, self.evaluate(mirrored_var.values[1]))
       self.assertEqual(
-          distribution.extended.worker_devices[0], mirrored_var.devices[0])
+          3.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[0]))
       self.assertEqual(
-          distribution.extended.worker_devices[1], mirrored_var.devices[1])
+          3.0,
+          self.evaluate(
+              distribution.experimental_local_results(mirrored_var)[1]))
+      self.assertEqual(
+          distribution.extended.worker_devices[0], mirrored_var._devices[0])
+      self.assertEqual(
+          distribution.extended.worker_devices[1], mirrored_var._devices[1])
 
   def testAssignSubMirroredVarReplicaContext(self, distribution):
     def var_fn():
@@ -994,7 +1015,8 @@ class MirroredStrategyDefunTest(test.TestCase):
             distribution.extended.call_for_each_replica(
                 defun.get_concrete_function, args=[mock_model] + inputs))
         for i in range(len(devices)):
-          graph_function = per_replica_graph_functions.values[i]
+          graph_function = distribution.experimental_local_results(
+              per_replica_graph_functions)[i]
           # TODO(b/129555712): re-enable an assertion here that the two sets of
           # variables are the same.
           # self.assertEqual(set(graph_function.graph.variables),
@@ -1317,41 +1339,43 @@ class MirroredVariableStopGradientTest(test.TestCase, parameterized.TestCase):
       self.assertIsNone(grads[0])
 
 
-class FunctionTest(test.TestCase):
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["eager"]))
+class FunctionTest(test.TestCase, parameterized.TestCase):
 
-  def testBackwardFuctionDevicePlacement(self):
-    if context.num_gpus() < 1:
-      self.skipTest("At least one GPU is required.")
-    devices = [device_util.resolve("/device:GPU:0"),
-               device_util.resolve("/device:CPU:0")]
-    ms = mirrored_strategy.MirroredStrategy(devices)
-
-    with ms.scope():
+  def testBackwardFunctionDevicePlacement(self, distribution):
+    with distribution.scope():
       w = variable_scope.variable([1.5], name="w")
       b = variable_scope.variable([0.5], name="b")
 
     @def_function.function
     def forward(x, w, b):
       return x * w + b
-    x = constant_op.constant([1.0], name="x_useless")
-    concrete_forward = forward.get_concrete_function(x, w.primary, b.primary)
 
-    with ms.scope():
+    x = array_ops.identity([1.0], name="x_useless")
+    concrete_forward = forward.get_concrete_function(x, w._primary, b._primary)
+
+    with distribution.scope():
+
       def replica_fn():
         with backprop.GradientTape() as t:
-          x = constant_op.constant([1.0], name="x")
+          x = array_ops.identity([1.0], name="x")
           loss = concrete_forward(x, w._get(), b._get()) - [1.0]
           return t.gradient(loss, [w, b])
 
       def step_fn():
-        return ms.experimental_run_v2(replica_fn)
+        return distribution.run(replica_fn)
 
       context.enable_run_metadata()
       g1, g2 = step_fn()
       run_metadata = context.export_run_metadata()
       context.disable_run_metadata()
-      self.assertEqual(self.evaluate(g1.primary), 1.0)
-      self.assertEqual(self.evaluate(g2.primary), 1.0)
+      self.assertEqual(self.evaluate(g1._primary), 1.0)
+      self.assertEqual(self.evaluate(g2._primary), 1.0)
 
       # Verify that this node runs on both devices.
       node_name = "gradients_mul_grad_mul_1_x"
@@ -1360,30 +1384,32 @@ class FunctionTest(test.TestCase):
         for node in partition_graph.node:
           if node.name == node_name:
             devices_for_this_node.add(node.device)
+      devices = [device_util.resolve("/device:GPU:0"),
+                 device_util.resolve("/device:CPU:0")]
       self.assertSetEqual(devices_for_this_node, set(devices))
 
-  def testFuctionPreservesAutoGraph(self):
-    config.set_logical_device_configuration(
-        config.list_physical_devices("CPU")[0],
-        [context.LogicalDeviceConfiguration()] * 2)
-    ms = mirrored_strategy.MirroredStrategy()
-
+  def testFuctionPreservesAutoGraph(self, distribution):
     def f():
       self.assertTrue(converter_testing.is_inside_generated_code())
       return 1
 
-    with ms.scope():
+    with distribution.scope():
+
       @def_function.function
       def replica_fn():
         return f()
 
-      ms.experimental_run_v2(replica_fn)
+      distribution.run(replica_fn)
 
 
 def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
+  # TODO(b/149852830): Workaround for small Tensor caching (which is only on
+  # CPU) to ensure the value is on the correct device.
+  replica_id = math_ops.cast(replica_id, dtypes.float32)
+  replica_id = math_ops.cast(replica_id, dtypes.int32)
   return replica_id
 
 

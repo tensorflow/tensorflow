@@ -1004,7 +1004,7 @@ void ColocationGraph::GetSoftDeviceCandidates(
 
   // Failed to find supported devices that don't violate resource devices.
   // Try finding some devices that violated resource devices.
-  // If we succceed, we will log a warning below.
+  // If we succeed, we will log a warning below.
   soft_device_name = root_member.GetSoftDeviceName();
   device_set_.FindMatchingDevices(soft_device_name, possible_devices);
   if (!possible_devices->empty()) {
@@ -1280,8 +1280,7 @@ Status ColocationGraph::InitializeMemberWithAssignedDevice(
         "available on this machine: [",
         absl::StrJoin(DevicesToString(device_set_.devices()), ", "), "].",
         "If you are seeing this error when running using a tf.Session, set "
-        "experimental.share_cluster_devices_in_session to true in the "
-        "tf.ConfigProto.");
+        "share_cluster_devices_in_session to true in the tf.ConfigProto.");
   }
 
   for (const auto& d : member->supported_device_types()) {

@@ -37,10 +37,43 @@ class Adamax(optimizer_v2.OptimizerV2):
   Default parameters follow those provided in the paper.
   Adamax is sometimes superior to adam, specially in models with embeddings.
 
+  Initialization:
+
+  ```
+  m_0 <- 0 (Initialize initial 1st moment vector)
+  v_0 <- 0 (Initialize the exponentially weighted infinity norm)
+  t <- 0 (Initialize timestep)
+  ```
+
+  The update rule for `variable` with gradient `g` uses an optimization
+  described at the end of section 7.1 of the paper:
+
+  ```
+  t <- t + 1
+
+  m_t <- beta1 * m_{t-1} + (1 - beta1) * g
+  v_t <- max(beta2 * v_{t-1}, abs(g))
+  variable <- variable - learning_rate / (1 - beta1^t) * m_t / (v_t + epsilon)
+  ```
+
+  Similar to AdamOptimizer, the epsilon is added for numerical stability
+  (especially to get rid of division by zero when v_t = 0).
+
+  Contrast to AdamOptimizer, the sparse implementation of this algorithm
+  (used when the gradient is an IndexedSlices object, typically because of
+  `tf.gather` or an embedding lookup in the forward pass) only updates
+  variable slices and corresponding `m_t`, `v_t` terms when that part of
+  the variable was used in the forward pass. This means that the sparse
+  behavior is contrast to the dense behavior (similar to some momentum
+  implementations which ignore momentum unless a variable slice was actually
+  used).
+
   References
     see Section 7 of [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
       ([pdf](http://arxiv.org/pdf/1412.6980.pdf)).
   """
+
+  _HAS_ALL_REDUCE_SUM_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -50,37 +83,6 @@ class Adamax(optimizer_v2.OptimizerV2):
                name='Adamax',
                **kwargs):
     """Construct a new Adamax optimizer.
-
-    Initialization:
-
-    ```
-    m_0 <- 0 (Initialize initial 1st moment vector)
-    v_0 <- 0 (Initialize the exponentially weighted infinity norm)
-    t <- 0 (Initialize timestep)
-    ```
-
-    The update rule for `variable` with gradient `g` uses an optimization
-    described at the end of section 7.1 of the paper:
-
-    ```
-    t <- t + 1
-
-    m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-    v_t <- max(beta2 * v_{t-1}, abs(g))
-    variable <- variable - learning_rate / (1 - beta1^t) * m_t / (v_t + epsilon)
-    ```
-
-    Similar to AdamOptimizer, the epsilon is added for numerical stability
-    (especially to get rid of division by zero when v_t = 0).
-
-    Contrast to AdamOptimizer, the sparse implementation of this algorithm
-    (used when the gradient is an IndexedSlices object, typically because of
-    `tf.gather` or an embedding lookup in the forward pass) only updates
-    variable slices and corresponding `m_t`, `v_t` terms when that part of
-    the variable was used in the forward pass. This means that the sparse
-    behavior is contrast to the dense behavior (similar to some momentum
-    implementations which ignore momentum unless a variable slice was actually
-    used).
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -121,15 +123,15 @@ class Adamax(optimizer_v2.OptimizerV2):
     beta_1_power = math_ops.pow(beta_1_t, local_step)
     lr_t = apply_state[(var_device, var_dtype)]['lr_t']
 
-    apply_state[(var_device, var_dtype)].update(dict(
-        neg_scaled_lr=-lr_t / (1 - beta_1_power),
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        beta_1_t=beta_1_t,
-        beta_1_power=beta_1_power,
-        one_minus_beta_1_t=1 - beta_1_t,
-        beta_2_t=beta_2_t,
-        zero=array_ops.zeros((), dtype=dtypes.int64)
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            neg_scaled_lr=-lr_t / (1 - beta_1_power),
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            beta_1_t=beta_1_t,
+            beta_1_power=beta_1_power,
+            one_minus_beta_1_t=1 - beta_1_t,
+            beta_2_t=beta_2_t,
+            zero=array_ops.zeros((), dtype=dtypes.int64)))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

@@ -28,6 +28,8 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Interfaces/InferTypeOpInterface.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 
 namespace mlir {
@@ -52,10 +54,6 @@ class XlaHloDialect : public Dialect {
 
   // Prints a type registered to this dialect.
   void printType(Type type, DialectAsmPrinter &os) const override;
-
-  // Verify an attribute from this dialect on the given operation.
-  LogicalResult verifyOperationAttribute(Operation *op,
-                                         NamedAttribute attribute) override;
 };
 
 namespace HLOTypes {
@@ -75,6 +73,22 @@ class TokenType : public Type::TypeBase<TokenType, Type> {
   // Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == HLOTypes::Token; }
 };
+
+// Shape derivation function that computes the shape of the result based on
+// the first argument. For a 2-dimensional input tensor, this produces IR of
+// the form
+//
+//  %0 = dim %arg0, 0 : memref<?x?xf32>
+//  %1 = index_cast %0 : index to i64
+//  %2 = dim %arg0, 1 : memref<?x?xf32>
+//  %3 = index_cast %2 : index to i64
+//  %4 = "xla_hlo.scalars_to_dimension_tensor"(%1, %3)
+//    : (i64, i64) -> tensor<2xi64>
+//
+// and returns %4 as the shape value.
+LogicalResult deriveShapeFromFirstOperand(
+    OpBuilder *builder, Operation *op,
+    SmallVectorImpl<Value> *reifiedReturnShapes);
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"

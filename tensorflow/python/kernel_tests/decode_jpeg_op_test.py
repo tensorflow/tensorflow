@@ -66,6 +66,13 @@ class DecodeJpegBenchmark(test.Benchmark):
     image_file_path = resource_loader.get_path_to_datafile(
         os.path.join('core', 'lib', 'jpeg', 'testdata', image_name))
 
+    # resource_loader does not seem to work well under benchmark runners.
+    # So if the above path is not available, try another way to access the file:
+    if not os.path.exists(image_file_path):
+      image_file_path = resource_loader.get_path_to_datafile(
+          os.path.join(
+              '..', '..', 'core', 'lib', 'jpeg', 'testdata', image_name))
+
     if tile is None:
       image_content = variable_scope.get_variable(
           'image_%s' % image_name,

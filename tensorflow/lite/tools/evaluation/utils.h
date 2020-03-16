@@ -29,6 +29,7 @@ limitations under the License.
 
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
@@ -63,6 +64,10 @@ Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
 
 Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling);
+
+Interpreter::TfLiteDelegatePtr CreateXNNPACKDelegate();
+Interpreter::TfLiteDelegatePtr CreateXNNPACKDelegate(
+    const TfLiteXNNPackDelegateOptions* options);
 
 }  // namespace evaluation
 }  // namespace tflite

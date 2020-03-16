@@ -340,14 +340,24 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def Fn():
+
+      def Body1(v):
+        x.assign(x)
+        return v * x
+
       ret1 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x, [c],
+          Body1, [c],
           return_same_structure=False,
           name="while_1")  # 2x
+
+      def Body2(v):
+        x.assign(x)
+        return v * x * x
+
       ret2 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x * x, [c],
+          Body2, [c],
           return_same_structure=False,
           name="while_2")  # 4x
       return ret1, ret2
@@ -368,24 +378,44 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def Fn():
+
+      def Body1(v):
+        x1.assign(x1)
+        return v * x1
+
       ret1 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x1, [c],
+          Body1, [c],
           return_same_structure=False,
           name="while_1")  # 2x
+
+      def Body2(v):
+        x1.assign(x1)
+        return v * x1 * x1
+
       ret2 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x1 * x1, [c],
+          Body2, [c],
           return_same_structure=False,
           name="while_2")  # 4x
+
+      def Body3(v):
+        x2.assign(x2)
+        return v * x2
+
       ret3 = while_loop_v2(
           lambda v: v < 4.,
-          lambda v: v * x2, [c],
+          Body3, [c],
           return_same_structure=False,
           name="while_3")  # 3x
+
+      def Body4(v):
+        x2.assign(x2)
+        return v * x2 * x2
+
       ret4 = while_loop_v2(
           lambda v: v < 16.,
-          lambda v: v * x2 * x2, [c],
+          Body4, [c],
           return_same_structure=False,
           name="while_4")  # 9x
       ret5 = while_loop_v2(
@@ -715,7 +745,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     # Skip over Identity.
     while_op = r.op.inputs[0].op
     # We can't directly use while_op.inputs.index() because Tensors are not
-    # hashshable.
+    # hashable.
     index = GetInputIndex(while_op, v)
     self._assertNotAccumulated(while_op, index)
 
@@ -1144,6 +1174,34 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       return grad
 
     Fn()
+
+  def testInheritParentNameScope(self):
+
+    @def_function.function
+    def F():
+      with ops.name_scope("foo"):
+
+        def Cond(unused_i):
+          with ops.name_scope("cond"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/while/cond"
+            assert actual_name_scope == expected_name_scope, (
+                "%s does not match %s" %
+                (actual_name_scope, expected_name_scope))
+          return False
+
+        def Body(i):
+          with ops.name_scope("body"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/while/body"
+            assert actual_name_scope == expected_name_scope, (
+                "%s does not match %s" %
+                (actual_name_scope, expected_name_scope))
+          return i
+
+        return while_v2.while_loop(Cond, Body, [0.])
+
+    F()
 
 
 def ScalarShape():

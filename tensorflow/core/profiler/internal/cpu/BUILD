@@ -43,6 +43,9 @@ cc_library(
 tf_cc_test(
     name = "host_tracer_test",
     srcs = ["host_tracer_test.cc"],
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":host_tracer",
         "//tensorflow/core:core_cpu_lib",

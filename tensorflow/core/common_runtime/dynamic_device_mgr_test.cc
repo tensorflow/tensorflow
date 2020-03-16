@@ -101,7 +101,7 @@ TEST(DynamicDeviceMgrTest, AddRepeatedDeviceToMgr) {
   added_devices.emplace_back(std::move(d1));
   Status s = dm->AddDevices(std::move(added_devices));
   EXPECT_TRUE(absl::StrContains(s.error_message(),
-                                "name conflicts with an existing deivce"));
+                                "name conflicts with an existing device"));
 }
 
 TEST(DynamicDeviceMgrTest, RemoveNonExistingDeviceFromMgr) {

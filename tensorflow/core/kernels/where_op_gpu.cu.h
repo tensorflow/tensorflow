@@ -136,7 +136,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
   EIGEN_ALWAYS_INLINE static Status Compute(
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
-      typename TTypes<TIndex>::Scalar num_true) {
+      typename TTypes<TIndex>::UnalignedScalar num_true) {
     const auto& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;

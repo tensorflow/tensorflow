@@ -46,12 +46,12 @@ void AddOrUpdateIntStat(int64 metadata_id, int64 value,
 void AddOrUpdateStrStat(int64 metadata_id, absl::string_view value,
                         tensorflow::profiler::XEvent* event);
 
-void CreateXEvent(
+XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     absl::string_view event_name, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
 
-void CreateXEvent(
+XEventBuilder CreateXEvent(
     XPlaneBuilder* plane_builder, XLineBuilder* line_builder,
     HostEventType event_type, int64 offset_ps, int64 duration_ps,
     const absl::flat_hash_map<StatType, int64 /*stat_value*/>& stats);
@@ -81,6 +81,10 @@ void NormalizeTimeLine(XSpace* space, uint64 start_time_ns);
 // the same line, which have different start timestamps, we will normalize the
 // events offset timestamp correspondingly.
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
+
+// Plane's start timestamp is defined as the minimum of all lines' start
+// timestamps. If zero line exists, return 0;
+uint64 GetStartTimestampNs(const XPlane& plane);
 
 }  // namespace profiler
 }  // namespace tensorflow

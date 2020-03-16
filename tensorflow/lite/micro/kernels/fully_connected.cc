@@ -77,6 +77,12 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_MSG(context, input->type == filter->type,
+                     "Hybrid models are not supported on TFLite Micro.");
   return kTfLiteOk;
 }
 
@@ -136,7 +142,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Quantized FullyConnected expects output data type uint8 or int16");
       return kTfLiteError;
@@ -178,7 +184,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
                                         filter, bias, output, data));
 
-  switch (filter->type) {  // Already know in/out types are same.
+  // Checks in Prepare ensure input, output and filter types are all the same.
+  switch (input->type) {
     case kTfLiteFloat32:
       return EvalFloat(context, node, params, data, input, filter, bias,
                        output);
@@ -191,8 +198,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

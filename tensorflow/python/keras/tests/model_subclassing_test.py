@@ -99,8 +99,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=2)
     self.assertLen(model.layers, 2)
     self.assertLen(model.trainable_variables, 4)
@@ -122,8 +121,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     data = dataset_ops.DatasetV2.from_tensor_slices(({
         'a': np.ones((32, 10)),
@@ -340,7 +338,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     # Single-io
     model = testing_utils.SmallSubclassMLP(
         num_hidden=32, num_classes=4, use_bn=True, use_dp=True)
-    model._set_inputs(np.ones((3, 4)))  # need to build model first
+    model(np.ones((3, 4)))  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
     self.assertTrue('Trainable params: 356' in print_fn.contents)
@@ -348,8 +346,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     # Multi-io
     model = model_util.get_multi_io_subclass_model(
         num_classes=(5, 6), use_bn=True, use_dp=True)
-    model._set_inputs([np.ones((3, 4)),
-                       np.ones((3, 4))])  # need to build model first
+    model([np.ones((3, 4)), np.ones((3, 4))])  # need to build model first
     print_fn = ToString()
     model.summary(print_fn=print_fn)
     self.assertTrue('Trainable params: 587' in print_fn.contents)
@@ -431,7 +428,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -447,7 +444,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
     model = MyModelCustomBuild()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -470,7 +467,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.add_update(self.c.assign(inputs[1, :]), inputs)
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
 
@@ -484,13 +481,12 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
 
 class GraphSpecificModelSubclassingTests(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_single_io_workflow_with_tensors(self):
     num_classes = 2
     num_samples = 10
     input_dim = 50
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       model = testing_utils.SmallSubclassMLP(
           num_hidden=32, num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
@@ -501,13 +497,12 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit(x, y, epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
-  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_tensors(self):
     num_classes = (2, 3)
     num_samples = 10
     input_dim = 50
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       model = model_util.get_multi_io_subclass_model(
           num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
@@ -520,7 +515,6 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       model.fit([x1, x2], [y1, y2], epochs=2, steps_per_epoch=10, verbose=0)
       _ = model.evaluate(steps=10, verbose=0)
 
-  @test_util.run_deprecated_v1
   def test_updates_and_losses_for_nested_models_in_subclassed_model(self):
 
     # Case 1: deferred-build sequential nested in subclass.
@@ -535,7 +529,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       def call(self, x):
         return self.bn(self.fc(x))
 
-    with self.cached_session():
+    with ops.get_default_graph().as_default(), self.cached_session():
       model = TestModel1()
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')
@@ -556,7 +550,7 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       def call(self, x):
         return self.bn(self.fc(x))
 
-    with self.cached_session():
+    with ops.get_default_graph().as_default(), self.cached_session():
       model = TestModel2()
 
       x = array_ops.ones(shape=[100, 784], dtype='float32')
@@ -565,36 +559,36 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       self.assertEqual(len(model.get_losses_for(x)), 1)
 
     # Case 3: functional-API model nested in subclass.
-    inputs = keras.Input((10,))
-    outputs = keras.layers.BatchNormalization(axis=1)(inputs)
-    bn = keras.Model(inputs, outputs)
+    with ops.get_default_graph().as_default():
+      inputs = keras.Input((10,))
+      outputs = keras.layers.BatchNormalization(axis=1)(inputs)
+      bn = keras.Model(inputs, outputs)
 
-    class TestModel3(keras.Model):
+      class TestModel3(keras.Model):
 
-      def __init__(self):
-        super(TestModel3, self).__init__()
-        self.fc = keras.layers.Dense(10, input_shape=(784,),
-                                     activity_regularizer='l1')
-        self.bn = bn
+        def __init__(self):
+          super(TestModel3, self).__init__()
+          self.fc = keras.layers.Dense(10, input_shape=(784,),
+                                       activity_regularizer='l1')
+          self.bn = bn
 
-      def call(self, x):
-        return self.bn(self.fc(x))
+        def call(self, x):
+          return self.bn(self.fc(x))
 
-    with self.cached_session():
-      model = TestModel3()
+      with self.cached_session():
+        model = TestModel3()
 
-      x = array_ops.ones(shape=[100, 784], dtype='float32')
-      model(x)
-      self.assertEqual(len(model.get_updates_for(x)), 2)
-      self.assertEqual(len(model.get_losses_for(x)), 1)
+        x = array_ops.ones(shape=[100, 784], dtype='float32')
+        model(x)
+        self.assertEqual(len(model.get_updates_for(x)), 2)
+        self.assertEqual(len(model.get_losses_for(x)), 1)
 
-  @test_util.run_deprecated_v1
   def test_multi_io_workflow_with_numpy_arrays_and_custom_placeholders(self):
     num_classes = (2, 3)
     num_samples = 1000
     input_dim = 50
 
-    with self.cached_session():
+    with ops.Graph().as_default(), self.cached_session():
       model = model_util.get_multi_io_subclass_model(
           num_classes=num_classes, use_dp=True, use_bn=True)
       model.compile(loss='mse', optimizer='rmsprop')
@@ -681,7 +675,7 @@ class CustomCallSignatureTests(test.TestCase):
   @test_util.assert_no_garbage_created
   def test_training_no_default(self):
     if not context.executing_eagerly():
-      self.skipTest('b/138307499')
+      return
     model = model_util.TrainingNoDefaultModel()
     arg = array_ops.ones([1, 1])
     model(arg, True)

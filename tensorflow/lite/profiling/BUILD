@@ -23,6 +23,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "atrace_profiler",
+    srcs = ["atrace_profiler.cc"],
+    hdrs = ["atrace_profiler.h"],
+    copts = common_copts,
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/lite/core/api",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "platform_profiler",
+    srcs = ["platform_profiler.cc"],
+    hdrs = ["platform_profiler.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/lite/core/api",
+    ] + select({
+        "//tensorflow:android": [":atrace_profiler"],
+        "//conditions:default": [],
+    }),
+)
+
 cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
@@ -88,6 +113,27 @@ cc_test(
 )
 
 cc_library(
+    name = "profile_summary_formatter",
+    srcs = ["profile_summary_formatter.cc"],
+    hdrs = ["profile_summary_formatter.h"],
+    copts = common_copts,
+    deps = [
+        "//tensorflow/core/util:stats_calculator_portable",
+    ],
+)
+
+cc_test(
+    name = "profile_summary_formatter_test",
+    srcs = ["profile_summary_formatter_test.cc"],
+    copts = common_copts,
+    deps = [
+        ":profile_summary_formatter",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
@@ -95,6 +141,7 @@ cc_library(
     deps = [
         ":memory_info",
         ":profile_buffer",
+        ":profile_summary_formatter",
         "//tensorflow/core/util:stats_calculator_portable",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",

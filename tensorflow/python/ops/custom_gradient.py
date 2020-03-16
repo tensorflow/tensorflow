@@ -100,8 +100,8 @@ def custom_gradient(f=None):
     return tf.math.log(1 + tf.exp(x))
   ```
 
-  Due to numerical instability, the gradient this function evaluated at x=100 is
-  NaN.  For example:
+  Due to numerical instability, the gradient of this function evaluated at x=100
+  is NaN.  For example:
 
   ```python
   x = tf.constant(100.)

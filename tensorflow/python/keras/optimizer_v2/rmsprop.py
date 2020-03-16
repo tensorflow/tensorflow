@@ -65,6 +65,18 @@ class RMSprop(optimizer_v2.OptimizerV2):
       \mathrm{learning\_rate} * g_t / sqrt(rms_t - mg_t^2 + \epsilon)$$
   $$\theta_t = \theta_{t-1} - mom_t$$
 
+  Note that in the dense implementation of this algorithm, variables and their
+  corresponding accumulators (momentum, gradient moving average, square
+  gradient moving average) will be updated even if the gradient is zero
+  (i.e. accumulators will decay, momentum will be applied). The sparse
+  implementation (used when the gradient is an `IndexedSlices` object,
+  typically because of `tf.gather` or an embedding lookup in the forward pass)
+  will not update variable slices or their accumulators unless those slices
+  were used in the forward pass (nor is there an "eventual" correction to
+  account for these omitted updates). This leads to more efficient updates for
+  large embedding lookup tables (where most of the slices are not accessed in
+  a particular graph execution), but differs from the published algorithm.
+
   Usage:
 
   >>> opt = tf.keras.optimizers.RMSprop(learning_rate=0.1)
@@ -79,6 +91,8 @@ class RMSprop(optimizer_v2.OptimizerV2):
       http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
+  _HAS_ALL_REDUCE_SUM_GRAD = True
+
   def __init__(self,
                learning_rate=0.001,
                rho=0.9,
@@ -88,18 +102,6 @@ class RMSprop(optimizer_v2.OptimizerV2):
                name="RMSprop",
                **kwargs):
     """Construct a new RMSprop optimizer.
-
-    Note that in the dense implementation of this algorithm, variables and their
-    corresponding accumulators (momentum, gradient moving average, square
-    gradient moving average) will be updated even if the gradient is zero
-    (i.e. accumulators will decay, momentum will be applied). The sparse
-    implementation (used when the gradient is an `IndexedSlices` object,
-    typically because of `tf.gather` or an embedding lookup in the forward pass)
-    will not update variable slices or their accumulators unless those slices
-    were used in the forward pass (nor is there an "eventual" correction to
-    account for these omitted updates). This leads to more efficient updates for
-    large embedding lookup tables (where most of the slices are not accessed in
-    a particular graph execution), but differs from the published algorithm.
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -157,13 +159,13 @@ class RMSprop(optimizer_v2.OptimizerV2):
     super(RMSprop, self)._prepare_local(var_device, var_dtype, apply_state)
 
     rho = array_ops.identity(self._get_hyper("rho", var_dtype))
-    apply_state[(var_device, var_dtype)].update(dict(
-        neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        rho=rho,
-        momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
-        one_minus_rho=1. - rho
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            neg_lr_t=-apply_state[(var_device, var_dtype)]["lr_t"],
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            rho=rho,
+            momentum=array_ops.identity(self._get_hyper("momentum", var_dtype)),
+            one_minus_rho=1. - rho))
 
   def _resource_apply_dense(self, grad, var, apply_state=None):
     var_device, var_dtype = var.device, var.dtype.base_dtype

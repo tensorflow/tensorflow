@@ -110,14 +110,14 @@ def build_tensor_info_from_op(op):
   is for the Op of the call site for the defunned function:
   ```python
     @function.defun
-    def some_vairable_initialiation_fn(value_a, value_b):
+    def some_variable_initialization_fn(value_a, value_b):
       a = value_a
       b = value_b
 
     value_a = constant_op.constant(1, name="a")
     value_b = constant_op.constant(2, name="b")
     op_info = utils.build_op_info(
-        some_vairable_initialiation_fn(value_a, value_b))
+        some_variable_initialization_fn(value_a, value_b))
   ```
 
   Args:

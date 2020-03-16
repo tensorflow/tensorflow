@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 
+#include "tensorflow/core/lib/monitoring/collection_registry.h"
 #include "tensorflow/core/lib/monitoring/gauge.h"
-#include "tensorflow/core/platform/monitoring.h"
 
 namespace tensorflow {
 
@@ -99,7 +99,7 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
   // TODO(jeff,sanjay): Eviction when the map becomes too big.
   mutex mu_;
-  std::unordered_map<string, WorkerState> workers_ GUARDED_BY(mu_);
+  std::unordered_map<string, WorkerState> workers_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -123,7 +123,6 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 Status WorkerSession::UpdateWorkerCacheAndDevices(
@@ -170,7 +169,6 @@ WorkerSession::WorkerSession(
   // provided). For builds using "tensorflow/core/platform/default", this is
   // currently a no-op.
   worker_session_created->GetCell()->Set(true);
-  monitoring::StartExporter();
 }
 
 WorkerSession::~WorkerSession() {

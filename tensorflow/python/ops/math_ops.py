@@ -1290,7 +1290,7 @@ def _mul_dispatch(x, y, name=None):
 
 # NOTE(aselle): When integer division is added for sparse_dense_cwise,
 # div, truediv, and floordiv should be delegated appropriately for
-# Python sematnics, analogous to dense cwise tensor operations.
+# Python semantics, analogous to dense cwise tensor operations.
 _OverrideBinaryOperatorHelper(gen_sparse_ops.sparse_dense_cwise_div, "div",
                               sparse_tensor.SparseTensor)
 _OverrideBinaryOperatorHelper(_sparse_dense_truediv, "truediv",
@@ -1768,12 +1768,14 @@ def reduce_euclidean_norm(input_tensor, axis=None, keepdims=False, name=None):
   For example:
 
   ```python
-  x = tf.constant([[1, 2, 3], [1, 1, 1]])
-  tf.reduce_euclidean_norm(x)  # sqrt(17)
-  tf.reduce_euclidean_norm(x, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
-  tf.reduce_euclidean_norm(x, 1)  # [sqrt(14), sqrt(3)]
-  tf.reduce_euclidean_norm(x, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
-  tf.reduce_euclidean_norm(x, [0, 1])  # sqrt(17)
+  x = tf.constant([[1, 2, 3], [1, 1, 1]]) # x.dtype is tf.int32
+  tf.math.reduce_euclidean_norm(x)  # returns 4 as dtype is tf.int32
+  y = tf.constant([[1, 2, 3], [1, 1, 1]], dtype = tf.float32)
+  tf.math.reduce_euclidean_norm(y)  # returns 4.1231055 which is sqrt(17)
+  tf.math.reduce_euclidean_norm(y, 0)  # [sqrt(2), sqrt(5), sqrt(10)]
+  tf.math.reduce_euclidean_norm(y, 1)  # [sqrt(14), sqrt(3)]
+  tf.math.reduce_euclidean_norm(y, 1, keepdims=True)  # [[sqrt(14)], [sqrt(3)]]
+  tf.math.reduce_euclidean_norm(y, [0, 1])  # sqrt(17)
   ```
 
   Args:
@@ -4411,6 +4413,9 @@ def polyval(coeffs, x, name=None):
   Equivalent to numpy.polyval.
   @end_compatibility
   """
+  if not isinstance(coeffs, list):
+    raise ValueError("Argument coeffs must be list type "
+                     "found {}.".format(type(coeffs)))
 
   with ops.name_scope(name, "polyval", nest.flatten(coeffs) + [x]) as name:
     x = ops.convert_to_tensor(x, name="x")
@@ -4663,3 +4668,27 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
   """
   with ops.name_scope(name, "sobol", [dim, num_results, skip]):
     return gen_math_ops.sobol_sample(dim, num_results, skip, dtype=dtype)
+
+
+@tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@deprecation.deprecated_endpoints("rsqrt")
+@dispatch.add_dispatch_support
+def rsqrt(x, name=None):
+  """Computes reciprocal of square root of x element-wise.
+
+  For example:
+
+  >>> x = tf.constant([2., 0., -2.])
+  >>> tf.math.rsqrt(x)
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.707, inf, nan], dtype=float32)>
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`. `int32`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor`. Has the same type as `x`.
+  """
+  return gen_math_ops.rsqrt(x, name)

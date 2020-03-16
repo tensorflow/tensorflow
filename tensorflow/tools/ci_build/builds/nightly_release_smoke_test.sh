@@ -18,6 +18,8 @@
 set -e
 set -x
 
+MAX_WHL_SIZE=550M
+
 function run_smoke_test() {
   VENV_TMP_DIR=$(mktemp -d)
 
@@ -34,6 +36,9 @@ function run_smoke_test() {
 
   # Test TensorflowFlow imports
   test_tf_imports
+
+  # Test TensorFlow whl file size
+  test_tf_whl_size
 
   RESULT=$?
   # Deactivate from virtualenv.
@@ -55,7 +60,7 @@ function test_tf_imports() {
 
   # test basic keras is available
   RET_VAL=$(python -c "import tensorflow as tf; print(tf.keras.__name__)")
-  if ! [[ ${RET_VAL} == *'tensorflow_core.python.keras.api._v2.keras'* ]]; then
+  if ! [[ ${RET_VAL} == *'tensorflow.python.keras.api._v2.keras'* ]]; then
     echo "PIP test on virtualenv FAILED, will not upload ${WHL_NAME} package."
     return 1
   fi
@@ -71,6 +76,14 @@ function test_tf_imports() {
 
   popd
   return $RESULT
+}
+
+function test_tf_whl_size() {
+  if [[ $(find $WHL_NAME -type f -size +${MAX_WHL_SIZE}) ]]; then
+    echo "The whl size has exceeded 550MB. To keep within pypi's CDN
+distribution limit, we must not exceed that threshold."
+    return 1
+  fi
 }
 
 ###########################################################################

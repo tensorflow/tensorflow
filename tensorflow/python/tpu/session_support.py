@@ -358,7 +358,7 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           self._heartbeat_supported = False
       else:
         logging.warn(
-            'No workers support hearbeats. Failure handling will be disabled.')
+            'No workers support heartbeats. Failure handling will be disabled.')
 
   def saver(self):
     if self._saver:
@@ -418,7 +418,7 @@ class ResetComputation(object):
 
   def __call__(self, run_context, all_workers, lame_workers):
     del run_context, lame_workers
-    all_workers.shutdown()
+    all_workers.shutdown(exit_code=42)
 
     logging.info('Resetting coordinator.')
     raise CoordinatorResetError()
@@ -435,7 +435,7 @@ class ShutdownLameWorkers(object):
     pass
 
   def __call__(self, run_context, all_workers, lame_workers):
-    lame_workers.shutdown()
+    lame_workers.shutdown(exit_code=42)
 
 
 class ShutdownAllWorkers(object):
@@ -449,4 +449,4 @@ class ShutdownAllWorkers(object):
     pass
 
   def __call__(self, run_context, all_workers, lame_workers):
-    all_workers.shutdown()
+    all_workers.shutdown(exit_code=42)

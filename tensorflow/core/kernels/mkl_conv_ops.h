@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -55,6 +56,7 @@ namespace tensorflow {
 #define MKLDNN_SIZE_DTYPE int
 #endif  // ENABLE_MKLDNN_V1
 
+using ConvFwdDesc = mkldnn::convolution_forward::desc;
 using ConvFwdPd = mkldnn::convolution_forward::primitive_desc;
 
 class MklDnnConvUtil {
@@ -454,7 +456,7 @@ class MklDnnConvUtil {
     // Tensorflow output is in data_format order.
     //     Conv2D: NHWC or NCHW
     //     Conv3D: NDHWC or NCDHW
-    // MKL-DNN uses asymetric padding.
+    // MKL-DNN uses asymmetric padding.
     TensorShape out_shape =
         is_conv2d
             ? ShapeFromFormat(data_format_, out_batch, out_rows, out_cols,

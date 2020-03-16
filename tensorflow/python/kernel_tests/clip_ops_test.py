@@ -156,8 +156,8 @@ class ClipTest(test.TestCase):
       indices = constant_op.constant(indices)
       shape = constant_op.constant(shape)
       # IndexedSlices mode
-      indixed_slices = ops.IndexedSlices(values, indices, shape)
-      clipped = clip_ops.clip_by_value(indixed_slices, clip_value_min,
+      indexed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_value(indexed_slices, clip_value_min,
                                        clip_value_max)
       # clipped should be IndexedSlices
       self.assertIsInstance(clipped, ops.IndexedSlices)

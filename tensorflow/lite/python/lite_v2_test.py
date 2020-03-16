@@ -29,6 +29,8 @@ from six.moves import zip
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
+from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -48,6 +50,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
+from tensorflow.python.saved_model import saved_model
 from tensorflow.python.saved_model.save import save
 from tensorflow.python.training.tracking import tracking
 
@@ -284,6 +287,60 @@ class FromConcreteFunctionTest(TestModels):
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
+  def _getTrainingTimeQuantizedModel(self):
+    class QLinear(keras.layers.Layer):
+
+      def __init__(self, units=3, **kwargs):
+        super(QLinear, self).__init__(**kwargs)
+        self.units = units
+
+      def build(self, input_shape):
+        self.w = self.add_weight(shape=(input_shape[-1], self.units),
+                                 initializer='random_normal',
+                                 trainable=True)
+        self.min_var = self.add_weight(
+            'min',
+            initializer=keras.initializers.Constant(-6.0),
+            trainable=False)
+        self.max_var = self.add_weight(
+            'max',
+            initializer=keras.initializers.Constant(6.0),
+            trainable=False)
+
+      def call(self, inputs):
+        x = array_ops.fake_quant_with_min_max_vars(
+            inputs, self.min_var, self.max_var)
+
+        w_fq = array_ops.fake_quant_with_min_max_vars(
+            self.w, self.min_var, self.max_var)
+        x = math_ops.matmul(x, w_fq)
+
+        x = array_ops.fake_quant_with_min_max_vars(
+            x, self.min_var, self.max_var)
+
+        return x
+
+    return keras.Sequential(QLinear(3, input_shape=(2,)))
+
+  @test_util.run_v2_only
+  def testTrainingTimeQuantizeConversion(self):
+    model = self._getTrainingTimeQuantizedModel()
+
+    float_converter = lite.TFLiteConverterV2.from_keras_model(model)
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    quantized_converter = lite.TFLiteConverterV2.from_keras_model(model)
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertLess(len(quantized_tflite), len(float_tflite))
+
+    interpreter = Interpreter(model_content=quantized_tflite)
+    self.assertEqual(np.float32, interpreter.get_input_details()[0]['dtype'])
+
   @test_util.run_v2_only
   def testNewQuantizer(self):
     """Test the model quantized by the new converter."""
@@ -366,6 +423,56 @@ class FromConcreteFunctionTest(TestModels):
 
 
 class FromSavedModelTest(TestModels):
+
+  def _createV1SavedModel(self, shape):
+    """Create a simple SavedModel."""
+    saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
+    with ops.Graph().as_default():
+      with session.Session() as sess:
+        in_tensor_1 = array_ops.placeholder(
+            shape=shape, dtype=dtypes.float32, name='inputB')
+        in_tensor_2 = array_ops.placeholder(
+            shape=shape, dtype=dtypes.float32, name='inputA')
+        variable_node = variables.Variable(1.0, name='variable_node')
+        out_tensor = in_tensor_1 + in_tensor_2 * variable_node
+        inputs = {'x': in_tensor_1, 'y': in_tensor_2}
+        outputs = {'z': out_tensor}
+        sess.run(variables.variables_initializer([variable_node]))
+        saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+    return saved_model_dir
+
+  @test_util.run_v2_only
+  def testV1SimpleModel(self):
+    """Test a SavedModel."""
+    with context.graph_mode():
+      saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
+
+      # Convert model and ensure model is not None.
+      converter = lite.TFLiteConverterV2.from_saved_model(saved_model_dir)
+      tflite_model = converter.convert()
+      self.assertTrue(tflite_model)
+
+      interpreter = Interpreter(model_content=tflite_model)
+      interpreter.allocate_tensors()
+
+      input_details = interpreter.get_input_details()
+      self.assertLen(input_details, 2)
+      self.assertEqual('inputA', input_details[0]['name'])
+      self.assertEqual(np.float32, input_details[0]['dtype'])
+      self.assertTrue(([1, 16, 16, 3] == input_details[0]['shape']).all())
+      self.assertEqual((0., 0.), input_details[0]['quantization'])
+
+      self.assertEqual('inputB', input_details[1]['name'])
+      self.assertEqual(np.float32, input_details[1]['dtype'])
+      self.assertTrue(([1, 16, 16, 3] == input_details[1]['shape']).all())
+      self.assertEqual((0., 0.), input_details[1]['quantization'])
+
+      output_details = interpreter.get_output_details()
+      self.assertLen(output_details, 1)
+      self.assertEqual('add', output_details[0]['name'])
+      self.assertEqual(np.float32, output_details[0]['dtype'])
+      self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
+      self.assertEqual((0., 0.), output_details[0]['quantization'])
 
   @test_util.run_v2_only
   def testConstModel(self):

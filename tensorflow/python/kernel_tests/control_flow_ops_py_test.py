@@ -31,6 +31,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import tf2
 from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -148,6 +149,14 @@ def filter_test_messages(s):
   """Returns a list of messages printed by enqueue_print_op."""
   prefix = "ControlFlowOpsTest: "
   return [l[len(prefix):] for l in s.split("\n") if l.startswith(prefix)]
+
+
+def tf_function_in_tf2(f):
+  if tf2.enabled():
+    # In TF1 do not wrap with tf.function so that we can test the v1 control
+    # flow code path.
+    return def_function.function(f)
+  return f
 
 
 @test_util.with_control_flow_v2
@@ -802,7 +811,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+        "Tensor cond/true_branch:0 in true_fn is accessed from false_fn."):
       f()
 
   def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
@@ -829,7 +838,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+        "Tensor switch_case/indexed_case/br1_identity:0 in branch 1 is "
+        "accessed from branch 4."):
       f()
 
   def testCondListOutput(self):
@@ -3207,31 +3217,37 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(gradient_checker_v2._to_numpy(var2_grad_val),
                         [3., 0., 0.])
 
-  @test_util.run_deprecated_v1
   def testWhileGrad_Gather(self):
     # NOTE(skyewm): this test is interesting because the gather gradient
     # function returns an IndexedSlices.
-    x = constant_op.constant([1., 1., 1., 1., 1.])
-    y = control_flow_ops.while_loop(
-        lambda i, _: i < 3,
-        lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
-        [0, x[:1]])[1]
-    z = y * 3.0
-    grad = gradients_impl.gradients(z, x)[0]
+    @tf_function_in_tf2
+    def fn():
+      x = constant_op.constant([1., 1., 1., 1., 1.])
+      y = control_flow_ops.while_loop(
+          lambda i, _: i < 3,
+          lambda i, x: (i + 1, x + array_ops.gather(x, [0])),
+          [0, x[:1]])[1]
+      z = y * 3.0
+      grad = gradients_impl.gradients(z, x)[0]
+      return y, grad
+    y, grad = fn()
     self.assertEqual(self.evaluate(y), 8.)
     self.assertAllEqual(self.evaluate(grad), [24., 0., 0., 0., 0.])
 
-  @test_util.run_deprecated_v1
   def testWhileGrad_GatherNoFanOut(self):
     # NOTE(skyewm): this test is interesting because the gather gradient
     # function returns an IndexedSlices.
-    x = constant_op.constant([1., 1., 1., 1., 1.])
-    y = control_flow_ops.while_loop(
-        lambda i, _: i < 3,
-        lambda i, x: (i + 1, array_ops.gather(x, [0])),
-        [0, x[:1]])[1]
-    z = y * 3.0
-    grad = gradients_impl.gradients(z, x)[0]
+    @tf_function_in_tf2
+    def fn():
+      x = constant_op.constant([1., 1., 1., 1., 1.])
+      y = control_flow_ops.while_loop(
+          lambda i, _: i < 3,
+          lambda i, x: (i + 1, array_ops.gather(x, [0])),
+          [0, x[:1]])[1]
+      z = y * 3.0
+      grad = gradients_impl.gradients(z, x)[0]
+      return y, grad
+    y, grad = fn()
     self.assertEqual(self.evaluate(y), 1.)
     self.assertAllEqual(self.evaluate(grad), [3., 0., 0., 0., 0.])
 

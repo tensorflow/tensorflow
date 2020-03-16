@@ -353,11 +353,9 @@ class MemorySpaceAssignment {
   //   - CopyAllocation(memory_space=kAlternate, start_time=22, end_time=25)
   class Allocation {
    public:
-    Allocation(HloInstruction* instruction, HloPosition defining_position,
-               MemorySpace memory_space, Chunk chunk, int64 start_time,
-               int64 end_time)
-        : instruction_(instruction),
-          defining_position_(defining_position),
+    Allocation(HloPosition defining_position, MemorySpace memory_space,
+               Chunk chunk, int64 start_time, int64 end_time)
+        : defining_position_(defining_position),
           memory_space_(memory_space),
           chunk_(chunk),
           start_time_(start_time),
@@ -376,11 +374,6 @@ class MemorySpaceAssignment {
     // Process morphs the instructions affected to assign the memory spaces and
     // insert asynchronous copy instructions if necessary.
     virtual Status Process(MemorySpaceAssignment* memory_space_assignment);
-
-    // Returns the instruction that produces this allocation. It might be
-    // different than the instruction in defining_position (e.g., a
-    // GetTupleElement instruction does not define the buffer).
-    virtual HloInstruction* instruction() const { return instruction_; }
 
     // Returns the defining position for this allocation.
     virtual HloPosition defining_position() const { return defining_position_; }
@@ -403,7 +396,6 @@ class MemorySpaceAssignment {
                                                HloInstruction* tuple,
                                                ShapeIndex shape_index);
 
-    HloInstruction* instruction_;
     HloPosition defining_position_;
     std::vector<HloUse> uses_;
     MemorySpace memory_space_;
@@ -418,8 +410,7 @@ class MemorySpaceAssignment {
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
                    Chunk chunk, int64 start_time, int64 end_time,
                    int64 copy_done_schedule_before_time)
-        : Allocation(/*instruction=*/nullptr,
-                     /*defining_position=*/{nullptr, {}}, memory_space, chunk,
+        : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
@@ -428,16 +419,6 @@ class MemorySpaceAssignment {
     bool is_copy_allocation() const override { return true; }
 
     Status Process(MemorySpaceAssignment* memory_space_assignment) override;
-
-    HloInstruction* instruction() const override {
-      // Unless explicitly set, the instruction of a copy allocation in
-      // retrieved from the previous allocation.
-      if (instruction_ != nullptr) {
-        return instruction_;
-      } else {
-        return prev_allocation_.instruction();
-      }
-    }
 
     HloPosition defining_position() const override {
       // Unless explicitly set, the defining position of a copy allocation in
@@ -599,6 +580,9 @@ class AsynchronousCopyOrdering {
   // Adds an asynchronous copy.
   void AddCopy(const AsynchronousCopy& copy);
 
+  // Removes an asynchronous copy. CHECKs that it is removed.
+  void RemoveCopy(const AsynchronousCopy& copy);
+
   // Returns true if the addition of an asynchronous copy in the the given time
   // interval would violate the asynchronous copy ordering. E.g., consider the
   // following scenario:
@@ -641,6 +625,34 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
+  // An allocation request for a use segment. A use segment is the time segment
+  // between the definition and the first use, and the time segment between the
+  // uses of a buffer. For example, the time between the definition and Use1, is
+  // the first segment, and the time between Use1 and Use2 is the second segment
+  // and so on:
+  //
+  //        +------+----------+-------+
+  //       /        \          \       \
+  //      /          v          v       v
+  //    Def         Use1       Use2    Use3
+  //     <----------> <--------> <----->
+  //        Segment    Segment   Segment
+  //
+  // start_time and end_time are the start and end logical times of the segment.
+  // use_times is a sorted sequence of the times of all uses.
+  // latest_prefetch_time is the latest time we can schedule the CopyDone for a
+  // prefetch.
+  struct AllocationRequest {
+    int64 start_time;
+    int64 end_time;
+    const std::vector<int64>* use_times;
+    int64 latest_prefetch_time;
+    int64 size;
+    HloUse use;
+    const HloValue* buffer;
+    MemorySpaceAssignment::AllocationSequence* allocations;
+  };
+
   // Given an allocation sequence, returns the live allocation at time with a
   // preference towards allocations in alternate memory. Returns nullptr if no
   // allocation is alive at that time.
@@ -656,30 +668,39 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // memory.
   bool IsIntervalAllowedInAlternateMemory(const BufferInterval& interval) const;
 
-  // Finds an allocation for the given interval. Internally, it will attempt to
-  // find a suitable chunk candidate within the heap size and prefetch interval
-  // limits, and append the new allocation(s) to allocations. The new
-  // allocations can be in default or alternate memory spaces, or can be
-  // prefetches or evictions. Returns true if successful.
-  bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
-                      int64 latest_prefetch_time, HloPosition defining_position,
-                      HloUse use, const HloValue* buffer, int64 size,
-                      MemorySpaceAssignment::AllocationSequence* allocations);
+  // Finds an allocation for the given interval.
+  //
+  // It performs three things in the following order:
+  //  1- Allocate the allocation request entirely in the alternate memory, if
+  //     there is enough space and if the prefetch interval picker allows.
+  //  2- If (1) was unsuccessful, and the only allocation for
+  //     this buffer was in the alternate memory, we try to perform a prefetch.
+  //  3- If (1) was unsuccessful, prefetch the buffer into the alternate memory,
+  //     if there is enough space and if the prefetch interval picker allows.
+  //
+  // If an eviction (2) was requested and was unsuccessful, this method returns
+  // false. This means we could not find a suitable allocation, so all previous
+  // allocations for this buffer must be removed and allocated in the default
+  // memory. Otherwise, this method returns true.
+  bool FindAllocation(const AllocationRequest& request);
 
   // Try allocating in alternate memory without any copies. Returns true if
   // successful.
-  bool TryAllocatingInAlternateMemoryNoCopy(
-      int64 start_time, int64 end_time, int64 last_use_time,
-      HloPosition defining_position, HloUse use,
-      BufferInterval alternate_mem_interval,
-      HloInstruction* non_bitcast_operand,
-      MemorySpaceAssignment::AllocationSequence* allocations);
+  bool AllocateInAlternateMemoryNoCopy(const AllocationRequest& request);
 
-  // For a no-copy allocation, find the best possible chunk candidate, where it
-  // has the longest possible availability if no preferred offset is given, or
-  // at the preferred_offset if it is given.
-  absl::optional<ChunkCandidate> FindBestNoCopyChunkCandidate(
-      int64 end_time, int64 last_use_time,
+  // Try evicting to default memory space. Returns true if successful.
+  bool Evict(const AllocationRequest& request);
+
+  // Try prefetching to alternate memory space. Returns true if successful.
+  bool Prefetch(
+      const AllocationRequest& request,
+      const MemorySpaceAssignment::Allocation& prev_allocation_in_default_mem);
+
+  // Find the best possible chunk candidate, where it has the longest possible
+  // availability if no preferred offset is given, or at the preferred_offset if
+  // it is given.
+  absl::optional<ChunkCandidate> FindBestChunkCandidate(
+      int64 end_time, const std::vector<int64>& use_times,
       absl::optional<int64> preferred_offset,
       BufferInterval* alternate_mem_interval) const;
 
@@ -717,11 +738,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
                     int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
-  // These methods are used for delaying committing the chunk candidate until
-  // the entire live range of the buffer has been considered.
+  // This method is used for committing the chunk candidate but adding it to
+  // pending_chunks_ so that we can "uncommit" them in case we need to roll back
+  // this allocation sequence.
   void AddToPendingChunks(const BufferInterval& buffer_interval,
                           const ChunkCandidate& chunk_candidate);
-  void CommitPendingChunks();
+  // If we need to remove the allocations for this allocation sequence, this
+  // removes pending chunks and asynchronous copies in the respective pending
+  // buffers from the interval trees.
+  void UncommitPendingChunks();
 
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {

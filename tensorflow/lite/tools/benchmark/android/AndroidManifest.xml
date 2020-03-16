@@ -21,22 +21,21 @@
     <!-- Necessary for loading custom models from disk. -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 
-    <!-- Target SDK 21 (<23) to avoid the need for requesting storage
-         permissions. This APK will almost always be used from the command-line
-         anyway, and be expicitly installed by the developer. -->
     <uses-sdk
-        android:minSdkVersion="21"
-        android:targetSdkVersion="21" />
+        android:minSdkVersion="23"
+        android:targetSdkVersion="23" />
 
-    <application>
+    <application
+        android:debuggable="true">
         <!-- This Activity runs the TensorFlow Lite benchmark at creation, using
              a provided set of arguments, then immediately terminates. -->
-        <activity android:name="org.tensorflow.lite.benchmark.BenchmarkModelActivity"
-                  android:screenOrientation="portrait"
-                  android:label="TFLite Benchmark"
-                  android:theme="@android:style/Theme.NoDisplay"
-                  android:exported="true"
-                  android:noHistory="true" />
+        <activity
+            android:name=".BenchmarkModelActivity"
+            android:screenOrientation="portrait"
+            android:label="TFLite Benchmark"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="true"
+            android:noHistory="true" />
     </application>
 
 </manifest>

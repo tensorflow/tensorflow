@@ -42,8 +42,8 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   if (!IsSupportedType(input->type)) {
-    context->ReportError(context, "Input data type %s (%d) is not supported.",
-                         TfLiteTypeGetName(input->type), input->type);
+    TF_LITE_KERNEL_LOG(context, "Input data type %s (%d) is not supported.",
+                       TfLiteTypeGetName(input->type), input->type);
     return kTfLiteError;
   }
   return kTfLiteOk;

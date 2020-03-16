@@ -304,9 +304,14 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
+  Status s;
+
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      node_def, flr_->GetFunctionLibraryDefinition(), &props));
   TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
       device_type_, device_.get(), allocator_, flr_,
-      device_->resource_manager(), node_def, TF_GRAPH_DEF_VERSION, &kernel));
+      device_->resource_manager(), props, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -395,7 +400,12 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
-      nullptr /* cluster_flr */);
+      /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+      /*session_metadata=*/nullptr,
+      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+        *r = new IntraProcessRendezvous(device_mgr);
+        return Status::OK();
+      });
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -435,18 +445,14 @@ Status DatasetOpsTestBase::RunFunction(
   LocalExecutorParams params;
   params.function_library = flr_;
   params.device = device_.get();
-  params.create_kernel = [this, version](const NodeDef& ndef,
-                                         OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+  params.create_kernel = [this, version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, props, version,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
-  };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
   };
 
   Executor* cur_exec;
@@ -588,6 +594,11 @@ Status DatasetOpsTestBase::CheckIteratorGetNext(
     TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &next, &end_of_sequence));
     out_tensors.insert(out_tensors.end(), next.begin(), next.end());
   }
+  // Call GetNext one more time to make sure it still reports
+  // end_of_sequence = True.
+  std::vector<Tensor> unused;
+  TF_RETURN_IF_ERROR(iterator->GetNext(ctx, &unused, &end_of_sequence));
+  EXPECT_TRUE(end_of_sequence);
 
   TF_EXPECT_OK(ExpectEqual(out_tensors, expected_outputs,
                            /*compare_order=*/compare_order));
@@ -649,8 +660,8 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(
-      dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+      iterator_ctx_.get(), /*parent=*/nullptr, iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -699,8 +710,9 @@ Status DatasetOpsTestBase::Initialize(const DatasetParams& dataset_params) {
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-      iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                             dataset_params.iterator_prefix(), &iterator_));
   initialized_ = true;
   return Status::OK();
 }
@@ -786,7 +798,8 @@ Status DatasetOpsTestBase::MakeIterator(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
-      iterator_ctx.get(), dataset_params.iterator_prefix(), &iterator_base));
+      iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
+      &iterator_base));
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
   return Status::OK();

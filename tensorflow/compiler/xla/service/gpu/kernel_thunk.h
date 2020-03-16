@@ -84,7 +84,7 @@ class KernelThunk : public Thunk {
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
   std::unordered_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
-      kernel_cache_ GUARDED_BY(mutex_);
+      kernel_cache_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

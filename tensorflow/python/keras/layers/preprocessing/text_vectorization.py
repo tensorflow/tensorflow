@@ -69,7 +69,7 @@ _OOV_IDF_NAME = "oov_idf"
 _ACCUMULATOR_VOCAB_NAME = "vocab"
 # The total counts of each token in the vocabulary
 _ACCUMULATOR_COUNTS_NAME = "counts"
-# The number of doccumeents / examples that each token appears in.
+# The number of documents / examples that each token appears in.
 _ACCUMULATOR_DOCUMENT_COUNTS = "document_counts"
 # The total number of documents / examples in the dataset.
 _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"
@@ -633,6 +633,12 @@ class TextVectorization(CombinerPreprocessingLayer):
     return self._vectorize_layer(indexed_data)
 
 
+class _TextVectorizationAccumulator(
+    collections.namedtuple("_TextVectorizationAccumulator",
+                           ["count_dict", "per_doc_count_dict", "metadata"])):
+  pass
+
+
 # A note on this combiner: This contains functionality that will be extracted
 # into the Vectorization and IndexLookup combiner objects. At that point,
 # TextVectorization can become a PreprocessingStage instead of a Layer and
@@ -797,8 +803,6 @@ class _TextVectorizationCombiner(Combiner):
 
   def _create_accumulator(self):
     """Accumulate a sorted array of vocab tokens and corresponding counts."""
-    accumulator = collections.namedtuple(
-        "Accumulator", ["count_dict", "per_doc_count_dict", "metadata"])
 
     count_dict = collections.defaultdict(int)
     if self._compute_idf:
@@ -807,4 +811,5 @@ class _TextVectorizationCombiner(Combiner):
     else:
       per_doc_count_dict = None
     metadata = [0]
-    return accumulator(count_dict, per_doc_count_dict, metadata)
+    return _TextVectorizationAccumulator(count_dict, per_doc_count_dict,
+                                         metadata)

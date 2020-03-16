@@ -43,6 +43,7 @@ cc_library(
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",

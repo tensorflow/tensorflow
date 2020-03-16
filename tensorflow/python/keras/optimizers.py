@@ -71,6 +71,10 @@ class Optimizer(object):
     self.updates = []
     self.weights = []
 
+  # Set this to False, indicating `apply_gradients` does not take the
+  # `all_reduce_sum_gradients` argument.
+  _HAS_ALL_REDUCE_SUM_GRAD = False
+
   def get_updates(self, loss, params):
     raise NotImplementedError
 
@@ -720,6 +724,11 @@ class TFOptimizer(Optimizer, trackable.Trackable):
     else:
       self.iterations = iterations
     self._track_trackable(self.iterations, name='global_step')
+
+  def _clip_gradients(self, grads):
+    """Clip gradients according to the clipnorm and clipvalue attributes."""
+    # TFOptimizer wrapper has no gradient clipping options.
+    return grads
 
   def apply_gradients(self, grads):
     self.optimizer.apply_gradients(grads, global_step=self.iterations)

@@ -48,7 +48,6 @@ py_binary(
         ":recognize_commands_py",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -172,8 +171,6 @@ py_library(
         ":input_data",
         ":models",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -216,8 +213,6 @@ py_library(
         ":input_data",
         ":models",
         "//tensorflow:tensorflow_py",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 
@@ -261,7 +256,6 @@ py_library(
         ":models",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
 )
 

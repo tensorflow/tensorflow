@@ -155,14 +155,10 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
 
 class DummyDevice : public DeviceBase {
  public:
-  DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool RequiresRecordingAccessedTensors() const override { return save_; }
+  explicit DummyDevice(Env* env) : DeviceBase(env) {}
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
-
- private:
-  bool save_;
 };
 
 TEST(TestKernel, TestInputAndOutputCount) {
@@ -223,7 +219,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
   {
     OpKernelContext::Params p;
-    DummyDevice dummy_device(nullptr, false);
+    DummyDevice dummy_device(nullptr);
     p.device = &dummy_device;
     p.step_id = 43;
 

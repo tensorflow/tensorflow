@@ -146,6 +146,13 @@ class FileSystem {
   virtual tensorflow::Status GetMatchingPaths(const string& pattern,
                                               std::vector<string>* results) = 0;
 
+  /// \brief Checks if the given filename matches the pattern.
+  ///
+  /// This function provides the equivalent of posix fnmatch, however it is
+  /// implemented without fnmatch to ensure that this can be used for cloud
+  /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
+  virtual bool Match(const string& filename, const string& pattern);
+
   /// \brief Obtains statistics for the given path.
   virtual tensorflow::Status Stat(const string& fname,
                                   FileStatistics* stat) = 0;
@@ -229,6 +236,18 @@ class FileSystem {
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tensorflow::Status IsDirectory(const string& fname);
+
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  virtual Status HasAtomicMove(const string& path, bool* has_atomic_move);
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();

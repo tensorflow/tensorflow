@@ -26,7 +26,7 @@ limitations under the License.
 #include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -150,7 +150,8 @@ struct QuantizationPattern : public RewritePattern {
 
   explicit QuantizationPattern(MLIRContext* context, bool enable_verify,
                                float error_tolerance, bool single_layer_verify)
-      : RewritePattern(DQ::getOperationName(), 1, context),
+      // Set the score to a large number so it is always preferred.
+      : RewritePattern(DQ::getOperationName(), 300, context),
         enable_verify(enable_verify),
         error_tolerance(error_tolerance),
         single_layer_verify(single_layer_verify) {}
@@ -190,7 +191,7 @@ struct QuantizationPattern : public RewritePattern {
         auto ele_type = operand.getType().cast<TensorType>().getElementType();
         if (auto op_inst = dyn_cast_or_null<DQ>(operand.getDefiningOp())) {
           inputs.push_back(op_inst.input());
-        } else if (ele_type.isa<IntegerType>()) {
+        } else if (ele_type.isSignlessInteger()) {
           // If the operand is an integer tensor, then it doesn't require the
           // DQ op in the pattern.
           inputs.push_back(operand);
@@ -224,7 +225,7 @@ struct QuantizationPattern : public RewritePattern {
           auto user = llvm::cast<Q>(*result.user_begin());
           outputs_replaced.insert({user.output(), enumerated_result.index()});
           output_types.push_back(user.getType());
-        } else if (result_ele_type.template isa<IntegerType>()) {
+        } else if (result_ele_type.isSignlessInteger()) {
           // If the result is an integer tensor, then it doesn't require the
           // D op in the pattern.
           outputs_replaced.insert({result, enumerated_result.index()});

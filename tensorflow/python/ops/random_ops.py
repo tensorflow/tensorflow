@@ -55,7 +55,7 @@ def random_normal(shape,
   >>> tf.random.normal([4], 0, 1, tf.float32)
   <tf.Tensor: shape=(4,), dtype=float32, numpy=..., dtype=float32)>
 
-  Example that outputs a reproduceable result:
+  Example that outputs a reproducible result:
 
   >>> tf.random.set_seed(5);
   >>> tf.random.normal([2,2], 0, 1, tf.float32, seed=1)
@@ -64,7 +64,7 @@ def random_normal(shape,
         [-0.169515   ,  1.0824056 ]], dtype=float32)>
 
   In this case, we are setting both the global and operation-level seed to
-  ensure this result is reproduceable.  See `tf.random.set_seed` for more
+  ensure this result is reproducible.  See `tf.random.set_seed` for more
   information.
 
   Args:
@@ -253,10 +253,12 @@ def random_uniform(shape,
   Args:
     shape: A 1-D integer Tensor or Python array. The shape of the output tensor.
     minval: A Tensor or Python value of type `dtype`, broadcastable with
-      `maxval`. The lower bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The lower bound on the range of random values to generate
       (inclusive).  Defaults to 0.
     maxval: A Tensor or Python value of type `dtype`, broadcastable with
-      `minval`. The upper bound on the range of random values to generate
+      `shape` (for integer types, broadcasting is not supported, so it needs to
+      be a scalar). The upper bound on the range of random values to generate
       (exclusive). Defaults to 1 if `dtype` is floating point.
     dtype: The type of the output: `float16`, `float32`, `float64`, `int32`,
       or `int64`.

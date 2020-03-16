@@ -19,6 +19,7 @@ py_library(
         ":image",
         ":sequence",
         ":text",
+        ":timeseries",
     ],
 )
 
@@ -26,10 +27,12 @@ py_library(
     name = "image",
     srcs = [
         "image.py",
+        "image_pipeline.py",
     ],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras/layers/preprocessing:image_preprocessing",
         "//tensorflow/python/keras/utils:data_utils",
     ],
 )
@@ -42,6 +45,19 @@ py_library(
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/keras/utils:data_utils",
+    ],
+)
+
+py_library(
+    name = "timeseries",
+    srcs = [
+        "timeseries.py",
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -66,6 +82,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "image_pipeline_test",
+    size = "small",
+    srcs = ["image_pipeline_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":image",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "sequence_test",
     size = "small",
     srcs = ["sequence_test.py"],
@@ -85,6 +115,19 @@ tf_py_test(
     deps = [
         ":text",
         "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "timeseries_test",
+    size = "small",
+    srcs = ["timeseries_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":timeseries",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//third_party/py/numpy",
     ],
 )

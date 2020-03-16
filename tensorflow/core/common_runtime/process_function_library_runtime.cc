@@ -83,7 +83,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent,
     const CustomKernelCreator* custom_kernel_creator,
-    const SessionMetadata* session_metadata)
+    const SessionMetadata* session_metadata,
+    Rendezvous::Factory rendezvous_factory)
     : parent_(parent),
       env_(env),
       config_(config ? absl::make_optional(*config) : absl::nullopt),
@@ -93,7 +94,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
       flr_map_(new std::unordered_map<Device*,
                                       std::unique_ptr<FunctionLibraryRuntime>>),
       next_handle_(0),
-      session_metadata_(session_metadata) {
+      session_metadata_(session_metadata),
+      rendezvous_factory_(std::move(rendezvous_factory)) {
   if (device_mgr == nullptr) {
     (*flr_map_)[nullptr] = NewFunctionLibraryRuntime(
         nullptr, env, config_ ? &(*config_) : nullptr, nullptr,
@@ -702,6 +704,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = &device_set_;
+  optimization_options.is_function_graph = true;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -1244,16 +1247,21 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done) const {
-  return [this, items, done](const Status& status) {
-    auto* local_status = new Status(status);
-    CleanUp(items, [local_status, done](const Status& cleanup_status) {
-      local_status->Update(cleanup_status);
-      done(*local_status);
-      delete local_status;
-    });
-    delete items;
-  };
+    FunctionLibraryRuntime::DoneCallback done,
+    const Rendezvous* rendezvous) const {
+  return
+      [this, items, done = std::move(done), rendezvous](const Status& status) {
+        if (rendezvous) {
+          rendezvous->Unref();
+        }
+        auto* local_status = new Status(status);
+        CleanUp(items, [local_status, done](const Status& cleanup_status) {
+          local_status->Update(cleanup_status);
+          done(*local_status);
+          delete local_status;
+        });
+        delete items;
+      };
 }
 
 void ProcessFunctionLibraryRuntime::Run(
@@ -1261,8 +1269,28 @@ void ProcessFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::Handle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
+  FunctionLibraryRuntime::Options new_opts = opts;
+  Rendezvous* rendezvous = nullptr;
+  if (!opts.rendezvous) {
+    if (rendezvous_factory_) {
+      Status s = rendezvous_factory_(opts.step_id, device_mgr_, &rendezvous);
+      if (!s.ok()) {
+        done(s);
+        return;
+      }
+      new_opts.rendezvous = rendezvous;
+    } else {
+      done(
+          errors::FailedPrecondition("The caller does not provide a rendezvous "
+                                     "and ProcessFunctionLibraryRuntime was "
+                                     "created without a rendezvous factory."));
+      return;
+    }
+    new_opts.create_rendezvous = false;
+  }
+
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, done);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), rendezvous);
   bool multi_device;
   {
     tf_shared_lock l(mu_);
@@ -1274,11 +1302,11 @@ void ProcessFunctionLibraryRuntime::Run(
       comp_args->local_args = GetArgsForIndices(comp_data.arg_indices_, args);
       return Status::OK();
     };
-    return RunMultiDevice(opts, handle, rets, cleanup_items, std::move(done),
-                          std::move(get_component_args));
+    return RunMultiDevice(new_opts, handle, rets, cleanup_items,
+                          std::move(done), std::move(get_component_args));
   }
   InternalArgsView internal_args(args);
-  RunInternal(opts, handle, internal_args, rets, cleanup_items,
+  RunInternal(new_opts, handle, internal_args, rets, cleanup_items,
               std::move(done));
 }
 
@@ -1471,7 +1499,7 @@ Status ProcessFunctionLibraryRuntime::Clone(
   *out_pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_, env, config_ ? &(*config_) : nullptr, graph_def_version,
       out_lib_def->get(), optimizer_options, default_thread_pool_, parent_,
-      custom_kernel_creator, session_metadata_);
+      custom_kernel_creator, session_metadata_, rendezvous_factory_);
   return Status::OK();
 }
 

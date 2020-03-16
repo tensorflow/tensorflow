@@ -42,7 +42,7 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-    shard_count = 32,
+    shard_count = 36,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",
@@ -235,14 +235,29 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "applications_load_weight_test_nasnet",
+    name = "applications_load_weight_test_nasnet_mobile",
     srcs = ["applications_load_weight_test.py"],
-    args = ["--module=nasnet"],
+    args = ["--module=nasnet_mobile"],
     main = "applications_load_weight_test.py",
     tags = [
         "no_oss",
         "no_pip",
-        "notsan",  # b/149100891
+    ],
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "applications_load_weight_test_nasnet_large",
+    srcs = ["applications_load_weight_test.py"],
+    args = ["--module=nasnet_large"],
+    main = "applications_load_weight_test.py",
+    tags = [
+        "no_oss",
+        "no_pip",
     ],
     deps = [
         ":applications",

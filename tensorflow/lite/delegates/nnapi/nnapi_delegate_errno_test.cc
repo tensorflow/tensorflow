@@ -43,8 +43,6 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
     interpreter_->SetBufferHandle(index, handle, stateful_delegate_.get());
   }
 
-  TfLiteStatus InvokeWithoutAssert() { return interpreter_->Invoke(); }
-
  private:
   std::unique_ptr<StatefulNnApiDelegate> stateful_delegate_;
 };
@@ -107,7 +105,7 @@ TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInit) {
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
 
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteError);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteError);
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), 8);
 }
 
@@ -123,7 +121,7 @@ TEST_F(NnApiErrnoTest, HasTheStatusOfTheNnApiCallFailedCallingInvoke) {
 
   // Failure is detected and the delegate is disabled.
   // Execution runs without it and succeeds
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The delegate should store the value of the failure
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
 }
@@ -140,7 +138,7 @@ TEST_F(NnApiErrnoTest, ErrnoIsResetWhenRestoringDelegateForModel) {
 
   // Failure is detected and the delegate is disabled.
   // Execution runs without it and succeeds
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The delegate should store the value of the failure
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
 
@@ -149,7 +147,7 @@ TEST_F(NnApiErrnoTest, ErrnoIsResetWhenRestoringDelegateForModel) {
   // Need to restore the delegate since it was disabled because of the
   // previous failure.
   m.ApplyDelegate();
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   // The error is still the last one recorded
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), 0);
@@ -167,7 +165,7 @@ TEST_F(NnApiErrnoTest, ErrnoIsUpdatedInCaseOfAnotherFailure) {
 
   // Failure is detected and the delegate is disabled.
   // Execution runs without it and succeeds
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
   // The delegate should store the value of the failure
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -4);
 
@@ -176,7 +174,7 @@ TEST_F(NnApiErrnoTest, ErrnoIsUpdatedInCaseOfAnotherFailure) {
   // Need to restore the delegate since it was disabled because of the
   // previous failure.
   m.ApplyDelegate();
-  EXPECT_EQ(m.InvokeWithoutAssert(), kTfLiteOk);
+  EXPECT_EQ(m.InvokeUnchecked(), kTfLiteOk);
 
   // The error is still the last one recorded
   EXPECT_EQ(m.GetDelegate()->GetNnApiErrno(), -5);

@@ -1,6 +1,6 @@
-# Tensorflow Lite Hexagon delegate
+# TensorFlow Lite Hexagon delegate
 
-This document explains how to use the Tensorflow Lite Hexagon Delegate in your
+This document explains how to use the TensorFlow Lite Hexagon Delegate in your
 application using the Java and/or C API. The delegate leverages the Qualcomm
 Hexagon library to execute quantized kernels on the DSP. Note that the delegate
 is intended to *complement* NNAPI functionality, particularly for devices where
@@ -69,12 +69,21 @@ dependencies {
 
 #### Step 2. Add Hexagon libraries to your Android app
 
-*   Download and run
-    [hexagon_nn_skel.run](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run).
-    It should provide 3 different shared libraries “libhexagon_nn_skel.so”,
-    “libhexagon_nn_skel_v65.so”, “libhexagon_nn_skel_v66.so”
+*   Download and run hexagon_nn_skel.run. It should provide 3 different shared
+    libraries “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,
+    “libhexagon_nn_skel_v66.so”
+    *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
+    *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
 
 Note: You will need to accept the license agreement.
+
+Note: As of 03/03/2020 you should use v1.14.
+
+Note: You must use the hexagon_nn libraries with the compatible version of
+interface library. Interface library is part of the AAR and fetched by bazel
+through the
+[config](https://github.com/tensorflow/tensorflow/blob/master/third_party/hexagon/workspace.bzl)
+The version in the bazel config is the version you should use.
 
 *   Include all 3 in your app with other shared libraries. See
     [How to add shared library to your app](#how-to-add-shared-library-to-your-app).
@@ -165,12 +174,21 @@ dependencies {
 
 #### Step 2. Add Hexagon libraries to your Android app
 
-*   Download and run
-    [hexagon_nn_skel.run](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run).
-    It should provide 3 different shared libraries “libhexagon_nn_skel.so”,
-    “libhexagon_nn_skel_v65.so”, “libhexagon_nn_skel_v66.so”
+*   Download and run hexagon_nn_skel.run. It should provide 3 different shared
+    libraries “libhexagon_nn_skel.so”, “libhexagon_nn_skel_v65.so”,
+    “libhexagon_nn_skel_v66.so”
+    *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
+    *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
 
 Note: You will need to accept the license agreement.
+
+Note: As of 03/03/2020 you should use v1.14.
+
+Note: You must use the hexagon_nn libraries with the compatible version of
+interface library. Interface library is part of the AAR and fetched by bazel
+through the
+[config](https://github.com/tensorflow/tensorflow/blob/master/third_party/hexagon/workspace.bzl).
+The version in the bazel config is the version you should use.
 
 *   Include all 3 in your app with other shared libraries. See
     [How to add shared library to your app](#how-to-add-shared-library-to-your-app).

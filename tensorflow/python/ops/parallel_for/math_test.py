@@ -651,6 +651,40 @@ class LinalgTest(PForTestCase):
 
       self._test_loop_fn(loop_fn, 3)
 
+  def test_matrix_inverse(self):
+    x = (random_ops.random_uniform([3, 4, 2, 2]) +
+         10 * linalg_ops.eye(2))  # Ensure well-conditioned.
+
+    for adjoint in (True, False):
+
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return linalg_ops.matrix_inverse(array_ops.gather(x, i),
+                                         adjoint=adjoint)
+
+      # pylint: enable=cell-var-from-loop
+      self._test_loop_fn(loop_fn, 2)
+
+  def test_matrix_solve(self):
+    for adjoint in (True, False):
+      for stack_a in (True, False):
+        for stack_b in (True, False):
+          shape_a = (2, 4, 3, 3) if stack_a else (4, 3, 3)
+          shape_b = (2, 4, 3, 5) if stack_b else (4, 3, 5)
+          x = (random_ops.random_uniform(shape_a) +
+               10 * linalg_ops.eye(3))  # Ensure well-conditioned.
+          y = random_ops.random_uniform(shape_b)
+
+          # pylint: disable=cell-var-from-loop
+          def loop_fn(i):
+            a = array_ops.gather(x, i) if stack_a else x
+            b = array_ops.gather(y, i) if stack_b else y
+            return linalg_ops.matrix_solve(a, b, adjoint=adjoint)
+
+          # pylint: enable=cell-var-from-loop
+
+          self._test_loop_fn(loop_fn, 2)
+
   def test_matrix_triangular_solve(self):
     for lower in (True, False):
       for adjoint in (True, False):

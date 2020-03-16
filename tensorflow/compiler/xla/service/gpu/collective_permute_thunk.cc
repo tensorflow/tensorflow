@@ -127,12 +127,12 @@ class Rendezvous {
       std::make_shared<BlockingCounter>(key_.num_participants)};
 
   tensorflow::mutex mu_;
-  bool initialized_ GUARDED_BY(mu_) = false;
+  bool initialized_ TF_GUARDED_BY(mu_) = false;
 
   // We use an std::map so that we can iterate over it below in a guaranteed
   // order.  The order shouldn't actually matter, but why be nondeterministic if
   // we don't have to be?
-  std::map<int64, ParticipantData> participants_ GUARDED_BY(mu_);
+  std::map<int64, ParticipantData> participants_ TF_GUARDED_BY(mu_);
 };
 
 void EnqueueCopy(se::DeviceMemoryBase src, se::Stream* src_stream,
@@ -211,10 +211,7 @@ StatusOr<std::shared_ptr<BlockingCounter>> Rendezvous::SubmitParticipant(
 // Rendezvous objects are one-time use, so they're removed from this map once
 // we're through with them.
 RefcountingHashMap<RendezvousKey, Rendezvous>& GlobalRendezvousMap() {
-  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>(
-      [](const RendezvousKey& key) {
-        return absl::make_unique<Rendezvous>(key);
-      });
+  static auto& m = *new RefcountingHashMap<RendezvousKey, Rendezvous>();
   return m;
 }
 
@@ -233,7 +230,11 @@ Status CollectivePermuteThunk::ExecuteOnStream(const ExecuteParams& params) {
   // Rendezvous with the threads for all other devices that are participating in
   // this CollectivePermute.
   RendezvousKey key{params.run_id, params.device_assn->replica_count()};
-  std::shared_ptr<Rendezvous> rendezvous = GlobalRendezvousMap()[key];
+  auto rendezvous_factory = [](const RendezvousKey& key) {
+    return absl::make_unique<Rendezvous>(key);
+  };
+  std::shared_ptr<Rendezvous> rendezvous =
+      GlobalRendezvousMap().GetOrCreateIfAbsent(key, rendezvous_factory);
 
   TF_ASSIGN_OR_RETURN(int64 replica_id,
                       params.device_assn->ReplicaIdForDeviceOrdinal(

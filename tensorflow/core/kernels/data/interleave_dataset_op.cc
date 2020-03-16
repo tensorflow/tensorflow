@@ -62,8 +62,10 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes),
         traceme_metadata_(
-            {{"block_length", strings::Printf("%lld", block_length)},
-             {"cycle_length", strings::Printf("%lld", cycle_length)}}) {
+            {{"block_length",
+              strings::Printf("%lld", static_cast<long long>(block_length))},
+             {"cycle_length",
+              strings::Printf("%lld", static_cast<long long>(cycle_length))}}) {
     input_->Ref();
   }
 
@@ -131,12 +133,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
           ctx, &instantiated_captured_func_);
     }
 
-    void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void AdvanceToNextInCycle() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       block_index_ = 0;
       cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
     }
 
-    void AdvancePosition() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    void AdvancePosition() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       ++block_index_;
       if (block_index_ == dataset()->block_length_) {
         AdvanceToNextInCycle();
@@ -194,6 +196,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
@@ -232,7 +235,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
    private:
     Status SaveCurrentElements(IteratorStateWriter* writer)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx]) {
           TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
@@ -251,7 +254,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreCurrentElements(IteratorContext* ctx,
                                   IteratorStateReader* reader)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (reader->Contains(
                 full_name(strings::StrCat(kArgsSize, "[", idx, "]")))) {
@@ -277,14 +280,14 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     std::vector<std::unique_ptr<IteratorBase>> current_elements_
-        GUARDED_BY(mu_);
-    std::vector<std::vector<Tensor>> args_list_ GUARDED_BY(mu_);
-    size_t cycle_index_ GUARDED_BY(mu_) = 0;
-    int64 block_index_ GUARDED_BY(mu_) = 0;
-    bool end_of_input_ GUARDED_BY(mu_) = false;
-    size_t num_open_ GUARDED_BY(mu_) = 0;
+        TF_GUARDED_BY(mu_);
+    std::vector<std::vector<Tensor>> args_list_ TF_GUARDED_BY(mu_);
+    size_t cycle_index_ TF_GUARDED_BY(mu_) = 0;
+    int64 block_index_ TF_GUARDED_BY(mu_) = 0;
+    bool end_of_input_ TF_GUARDED_BY(mu_) = false;
+    size_t num_open_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
   };
 
@@ -299,10 +302,8 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
 
 InterleaveDatasetOp::InterleaveDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
+                                               &func_metadata_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputShapes, &output_shapes_));
 }

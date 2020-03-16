@@ -235,6 +235,9 @@ AdamSlotVariableNames = collections.namedtuple(
 AdagradSlotVariableName = collections.namedtuple(
     'AdagradSlotVariableName', ['accumulator'])
 
+ProximalAdagradSlotVariableName = collections.namedtuple(
+    'ProximalAdagradSlotVariableName', ['accumulator'])
+
 FtrlSlotVariableName = collections.namedtuple(
     'FtrlSlotVariableName', ['accumulator', 'linear'])
 
@@ -243,6 +246,9 @@ AdamSlotVariables = collections.namedtuple(
 
 AdagradSlotVariable = collections.namedtuple(
     'AdagradSlotVariable', ['accumulator'])
+
+ProximalAdagradSlotVariable = collections.namedtuple(
+    'ProximalAdagradSlotVariable', ['accumulator'])
 
 FtrlSlotVariable = collections.namedtuple(
     'FtrlSlotVariable', ['accumulator', 'linear'])
@@ -320,6 +326,63 @@ class AdagradParameters(_OptimizationParameters):
     if initial_accumulator <= 0:
       raise ValueError('Adagrad initial_accumulator must be positive')
     self.initial_accumulator = initial_accumulator
+
+
+class ProximalAdagradParameters(_OptimizationParameters):
+  """Optimization parameters for ProximalAdagrad with TPU embeddings.
+
+  Pass this to `tf.estimator.tpu.experimental.EmbeddingConfigSpec` via the
+  `optimization_parameters` argument to set the optimizer and its parameters.
+  See the documentation for `tf.estimator.tpu.experimental.EmbeddingConfigSpec`
+  for more details.
+  """
+
+  def __init__(self,
+               learning_rate,
+               initial_accumulator=0.1,
+               l1_regularization_strength=0.0,
+               l2_regularization_strength=0.0,
+               use_gradient_accumulation=True,
+               clip_weight_min=None,
+               clip_weight_max=None,
+               weight_decay_factor=None,
+               multiply_weight_decay_factor_by_learning_rate=None):
+    """Optimization parameters for Adagrad.
+
+    Args:
+      learning_rate: used for updating embedding table.
+      initial_accumulator: initial accumulator for Adagrad.
+      l1_regularization_strength: A float value, must be greater than or equal
+        to zero.
+      l2_regularization_strength: A float value, must be greater than or equal
+        to zero.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details. for details.
+      clip_weight_min: the minimum value to clip by; None means -infinity.
+      clip_weight_max: the maximum value to clip by; None means +infinity.
+      weight_decay_factor: amount of weight decay to apply; None means that the
+        weights are not decayed.
+      multiply_weight_decay_factor_by_learning_rate: if true,
+        `weight_decay_factor` is multiplied by the current learning rate.
+    """
+    super(ProximalAdagradParameters,
+          self).__init__(learning_rate, use_gradient_accumulation,
+                         clip_weight_min, clip_weight_max, weight_decay_factor,
+                         multiply_weight_decay_factor_by_learning_rate)
+    if initial_accumulator <= 0:
+      raise ValueError('Adagrad initial_accumulator must be positive')
+    if l1_regularization_strength < 0.:
+      raise ValueError('l1_regularization_strength must be greater than or '
+                       'equal to 0. got {}.'.format(l1_regularization_strength))
+
+    if l2_regularization_strength < 0.:
+      raise ValueError('l2_regularization_strength must be greater than or '
+                       'equal to 0. got {}.'.format(l2_regularization_strength))
+
+    self.initial_accumulator = initial_accumulator
+    self.l1_regularization_strength = l1_regularization_strength
+    self.l2_regularization_strength = l2_regularization_strength
 
 
 @tf_export(v1=['tpu.experimental.AdamParameters'])
@@ -1080,13 +1143,13 @@ class TPUEmbedding(object):
             enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of sample_indices does not agree with '
-              'that of emebdding_indices for feature {}.'.format(feature))
+              'that of embedding_indices for feature {}.'.format(feature))
         if (enqueue_data.aggregation_weights is not None and
             enqueue_data.aggregation_weights.device !=
             enqueue_data.embedding_indices.device):
           raise ValueError(
               'Device of aggregation_weights does not agree with '
-              'that of emebdding_indices for feature {}.'.format(feature))
+              'that of embedding_indices for feature {}.'.format(feature))
         # Check all features are on the same device.
         if device is None:
           device = enqueue_data.embedding_indices.device
@@ -1139,6 +1202,8 @@ class TPUEmbedding(object):
         'table_ids': [],
         'max_sequence_lengths': [],
     }
+    int_zeros = array_ops.zeros((0,), dtype=dtypes.int64)
+    float_zeros = array_ops.zeros((0,), dtype=dtypes.float32)
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:
@@ -1146,13 +1211,11 @@ class TPUEmbedding(object):
 
         kwargs['sample_indices'].append(
             enqueue_data.sample_indices
-            if enqueue_data.sample_indices is not None else array_ops.zeros(
-                (0,), dtype=dtypes.int64))
+            if enqueue_data.sample_indices is not None else int_zeros)
 
         kwargs['aggregation_weights'].append(
             enqueue_data.aggregation_weights if
-            enqueue_data.aggregation_weights is not None else array_ops.zeros(
-                (0,), dtype=dtypes.float32))
+            enqueue_data.aggregation_weights is not None else float_zeros)
 
         kwargs['embedding_indices'].append(enqueue_data.embedding_indices)
 
@@ -1279,7 +1342,7 @@ def _validate_batch_size(batch_size, num_cores):
 def _validate_optimization_parameters(optimization_parameters):
   if not isinstance(optimization_parameters, _OptimizationParameters):
     raise ValueError('`optimization_parameters` must inherit from '
-                     '`_OptimizationPramaters`. '
+                     '`_OptimizationParameters`. '
                      '`type(optimization_parameters)`={}'.format(
                          type(optimization_parameters)))
 
@@ -1303,10 +1366,6 @@ class _OptimizerHandler(object):
 
 class _AdagradHandler(_OptimizerHandler):
   """Handles Adagrad specific logic."""
-
-  def __init__(self, optimization_parameters):
-    super(_AdagradHandler, self).__init__(optimization_parameters)
-    self._table_to_accumulator_variables_dict = {}
 
   def set_optimization_parameters(self, table_descriptor):
     table_descriptor.optimization_parameters.adagrad.SetInParent()
@@ -1377,13 +1436,85 @@ class _AdagradHandler(_OptimizerHandler):
     return slot_variables, load_ops_fn, retrieve_ops_fn
 
 
+class _ProximalAdagradHandler(_OptimizerHandler):
+  """Handles ProximalAdagrad specific logic."""
+
+  def set_optimization_parameters(self, table_descriptor):
+    table_descriptor.optimization_parameters.proximal_adagrad.SetInParent()
+    table_descriptor.optimization_parameters.proximal_adagrad.l1 = (
+        self._optimization_parameters.l1_regularization_strength)
+    table_descriptor.optimization_parameters.proximal_adagrad.l2 = (
+        self._optimization_parameters.l2_regularization_strength)
+
+  def get_default_slot_variable_names(self, table):
+    return ProximalAdagradSlotVariableName('{}/{}'.format(
+        table, 'ProximalAdagrad'))
+
+  def create_variables_and_ops(self, table, slot_variable_names, num_hosts,
+                               table_config, table_variables, config_proto):
+    accumulator_initializer = init_ops.constant_initializer(
+        self._optimization_parameters.initial_accumulator)
+    accumulator_variables = _create_partitioned_variables(
+        name=slot_variable_names.accumulator,
+        num_hosts=num_hosts,
+        vocabulary_size=table_config.vocabulary_size,
+        embedding_dimension=table_config.dimension,
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES],
+        initializer=accumulator_initializer)
+    slot_variables = ProximalAdagradSlotVariable(accumulator_variables)
+
+    def load_ops_fn():
+      """Returns the retrieve ops for Proximal AdaGrad embedding tables.
+
+      Returns:
+        A list of ops to load embedding and slot variables from CPU to TPU.
+      """
+      config = config_proto
+      load_op_list = []
+      for host_id, table_variable, accumulator_variable in zip(
+          range(num_hosts), table_variables, accumulator_variables):
+        with ops.colocate_with(table_variable):
+          load_parameters_op = (
+              tpu_ops.load_tpu_embedding_proximal_adagrad_parameters(
+                  parameters=table_variable,
+                  accumulators=accumulator_variable,
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+        config = None
+        load_op_list.append(load_parameters_op)
+      return load_op_list
+
+    def retrieve_ops_fn():
+      """Returns the retrieve ops for Proximal AdaGrad embedding tables.
+
+      Returns:
+        A list of ops to retrieve embedding and slot variables from TPU to CPU.
+      """
+      config = config_proto
+      retrieve_op_list = []
+      for host_id, table_variable, accumulator_variable in (zip(
+          range(num_hosts), table_variables, accumulator_variables)):
+        with ops.colocate_with(table_variable):
+          retrieved_table, retrieved_accumulator = (
+              tpu_ops.retrieve_tpu_embedding_proximal_adagrad_parameters(
+                  table_name=table,
+                  num_shards=num_hosts,
+                  shard_id=host_id,
+                  config=config))
+          retrieve_parameters_op = control_flow_ops.group(
+              state_ops.assign(table_variable, retrieved_table),
+              state_ops.assign(accumulator_variable, retrieved_accumulator))
+        config = None
+        retrieve_op_list.append(retrieve_parameters_op)
+      return retrieve_op_list
+
+    return slot_variables, load_ops_fn, retrieve_ops_fn
+
+
 class _AdamHandler(_OptimizerHandler):
   """Handles Adam specific logic."""
-
-  def __init__(self, optimization_parameters):
-    super(_AdamHandler, self).__init__(optimization_parameters)
-    self._table_to_m_variables_dict = {}
-    self._table_to_v_variables_dict = {}
 
   def set_optimization_parameters(self, table_descriptor):
     table_descriptor.optimization_parameters.adam.beta1 = (
@@ -1479,11 +1610,6 @@ class _AdamHandler(_OptimizerHandler):
 
 class _FtrlHandler(_OptimizerHandler):
   """Handles Ftrl specific logic."""
-
-  def __init__(self, optimization_parameters):
-    super(_FtrlHandler, self).__init__(optimization_parameters)
-    self._table_to_accumulator_variables_dict = {}
-    self._table_to_linear_variables_dict = {}
 
   def set_optimization_parameters(self, table_descriptor):
     table_descriptor.optimization_parameters.ftrl.lr_power = (
@@ -1647,6 +1773,8 @@ def _get_optimization_handler(optimization_parameters):
   """Gets the optimization handler given the parameter type."""
   if isinstance(optimization_parameters, AdagradParameters):
     return _AdagradHandler(optimization_parameters)
+  elif isinstance(optimization_parameters, ProximalAdagradParameters):
+    return _ProximalAdagradHandler(optimization_parameters)
   elif isinstance(optimization_parameters, AdamParameters):
     return _AdamHandler(optimization_parameters)
   elif isinstance(optimization_parameters, FtrlParameters):
@@ -1727,7 +1855,7 @@ def _create_partitioned_variables(name,
                                   embedding_dimension,
                                   initializer,
                                   collections=None):  # pylint: disable=redefined-outer-name
-  """Creates ParitionedVariables based on `num_hosts` for `table`."""
+  """Creates PartitionedVariables based on `num_hosts` for `table`."""
 
   num_slices = min(vocabulary_size, num_hosts)
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -163,4 +164,26 @@ REGISTER_KERNEL_BUILDER(
     Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
     InitializeTableFromTextFileOp);
 
+class InitializeTableFromDatasetOp : public OpKernel {
+ public:
+  explicit InitializeTableFromDatasetOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::InitializableLookupTable* table;
+    OP_REQUIRES_OK(ctx,
+                   GetInitializableLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+    DatasetBase* dataset;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset));
+    OP_REQUIRES_OK(ctx,
+                   lookup::InitializeTableFromDataset(ctx, dataset, table));
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(InitializeTableFromDatasetOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("InitializeTableFromDataset").Device(DEVICE_CPU),
+                        InitializeTableFromDatasetOp);
 }  // namespace tensorflow

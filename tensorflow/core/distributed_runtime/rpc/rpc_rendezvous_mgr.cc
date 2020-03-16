@@ -158,7 +158,7 @@ class RpcRecvTensorCall : public BaseRecvTensorCall {
   Rendezvous::DoneCallback done_;
 
   mutable mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RpcRecvTensorCall);
 };
@@ -200,7 +200,7 @@ class RpcRecvTensorFreeList {
   static const int kMaxObjects = 1000;
 
   mutex mu_;
-  std::vector<RpcRecvTensorCall*> objects_ GUARDED_BY(mu_);
+  std::vector<RpcRecvTensorCall*> objects_ TF_GUARDED_BY(mu_);
 };
 
 static RpcRecvTensorFreeList* get_call_freelist() {

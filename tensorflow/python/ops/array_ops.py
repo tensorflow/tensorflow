@@ -534,6 +534,8 @@ def broadcast_static_shape(shape_x, shape_y):
 def shape_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
+  
+  See also `tf.size`.
 
   This operation returns a 1-D integer tensor representing the shape of `input`.
   This represents the minimal set of known information at definition time.
@@ -652,6 +654,8 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
+  
+  See also `tf.shape`.
 
   Returns a 0-D `Tensor` representing the number of elements in `input`
   of type `out_type`. Defaults to tf.int32.
@@ -1279,6 +1283,8 @@ def parallel_stack(values, name="parallel_stack"):
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
+  See also `tf.concat`, `tf.tile`, `tf.repeat`.
+
   Packs the list of tensors in `values` into a tensor with rank one higher than
   each tensor in `values`, by packing them along the `axis` dimension.
   Given a list of length `N` of tensors of shape `(A, B, C)`;
@@ -1297,7 +1303,6 @@ def stack(values, axis=0, name="stack"):
   array([[1, 4],
          [2, 5],
          [3, 6]], dtype=int32)>
-
   >>> tf.stack([x, y, z], axis=1)
   <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
   array([[1, 2, 3],
@@ -1510,6 +1515,8 @@ def unstack(value, num=None, axis=0, name="unstack"):
 @dispatch.add_dispatch_support
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
+
+  See also `tf.tile`, `tf.stack`, `tf.repeat`.
 
   Concatenates the list of tensors `values` along dimension `axis`.  If
   `values[i].shape = [D0, D1, ... Daxis(i), ...Dn]`, the concatenated
@@ -1881,6 +1888,8 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor `value` into a list of sub tensors.
+
+  See also `tf.unstack`.
 
   If `num_or_size_splits` is an integer, then `value` is split along the
   dimension `axis` into `num_split` smaller tensors. This requires that
@@ -2731,6 +2740,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
+  See also `tf.zeros`.
+
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to zero. Optionally,
   you can use `dtype` to specify a new type for the returned tensor.
@@ -2770,6 +2781,8 @@ def zeros_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor with all elements set to zero.
+
+  See also `tf.zeros`.
 
   Given a single tensor or array-like object (`input`), this operation returns
   a tensor of the same type and shape as `input` with all elements set to zero.
@@ -2842,6 +2855,8 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
+  See also `tf.ones`.
+
   Given a single tensor (`tensor`), this operation returns a tensor of the same
   type and shape as `tensor` with all elements set to 1. Optionally, you can
   specify a new type (`dtype`) for the returned tensor.
@@ -2875,6 +2890,8 @@ def ones_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor of all ones that has the same shape as the input.
+
+  See also `tf.ones`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
   same type and shape as `tensor` with all elements set to 1. Optionally,
@@ -2917,6 +2934,8 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 @tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to one (1).
+
+  See also `tf.ones_like`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and
   all elements set to one.
@@ -3950,11 +3969,13 @@ def one_hot(indices,
     on_exists = on_value is not None
     off_exists = off_value is not None
 
-    on_dtype = (
-        ops.convert_to_tensor(on_value).dtype.base_dtype if on_exists else None)
-    off_dtype = (
-        ops.convert_to_tensor(off_value).dtype.base_dtype
-        if off_exists else None)
+    if on_exists:
+      on_value = ops.convert_to_tensor(on_value, dtype_hint=dtype)
+    if off_exists:
+      off_value = ops.convert_to_tensor(off_value, dtype_hint=dtype)
+
+    on_dtype = on_value.dtype.base_dtype if on_exists else None
+    off_dtype = off_value.dtype.base_dtype if off_exists else None
 
     if on_exists or off_exists:
       if dtype is not None:
@@ -5395,7 +5416,7 @@ def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   return tensor
 
 
-def get_positive_axis(axis, ndims):
+def get_positive_axis(axis, ndims, axis_name="axis", ndims_name="ndims"):
   """Validate an `axis` parameter, and normalize it to be positive.
 
   If `ndims` is known (i.e., not `None`), then check that `axis` is in the
@@ -5407,6 +5428,8 @@ def get_positive_axis(axis, ndims):
   Args:
     axis: An integer constant
     ndims: An integer constant, or `None`
+    axis_name: The name of `axis` (for error messages).
+    ndims_name: The name of `ndims` (for error messages).
 
   Returns:
     The normalized `axis` value.
@@ -5416,17 +5439,19 @@ def get_positive_axis(axis, ndims):
       `ndims is None`.
   """
   if not isinstance(axis, int):
-    raise TypeError("axis must be an int; got %s" % type(axis).__name__)
+    raise TypeError("%s must be an int; got %s" %
+                    (axis_name, type(axis).__name__))
   if ndims is not None:
     if 0 <= axis < ndims:
       return axis
     elif -ndims <= axis < 0:
       return axis + ndims
     else:
-      raise ValueError("axis=%s out of bounds: expected %s<=axis<%s" %
-                       (axis, -ndims, ndims))
+      raise ValueError("%s=%s out of bounds: expected %s<=%s<%s" %
+                       (axis_name, axis, -ndims, axis_name, ndims))
   elif axis < 0:
-    raise ValueError("axis may only be negative if ndims is statically known.")
+    raise ValueError("%s may only be negative if %s is statically known." %
+                     (axis_name, ndims_name))
   return axis
 
 
@@ -5484,7 +5509,7 @@ def repeat_with_axis(data, repeats, axis, name=None):
     data_shape = shape(data)
 
     # If `axis` is negative, then convert it to a positive value.
-    axis = get_positive_axis(axis, data.shape.ndims)
+    axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
 
     # Check data Tensor shapes.
     if repeats.shape.ndims == 1:
@@ -5569,6 +5594,8 @@ def _with_nonzero_rank(data):
 @tf_export("repeat")
 def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-builtin
   """Repeat elements of `input`.
+  
+  See also `tf.concat`, `tf.stack`, `tf.tile`.
 
   Args:
     input: An `N`-dimensional Tensor.

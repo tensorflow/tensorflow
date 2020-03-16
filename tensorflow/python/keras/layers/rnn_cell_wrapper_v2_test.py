@@ -40,8 +40,8 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testResidualWrapper(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor(np.array([[1., 1., 1.]]), dtype="float32")
-    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
+    x = ops.convert_to_tensor_v2(np.array([[1., 1., 1.]]), dtype="float32")
+    m = ops.convert_to_tensor_v2(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -63,8 +63,9 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testResidualWrapperWithSlice(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor(np.array([[1., 1., 1., 1., 1.]]), dtype="float32")
-    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
+    x = ops.convert_to_tensor_v2(
+        np.array([[1., 1., 1., 1., 1.]]), dtype="float32")
+    m = ops.convert_to_tensor_v2(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -118,7 +119,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     base_cell = layers.SimpleRNNCell(1, name="basic_rnn_cell")
     rnn_cell = wrapper(base_cell)
     rnn_layer = layers.RNN(rnn_cell)
-    inputs = ops.convert_to_tensor([[[1]]], dtype=dtypes.float32)
+    inputs = ops.convert_to_tensor_v2([[[1]]], dtype=dtypes.float32)
     rnn_layer(inputs)
 
     wrapper_name = generic_utils.to_snake_case(wrapper.__name__)
@@ -143,8 +144,8 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
       base_cell = rnn_cell_impl.MultiRNNCell(
           [rnn_cell_impl.BasicRNNCell(1) for _ in range(2)])
     rnn_cell = wrapper(base_cell)
-    inputs = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
-    state = ops.convert_to_tensor([[1]], dtype=dtypes.float32)
+    inputs = ops.convert_to_tensor_v2([[1]], dtype=dtypes.float32)
+    state = ops.convert_to_tensor_v2([[1]], dtype=dtypes.float32)
     _ = rnn_cell(inputs, [state, state])
     weights = base_cell._cells[0].weights
     self.assertLen(weights, expected_len=2)
@@ -222,7 +223,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
     reconstructed_wrapper = wrapper_cls.from_config(config)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
 
-  def testDroputWrapperWithKerasLSTMCell(self):
+  def testDropoutWrapperWithKerasLSTMCell(self):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
     cell = layers.LSTMCell(10)
 

@@ -262,6 +262,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -938,6 +939,8 @@ xla_test(
     tags = [
         "no_rocm",
         "optonly",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -1095,6 +1098,10 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
+    backend_tags = {
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "interpreter": ["nozapfhahn"],
+    },
     shard_count = 40,
     tags = [
         "no_rocm",
@@ -1133,7 +1140,11 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
+    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1488,6 +1499,10 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    backend_tags = {
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "interpreter": ["nozapfhahn"],
+    },
     tags = [
         "no_rocm",
         "optonly",
@@ -2429,15 +2444,16 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:gpu_plugin",  # test backend
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -2502,6 +2518,18 @@ xla_test(
         # Disabled in OSS until nvidia publicly releases a fixed ptxas.
         "no_oss",
     ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
+    name = "get_dimension_size_test",
+    srcs = ["get_dimension_size_test.cc"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",

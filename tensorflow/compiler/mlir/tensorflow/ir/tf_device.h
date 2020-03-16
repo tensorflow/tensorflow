@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/Value.h"  // TF:llvm-project
 
 namespace mlir {
 namespace tf_device {
@@ -73,9 +74,14 @@ class ParallelExecuteOp
 
   static StringRef getOperationName() { return "tf_device.parallel_execute"; }
 
-  Operation::result_range getRegionOutputs(unsigned region_index);
   LogicalResult verify();
-  Block& getRegionWithIndex(unsigned index);
+  Block& GetRegionBlockWithIndex(unsigned index);
+  Operation::result_range GetRegionOutputs(unsigned region_index);
+
+  // Checks if a tf_device.parallel_execute index'th region block wraps a single
+  // operation and the single operation results are perfectly forwarded to the
+  // region block's return.
+  bool RegionWrapsSingleOp(unsigned index);
 };
 
 }  // namespace tf_device

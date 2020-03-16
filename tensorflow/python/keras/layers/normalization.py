@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -60,7 +61,7 @@ class BatchNormalizationBase(Layer):
 
   3) When performing inference using a model containing batch normalization, it
   is generally (though not always) desirable to use accumulated statistics
-  rather than mini-batch statistics. This is acomplished by passing
+  rather than mini-batch statistics. This is accomplished by passing
   `training=False` when calling the model, or using `model.predict`.
 
   Arguments:
@@ -250,6 +251,10 @@ class BatchNormalizationBase(Layer):
     In addition to the checks done in this function, the input tensors rank must
     be 4. The input rank check can only be done once the input shape is known.
     """
+    # Note the ValueErrors in this function are caught and not reraised in
+    # _fused_can_be_used(). No other exception besides ValueError should be
+    # raised here.
+
     # Currently fused batch norm doesn't support renorm. It also only supports a
     # channel dimension on axis 1 or 3, when no virtual batch size or adjustment
     # is used.
@@ -268,6 +273,11 @@ class BatchNormalizationBase(Layer):
     if self.adjustment is not None:
       raise ValueError('Passing fused=True is unsupported when '
                        'adjustment is specified.')
+    # TODO(reedwm): Support fp64 in FusedBatchNorm then remove this check.
+    if self._compute_dtype not in ('float16', 'bfloat16', 'float32', None):
+      raise ValueError('Passing fused=True is only supported when the compute '
+                       'dtype is float16, bfloat16, or float32. Got dtype: %s'
+                       % (self._compute_dtype,))
 
   def _fused_can_be_used(self):
     try:
@@ -503,7 +513,7 @@ class BatchNormalizationBase(Layer):
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
+        decay = ops.convert_to_tensor_v2(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (
@@ -530,13 +540,51 @@ class BatchNormalizationBase(Layer):
     else:
       inputs_size = None
 
+    # TODO(rmlarsen): Support using fused avg updates for non-eager execution
+    # after fixing graph pattern matching and enabling fused_batch_norm to
+    # take exponential_avg_factor as a tensor input.
+    use_fused_avg_updates = (
+        compat.forward_compatible(2020, 3, 6) and
+        ops.executing_eagerly_outside_functions() and
+        isinstance(self.momentum, (float, int)))
+    if use_fused_avg_updates:
+      exponential_avg_factor = 1.0 - self.momentum
+    else:
+      exponential_avg_factor = None
+
+    def _maybe_add_or_remove_bessels_correction(variance, remove=True):
+      r"""Add or remove Bessel's correction."""
+      # Removes Bessel's correction if remove == True, adds it otherwise.
+      # This is to be consistent with non-fused batch norm. Note that the
+      # variance computed by fused batch norm is with Bessel's correction.
+      # This is only used in legacy V1 batch norm tests.
+      if self._bessels_correction_test_only:
+        return variance
+      sample_size = math_ops.cast(
+          array_ops.size(inputs) / array_ops.size(variance), variance.dtype)
+      if remove:
+        factor = (sample_size -
+                  math_ops.cast(1.0, variance.dtype)) / sample_size
+      else:
+        factor = sample_size / (
+            sample_size - math_ops.cast(1.0, variance.dtype))
+      return variance * factor
+
     def _fused_batch_norm_training():
       return nn.fused_batch_norm(
           inputs,
           gamma,
           beta,
+          mean=self.moving_mean,
+          variance=_maybe_add_or_remove_bessels_correction(
+              self.moving_variance, remove=False),
           epsilon=self.epsilon,
-          data_format=self._data_format)
+          is_training=True,
+          data_format=self._data_format,
+          exponential_avg_factor=exponential_avg_factor)
+
+    def _fused_batch_norm_training_empty():
+      return inputs, self.moving_mean, self.moving_variance
 
     def _fused_batch_norm_inference():
       return nn.fused_batch_norm(
@@ -549,42 +597,37 @@ class BatchNormalizationBase(Layer):
           is_training=False,
           data_format=self._data_format)
 
-    output, mean, variance = tf_utils.smart_cond(
-        training, _fused_batch_norm_training, _fused_batch_norm_inference)
-    if not self._bessels_correction_test_only:
-      # Remove Bessel's correction to be consistent with non-fused batch norm.
-      # Note that the variance computed by fused batch norm is
-      # with Bessel's correction.
-      sample_size = math_ops.cast(
-          array_ops.size(inputs) / array_ops.size(variance), variance.dtype)
-      factor = (sample_size - math_ops.cast(1.0, variance.dtype)) / sample_size
-      variance *= factor
+    train_op = _fused_batch_norm_training
+    if use_fused_avg_updates and inputs_size is not None:
+      train_op = lambda: tf_utils.smart_cond(inputs_size > 0,
+                                             _fused_batch_norm_training,
+                                             _fused_batch_norm_training_empty)
+
+    output, mean, variance = tf_utils.smart_cond(training, train_op,
+                                                 _fused_batch_norm_inference)
+    variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
 
     training_value = tf_utils.constant_value(training)
-    if training_value is None:
-      momentum = tf_utils.smart_cond(training,
-                                     lambda: self.momentum,
-                                     lambda: 1.0)
-    else:
-      momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
+      if not use_fused_avg_updates:
+        if training_value is None:
+          momentum = tf_utils.smart_cond(training, lambda: self.momentum,
+                                         lambda: 1.0)
+        else:
+          momentum = ops.convert_to_tensor_v2(self.momentum)
+
       def mean_update():
-        return self._assign_moving_average(self.moving_mean, mean, momentum,
-                                           inputs_size)
+        """Update self.moving_mean with the most recent data point."""
+        if use_fused_avg_updates:
+          return self._assign_new_value(self.moving_mean, mean)
+        else:
+          return self._assign_moving_average(self.moving_mean, mean, momentum,
+                                             inputs_size)
 
       def variance_update():
         """Update self.moving_variance with the most recent data point."""
-        if self.renorm:
-          # We apply epsilon as part of the moving_stddev to mirror the training
-          # code path.
-          moving_stddev = self._assign_moving_average(
-              self.moving_stddev, math_ops.sqrt(variance + self.epsilon),
-              momentum, inputs_size)
-          return self._assign_new_value(
-              self.moving_variance,
-              # Apply relu in case floating point rounding causes it to go
-              # negative.
-              K.relu(moving_stddev * moving_stddev - self.epsilon))
+        if use_fused_avg_updates:
+          return self._assign_new_value(self.moving_variance, variance)
         else:
           return self._assign_moving_average(self.moving_variance, variance,
                                              momentum, inputs_size)
@@ -675,8 +718,10 @@ class BatchNormalizationBase(Layer):
         training = bool(training)
       if base_layer_utils.is_in_keras_graph():
         training = math_ops.logical_and(training, self._get_trainable_var())
-      else:
-        training = math_ops.logical_and(training, self.trainable)
+      elif not self.trainable:
+        # When the layer is not trainable, it overrides the value passed from
+        # model.
+        training = self.trainable
     return training
 
   def call(self, inputs, training=None):
@@ -757,13 +802,11 @@ class BatchNormalizationBase(Layer):
       moving_mean = self.moving_mean
       moving_variance = self.moving_variance
 
-      mean = tf_utils.smart_cond(training,
-                                 lambda: mean,
-                                 lambda: ops.convert_to_tensor(moving_mean))
+      mean = tf_utils.smart_cond(training, lambda: mean,
+                                 lambda: ops.convert_to_tensor_v2(moving_mean))
       variance = tf_utils.smart_cond(
-          training,
-          lambda: variance,
-          lambda: ops.convert_to_tensor(moving_variance))
+          training, lambda: variance,
+          lambda: ops.convert_to_tensor_v2(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
@@ -1123,7 +1166,7 @@ class LayerNormalization(Layer):
       # self.gamma and self.beta have the wrong shape for fused_batch_norm, so
       # we cannot pass them as the scale and offset parameters. Therefore, we
       # create two constant tensors in correct shapes for fused_batch_norm and
-      # later constuct a separate calculation on the scale and offset.
+      # later construct a separate calculation on the scale and offset.
       scale = _set_const_tensor(1.0, self.dtype, [pre_dim])
       offset = _set_const_tensor(0.0, self.dtype, [pre_dim])
 

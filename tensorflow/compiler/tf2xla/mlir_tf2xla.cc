@@ -86,9 +86,10 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
 
 }  // namespace
 
-Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
-                                   const tf2xla::Config& config,
-                                   xla::XlaComputation* computation) {
+Status ConvertGraphDefToXlaViaMlir(
+    GraphDef graph_def, const tf2xla::Config& config,
+    xla::XlaComputation* computation, absl::string_view debug_info_filename,
+    absl::string_view debug_info_path_begin_marker) {
   // AddPlaceholdersForFeeds prepares for PruneGraphDefInto and serves two
   // purposes: (1) It creates a placeholder node for each feed, so that
   // PruneGraphDefInfo can prune away the node containing the feed. (2) It
@@ -107,15 +108,32 @@ Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
   TF_RETURN_IF_ERROR(PruneGraphDefInto(config, graph_def, &pruned_graph_def));
 
   GraphImportConfig specs;
-  specs.prune_unused_nodes = true;
+  specs.prune_unused_nodes = false;
   specs.convert_legacy_fed_inputs = false;
   specs.graph_as_function = false;
-  specs.upgrade_legacy = false;
+  specs.upgrade_legacy = true;
   TF_RETURN_IF_ERROR(ConvertInputInfo(config, feed_name_remap, &specs));
   TF_RETURN_IF_ERROR(ConvertOutputInfo(config, &specs));
 
   GraphDebugInfo debug_info;
+  if (!debug_info_filename.empty()) {
+    TF_RETURN_IF_ERROR(LoadProtoFromFile(debug_info_filename, &debug_info));
+
+    if (!debug_info_path_begin_marker.empty()) {
+      for (size_t i = 0, e = debug_info.files_size(); i < e; ++i) {
+        std::string* file_name = debug_info.mutable_files(i);
+        size_t location =
+            file_name->rfind(std::string(debug_info_path_begin_marker));
+        if (location != -1) {
+          *file_name = file_name->substr(location +
+                                         debug_info_path_begin_marker.length());
+        }
+      }
+    }
+  }
+
   mlir::MLIRContext context;
+
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));

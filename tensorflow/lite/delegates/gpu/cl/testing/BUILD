@@ -11,6 +11,7 @@ cc_binary(
         "//tensorflow/lite/delegates/gpu/cl:cl_command_queue",
         "//tensorflow/lite/delegates/gpu/cl:environment",
         "//tensorflow/lite/delegates/gpu/cl:inference_context",
+        "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",

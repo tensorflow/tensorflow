@@ -74,7 +74,7 @@ TEST(ProfileBufferTest, OverFlow) {
     auto event = buffer.At(j);
     EXPECT_EQ(eventNames[j % 4], event->tag);
     EXPECT_EQ(ProfileEvent::EventType::DEFAULT, event->event_type);
-    EXPECT_EQ(4 + j, event->event_metadata);
+    EXPECT_EQ(j, event->event_metadata);
   }
 }
 

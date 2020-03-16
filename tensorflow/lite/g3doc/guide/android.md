@@ -144,8 +144,8 @@ Once Bazel is properly configured, you can build the TensorFlow Lite AAR from
 the root checkout directory as follows:
 
 ```sh
-bazel build --cxxopt='-std=c++11' -c opt         \
-  --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
+  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
   //tensorflow/lite/java:tensorflow-lite
 ```
 
@@ -201,7 +201,7 @@ allprojects {
 }
 
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite:0.1.100'
 }
 ```
 

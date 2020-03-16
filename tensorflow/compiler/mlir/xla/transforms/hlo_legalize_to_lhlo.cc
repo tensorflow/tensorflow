@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering HLO dialect to LHLO dialect.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_hlo_to_lhlo_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -49,15 +50,46 @@ Operation* FindInsertionPointForCopy(Value value) {
   return nullptr;
 }
 
-Value GetTensorStore(Value value) {
-  for (const auto& user : value.getUsers()) {
-    if (auto tensor_store = dyn_cast<TensorStoreOp>(user)) {
-      if (tensor_store.getOperand(0) == value) {
-        return tensor_store.getOperand(1);
-      }
-    }
+Value InsertDynamicAllocAndDealloc(Location loc, Value result,
+                                   Value shape_operand,
+                                   ConversionPatternRewriter* rewriter) {
+  auto result_type = result.getType().dyn_cast<ShapedType>();
+  if (!result_type) {
+    result.getDefiningOp()->emitOpError()
+        << "tensor to buffer conversion expects ranked results";
   }
-  return nullptr;
+  auto memref_type =
+      MemRefType::get(result_type.getShape(), result_type.getElementType());
+
+  Operation* op = result.getDefiningOp();
+  auto block = op->getBlock();
+
+  // Extract the required element out of the vector.
+  SmallVector<Value, 4> dynamic_operands;
+  for (auto shape_element : llvm::enumerate(result_type.getShape())) {
+    if (shape_element.value() != ShapedType::kDynamicSize) continue;
+    Value index = rewriter->create<ConstantOp>(
+        loc, rewriter->getIntegerAttr(rewriter->getIndexType(),
+                                      shape_element.index()));
+    Value alloc_operand = rewriter->create<ExtractElementOp>(loc, shape_operand,
+                                                             ValueRange{index});
+    if (!alloc_operand.getType().isIndex()) {
+      alloc_operand = rewriter->create<IndexCastOp>(loc, alloc_operand,
+                                                    rewriter->getIndexType());
+    }
+    dynamic_operands.push_back(alloc_operand);
+  }
+
+  // Insert in front of op to ensure sizes are available.
+  OpBuilder allocBuilder(op);
+  auto alloc = allocBuilder.create<AllocOp>(loc, memref_type, dynamic_operands);
+
+  alloc.setAttr(kTempBufferAttr, rewriter->getBoolAttr(true));
+
+  allocBuilder.setInsertionPoint(block, std::prev(block->end()));
+  allocBuilder.create<DeallocOp>(loc, alloc);
+
+  return alloc;
 }
 
 Value InsertAllocAndDealloc(Location loc, Value result,
@@ -85,18 +117,7 @@ Value InsertAllocAndDealloc(Location loc, Value result,
   return alloc;
 }
 
-/// For every tensor-type value that is produced in the original function,
-/// this function returns the buffer that can be used in the converted
-/// function to store that values held in the tensor.
-Value GetBufferForResultValue(Location loc, Value result,
-                              ConversionPatternRewriter* rewriter) {
-  if (auto existing_memref = GetTensorStore(result)) {
-    return existing_memref;
-  }
-  return InsertAllocAndDealloc(loc, result, rewriter);
-}
-
-template <typename HloOpTy, typename LhloOpTy>
+template <typename HloOpTy>
 class HloToLhloOpConverter : public ConversionPattern {
  public:
   explicit HloToLhloOpConverter(MLIRContext* context)
@@ -107,18 +128,58 @@ class HloToLhloOpConverter : public ConversionPattern {
       ConversionPatternRewriter& rewriter) const final {
     const auto& original_results = op->getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
-    for (auto result : original_results) {
-      buffer_args.push_back(
-          GetBufferForResultValue(op->getLoc(), result, &rewriter));
+    for (auto result : llvm::enumerate(original_results)) {
+      RankedTensorType resultType =
+          result.value().getType().dyn_cast<RankedTensorType>();
+      if (!resultType) {
+        return matchFailure();
+      }
+      if (resultType.hasStaticShape()) {
+        buffer_args.push_back(
+            InsertAllocAndDealloc(op->getLoc(), result.value(), &rewriter));
+      } else {
+        SmallVector<Value, 1> results_shape;
+        auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
+        if (!shape_type_op) return matchFailure();
+        if (failed(
+                shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
+          return matchFailure();
+        buffer_args.push_back(InsertDynamicAllocAndDealloc(
+            op->getLoc(), result.value(), results_shape.front(), &rewriter));
+      }
     }
-    rewriter.create<LhloOpTy>(op->getLoc(), llvm::None, buffer_args,
-                              op->getAttrs());
+    rewriter.create<xla_hlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
+                                                   buffer_args, op->getAttrs());
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
     return matchSuccess();
   }
 };
 
-struct HloToLHloReduceOpConverter
+struct HloToLhloDynamicBroadcastInDimOpConverter
+    : public OpConversionPattern<xla_hlo::DynamicBroadcastInDimOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      xla_hlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto loc = op.getLoc();
+    auto broadcast_dimensions = op.broadcast_dimensions();
+    if (!broadcast_dimensions.hasValue()) {
+      return matchFailure();
+    }
+    Value resultBuffer = InsertDynamicAllocAndDealloc(
+        loc, op.getResult(), op.output_dimensions(), &rewriter);
+    rewriter.create<xla_lhlo::BroadcastInDimOp>(
+        loc, operands[0], resultBuffer, broadcast_dimensions.getValue());
+
+    rewriter.replaceOp(op, {resultBuffer});
+
+    return matchSuccess();
+  }
+};
+
+struct HloToLhloReduceOpConverter
     : public OpConversionPattern<xla_hlo::ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
@@ -137,7 +198,7 @@ struct HloToLHloReduceOpConverter
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(GetBufferForResultValue(loc, result, &rewriter));
+      buffer_args.push_back(InsertAllocAndDealloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<xla_lhlo::ReduceOp>(
         loc, llvm::None, buffer_args, op.getAttrs());
@@ -194,7 +255,8 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
   PatternMatchResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
-    rewriter.eraseOp(op);
+    rewriter.replaceOpWithNewOp<xla_lhlo::CopyOp>(
+        op, llvm::None, operands.front(), operands.back());
     return matchSuccess();
   }
 };
@@ -211,14 +273,14 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //   "xla_lhlo.fusion"() ({
 //     %0 = tensor_load %arg1 : memref<2x2xf32>
 //     %1 = tensor_load %arg2 : memref<2x2xf32>
-//     %2 = "xla_hlo.add"(%0, %1) {name = "add"} :
+//     %2 = "xla_hlo.add"(%0, %1) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     %3 = tensor_load %arg0 : memref<2x2xf32>
-//     %4 = "xla_hlo.mul"(%2, %3) {name = "multiply"} :
+//     %4 = "xla_hlo.mul"(%2, %3) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     tensor_store %4, %arg3 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
+//   }) : () -> ()
 //   return
 // }
 //
@@ -228,14 +290,14 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //              %arg2: memref<2x2xf32>,
 //              %arg3: memref<2x2xf32>) {
 //   "xla_lhlo.fusion"() ( {
-//     %0 = alloc() {temp = true} : memref<2x2xf32>
+//     %0 = alloc() : memref<2x2xf32>
 //     "xla_lhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     "xla_lhlo.mul"(%0, %arg0, %arg3) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     dealloc %0 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
-//   }) {name = "fusion"} : () -> ()
+//   }) : () -> ()
 //   return
 //  }
 // }
@@ -243,9 +305,9 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // FuncOp signature conversion example:
 //
 // func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-//   %0 = xla_hlo.max %arg0, %arg1 {name = "maximum.47"} : tensor<4xf32>
-//   %1 = xla_hlo.add %arg0, %0 {name = "maximum.47"} : tensor<4xf32>
-//   return %1 : tensor<4xf32>
+//   %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
+//   tensor<4xf32> %1 = "xla_hlo.add"(%arg0, %0)  : (tensor<4xf32>,
+//   tensor<4xf32>) -> tensor<4xf32> return %1 : tensor<4xf32>
 // }
 //
 // Transformed function with an extra argument for the result. The types have
@@ -254,15 +316,15 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // func @func_op(%arg0: memref<4xf32>,
 //               %arg1: memref<4xf32>,
 //               %arg2: memref<4xf32>) {
-//   %0 = alloc() {temp = true} : memref<4xf32>
-//   %1 = alloc() {temp = true} : memref<4xf32>
-//   "xla_lhlo.max"(%arg0, %arg1, %1) {name = "maximum.47"} :
+//   %0 = alloc() : memref<4xf32>
+//   %1 = alloc() : memref<4xf32>
+//   "xla_lhlo.max"(%arg0, %arg1, %0) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
-//   "xla_lhlo.add"(%arg0, %1, %0) {name = "maximum.47"} :
+//   "xla_lhlo.add"(%arg0, %0, %1) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
-//   dealloc %1 : memref<4xf32>
-//   "xla_lhlo.copy"(%0, %arg2) : (memref<4xf32>, memref<4xf32>) -> ()
+//   "xla_lhlo.copy"(%1, %arg2) : (memref<4xf32>, memref<4xf32>) -> ()
 //   dealloc %0 : memref<4xf32>
+//   dealloc %1 : memref<4xf32>
 //   "xla_lhlo.terminator"() : () -> ()
 // }
 
@@ -278,6 +340,7 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     target.addIllegalOp<mlir::TensorLoadOp>();
     target.addIllegalOp<mlir::TensorStoreOp>();
     target.addLegalOp<ModuleTerminatorOp>();
+    target.addLegalOp<ScalarsToDimensionTensorOp>();
     target.addIllegalDialect<xla_hlo::XlaHloDialect>();
     target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
       auto inputs = op.getType().getInputs();
@@ -288,7 +351,8 @@ struct HloLegalizeToLhlo : public ModulePass<HloLegalizeToLhlo> {
     auto module = getModule();
     populateHLOToLHLOConversionPattern(module.getContext(), &patterns);
 
-    if (failed(applyFullConversion(module, target, patterns, nullptr))) {
+    // Do partial conversion so we can have unknown ops in tests.
+    if (failed(applyPartialConversion(module, target, patterns, nullptr))) {
       signalPassFailure();
     }
   }
@@ -377,32 +441,35 @@ class StdToLhloReturnOpConverter : public OpConversionPattern<mlir::ReturnOp> {
 void populateHLOToLHLOConversionPattern(MLIRContext* context,
                                         OwningRewritePatternList* patterns) {
   // clang-format off
-  patterns->insert<  
-      HloToLHloReduceOpConverter, 
+  patterns->insert<
+      HloToLhloDynamicBroadcastInDimOpConverter,
       HloToLhloFuncOpConverter,
-      HloToLhloOpConverter<xla_hlo::AbsOp, xla_lhlo::AbsOp>,
-      HloToLhloOpConverter<xla_hlo::AddOp, xla_lhlo::AddOp>,
-      HloToLhloOpConverter<xla_hlo::AndOp, xla_lhlo::AndOp>,
-      HloToLhloOpConverter<xla_hlo::BroadcastInDimOp,
-                           xla_lhlo::BroadcastInDimOp>,
-      HloToLhloOpConverter<xla_hlo::CeilOp, xla_lhlo::CeilOp>,
-      HloToLhloOpConverter<xla_hlo::CompareOp, xla_lhlo::CompareOp>,
-      HloToLhloOpConverter<xla_hlo::ConstOp, xla_lhlo::ConstOp>,
-      HloToLhloOpConverter<xla_hlo::ConvertOp, xla_lhlo::ConvertOp>,
-      HloToLhloOpConverter<xla_hlo::CopyOp, xla_lhlo::CopyOp>,
-      HloToLhloOpConverter<xla_hlo::CosOp, xla_lhlo::CosOp>,
-      HloToLhloOpConverter<xla_hlo::DivOp, xla_lhlo::DivOp>,
-      HloToLhloOpConverter<xla_hlo::ExpOp, xla_lhlo::ExpOp>,
-      HloToLhloOpConverter<xla_hlo::IotaOp, xla_lhlo::IotaOp>,
-      HloToLhloOpConverter<xla_hlo::MaxOp, xla_lhlo::MaxOp>,
-      HloToLhloOpConverter<xla_hlo::MinOp, xla_lhlo::MinOp>,
-      HloToLhloOpConverter<xla_hlo::MulOp, xla_lhlo::MulOp>,
-      HloToLhloOpConverter<xla_hlo::NegOp, xla_lhlo::NegOp>,
-      HloToLhloOpConverter<xla_hlo::RemOp, xla_lhlo::RemOp>,
-      HloToLhloOpConverter<xla_hlo::SelectOp, xla_lhlo::SelectOp>,
-      HloToLhloOpConverter<xla_hlo::SignOp, xla_lhlo::SignOp>,
-      HloToLhloOpConverter<xla_hlo::SubOp, xla_lhlo::SubOp>,
-      HloToLhloOpConverter<xla_hlo::TanhOp, xla_lhlo::TanhOp>,
+      HloToLhloOpConverter<xla_hlo::AbsOp>,
+      HloToLhloOpConverter<xla_hlo::AddOp>,
+      HloToLhloOpConverter<xla_hlo::AndOp>,
+      HloToLhloOpConverter<xla_hlo::BroadcastInDimOp>,
+      HloToLhloOpConverter<xla_hlo::CeilOp>,
+      HloToLhloOpConverter<xla_hlo::CompareOp>,
+      HloToLhloOpConverter<xla_hlo::ConstOp>,
+      HloToLhloOpConverter<xla_hlo::ConvertOp>,
+      HloToLhloOpConverter<xla_hlo::CopyOp>,
+      HloToLhloOpConverter<xla_hlo::CosOp>,
+      HloToLhloOpConverter<xla_hlo::DivOp>,
+      HloToLhloOpConverter<xla_hlo::ExpOp>,
+      HloToLhloOpConverter<xla_hlo::IotaOp>,
+      HloToLhloOpConverter<xla_hlo::LogOp>,
+      HloToLhloOpConverter<xla_hlo::MaxOp>,
+      HloToLhloOpConverter<xla_hlo::MinOp>,
+      HloToLhloOpConverter<xla_hlo::MulOp>,
+      HloToLhloOpConverter<xla_hlo::NegOp>,
+      HloToLhloOpConverter<xla_hlo::RemOp>,
+      HloToLhloOpConverter<xla_hlo::RsqrtOp>,
+      HloToLhloOpConverter<xla_hlo::SelectOp>,
+      HloToLhloOpConverter<xla_hlo::SignOp>,
+      HloToLhloOpConverter<xla_hlo::SqrtOp>,
+      HloToLhloOpConverter<xla_hlo::SubOp>,
+      HloToLhloOpConverter<xla_hlo::TanhOp>,
+      HloToLhloReduceOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter,
       StdToLhloReturnOpConverter
