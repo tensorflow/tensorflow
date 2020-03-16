@@ -922,8 +922,12 @@ class Network(base_layer.Layer):
       if not nest.is_sequence(ref_inputs):
         ref_inputs = [self._nested_inputs]
 
-      # Flatten in the order the `Input`s were passed during Model construction.
-      return [tensors[inp._keras_history.layer.name] for inp in ref_inputs]
+      try:
+        # Flatten in the order `Input`s were passed during Model construction.
+        return [tensors[inp._keras_history.layer.name] for inp in ref_inputs]
+      except KeyError:
+        # TODO(b/151582614)
+        return nest.flatten(tensors)
 
     # Otherwise both self.inputs and tensors will already be in same order.
     return nest.flatten(tensors)
