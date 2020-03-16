@@ -446,6 +446,26 @@ class MetadataDisplayer(object):
     associated_file_list = cls._parse_packed_associted_file_list(model_file)
     return cls(model_file, metadata_file, associated_file_list)
 
+  @classmethod
+  def with_model_buffer(cls, model_buffer):
+    """Creates a MetadataDisplayer object for a file buffer.
+
+    Args:
+      model_buffer: TensorFlow Lite model buffer in bytearray.
+
+    Returns:
+      MetadataDisplayer object.
+    """
+    if not model_buffer:
+      raise ValueError("model_buffer cannot be empty.")
+
+    with tempfile.NamedTemporaryFile() as temp:
+      model_file = temp.name
+
+    with open(model_file, "wb") as f:
+      f.write(model_buffer)
+    return cls.with_model_file(model_file)
+
   def get_metadata_json(self):
     """Converts the metadata into a json string."""
     opt = _pywrap_flatbuffers.IDLOptions()
