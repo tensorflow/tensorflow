@@ -155,7 +155,7 @@ bool IsScalarInputSupported(int builtin_code) {
   }
 }
 
-// Check if the operation requires explict conversion from int8 to uint8 values.
+// Check if the operation requires explicit conversion from int8 to uint8 values.
 bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
                         const TfLiteNode* node) {
   const int input_id = node->inputs->data[0];

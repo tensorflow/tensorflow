@@ -172,7 +172,7 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     bool disallow_nnapi_cpu;
     // Tensor to ANeuralNetworksMemory mapping.
     std::vector<MemoryRegistration> tensor_memory_map;
-    // Constains a non zero value if any NNAPI method call
+    // Contains a non zero value if any NNAPI method call
     // operation returned a non zero result code.
     int nnapi_errno;
     // Cache of kernels already built in StatefulNnApiDelegate::DoPrepare

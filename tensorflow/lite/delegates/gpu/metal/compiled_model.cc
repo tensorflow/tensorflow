@@ -129,7 +129,7 @@ uint32_t BufferUseCount(ValueId id,
 }
 
 // Examines if the second operation can be linked to the first one. Linking may
-// be skipped in the situation when conflic may happen: if first operation's
+// be skipped in the situation when conflict may happen: if first operation's
 // output is used by more than 1 other operation.
 bool CanFuseOperations(const ComputeTaskDescriptorPtr first,
                        const ComputeTaskDescriptorPtr second,
@@ -444,9 +444,9 @@ ComputeTaskDescriptorPtr NonLinkableStub(int operation_id, ValueId input_id,
 }
 
 ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
-  auto fused_desciptor = std::make_shared<ComputeTaskDescriptor>();
+  auto fused_descriptor = std::make_shared<ComputeTaskDescriptor>();
   // The id of fused descriptor is the id of the first descriptor in the list.
-  fused_desciptor->id = chain.front()->id;
+  fused_descriptor->id = chain.front()->id;
   FusionSequence sequence;
   if (chain.front()->is_linkable) {
     // The first task is linkable so it contains only linkable code. Insert
@@ -503,7 +503,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
             buffer.declaration + name + "[[buffer(" + index + ")]],\n";
         call_arguments += ", buffer" + index;
         input_index++;
-        fused_desciptor->input_buffers.push_back({buffer.id, ""});
+        fused_descriptor->input_buffers.push_back({buffer.id, ""});
       }
     }
     // We have an output id that is the input for the next task.
@@ -517,7 +517,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
           buffer.declaration + name + "[[buffer(" + index + ")]],\n";
       call_arguments += ", buffer" + index;
       immutable_index++;
-      fused_desciptor->immutable_buffers.push_back(buffer);
+      fused_descriptor->immutable_buffers.push_back(buffer);
     }
 
     for (auto buffer : desc->uniform_buffers) {
@@ -527,7 +527,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
           buffer.declaration + name + "[[buffer(" + index + ")]],\n";
       call_arguments += ", buffer" + index;
       uniform_index++;
-      fused_desciptor->uniform_buffers.push_back({"", buffer.data_function});
+      fused_descriptor->uniform_buffers.push_back({"", buffer.data_function});
     }
 
     if (desc->is_linkable) {
@@ -539,7 +539,7 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
   }
 
   ComputeTaskDescriptorPtr non_linkable = sequence.front();
-  fused_desciptor->shader_source =
+  fused_descriptor->shader_source =
       absl::Substitute(non_linkable->shader_source, function_code,
                        buffer_declarations, call_code);
   std::vector<ValueId> alias;
@@ -547,13 +547,13 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
   for (int i = 0; i < chain.size() - 1; i++) {
     alias.push_back(chain[i]->output_buffer.id);
   }
-  fused_desciptor->output_buffer = {
+  fused_descriptor->output_buffer = {
       fused_id, "", non_linkable->output_buffer.dimensions_function, alias};
-  fused_desciptor->resize_function = non_linkable->resize_function;
+  fused_descriptor->resize_function = non_linkable->resize_function;
   for (const auto& desc : sequence) {
-    fused_desciptor->description += desc->description + "_";
+    fused_descriptor->description += desc->description + "_";
   }
-  return fused_desciptor;
+  return fused_descriptor;
 }
 
 }  // namespace
