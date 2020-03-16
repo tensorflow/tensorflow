@@ -770,6 +770,10 @@ class CategoricalAccuracy(MeanMetricWrapper):
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
+  ```python
+  acc = np.dot(sample_weight, np.equal(y_true, np.argmax(y_pred, axis=1))
+  ```
+  
   You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
 
@@ -784,12 +788,12 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.SparseCategoricalAccuracy()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
   0.3
