@@ -52,13 +52,32 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
+  se::StreamExecutor* executor = backend().default_stream_executor();
+  int cc_major = 0, cc_minor = 0;
+  executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                           &cc_minor);
+  string expected_ptx;
+  if (cc_major >= 6) {
+    expected_ptx = R"(
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
-)");
+)";
+  } else {
+    expected_ptx = R"(
+CHECK-NOT: ld.global.nc.v2.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+)";
+  }
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -81,13 +100,32 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
+  se::StreamExecutor* executor = backend().default_stream_executor();
+  int cc_major = 0, cc_minor = 0;
+  executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                           &cc_minor);
+  string expected_ptx;
+  if (cc_major >= 6) {
+    expected_ptx = R"(
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
-)");
+)";
+  } else {
+    expected_ptx = R"(
+CHECK-NOT: ld.global.nc.v2.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+)";
+  }
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -110,8 +148,13 @@ ENTRY %main {
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
+  se::StreamExecutor* executor = backend().default_stream_executor();
+  int cc_major = 0, cc_minor = 0;
+  executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                           &cc_minor);
+  string expected_ptx;
+  if (cc_major >= 7) {
+    expected_ptx = R"(
 CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.v2.f32
@@ -121,7 +164,22 @@ CHECK-NOT: ld.global.nc.v2.f32
 // TODO: Make this a vectorized load
 CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.f32
-)");
+)";
+  } else {
+    expected_ptx = R"(
+CHECK-NOT: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+)";
+  }
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
@@ -175,10 +233,32 @@ ENTRY %main {
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<VerifiedHloModule> optimized_module,
                           ParseAndReturnVerifiedModule(hlo_text));
-  CompileAndOptionallyVerifyPtx(std::move(optimized_module),
-                                R"(
+  se::StreamExecutor* executor = backend().default_stream_executor();
+  int cc_major = 0, cc_minor = 0;
+  executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                           &cc_minor);
+  string expected_ptx;
+  if (cc_major >= 6) {
+    expected_ptx = R"(
 CHECK: ld.global.nc.v2.f32
-)");
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
+)";
+  } else {
+    expected_ptx = R"(
+CHECK-NOT: ld.global.nc.v2.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.f32
+)";
+  }
+  CompileAndOptionallyVerifyPtx(std::move(optimized_module), expected_ptx);
 
   EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{1e-5, 1e-5}));
 }
