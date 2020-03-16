@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import weakref
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -173,6 +174,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         cross_device_ops_lib.CollectiveCommunication)
     self._communication = communication
     self._initialize_strategy(self._cluster_resolver)
+    self._cfer_fn_cache = weakref.WeakKeyDictionary()
     assert isinstance(self._get_cross_device_ops(),
                       cross_device_ops_lib.CollectiveAllReduce)
 
