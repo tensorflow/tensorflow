@@ -83,9 +83,7 @@ ENTRY %main {
                           ParseAndReturnVerifiedModule(hlo_text));
   CompileAndOptionallyVerifyPtx(std::move(optimized_module),
                                 R"(
-// TODO: Make this a vectorized load
-CHECK: ld.global.nc.f32
-CHECK: ld.global.nc.f32
+CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
@@ -116,8 +114,7 @@ ENTRY %main {
                                 R"(
 CHECK: ld.global.nc.f32
 CHECK: ld.global.nc.f32
-// TODO: Make this a vectorized load
-CHECK-NOT: ld.global.nc.v2.f32
+CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK: ld.global.nc.v2.f32
 CHECK-NOT: ld.global.nc.v2.f32
