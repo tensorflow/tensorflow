@@ -135,11 +135,28 @@ tf_kernel_library(
 tf_kernel_library(
     name = "directed_interleave_dataset_op",
     srcs = ["directed_interleave_dataset_op.cc"],
+    hdrs = ["directed_interleave_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:name_utils",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "directed_interleave_dataset_op_test",
+    size = "small",
+    srcs = ["directed_interleave_dataset_op_test.cc"],
+    deps = [
+        ":directed_interleave_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:range_dataset_op",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
     ],
 )
 
