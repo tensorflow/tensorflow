@@ -3192,20 +3192,34 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
 
+  int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
+  int64 num_threads_x = [&] {
+    if (reduction_dimensions.is_row_reduction) {
+      return std::min(
+          kWarpSize * kWarpSize,
+          RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
+                                       reduction_tiling[2]),
+                           kWarpSize));
+    }
+    return kWarpSize;
+  }();
+
+  int tile_size_x = reduction_tiling[2] * num_threads_x;
+  bool tile_fit = reduction_dimensions.dimensions[kDimX] % tile_size_x == 0;
+
   int cc_major = 0, cc_minor = 0;
   ir_emitter_context_->device_description().cuda_compute_capability(&cc_major,
                                                                     &cc_minor);
 
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
-        // Only try to vectorize+coales memory access for rows of even size.
-        // For odd row sizes, every other row isn't aligned, so it can't be
-        // vectorized.
-        reduction_dimensions.dimensions[2] % 2 == 0 &&
-        // Vectorization on P100 speed up only float16 and smaller
-        // dtype. Vectorization on P100 speed up or do not hurt all
-        // dtypes.
-        ((cc_major == 6 && smallest_input_dtype_bits <= 16) || cc_major >= 7)) {
+	// P100, only ttry to vectorize+coales memory access when the
+	// tile size fit exactly and dtypes <= 32 bits
+	((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
+	 // On V100, only try to vectorize+coales memory access for
+	 // rows of even size.  For odd row sizes, every other row
+	 // isn't aligned, so it can't be vectorized.
+	 (cc_major >= 7 && reduction_dimensions.dimensions[2] % 2 == 0))) {
       return kLinearStridedIndexingX;
     } else if (!reduction_dimensions.is_row_reduction &&
 	       IsUnrollingColumnReductionBeneficial(
@@ -3221,20 +3235,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     // Vectorized loads: a single thread reduces two adjacent columns.
     reduction_tiling[2] *= 2;
   }
-
-  int64 num_threads_y = reduction_dimensions.is_row_reduction ? 1 : kWarpSize;
-  int64 num_threads_x = [&] {
-    if (reduction_dimensions.is_row_reduction) {
-      return std::min(
-          kWarpSize * kWarpSize,
-          RoundUpToNearest(CeilOfRatio(reduction_dimensions.dimensions[2],
-                                       reduction_tiling[2]),
-                           kWarpSize));
-    }
-    return kWarpSize;
-  }();
-
-  int tile_size_x = reduction_tiling[2] * num_threads_x;
 
   int vector_size = 1;
   if (indexing_order == kLinearStridedIndexingX) {
