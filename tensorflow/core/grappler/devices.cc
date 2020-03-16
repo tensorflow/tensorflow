@@ -32,16 +32,6 @@ int GetNumAvailableGPUs(
   int num_eligible_gpus = 0;
 
 #if TENSORFLOW_USE_ROCM
-<<<<<<< HEAD
-  if(min_cuda_compute_capability.first!=0 || 
-    min_cuda_compute_capability.second!=0) {
-    LOG(ERROR) << "GetNumAvailableGPUs() should receive zero "
-      "min_cuda_compute_capability";
-    return 0;
-  }
-#endif  
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
-=======
   if (min_cuda_compute_capability.first != 0 ||
       min_cuda_compute_capability.second != 0) {
     LOG(ERROR) << "GetNumAvailableGPUs() should receive zero "
@@ -50,7 +40,6 @@ int GetNumAvailableGPUs(
   }
 #endif
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> google_upstream/master
   if (ValidateGPUMachineManager().ok()) {
     se::Platform* gpu_manager = GPUMachineManager();
     if (gpu_manager != nullptr) {
@@ -72,45 +61,26 @@ int GetNumAvailableGPUs(
         }
 #else
         num_eligible_gpus++;
-<<<<<<< HEAD
-#endif        
-      }
-    }
-  }
-#if GOOGLE_CUDA  
-=======
 #endif
       }
     }
   }
 #if GOOGLE_CUDA
->>>>>>> google_upstream/master
   LOG(INFO)
       << "Number of eligible GPUs (core count >= 8, compute capability >= "
       << min_cuda_compute_capability.first << "."
       << min_cuda_compute_capability.second << "): " << num_eligible_gpus;
 #else
-<<<<<<< HEAD
-    LOG(INFO) << "Number of eligible GPUs: " << num_eligible_gpus;
-#endif
-
-#else // GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
-=======
   LOG(INFO) << "Number of eligible GPUs: " << num_eligible_gpus;
 #endif
 
 #else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> google_upstream/master
   LOG(INFO)
       << "Number of eligible GPUs (core count >= 8, compute capability >= "
       << min_cuda_compute_capability.first << "."
       << min_cuda_compute_capability.second << "): " << num_eligible_gpus
       << " (Note: TensorFlow was not compiled with CUDA or ROCm support)";
-<<<<<<< HEAD
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM  
-=======
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
->>>>>>> google_upstream/master
   return num_eligible_gpus;
 }
 

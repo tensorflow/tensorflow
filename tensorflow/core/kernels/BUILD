@@ -2634,14 +2634,8 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
-<<<<<<< HEAD
-        ":gpu_prim_hdrs"],
-=======
         "//tensorflow/core:framework_internal",
-    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
-        "@local_config_rocm//rocm:rocprim",
-    ]),
->>>>>>> google_upstream/master
+        ":gpu_prim_hdrs"],
 )
 
 tf_kernel_library(
