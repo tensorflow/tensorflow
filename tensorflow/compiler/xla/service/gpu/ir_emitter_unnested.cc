@@ -2161,7 +2161,8 @@ static int GetNumberOfPartialResults(
     return 1;
   }
   int64 num_partial_results =
-      mapping_scheme.GetIndexingOrder() == kStridedIndexingX ? 1 : 2;
+      mapping_scheme.GetIndexingOrder() == kLinearIndexingX ? 2 : 1;
+
   CHECK_EQ(num_partial_results,
            (mapping_scheme.GetTileSizeX() / mapping_scheme.GetNumThreadsX()));
   return num_partial_results;
@@ -3204,8 +3205,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     return kWarpSize;
   }();
 
-  int tile_size_x = reduction_tiling[2] * num_threads_x;
-  bool tile_fit = reduction_dimensions.dimensions[kDimX] % tile_size_x == 0;
+  bool tile_fit = reduction_dimensions.dimensions[kDimX] %
+                      (reduction_tiling[2] * num_threads_x) ==
+                  0;
 
   int cc_major = 0, cc_minor = 0;
   ir_emitter_context_->device_description().cuda_compute_capability(&cc_major,
@@ -3225,16 +3227,12 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
                IsUnrollingColumnReductionBeneficial(
                    unnested_hlo, input_shape,
                    reduction_dimensions.dimensions[2])) {
+      reduction_tiling[2] *= 2;
       return kLinearIndexingX;
     } else {
       return kStridedIndexingX;
     }
   }();
-  if (indexing_order == kLinearIndexingX &&
-      !reduction_dimensions.is_row_reduction) {
-    // Vectorized loads: a single thread reduces two adjacent columns.
-    reduction_tiling[2] *= 2;
-  }
 
   int vector_size = 1;
   if (indexing_order == kLinearStridedIndexingX) {
@@ -3249,7 +3247,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   }
   KernelMappingScheme mapping_scheme(
       reduction_dimensions.dimensions,
-      {reduction_tiling[0], reduction_tiling[1] * num_threads_y, tile_size_x},
+      {reduction_tiling[0], reduction_tiling[1] * num_threads_y,
+       reduction_tiling[2] * num_threads_x},
       num_threads_y, num_threads_x, indexing_order, vector_size);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
