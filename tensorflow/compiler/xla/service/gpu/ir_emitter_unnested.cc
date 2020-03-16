@@ -3192,12 +3192,20 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,
                                             reduction_dimensions.dimensions[2]);
 
+  int cc_major = 0, cc_minor = 0;
+  ir_emitter_context_->device_description().cuda_compute_capability(&cc_major,
+                                                                    &cc_minor);
+
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
         // Only try to vectorize+coales memory access for rows of even size.
         // For odd row sizes, every other row isn't aligned, so it can't be
         // vectorized.
-        reduction_dimensions.dimensions[2] % 2 == 0) {
+        reduction_dimensions.dimensions[2] % 2 == 0 &&
+        // Vectorization on P100 speed up only float16 and smaller
+        // dtype. Vectorization on P100 speed up or do not hurt all
+        // dtypes.
+        ((cc_major == 6 && smallest_input_dtype_bits <= 16) || cc_major >= 7)) {
       return kLinearStridedIndexingX;
     } else if (IsUnrollingColumnReductionBeneficial(
                    unnested_hlo, input_shape,
