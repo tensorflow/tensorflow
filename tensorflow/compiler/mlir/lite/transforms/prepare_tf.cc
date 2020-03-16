@@ -56,7 +56,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
@@ -656,8 +655,8 @@ void PrepareTFPass::runOnFunction() {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  patterns.insert<ConvertTFConv2D, ConvertTFDepthwiseConv2dNative,
+                  ConvertTFStridedSlice>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
