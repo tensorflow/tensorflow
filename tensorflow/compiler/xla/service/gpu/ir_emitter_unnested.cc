@@ -3207,7 +3207,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
         // dtypes.
         ((cc_major == 6 && smallest_input_dtype_bits <= 16) || cc_major >= 7)) {
       return kLinearStridedIndexingX;
-    } else if (IsUnrollingColumnReductionBeneficial(
+    } else if (!reduction_dimensions.is_row_reduction &&
+	       IsUnrollingColumnReductionBeneficial(
                    unnested_hlo, input_shape,
                    reduction_dimensions.dimensions[2])) {
       return kLinearIndexingX;
