@@ -536,7 +536,8 @@ class BatchNormalizationBase(Layer):
     # take exponential_avg_factor as a tensor input.
     use_fused_avg_updates = (
         compat.forward_compatible(2020, 3, 6) and
-        ops.executing_eagerly_outside_functions())
+        ops.executing_eagerly_outside_functions() and
+        isinstance(self.momentum, (float, int)))
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
