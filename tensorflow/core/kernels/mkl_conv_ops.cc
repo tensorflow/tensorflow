@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -1363,6 +1363,69 @@ class MklFusedConvOp
   virtual ~MklFusedConvOp() {}
 };
 
+template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
+          typename Toutput, typename Ttemp_output, typename Tpadding,
+          bool pad_enabled, bool bias_enabled, bool is_depthwise>
+class MklFusedDepthwiseConvOp
+    : public MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output,
+                       Tpadding, bias_enabled, false, is_depthwise, false> {
+ public:
+  explicit MklFusedDepthwiseConvOp(OpKernelConstruction* context)
+      : MklConvOp<Device, Tinput, Tfilter, Tbias, Toutput, Ttemp_output,
+                  Tpadding, bias_enabled, false, is_depthwise, false>(context) {
+    // Since we came here through the registration of
+    // _MklFusedDepthwiseConv2dNative, get all
+    // information from 'fused_ops' and 'num_args'
+    std::vector<string> fused_ops;
+    OP_REQUIRES_OK(context, context->GetAttr("fused_ops", &fused_ops));
+
+    int num_args;
+    OP_REQUIRES_OK(context, context->GetAttr("num_args", &num_args));
+    OP_REQUIRES(context, !fused_ops.empty(),
+                errors::InvalidArgument(
+                    "Fused DepthwiseConv2D must have at least one fused op."));
+
+    if (fused_ops == std::vector<string>{"BiasAdd"}) {
+      this->set_fuse_biasadd(true);
+      OP_REQUIRES(
+          context, num_args == 1,
+	  errors::InvalidArgument(
+              "Fused DepthwiseConv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_relu);
+      OP_REQUIRES(
+          context, num_args == 1,
+	  errors::InvalidArgument(
+              "Fused DepthwiseConv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu6"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
+      OP_REQUIRES(
+          context, num_args == 1,
+	  errors::InvalidArgument(
+              "Fused DepthwiseConv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
+      OP_REQUIRES(
+          context, num_args == 1,
+	  errors::InvalidArgument(
+              "Fused DepthwiseConv2D must have one extra argument: bias."));
+    } else {
+      OP_REQUIRES(context, false,
+                  errors::Unimplemented("Fusion is not implemented: [",
+                                        absl::StrJoin(fused_ops, ","), "]"));
+    }
+
+    if (pad_enabled) {
+      this->set_fuse_pad(true);
+    }
+  }
+
+  virtual ~MklFusedDepthwiseConvOp() {}
+};
+
 // We create new class for each version of Quantized Convolution and inherit
 // from the FP32 version of the base class
 template <typename Device, typename Tinput, typename Tbias, typename Toutput,
@@ -2253,6 +2316,11 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("out_type"),
     NoOp);
 
+REGISTER_KERNEL_BUILDER(Name("_FusedDepthwiseConv2dNative")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<float>("T"),
+                        NoOp);
+
 // Register templatized MKL kernels for non-fused and fused-versions of
 // QuantizedDepthwiseConv2D.
 REGISTER_KERNEL_BUILDER(Name("_MklQuantizedDepthwiseConv2D")
@@ -2305,6 +2373,14 @@ REGISTER_KERNEL_BUILDER(
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklQuantizedConv2DReluOp<CPUDevice, quint8, qint32, quint8, quint8, true,
                              true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklFusedDepthwiseConv2dNative")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<float>("T")
+        .Label(mkl_op_registry::kMklLayoutDependentOpLabel),
+    MklFusedDepthwiseConvOp<CPUDevice, float, float, float, float, float, int32,
+                            false, true, true>);
 
 // Register 2D operations
 #define REGISTER_MKL_CPU_2D(T)                                                 \

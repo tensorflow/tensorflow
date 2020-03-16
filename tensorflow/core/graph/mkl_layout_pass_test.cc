@@ -1593,6 +1593,39 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Non_SCALED_Mode) {
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive1);
 #undef REGISTER_TEST
 
+// Rewrite test for _FusedDepthwiseConv2dNative Op with BiasAdd fusion
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    InitGraph(                                                                 \
+        "node { name: 'A' op: '" #INPUT "'}"                                   \
+        "node { name: 'B' op: '" #INPUT "'}"                                   \
+        "node { name: 'C' op: '" #INPUT "'}"                                   \
+        "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"                   \
+        " attr { key: 'T'                value { type: " #T " } }"             \
+        " attr { key: 'num_args'         value { i: 1 } }"                     \
+        " attr { key: 'data_format'      value { s: 'NCHW' } }"                \
+        " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'padding'          value { s: 'SAME' } }"                \
+        " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"     \
+        " attr { key: 'epsilon'          value { f: 0.001 }}"                  \
+        " input: ['A', 'B', 'C']}"                                             \
+        "node { name: 'E' op: 'Zeta'"                                          \
+        "attr { key: 'T' value { type: " #T " } }"                             \
+        " input: ['D', 'C'] }");                                               \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
+              "D(_MklFusedDepthwiseConv2dNative);"                             \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"        \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"           \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"           \
+              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                          \
+  }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive1);
+#undef REGISTER_TEST
+
 // Rewrite test for _FusedConv2D Op with Relu fusion
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
@@ -1656,6 +1689,39 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive2);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive3);
 #undef REGISTER_TEST
 
+// Rewrite test for _FusedDepthwiseConv2dNative Op with BiasAdd+Relu fusion
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                            \
+              "node { name: 'B' op: '" #INPUT "'}"                            \
+              "node { name: 'C' op: '" #INPUT "'}"                            \
+              "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"            \
+              " attr { key: 'T'                value { type: " #T " } }"      \
+              " attr { key: 'num_args'         value { i: 1 } }"              \
+              " attr { key: 'data_format'      value { s: 'NCHW' } }"         \
+              " attr { key: 'strides'          value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'padding'          value { s: 'SAME' } }"         \
+              " attr { key: 'dilations'        value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'fused_ops'"                                      \
+              "             value { list: {s: 'BiasAdd', s: 'Relu'} } }"      \
+              " attr { key: 'epsilon'          value { f: 0.001 }}"           \
+              " input: ['A', 'B', 'C']}"                                      \
+              "node { name: 'E' op: 'Zeta'"                                   \
+              "attr { key: 'T' value { type: " #T " } }"                      \
+              " input: ['D', 'C'] }");                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+              "D(_MklFusedDepthwiseConv2dNative);"                            \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+  }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive3);
+#undef REGISTER_TEST
+
 // Rewrite test for _FusedConv2D Op with BiasAdd+Relu6 fusion
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
@@ -1688,6 +1754,39 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive3);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive4);
 #undef REGISTER_TEST
 
+// Rewrite test for _FusedDepthwiseConv2dNative Op with BiasAdd+Relu6 fusion
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                            \
+              "node { name: 'B' op: '" #INPUT "'}"                            \
+              "node { name: 'C' op: '" #INPUT "'}"                            \
+              "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"            \
+              " attr { key: 'T'                value { type: " #T " } }"      \
+              " attr { key: 'num_args'         value { i: 1 } }"              \
+              " attr { key: 'data_format'      value { s: 'NCHW' } }"         \
+              " attr { key: 'strides'          value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'padding'          value { s: 'SAME' } }"         \
+              " attr { key: 'dilations'        value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'fused_ops'"                                      \
+              "             value { list: {s: 'BiasAdd', s: 'Relu6'} } }"     \
+              " attr { key: 'epsilon'          value { f: 0.001 }}"           \
+              " input: ['A', 'B', 'C']}"                                      \
+              "node { name: 'E' op: 'Zeta'"                                   \
+              "attr { key: 'T' value { type: " #T " } }"                      \
+              " input: ['D', 'C'] }");                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+              "D(_MklFusedDepthwiseConv2dNative);"                            \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+  }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive4);
+#undef REGISTER_TEST
+
 // Rewrite test for _FusedConv2D Op with BiasAdd+Elu fusion
 #define REGISTER_TEST(NAME, T, INPUT)                                         \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
@@ -1718,6 +1817,39 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive4);
               "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
   }
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive5);
+#undef REGISTER_TEST
+
+// Rewrite test for _FusedDepthwiseConv2dNative Op with BiasAdd+Elu fusion
+#define REGISTER_TEST(NAME, T, INPUT)                                         \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                     \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                            \
+              "node { name: 'B' op: '" #INPUT "'}"                            \
+              "node { name: 'C' op: '" #INPUT "'}"                            \
+              "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"            \
+              " attr { key: 'T'                value { type: " #T " } }"      \
+              " attr { key: 'num_args'         value { i: 1 } }"              \
+              " attr { key: 'data_format'      value { s: 'NCHW' } }"         \
+              " attr { key: 'strides'          value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'padding'          value { s: 'SAME' } }"         \
+              " attr { key: 'dilations'        value { list: {i: 1, i:1, "    \
+              "i:1, i:1} } }"                                                 \
+              " attr { key: 'fused_ops'"                                      \
+              "             value { list: {s: 'BiasAdd', s: 'Elu'} } }"       \
+              " attr { key: 'epsilon'          value { f: 0.001 }}"           \
+              " input: ['A', 'B', 'C']}"                                      \
+              "node { name: 'E' op: 'Zeta'"                                   \
+              "attr { key: 'T' value { type: " #T " } }"                      \
+              " input: ['D', 'C'] }");                                        \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                  \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                    \
+              "D(_MklFusedDepthwiseConv2dNative);"                            \
+              "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|A->D;"       \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+              "A:control->DMT/_2:control;B->D:1;C->D:2;C->E:1;D->E;"          \
+              "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                         \
+  }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Positive5);
 #undef REGISTER_TEST
 
 // Rewrite test for _FusedConv2D Op with BiasAdd+Add fusion
@@ -1818,6 +1950,36 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Positive7);
 REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative1);
 #undef REGISTER_TEST
 
+// Rewrite test for _FusedDepthwiseConv2dNative with unsupported fusion
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    InitGraph(                                                                 \
+        "node { name: 'A' op: '" #INPUT "'}"                                   \
+        "node { name: 'B' op: '" #INPUT "'}"                                   \
+        "node { name: 'C' op: '" #INPUT "'}"                                   \
+        "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"                   \
+        " attr { key: 'T'                value { type: " #T " } }"             \
+        " attr { key: 'num_args'         value { i: 1 } }"                     \
+        " attr { key: 'data_format'      value { s: 'NCHW' } }"                \
+        " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'padding'          value { s: 'SAME' } }"                \
+        " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'fused_ops'        value { list: {s: 'Unsupported'} } }" \
+        " attr { key: 'epsilon'          value { f: 0.001 }}"                  \
+        " input: ['A', 'B', 'C']}"                                             \
+        "node { name: 'E' op: 'Zeta'"                                          \
+        "attr { key: 'T' value { type: " #T " } }"                             \
+        " input: ['D', 'C'] }");                                               \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
+              "D(_FusedDepthwiseConv2dNative);"                                \
+              "E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");                       \
+  }
+REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedDepthwiseConv2dNative_Negative1);
+#undef REGISTER_TEST
+
 // Rewrite test for _FusedConv2D Op with unsupported type
 #define REGISTER_TEST(NAME, T, INPUT)                                          \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
@@ -1845,6 +2007,37 @@ REGISTER_TEST_ALL_TYPES(NodeRewrite_FusedConv2D_Negative1);
               "D(_FusedConv2D);E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");       \
 }
 REGISTER_TEST(NodeRewrite_FusedConv2D_Negative2, DT_DOUBLE, DoubleInput);
+#undef REGISTER_TEST
+
+// Rewrite test for _FusedDepthwiseConv2dNativeOp with unsupported type
+#define REGISTER_TEST(NAME, T, INPUT)                                          \
+  TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
+    InitGraph(                                                                 \
+        "node { name: 'A' op: '" #INPUT "'}"                                   \
+        "node { name: 'B' op: '" #INPUT "'}"                                   \
+        "node { name: 'C' op: '" #INPUT "'}"                                   \
+        "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"                   \
+        " attr { key: 'T'                value { type:" #T  "} }"              \
+        " attr { key: 'num_args'         value { i: 1 } }"                     \
+        " attr { key: 'data_format'      value { s: 'NCHW' } }"                \
+        " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'padding'          value { s: 'SAME' } }"                \
+        " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} " \
+        "} }"                                                                  \
+        " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"     \
+        " attr { key: 'epsilon'          value { f: 0.001 }}"                  \
+        " input: ['A', 'B', 'C']}"                                             \
+        "node { name: 'E' op: 'Zeta'"                                          \
+        "attr { key: 'T' value { type: " #T "} }"                              \
+        " input: ['D', 'C'] }");                                               \
+    EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
+              "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");"                     \
+              "D(_FusedDepthwiseConv2dNative);"                                \
+              "E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");                       \
+}
+REGISTER_TEST(NodeRewrite_FusedDepthwiseConv2dNative_Negative2,
+              DT_DOUBLE, DoubleInput);
 #undef REGISTER_TEST
 
 // Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
@@ -4241,6 +4434,33 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Positive) {
                                                           "_MklFusedConv2D"));
 }
 
+// _FusedDepthwiseConv2dNative + BiasAdd fusion where filter is a constant.
+TEST_F(MklLayoutPassTest,
+       FusedDepthwiseConv2dNativeWithBias_FilterCaching_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Const'"  // Filter
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_FLOAT tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D', 'C'] }");
+  EXPECT_TRUE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklFusedDepthwiseConv2dNative"));
+}
+
 // _FusedConv2D + BiasAdd fusion where filter is NOT a constant.
 TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Negative) {
   InitGraph(
@@ -4263,6 +4483,28 @@ TEST_F(MklLayoutPassTest, FusedConv2DWithBias_FilterCaching_Negative) {
                                                            "_MklFusedConv2D"));
 }
 
+// _FusedDepthwiseConv2dNative + BiasAdd fusion where filter is NOT a constant.
+TEST_F(MklLayoutPassTest,
+       FusedDepthwiseConv2dNativeWithBias_FilterCaching_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"  // Filter
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedDepthwiseConv2dNative'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'data_format'      value { s: 'NCHW' } }"
+      " attr { key: 'strides'          value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'padding'          value { s: 'SAME' } }"
+      " attr { key: 'dilations'        value { list: {i: 1, i:1, i:1, i:1} } }"
+      " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D', 'C'] }");
+  EXPECT_FALSE(DoMklLayoutOptimizationPassGetAttrVal<bool>(
+      "is_filter_const", "_MklFusedDepthwiseConv2dNative"));
+}
 // Depthwise Conv2D op where filter is a constant.
 TEST_F(MklLayoutPassTest, DepthwiseConv2dNative_FilterCaching_Positive) {
   InitGraph(

@@ -173,6 +173,148 @@ TEST_F(MklRemapperTest, FuseConv2DWithBiasAndAddNRelu) {
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
+TEST_F(MklRemapperTest, FuseDepthwiseConv2DWithBias) {
+  using ::tensorflow::ops::Placeholder;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
+  auto filter_shape = ops::Placeholder::Shape({1, 1, 3, 1});
+  auto bias_shape = ops::Placeholder::Shape({3});
+
+  auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+  auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+  auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+
+  std::vector<int> strides = {1, 1, 1, 1};
+  auto conv = ops::DepthwiseConv2dNative(s.WithOpName("depthwise_conv"), input, filter, strides, "SAME");
+  auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+  auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);
+
+  auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 32, 32, 3});
+  auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 3, 1});
+  auto bias_t = GenerateRandomTensor<DT_FLOAT>({3});
+
+  GrapplerItem item;
+  item.fetch = {"fetch"};
+  item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // Place all nodes on CPU.
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    item.graph.mutable_node(i)->set_device("/device:CPU:0");
+  }
+
+  Remapper optimizer(RewriterConfig::ON);
+  GraphDef output;
+  TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+  int found = 0;
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "bias_add") {
+      EXPECT_EQ(node.op(), "_FusedDepthwiseConv2dNative");
+      ASSERT_GE(node.input_size(), 3);
+      EXPECT_EQ(node.input(0), "input");
+      EXPECT_EQ(node.input(1), "filter");
+
+      EXPECT_EQ(node.attr().at("num_args").i(), 1);
+      EXPECT_EQ(node.input(2), "bias");
+
+      const auto fused_ops = node.attr().at("fused_ops").list().s();
+      ASSERT_EQ(fused_ops.size(), 1);
+      EXPECT_EQ(fused_ops[0], "BiasAdd");
+      found++;
+    }
+  }
+  EXPECT_EQ(found, 1);
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+  ASSERT_EQ(tensors_expected.size(), 1);
+  auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+  ASSERT_EQ(tensors.size(), 1);
+  test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+}
+
+TEST_F(MklRemapperTest, FuseDepthwiseConv2DWithBiasAndActivation) {
+  using ::tensorflow::ops::Placeholder;
+
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+    auto input_shape = Placeholder::Shape({8, 32, 32, 3});
+    auto filter_shape = Placeholder::Shape({1, 1, 3, 1});
+    auto bias_shape = Placeholder::Shape({3});
+
+    auto input = Placeholder(s.WithOpName("input"), DT_FLOAT, input_shape);
+    auto filter = Placeholder(s.WithOpName("filter"), DT_FLOAT, filter_shape);
+    auto bias = Placeholder(s.WithOpName("bias"), DT_FLOAT, bias_shape);
+
+    std::vector<int> strides = {1, 1, 1, 1};
+    auto conv = ops::DepthwiseConv2dNative(s.WithOpName("depthwise_conv"),
+                                          input, filter, strides, "SAME");
+    auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), conv, bias);
+
+    ops::Identity fetch = [&]() -> ops::Identity {
+      auto activate = s.WithOpName("activation");
+      auto fetch = s.WithOpName("fetch");
+
+      if (activation == "Relu") {
+        return ops::Identity(fetch, ops::Relu(activate, bias_add));
+      } else if (activation == "Relu6") {
+        return ops::Identity(fetch, ops::Relu6(activate, bias_add));
+      } else if (activation == "Elu") {
+        return ops::Identity(fetch, ops::Elu(activate, bias_add));
+      }
+
+      return ops::Identity(fetch, bias);
+    }();
+
+    auto input_t = GenerateRandomTensor<DT_FLOAT>({8, 32, 32, 3});
+    auto filter_t = GenerateRandomTensor<DT_FLOAT>({1, 1, 3, 1});
+    auto bias_t = GenerateRandomTensor<DT_FLOAT>({3});
+
+    GrapplerItem item;
+    item.fetch = {"fetch"};
+    item.feed = {{"input", input_t}, {"filter", filter_t}, {"bias", bias_t}};
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+    // Place all nodes on CPU.
+    for (int i = 0; i < item.graph.node_size(); ++i) {
+      item.graph.mutable_node(i)->set_device("/device:CPU:0");
+    }
+
+    Remapper optimizer(RewriterConfig::ON);
+    GraphDef output;
+    TF_CHECK_OK(optimizer.Optimize(nullptr, item, &output));
+
+    int found = 0;
+    for (const NodeDef& node : output.node()) {
+      if (node.name() == "activation") {
+        EXPECT_EQ(node.op(), "_FusedDepthwiseConv2dNative");
+        ASSERT_GE(node.input_size(), 3);
+        EXPECT_EQ(node.input(0), "input");
+        EXPECT_EQ(node.input(1), "filter");
+
+        EXPECT_EQ(node.attr().at("num_args").i(), 1);
+        EXPECT_EQ(node.input(2), "bias");
+
+        const auto fused_ops = node.attr().at("fused_ops").list().s();
+        ASSERT_EQ(fused_ops.size(), 2);
+        EXPECT_EQ(fused_ops[0], "BiasAdd");
+        EXPECT_EQ(fused_ops[1], activation);
+        found++;
+      }
+    }
+    EXPECT_EQ(found, 1);
+
+    auto tensors_expected = EvaluateNodes(item.graph, item.fetch, item.feed);
+    ASSERT_EQ(tensors_expected.size(), 1);
+    auto tensors = EvaluateNodes(output, item.fetch, item.feed);
+    ASSERT_EQ(tensors.size(), 1);
+    test::ExpectTensorNear<float>(tensors[0], tensors_expected[0], 1e-6);
+  }
+}
+
 }  // namespace grappler
 }  // namespace tensorflow
 #endif  // INTEL_MKL
