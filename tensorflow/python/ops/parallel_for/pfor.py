@@ -2963,6 +2963,7 @@ def _convert_multinomial(pfor_input):
 @RegisterPFor("StatelessRandomPoisson")
 @RegisterPFor("StatelessRandomUniform")
 @RegisterPFor("StatelessRandomUniformInt")
+@RegisterPFor("StatelessRandomUniformFullInt")
 @RegisterPFor("StatelessTruncatedNormal")
 def _convert_stateless_multinomial(pfor_input):
   # Unlike stateful random ops, for stateless ones we want better
