@@ -196,7 +196,7 @@ def cast_to_floatx(x):
                     variables_module.Variable,
                     sparse_tensor.SparseTensor)):
     return math_ops.cast(x, dtype=floatx())
-  return np.asarray(x, dtype=floatx())
+  return np.asarray_chkfinite(x, dtype=floatx())
 
 
 # A global dictionary mapping graph objects to an index of counters used
