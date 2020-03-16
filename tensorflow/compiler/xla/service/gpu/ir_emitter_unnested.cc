@@ -2099,6 +2099,16 @@ static IrArray::Index GetUnnormalizedIndex(
     const Shape& unnormalized_shape, llvm::IRBuilder<>* b_,
     const KernelMappingScheme& kernel_mapping_scheme) {
   DCHECK_EQ(normalized_shape_index.size(), 3);
+  // If the normalization only add a new dimensions of size 1,
+  // generate simpler indexing. LLVM doesn't always simplify the more
+  // complicated indexing and this prevent him from vectorizing some
+  // cases.
+  if (unnormalized_shape.rank() == 2) {
+    DCHECK_EQ(normalized_shape_index.dims()[0], 0);
+    auto multidim = normalized_shape_index.multidim();
+    return IrArray::Index({multidim[1], multidim[2]}, unnormalized_shape,
+                          normalized_shape_index.GetType());
+  }
   llvm::Value* linear = normalized_shape_index.Linearize(
       kernel_mapping_scheme.GetDimsInElems(), b_);
   return IrArray::Index(linear, unnormalized_shape, b_);
