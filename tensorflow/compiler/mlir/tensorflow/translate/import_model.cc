@@ -53,6 +53,7 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/Module.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
+#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
@@ -1586,8 +1587,15 @@ Status ImporterBase::ConvertNode(const Node& node) {
   using FuncPairType = std::pair<const std::string*, const AttrValue*>;
   std::vector<FuncPairType> funcs;
   result.attributes.reserve(node.attrs().size() + 2);
+  auto abstract_op = result.name.getAbstractOperation();
+  auto derived_op =
+      abstract_op
+          ? abstract_op->getInterface<mlir::DerivedAttributeOpInterface>()
+          : nullptr;
   for (const auto& name_and_value : node.attrs()) {
     const auto& attr_name = name_and_value.first;
+    // Skip adding derived attributes to the generated op.
+    if (derived_op && derived_op->isDerivedAttribute(attr_name)) continue;
     const AttrValue& attr_value = name_and_value.second;
     // LegacyCall can only represent _diable_call_shape_inference attribute.
     // If a call has other attributes, can't convert it to LegacyCall.
