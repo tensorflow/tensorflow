@@ -605,7 +605,7 @@ class Tensor(_TensorLike):
 
     ```python
     _, image_data = tf.compat.v1.TFRecordReader(...).read(...)
-    image = tf.image.decode_png(image_data, channels=3)
+    image = tf.io.decode_png(image_data, channels=3)
 
     # The height and width dimensions of `image` are data dependent, and
     # cannot be computed without executing the op.
