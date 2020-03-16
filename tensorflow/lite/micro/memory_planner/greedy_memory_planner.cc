@@ -331,7 +331,7 @@ void GreedyMemoryPlanner::PrintMemoryPlan(ErrorReporter* error_reporter) {
       }
     }
     line[kLineWidth] = 0;
-    TF_LITE_REPORT_ERROR(error_reporter, "%s", line, kLineWidth);//todo andrewc@xmos.com 13MAR20 va_arg
+    TF_LITE_REPORT_ERROR(error_reporter, "%s", (const char *)line);//cast helps resolve ambiguous overload
   }
 }
 
