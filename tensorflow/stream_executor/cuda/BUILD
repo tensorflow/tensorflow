@@ -416,6 +416,7 @@ cc_library(
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     textual_hdrs = ["cupti_10_0.inc"],
     deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",

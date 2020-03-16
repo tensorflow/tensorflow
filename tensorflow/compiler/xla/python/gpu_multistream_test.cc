@@ -32,7 +32,7 @@ TEST(GpuMultiStream, Basics) {
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  std::shared_ptr<Device> device = client->local_devices().at(0);
+  Device* device = client->local_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});
@@ -45,15 +45,19 @@ TEST(GpuMultiStream, Basics) {
   Tuple(&builder, {Neg(p0), Neg(p1)});
   TF_ASSERT_OK_AND_ASSIGN(XlaComputation computation, builder.Build());
 
-  ExecutableBuildOptions build_options;
-  build_options.mutable_debug_options()->set_xla_gpu_disable_multi_streaming(
-      false);
-  build_options.mutable_debug_options()->set_xla_gpu_use_random_streams(true);
-
+  CompileOptions compile_options;
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_disable_multi_streaming(false);
+  compile_options.executable_build_options.mutable_debug_options()
+      ->set_xla_gpu_use_random_streams(true);
+  DeviceAssignment device_assignment(1, 1);
+  device_assignment(0, 0) = device->id();
+  compile_options.executable_build_options.set_device_assignment(
+      device_assignment);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<PyLocalExecutable> executable,
-      PyLocalExecutable::CompileForDevices(computation, {}, &build_options,
-                                           client, {{device}}));
+      PyLocalExecutable::Compile(computation, client.get(),
+                                 std::move(compile_options)));
 
   int64 dummy_size = 1 << 20;
   std::vector<int32> dummy_inputs(dummy_size);
@@ -70,22 +74,24 @@ TEST(GpuMultiStream, Basics) {
         auto dummy_buffer,
         PyLocalBuffer::FromHostBuffer(
             dummy_inputs.data(), dummy_shape, /*force_copy=*/false,
-            /*buffer_reference=*/nullptr, client, device));
-    TF_ASSERT_OK_AND_ASSIGN(auto in_buffer0,
-                            PyLocalBuffer::FromHostBuffer(
-                                inputs.data(), shape, /*force_copy=*/false,
-                                /*buffer_reference=*/nullptr, client, device));
-    TF_ASSERT_OK_AND_ASSIGN(auto in_buffer1,
-                            PyLocalBuffer::FromHostBuffer(
-                                inputs.data(), shape, /*force_copy=*/false,
-                                /*buffer_reference=*/nullptr, client, device));
+            /*buffer_reference=*/nullptr, client.get(), device));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto in_buffer0,
+        PyLocalBuffer::FromHostBuffer(
+            inputs.data(), shape, /*force_copy=*/false,
+            /*buffer_reference=*/nullptr, client.get(), device));
+    TF_ASSERT_OK_AND_ASSIGN(
+        auto in_buffer1,
+        PyLocalBuffer::FromHostBuffer(
+            inputs.data(), shape, /*force_copy=*/false,
+            /*buffer_reference=*/nullptr, client.get(), device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
+    ExecuteOptions options;
+    options.untuple_result = true;
     TF_ASSERT_OK_AND_ASSIGN(
-        auto out_buffer,
-        executable->Execute({in_buffer0.get(), in_buffer1.get()}));
-
-    TF_ASSERT_OK_AND_ASSIGN(auto out_buffers, out_buffer->DestructureTuple());
+        auto out_buffers,
+        executable->Execute({in_buffer0.get(), in_buffer1.get()}, options));
 
     TF_ASSERT_OK_AND_ASSIGN(auto out_literal, out_buffers[0]->ToLiteral());
     LiteralTestUtil::ExpectR1Equal<int32>(expected_outputs, *out_literal);

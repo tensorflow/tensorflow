@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/framework/unique_tensor_references.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -673,7 +672,6 @@ class OpKernelContext {
 
     bool track_allocations = false;
     bool log_memory = false;
-    bool record_tensor_accesses = false;
 
     // Array indexed by output number for this node
     const AllocatorAttributes* output_attr_array = nullptr;
@@ -1221,11 +1219,6 @@ class OpKernelContext {
   // TODO(tucker): Add example usage.
   DeviceBase* device() const { return params_->device; }
 
-  // Retrieve list of referenced tensors in out_vector. Once this is
-  // called, it is not legal to reference any more tensors.  Should
-  // not be called from Op kernels.
-  void retrieve_accessed_tensors(TensorReferenceVector* out_vector);
-
   // Per-step container for use by white-listed internal ops.
   ScopedStepContainer* step_container() const {
     return params_->step_container;
@@ -1308,13 +1301,6 @@ class OpKernelContext {
  private:
   bool record_memory_consumption_ = false;
 
-  // Internal method to add a tensor's buffer to the list of buffers
-  // referenced during the execution of the Op, so that GPUs may
-  // accurately track the memory that may not be reused until the Op
-  // execution completes.
-  void record_tensor_reference(const Tensor& tensor);
-  void really_record_tensor_reference(const Tensor& tensor);
-
   // Internal common method used when allocating tensor memory
   Status allocate_tensor(DataType type, const TensorShape& shape,
                          Tensor* out_tensor,
@@ -1330,14 +1316,6 @@ class OpKernelContext {
   // Initialize the allocated_scope_ids_ set the first time this method is
   // called.
   void maybe_initialize_scope_id_set();
-
-  // This is called by PersistentTensor::AccessTensor whenever the
-  // wrapped tensor is retrieved, to ensure the runtime knows that the
-  // Tensor is being accessed within an Op. This is necessary for
-  // memory safety of devices like GPUs that queue Ops for
-  // asynchronous execution after the Compute() method completes.
-  friend class PersistentTensor;
-  void NotifyUseOfPersistentTensor(const Tensor& tensor);
 
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
@@ -1355,8 +1333,6 @@ class OpKernelContext {
     mutable mutex mu;
     gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators
         TF_GUARDED_BY(mu);
-
-    UniqueTensorReferences referenced_tensors TF_GUARDED_BY(mu);
 
     mutable mutex stats_mu;
     int64 temp_memory_allocated TF_GUARDED_BY(stats_mu) = 0;
@@ -1658,23 +1634,6 @@ inline bool OpKernelContext::input_is_ref(int index) const {
   return value.is_ref();
 }
 
-inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
-  DCHECK_EQ(params_->device->RequiresRecordingAccessedTensors(),
-            params_->record_tensor_accesses);
-  if (params_->record_tensor_accesses) {
-    really_record_tensor_reference(tensor);
-  }
-}
-
-inline void OpKernelContext::retrieve_accessed_tensors(
-    TensorReferenceVector* out_vector) {
-  if (params_->record_tensor_accesses) {
-    DCHECK(tracking_state_);
-    mutex_lock l(tracking_state_->mu);
-    tracking_state_->referenced_tensors.FreezeAndReturnReferences(out_vector);
-  }
-}
-
 // no input if tensor == nullptr.
 inline bool OpKernelContext::has_input(int index) const {
   DCHECK_GE(index, 0);
@@ -1689,17 +1648,9 @@ inline mutex* OpKernelContext::input_ref_mutex(int index) {
   return (*params_->inputs)[index].mutex_if_ref;
 }
 
-inline void OpKernelContext::NotifyUseOfPersistentTensor(const Tensor& t) {
-  if (t.IsInitialized()) {
-    record_tensor_reference(t);
-  }
-}
-
 inline Tensor* OpKernelContext::mutable_output(int index) {
   DCHECK_GE(index, 0);
   DCHECK_LT(index, num_outputs());
-  // No need to record_tensor_reference since the output must already
-  // have been set by a call that did so.
   return outputs_[index].tensor;
 }
 

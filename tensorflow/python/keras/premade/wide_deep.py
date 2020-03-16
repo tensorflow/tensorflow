@@ -42,14 +42,14 @@ class WideDeepModel(keras_training.Model):
   linear_model = LinearModel()
   dnn_model = keras.Sequential([keras.layers.Dense(units=64),
                                keras.layers.Dense(units=1)])
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
   # define dnn_inputs and linear_inputs as separate numpy arrays or
   # a single numpy array if dnn_inputs is same as linear_inputs.
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   # or define a single `tf.data.Dataset` that contains a single tensor or
   # separate tensors for dnn_inputs and linear_inputs.
-  dataset = tf.data.Dataset.from_tensors(([dnn_inputs, linear_inputs], y))
+  dataset = tf.data.Dataset.from_tensors(([linear_inputs, dnn_inputs], y))
   combined_model.fit(dataset, epochs)
   ```
 
@@ -64,9 +64,9 @@ class WideDeepModel(keras_training.Model):
   dnn_model = keras.Sequential([keras.layers.Dense(units=1)])
   dnn_model.compile('rmsprop', 'mse')
   dnn_model.fit(dnn_inputs, y, epochs)
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   ```
 
   """

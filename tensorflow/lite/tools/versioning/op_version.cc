@@ -32,20 +32,6 @@ namespace {
 inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
   return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
 }
-
-// Compare shape of two tensors with idx1 and idx2 of an operator op, return
-// true if they have the same shape.
-inline bool HaveSameShapes(const SubGraph* subgraph, const Operator* op,
-                           int idx1, int idx2) {
-  const flatbuffers::Vector<int32_t>* shape1 =
-      subgraph->tensors()->Get(op->inputs()->Get(idx1))->shape();
-  const flatbuffers::Vector<int32_t>* shape2 =
-      subgraph->tensors()->Get(op->inputs()->Get(idx2))->shape();
-  if (shape1->size() != shape2->size()) {
-    return false;
-  }
-  return std::equal(shape1->begin(), shape1->end(), shape2->begin());
-}
 }  // namespace
 
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
@@ -318,9 +304,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_SUB:
-      if (op_sig.options.sub.need_broadcast &&
-          op_sig.options.sub.num_dims > 4) {
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+      if (op_sig.options.space_batch.num_dims != 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -330,8 +316,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
-    case BuiltinOperator_SPACE_TO_BATCH_ND:
-    case BuiltinOperator_BATCH_TO_SPACE_ND:
+    case BuiltinOperator_SUB:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_MAXIMUM:
@@ -340,6 +325,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_SPACE_TO_DEPTH:
+    case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:
@@ -470,10 +456,9 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
-    case BuiltinOperator_SUB: {
-      op_sig.options.sub.need_broadcast = !HaveSameShapes(subgraph, op, 0, 1);
-      op_sig.options.sub.num_dims =
-          std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND: {
+      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     default:

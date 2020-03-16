@@ -76,6 +76,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
 
   // Reads "num_elements" varint64's from "buffered_file".
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
+  TF_RETURN_IF_ERROR(buffered_file->Hint(size));
   std::vector<uint64> string_lengths(num_elements);
   for (size_t i = 0; i < num_elements; ++i) {
     TF_RETURN_IF_ERROR(buffered_file->ReadVarint64(&string_lengths[i]));
@@ -151,6 +152,7 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
 
   // Reads the actual string bytes.
   TF_RETURN_IF_ERROR(buffered_file->Seek(offset));
+  TF_RETURN_IF_ERROR(buffered_file->Hint(size));
   for (size_t i = 0; i < num_elements; ++i) {
     // Read the serialized variant length.
     uint64 string_length = 0;

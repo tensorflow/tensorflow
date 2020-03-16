@@ -423,7 +423,11 @@ TEST(IsKernelRegisteredForNode, All) {
   v.set_type(DataType::DT_FLOAT);
   (*node.mutable_attr())["T"] = v;
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
+<<<<<<< HEAD
 #ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+=======
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+>>>>>>> google_upstream/master
   node.set_device("/gpu:0");
   TF_EXPECT_OK(IsKernelRegisteredForNode(node));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

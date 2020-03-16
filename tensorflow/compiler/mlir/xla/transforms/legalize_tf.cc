@@ -1595,6 +1595,82 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
   }
 };
 
+static void BroadcastBatchMatMulV2Operands(Value lhs, Value rhs, Location loc,
+                                           Value *out_lhs, Value *out_rhs,
+                                           PatternRewriter *rewriter) {
+  auto lhs_type = lhs.getType().cast<RankedTensorType>();
+  auto rhs_type = rhs.getType().cast<RankedTensorType>();
+  // The last two dimensions are the matrix row/col dimensions. Don't
+  // broadcast them.
+  SmallVector<int64_t, 6> result_batch_shape;
+  OpTrait::util::getBroadcastedShape(lhs_type.getShape().drop_back(2),
+                                     rhs_type.getShape().drop_back(2),
+                                     result_batch_shape);
+  auto handle_one_side = [rewriter, &result_batch_shape, loc](
+                             Value side, RankedTensorType type,
+                             Value *out_side) {
+    ArrayRef<int64_t> matrix_dims = type.getShape().take_back(2);
+    auto result_shape = result_batch_shape;
+    result_shape.append(matrix_dims.begin(), matrix_dims.end());
+    auto result_type =
+        RankedTensorType::get(result_shape, type.getElementType());
+    auto shape = rewriter->create<TF::ConstOp>(
+        loc, GetI64ElementsAttr(result_shape, rewriter));
+    *out_side =
+        rewriter->create<TF::BroadcastToOp>(loc, result_type, side, shape);
+  };
+  handle_one_side(lhs, lhs_type, out_lhs);
+  handle_one_side(rhs, rhs_type, out_rhs);
+}
+
+class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::BatchMatMulV2Op op,
+                                     PatternRewriter &rewriter) const override {
+    // TODO(silvasean): Handle adj_x/adj_y
+    // Should be able to just set the contracting_dimensions attribute
+    // appropriately.
+    // For complex types, need to do a complex conjugation.
+    if (op.adj_x() || op.adj_y()) return matchFailure();
+
+    Value lhs = op.x();
+    Value rhs = op.y();
+    auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
+    auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
+    if (!lhs_type || !rhs_type) return matchFailure();
+    // TODO(silvasean): Support dynamic shapes.
+    if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape()) {
+      return matchFailure();
+    }
+
+    // Broadcast both operands.
+    BroadcastBatchMatMulV2Operands(lhs, rhs, op.getLoc(), &lhs, &rhs,
+                                   &rewriter);
+    lhs_type = lhs.getType().cast<RankedTensorType>();
+    rhs_type = rhs.getType().cast<RankedTensorType>();
+    assert(lhs_type.getRank() == rhs_type.getRank());
+    int64_t rank = lhs_type.getRank();
+    auto batch_dimensions = GetI64ElementsAttr(
+        llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2)), &rewriter);
+    auto lhs_contracting_dimensions =
+        GetI64ElementsAttr(llvm::makeArrayRef({rank - 1}), &rewriter);
+    auto rhs_contracting_dimensions =
+        GetI64ElementsAttr(llvm::makeArrayRef({rank - 2}), &rewriter);
+    auto dimension_numbers = DotDimensionNumbers::get(
+        /*lhs_batching_dimensions=*/batch_dimensions,
+        /*rhs_batching_dimensions=*/batch_dimensions,
+        /*lhs_contracting_dimensions=*/lhs_contracting_dimensions,
+        /*rhs_contracting_dimensions=*/rhs_contracting_dimensions,
+        rewriter.getContext());
+    rewriter.replaceOpWithNewOp<DotGeneralOp>(op, op.getType(), lhs, rhs,
+                                              dimension_numbers,
+                                              /*precision_config=*/nullptr);
+    return matchSuccess();
+  }
+};
+
 // Converts the tf.Split op into a series of HLO slice ops when the tensor to be
 // split has fully static shape and the dimension to split is a constant.
 //
@@ -2928,22 +3004,22 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
-// Converts InfeedEnqueueTuple to XLA HLO after_all, infeed and
+// Converts InfeedDequeueTuple to XLA HLO create_token, infeed and
 // get_tuple_element ops.
 //
 // All HLO infeed ops expect a HLO token type operand and produce a tuple
 // containing a token. This HLO token type is used to order multiple infeed
 // operations within a computation. The token type can come from other
-// infeed/outfeed/send/recv ops or can be generated using an after_all op with
-// no operands. Here we emit an after_all op to generate the token type operand
-// of infeed.
+// infeed/outfeed/send/recv ops or can be generated using create_token op with
+// no operands. Here we emit a create_token op to generate the token type
+// operand of infeed.
 //
 // For example the following IR:
 // %0:2 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4xf32>)
 //
 // would be lowered to
 //
-// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %token = "xla_hlo.create_token"() : () -> !xla_hlo.token
 // %data_and_token = "xla_hlo.infeed"(%token) {infeed_config = ""} :
 //      (!xla_hlo.token) -> tuple<tuple<tensor<3xi32>, tensor<4xf32>>,
 //      !xla_hlo.token>
@@ -2962,21 +3038,20 @@ class ConvertInfeedDequeueTupleOp
     for (auto idx_and_output : llvm::enumerate(op.outputs())) {
       result_types[idx_and_output.index()] = (idx_and_output.value().getType());
     }
-    // Infeed takes a single token operand. Generate the token using after_all
-    // op to pass to the infeed op.
-    auto afterall = rewriter.create<AfterAllOp>(
-        op.getLoc(), xla_hlo::TokenType::get(rewriter.getContext()),
-        ValueRange());
+    // Infeed takes a single token operand. Generate the token using
+    // create_token op to pass to the infeed op.
+    auto token = rewriter.create<CreateTokenOp>(
+        op.getLoc(), xla_hlo::TokenType::get(rewriter.getContext()));
 
     // Emit infeed op.
     // The result type of infeed is a tuple(tuple(result types), token type).
     auto data_tuple_type =
         mlir::TupleType::get(result_types, rewriter.getContext());
     auto data_and_token_type = mlir::TupleType::get(
-        {data_tuple_type, afterall.getType()}, rewriter.getContext());
+        {data_tuple_type, token.getType()}, rewriter.getContext());
 
     auto data_and_token =
-        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, afterall,
+        rewriter.create<InfeedOp>(op.getLoc(), data_and_token_type, token,
                                   /*infeed_config=*/rewriter.getStringAttr(""));
 
     // The infeed instruction produces a tuple of the infeed data and a token
@@ -2998,10 +3073,11 @@ class ConvertInfeedDequeueTupleOp
   }
 };
 
-// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, after_all and outfeed ops.
+// Converts tf.OutfeedEnqueueTuple to XLA HLO tuple, create_token and outfeed
+// ops.
 //
 // XLA HLO outfeed op expects a token, which we generate by emitting an
-// after_all op.
+// create_token op.
 //
 // For example the following IR:
 // "tf.OutfeedEnqueueTuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
@@ -3011,7 +3087,7 @@ class ConvertInfeedDequeueTupleOp
 //
 // %tuple = "xla_hlo.tuple"(%val_1, %val_2) : (tensor<3xi32>, tensor<4xf32>) ->
 //      tuple<tensor<3xi32>, tensor<4xf32>>
-// %token = "xla_hlo.after_all"() : () -> !xla_hlo.token
+// %token = "xla_hlo.create_token"() : () -> !xla_hlo.token
 // %outfeed_token = "xla_hlo.outfeed"(%tuple, %token) {outfeed_config = ""} :
 //      (tuple<tensor<3xi32>, tensor<4xf32>>, !xla_hlo.token) -> !xla_hlo.token
 //
@@ -3024,9 +3100,8 @@ class ConvertOutfeedEnqueueTupleOp
                                      PatternRewriter &rewriter) const override {
     auto token_type = xla_hlo::TokenType::get(rewriter.getContext());
     auto tuple = rewriter.create<TupleOp>(op.getLoc(), op.inputs());
-    auto afterall =
-        rewriter.create<AfterAllOp>(op.getLoc(), token_type, ValueRange());
-    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, afterall,
+    auto token = rewriter.create<CreateTokenOp>(op.getLoc(), token_type);
+    rewriter.create<OutfeedOp>(op.getLoc(), token_type, tuple, token,
                                /*outfeed_config=*/rewriter.getStringAttr(""));
     rewriter.eraseOp(op);
     return matchSuccess();
@@ -3660,8 +3735,8 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   // here for lowering to HLO.
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns.insert<
-      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBF16FloorDivOp,
-      ConvertConv2D, ConvertConv2DBackpropFilterOp,
+      ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
+      ConvertBF16FloorDivOp, ConvertConv2D, ConvertConv2DBackpropFilterOp,
       ConvertConv2DBackpropInputOp, ConvertCumsumOp, ConvertEinsumOp,
       ConvertFusedBatchNormGradOp, ConvertFusedBatchNormGradV2Op,
       ConvertFusedBatchNormGradV3Op, ConvertFusedBatchNormV3Op,

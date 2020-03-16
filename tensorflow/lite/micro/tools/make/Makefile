@@ -162,6 +162,7 @@ tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \

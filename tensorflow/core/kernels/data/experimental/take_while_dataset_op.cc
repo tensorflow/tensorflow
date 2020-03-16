@@ -33,10 +33,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
-    FunctionMetadata::Params params;
-    params.is_multi_device_function = true;
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, "predicate", params,
-                                                 &func_metadata_));
+    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(
+                            ctx, "predicate", /*params=*/{}, &func_metadata_));
     OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
                 errors::InvalidArgument(
                     "predicate function has more than one return value."));

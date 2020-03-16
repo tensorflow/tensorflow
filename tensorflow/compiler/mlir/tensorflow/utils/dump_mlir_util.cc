@@ -170,4 +170,16 @@ std::string GetDumpDirFromEnvVar() {
   return result;
 }
 
+std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
+                                llvm::StringRef dirname) {
+  std::unique_ptr<llvm::raw_ostream> os;
+  std::string filepath;
+  Status result = CreateFileForDumping(name, &os, &filepath, dirname);
+  if (!result.ok()) return result.error_message();
+
+  (*os) << content;
+  LOG(INFO) << "Outputted requested string to '" << filepath << "'";
+  return filepath;
+}
+
 }  // namespace tensorflow

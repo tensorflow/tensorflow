@@ -458,27 +458,29 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 1
+#define TFE_CUSTOM_DEVICE_VERSION 2
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
   int version = TFE_CUSTOM_DEVICE_VERSION;
   // Method to copy a tensor to the custom device.
-  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
+                                             TFE_TensorHandle* tensor,
                                              TF_Status* status,
                                              void* device_info) = nullptr;
 
   // Method to copy a tensor from the custom device to a target device.
-  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_TensorHandle* tensor,
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
+                                               TFE_TensorHandle* tensor,
                                                const char* target_device_name,
                                                TF_Status* status,
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(int num_inputs, TFE_TensorHandle** inputs,
-                  const char* operation_name, const TFE_OpAttrs* attributes,
-                  int* num_outputs, TFE_TensorHandle** outputs, TF_Status* s,
-                  void* device_info);
+  void (*execute)(TFE_Context* context, int num_inputs,
+                  TFE_TensorHandle** inputs, const char* operation_name,
+                  const TFE_OpAttrs* attributes, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.
   void (*delete_device)(void* device_info);
@@ -503,11 +505,21 @@ typedef struct TFE_CustomDevice {
 // devices, so executing tf.functions which contain operations placed on custom
 // devices will fail.
 //
+// `device_name` must not name an existing physical or custom device. It must
+// follow the format:
+//
+//    /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
+//
+// If the device is successfully registered, `status` is set to TF_OK. Otherwise
+// the device is not usable. In case of a bad status, `device.delete_device` is
+// still called on `device_info` (i.e. the caller does not retain ownership).
+//
 // This API is highly experimental, and in particular is expected to change when
 // it starts supporting operations with attributes and when tf.function support
 // is added.
 void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
-                              const char* device_name, void* device_info);
+                              const char* device_name, void* device_info,
+                              TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,

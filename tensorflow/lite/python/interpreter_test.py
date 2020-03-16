@@ -33,7 +33,7 @@ if hasattr(sys, 'setdlopenflags') and hasattr(sys, 'getdlopenflags'):
   sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.lite.python import interpreter as interpreter_wrapper
-from tensorflow.lite.python.testdata import test_registerer_wrapper as test_registerer
+from tensorflow.lite.python.testdata import _pywrap_test_registerer as test_registerer
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test

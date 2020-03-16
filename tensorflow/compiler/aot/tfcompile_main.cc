@@ -82,12 +82,10 @@ int main(int argc, char** argv) {
 
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
   QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
-                       "other than flags\n\n"
-                    << usage;
+                       "other than flags. See --help.\n\n";
   tensorflow::Status status = tensorflow::tfcompile::Main(flags);
   if (status.code() == tensorflow::error::INVALID_ARGUMENT) {
-    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n"
-              << usage;
+    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n";
     return 1;
   } else {
     TF_QCHECK_OK(status);

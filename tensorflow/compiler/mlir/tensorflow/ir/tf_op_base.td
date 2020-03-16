@@ -23,6 +23,7 @@ limitations under the License.
 #define TF_OP_BASE
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/SideEffects.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.td"
 
 //===----------------------------------------------------------------------===//
@@ -192,6 +193,16 @@ def TF_NumberOrStrTensor : TensorOf<[TF_NumberOrStr]>;
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions
 //===----------------------------------------------------------------------===//
+
+//===----------------------------------------------------------------------===//
+// Tensorflow devices metadata
+
+// Tensorflow GPU device metadata.
+def TF_GpuDeviceMetadata : StructAttr<"GpuDeviceMetadata", TF_Dialect, [
+    // GPU device compute capability: major:minor.
+    StructFieldAttr<"cc_major", I32Attr>,
+    StructFieldAttr<"cc_minor", I32Attr>
+]>;
 
 //===----------------------------------------------------------------------===//
 // String attribute constraints

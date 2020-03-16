@@ -543,7 +543,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         opt.minimize(lambda: constant_op.constant(1.), [])
         opt.apply_gradients([])
 
-      distribution.experimental_run_v2(run_fn)
+      distribution.run(run_fn)
 
 
 if __name__ == "__main__":

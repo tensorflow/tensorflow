@@ -353,7 +353,11 @@ static void RunInfiniteTFLoop() {
 }
 
 TEST_F(SingleMachineTest, InfiniteLoops) {
+<<<<<<< HEAD
 #if !(TENSORFLOW_USE_ROCM) // fails with ROCm (investigate)
+=======
+#if !(TENSORFLOW_USE_ROCM)  // fails with ROCm (investigate)
+>>>>>>> google_upstream/master
   // The RunInfiniteTFLoop function creates its own cluster.
   TF_CHECK_OK(cluster_->Shutdown());
   EXPECT_EXIT(RunInfiniteTFLoop(), ::testing::ExitedWithCode(0), ".*");

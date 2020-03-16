@@ -1369,7 +1369,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return t.gradient(loss, [w, b])
 
       def step_fn():
-        return distribution.experimental_run_v2(replica_fn)
+        return distribution.run(replica_fn)
 
       context.enable_run_metadata()
       g1, g2 = step_fn()
@@ -1400,7 +1400,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def replica_fn():
         return f()
 
-      distribution.experimental_run_v2(replica_fn)
+      distribution.run(replica_fn)
 
 
 def _replica_id():

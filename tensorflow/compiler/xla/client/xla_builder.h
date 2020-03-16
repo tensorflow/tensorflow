@@ -656,14 +656,21 @@ class XlaBuilder {
                  absl::Span<const int64> broadcast_dimensions,
                  absl::optional<ComparisonDirection> direction = absl::nullopt);
 
+  // Internal helper method that does the building for an arbitrary binary op
+  // with same ranked operands that doesn't broadcast.
+  virtual XlaOp BinaryOpNoBroadcast(
+      HloOpcode binop, const Shape& shape, XlaOp lhs, XlaOp rhs,
+      absl::optional<ComparisonDirection> direction);
+
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs);
 
   XlaOp RngOp(RandomDistribution distribution,
               absl::Span<const XlaOp> parameters, const Shape& shape);
 
-  StatusOr<XlaOp> InDimBroadcast(const Shape& shape, XlaOp operand,
-                                 absl::Span<const int64> broadcast_dimensions);
+  virtual StatusOr<XlaOp> InDimBroadcast(
+      const Shape& shape, XlaOp operand,
+      absl::Span<const int64> broadcast_dimensions);
 
   // Internal helper method that creates a sequence of instructions that
   // performs an explicit broadcast of the operand to the target shape.
@@ -672,8 +679,8 @@ class XlaBuilder {
 
   // Internal helper method for creating a Reshape op with the already inferred
   // shape.
-  StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
-                                  int64 inferred_dimension = -1);
+  virtual StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
+                                          int64 inferred_dimension);
 
   // Returns the (inferred) result for the program shape using the given root.
   StatusOr<ProgramShape> GetProgramShape(int64 root_id) const;
@@ -1067,6 +1074,10 @@ class XlaBuilder {
       XlaOp branch_index,
       absl::Span<const XlaComputation* const> branch_computations,
       absl::Span<const XlaOp> branch_operands);
+
+  // Creates an op with the given opcode and the output shape.
+  virtual StatusOr<XlaOp> AddOpWithShape(HloOpcode opcode, const Shape& shape,
+                                         absl::Span<const XlaOp> operands);
 
   // Here, InstructionType is either const HloInstructionProto* or non-const
   // HloInstructionProto*.

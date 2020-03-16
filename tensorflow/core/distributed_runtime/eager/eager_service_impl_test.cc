@@ -20,6 +20,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/process_function_library_runtime.h"
@@ -172,7 +173,8 @@ void SetTensorProto(TensorProto* tensor_proto) {
 
 void AddOperationToEnqueueRequest(
     int64 id, const string& name,
-    const std::vector<std::pair<int64, int32>>& inputs,
+    const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
+        inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
     EnqueueRequest* request) {
   auto* operation = request->add_queue()->mutable_operation();
@@ -181,12 +183,19 @@ void AddOperationToEnqueueRequest(
   operation->set_name(name);
   operation->set_device(device);
 
-  for (const auto& tensor_handle_pair : inputs) {
-    auto* input = operation->add_inputs();
-    input->set_op_id(tensor_handle_pair.first);
-    input->set_output_num(tensor_handle_pair.second);
-    input->set_op_device(device);
-    input->set_device(device);
+  for (const auto& input : inputs) {
+    if (input.index() == 0) {
+      *operation->add_op_inputs()->mutable_tensor() =
+          absl::get<TensorProto>(input);
+    } else {
+      const auto& tensor_handle_pair =
+          absl::get<std::pair<int64, int32>>(input);
+      auto* input = operation->add_op_inputs()->mutable_remote_handle();
+      input->set_op_id(tensor_handle_pair.first);
+      input->set_output_num(tensor_handle_pair.second);
+      input->set_op_device(device);
+      input->set_device(device);
+    }
   }
 
   for (const auto& attr_entry : attrs) {
@@ -323,9 +332,9 @@ TEST_F(EagerServiceImplTest, BasicTest) {
   attrs.insert({"transpose_a", val});
   attrs.insert({"transpose_b", val});
 
-  AddOperationToEnqueueRequest(2, "MatMul", {{1, 0}, {1, 0}}, attrs,
-                               "/job:localhost/replica:0/task:0/device:CPU:0",
-                               &remote_enqueue_request);
+  AddOperationToEnqueueRequest(
+      2, "MatMul", {std::make_pair(1, 0), std::make_pair(1, 0)}, attrs,
+      "/job:localhost/replica:0/task:0/device:CPU:0", &remote_enqueue_request);
 
   TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
                                           &remote_enqueue_response));
@@ -367,7 +376,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
 
   // Creates a context and attempts to execute a function.
   void TestFunction(const RegisterFunctionOp& register_op,
-                    const string& function_name) {
+                    const string& function_name,
+                    const bool local_inputs = false) {
     TestEagerServiceImpl eager_service_impl(&worker_env_);
 
     uint64 context_id = random::New64();
@@ -392,22 +402,35 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     remote_enqueue_request.set_context_id(context_id);
     EnqueueResponse remote_enqueue_response;
 
-    std::unordered_map<string, AttrValue> const_attrs;
-    AttrValue val;
-    val.set_type(tensorflow::DataType::DT_FLOAT);
-    const_attrs.insert({"dtype", val});
-    val.Clear();
+    if (local_inputs) {
+      TensorProto tensor_proto;
+      SetTensorProto(&tensor_proto);
+      AddOperationToEnqueueRequest(
+          2, function_name, {tensor_proto},
+          std::unordered_map<string, AttrValue>(),
+          "/job:localhost/replica:0/task:0/device:CPU:0",
+          &remote_enqueue_request);
 
-    SetTensorProto(val.mutable_tensor());
-    const_attrs.insert({"value", val});
+    } else {
+      std::unordered_map<string, AttrValue> const_attrs;
+      AttrValue val;
+      val.set_type(tensorflow::DataType::DT_FLOAT);
+      const_attrs.insert({"dtype", val});
+      val.Clear();
 
-    AddOperationToEnqueueRequest(1, "Const", {}, const_attrs,
-                                 "/job:localhost/replica:0/task:0/device:CPU:0",
-                                 &remote_enqueue_request);
-    AddOperationToEnqueueRequest(2, function_name, {{1, 0}},
-                                 std::unordered_map<string, AttrValue>(),
-                                 "/job:localhost/replica:0/task:0/device:CPU:0",
-                                 &remote_enqueue_request);
+      SetTensorProto(val.mutable_tensor());
+      const_attrs.insert({"value", val});
+
+      AddOperationToEnqueueRequest(
+          1, "Const", {}, const_attrs,
+          "/job:localhost/replica:0/task:0/device:CPU:0",
+          &remote_enqueue_request);
+      AddOperationToEnqueueRequest(
+          2, function_name, {std::make_pair(1, 0)},
+          std::unordered_map<string, AttrValue>(),
+          "/job:localhost/replica:0/task:0/device:CPU:0",
+          &remote_enqueue_request);
+    }
 
     TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
                                             &remote_enqueue_response));
@@ -439,6 +462,12 @@ TEST_F(EagerServiceImplFunctionTest, BasicFunctionTest) {
   RegisterFunctionOp register_op;
   *register_op.mutable_function_def() = MatMulFunction();
   TestFunction(register_op, "MatMulFunction");
+}
+
+TEST_F(EagerServiceImplFunctionTest, FunctionWithLocalInputsTest) {
+  RegisterFunctionOp register_op;
+  *register_op.mutable_function_def() = MatMulFunction();
+  TestFunction(register_op, "MatMulFunction", /*local_inputs=*/true);
 }
 
 TEST_F(EagerServiceImplFunctionTest, NestedFunctionTest) {
@@ -526,8 +555,8 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
     fdef_ = MatMulFunction();
     TF_ASSERT_OK(func_lib_def_.AddFunctionDef(fdef_));
     eager_pflr_ = absl::make_unique<EagerProcessFunctionLibraryRuntime>(
-        remote_device_mgr_.get(), Env::Default(), /*config=*/nullptr,
-        TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
+        remote_device_mgr_.get(), Env::Default(), /*config=*/
+        nullptr, TF_GRAPH_DEF_VERSION, &func_lib_def_, OptimizerOptions(),
         /*thread_pool=*/nullptr, eager_cluster_flr_.get());
   }
 
@@ -699,9 +728,9 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
   attrs.insert({"transpose_a", val});
   attrs.insert({"transpose_b", val});
 
-  AddOperationToEnqueueRequest(2, "MatMul", {{1, 0}, {1, 0}}, attrs,
-                               "/job:localhost/replica:0/task:0/device:CPU:0",
-                               &remote_enqueue_request);
+  AddOperationToEnqueueRequest(
+      2, "MatMul", {std::make_pair(1, 0), std::make_pair(1, 0)}, attrs,
+      "/job:localhost/replica:0/task:0/device:CPU:0", &remote_enqueue_request);
 
   TF_ASSERT_OK(eager_service_impl.Enqueue(&remote_enqueue_request,
                                           &remote_enqueue_response));

@@ -33,6 +33,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
@@ -52,6 +53,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",

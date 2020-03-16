@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -177,4 +179,8 @@ class NumericsTest(test.TestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
+  os.environ[
+      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
+          "XLA_FLAGS", "")
   test.main()

@@ -16,6 +16,24 @@ func @empty_func() {
 
 // -----
 
+// Tests with a block argument inputs/outputs with no xla sharding op attached
+// gets default maximal(0) sharding configuration.
+// CHECK-LABEL: func @check_default_sharding_for_block_arg_inputs_outputs
+func @check_default_sharding_for_block_arg_inputs_outputs(%arg0: tensor<*xi32>) {
+  "tf_device.launch_func"(%arg0) {device = "", func = @func_without_sharding, step_marker_location = ""} : (tensor<*xi32>) -> ()
+  // CHECK: input_sharding_configuration
+  // CHECK-SAME: ["\08\01\1A\01\01\22\01\00"]
+  // CHECK: output_sharding_configuration
+  // CHECK-SAME: ["\08\01\1A\01\01\22\01\00"]
+  return
+}
+
+func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
+  return %arg0 : tensor<*xi32>
+}
+
+// -----
+
 // Tests with a inputs/outputs with no xla sharding op attached gets
 // default maximal(0) sharding configuration.
 // CHECK-LABEL: func @check_default_sharding_for_inputs_outputs

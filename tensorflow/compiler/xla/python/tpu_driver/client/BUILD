@@ -90,8 +90,3 @@ cc_library(
     name = "libtpu",
     hdrs = ["libtpu.h"],
 )
-
-cc_library(
-    name = "libtftpu",
-    hdrs = ["libtftpu.h"],
-)

@@ -145,6 +145,11 @@ void EventNode::PropagateGroupId(int64 group_id) {
   group_id_ = group_id;
   SetGroupId(*visitor_, group_id, event_);
   for (const auto& child : children_) {
+    // Skip if it already belongs to a group. Some nodes may be added multiple
+    // times as child (e.g., sometimes async ops are executed synchronously and
+    // their nodes are added as child both in ConnectIntraThread and
+    // ConnectInterThread).
+    if (child->GetGroupId()) continue;
     child->PropagateGroupId(*group_id_);
   }
 }
@@ -239,6 +244,8 @@ void EventForest::CreateEventGroup(
         root_event_node->AddStepName(group_name);
         event_group_name_map_[group_id] = std::move(group_name);
       }
+      // Only use the first root event type found.
+      if (!root_event_node_list->empty()) break;
     }
   }
 }
@@ -337,10 +344,13 @@ void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
         {StatType::kStepId, StatType::kIterNum}},
        {HostEventType::kKernelLaunch,
         HostEventType::kKernelExecute,
-        {StatType::kCorrelationId}}});
+        {StatType::kCorrelationId}},
+       {HostEventType::kLocalExecutableExecuteOnLocalDevice,
+        HostEventType::kLocalExecutableExecute,
+        {StatType::kRunId}}});
   const std::vector<int64 /*EventType*/> root_event_types(
-      {HostEventType::kHostTrainingLoopIteration, HostEventType::kTraceContext,
-       HostEventType::kFunctionRun, HostEventType::kSessionRun});
+      {HostEventType::kTraceContext, HostEventType::kFunctionRun,
+       HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});
   EventForest event_forest(connect_info_list, root_event_types,
                            CreateTfXPlaneVisitor, space);
   if (event_group_name_map) {

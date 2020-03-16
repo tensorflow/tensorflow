@@ -73,6 +73,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Run island coarsening before shape inference to allow more exact shape
   // inference using constant folding within islands.
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  // TODO(b/150462212): Move graph pruning before island coarsening.
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorGraphPruningPass());
   // Run shape inference so that tf_executor/tf_device ops created later will
   // likely to inherit more concrete types.
   pm.addPass(TF::CreateTFShapeInferencePass());

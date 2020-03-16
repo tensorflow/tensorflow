@@ -461,13 +461,6 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   return Status::OK();
 }
 
-bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
-  // Since there is only one stream, we release the tensor reference
-  // at the end of the kernel launch, instead of at the end of the kernel
-  // execution.
-  return false;
-}
-
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                                  const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
@@ -538,16 +531,6 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
               << ComputeOpKernelDebugString(*op_kernel, stream_id);
     }
   }
-}
-
-void BaseGPUDevice::ConsumeListOfAccessedTensors(
-    DeviceContext* device_context, const TensorReferenceVector& tensor_refs) {
-  GPUDeviceContext* gpu_device_context = device_context_;
-  if (device_context != nullptr) {
-    gpu_device_context = static_cast<GPUDeviceContext*>(device_context);
-  }
-  se::Stream* stream = gpu_device_context->stream();
-  em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
 // Based on the semantics of Device::Sync this call should wait for

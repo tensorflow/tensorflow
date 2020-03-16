@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/collection_ops_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -51,6 +52,8 @@ limitations under the License.
 namespace mlir {
 
 namespace {
+
+namespace cutil = TF::collection_ops_util;
 
 // A pass that converts stack operations to tensor operations and read/assign
 // ops on local variables. A later resource lifting pass can further remove the
@@ -106,86 +109,12 @@ TF::AssignVariableOp WriteLocalVariable(Value local_var, Value value,
                                               ArrayRef<NamedAttribute>{});
 }
 
-// Creates an i32 scalar tf.Const.
-TF::ConstOp CreateScalarConst(int value, OpBuilder builder, Location loc) {
-  tensorflow::Tensor scalar_tensor(tensorflow::DT_INT32, {});
-  scalar_tensor.scalar<tensorflow::int32>()() = value;
-  return builder.create<TF::ConstOp>(
-      loc, tensorflow::ConvertTensor(scalar_tensor, &builder).ValueOrDie());
-}
-
-// Creates an i32 vector tf.Const.
-TF::ConstOp GetR1Const(ArrayRef<int64_t> r1, OpBuilder builder, Location loc) {
-  tensorflow::Tensor shape_tensor(tensorflow::DT_INT32,
-                                  {static_cast<int64_t>(r1.size())});
-  for (int i = 0; i < r1.size(); ++i) {
-    shape_tensor.vec<tensorflow::int32>()(i) = r1[i];
-  }
-  return builder.create<TF::ConstOp>(
-      loc, tensorflow::ConvertTensor(shape_tensor, &builder).ValueOrDie());
-}
-
-// Creates a rank-1 op that represents the offsets of the stack element in the
-// stack buffer.
-Value GetIndicesForStackElement(Value index, Value stack_value,
-                                OpBuilder builder, Location loc) {
-  auto stack_type = stack_value.getType().cast<RankedTensorType>();
-  if (stack_type.getShape().size() == 1) return index;
-  llvm::SmallVector<int64_t, 8> zeros(stack_type.getShape().size() - 1, 0);
-  auto zeros_tensor = GetR1Const(zeros, builder, loc);
-  return builder.create<TF::ConcatV2Op>(
-      loc,
-      ArrayRef<Type>{RankedTensorType::get(
-          {static_cast<int64_t>(stack_type.getShape().size())},
-          getElementTypeOrSelf(index.getType()))},
-      ArrayRef<Value>{index, zeros_tensor, CreateScalarConst(0, builder, loc)},
-      ArrayRef<NamedAttribute>{});
-}
-
-// Returns the type of the local variable for the stack size. It is a
-// tensor<1xi32>, and we use R1 instead of a scalar because it is easier to
-// concat it with other offsets.
+// Returns the type of the local variable for the stack size.
 Type GetSizeVarType(OpBuilder builder) {
-  auto size_type = RankedTensorType::get({1}, builder.getIntegerType(32));
+  auto size_type = cutil::GetSizeType(builder);
   return RankedTensorType::get(
       {}, TF::ResourceType::get(ArrayRef<TensorType>{size_type},
                                 builder.getContext()));
-}
-
-// Creates the buffer and size local variables for a stack.
-std::pair<Value, Value> CreateVariablesForStack(TensorType stack_tensor_type,
-                                                TF::StackV2Op stack) {
-  OpBuilder builder(stack);
-  auto size_var_type = GetSizeVarType(builder);
-  auto var_type = RankedTensorType::get(
-      {}, TF::ResourceType::get(ArrayRef<TensorType>{stack_tensor_type},
-                                stack.getContext()));
-  auto local_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
-  auto local_size_var = builder.create<TF::MlirLocalVarOp>(
-      stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{},
-      ArrayRef<NamedAttribute>{});
-
-  // Zero-initialize the local vars.
-  WriteLocalVariable(local_size_var, GetR1Const({0LL}, builder, stack.getLoc()),
-                     builder, stack.getLoc());
-  auto zero = CreateScalarConst(0, builder, stack.getLoc()).output();
-  if (getElementTypeOrSelf(zero.getType()) !=
-      stack_tensor_type.getElementType()) {
-    zero = builder.create<TF::CastOp>(
-        stack.getLoc(),
-        ArrayRef<Type>{
-            RankedTensorType::get({}, stack_tensor_type.getElementType())},
-        ArrayRef<Value>{zero}, ArrayRef<NamedAttribute>{});
-  }
-  auto broadcast = builder.create<TF::BroadcastToOp>(
-      stack.getLoc(), ArrayRef<Type>{stack_tensor_type},
-      ArrayRef<Value>{zero, GetR1Const(stack_tensor_type.getShape(), builder,
-                                       stack.getLoc())},
-      ArrayRef<NamedAttribute>{});
-  WriteLocalVariable(local_var, broadcast, builder, stack.getLoc());
-  return {local_var, local_size_var};
 }
 
 // Tries to infer the stack element type with full shape based on its uses.
@@ -449,7 +378,7 @@ LogicalResult HandlePartitionedCallOp(
       if (arg_it == info.stack_var_arg_to_size_arg.end()) continue;
       auto it = data_var_to_size_var.find(call.getOperand(i));
       if (it == data_var_to_size_var.end()) {
-        call.emitOpError("Unknown stack.");
+        call.emitOpError("unknown stack");
         return failure();
       }
       assert(arg_it->second == new_operands.size());
@@ -532,25 +461,32 @@ LogicalResult HandleStackV2Op(
   // Create a buffer variable and a size variable to replace the stack.
   auto elem_type = GetStackElementType(stack.handle(), module);
   if (!elem_type.hasValue()) {
-    return stack.emitOpError("cannot infer element shape of stack.");
+    return stack.emitOpError("cannot infer element shape of stack");
   }
-  auto size_op = stack.max_size().getDefiningOp();
-  if (!size_op || !llvm::isa<TF::ConstOp>(size_op)) {
-    return stack.emitOpError("max size of stack is not a constant.");
+  OpBuilder builder(stack);
+  Value buffer;
+  if (failed(cutil::CreateInitBufferValue(
+          elem_type->getShape(), stack.max_size(), stack,
+          elem_type->getElementType(), builder, &buffer))) {
+    return failure();
   }
-  int64_t max_size =
-      (*llvm::cast<TF::ConstOp>(size_op).value().getValues<APInt>().begin())
-          .getSExtValue();
-  llvm::SmallVector<int64_t, 8> stack_shape;
-  stack_shape.push_back(max_size);
-  for (int64_t dim : elem_type->getShape()) stack_shape.push_back(dim);
-  auto stack_tensor_type =
-      RankedTensorType::get(stack_shape, elem_type->getElementType());
-  Value local_var;
-  Value local_size_var;
-  std::tie(local_var, local_size_var) =
-      CreateVariablesForStack(stack_tensor_type, stack);
-  stack.replaceAllUsesWith(local_var);
+  auto size_var_type = GetSizeVarType(builder);
+  auto var_type = RankedTensorType::get(
+      {}, TF::ResourceType::get(
+              ArrayRef<TensorType>{buffer.getType().cast<TensorType>()},
+              stack.getContext()));
+  auto local_var = builder.create<TF::MlirLocalVarOp>(
+      stack.getLoc(), ArrayRef<Type>{var_type}, ArrayRef<Value>{},
+      ArrayRef<NamedAttribute>{});
+  auto local_size_var = builder.create<TF::MlirLocalVarOp>(
+      stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{},
+      ArrayRef<NamedAttribute>{});
+  // Zero-initialize the local vars.
+  WriteLocalVariable(local_size_var,
+                     cutil::GetR1Const({0LL}, builder, stack.getLoc()), builder,
+                     stack.getLoc());
+  WriteLocalVariable(local_var, buffer, builder, stack.getLoc());
+  stack.handle().replaceAllUsesWith(local_var);
   (*data_var_to_size_var)[local_var] = local_size_var;
   stack.erase();
   return success();
@@ -561,7 +497,7 @@ LogicalResult HandleStackPushV2Op(
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   auto it = data_var_to_size_var->find(push.handle());
   if (it == data_var_to_size_var->end()) {
-    return push.emitOpError("unknown stack.");
+    return push.emitOpError("unknown stack");
   }
   // Push output simply forward the input element.
   push.replaceAllUsesWith(push.elem());
@@ -569,31 +505,13 @@ LogicalResult HandleStackPushV2Op(
   // Read the current buffer and size.
   auto stack_val = ReadLocalVariable(push.handle(), builder, push.getLoc());
   auto index = ReadLocalVariable(it->getSecond(), builder, push.getLoc());
-  auto stack_buffer_type = stack_val.getType().cast<RankedTensorType>();
-  auto slice_shape = llvm::to_vector<8>(stack_buffer_type.getShape());
-  slice_shape[0] = 1;
-  // Caculate the updated buffer.
-  auto update_slice = builder.create<TF::ReshapeOp>(
-      push.getLoc(),
-      ArrayRef<Type>{RankedTensorType::get(slice_shape,
-                                           stack_buffer_type.getElementType())},
-      ArrayRef<Value>{push.elem(),
-                      GetR1Const(slice_shape, builder, push.getLoc())},
-      ArrayRef<NamedAttribute>{});
   stack_val =
-      builder
-          .create<TF::XlaDynamicUpdateSliceOp>(
-              push.getLoc(), ArrayRef<Type>{stack_val.getType()},
-              ArrayRef<Value>{stack_val, update_slice,
-                              GetIndicesForStackElement(
-                                  index, stack_val, builder, push.getLoc())},
-              ArrayRef<NamedAttribute>{})
-          .output();
+      cutil::SetElement(index, stack_val, push.elem(), builder, push.getLoc());
   // Assign the new buffer and size.
   WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
   index = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{index.getType()},
-      ArrayRef<Value>{index, GetR1Const({1}, builder, push.getLoc())},
+      ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())},
       ArrayRef<NamedAttribute>{});
   WriteLocalVariable(it->getSecond(), index, builder, push.getLoc());
   push.erase();
@@ -605,7 +523,7 @@ LogicalResult HandleStackPopV2Op(
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   auto it = data_var_to_size_var->find(pop.handle());
   if (it == data_var_to_size_var->end()) {
-    return pop.emitOpError("unknown stack.");
+    return pop.emitOpError("unknown stack");
   }
   OpBuilder builder(pop);
   // Read the current buffer and size.
@@ -613,31 +531,10 @@ LogicalResult HandleStackPopV2Op(
   auto size = ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
-      ArrayRef<Value>{size, GetR1Const({1}, builder, pop.getLoc())},
+      ArrayRef<Value>{size, cutil::GetR1Const({1}, builder, pop.getLoc())},
       ArrayRef<NamedAttribute>{});
-  auto stack_val_type = stack_val.getType().cast<RankedTensorType>();
-  auto elem_type = RankedTensorType::get(stack_val_type.getShape().drop_front(),
-                                         stack_val_type.getElementType());
-  // Slice the buffer to get the element.
-  llvm::SmallVector<int64_t, 8> slice_size;
-  slice_size.push_back(1);
-  for (int64_t dim : elem_type.getShape()) slice_size.push_back(dim);
-  auto size_const = GetR1Const(slice_size, builder, pop.getLoc());
-  auto slice_type =
-      RankedTensorType::get(slice_size, stack_val_type.getElementType());
-  auto slice = builder.create<TF::SliceOp>(
-      pop.getLoc(), ArrayRef<Type>{slice_type},
-      ArrayRef<Value>{
-          stack_val,
-          GetIndicesForStackElement(new_size, stack_val, builder, pop.getLoc()),
-          size_const},
-      ArrayRef<NamedAttribute>{});
-  auto pop_val = builder.create<TF::ReshapeOp>(
-      pop.getLoc(), ArrayRef<Type>{elem_type},
-      ArrayRef<Value>{slice,
-                      GetR1Const(elem_type.getShape(), builder, pop.getLoc())},
-      ArrayRef<NamedAttribute>{});
-  pop.replaceAllUsesWith(pop_val.output());
+  auto pop_val = cutil::GetElement(new_size, stack_val, builder, pop.getLoc());
+  pop.replaceAllUsesWith(pop_val);
   // Update the size.
   WriteLocalVariable(it->getSecond(), new_size, builder, pop.getLoc());
   pop.erase();
@@ -688,8 +585,7 @@ LogicalResult DecomposeStackOpsInternal(
     } else if (auto pcall = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
       if (!pcall.f().isa<FlatSymbolRefAttr>()) {
         return pcall.emitOpError(
-            "Stack decomposition does not support call with nested "
-            "references.");
+            "stack decomposition does not support call with nested references");
       }
       if (failed(HandlePartitionedCallOp(
               pcall, module.lookupSymbol<FuncOp>(pcall.f().getRootReference()),

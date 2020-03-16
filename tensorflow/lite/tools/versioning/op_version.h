@@ -54,8 +54,7 @@ typedef struct {
     } strided_slice;
     struct {
       int32_t num_dims;
-      bool need_broadcast;
-    } sub;
+    } space_batch;
   } options;
 } OpSignature;
 

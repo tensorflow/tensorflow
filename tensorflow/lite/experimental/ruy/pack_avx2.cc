@@ -567,7 +567,7 @@ inline void PackFloatAvx2Packer(const float* src_ptr, const float* zerobuf,
   RUY_DCHECK_EQ(PackImplFloatAvx2::Layout::kCols, 8);
   RUY_DCHECK_EQ(PackImplFloatAvx2::Layout::kRows, 1);
 
-  // This packing amounts to tranposition of 8x8 blocks.
+  // This packing amounts to transposition of 8x8 blocks.
   static constexpr int kPackCols = 8;  // Source cols packed together.
   static constexpr int kPackRows = 8;  // Short input is padded.
 

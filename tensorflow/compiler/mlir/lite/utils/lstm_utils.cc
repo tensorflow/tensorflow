@@ -156,6 +156,27 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
       input, slice_i2c_begin, slice_i2c_size);
 }
 
+Value CreateStridedSliceOp(mlir::Location loc, ArrayRef<int64_t> output_shape,
+                           Value input, ArrayRef<int32_t> begin,
+                           ArrayRef<int32_t> end, ArrayRef<int32_t> strides,
+                           int64_t begin_mask, int64_t end_mask,
+                           int64_t ellipsis_mask, int64_t new_axis_mask,
+                           int64_t shrink_axis_mask, OpBuilder* builder) {
+  auto output_type = RankedTensorType::get(
+      output_shape, input.getType().cast<RankedTensorType>().getElementType());
+  auto begin_tensor = CreateI32DenseConst(builder, begin, loc);
+  auto end_tensor = CreateI32DenseConst(builder, end, loc);
+  auto strides_tensor = CreateI32DenseConst(builder, strides, loc);
+
+  return builder->create<TF::StridedSliceOp>(
+      loc, output_type, input, begin_tensor, end_tensor, strides_tensor,
+      builder->getI64IntegerAttr(begin_mask),
+      builder->getI64IntegerAttr(end_mask),
+      builder->getI64IntegerAttr(ellipsis_mask),
+      builder->getI64IntegerAttr(new_axis_mask),
+      builder->getI64IntegerAttr(shrink_axis_mask));
+}
+
 }  // namespace
 
 void ConvertLSTMCellSimpleToFusedLSTM::SetWeightForInputToCellGate() {
@@ -394,7 +415,12 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       forget_layer_norm_coefficients_, cell_layer_norm_coefficients_,
       output_layer_norm_coefficients_, builder_.getStringAttr("TANH"),
       builder_.getF32FloatAttr(10.0), builder_.getF32FloatAttr(0.0),
-      builder_.getStringAttr("FULL"));
+      builder_.getStringAttr("FULL"),
+      /*input_to_input_intermediate=*/mlir::TypeAttr(),
+      /*input_to_forget_intermediate=*/mlir::TypeAttr(),
+      /*input_to_cell_intermediate=*/mlir::TypeAttr(),
+      /*input_to_output_intermediate=*/mlir::TypeAttr(),
+      /*effective_hidden_scale_intermediate=*/mlir::TypeAttr());
 
   // Cast the static shaped lstm result to FuncOp's signature -
   // Ranked but unknown 2nd dimension to support stacking these.
@@ -624,26 +650,21 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
 
   auto final_inputs = input;
   auto final_input_type = input_type;
-  // We will transpose the inputs.
-  if (!time_majored) {
-    SmallVector<int32_t, 4> perm = {1, 0, 2};
-    final_inputs =
-        Transpose(builder, final_inputs, perm, input_type, func_op.getLoc());
-    final_input_type = final_inputs.getType().dyn_cast<RankedTensorType>();
-  }
 
   // Handle go_backwards:
   // LSTM in Keras semantic will reverse the input sequence if it's go_backwards
   auto go_backwards_attr = func_op.getAttrOfType<BoolAttr>("tf.go_backwards");
 
   if (go_backwards_attr != nullptr && go_backwards_attr.getValue()) {
-    // We assume input is already in {time, batch, size} layout.
-    final_inputs =
-        Reverse(builder, final_inputs, 0, final_input_type, func_op.getLoc());
+    int time_dim = time_majored ? 0 : 1;
+    final_inputs = Reverse(builder, final_inputs, time_dim, final_input_type,
+                           func_op.getLoc());
   }
 
-  int batch = final_input_type.getDimSize(1);
-  int time = final_input_type.getDimSize(0);
+  int batch = time_majored ? final_input_type.getDimSize(1)
+                           : final_input_type.getDimSize(0);
+  int time = time_majored ? final_input_type.getDimSize(0)
+                          : final_input_type.getDimSize(1);
 
   // Setup correct weights.
   RankedTensorType weight_type =
@@ -684,7 +705,12 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
     return failure();
 
   // Build the lstm op.
-  SmallVector<int64_t, 3> output_shape = {time, batch, n_output};
+  SmallVector<int64_t, 3> output_shape;
+  if (time_majored) {
+    output_shape = {time, batch, n_output};
+  } else {
+    output_shape = {batch, time, n_output};
+  }
   auto result_type = mlir::RankedTensorType::get(
       output_shape,
       final_inputs.getType().cast<RankedTensorType>().getElementType());
@@ -717,14 +743,51 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
       /*cell_layer_norm_coefficients=*/none,
       /*output_layer_norm_coefficients=*/none, builder->getStringAttr("TANH"),
       builder->getF32FloatAttr(10.0), builder->getF32FloatAttr(0.0),
-      builder->getBoolAttr(true));
+      builder->getBoolAttr(time_majored));
 
-  auto final_output = lstm.getResult();
-  if (!time_majored) {
-    SmallVector<int32_t, 4> perm = {1, 0, 2};
-    final_output =
-        Transpose(builder, final_output, perm, result_type, func_op.getLoc());
+  auto final_output_full_sequences = lstm.getResult();
+
+  // Populate the last output: last output is sliced from the full sequences.
+  // If time_major: last_output = outputs[-1, :, :]
+  // else: last_output = outputs[:, -1, :]
+  //
+  // As we are creating the strided_slice op, we need to populate the following
+  // fields:
+  // end: should always be (0, 0, 0)
+  // strides: should always be (1, 1, 1)
+  // begin: should be (0, -1, 0) or (-1, 0, 0) if it's time-majored.
+  // new_axis_mask: should always be 0.
+  // ellipsis_mask: should always be 0.
+  // begin_mask & end_mask: should be 0b101 = 5 or 0b110 = 4 if it's
+  // time-majored. shrink_axis_mask: should be 0b010 = 2 or 0b001 = 1 if it's
+  // time-majored.
+  SmallVector<int64_t, 2> last_output_shape({batch, n_output});
+
+  SmallVector<int32_t, 3> end({0, 0, 0});
+  SmallVector<int32_t, 3> strides({1, 1, 1});
+  SmallVector<int32_t, 3> begin;
+
+  int64_t new_axis_mask = 0;
+  int64_t ellipsis_mask = 0;
+  int64_t begin_mask;
+  int64_t end_mask;
+  int64_t shrink_axis_mask;
+  if (time_majored) {
+    begin_mask = 6;
+    end_mask = 6;
+    shrink_axis_mask = 1;
+    begin = {-1, 0, 0};
+  } else {
+    begin_mask = 5;
+    end_mask = 5;
+    shrink_axis_mask = 2;
+    begin = {0, -1, 0};
   }
+
+  auto last_output = CreateStridedSliceOp(
+      func_op.getLoc(), last_output_shape, final_output_full_sequences, begin,
+      end, strides, begin_mask, end_mask, ellipsis_mask, new_axis_mask,
+      shrink_axis_mask, builder);
 
   SmallVector<Value, 5> outputs;
   SmallVector<Type, 5> output_types;
@@ -732,18 +795,22 @@ LogicalResult ConvertKerasLSTMLayer(mlir::FuncOp func_op, OpBuilder* builder) {
   // Due to the existence of the while loop, the timestamp may be unknown
   // for the signature, for us, since we know the inputs, we can infer the time
   // steps.
-  for (int i = 0; i < 5; ++i) {
-    if (i == 1) {
-      // only this one is the real output.
-      outputs.push_back(final_output);
-      output_types.push_back(final_output.getType());
-    } else {
-      auto result_type =
-          func_op.getCallableResults()[i].dyn_cast<RankedTensorType>();
-      outputs.push_back(CreatTfF32ConstOp(builder, result_type.getShape(), 0.0f,
-                                          func_op.getLoc()));
-      output_types.push_back(result_type);
-    }
+
+  // Last output.
+  outputs.push_back(last_output);
+  output_types.push_back(last_output.getType());
+
+  // Full sequences.
+  outputs.push_back(final_output_full_sequences);
+  output_types.push_back(final_output_full_sequences.getType());
+
+  // All the rest: states, device.
+  for (int i = 2; i < 5; ++i) {
+    auto result_type =
+        func_op.getCallableResults()[i].dyn_cast<RankedTensorType>();
+    outputs.push_back(CreatTfF32ConstOp(builder, result_type.getShape(), 0.0f,
+                                        func_op.getLoc()));
+    output_types.push_back(result_type);
   }
 
   // Update function signatures.

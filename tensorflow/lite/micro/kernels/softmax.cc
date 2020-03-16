@@ -237,9 +237,9 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax4DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      TF_LITE_KERNEL_LOG(context,
-                         "Only 2D and 4D tensors supported currently, got %dD.",
-                         NumDimensions(input));
+      TF_LITE_KERNEL_LOG(
+          context, "Only 1D, 2D and 4D tensors supported currently, got %dD.",
+          NumDimensions(input));
       return kTfLiteError;
     }
     default:

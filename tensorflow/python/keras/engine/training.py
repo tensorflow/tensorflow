@@ -45,7 +45,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.profiler import traceme
+from tensorflow.python.profiler import trace
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
@@ -500,7 +500,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def train_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.train_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -773,7 +773,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         callbacks.on_epoch_begin(epoch)
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            with traceme.TraceMe(
+            with trace.Trace(
                 'TraceContext',
                 graph_type='train',
                 epoch_num=epoch,
@@ -873,7 +873,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def test_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.test_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -1008,10 +1008,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         self.reset_metrics()
         with data_handler.catch_stop_iteration():
           for step in data_handler.steps():
-            with traceme.TraceMe(
-                'TraceContext',
-                graph_type='test',
-                step_num=step):
+            with trace.Trace('TraceContext', graph_type='test', step_num=step):
               callbacks.on_test_batch_begin(step)
               tmp_logs = test_function(iterator)
               # Catch OutOfRangeError for Datasets of unknown size.
@@ -1079,7 +1076,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def predict_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.predict_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')

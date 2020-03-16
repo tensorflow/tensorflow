@@ -58,6 +58,13 @@ TEST_F(LhloGenTest, Copy) {
           "copy.hlo"));
 }
 
+TEST_F(LhloGenTest, CopyTranspose) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "copy_transpose.hlo"));
+}
+
 TEST_F(LhloGenTest, Select) {
   CompileAndVerifyIr(
       /*hlo_text_filename=*/tensorflow::io::JoinPath(

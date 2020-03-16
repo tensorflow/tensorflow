@@ -1,6 +1,6 @@
 path: "tensorflow.keras.initializers.TruncatedNormal"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.initializers.TruncatedNormal\'>"
+  is_instance: "<class \'tensorflow.python.keras.initializers.TruncatedNormalV1\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.TruncatedNormal\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
   is_instance: "<type \'object\'>"

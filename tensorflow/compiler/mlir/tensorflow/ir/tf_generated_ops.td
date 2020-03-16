@@ -452,6 +452,10 @@ about broadcasting
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
+  let verifier = [{
+    return Verify(*this);
+  }];
+
   let hasCanonicalizer = 1;
 }
 
@@ -1055,6 +1059,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
     // TF_LayoutSensitiveInterface:
     SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
     SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
     LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
@@ -5191,7 +5196,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   }];
 
   let arguments = (ins
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$images,
     I32Tensor:$size,
 
     DefaultValuedAttr<BoolAttr, "false">:$align_corners,
@@ -5199,7 +5204,7 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   let results = (outs
-    TensorOf<[F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Uint16, TF_Uint8]>:$resized_images
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -7089,6 +7094,275 @@ is the corresponding input gradient.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_TensorArrayCloseV3Op : TF_Op<"TensorArrayCloseV3", []> {
+  let summary = "Delete the TensorArray from its resource container.";
+
+  let description = [{
+This enables the user to close and release the resource in the middle
+of a step/run.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle
+  );
+
+  let results = (outs);
+}
+
+def TF_TensorArrayConcatV3Op : TF_Op<"TensorArrayConcatV3", []> {
+  let summary = "Concat the elements from the TensorArray into value `value`.";
+
+  let description = [{
+Takes `T` elements of shapes
+
+  ```
+  (n0 x d0 x d1 x ...), (n1 x d0 x d1 x ...), ..., (n(T-1) x d0 x d1 x ...)
+  ```
+
+and concatenates them into a Tensor of shape:
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```
+
+All elements must have the same shape (excepting the first dimension).
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    F32Tensor:$flow_in,
+
+    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape_except0
+  );
+
+  let results = (outs
+    TF_Tensor:$value,
+    I64Tensor:$lengths
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorArrayGatherV3Op : TF_Op<"TensorArrayGatherV3", []> {
+  let summary = [{
+Gather specific elements from the TensorArray into output `value`.
+  }];
+
+  let description = [{
+All elements selected by `indices` must have the same shape.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    I32Tensor:$indices,
+    F32Tensor:$flow_in,
+
+    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape
+  );
+
+  let results = (outs
+    TF_Tensor:$value
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorArrayGradV3Op : TF_Op<"TensorArrayGradV3", []> {
+  let summary = [{
+Creates a TensorArray for storing the gradients of values in the given handle.
+  }];
+
+  let description = [{
+If the given TensorArray gradient already exists, returns a reference to it.
+
+Locks the size of the original TensorArray by disabling its dynamic size flag.
+
+**A note about the input flow_in:**
+
+The handle flow_in forces the execution of the gradient lookup to occur
+only after certain other operations have occurred.  For example, when
+the forward TensorArray is dynamically sized, writes to this TensorArray
+may resize the object.  The gradient TensorArray is statically sized based
+on the size of the forward TensorArray when this operation executes.
+Furthermore, the size of the forward TensorArray is frozen by this call.
+As a result, the flow is used to ensure that the call to generate the gradient
+TensorArray only happens after all writes are executed.
+
+In the case of dynamically sized TensorArrays, gradient computation should
+only be performed on read operations that have themselves been chained via
+flow to occur only after all writes have executed. That way the final size
+of the forward TensorArray is known when this operation is called.
+
+**A note about the source attribute:**
+
+TensorArray gradient calls use an accumulator TensorArray object.  If
+multiple gradients are calculated and run in the same session, the multiple
+gradient nodes may accidentally flow through the same accumulator TensorArray.
+This double counts and generally breaks the TensorArray gradient flow.
+
+The solution is to identify which gradient call this particular
+TensorArray gradient is being called in.  This is performed by identifying
+a unique string (e.g. "gradients", "gradients_1", ...) from the input
+gradient Tensor's name.  This string is used as a suffix when creating
+the TensorArray gradient object here (the attribute `source`).
+
+The attribute `source` is added as a suffix to the forward TensorArray's
+name when performing the creation / lookup, so that each separate gradient
+calculation gets its own TensorArray accumulator.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    F32Tensor:$flow_in,
+
+    StrAttr:$source
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$grad_handle,
+    F32Tensor:$flow_out
+  );
+}
+
+def TF_TensorArrayReadV3Op : TF_Op<"TensorArrayReadV3", []> {
+  let summary = "Read an element from the TensorArray into output `value`.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    I32Tensor:$index,
+    F32Tensor:$flow_in
+  );
+
+  let results = (outs
+    TF_Tensor:$value
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_TensorArrayScatterV3Op : TF_Op<"TensorArrayScatterV3", []> {
+  let summary = [{
+Scatter the data from the input value into specific TensorArray elements.
+  }];
+
+  let description = [{
+`indices` must be a vector, its length must match the first dim of `value`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    I32Tensor:$indices,
+    TF_Tensor:$value,
+    F32Tensor:$flow_in
+  );
+
+  let results = (outs
+    F32Tensor:$flow_out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_TensorArraySizeV3Op : TF_Op<"TensorArraySizeV3", []> {
+  let summary = "Get the current size of the TensorArray.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    F32Tensor:$flow_in
+  );
+
+  let results = (outs
+    I32Tensor:$size
+  );
+}
+
+def TF_TensorArraySplitV3Op : TF_Op<"TensorArraySplitV3", []> {
+  let summary = [{
+Split the data from the input value into TensorArray elements.
+  }];
+
+  let description = [{
+Assuming that `lengths` takes on values
+
+  ```(n0, n1, ..., n(T-1))```
+
+and that `value` has shape
+
+  ```(n0 + n1 + ... + n(T-1) x d0 x d1 x ...)```,
+
+this splits values into a TensorArray with T tensors.
+
+TensorArray index t will be the subtensor of values with starting position
+
+  ```(n0 + n1 + ... + n(t-1), 0, 0, ...)```
+
+and having size
+
+  ```nt x d0 x d1 x ...```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    TF_Tensor:$value,
+    I64Tensor:$lengths,
+    F32Tensor:$flow_in
+  );
+
+  let results = (outs
+    F32Tensor:$flow_out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+}
+
+def TF_TensorArrayV3Op : TF_Op<"TensorArrayV3", []> {
+  let summary = "An array of Tensors of given size.";
+
+  let description = [{
+Write data via Write and read via Read or Pack.
+  }];
+
+  let arguments = (ins
+    I32Tensor:$size,
+
+    TypeAttr:$dtype,
+    DefaultValuedAttr<StrAttr, "tfshape$unknown_rank: true">:$element_shape,
+    DefaultValuedAttr<BoolAttr, "false">:$dynamic_size,
+    DefaultValuedAttr<BoolAttr, "true">:$clear_after_read,
+    DefaultValuedAttr<BoolAttr, "false">:$identical_element_shapes,
+    StrAttr:$tensor_array_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$handle,
+    F32Tensor:$flow
+  );
+}
+
+def TF_TensorArrayWriteV3Op : TF_Op<"TensorArrayWriteV3", []> {
+  let summary = "Push an element onto the tensor_array.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$handle,
+    I32Tensor:$index,
+    TF_Tensor:$value,
+    F32Tensor:$flow_in
+  );
+
+  let results = (outs
+    F32Tensor:$flow_out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_TensorListConcatV2Op : TF_Op<"TensorListConcatV2", [NoSideEffect]> {

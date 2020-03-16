@@ -75,7 +75,7 @@ op {
     name: "fill_mode"
     type: "string"
     default_value {
-      s: "constant"
+      s: "CONSTANT"
     }
   }
 }

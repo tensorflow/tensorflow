@@ -161,7 +161,23 @@ TEST(OpVersionTest, VersioningReluTest) {
 }
 
 TEST(OpVersionTest, VersioningBatchToSpaceNDTest) {
-  SimpleVersioningTest(BuiltinOperator_BATCH_TO_SPACE_ND);
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_BATCH_TO_SPACE_ND,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  fake_op_sig.options.space_batch.num_dims = 3;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig.options.space_batch.num_dims = 4;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_BATCH_TO_SPACE_ND,
+      .input_types = std::vector<TensorType>{TensorType_UINT8},
+  };
+  fake_op_sig.options.space_batch.num_dims = 3;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+  fake_op_sig.options.space_batch.num_dims = 4;
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
 TEST(OpVersionTest, VersioningTanhTest) {

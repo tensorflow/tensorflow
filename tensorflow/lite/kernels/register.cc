@@ -30,16 +30,6 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 
 namespace builtin {
 
-const TfLiteRegistration* BuiltinOpResolver::FindOp(tflite::BuiltinOperator op,
-                                                    int version) const {
-  return MutableOpResolver::FindOp(op, version);
-}
-
-const TfLiteRegistration* BuiltinOpResolver::FindOp(const char* op,
-                                                    int version) const {
-  return MutableOpResolver::FindOp(op, version);
-}
-
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_ABS, Register_ABS());
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
@@ -101,10 +91,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_BATCH_TO_SPACE_ND, Register_BATCH_TO_SPACE_ND(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_L2_NORMALIZATION, Register_L2_NORMALIZATION(),
@@ -149,10 +139,12 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
              /* max_version */ 3);
-  AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
+  AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
   AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE(),
              /* min_version */ 1,

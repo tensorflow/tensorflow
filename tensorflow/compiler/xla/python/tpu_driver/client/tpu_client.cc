@@ -642,19 +642,6 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
 }
 
 StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
-PyTpuExecutable::ExecutePerReplica(
-    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
-  tensorflow::profiler::TraceMe traceme("PyTpuExecutable::ExecutePerReplica");
-  if (num_partitions() != 1) {
-    return InvalidArgument(
-        "Attempted to execute computation with %d partitions using "
-        "ExecutePerReplica().",
-        num_partitions());
-  }
-  return ExecuteOnLocalDevices(argument_handles);
-}
-
-StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
 PyTpuExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
   tensorflow::profiler::TraceMe traceme(
@@ -720,54 +707,6 @@ PyTpuExecutable::ExecuteOnLocalDevices(
     wrapped_results[i] = std::move(results[i].buffer);
   }
   return wrapped_results;
-}
-
-/*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>>
-PyTpuExecutable::CompileForDevices(
-    const XlaComputation& computation,
-    absl::optional<std::vector<Shape>> argument_layouts,
-    const ExecutableBuildOptions* build_options,
-    std::shared_ptr<PyTpuClient> client,
-    const std::vector<std::vector<std::shared_ptr<Device>>>&
-        device_assignment) {
-  if (device_assignment.empty()) {
-    return InvalidArgument(
-        "Device assignment passed to Compile() must be non-empty.");
-  }
-  if (device_assignment[0].empty()) {
-    return InvalidArgument(
-        "Device assignment passed to Compile() must have a nonzero number of "
-        "partitions per replica; replica 0 had 0 partitions.");
-  }
-  DeviceAssignment xla_assignment(device_assignment.size(),
-                                  device_assignment[0].size());
-  for (int replica = 0; replica < device_assignment.size(); ++replica) {
-    if (device_assignment[replica].size() != device_assignment[0].size()) {
-      return InvalidArgument(
-          "Device assignment passed to Compile() has different numbers of "
-          "partitions between replicas; %d partitions for replica %d versus %d "
-          "partitions for replica 0.",
-          device_assignment[replica].size(), replica,
-          device_assignment[0].size());
-    }
-    for (int partition = 0; partition < device_assignment[replica].size();
-         ++partition) {
-      if (device_assignment[0][0]->platform_name() !=
-          device_assignment[replica][partition]->platform_name()) {
-        return InvalidArgument(
-            "Device assignment passed to Compile() must have devices of a "
-            "single kind, got %s for replica 0 partition 0 and %s for replica "
-            "%d partition %d.",
-            device_assignment[0][0]->platform_name(),
-            device_assignment[replica][partition]->platform_name(), replica,
-            partition);
-      }
-      xla_assignment(replica, partition) =
-          device_assignment[replica][partition]->id();
-    }
-  }
-  return Compile(computation, std::move(argument_layouts), build_options,
-                 std::move(client), xla_assignment);
 }
 
 /*static*/ StatusOr<std::unique_ptr<PyTpuExecutable>> PyTpuExecutable::Compile(

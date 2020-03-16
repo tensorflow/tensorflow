@@ -336,15 +336,15 @@ def enable_mixed_precision_graph_rewrite_v1(opt, loss_scale='dynamic'):
 def _enable_mixed_precision_graph_rewrite_base(opt, loss_scale,
                                                use_v1_behavior):
   """Enables mixed precision. See `enable_mixed_precision_graph_rewrite`."""
-  if not mixed_precision_global_state.using_default_mixed_precision_policy:
+  if mixed_precision_global_state.using_mixed_precision_policy:
     raise ValueError(
-        'The mixed precision graph rewrite cannot be enabled, because a keras '
-        'mixed precision Policy has been set. At most, one of the following '
-        'functions can be called:\n\n'
-        '  1. tf.keras.mixed_precision.experimental.set_policy() (You called '
-        'this first)\n'
+        'The mixed precision graph rewrite cannot be enabled, because the '
+        'global Keras dtype Policy has been set to a mixed precision policy. '
+        'At most, one of the following can be called:\n\n'
+        '  1. tf.keras.mixed_precision.experimental.set_policy() with a mixed '
+        'precision policy (You called this first)\n\n'
         '  2. tf.train.experimental.enable_mixed_precision_graph_rewrite() '
-        '(You called this second)\n\n'
+        '(You called this second)\n'
         'You called both functions, which is an error, because both functions '
         'enable you to use mixed precision. If in doubt which function to use, '
         'use the first, as it supports Eager execution and is more '

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/tensor_bundle/tensor_bundle.h"
 
 namespace tensorflow {
@@ -843,11 +844,19 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
         TF_RETURN_IF_ERROR(
             input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
         if (*end_of_sequence) {
-          cache_->Complete(std::move(temp_cache_));
+          if (!cache_->IsCompleted()) {
+            VLOG(2) << "Finalizing the cache because EOF has been reached.";
+            cache_->Complete(std::move(temp_cache_));
+          }
           return Status::OK();
         }
         RecordBufferEnqueue(ctx, *out_tensors);
         temp_cache_.emplace_back(*out_tensors);
+        if (temp_cache_.size() == dataset()->input_->Cardinality()) {
+          VLOG(2) << "Finalizing the cache because its size matches the "
+                     "expected input cardinality.";
+          cache_->Complete(std::move(temp_cache_));
+        }
         return Status::OK();
       }
 

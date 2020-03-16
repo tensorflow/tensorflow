@@ -410,7 +410,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def element_spec(self):
     """The type specification of an element of this dataset.
 
-    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3]).element_spec
+    >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3])
+    >>> dataset.element_spec
     TensorSpec(shape=(), dtype=tf.int32, name=None)
 
     Returns:

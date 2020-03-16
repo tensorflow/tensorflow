@@ -288,6 +288,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -2633,7 +2634,14 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
+<<<<<<< HEAD
         ":gpu_prim_hdrs"],
+=======
+        "//tensorflow/core:framework_internal",
+    ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
+        "@local_config_rocm//rocm:rocprim",
+    ]),
+>>>>>>> google_upstream/master
 )
 
 tf_kernel_library(
@@ -3033,7 +3041,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(
@@ -3581,6 +3589,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -3997,6 +4006,48 @@ cc_library(
     }),
 )
 
+# TODO(annarev): conv_ops_3d_headers currently depends on android target build
+# from selected sources. We should switch to use granular dependencies instead.
+# Then, we can just depend on "conv3d".
+cc_library(
+    name = "conv_3d_mobile",
+    hdrs = [
+        "conv_3d.h",
+        "eigen_backward_cuboid_convolutions.h",
+        "eigen_convolution_helpers.h",
+        "eigen_cuboid_convolution.h",
+        "eigen_volume_patch.h",
+    ],
+    deps = [
+        ":eigen_spatial_convolutions-inl",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+cc_library(
+    name = "conv_ops_3d_headers",
+    hdrs = [
+        "conv_ops_3d.h",
+    ],
+    deps = select({
+        "//tensorflow:android": [
+            ":conv_3d_mobile",
+            "//tensorflow/core:android_tensorflow_lib_lite",  # TODO(annarev): exclude runtime srcs
+        ],
+        "//conditions:default": [
+            ":conv_3d",
+            "//third_party/eigen3",
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
 tf_kernel_library(
     name = "argmax_op",
     prefix = "argmax_op",
@@ -4053,7 +4104,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "check_numerics_op",
     prefix = "check_numerics_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(
@@ -4544,6 +4595,7 @@ tf_kernel_library(
     prefix = "conv_ops",
     deps = [
         ":conv_grad_shape_utils",
+        ":conv_ops_3d_headers",
         ":bounds_check",
         ":conv_2d",
         ":conv_3d",
@@ -6518,6 +6570,7 @@ filegroup(
         "conv_2d.h",
         "conv_3d.h",
         "conv_ops.h",
+        "conv_ops_3d.h",
         "conv_ops_gpu.h",
         "data_format_ops.h",
         "depthtospace_op.h",

@@ -234,26 +234,6 @@ func @batchMatMulMatrix(%arg0: tensor<4x5xf32>, %arg1: tensor<5x6xf32>) -> tenso
 
 // -----
 
-func @batchMatMulV2VectorLhsInputMatchFailure(%arg0: tensor<10xf32>, %arg1: tensor<10x20xf32>) -> tensor<10x20xf32> {
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) : (tensor<10xf32>, tensor<10x20xf32>) -> tensor<10x20xf32>
-  return %0 : tensor<10x20xf32>
-
-  // CHECK-LABEL: batchMatMulV2VectorLhs
-  // CHECK: %0 = "tf.BatchMatMulV2"(%arg0, %arg1) : (tensor<10xf32>, tensor<10x20xf32>) -> tensor<10x20xf32>
-}
-
-// -----
-
-func @batchMatMulV2VectorRhsInputMatchFailure(%arg0: tensor<10x20xf32>, %arg1: tensor<10xf32>) -> tensor<10x20xf32> {
-  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) : (tensor<10x20xf32>, tensor<10xf32>) -> tensor<10x20xf32>
-  return %0 : tensor<10x20xf32>
-
-  // CHECK-LABEL: batchMatMulV2VectorRhs
-  // CHECK: %0 = "tf.BatchMatMulV2"(%arg0, %arg1) : (tensor<10x20xf32>, tensor<10xf32>) -> tensor<10x20xf32>
-}
-
-// -----
-
 func @batchMatMulVectorLhsInputMatchFailure(%arg0: tensor<10xf32>, %arg1: tensor<10x20xf32>) -> tensor<10x20xf32> {
   %0 = "tf.BatchMatMul"(%arg0, %arg1) : (tensor<10xf32>, tensor<10x20xf32>) -> tensor<10x20xf32>
   return %0 : tensor<10x20xf32>
