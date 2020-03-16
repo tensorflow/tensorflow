@@ -49,6 +49,8 @@ struct TfLiteInterpreterOptions {
   void* error_reporter_user_data = nullptr;
 
   std::vector<TfLiteDelegate*> delegates;
+
+  bool useNNAPI = false;
 };
 
 struct TfLiteInterpreter {

@@ -38,6 +38,7 @@ TEST(CApiSimple, Smoke) {
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   ASSERT_NE(options, nullptr);
   TfLiteInterpreterOptionsSetNumThreads(options, 2);
+  TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);

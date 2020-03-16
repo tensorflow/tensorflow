@@ -120,6 +120,10 @@ TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
 TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
     TfLiteInterpreterOptions* options, int32_t num_threads);
 
+// Enable or disable the NN API for the interpreter (true to enable).
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
+    TfLiteInterpreterOptions* options, bool enable);
+
 // Adds a delegate to be applied during `TfLiteInterpreter` creation.
 //
 // If delegate application fails, interpreter creation will also fail with an

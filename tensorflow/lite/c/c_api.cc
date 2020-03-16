@@ -79,6 +79,11 @@ void TfLiteInterpreterOptionsSetNumThreads(TfLiteInterpreterOptions* options,
   options->num_threads = num_threads;
 }
 
+void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
+                                         bool enable) {
+  options->useNNAPI = enable;
+}
+
 void TfLiteInterpreterOptionsAddDelegate(TfLiteInterpreterOptions* options,
                                          TfLiteDelegate* delegate) {
   options->delegates.push_back(delegate);
@@ -123,6 +128,8 @@ TfLiteInterpreter* TfLiteInterpreterCreate(
   }
 
   if (optional_options) {
+    interpreter->UseNNAPI(optional_options->useNNAPI);
+
     if (optional_options->num_threads !=
         TfLiteInterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);
