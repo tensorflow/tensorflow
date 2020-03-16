@@ -30,7 +30,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.optimizers.Adam')
 class Adam(optimizer_v2.OptimizerV2):
-  """Optimizer that implements the Adam algorithm.
+  r"""Optimizer that implements the Adam algorithm.
 
   Adam optimization is a stochastic gradient descent method that is based on
   adaptive estimation of first-order and second-order moments.
@@ -43,6 +43,63 @@ class Adam(optimizer_v2.OptimizerV2):
 
   For AMSGrad see [On The Convergence Of Adam And Beyond.
   Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
+
+  **If amsgrad = False**:
+
+  initialize $m_0$ as 1st moment vector
+  initialize $v_0$ as 2nd moment vector
+
+  The update rule for $\theta$ with gradient $g$ uses an optimization
+  described at the end of section 2 of the paper:
+
+  $$lr_t = \mathrm{learning\_rate} *
+    \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
+  $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+  $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
+  $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
+
+  **If amsgrad = True**:
+
+  initialize $m_0$ as 1st moment vector
+  initialize $v_0$ as 2nd moment vector
+  initialize $\hat{v}_0$ as 2nd moment vector
+
+  The update rule for $\theta$ with gradient $g$ uses an optimization
+  described at the end of section 2 of the paper:
+
+  $$lr_t = \mathrm{learning\_rate} *
+    \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
+
+  $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+  $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
+  $$\hat{v}_t = \max(\hat{v}_{t-1}, v_t)$$
+  $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{\hat{v}_t} + \epsilon)$$
+
+  The default value of 1e-7 for epsilon might not be a good default in
+  general. For example, when training an Inception network on ImageNet a
+  current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
+  formulation just before Section 2.1 of the Kingma and Ba paper rather than
+  the formulation in Algorithm 1, the "epsilon" referred to here is "epsilon
+  hat" in the paper.
+
+  The sparse implementation of this algorithm (used when the gradient is an
+  IndexedSlices object, typically because of `tf.gather` or an embedding
+  lookup in the forward pass) does apply momentum to variable slices even if
+  they were not used in the forward pass (meaning they have a gradient equal
+  to zero). Momentum decay (beta1) is also applied to the entire momentum
+  accumulator. This means that the sparse behavior is equivalent to the dense
+  behavior (in contrast to some momentum implementations which ignore momentum
+  unless a variable slice was actually used).
+
+  Usage:
+
+  >>> opt = tf.keras.optimizers.Adam(learning_rate=0.1)
+  >>> var1 = tf.Variable(10.0)
+  >>> loss = lambda: (var1 ** 2)/2.0       # d(loss)/d(var1) == var1
+  >>> step_count = opt.minimize(loss, [var1]).numpy()
+  >>> # The first step is `-learning_rate*sign(grad)`
+  >>> var1.numpy()
+  9.9
   """
 
   _HAS_ALL_REDUCE_SUM_GRAD = True
@@ -55,64 +112,7 @@ class Adam(optimizer_v2.OptimizerV2):
                amsgrad=False,
                name='Adam',
                **kwargs):
-    r"""Construct a new Adam optimizer.
-
-    If amsgrad = False:
-
-      initialize $m_0$ as 1st moment vector
-      initialize $v_0$ as 2nd moment vector
-
-      The update rule for $\theta$ with gradient $g$ uses an optimization
-      described at the end of section 2 of the paper:
-
-      $$lr_t = \mathrm{learning\_rate} *
-        \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
-      $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
-      $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
-      $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{v_t} + \epsilon)$$
-
-    If amsgrad = True:
-
-      initialize $m_0$ as 1st moment vector
-      initialize $v_0$ as 2nd moment vector
-      initialize $\hat{v}_0$ as 2nd moment vector
-
-      The update rule for $\theta$ with gradient $g$ uses an optimization
-      described at the end of section 2 of the paper:
-
-      $$lr_t = \mathrm{learning\_rate} *
-        \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
-
-      $$m_t = \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
-      $$v_t = \beta_2 * v_{t-1} + (1 - \beta_2) * g^2$$
-      $$\hat{v}_t = \max(\hat{v}_{t-1}, v_t)$$
-      $$\theta_t = \theta_{t-1} - lr_t * m_t / (\sqrt{\hat{v}_t} + \epsilon)$$
-
-    The default value of 1e-7 for epsilon might not be a good default in
-    general. For example, when training an Inception network on ImageNet a
-    current good choice is 1.0 or 0.1. Note that since AdamOptimizer uses the
-    formulation just before Section 2.1 of the Kingma and Ba paper rather than
-    the formulation in Algorithm 1, the "epsilon" referred to here is "epsilon
-    hat" in the paper.
-
-    The sparse implementation of this algorithm (used when the gradient is an
-    IndexedSlices object, typically because of `tf.gather` or an embedding
-    lookup in the forward pass) does apply momentum to variable slices even if
-    they were not used in the forward pass (meaning they have a gradient equal
-    to zero). Momentum decay (beta1) is also applied to the entire momentum
-    accumulator. This means that the sparse behavior is equivalent to the dense
-    behavior (in contrast to some momentum implementations which ignore momentum
-    unless a variable slice was actually used).
-
-    Usage:
-
-    >>> opt = tf.keras.optimizers.Adam(learning_rate=0.1)
-    >>> var1 = tf.Variable(10.0)
-    >>> loss = lambda: (var1 ** 2)/2.0       # d(loss)/d(var1) == var1
-    >>> step_count = opt.minimize(loss, [var1]).numpy()
-    >>> # The first step is `-learning_rate*sign(grad)`
-    >>> var1.numpy()
-    9.9
+    """Construct a new Adam optimizer.
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -138,7 +138,6 @@ class Adam(optimizer_v2.OptimizerV2):
         gradients by value, `decay` is included for backward compatibility to
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
-
     """
 
     super(Adam, self).__init__(name, **kwargs)
