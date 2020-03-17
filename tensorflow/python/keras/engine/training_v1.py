@@ -162,9 +162,6 @@ class Model(training_lib.Model):
 
     self._v1_compile_was_called = False
 
-  def _init_batch_counters(self):
-    pass  # Batch counters should not be created in legacy graph mode.
-
   @trackable.no_automatic_dependency_tracking
   def _set_strategy(self, strategy):
     self._compile_time_distribution_strategy = strategy

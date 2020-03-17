@@ -36,13 +36,6 @@ base_layer = lazy_loader.LazyLoader(
 base_layer_v1 = lazy_loader.LazyLoader(
     "base_layer_v1", globals(),
     "tensorflow.python.keras.engine.base_layer_v1")
-callbacks = lazy_loader.LazyLoader(
-    "callbacks", globals(),
-    "tensorflow.python.keras.callbacks")
-callbacks_v1 = lazy_loader.LazyLoader(
-    "callbacks_v1", globals(),
-    "tensorflow.python.keras.callbacks_v1")
-
 
 # pylint: enable=g-inconsistent-quotes
 
@@ -63,21 +56,6 @@ class LayerVersionSelector(object):
     eager_enabled = ops.executing_eagerly_outside_functions()
     cls = swap_class(cls, base_layer.Layer, base_layer_v1.Layer, eager_enabled)
     return super(LayerVersionSelector, cls).__new__(cls)
-
-
-class TensorBoardVersionSelector(object):
-  """Chooses between Keras v1 and v2 TensorBoard callback class."""
-
-  def __new__(cls, *args, **kwargs):  # pylint: disable=unused-argument
-    eager_enabled = ops.executing_eagerly_outside_functions()
-    start_cls = cls
-    cls = swap_class(start_cls, callbacks.TensorBoard, callbacks_v1.TensorBoard,
-                     eager_enabled)
-    if start_cls == callbacks_v1.TensorBoard and cls == callbacks.TensorBoard:
-      # Since the v2 class is not a subclass of the v1 class, __init__ has to
-      # be called manually.
-      return cls(*args, **kwargs)
-    return super(TensorBoardVersionSelector, cls).__new__(cls)
 
 
 def swap_class(cls, v2_cls, v1_cls, eager_enabled):
