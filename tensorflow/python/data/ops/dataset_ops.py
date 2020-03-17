@@ -158,7 +158,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
   Elements can be nested structures of tuples, named tuples, and dictionaries.
   Element components can be of any type representable by `tf.TypeSpec`,
-  including `tf.Tensor`, `tf.data.Dataset`, `tf.SparseTensor`,
+  including `tf.Tensor`, `tf.data.Dataset`, `tf.sparse.SparseTensor`,
   `tf.RaggedTensor`, and `tf.TensorArray`.
 
   >>> a = 1 # Integer element
@@ -1456,7 +1456,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       array([[ 10, 100], [ 11,  12]], dtype=int32))]
 
     See also `tf.data.experimental.dense_to_sparse_batch`, which combines
-    elements that may have different shapes into a `tf.SparseTensor`.
+    elements that may have different shapes into a `tf.sparse.SparseTensor`.
 
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
@@ -2266,10 +2266,10 @@ class DatasetV1(DatasetV2):
   @staticmethod
   @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
-    """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
+    """Splits each rank-N `tf.sparse.SparseTensor` in this dataset row-wise.
 
     Args:
-      sparse_tensor: A `tf.SparseTensor`.
+      sparse_tensor: A `tf.sparse.SparseTensor`.
 
     Returns:
       Dataset: A `Dataset` of rank-(N-1) sparse tensors.
@@ -2874,13 +2874,13 @@ class TensorSliceDataset(DatasetSource):
 
 
 class SparseTensorSliceDataset(DatasetSource):
-  """A `Dataset` that splits a rank-N `tf.SparseTensor` into its rows."""
+  """A `Dataset` that splits a rank-N `tf.sparse.SparseTensor` into its rows."""
 
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
       raise TypeError(
-          "`sparse_tensor` must be a `tf.SparseTensor` object. Was {}.".format(
+          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object. Was {}.".format(
               sparse_tensor))
     self._sparse_tensor = sparse_tensor
 
