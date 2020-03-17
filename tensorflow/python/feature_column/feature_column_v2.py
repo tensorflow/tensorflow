@@ -2495,7 +2495,7 @@ def _create_dense_column_weighted_sum(column, transformation_cache,
 class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
-  A categorical feature typically handled with a `tf.SparseTensor` of IDs.
+  A categorical feature typically handled with a `tf.sparse.SparseTensor` of IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
