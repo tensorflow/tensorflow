@@ -132,8 +132,10 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   //   See also: https://curl.haxx.se/libcurl/c/CURLOPT_CAINFO.html.
   std::string value = "";
   TF_CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
-  CHECK_CURL_OK(
-      libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));
+  if (!value.empty()) {
+    CHECK_CURL_OK(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));
+  }
   CHECK_CURL_OK(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
