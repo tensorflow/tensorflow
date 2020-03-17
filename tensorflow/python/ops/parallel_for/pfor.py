@@ -45,6 +45,7 @@ from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import gen_linalg_ops
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_random_ops
@@ -2167,12 +2168,13 @@ def _convert_reverse(pfor_input):
   return wrap(gen_array_ops.reverse_v2(value, axis=new_axis), True)
 
 
-@RegisterPFor("Transpose")
-def _convert_transpose(pfor_input):
+@RegisterPForWithArgs("Transpose", gen_array_ops.transpose)
+@RegisterPForWithArgs("ConjugateTranspose", gen_array_ops.conjugate_transpose)
+def _convert_transpose(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   perm = pfor_input.unstacked_input(1)
   new_perm = array_ops.concat([[0], perm + 1], axis=0)
-  return wrap(array_ops.transpose(t, new_perm), True)
+  return wrap(op_func(t, new_perm), True)
 
 
 @RegisterPFor("ZerosLike")
@@ -2339,6 +2341,13 @@ def _convert_strided_slice_grad(pfor_input):
           shrink_axis_mask=shrink_axis_mask), True)
 
 
+@RegisterPFor("CheckNumerics")
+def _convert_check_numerics(pfor_input):
+  t = pfor_input.stacked_input(0)
+  message = pfor_input.get_attr("message")
+  return wrap(gen_array_ops.check_numerics(t, message), True)
+
+
 # math_ops
 
 
@@ -2451,6 +2460,22 @@ def _convert_argmax_argmin(pfor_input, _, op_func):
   dimension += math_ops.cast(dimension >= 0, dimension.dtype)
   output_type = pfor_input.get_attr("output_type")
   return wrap(op_func(t, axis=dimension, output_type=output_type), True)
+
+
+@RegisterPFor("Bucketize")
+def _convert_bucketize(pfor_input):
+  t = pfor_input.stacked_input(0)
+  boundaries = pfor_input.get_attr("boundaries")
+  return wrap(math_ops.bucketize(t, boundaries), True)
+
+
+@RegisterPFor("ClipByValue")
+def _convert_clip_by_value(pfor_input):
+  t = pfor_input.stacked_input(0)
+  clip_value_min = pfor_input.unstacked_input(1)
+  clip_value_max = pfor_input.unstacked_input(2)
+  return wrap(gen_math_ops.clip_by_value(t, clip_value_min, clip_value_max),
+              True)
 
 
 @RegisterPForWithArgs("Cumsum", math_ops.cumsum)
