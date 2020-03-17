@@ -156,7 +156,7 @@ This enables writing forward compatible code: by explicitly importing either `te
   * `tf.keras.estimator.model_to_estimator` now supports exporting to tf.train.Checkpoint format, which allows the saved checkpoints to be compatible with `model.load_weights`.
   * Saving a Keras Model using `tf.saved_model.save` now saves the list of variables, trainable variables, regularization losses, and the call function.
   * Deprecated `tf.keras.experimental.export_saved_model` and `tf.keras.experimental.function`. Please use `tf.keras.models.save_model(..., save_format='tf')` and `tf.keras.models.load_model` instead.
-  * Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
+  * Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D` and `tf.keras.layers.LocallyConnected1D` layers using `tf.sparse.SparseTensor` to store weights,  allowing a dramatic speedup for large sparse models.
   * Enable the Keras compile API `experimental_run_tf_function` flag by default. This flag enables single training/eval/predict execution path. With this 1. All input types are converted to `Dataset`. 2. When distribution strategy is not specified this goes through the no-op distribution strategy path. 3. Execution is wrapped in tf.function unless `run_eagerly=True` is set in compile.
   * Raise error if `batch_size` argument is used when input is dataset/generator/keras sequence.
 * `tf.lite`
@@ -448,7 +448,7 @@ If you experience any snags when using TF 2.0, please let us know at the [TF 2.0
         `keras.layers.Upsampling2D`) behavior has changed, a bug in the resizing
         implementation was fixed.
     *   Add an `implementation=3` mode for `tf.keras.layers.LocallyConnected2D`
-        and `tf.keras.layers.LocallyConnected1D` layers using `tf.SparseTensor`
+        and `tf.keras.layers.LocallyConnected1D` layers using `tf.sparse.SparseTensor`
         to store weights, allowing a dramatic speedup for large sparse models.
     *   Raise error if `batch_size` argument is used when input is
         dataset/generator/keras sequence.
@@ -1949,7 +1949,7 @@ Yoni Tsafir, yordun, Yuan (Terry) Tang, Yuxin Wu, zhengdi, Zhengsheng Wei, ç”°ä¼
     after successfully completing training, instead of throwing a RuntimeError.
   * Restandardize `DenseVariational` as simpler template for other probabilistic
     layers.
-  * `tf.data` now supports `tf.SparseTensor` components in dataset elements.
+  * `tf.data` now supports `tf.sparse.SparseTensor` components in dataset elements.
   * It is now possible to iterate over `Tensor`s.
   * Allow `SparseSegmentReduction` ops to have missing segment IDs.
   * Modify custom export strategy to account for multidimensional sparse float

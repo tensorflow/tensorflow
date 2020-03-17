@@ -20856,7 +20856,7 @@ func Print(scope *Scope, input tf.Output, data []tf.Output, optional ...PrintAtt
 //
 //     with tf.Session() as sess:
 //       # Define (COO format) SparseTensor over Numpy array.
-//       a_st = tf.SparseTensor(a_indices, a_values, a_dense_shape)
+//       a_st = tf.sparse.SparseTensor(a_indices, a_values, a_dense_shape)
 //
 //       # Convert SparseTensors to CSR SparseMatrix.
 //       a_sm = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
@@ -32149,8 +32149,8 @@ func SparseMatrixSparseMatMulAdjointB(value bool) SparseMatrixSparseMatMulAttr {
 //
 //     with tf.Session() as sess:
 //       # Define (COO format) Sparse Tensors over Numpy arrays
-//       a_st = tf.SparseTensor(a_indices, a_values, a_dense_shape)
-//       b_st = tf.SparseTensor(b_indices, b_values, b_dense_shape)
+//       a_st = tf.sparse.SparseTensor(a_indices, a_values, a_dense_shape)
+//       b_st = tf.sparse.SparseTensor(b_indices, b_values, b_dense_shape)
 //
 //       # Convert SparseTensors to CSR SparseMatrix
 //       a_sm = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(
@@ -37776,7 +37776,7 @@ func RecvTPUEmbeddingActivations(scope *Scope, num_outputs int64, config string)
 //
 //     with tf.Session() as sess:
 //       # Define (COO format) SparseTensor over Numpy array.
-//       a_st = tf.SparseTensor(a_indices, a_values, a_dense_shape)
+//       a_st = tf.sparse.SparseTensor(a_indices, a_values, a_dense_shape)
 //
 //       # Convert SparseTensors to CSR SparseMatrix.
 //       a_sm = sparse_csr_matrix_ops.sparse_tensor_to_csr_sparse_matrix(

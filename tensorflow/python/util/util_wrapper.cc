@@ -244,7 +244,7 @@ PYBIND11_MODULE(_pywrap_utils, m) {
       Args:
         nest: an arbitrarily nested structure or a scalar object. Note, numpy
             arrays are considered scalars.
-        expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+        expand_composites: If true, then composite tensors such as `tf.sparse.SparseTensor`
             and `tf.RaggedTensor` are expanded into their component tensors.
 
       Returns:
