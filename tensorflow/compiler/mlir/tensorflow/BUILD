@@ -167,6 +167,44 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "hlo_legalize_tf_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "transforms/generated_legalize_hlo.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/legalize_hlo_patterns.td",
+    td_srcs = [
+        "//tensorflow/compiler/mlir/xla:hlo_ops_td_files",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "tf_legalize_hlo",
+    srcs = [
+        "transforms/generated_legalize_hlo.inc",
+        "transforms/legalize_hlo.cc",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "tensorflow_types",
     srcs = [
