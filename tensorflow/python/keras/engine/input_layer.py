@@ -44,7 +44,7 @@ class InputLayer(base_layer.Layer):
   When using InputLayer with Keras Sequential model, it can be skipped by
   moving the input_shape parameter to the first layer after the InputLayer.
 
-  This class can create placeholders for tf.Tensors, tf.SparseTensors, and
+  This class can create placeholders for tf.Tensors, tf.sparse.SparseTensors, and
   tf.RaggedTensors by choosing 'sparse=True' or 'ragged=True'. Note that
   'sparse' and 'ragged' can't be configured to True at same time.
   Usage:
