@@ -40,7 +40,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertAllClose(0.5, tf.rsqrt(4.0))
 
   def testSerializeSparseTensor(self):
-    sp_input = tf.SparseTensor(
+    sp_input = tf.sparse.SparseTensor(
         indices=tf.constant([[1]], dtype=tf.int64),
         values=tf.constant([2], dtype=tf.int64),
         dense_shape=[2])
@@ -51,7 +51,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
       self.assertTrue(serialized_sp[0].numpy())  # check non-empty
 
   def testSerializeManySparse(self):
-    sp_input = tf.SparseTensor(
+    sp_input = tf.sparse.SparseTensor(
         indices=tf.constant([[0, 1]], dtype=tf.int64),
         values=tf.constant([2], dtype=tf.int64),
         dense_shape=[1, 2])
