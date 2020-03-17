@@ -152,7 +152,8 @@ class ValidateExportTest(test.TestCase):
                        (('NAME_E', 'NAME_F'), 0.5)],
                       module2._tf_api_constants)
 
-  def testRaisesExceptionIfAlreadyHasAPINames(self):
+  # TODO(b/151745456): re-enable
+  def DISABLED_testRaisesExceptionIfAlreadyHasAPINames(self):
     _test_function._tf_api_names = ['abc']
     export_decorator = tf_export.tf_export('nameA', 'nameB')
     with self.assertRaises(tf_export.SymbolAlreadyExposedError):
