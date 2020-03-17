@@ -53,8 +53,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
   $$x_t := x_{t-1} + \Delta x_{t}$$
   
   References
-    See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
-      ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
+  See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
+  ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
 
   """
 
