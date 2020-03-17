@@ -29,9 +29,9 @@ namespace tensorflow {
 
 namespace shape_inference {
 
-// The V2 version computes windowed output size with arbitrary dilation_rate and
-// explicit padding, while the original version only handles the cases where
-// dilation_rates equal to 1 and the padding is SAME or VALID.
+// The V2 version computes windowed output size with arbitrary dilation_rate,
+// while the original version only handles the cases where dilation_rates equal
+// to 1.
 Status GetWindowedOutputSizeFromDimsV2(
     shape_inference::InferenceContext* c,
     shape_inference::DimensionHandle input_size,
@@ -822,10 +822,7 @@ Status Conv3DShape(shape_inference::InferenceContext* c) {
   return Status::OK();
 }
 
-namespace {
-
-Status DepthwiseConv2DNativeShapeImpl(shape_inference::InferenceContext* c,
-                                      bool supports_explicit_padding) {
+Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
   ShapeHandle input_shape;
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input_shape));
   ShapeHandle filter_shape;
@@ -853,17 +850,13 @@ Status DepthwiseConv2DNativeShapeImpl(shape_inference::InferenceContext* c,
         dilations.size());
   }
 
-  string data_format_str;
-  Status s = c->GetAttr("data_format", &data_format_str);
-  TensorFormat data_format;
-  if (!s.ok() || !FormatFromString(data_format_str, &data_format)) {
-    data_format = FORMAT_NHWC;
-  }
+  string data_format;
+  Status s = c->GetAttr("data_format", &data_format);
   int32 stride_rows;
   int32 stride_cols;
   int32 dilation_rows;
   int32 dilation_cols;
-  if (data_format == FORMAT_NCHW) {
+  if (s.ok() && data_format == "NCHW") {
     // Canonicalize input shape to NHWC so the shape inference code below can
     // process it.
     input_shape =
@@ -899,41 +892,20 @@ Status DepthwiseConv2DNativeShapeImpl(shape_inference::InferenceContext* c,
   Padding padding;
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
-  std::vector<int64> explicit_paddings;
-  if (supports_explicit_padding) {
-    Status status = c->GetAttr("explicit_paddings", &explicit_paddings);
-    // Use the default value, which is an empty list, if the attribute is not
-    // found. Otherwise return the error to the caller.
-    if (!status.ok() && !errors::IsNotFound(status)) {
-      return status;
-    }
-    TF_RETURN_IF_ERROR(CheckValidPadding(padding, explicit_paddings,
-                                         /*num_dims=*/4, data_format));
-  } else {
-    DCHECK(padding != Padding::EXPLICIT);
-  }
-
   // TODO(mrry,shlens): Raise an error if the stride would cause
   // information in the input to be ignored. This will require a change
   // in the kernel implementation.
   DimensionHandle output_rows, output_cols;
-  int64 pad_rows_before = -1, pad_rows_after = -1;
-  int64 pad_cols_before = -1, pad_cols_after = -1;
-  if (padding == Padding::EXPLICIT) {
-    GetExplicitPaddingForDim(explicit_paddings, data_format, 'H',
-                             &pad_rows_before, &pad_rows_after);
-    GetExplicitPaddingForDim(explicit_paddings, data_format, 'W',
-                             &pad_cols_before, &pad_cols_after);
-  }
+
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding,
-      pad_rows_before, pad_rows_after, &output_rows));
+      c, in_rows_dim, filter_rows_dim, dilation_rows, stride_rows, padding, -1,
+      -1, &output_rows));
   TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
-      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding,
-      pad_cols_before, pad_cols_after, &output_cols));
+      c, in_cols_dim, filter_cols_dim, dilation_cols, stride_cols, padding, -1,
+      -1, &output_cols));
 
   ShapeHandle output_shape;
-  if (data_format == FORMAT_NCHW) {
+  if (data_format == "NCHW") {
     output_shape =
         c->MakeShape({batch_size_dim, output_depth, output_rows, output_cols});
   } else {
@@ -942,17 +914,6 @@ Status DepthwiseConv2DNativeShapeImpl(shape_inference::InferenceContext* c,
   }
   c->set_output(0, output_shape);
   return Status::OK();
-}
-
-};  // namespace
-
-Status DepthwiseConv2DNativeShape(shape_inference::InferenceContext* c) {
-  return DepthwiseConv2DNativeShapeImpl(c, false);
-}
-
-Status DepthwiseConv2DNativeShapeWithExplicitPadding(
-    shape_inference::InferenceContext* c) {
-  return DepthwiseConv2DNativeShapeImpl(c, true);
 }
 
 Status AvgPoolShape(shape_inference::InferenceContext* c) {
