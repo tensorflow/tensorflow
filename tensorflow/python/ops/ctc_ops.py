@@ -1126,7 +1126,7 @@ def dense_labels_to_sparse(dense, length):
     length: int tensor of shape [batch] The length of each sequence in dense.
 
   Returns:
-    tf.SparseTensor with values only for the valid elements of sequences.
+    tf.sparse.SparseTensor with values only for the valid elements of sequences.
   """
 
   flat_values = array_ops.reshape(dense, [-1])
