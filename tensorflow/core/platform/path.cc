@@ -38,7 +38,11 @@ namespace io {
 namespace internal {
 namespace {
 
+#if defined(PLATFORM_WINDOWS)
+const char kPathSep[] = "\\";
+#else
 const char kPathSep[] = "/";
+#endif  // PLATFORM_WINDOWS
 
 bool FixBazelEnvPath(const char* path, string* out) {
   if (path == nullptr) return false;
