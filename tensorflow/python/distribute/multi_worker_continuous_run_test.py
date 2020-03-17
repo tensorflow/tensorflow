@@ -36,13 +36,14 @@ from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 
+NUM_WORKERS = 5
+
 
 # TODO(b/143286947): expand the test to cover fault tolerance and elasticity
 class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def testAllReduceContinuousRun(self, mode):
-    num_workers = 5
     tensor_shape = [2, 2]
     local_device = '/device:CPU:0'
     if config.list_physical_devices('GPU'):
@@ -50,6 +51,9 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
 
     def worker_step_fn():
       strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+      # Make sure the processeses are in sync after updating the cluster
+      multi_process_runner.barrier().wait()
+
       tf_config = json.loads(os.environ['TF_CONFIG'])
       worker_id = tf_config['task']['index']
 
@@ -62,7 +66,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       t_out = run_reduce()
       # Element values from the workers are
       #     0, 1, ..., (num_workers - 1)
-      expected_mean = (num_workers - 1) / 2
+      expected_mean = (NUM_WORKERS - 1) / 2
       expected_out = np.ones(tensor_shape) * expected_mean
       self.assertAllClose(t_out, expected_out)
 
@@ -78,8 +82,8 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
 
     multi_process_runner.run(
         worker_fn,
-        cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
+        cluster_spec=test_base.create_cluster_spec(num_workers=NUM_WORKERS))
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main()
+  multi_process_runner.test_main(barrier_parties=NUM_WORKERS)
