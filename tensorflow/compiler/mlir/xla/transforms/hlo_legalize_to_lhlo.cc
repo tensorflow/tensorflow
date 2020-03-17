@@ -276,7 +276,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //     %2 = "xla_hlo.add"(%0, %1) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     %3 = tensor_load %arg0 : memref<2x2xf32>
-//     %4 = "xla_hlo.mul"(%2, %3) :
+//     %4 = "xla_hlo.multiply"(%2, %3) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     tensor_store %4, %arg3 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
@@ -293,7 +293,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //     %0 = alloc() : memref<2x2xf32>
 //     "xla_lhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//     "xla_lhlo.mul"(%0, %arg0, %arg3) :
+//     "xla_lhlo.multiply"(%0, %arg0, %arg3) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     dealloc %0 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
@@ -305,7 +305,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // FuncOp signature conversion example:
 //
 // func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-//   %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
+//   %0 = "xla_hlo.maximum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
 //   tensor<4xf32> %1 = "xla_hlo.add"(%arg0, %0)  : (tensor<4xf32>,
 //   tensor<4xf32>) -> tensor<4xf32> return %1 : tensor<4xf32>
 // }
@@ -318,7 +318,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //               %arg2: memref<4xf32>) {
 //   %0 = alloc() : memref<4xf32>
 //   %1 = alloc() : memref<4xf32>
-//   "xla_lhlo.max"(%arg0, %arg1, %0) :
+//   "xla_lhlo.maximum"(%arg0, %arg1, %0) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
 //   "xla_lhlo.add"(%arg0, %0, %1) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()

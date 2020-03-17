@@ -34,7 +34,7 @@ return %0 : tensor<4x4x4x4xi32>
 // CHECK:           return [[VAL_8]] : tensor<4x4x4x4xi32>
 
 func @div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-%0 = xla_hlo.div %arg0, %arg0 : tensor<2xi32>
+%0 = xla_hlo.divide %arg0, %arg0 : tensor<2xi32>
 return %0 : tensor<2xi32>
 }
 // CHECK-LABEL:   func @div(
@@ -43,7 +43,7 @@ return %0 : tensor<2xi32>
 // CHECK:           return [[VAL_10]] : tensor<2xi32>
 
 func @broadcast_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-%0 = "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+%0 = "xla_hlo.divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 return %0 : tensor<1x2xi32>
 }
 // CHECK-LABEL:   func @broadcast_div(
@@ -61,7 +61,7 @@ return %0 : tensor<4xi32>
 // CHECK:           return [[VAL_16]] : tensor<4xi32>
 
 func @div_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi32> {
-%0 = "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
+%0 = "xla_hlo.divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<?x?xi32>) -> tensor<?x?xi32>
 return %0 : tensor<?x?xi32>
 }
 // CHECK-LABEL:   func @div_dynamic(
@@ -79,7 +79,7 @@ return %0 : tensor<?x?xi32>
 // CHECK:           return [[VAL_22]] : tensor<?x?xi32>
 
 func @maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-%0 = xla_hlo.max %arg0, %arg1 : tensor<4xf32>
+%0 = xla_hlo.maximum %arg0, %arg1 : tensor<4xf32>
 return %0 : tensor<4xf32>
 }
 // CHECK-LABEL:   func @maximum(
@@ -88,7 +88,7 @@ return %0 : tensor<4xf32>
 // CHECK:           return [[VAL_25]] : tensor<4xf32>
 
 func @minimum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-%0 = xla_hlo.min %arg0, %arg1 : tensor<4xf32>
+%0 = xla_hlo.minimum %arg0, %arg1 : tensor<4xf32>
 return %0 : tensor<4xf32>
 }
 // CHECK-LABEL:   func @minimum(
@@ -97,7 +97,7 @@ return %0 : tensor<4xf32>
 // CHECK:           return [[VAL_28]] : tensor<4xf32>
 
 func @mul(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-%0 = xla_hlo.mul %arg0, %arg0 : tensor<2xi32>
+%0 = xla_hlo.multiply %arg0, %arg0 : tensor<2xi32>
 return %0 : tensor<2xi32>
 }
 // CHECK-LABEL:   func @mul(
@@ -106,7 +106,7 @@ return %0 : tensor<2xi32>
 // CHECK:           return [[VAL_30]] : tensor<2xi32>
 
 func @broadcast_mul(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-%0 = "xla_hlo.mul"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+%0 = "xla_hlo.multiply"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 return %0 : tensor<1x2xi32>
 }
 // CHECK-LABEL:   func @broadcast_mul(
@@ -115,7 +115,7 @@ return %0 : tensor<1x2xi32>
 // CHECK:           return [[VAL_33]] : tensor<1x2xi32>
 
 func @real_div(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-%0 = xla_hlo.div %arg0, %arg0 : tensor<2xi32>
+%0 = xla_hlo.divide %arg0, %arg0 : tensor<2xi32>
 return %0 : tensor<2xi32>
 }
 // CHECK-LABEL:   func @real_div(
@@ -124,7 +124,7 @@ return %0 : tensor<2xi32>
 // CHECK:           return [[VAL_35]] : tensor<2xi32>
 
 func @broadcast_real_div(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-%0 = "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+%0 = "xla_hlo.divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 return %0 : tensor<1x2xi32>
 }
 // CHECK-LABEL:   func @broadcast_real_div(
@@ -133,7 +133,7 @@ return %0 : tensor<1x2xi32>
 // CHECK:           return [[VAL_38]] : tensor<1x2xi32>
 
 func @sub(%arg0: tensor<2xi32>) -> tensor<2xi32> {
-%0 = xla_hlo.sub %arg0, %arg0 : tensor<2xi32>
+%0 = xla_hlo.subtract %arg0, %arg0 : tensor<2xi32>
 return %0 : tensor<2xi32>
 }
 // CHECK-LABEL:   func @sub(
@@ -142,7 +142,7 @@ return %0 : tensor<2xi32>
 // CHECK:           return [[VAL_40]] : tensor<2xi32>
 
 func @broadcast_sub(%arg0: tensor<1xi32>, %arg1: tensor<1x2xi32>) -> tensor<1x2xi32> {
-%0 = "xla_hlo.sub"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
+%0 = "xla_hlo.subtract"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1xi32>, tensor<1x2xi32>) -> tensor<1x2xi32>
 return %0 : tensor<1x2xi32>
 }
 // CHECK-LABEL:   func @broadcast_sub(

@@ -21,16 +21,16 @@ func @func_op_long(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> 
   // CHECK-NEXT: %[[MIN_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   // CHECK-NEXT: %[[ADD_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
   // CHECK-NEXT: %[[MAX_RESULT:.*]] = alloc() {temp = true} : memref<4xf32>
-  %1 = xla_hlo.max %arg0, %arg1 : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.max"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MAX_RESULT]])
+  %1 = xla_hlo.maximum %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.maximum"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MAX_RESULT]])
   %2 = xla_hlo.add %arg0, %1 : tensor<4xf32>
   // CHECK-NEXT: "xla_lhlo.add"(%[[NEW_ARG0]], %[[MAX_RESULT]], %[[ADD_RESULT]])
-  %3 = xla_hlo.min %arg0, %arg1 : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.min"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MIN_RESULT]])
-  %4 = xla_hlo.sub %arg1, %3 : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.sub"(%[[NEW_ARG1]], %[[MIN_RESULT]], %[[SUB_RESULT]])
-  %5 = xla_hlo.mul %2, %4 : tensor<4xf32>
-  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[MUL_RESULT]])
+  %3 = xla_hlo.minimum %arg0, %arg1 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.minimum"(%[[NEW_ARG0]], %[[NEW_ARG1]], %[[MIN_RESULT]])
+  %4 = xla_hlo.subtract %arg1, %3 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.subtract"(%[[NEW_ARG1]], %[[MIN_RESULT]], %[[SUB_RESULT]])
+  %5 = xla_hlo.multiply %2, %4 : tensor<4xf32>
+  // CHECK-NEXT: "xla_lhlo.multiply"(%[[ADD_RESULT]], %[[SUB_RESULT]], %[[MUL_RESULT]])
   // CHECK-NEXT: dealloc %[[MAX_RESULT]] : memref<4xf32>
   // CHECK-NEXT: dealloc %[[ADD_RESULT]] : memref<4xf32>
   // CHECK-NEXT: dealloc %[[MIN_RESULT]] : memref<4xf32>
@@ -55,9 +55,9 @@ func @fusion(%multiplier: memref<2x2xf32>, %summand_1: memref<2x2xf32>,
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   // CHECK-NEXT: "xla_lhlo.add"(%{{.*}}, %{{.*}}, %[[ADD_RESULT]])
   %tensor_multiplier = tensor_load %multiplier : memref<2x2xf32>
-  %tensor_result = "xla_hlo.mul"(%sum, %tensor_multiplier)
+  %tensor_result = "xla_hlo.multiply"(%sum, %tensor_multiplier)
       : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK-NEXT: "xla_lhlo.mul"(%[[ADD_RESULT]], %{{.*}}, %[[MUL_RESULT]])
+  // CHECK-NEXT: "xla_lhlo.multiply"(%[[ADD_RESULT]], %{{.*}}, %[[MUL_RESULT]])
   // CHECK-NEXT: "xla_lhlo.copy"(%[[MUL_RESULT]], %[[RESULT]])
   tensor_store %tensor_result, %result : memref<2x2xf32>
   // CHECK-NEXT:  dealloc %[[ADD_RESULT]] : memref<2x2xf32>

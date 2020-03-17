@@ -34,7 +34,7 @@ func @float_mul(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: mulf
-  %0 = "xla_hlo.mul"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -46,7 +46,7 @@ func @integer_mul(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: muli
-  %0 = "xla_hlo.mul"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "xla_hlo.multiply"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -93,7 +93,7 @@ func @float_sub(%lhs: tensor<2x2xf32>,
                 %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   // CHECK: linalg.generic
   // CHECK: subf
-  %0 = "xla_hlo.sub"(%lhs, %rhs) : (tensor<2x2xf32>,
+  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xf32>,
                                     tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -105,7 +105,7 @@ func @integer_sub(%lhs: tensor<2x2xi32>,
                   %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
   // CHECK: linalg.generic
   // CHECK: subi
-  %0 = "xla_hlo.sub"(%lhs, %rhs) : (tensor<2x2xi32>,
+  %0 = "xla_hlo.subtract"(%lhs, %rhs) : (tensor<2x2xi32>,
                                     tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }
@@ -313,7 +313,7 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
 
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  %0 = "xla_hlo.min"(%lhs, %rhs)
+  %0 = "xla_hlo.minimum"(%lhs, %rhs)
           : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
@@ -327,7 +327,7 @@ func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
 
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: tensor<2x2xi32>, %rhs: tensor<2x2xi32>) -> tensor<2x2xi32> {
-  %0 = "xla_hlo.max"(%lhs, %rhs)
+  %0 = "xla_hlo.maximum"(%lhs, %rhs)
           : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 }

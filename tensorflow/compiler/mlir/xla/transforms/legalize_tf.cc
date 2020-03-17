@@ -1299,7 +1299,7 @@ class ConvertAvgPoolOp : public OpRewritePattern<TF::AvgPoolOp> {
 // Sample result for VALID padding mode:
 //
 //   %init = constant dense<...> : tensor<i32>
-//   %max_pool = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
+//   %max_pool = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.maximum"]
 //               {window_dimensions = ..., window_strides = ... }
 //
 class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
@@ -1421,11 +1421,11 @@ class ConvertSelectV2Op : public OpRewritePattern<TF::SelectV2Op> {
 //                           : (tensor<f32>) -> tensor<2xf32>
 //
 //    // Compute Tanh of half the logits of the values.
-//    %halved_logits = xla_hlo.mul %logits, %half_array : tensor<2xf32>
+//    %halved_logits = xla_hlo.multiply %logits, %half_array : tensor<2xf32>
 //    %tanh = "xla_hlo.tanh"(%halved_logits) : (tensor<2xf32>) -> tensor<2xf32>
 //
 //    // Have the result of Tanh and add 0.5.
-//    %halved_tanh = xla_hlo.mul %tanh, %half : tensor<2xf32>
+//    %halved_tanh = xla_hlo.multiply %tanh, %half : tensor<2xf32>
 //    %sigmoid = xla_hlo.add %halved_tanh, %half : tensor<2xf32>
 //
 class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
@@ -1479,7 +1479,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //    // stability.
 //    %max = "tf.Max"(%input, %reduce_dim)
 //           : (tensor<BxNxf16>, tensor<1xi64>) -> tensor<Bxf16>
-//    %sub = "xla_hlo.sub"(%inp, %max) {broadcast_dimensions = 0}
+//    %sub = "xla_hlo.subtract"(%inp, %max) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 //
 //    %exp = "xla_hlo.exp"(%sub) : (tensor<BxNxf16>) -> tensor<BxNxf16>
@@ -1487,7 +1487,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
 //            : (tensor<BxNxf32>, tensor<1xi64>) -> tensor<Bxf32>
 //
 //    // Softmax computation:
-//    %softmax = "xla_hlo.div"(%exp, %sum_f16) {broadcast_dimensions = 0}
+//    %softmax = "xla_hlo.divide"(%exp, %sum_f16) {broadcast_dimensions = 0}
 //            : (tensor<BxNxf16>, tensor<Bxf16>) -> tensor<BxNxf16>
 template <typename OpTy, bool use_log = true>
 class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
@@ -1559,13 +1559,13 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
 //   %const = xla_hlo.constant dense<1> : tensor<i32>
 //   %dim_0 = "xla_hlo.get_dimension_size"(%input) {dimension = 0 : i32} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_0 = xla_hlo.mul %const, %dim_0 : tensor<i32>
+//   %prod_0 = xla_hlo.multiply %const, %dim_0 : tensor<i32>
 //   %dim_1 = "xla_hlo.get_dimension_size"(%input) {dimension = 1 : i32} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %prod_1 = xla_hlo.mul %prod_0, %dim_1 : tensor<i32>
+//   %prod_1 = xla_hlo.multiply %prod_0, %dim_1 : tensor<i32>
 //   %dim_2 = "xla_hlo.get_dimension_size"(%input) {dimension = 2 : i32} :
 //                                         (tensor<2x?x8xf32>) -> tensor<i32>
-//   %size = xla_hlo.mul %prod_1, %dim_2 : tensor<i32>
+//   %size = xla_hlo.multiply %prod_1, %dim_2 : tensor<i32>
 class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
@@ -2064,7 +2064,7 @@ class ConvertStridedSliceGradOp
 ///
 /// Output would be:
 ///   %iota = "xla_hlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xf32>
-///   %scaled = "xla_hlo.mul"(%iota, %delta)
+///   %scaled = "xla_hlo.multiply"(%iota, %delta)
 ///       {broadcast_dimensions = dense<[]> : tensor<0xi64>} :
 ///       (tensor<5xf32>, tensor<f32>) -> tensor<5xf32>
 ///   %result = "xla_hlo.add"(%scaled, %offset)
@@ -2233,7 +2233,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
 //   %sum = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.add"]
 //               {dimensions = ...}
 //   %divisor = constant dense<...> : tensor<T>
-//   %mean = "xla_hlo.div"(%sum, %divisor)
+//   %mean = "xla_hlo.divide"(%sum, %divisor)
 class ConvertMeanOp
     : public GenericConvertReductionOp<ConvertMeanOp, TF::MeanOp, AddOp> {
  public:
@@ -2263,7 +2263,7 @@ class ConvertSumOp
 // Converts Max op to HLO Reduce op.
 //
 //   %init = constant dense<...> : tensor<T>
-//   %max = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.max"]
+//   %max = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.maximum"]
 //               {dimensions = ...}
 class ConvertMaxOp
     : public GenericConvertReductionOp<ConvertMaxOp, TF::MaxOp, MaxOp,
@@ -2280,7 +2280,7 @@ class ConvertMaxOp
 // Converts Min op to HLO Reduce op.
 //
 //   %init = constant dense<...> : tensor<T>
-//   %min = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.min"]
+//   %min = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.minimum"]
 //               {dimensions = ...}
 class ConvertMinOp
     : public GenericConvertReductionOp<ConvertMinOp, TF::MinOp, MinOp,
@@ -2297,7 +2297,7 @@ class ConvertMinOp
 // Converts Prod op to HLO Reduce op.
 //
 //   %init = constant dense<...> : tensor<T>
-//   %prod = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.mul"]
+//   %prod = "xla_hlo.reduce"(%inp, %init) ["xla_hlo.multiply"]
 //               {dimensions = ...}
 class ConvertProdOp
     : public GenericConvertReductionOp<ConvertProdOp, TF::ProdOp, MulOp> {
