@@ -37,6 +37,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import sequential
@@ -62,7 +63,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
       self.assertAllClose(expected, actual)
 
   @keras_parameterized.run_with_all_model_types
-  @test_util.run_in_graph_and_eager_modes
+  @keras_parameterized.run_all_keras_modes
   def test_trace_model_outputs(self):
     input_dim = 5 if testing_utils.get_model_type() == 'functional' else None
     model = testing_utils.get_small_mlp(10, 3, input_dim)
@@ -155,7 +156,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
       expected_outputs = {'output_1': outputs[0], 'output_2': outputs[1]}
     self._assert_all_close(expected_outputs, signature_outputs)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_trace_features_layer(self):
     columns = [feature_column_lib.numeric_column('x')]
     model = sequential.Sequential([feature_column_lib.DenseFeatures(columns)])
@@ -176,7 +177,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     self.assertAllClose({'output_1': [[1., 2.]]},
                         fn({'x': [[1.]], 'y': [[2.]]}))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_specify_input_signature(self):
     model = testing_utils.get_small_sequential_mlp(10, 3, None)
     inputs = array_ops.ones((8, 5))
@@ -193,7 +194,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
       expected_outputs = {'output_1': model(inputs)}
     self._assert_all_close(expected_outputs, signature_outputs)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_subclassed_model_with_input_signature(self):
 
     class Model(keras.Model):
@@ -218,7 +219,7 @@ class TraceModelCallTest(keras_parameterized.TestCase):
     self._assert_all_close(expected_outputs, signature_outputs)
 
   @keras_parameterized.run_with_all_model_types
-  @test_util.run_in_graph_and_eager_modes
+  @keras_parameterized.run_all_keras_modes
   def test_model_with_fixed_input_dim(self):
     """Ensure that the batch_dim is removed when saving.
 
