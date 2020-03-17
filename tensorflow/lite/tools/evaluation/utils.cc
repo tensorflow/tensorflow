@@ -164,19 +164,5 @@ Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
 #endif  // defined(__ANDROID__)
 }
 
-Interpreter::TfLiteDelegatePtr CreateXNNPACKDelegate() {
-  TfLiteXNNPackDelegateOptions xnnpack_options =
-      TfLiteXNNPackDelegateOptionsDefault();
-  return CreateXNNPACKDelegate(&xnnpack_options);
-}
-
-Interpreter::TfLiteDelegatePtr CreateXNNPACKDelegate(
-    const TfLiteXNNPackDelegateOptions* xnnpack_options) {
-  auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
-  return Interpreter::TfLiteDelegatePtr(
-      xnnpack_delegate,
-      [](TfLiteDelegate* delegate) { TfLiteXNNPackDelegateDelete(delegate); });
-}
-
 }  // namespace evaluation
 }  // namespace tflite
