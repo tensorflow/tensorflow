@@ -740,14 +740,50 @@ def depthwise_conv2d(input,
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
+  Usage Example:
+  >>> x = np.array([
+  ...     [1., 2.],
+  ...     [3., 4.],
+  ...     [5., 6.]
+  ... ], dtype=np.float32).reshape((1, 3, 2, 1))
+  >>> kernel = np.array([
+  ...     [1., 2.],
+  ...     [3., 4]
+  ... ], dtype=np.float32).reshape((2, 1, 1, 2))
+  >>> tf.compat.v1.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                                  padding='VALID').numpy()
+    array([[[[10., 14.],
+             [14., 20.]],
+            [[18., 26.],
+             [22., 32.]]]], dtype=float32)
+
+  >>> tf.compat.v1.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                                  padding=[[0, 0], [1, 0], [1, 0], [0, 0]]
+  ...                                 ).numpy()
+    array([[[[ 0.,  0.],
+             [ 3.,  4.],
+             [ 6.,  8.]],
+            [[ 0.,  0.],
+             [10., 14.],
+             [14., 20.]],
+            [[ 0.,  0.],
+             [18., 26.],
+             [22., 32.]]]], dtype=float32)
+
   Args:
     input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
@@ -830,14 +866,49 @@ def depthwise_conv2d_v2(input,
   convolution, in which case all values in the `strides` tensor must be equal
   to 1.
 
+  Usage Example:
+  >>> x = np.array([
+  ...     [1., 2.],
+  ...     [3., 4.],
+  ...     [5., 6.]
+  ... ], dtype=np.float32).reshape((1, 3, 2, 1))
+  >>> kernel = np.array([
+  ...     [1., 2.],
+  ...     [3., 4]
+  ... ], dtype=np.float32).reshape((2, 1, 1, 2))
+  >>> tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                        padding='VALID').numpy()
+    array([[[[10., 14.],
+             [14., 20.]],
+            [[18., 26.],
+             [22., 32.]]]], dtype=float32)
+
+  >>> tf.nn.depthwise_conv2d(x, kernel, strides=[1, 1, 1, 1],
+  ...                        padding=[[0, 0], [1, 0], [1, 0], [0, 0]]).numpy()
+    array([[[[ 0.,  0.],
+             [ 3.,  4.],
+             [ 6.,  8.]],
+            [[ 0.,  0.],
+             [10., 14.],
+             [14., 20.]],
+            [[ 0.,  0.],
+             [18., 26.],
+             [22., 32.]]]], dtype=float32)
+
   Args:
     input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
-    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the "returns" section of `tf.nn.convolution` for details.
+    padding: Controls how to pad the image before applying the convolution. Can
+      be the string `"SAME"` or `"VALID"` indicating the type of padding
+      algorithm to use, or a list indicating the explicit paddings at the start
+      and end of each dimension. When explicit padding is used and data_format
+      is `"NHWC"`, this should be in the form `[[0, 0], [pad_top, pad_bottom],
+      [pad_left, pad_right], [0, 0]]`. When explicit padding used and
+      data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
+      [pad_top, pad_bottom], [pad_left, pad_right]]`.
     data_format: The data format for input. Either "NHWC" (default) or "NCHW".
     dilations: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is

@@ -2941,6 +2941,7 @@ cuda_py_test(
     size = "medium",  # http://b/30603882
     timeout = "long",
     srcs = ["depthwise_conv_op_test.py"],
+    shard_count = 2,
     # TODO(b/118842098): Re-enable this test in Kokoro.
     tags = ["no_oss"],
     deps = [

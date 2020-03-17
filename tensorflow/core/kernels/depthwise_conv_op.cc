@@ -293,6 +293,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
         errors::InvalidArgument("Current implementation does not yet support "
                                 "strides in the batch and depth dimensions."));
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("explicit_paddings", &explicit_paddings_));
+    OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
+                                              /*num_dims=*/4, data_format_));
 
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
@@ -357,13 +361,20 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // The first dimension for input is batch.
     const int32 batch = input.dim_size(0);
 
-    int64 out_rows = 0, out_cols = 0, pad_rows = 0, pad_cols = 0;
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_rows, filter_rows, stride_,
-                                         padding_, &out_rows, &pad_rows));
-    OP_REQUIRES_OK(context,
-                   GetWindowedOutputSize(input_cols, filter_cols, stride_,
-                                         padding_, &out_cols, &pad_cols));
+    int64 out_rows = 0, out_cols = 0, pad_top = 0, pad_bottom = 0, pad_left = 0,
+          pad_right = 0;
+    if (padding_ == Padding::EXPLICIT) {
+      GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'H', &pad_top,
+                               &pad_bottom);
+      GetExplicitPaddingForDim(explicit_paddings_, data_format_, 'W', &pad_left,
+                               &pad_right);
+    }
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_rows, filter_rows, stride_, padding_,
+                                &out_rows, &pad_top, &pad_bottom));
+    OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
+                                input_cols, filter_cols, stride_, padding_,
+                                &out_cols, &pad_left, &pad_right));
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
     OP_REQUIRES(
@@ -398,7 +409,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
             << filter_cols << ", " << in_depth << ", " << depth_multiplier
             << "]; Output: [" << batch << ", " << out_rows << ", " << out_cols
             << ", " << out_depth << "], stride = " << stride_
-            << ", pad_rows = " << pad_rows << ", pad_cols = " << pad_cols
+            << ", pad_top = " << pad_top << ", pad_left = " << pad_left
             << ", Use cuDNN: " << use_cudnn;
 
     if (use_cudnn) {
@@ -422,7 +433,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input,
                 reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
-                stride_, stride_, padding_, /*explicit_paddings=*/{}, output,
+                stride_, stride_, padding_, explicit_paddings_, output,
                 data_format_);
       return;
     }
@@ -436,8 +447,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     args.filter_cols = filter_cols;
     args.depth_multiplier = depth_multiplier;
     args.stride = stride_;
-    args.pad_rows = pad_rows;
-    args.pad_cols = pad_cols;
+    args.pad_rows = pad_top;
+    args.pad_cols = pad_left;
     args.out_rows = out_rows;
     args.out_cols = out_cols;
     args.out_depth = out_depth;
@@ -455,6 +466,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
  private:
   std::vector<int32> strides_;
   Padding padding_;
+  std::vector<int64> explicit_paddings_;
   TensorFormat data_format_;
 
   int64 stride_;  // in height/width dimension.

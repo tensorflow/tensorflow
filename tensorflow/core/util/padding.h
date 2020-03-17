@@ -31,12 +31,12 @@ class NodeDef;
 
 // Padding: the padding we apply to the input tensor along the rows and columns
 // dimensions. This is usually used to make sure that the spatial dimensions do
-// not shrink when we progress with convolutions. Two types of padding are
+// not shrink when we progress with convolutions. Three types of padding are
 // supported:
 //   VALID: No padding is carried out.
 //   SAME: The pad value is computed so that the output will have the same
 //         dimensions as the input.
-//   EXPLICIT: The user specifies the pad values in the explicit_padding
+//   EXPLICIT: The user specifies the pad values in the explicit_paddings
 //             attribute.
 // The padded area is zero-filled.
 enum Padding {
