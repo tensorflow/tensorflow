@@ -174,9 +174,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       return Status::OK();
     }
 

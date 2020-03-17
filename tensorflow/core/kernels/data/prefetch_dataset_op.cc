@@ -206,12 +206,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/std::numeric_limits<int64>::max())});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {

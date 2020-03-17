@@ -481,6 +481,25 @@ class SerializationContext {
     kFail = 2,
   };
 
+  // Handles the CheckExternalState status according to the external state
+  // policy.
+  Status HandleCheckExternalStateStatus(Status s) {
+    if (s.ok()) {
+      return s;
+    }
+    switch (params_.external_state_policy) {
+      case ExternalStatePolicy::kWarn:
+        LOG(WARNING) << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kIgnore:
+        VLOG(2) << "Ignoring error status: " << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kFail:
+        return s;
+    }
+    LOG(FATAL) << "Control should never reach here";
+  }
+
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
@@ -589,7 +608,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    return SaveInternal(writer);
+    return SaveInternal(ctx, writer);
   }
 
  protected:
@@ -604,9 +623,17 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
+  Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
+                   const std::unique_ptr<IteratorBase>& input) {
+    return input->SaveInternal(ctx, writer);
+  }
+
+  // TODO(jsimsa): Remove this override when all callers are migrated to the
+  // override that uses SerializationContext.
   Status SaveInput(IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    return input->SaveInternal(writer);
+    SerializationContext ctx(/*params=*/{});
+    return input->SaveInternal(&ctx, writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -620,7 +647,17 @@ class IteratorBase {
   //
   // This method is used to store the state of the iterator in a checkpoint.
   // implementations have an override.
-  virtual Status SaveInternal(IteratorStateWriter* writer) = 0;
+  virtual Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) {
+    return SaveInternal(writer);
+  }
+
+  // TODO(jsimsa): Remove this override when all subclasses are migrated to the
+  // override that accepts SerializationContext and make that override pure
+  // virtual.
+  virtual Status SaveInternal(IteratorStateWriter* writer) {
+    return errors::Unimplemented("checkpointing is not supported");
+  }
 
   // Restores the state of this iterator.
   //

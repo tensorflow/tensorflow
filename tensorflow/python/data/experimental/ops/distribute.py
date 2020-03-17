@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
+from tensorflow.python.data.experimental.ops.distribute_options import ExternalStatePolicy
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import ops
@@ -162,10 +163,12 @@ def replicate(dataset, devices):
 
   with ops.colocate_with(dataset._variant_tensor):
     dataset = dataset._apply_options()
-    external_state_policy = dataset.options().experimental_external_state_policy
+    policy = dataset.options().experimental_external_state_policy
+    if policy is None:
+      policy = ExternalStatePolicy.WARN
     graph_def = dataset._as_serialized_graph(
         strip_device_assignment=True,
-        external_state_policy=external_state_policy)
+        external_state_policy=policy)
   for device in devices:
     ds = _RemoteDataset(graph_def, device, dataset.element_spec)
     datasets[device] = ds

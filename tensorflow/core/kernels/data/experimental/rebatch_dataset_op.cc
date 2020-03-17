@@ -179,13 +179,14 @@ class RebatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!input_impl_) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impl_empty"), ""));
         } else {
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         }
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("slice_number"), slice_number_));

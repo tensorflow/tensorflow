@@ -278,7 +278,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       generator_.Skip(num_random_samples_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       // Save state needed to restore the random number generators.
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kNumRandomSamples),
@@ -292,7 +293,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(this->full_name(kEndOfInputSequence), ""));
       } else {
-        TF_RETURN_IF_ERROR(this->SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(this->SaveInput(ctx, writer, input_impl_));
       }
 
       // Save the epoch counter, buffer, and buffer slices.
@@ -526,14 +527,15 @@ class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       // Save RNG state of Dataset.
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kDSNumRandomSamples),
                               seed_generator_->num_random_samples()));
 
       // Save the Iterator.
-      return ShuffleDatasetBase::Iterator<Dataset>::SaveInternal(writer);
+      return ShuffleDatasetBase::Iterator<Dataset>::SaveInternal(ctx, writer);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -634,14 +636,15 @@ class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
       return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       // Save state of the seed generator.
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kDSNumRandomSamples),
                               seed_generator_->num_random_samples()));
 
       // Save the tterator state.
-      return ShuffleDatasetBase::Iterator<DatasetV2>::SaveInternal(writer);
+      return ShuffleDatasetBase::Iterator<DatasetV2>::SaveInternal(ctx, writer);
     }
 
     Status RestoreInternal(IteratorContext* ctx,

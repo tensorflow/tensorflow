@@ -225,9 +225,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       serialized graph.
     """
     if external_state_policy:
-      policy = None
-      if external_state_policy:
-        policy = external_state_policy.value
+      policy = external_state_policy.value
       return gen_dataset_ops.dataset_to_graph_v2(
           self._variant_tensor,
           external_state_policy=policy,
@@ -1031,14 +1029,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Example:
       If we had the following files on our filesystem:
-      
+
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      
+
       If we pass "/path/to/dir/*.py" as the directory, the dataset
       would produce:
-      
+
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -2731,15 +2729,12 @@ class Options(options_lib.OptionsBase):
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=distribute_options.ExternalStatePolicy,
-      docstring="By default, tf.data will refuse to serialize a dataset or "
-      "checkpoint its iterator if the dataset contains a stateful op as the "
-      "serialization / checkpointing won't be able to capture its state. "
-      "Users can -- at their own risk -- override this restriction by "
-      "explicitly specifying that they are fine throwing away the state "
-      "in these ops. There are three settings available - IGNORE: in which we"
-      "completely ignore any state; WARN: We warn the user that some state "
-      "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
+      docstring="This option can be used to override the default policy for "
+      "how to handle external state when serializing a dataset or "
+      "checkpointing its iterator. There are three settings available - "
+      "IGNORE: in which we completely ignore any state; WARN: We warn the "
+      "user that some state might be thrown away; FAIL: We fail if any state "
+      "is being captured.")
 
   def _graph_rewrites(self):
     """Produces the list of enabled static graph rewrites."""
