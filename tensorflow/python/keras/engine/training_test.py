@@ -26,19 +26,25 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import backend
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import layers as layers_module
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
+from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.engine import training as training_module
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
@@ -63,7 +69,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_fit_training_arg(self):
 
-    class ReturnTraining(keras.layers.Layer):
+    class ReturnTraining(layers_module.Layer):
 
       def call(self, inputs, training):
         if training:
@@ -71,7 +77,7 @@ class TrainingTest(keras_parameterized.TestCase):
         else:
           return inputs + array_ops.constant([0], 'float32')
 
-    model = keras.Sequential([ReturnTraining()])
+    model = sequential.Sequential([ReturnTraining()])
     model.compile(
         'sgd',
         'mse',
@@ -82,14 +88,13 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_learning_phase(self):
 
-    class ReturnTraining(keras.layers.Layer):
+    class ReturnTraining(layers_module.Layer):
 
       def call(self, inputs):
-        return keras.backend.in_train_phase(
-            lambda: array_ops.ones_like(inputs),
-            lambda: array_ops.zeros_like(inputs))
+        return backend.in_train_phase(lambda: array_ops.ones_like(inputs),
+                                      lambda: array_ops.zeros_like(inputs))
 
-    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model = sequential.Sequential([ReturnTraining(input_shape=(2,))])
     model.compile(
         'sgd',
         loss='mae',
@@ -114,15 +119,15 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_training_arg(self):
 
-    class ReturnTraining(keras.layers.Layer):
+    class ReturnTraining(layers_module.Layer):
 
       def call(self, inputs, training=None):
-        return keras.backend.in_train_phase(
+        return backend.in_train_phase(
             lambda: array_ops.ones_like(inputs),
             lambda: array_ops.zeros_like(inputs),
             training=training)
 
-    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model = sequential.Sequential([ReturnTraining(input_shape=(2,))])
     model.compile(
         'sgd',
         loss='mae',
@@ -152,8 +157,10 @@ class TrainingTest(keras_parameterized.TestCase):
       self.assertEqual(labels.dtype, preds.dtype)
       return labels - preds
 
-    layers = [keras.layers.Dense(10, dtype=np.float64),
-              keras.layers.Dense(10, dtype=np.float64)]
+    layers = [
+        layers_module.Dense(10, dtype=np.float64),
+        layers_module.Dense(10, dtype=np.float64)
+    ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
     inputs = np.ones(10, dtype=np.float64)
     targets = np.ones(10, dtype=np.float64)
@@ -168,15 +175,15 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_fit_and_validate_nested_training_arg(self):
 
-    class NestedReturnTraining(keras.layers.Layer):
+    class NestedReturnTraining(layers_module.Layer):
 
       def call(self, inputs, training=None):
-        return keras.backend.in_train_phase(
+        return backend.in_train_phase(
             lambda: array_ops.ones_like(inputs),
             lambda: array_ops.zeros_like(inputs),
             training=training)
 
-    class ReturnTraining(keras.layers.Layer):
+    class ReturnTraining(layers_module.Layer):
 
       def __init__(self, input_shape=None, **kwargs):
         super(ReturnTraining, self).__init__(input_shape=input_shape, **kwargs)
@@ -189,7 +196,7 @@ class TrainingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return self._nested_layer(inputs)
 
-    model = keras.Sequential([ReturnTraining(input_shape=(2,))])
+    model = sequential.Sequential([ReturnTraining(input_shape=(2,))])
     model.compile(
         'sgd',
         loss='mae',
@@ -214,11 +221,11 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes
   def test_fit_on_arrays(self):
-    input_a = keras.layers.Input(shape=(3,), name='input_a')
-    input_b = keras.layers.Input(shape=(3,), name='input_b')
+    input_a = layers_module.Input(shape=(3,), name='input_a')
+    input_b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
-    dropout = keras.layers.Dropout(0.5, name='dropout')
+    dense = layers_module.Dense(4, name='dense')
+    dropout = layers_module.Dropout(0.5, name='dropout')
     branch_a = [input_a, dense]
     branch_b = [input_b, dense, dropout]
 
@@ -372,9 +379,9 @@ class TrainingTest(keras_parameterized.TestCase):
         verbose=0)
 
     # Build single-input model
-    x = keras.layers.Input(shape=(3,), name='input_a')
-    y = keras.layers.Dense(4)(x)
-    model = keras.models.Model(x, y)
+    x = layers_module.Input(shape=(3,), name='input_a')
+    y = layers_module.Dense(4)(x)
+    model = training_module.Model(x, y)
     model.compile(
         optimizer,
         loss='mse',
@@ -413,15 +420,15 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_evaluate_predict_on_arrays(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    a = layers_module.Input(shape=(3,), name='input_a')
+    b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
+    dense = layers_module.Dense(4, name='dense')
     c = dense(a)
     d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+    e = layers_module.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
+    model = training_module.Model([a, b], [d, e])
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     loss = 'mse'
@@ -598,7 +605,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_custom_mapping_in_config(self):
 
-    class MyModel(keras.Model):
+    class MyModel(training_module.Model):
 
       def call(self, inputs):
         return inputs
@@ -621,11 +628,11 @@ class TrainingTest(keras_parameterized.TestCase):
       test_outputs = [
           scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)
       ]
-      in1 = keras.layers.Input(shape=(3,))
-      in2 = keras.layers.Input(shape=(3,))
-      out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
-      out2 = keras.layers.Dense(4, name='dense_1')(in2)
-      model = keras.Model([in1, in2], [out1, out2])
+      in1 = layers_module.Input(shape=(3,))
+      in2 = layers_module.Input(shape=(3,))
+      out1 = layers_module.Dropout(0.5, name='dropout')(in1)
+      out2 = layers_module.Dense(4, name='dense_1')(in2)
+      model = training_module.Model([in1, in2], [out1, out2])
       model.predict(test_inputs, batch_size=2)
       optimizer = 'rmsprop'
       model.compile(
@@ -638,12 +645,12 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_compile_with_sparse_placeholders(self):
-    input_layer = keras.layers.Input(shape=(10,), sparse=True)
+    inputs = layers_module.Input(shape=(10,), sparse=True)
     weights = variables_lib.Variable(
         np.ones((10, 1)).astype(np.float32), name='weights')
     weights_mult = lambda x: sparse_ops.sparse_tensor_dense_matmul(x, weights)
-    output_layer = keras.layers.Lambda(weights_mult)(input_layer)
-    model = keras.Model([input_layer], output_layer)
+    output_layer = layers_module.Lambda(weights_mult)(inputs)
+    model = training_module.Model([inputs], output_layer)
     model.compile(
         loss='binary_crossentropy',
         optimizer='adam',
@@ -655,10 +662,10 @@ class TrainingTest(keras_parameterized.TestCase):
     val_a = np.random.random((10, 4))
     val_out = np.random.random((10, 4))
 
-    a = keras.layers.Input(shape=(4,))
-    layer = keras.layers.BatchNormalization(input_shape=(4,))
+    a = layers_module.Input(shape=(4,))
+    layer = layers_module.BatchNormalization(input_shape=(4,))
     b = layer(a)
-    model = keras.Model(a, b)
+    model = training_module.Model(a, b)
 
     model.trainable = False
     assert not model.updates
@@ -698,25 +705,26 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertAllClose(x1, x2, atol=1e-7)
 
   def test_weight_deduplication_in_methods(self):
-    inp = keras.layers.Input(shape=(1,))
-    bn = keras.layers.BatchNormalization()
-    d = keras.layers.Dense(1)
+    inp = layers_module.Input(shape=(1,))
+    bn = layers_module.BatchNormalization()
+    d = layers_module.Dense(1)
 
-    m0 = keras.models.Model(inp, d(bn(inp)))
-    m1 = keras.models.Model(inp, d(bn(inp)))
+    m0 = training_module.Model(inp, d(bn(inp)))
+    m1 = training_module.Model(inp, d(bn(inp)))
 
     x0 = m0(inp)
     x1 = m1(inp)
-    x = keras.layers.Add()([x0, x1])
+    x = layers_module.Add()([x0, x1])
 
-    model = keras.models.Model(inp, x)
+    model = training_module.Model(inp, x)
     self.assertLen(model.trainable_weights, 4)
     self.assertLen(model.non_trainable_weights, 2)
     self.assertLen(model.weights, 6)
 
   @keras_parameterized.run_all_keras_modes
   def test_weight_deduplication(self):
-    class WatchingLayer(keras.layers.Layer):
+
+    class WatchingLayer(layers_module.Layer):
 
       def __init__(self, dense_to_track):
         # This will cause the kernel and bias to be double counted, effectively
@@ -725,21 +733,23 @@ class TrainingTest(keras_parameterized.TestCase):
         self._bias = dense_to_track.bias
         super(WatchingLayer, self).__init__()
 
-    inp = keras.layers.Input(shape=(1,))
-    dense_layer = keras.layers.Dense(1)
+    inp = layers_module.Input(shape=(1,))
+    dense_layer = layers_module.Dense(1)
     dense_output = dense_layer(inp)  # This will build the dense kernel
 
     # Deterministically set weights to make the test repeatable.
     dense_layer.set_weights([np.ones((1, 1)), np.zeros((1,))])
     output = WatchingLayer(dense_layer)(dense_output)
 
-    model = keras.models.Model(inp, output)
+    model = training_module.Model(inp, output)
 
     # 0.25 is the edge of the radius of convergence for the double apply case.
     # At lr=0.24, the double apply case will very slowly descend while the
     # correct case will drop very quickly.
-    model.compile(loss='mse', optimizer=gradient_descent.SGD(0.24),
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='mse',
+        optimizer=optimizer_v2.gradient_descent.SGD(0.24),
+        run_eagerly=testing_utils.should_run_eagerly())
 
     x = np.ones((64 * 2,))
     y = 4.5 * x - 3.
@@ -753,7 +763,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_weight_shared_across_layers(self):
 
-    class AddWeightLayer(keras.layers.Layer):
+    class AddWeightLayer(layers_module.Layer):
 
       def __init__(self, trainable_var, non_trainable_var):
         self.trainable_var = trainable_var
@@ -763,7 +773,7 @@ class TrainingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.trainable_var
 
-    class LayerWithWeightSharedLayers(keras.layers.Layer):
+    class LayerWithWeightSharedLayers(layers_module.Layer):
 
       def __init__(self):
         super(LayerWithWeightSharedLayers, self).__init__()
@@ -844,9 +854,9 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_mismatched_output_shape_and_target_shape(self):
-    model = keras.Sequential([
-        keras.layers.Dense(2, input_shape=(3, 4)),
-        keras.layers.Dense(5),
+    model = sequential.Sequential([
+        layers_module.Dense(2, input_shape=(3, 4)),
+        layers_module.Dense(5),
     ])
     model.compile(
         RMSPropOptimizer(learning_rate=0.001),
@@ -875,7 +885,7 @@ class TrainingTest(keras_parameterized.TestCase):
 
   def test_losses_in_defun(self):
     with context.eager_mode():
-      layer = keras.layers.Dense(1, kernel_regularizer='l1')
+      layer = layers_module.Dense(1, kernel_regularizer='l1')
       layer(array_ops.ones([1, 10]))
 
       @function.defun
@@ -888,9 +898,9 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_logging(self):
     mock_stdout = io.BytesIO() if six.PY2 else io.StringIO()
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, activation='relu'))
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(10, activation='relu'))
+    model.add(layers_module.Dense(1, activation='sigmoid'))
     model.compile(
         RMSPropOptimizer(learning_rate=0.001),
         loss='binary_crossentropy',
@@ -900,21 +910,21 @@ class TrainingTest(keras_parameterized.TestCase):
           np.ones((10, 10), 'float32'), np.ones((10, 1), 'float32'), epochs=10)
     self.assertTrue('Epoch 5/10' in mock_stdout.getvalue())
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_training_with_loss_instance(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    a = layers_module.Input(shape=(3,), name='input_a')
+    b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
+    dense = layers_module.Dense(4, name='dense')
     c = dense(a)
     d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+    e = layers_module.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
+    model = training_module.Model([a, b], [d, e])
     loss_weights = [1., 0.5]
     model.compile(
         RMSPropOptimizer(learning_rate=0.001),
-        loss=keras.losses.MeanSquaredError(),
+        loss=losses.MeanSquaredError(),
         metrics=[metrics_module.CategoricalAccuracy(), 'mae'],
         loss_weights=loss_weights)
 
@@ -928,12 +938,12 @@ class TrainingTest(keras_parameterized.TestCase):
               epochs=1,
               batch_size=5)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_static_batch_in_input_layer(self):
     if context.executing_eagerly():
       self.skipTest('Not inferred in eager.')
 
-    class Counter(keras.callbacks.Callback):
+    class Counter(Callback):
 
       def __init__(self):
         self.batches = 0
@@ -944,55 +954,55 @@ class TrainingTest(keras_parameterized.TestCase):
     x, y = np.ones((64, 10), 'float32'), np.ones((64, 1), 'float32')
 
     for batch_size, expected_batches in [(None, 2), (4, 16)]:
-      inputs = keras.Input(batch_size=batch_size, shape=(10,))
-      outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
-      model = keras.Model(inputs, outputs)
+      inputs = input_layer.Input(batch_size=batch_size, shape=(10,))
+      outputs = layers_module.Dense(1, activation='sigmoid')(inputs)
+      model = training_module.Model(inputs, outputs)
 
-      model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+      model.compile(optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
       counter = Counter()
       model.fit(x, y, callbacks=[counter])
       self.assertEqual(counter.batches, expected_batches)
 
-      model = keras.Sequential(
-          [keras.layers.Dense(1, batch_input_shape=(batch_size, 10))])
-      model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+      model = sequential.Sequential(
+          [layers_module.Dense(1, batch_input_shape=(batch_size, 10))])
+      model.compile(optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
       counter = Counter()
       model.fit(x, y, callbacks=[counter])
       self.assertEqual(counter.batches, expected_batches)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_static_batch_in_input_layer_consistency_checks(self):
     if context.executing_eagerly():
       self.skipTest('Not inferred in eager.')
     x, y = np.ones((64, 10), 'float32'), np.ones((64, 1), 'float32')
 
-    inputs = keras.Input(batch_size=2, shape=(10,))
-    outputs = keras.layers.Dense(1, activation='sigmoid')(inputs)
-    model = keras.Model(inputs, outputs)
-    model.compile(keras.optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
+    inputs = input_layer.Input(batch_size=2, shape=(10,))
+    outputs = layers_module.Dense(1, activation='sigmoid')(inputs)
+    model = training_module.Model(inputs, outputs)
+    model.compile(optimizer_v2.adam.Adam(0.001), 'binary_crossentropy')
     with self.assertRaisesRegexp(ValueError,
                                  'incompatible with the specified batch size'):
       model.fit(x, y, batch_size=4)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_compatible_batch_size_functional_model(self):
 
-    class MyLayer(keras.layers.Layer):
+    class MyLayer(layers_module.Layer):
 
       def call(self, inputs):
         return array_ops.concat(inputs, axis=0)
 
-    input1 = keras.Input(batch_size=2, shape=(10,))
-    input2 = keras.Input(batch_size=3, shape=(10,))
+    input1 = input_layer.Input(batch_size=2, shape=(10,))
+    input2 = input_layer.Input(batch_size=3, shape=(10,))
     outputs = MyLayer()([input1, input2])
     with self.assertRaisesRegexp(ValueError,
                                  'specified batch sizes of the Input Layers'):
-      keras.Model([input1, input2], outputs)
+      training_module.Model([input1, input2], outputs)
 
-  @tf_test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_calling_subclass_model_on_different_datasets(self):
 
-    class SubclassedModel(keras.models.Model):
+    class SubclassedModel(training_module.Model):
 
       def call(self, inputs):
         return inputs * 2
@@ -1082,7 +1092,7 @@ class TrainingTest(keras_parameterized.TestCase):
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
-    class ValCounter(keras.callbacks.Callback):
+    class ValCounter(Callback):
 
       def __init__(self):
         self.val_runs = 0
@@ -1121,7 +1131,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_layer_with_variable_output(self):
 
-    class VariableOutputLayer(keras.layers.Layer):
+    class VariableOutputLayer(layers_module.Layer):
 
       def build(self, input_shape):
         self.v = self.add_weight('output_var', shape=(2, 5), initializer='ones')
@@ -1130,7 +1140,7 @@ class TrainingTest(keras_parameterized.TestCase):
         return self.v
 
     model = testing_utils.get_model_from_layers(
-        [VariableOutputLayer(), keras.layers.Dense(1)], input_shape=(10,))
+        [VariableOutputLayer(), layers_module.Dense(1)], input_shape=(10,))
     # TODO(omalleyt): Make this work with `run_eagerly=True`.
     model.compile('sgd', 'mse', run_eagerly=False)
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=5)
@@ -1142,7 +1152,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @testing_utils.enable_v2_dtype_behavior
   def test_model_dtype(self):
 
-    class AssertTypeLayer(keras.layers.Layer):
+    class AssertTypeLayer(layers_module.Layer):
 
       def call(self, inputs):
         assert inputs.dtype.name == self.dtype, (
@@ -1181,13 +1191,14 @@ class TrainingTest(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_subclassed_model_with_training_arg(self):
-    class LayerWithTrainingArg(keras.layers.Layer):
+
+    class LayerWithTrainingArg(layers_module.Layer):
 
       def call(self, inputs, training=None):
         self.training = training
         return inputs
 
-    class ModelWithTrainingArg(keras.Model):
+    class ModelWithTrainingArg(training_module.Model):
 
       def __init__(self):
         super(ModelWithTrainingArg, self).__init__()
@@ -1209,20 +1220,20 @@ class TrainingTest(keras_parameterized.TestCase):
     if context.executing_eagerly():
       expected_training_arg = True
     else:
-      expected_training_arg = keras.backend.symbolic_learning_phase()
+      expected_training_arg = backend.symbolic_learning_phase()
 
     self.assertIs(model.training, expected_training_arg)
     self.assertIs(model.l1.training, expected_training_arg)
 
   @keras_parameterized.run_all_keras_modes
   def test_error_when_model_is_not_compiled(self):
-    inputs = keras.Input(shape=(1,))
-    outputs = keras.layers.Dense(1)(inputs)
-    model = keras.Model(inputs, outputs)
+    inputs = input_layer.Input(shape=(1,))
+    outputs = layers_module.Dense(1)(inputs)
+    model = training_module.Model(inputs, outputs)
     with self.assertRaisesRegex(RuntimeError, 'must compile your model'):
       model.fit(np.ones((1, 1)), np.ones((1, 1)))
 
-    class MyModel(keras.Model):
+    class MyModel(training_module.Model):
 
       def call(self, x):
         self.add_loss(math_ops.reduce_sum(x))
@@ -1235,10 +1246,14 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @testing_utils.enable_v2_dtype_behavior
   def test_losses_of_different_dtypes(self):
-    inp = keras.Input(shape=(2,))
-    out_1 = keras.layers.Dense(2, dtype='float32', kernel_regularizer='l2')(inp)
-    out_2 = keras.layers.Dense(2, dtype='float16', kernel_regularizer='l2')(inp)
-    model = keras.Model(inp, [out_1, out_2])
+    inp = input_layer.Input(shape=(2,))
+    out_1 = layers_module.Dense(
+        2, dtype='float32', kernel_regularizer='l2')(
+            inp)
+    out_2 = layers_module.Dense(
+        2, dtype='float16', kernel_regularizer='l2')(
+            inp)
+    model = training_module.Model(inp, [out_1, out_2])
     extra_loss = math_ops.reduce_sum(math_ops.cast(out_2, 'float64'))
     model.add_loss(extra_loss)
     model.compile('sgd', ['mse', 'mse'],
@@ -1249,10 +1264,11 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @testing_utils.enable_v2_dtype_behavior
   def test_losses_of_different_dtypes_with_subclassed_model(self):
-    class MyModel(keras.Model):
+
+    class MyModel(training_module.Model):
 
       def build(self, _):
-        self.dense = keras.layers.Dense(2)
+        self.dense = layers_module.Dense(2)
 
       def call(self, inputs):
         self.add_loss(math_ops.cast(nn_ops.l2_loss(inputs), 'float64'))
@@ -1266,12 +1282,15 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @testing_utils.enable_v2_dtype_behavior
   def test_regularizer_of_different_dtype(self):
-    inp = keras.Input(shape=(2,))
+    inp = input_layer.Input(shape=(2,))
+
     def regularizer(weight):
       return math_ops.cast(nn_ops.l2_loss(weight), 'float64')
-    out = keras.layers.Dense(2, dtype='float32',
-                             kernel_regularizer=regularizer)(inp)
-    model = keras.Model(inp, out)
+
+    out = layers_module.Dense(
+        2, dtype='float32', kernel_regularizer=regularizer)(
+            inp)
+    model = training_module.Model(inp, out)
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     x, y = np.ones((10, 2)), np.ones((10, 2))
     model.fit(x, y)
@@ -1279,7 +1298,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_outputs_are_floats(self):
     x, y = np.ones((10, 1)), np.ones((10, 1))
-    model = keras.Sequential([keras.layers.Dense(1)])
+    model = sequential.Sequential([layers_module.Dense(1)])
     model.compile('sgd', 'mse', metrics=['accuracy'],
                   run_eagerly=testing_utils.should_run_eagerly())
 
@@ -1302,7 +1321,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_int_output(self):
     x, y = np.ones((10, 1)), np.ones((10, 1))
-    model = keras.Sequential([keras.layers.Dense(1)])
+    model = sequential.Sequential([layers_module.Dense(1)])
 
     class MyMetric(metrics_module.Metric):
 
@@ -1320,7 +1339,7 @@ class TrainingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_calling_aggregate_gradient(self):
 
-    class _Optimizer(gradient_descent.SGD):
+    class _Optimizer(optimizer_v2.gradient_descent.SGD):
       """Mock optimizer to check if _aggregate_gradient is called."""
 
       _HAS_ALL_REDUCE_SUM_GRAD = True
@@ -1335,8 +1354,8 @@ class TrainingTest(keras_parameterized.TestCase):
 
     mock_optimizer = _Optimizer()
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(10, activation='relu'))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(10, activation='relu'))
 
     model.compile(mock_optimizer, 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
@@ -1370,10 +1389,12 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_compile_warning_for_loss_missing_output(self):
     with self.cached_session():
-      inp = keras.layers.Input(shape=(16,), name='input_a')
-      out_1 = keras.layers.Dense(8, name='dense_1')(inp)
-      out_2 = keras.layers.Dense(3, activation='softmax', name='dense_2')(out_1)
-      model = keras.models.Model(inputs=[inp], outputs=[out_1, out_2])
+      inp = layers_module.Input(shape=(16,), name='input_a')
+      out_1 = layers_module.Dense(8, name='dense_1')(inp)
+      out_2 = layers_module.Dense(
+          3, activation='softmax', name='dense_2')(
+              out_1)
+      model = training_module.Model(inputs=[inp], outputs=[out_1, out_2])
       optimizer = RMSPropOptimizer(learning_rate=0.001)
 
       model.compile(
@@ -1390,14 +1411,14 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
   def test_sparse_op_with_op_layer(self):
-    inputs = keras.layers.Input(shape=(2,), sparse=True, name='sparse_tensor')
+    inputs = layers_module.Input(shape=(2,), sparse=True, name='sparse_tensor')
     output = sparse_ops.sparse_minimum(inputs, inputs)
     with self.assertRaisesRegexp(
         ValueError,
         'Sparse ops are not supported with functional models with built-in '
         'layer wrapping'
     ):
-      keras.Model([inputs], output)
+      training_module.Model([inputs], output)
 
 
 class LossWeightingTest(keras_parameterized.TestCase):
@@ -1554,12 +1575,12 @@ class LossWeightingTest(keras_parameterized.TestCase):
     learning_rate = 0.001
 
     with self.cached_session():
-      model = keras.models.Sequential()
+      model = sequential.Sequential()
       model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(num_classes),
+          layers_module.TimeDistributed(
+              layers_module.Dense(num_classes),
               input_shape=(timesteps, input_dim)))
-      model.add(keras.layers.Activation('softmax'))
+      model.add(layers_module.Activation('softmax'))
 
       np.random.seed(1337)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
@@ -1635,11 +1656,11 @@ class LossWeightingTest(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   def test_fit_with_incorrect_weights(self):
-    input_a = keras.layers.Input(shape=(3,), name='input_a')
-    input_b = keras.layers.Input(shape=(3,), name='input_b')
+    input_a = layers_module.Input(shape=(3,), name='input_a')
+    input_b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(2, name='output_1')
-    dropout = keras.layers.Dropout(0.5, name='output_2')
+    dense = layers_module.Dense(2, name='output_1')
+    dropout = layers_module.Dropout(0.5, name='output_2')
     branch_a = [input_a, dense]
     branch_b = [input_b, dense, dropout]
 
@@ -1666,10 +1687,10 @@ class LossWeightingTest(keras_parameterized.TestCase):
     learning_rate = 0.001
 
     with self.cached_session():
-      model = keras.models.Sequential()
+      model = sequential.Sequential()
       model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(num_classes),
+          layers_module.TimeDistributed(
+              layers_module.Dense(num_classes),
               input_shape=(timesteps, input_dim)))
 
       x = np.random.random((10, timesteps, input_dim))
@@ -1728,8 +1749,8 @@ class LossWeightingTest(keras_parameterized.TestCase):
     """Tests that sample weight may be defined as a tensor in the graph."""
     with ops.get_default_graph().as_default():
       # Create a simple pass-through model
-      input_layer = keras.layers.Input(shape=1, name='input_layer')
-      model = keras.Model(inputs=input_layer, outputs=input_layer)
+      inputs = layers_module.Input(shape=1, name='input_layer')
+      model = training_module.Model(inputs=inputs, outputs=inputs)
       model.compile(
           loss='mean_absolute_error',
           optimizer='adam')
@@ -1759,9 +1780,9 @@ class MaskingTest(keras_parameterized.TestCase):
 
   def _get_model(self, input_shape=None):
     layers = [
-        keras.layers.Masking(mask_value=0),
-        keras.layers.TimeDistributed(
-            keras.layers.Dense(1, kernel_initializer='one'))
+        layers_module.Masking(mask_value=0),
+        layers_module.TimeDistributed(
+            layers_module.Dense(1, kernel_initializer='one'))
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape)
     model.compile(
@@ -1790,7 +1811,7 @@ class MaskingTest(keras_parameterized.TestCase):
     # Test that the mask argument gets correctly passed to a layer in the
     # functional API.
 
-    class CustomMaskedLayer(keras.layers.Layer):
+    class CustomMaskedLayer(layers_module.Layer):
 
       def __init__(self):
         super(CustomMaskedLayer, self).__init__()
@@ -1804,11 +1825,11 @@ class MaskingTest(keras_parameterized.TestCase):
         return input_shape
 
     x = np.random.random((5, 3))
-    inputs = keras.layers.Input((3,))
-    masked = keras.layers.Masking(mask_value=0)(inputs)
+    inputs = layers_module.Input((3,))
+    masked = layers_module.Masking(mask_value=0)(inputs)
     outputs = CustomMaskedLayer()(masked)
 
-    model = keras.Model(inputs, outputs)
+    model = training_module.Model(inputs, outputs)
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(learning_rate=0.001),
@@ -1824,8 +1845,8 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     x = np.random.random((5, 3))
     y = np.random.random((5, 2))
 
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_dim=3))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(2, input_dim=3))
     model.trainable = False
     model.compile(
         'rmsprop',
@@ -1840,8 +1861,8 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       x = np.random.random((5, 3))
       y = np.random.random((5, 2))
 
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(2, input_dim=3, trainable=False))
+      model = sequential.Sequential()
+      model.add(layers_module.Dense(2, input_dim=3, trainable=False))
       model.compile(
           'rmsprop',
           'mse',
@@ -1852,9 +1873,9 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
       self.assertAllClose(out, out_2)
 
       # test with nesting
-      inputs = keras.layers.Input(shape=(3,))
+      inputs = layers_module.Input(shape=(3,))
       output = model(inputs)
-      model = keras.models.Model(inputs, output)
+      model = training_module.Model(inputs, output)
       model.compile(
           'rmsprop',
           'mse',
@@ -1866,55 +1887,55 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
 
   def test_layer_trainability_switch(self):
     # with constructor argument, in Sequential
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, trainable=False, input_dim=1))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(2, trainable=False, input_dim=1))
     self.assertListEqual(model.trainable_weights, [])
 
     # by setting the `trainable` argument, in Sequential
-    model = keras.models.Sequential()
-    layer = keras.layers.Dense(2, input_dim=1)
+    model = sequential.Sequential()
+    layer = layers_module.Dense(2, input_dim=1)
     model.add(layer)
     self.assertListEqual(model.trainable_weights, layer.trainable_weights)
     layer.trainable = False
     self.assertListEqual(model.trainable_weights, [])
 
     # with constructor argument, in Model
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2, trainable=False)(x)
-    model = keras.models.Model(x, y)
+    x = layers_module.Input(shape=(1,))
+    y = layers_module.Dense(2, trainable=False)(x)
+    model = training_module.Model(x, y)
     self.assertListEqual(model.trainable_weights, [])
 
     # by setting the `trainable` argument, in Model
-    x = keras.layers.Input(shape=(1,))
-    layer = keras.layers.Dense(2)
+    x = layers_module.Input(shape=(1,))
+    layer = layers_module.Dense(2)
     y = layer(x)
-    model = keras.models.Model(x, y)
+    model = training_module.Model(x, y)
     self.assertListEqual(model.trainable_weights, layer.trainable_weights)
     layer.trainable = False
     self.assertListEqual(model.trainable_weights, [])
 
   def test_model_trainability_switch(self):
     # a non-trainable model has no trainable weights
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    model = keras.models.Model(x, y)
+    x = layers_module.Input(shape=(1,))
+    y = layers_module.Dense(2)(x)
+    model = training_module.Model(x, y)
     model.trainable = False
     self.assertListEqual(model.trainable_weights, [])
 
     # same for Sequential
-    model = keras.models.Sequential()
-    model.add(keras.layers.Dense(2, input_dim=1))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(2, input_dim=1))
     model.trainable = False
     self.assertListEqual(model.trainable_weights, [])
 
   def test_nested_model_trainability(self):
     # a Sequential inside a Model
-    inner_model = keras.models.Sequential()
-    inner_model.add(keras.layers.Dense(2, input_dim=1))
+    inner_model = sequential.Sequential()
+    inner_model.add(layers_module.Dense(2, input_dim=1))
 
-    x = keras.layers.Input(shape=(1,))
+    x = layers_module.Input(shape=(1,))
     y = inner_model(x)
-    outer_model = keras.models.Model(x, y)
+    outer_model = training_module.Model(x, y)
     self.assertListEqual(outer_model.trainable_weights,
                          inner_model.trainable_weights)
     inner_model.trainable = False
@@ -1924,9 +1945,9 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     self.assertListEqual(outer_model.trainable_weights, [])
 
     # a Sequential inside a Sequential
-    inner_model = keras.models.Sequential()
-    inner_model.add(keras.layers.Dense(2, input_dim=1))
-    outer_model = keras.models.Sequential()
+    inner_model = sequential.Sequential()
+    inner_model.add(layers_module.Dense(2, input_dim=1))
+    outer_model = sequential.Sequential()
     outer_model.add(inner_model)
     self.assertListEqual(outer_model.trainable_weights,
                          inner_model.trainable_weights)
@@ -1937,12 +1958,12 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     self.assertListEqual(outer_model.trainable_weights, [])
 
     # a Model inside a Model
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    inner_model = keras.models.Model(x, y)
-    x = keras.layers.Input(shape=(1,))
+    x = layers_module.Input(shape=(1,))
+    y = layers_module.Dense(2)(x)
+    inner_model = training_module.Model(x, y)
+    x = layers_module.Input(shape=(1,))
     y = inner_model(x)
-    outer_model = keras.models.Model(x, y)
+    outer_model = training_module.Model(x, y)
     self.assertListEqual(outer_model.trainable_weights,
                          inner_model.trainable_weights)
     inner_model.trainable = False
@@ -1952,10 +1973,10 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     self.assertListEqual(outer_model.trainable_weights, [])
 
     # a Model inside a Sequential
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(2)(x)
-    inner_model = keras.models.Model(x, y)
-    outer_model = keras.models.Sequential()
+    x = layers_module.Input(shape=(1,))
+    y = layers_module.Dense(2)(x)
+    inner_model = training_module.Model(x, y)
+    outer_model = sequential.Sequential()
     outer_model.add(inner_model)
     self.assertListEqual(outer_model.trainable_weights,
                          inner_model.trainable_weights)
@@ -1966,20 +1987,20 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     self.assertListEqual(outer_model.trainable_weights, [])
 
   def test_gan_workflow(self):
-    shared_layer = keras.layers.BatchNormalization()
+    shared_layer = layers_module.BatchNormalization()
 
-    inputs1 = keras.Input(10)
+    inputs1 = input_layer.Input(10)
     outputs1 = shared_layer(inputs1)
-    model1 = keras.Model(inputs1, outputs1)
+    model1 = training_module.Model(inputs1, outputs1)
     shared_layer.trainable = False
     model1.compile(
         'sgd',
         'mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
-    inputs2 = keras.Input(10)
+    inputs2 = input_layer.Input(10)
     outputs2 = shared_layer(inputs2)
-    model2 = keras.Model(inputs2, outputs2)
+    model2 = training_module.Model(inputs2, outputs2)
     shared_layer.trainable = True
     model2.compile(
         'sgd',
@@ -1999,13 +2020,13 @@ class TestDynamicTrainability(keras_parameterized.TestCase):
     self.assertNotAllClose(out2_0, out2_1)
 
   def test_toggle_value(self):
-    input_0 = keras.layers.Input(shape=(1,))
-    dense_0 = keras.layers.Dense(1, kernel_initializer='ones',
-                                 bias_initializer='ones')
-    dense_1 = keras.layers.Dense(1, kernel_initializer='ones',
-                                 bias_initializer='ones')
-    result = keras.layers.Add()([dense_0(input_0), dense_1(input_0)])
-    model = keras.models.Model(input_0, result)
+    input_0 = layers_module.Input(shape=(1,))
+    dense_0 = layers_module.Dense(
+        1, kernel_initializer='ones', bias_initializer='ones')
+    dense_1 = layers_module.Dense(
+        1, kernel_initializer='ones', bias_initializer='ones')
+    result = layers_module.Add()([dense_0(input_0), dense_1(input_0)])
+    model = training_module.Model(input_0, result)
     dense_0.trainable = False
     model.compile(
         'sgd',
@@ -2028,9 +2049,9 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
   def test_training_and_eval_methods_on_symbolic_tensors_single_io(self):
     with ops.Graph().as_default():
-      x = keras.layers.Input(shape=(3,), name='input')
-      y = keras.layers.Dense(4, name='dense')(x)
-      model = keras.Model(x, y)
+      x = layers_module.Input(shape=(3,), name='input')
+      y = layers_module.Dense(4, name='dense')(x)
+      model = training_module.Model(x, y)
 
       optimizer = RMSPropOptimizer(learning_rate=0.001)
       loss = 'mse'
@@ -2039,8 +2060,8 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
           loss,
           metrics=['mae', metrics_module.CategoricalAccuracy()])
 
-      inputs = keras.backend.zeros(shape=(10, 3))
-      targets = keras.backend.zeros(shape=(10, 4))
+      inputs = backend.zeros(shape=(10, 3))
+      targets = backend.zeros(shape=(10, 4))
 
       model.fit(inputs, targets, epochs=1, steps_per_epoch=2, verbose=0)
       model.evaluate(inputs, targets, steps=2, verbose=0)
@@ -2067,15 +2088,15 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
                 validation_data=(inputs, targets), validation_steps=2)
 
   def test_training_and_eval_methods_on_symbolic_tensors_multi_io(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    a = layers_module.Input(shape=(3,), name='input_a')
+    b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
+    dense = layers_module.Dense(4, name='dense')
     c = dense(a)
     d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+    e = layers_module.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
+    model = training_module.Model([a, b], [d, e])
 
     optimizer = 'rmsprop'
     loss = 'mse'
@@ -2165,17 +2186,16 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       output_a_np = np.random.random((10, 4))
       output_b_np = np.random.random((10, 3))
 
-      input_v = keras.backend.variables_module.Variable(
-          input_a_np, dtype='float32')
+      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
-      a = keras.Input(tensor=input_v)
-      b = keras.Input(shape=(3,), name='input_b')
+      a = input_layer.Input(tensor=input_v)
+      b = input_layer.Input(shape=(3,), name='input_b')
 
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      dp = keras.layers.Dropout(0.5, name='dropout')
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      dp = layers_module.Dropout(0.5, name='dropout')
       b_2 = dp(b)
 
-      model = keras.models.Model([a, b], [a_2, b_2])
+      model = training_module.Model([a, b], [a_2, b_2])
       model.summary()
 
       optimizer = 'rmsprop'
@@ -2214,10 +2234,10 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       # Now test a model with a single input
       # i.e. we don't pass any data to fit the model.
       self.evaluate(variables_lib.variables_initializer([input_v]))
-      a = keras.Input(tensor=input_v)
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
-      model = keras.models.Model(a, a_2)
+      a = input_layer.Input(tensor=input_v)
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      a_2 = layers_module.Dropout(0.5, name='dropout')(a_2)
+      model = training_module.Model(a, a_2)
       model.summary()
 
       optimizer = 'rmsprop'
@@ -2253,9 +2273,9 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       # Same, without learning phase
       # i.e. we don't pass any data to fit the model.
       self.evaluate(variables_lib.variables_initializer([input_v]))
-      a = keras.Input(tensor=input_v)
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      model = keras.models.Model(a, a_2)
+      a = input_layer.Input(tensor=input_v)
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      model = training_module.Model(a, a_2)
       model.summary()
 
       optimizer = 'rmsprop'
@@ -2291,11 +2311,11 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_model_with_partial_loss(self):
     with self.cached_session():
-      a = keras.Input(shape=(3,), name='input_a')
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      dp = keras.layers.Dropout(0.5, name='dropout')
+      a = input_layer.Input(shape=(3,), name='input_a')
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      dp = layers_module.Dropout(0.5, name='dropout')
       a_3 = dp(a_2)
-      model = keras.models.Model(a, [a_2, a_3])
+      model = training_module.Model(a, [a_2, a_3])
 
       optimizer = 'rmsprop'
       loss = {'dropout': 'mse'}
@@ -2313,10 +2333,10 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       _ = model.evaluate(input_a_np, output_a_np)
 
       # Same without dropout.
-      a = keras.Input(shape=(3,), name='input_a')
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      a_3 = keras.layers.Dense(4, name='dense_2')(a_2)
-      model = keras.models.Model(a, [a_2, a_3])
+      a = input_layer.Input(shape=(3,), name='input_a')
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      a_3 = layers_module.Dense(4, name='dense_2')(a_2)
+      model = training_module.Model(a, [a_2, a_3])
 
       optimizer = 'rmsprop'
       loss = {'dense_2': 'mse'}
@@ -2333,14 +2353,14 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
   def test_model_with_external_loss(self):
     with ops.Graph().as_default(), self.cached_session():
       # None loss, only regularization loss.
-      a = keras.Input(shape=(3,), name='input_a')
-      a_2 = keras.layers.Dense(4, name='dense_1',
-                               kernel_regularizer='l1',
-                               bias_regularizer='l2')(a)
-      dp = keras.layers.Dropout(0.5, name='dropout')
+      a = input_layer.Input(shape=(3,), name='input_a')
+      a_2 = layers_module.Dense(
+          4, name='dense_1', kernel_regularizer='l1', bias_regularizer='l2')(
+              a)
+      dp = layers_module.Dropout(0.5, name='dropout')
       a_3 = dp(a_2)
 
-      model = keras.models.Model(a, [a_2, a_3])
+      model = training_module.Model(a, [a_2, a_3])
 
       optimizer = 'rmsprop'
       loss = None
@@ -2357,12 +2377,12 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # No dropout, external loss.
-      a = keras.Input(shape=(3,), name='input_a')
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      a_3 = keras.layers.Dense(4, name='dense_2')(a)
+      a = input_layer.Input(shape=(3,), name='input_a')
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      a_3 = layers_module.Dense(4, name='dense_2')(a)
 
-      model = keras.models.Model(a, [a_2, a_3])
-      model.add_loss(keras.backend.mean(a_3 + a_2))
+      model = training_module.Model(a, [a_2, a_3])
+      model.add_loss(backend.mean(a_3 + a_2))
 
       optimizer = 'rmsprop'
       loss = None
@@ -2377,14 +2397,13 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       out = model.evaluate(input_a_np, None)
 
       # Test model with no external data at all.
-      input_v = keras.backend.variables_module.Variable(
-          input_a_np, dtype='float32')
+      input_v = backend.variables_module.Variable(input_a_np, dtype='float32')
       self.evaluate(variables_lib.variables_initializer([input_v]))
-      a = keras.Input(tensor=input_v)
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_2)
-      model = keras.models.Model(a, a_2)
-      model.add_loss(keras.backend.mean(a_2))
+      a = input_layer.Input(tensor=input_v)
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      a_2 = layers_module.Dropout(0.5, name='dropout')(a_2)
+      model = training_module.Model(a, a_2)
+      model.add_loss(backend.mean(a_2))
 
       model.compile(optimizer='rmsprop',
                     loss=None,
@@ -2397,11 +2416,11 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
       # Test multi-output model with no external data at all.
       self.evaluate(variables_lib.variables_initializer([input_v]))
-      a = keras.Input(tensor=input_v)
-      a_1 = keras.layers.Dense(4, name='dense_1')(a)
-      a_2 = keras.layers.Dropout(0.5, name='dropout')(a_1)
-      model = keras.models.Model(a, [a_1, a_2])
-      model.add_loss(keras.backend.mean(a_2))
+      a = input_layer.Input(tensor=input_v)
+      a_1 = layers_module.Dense(4, name='dense_1')(a)
+      a_2 = layers_module.Dropout(0.5, name='dropout')(a_1)
+      model = training_module.Model(a, [a_1, a_2])
+      model.add_loss(backend.mean(a_2))
 
       model.compile(optimizer='rmsprop',
                     loss=None,
@@ -2420,11 +2439,11 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
   def test_target_tensors(self):
     with ops.Graph().as_default(), self.cached_session():
       # single-output, as list
-      model = keras.models.Sequential()
-      model.add(keras.layers.Dense(4, input_shape=(4,), name='dense'))
+      model = sequential.Sequential()
+      model.add(layers_module.Dense(4, input_shape=(4,), name='dense'))
       input_val = np.random.random((10, 4))
       target_val = np.random.random((10, 4))
-      target = keras.backend.variable(target_val)
+      target = backend.variable(target_val)
       model.compile(optimizer='rmsprop', loss='mse', target_tensors=[target])
       model.train_on_batch(input_val, None)
 
@@ -2456,13 +2475,13 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       input_val = np.random.random((10, 4))
       target_val_a = np.random.random((10, 4))
       target_val_b = np.random.random((10, 4))
-      target_a = keras.backend.variable(target_val_a)
-      target_b = keras.backend.variable(target_val_b)
+      target_a = backend.variable(target_val_a)
+      target_b = backend.variable(target_val_b)
 
-      inputs = keras.layers.Input(shape=(4,))
-      output_a = keras.layers.Dense(4, name='dense_a')(inputs)
-      output_b = keras.layers.Dense(4, name='dense_b')(inputs)
-      model = keras.models.Model(inputs, [output_a, output_b])
+      inputs = layers_module.Input(shape=(4,))
+      output_a = layers_module.Dense(4, name='dense_a')(inputs)
+      output_b = layers_module.Dense(4, name='dense_b')(inputs)
+      model = training_module.Model(inputs, [output_a, output_b])
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors=[target_a, target_b])
       model.train_on_batch(input_val, None)
@@ -2484,17 +2503,17 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
 
   def test_model_custom_target_tensors(self):
     with ops.Graph().as_default(), self.cached_session():
-      a = keras.Input(shape=(3,), name='input_a')
-      b = keras.Input(shape=(3,), name='input_b')
+      a = input_layer.Input(shape=(3,), name='input_a')
+      b = input_layer.Input(shape=(3,), name='input_b')
 
-      a_2 = keras.layers.Dense(4, name='dense_1')(a)
-      dp = keras.layers.Dropout(0.5, name='dropout')
+      a_2 = layers_module.Dense(4, name='dense_1')(a)
+      dp = layers_module.Dropout(0.5, name='dropout')
       b_2 = dp(b)
 
-      y = keras.backend.placeholder([10, 4], name='y')
-      y1 = keras.backend.placeholder([10, 3], name='y1')
-      y2 = keras.backend.placeholder([7, 5], name='y2')
-      model = keras.models.Model([a, b], [a_2, b_2])
+      y = backend.placeholder([10, 4], name='y')
+      y1 = backend.placeholder([10, 3], name='y1')
+      y2 = backend.placeholder([7, 5], name='y2')
+      model = training_module.Model([a, b], [a_2, b_2])
 
       optimizer = 'rmsprop'
       loss = 'mse'
@@ -2537,8 +2556,7 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
                                })
 
       # test with custom TF placeholder as target
-      pl_target_a = keras.backend.array_ops.placeholder('float32',
-                                                        shape=(None, 4))
+      pl_target_a = backend.array_ops.placeholder('float32', shape=(None, 4))
       model.compile(optimizer='rmsprop', loss='mse',
                     target_tensors={'dense_1': pl_target_a})
       model.train_on_batch([input_a_np, input_b_np],
@@ -2550,15 +2568,15 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_metrics_names(self):
-    a = keras.layers.Input(shape=(3,), name='input_a')
-    b = keras.layers.Input(shape=(3,), name='input_b')
+    a = layers_module.Input(shape=(3,), name='input_a')
+    b = layers_module.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(4, name='dense')
+    dense = layers_module.Dense(4, name='dense')
     c = dense(a)
     d = dense(b)
-    e = keras.layers.Dropout(0.5, name='dropout')(c)
+    e = layers_module.Dropout(0.5, name='dropout')(c)
 
-    model = keras.models.Model([a, b], [d, e])
+    model = training_module.Model([a, b], [d, e])
 
     optimizer = RMSPropOptimizer(learning_rate=0.001)
     metrics = ['mse', metrics_module.BinaryAccuracy()]
@@ -2588,9 +2606,9 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_metric_state_reset_between_fit_and_evaluate(self):
-    model = keras.Sequential()
-    model.add(keras.layers.Dense(3, activation='relu', input_dim=4))
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model = sequential.Sequential()
+    model.add(layers_module.Dense(3, activation='relu', input_dim=4))
+    model.add(layers_module.Dense(1, activation='sigmoid'))
     acc_obj = metrics_module.BinaryAccuracy()
     model.compile(
         loss='mae',
@@ -2611,12 +2629,12 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
   @keras_parameterized.run_all_keras_modes
   def test_metrics_valid_compile_input_formats(self):
-    inp_1 = keras.layers.Input(shape=(1,), name='input_1')
-    inp_2 = keras.layers.Input(shape=(1,), name='input_2')
-    x = keras.layers.Dense(3, kernel_initializer='ones', trainable=False)
-    out_1 = keras.layers.Dense(
+    inp_1 = layers_module.Input(shape=(1,), name='input_1')
+    inp_2 = layers_module.Input(shape=(1,), name='input_2')
+    x = layers_module.Dense(3, kernel_initializer='ones', trainable=False)
+    out_1 = layers_module.Dense(
         1, kernel_initializer='ones', name='output_1', trainable=False)
-    out_2 = keras.layers.Dense(
+    out_2 = layers_module.Dense(
         1, kernel_initializer='ones', name='output_2', trainable=False)
 
     branch_a = [inp_1, x, out_1]
@@ -2627,8 +2645,8 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.compile(
         optimizer='rmsprop',
         loss='mse',
-        metrics=[keras.metrics.MeanSquaredError()],
-        weighted_metrics=[keras.metrics.MeanSquaredError()],
+        metrics=[metrics_module.MeanSquaredError()],
+        weighted_metrics=[metrics_module.MeanSquaredError()],
         run_eagerly=testing_utils.should_run_eagerly())
 
     # list of list of metrics.
@@ -2636,14 +2654,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         optimizer='rmsprop',
         loss='mse',
         metrics=[
-            keras.metrics.MeanSquaredError(),
-            [keras.metrics.MeanSquaredError(),
-             keras.metrics.Accuracy()]
+            metrics_module.MeanSquaredError(),
+            [metrics_module.MeanSquaredError(),
+             metrics_module.Accuracy()]
         ],
         weighted_metrics=[
-            keras.metrics.MeanSquaredError(),
-            [keras.metrics.MeanSquaredError(),
-             keras.metrics.Accuracy()]
+            metrics_module.MeanSquaredError(),
+            [metrics_module.MeanSquaredError(),
+             metrics_module.Accuracy()]
         ],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -2653,18 +2671,18 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         loss='mse',
         metrics={
             'output_1':
-                keras.metrics.MeanSquaredError(),
+                metrics_module.MeanSquaredError(),
             'output_2': [
-                keras.metrics.MeanSquaredError(),
-                keras.metrics.Accuracy()
+                metrics_module.MeanSquaredError(),
+                metrics_module.Accuracy()
             ],
         },
         weighted_metrics={
             'output_1':
-                keras.metrics.MeanSquaredError(),
+                metrics_module.MeanSquaredError(),
             'output_2': [
-                keras.metrics.MeanSquaredError(),
-                keras.metrics.Accuracy()
+                metrics_module.MeanSquaredError(),
+                metrics_module.Accuracy()
             ],
         },
         run_eagerly=testing_utils.should_run_eagerly())
@@ -2672,11 +2690,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_metrics_masking(self):
     np.random.seed(1337)
-    model = keras.models.Sequential()
-    model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))
+    model = sequential.Sequential()
+    model.add(layers_module.Masking(mask_value=0, input_shape=(2, 1)))
     model.add(
-        keras.layers.TimeDistributed(
-            keras.layers.Dense(1, kernel_initializer='ones')))
+        layers_module.TimeDistributed(
+            layers_module.Dense(1, kernel_initializer='ones')))
     model.compile(
         RMSPropOptimizer(learning_rate=0.001),
         loss='mse',
@@ -2696,9 +2714,9 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_with_tensor_on_model(self):
-    x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(1, kernel_initializer='ones')(x)
-    model = keras.models.Model(x, y)
+    x = layers_module.Input(shape=(1,))
+    y = layers_module.Dense(1, kernel_initializer='ones')(x)
+    model = training_module.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
 
@@ -2711,7 +2729,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):
-      with keras.backend.get_graph().as_default():
+      with backend.get_graph().as_default():
         model.add_metric(metrics_module.Mean(name='metric_2')(y))
 
     model.compile(
@@ -2740,11 +2758,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_in_model_call(self):
 
-    class TestModel(keras.Model):
+    class TestModel(training_module.Model):
 
       def __init__(self):
         super(TestModel, self).__init__(name='test_model')
-        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
         self.mean = metrics_module.Mean(name='metric_1')
 
       def call(self, x):
@@ -2781,7 +2799,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_in_layer_call(self):
 
-    class TestLayer(keras.layers.Layer):
+    class TestLayer(layers_module.Layer):
 
       def build(self, input_shape):
         self.a = self.add_variable(
@@ -2795,7 +2813,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     layers = [
         TestLayer(input_shape=(1,)),
-        keras.layers.Dense(2, kernel_initializer='ones')
+        layers_module.Dense(2, kernel_initializer='ones')
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(1,))
     model.compile(
@@ -2812,11 +2830,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_metrics_list(self):
 
-    class LayerWithAddMetric(keras.layers.Layer):
+    class LayerWithAddMetric(layers_module.Layer):
 
       def __init__(self):
         super(LayerWithAddMetric, self).__init__()
-        self.dense = keras.layers.Dense(1, kernel_initializer='ones')
+        self.dense = layers_module.Dense(1, kernel_initializer='ones')
 
       def __call__(self, inputs):
         outputs = self.dense(inputs)
@@ -2824,7 +2842,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             math_ops.reduce_sum(outputs), name='metric_1', aggregation='mean')
         return outputs
 
-    class LayerWithNestedAddMetricLayer(keras.layers.Layer):
+    class LayerWithNestedAddMetricLayer(layers_module.Layer):
 
       def __init__(self):
         super(LayerWithNestedAddMetricLayer, self).__init__()
@@ -2836,10 +2854,10 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             math_ops.reduce_sum(outputs), name='metric_2', aggregation='mean')
         return outputs
 
-    x = keras.layers.Input(shape=(1,))
+    x = layers_module.Input(shape=(1,))
     y = LayerWithNestedAddMetricLayer()(x)
 
-    model = keras.models.Model(x, y)
+    model = training_module.Model(x, y)
     model.add_metric(
         math_ops.reduce_sum(y), name='metric_3', aggregation='mean')
 
@@ -2852,7 +2870,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     with self.assertRaisesRegex(
         ValueError, 'Using the result of calling a `Metric` object '):
-      with keras.backend.get_graph().as_default():
+      with backend.get_graph().as_default():
         model.add_metric(metrics_module.Mean(name='metric_4')(y))
 
     model.compile(
@@ -2871,11 +2889,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_metrics_list_in_call(self):
 
-    class TestModel(keras.Model):
+    class TestModel(training_module.Model):
 
       def __init__(self):
         super(TestModel, self).__init__(name='test_model')
-        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
 
       def call(self, x):
         self.add_metric(
@@ -2898,11 +2916,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_multiple_add_metric_calls(self):
 
-    class TestModel(keras.Model):
+    class TestModel(training_module.Model):
 
       def __init__(self):
         super(TestModel, self).__init__(name='test_model')
-        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
         self.mean1 = metrics_module.Mean(name='metric_1')
         self.mean2 = metrics_module.Mean(name='metric_2')
 
@@ -2936,11 +2954,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_duplicate_metric_name_in_add_metric(self):
 
-    class TestModel(keras.Model):
+    class TestModel(training_module.Model):
 
       def __init__(self):
         super(TestModel, self).__init__(name='test_model')
-        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
         self.mean = metrics_module.Mean(name='metric_1')
         self.mean2 = metrics_module.Mean(name='metric_1')
 
@@ -2965,11 +2983,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_without_name(self):
 
-    class TestModel(keras.Model):
+    class TestModel(training_module.Model):
 
       def __init__(self):
         super(TestModel, self).__init__(name='test_model')
-        self.dense1 = keras.layers.Dense(2, kernel_initializer='ones')
+        self.dense1 = layers_module.Dense(2, kernel_initializer='ones')
 
       def call(self, x):
         self.add_metric(math_ops.reduce_sum(x), aggregation='mean')
@@ -2989,10 +3007,10 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_correctness(self):
-    inputs = keras.Input(shape=(1,))
-    targets = keras.Input(shape=(1,))
+    inputs = input_layer.Input(shape=(1,))
+    targets = input_layer.Input(shape=(1,))
 
-    class Bias(keras.layers.Layer):
+    class Bias(layers_module.Layer):
 
       def build(self, input_shape):
         self.bias = self.add_variable('bias', (1,), initializer='zeros')
@@ -3005,7 +3023,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
         return outputs
 
     outputs = Bias()([inputs, targets])
-    model = keras.Model([inputs, targets], outputs)
+    model = training_module.Model([inputs, targets], outputs)
 
     model.add_metric(
         metrics_module.mean_absolute_error(targets, outputs),
@@ -3014,7 +3032,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
     model.compile(
         loss='mae',
-        optimizer=keras.optimizer_v2.gradient_descent.SGD(0.1),
+        optimizer=optimizer_v2.gradient_descent.SGD(0.1),
         metrics=[metrics_module.MeanAbsoluteError(name='mae_3')],
         run_eagerly=testing_utils.should_run_eagerly())
 
@@ -3029,14 +3047,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_add_metric_order(self):
 
-    class MyLayer(keras.layers.Layer):
+    class MyLayer(layers_module.Layer):
 
       def call(self, inputs, training=None, mask=None):
         self.add_metric(
             array_ops.ones([32]) * 2.0, name='two', aggregation='mean')
         return inputs
 
-    class MyModel(keras.Model):
+    class MyModel(training_module.Model):
 
       def __init__(self, **kwargs):
         super(MyModel, self).__init__(**kwargs)
@@ -3071,11 +3089,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_model_with_nested_compiled_model(self):
 
-    class LayerWithAddMetric(keras.layers.Layer):
+    class LayerWithAddMetric(layers_module.Layer):
 
       def __init__(self):
         super(LayerWithAddMetric, self).__init__()
-        self.dense = keras.layers.Dense(1, kernel_initializer='ones')
+        self.dense = layers_module.Dense(1, kernel_initializer='ones')
 
       def call(self, inputs):
         outputs = self.dense(inputs)
@@ -3083,10 +3101,10 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             math_ops.reduce_sum(outputs), name='mean', aggregation='mean')
         return outputs
 
-    x = keras.layers.Input(shape=(1,))
+    x = layers_module.Input(shape=(1,))
     y = LayerWithAddMetric()(x)
 
-    inner_model = keras.models.Model(x, y)
+    inner_model = training_module.Model(x, y)
     inner_model.add_metric(
         math_ops.reduce_sum(y), name='mean1', aggregation='mean')
 
@@ -3100,9 +3118,9 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     self.assertEqual([m.name for m in inner_model.metrics],
                      ['loss', 'acc', 'mean', 'mean1'])
 
-    x = keras.layers.Input(shape=[1])
+    x = layers_module.Input(shape=[1])
     y = inner_model(x)
-    outer_model = keras.Model(x, y)
+    outer_model = training_module.Model(x, y)
     outer_model.add_metric(
         math_ops.reduce_sum(y), name='mean2', aggregation='mean')
 
@@ -3116,7 +3134,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
                      ['loss', 'acc2', 'mean', 'mean1', 'mean2'])
 
 
-class BareUpdateLayer(keras.layers.Layer):
+class BareUpdateLayer(layers_module.Layer):
 
   def build(self, input_shape):
     self.counter = self.add_weight(
@@ -3131,7 +3149,7 @@ class BareUpdateLayer(keras.layers.Layer):
     return math_ops.cast(self.counter, inputs.dtype) * inputs
 
 
-class LambdaUpdateLayer(keras.layers.Layer):
+class LambdaUpdateLayer(layers_module.Layer):
 
   def build(self, input_shape):
     self.counter = self.add_weight(
@@ -3147,7 +3165,7 @@ class LambdaUpdateLayer(keras.layers.Layer):
     return math_ops.cast(self.counter, inputs.dtype) * inputs
 
 
-class NestedUpdateLayer(keras.layers.Layer):
+class NestedUpdateLayer(layers_module.Layer):
 
   def build(self, input_shape):
     self.layer = BareUpdateLayer()
@@ -3161,7 +3179,7 @@ class NestedUpdateLayer(keras.layers.Layer):
     return self.layer(inputs)
 
 
-class SubgraphUpdateLayer(keras.layers.Layer):
+class SubgraphUpdateLayer(layers_module.Layer):
 
   def build(self, input_shape):
     self.counter = self.add_weight(
@@ -3173,7 +3191,7 @@ class SubgraphUpdateLayer(keras.layers.Layer):
 
   def call(self, inputs, training=None):
     if training is None:
-      training = keras.backend.learning_phase()
+      training = backend.learning_phase()
 
     if training:
       self.counter.assign(self.counter + 1)
@@ -3192,7 +3210,7 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     layer = layer_builder()
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
-        [layer, keras.layers.Dense(1)], input_shape=(10,))
+        [layer, layers_module.Dense(1)], input_shape=(10,))
     model.compile(
         'sgd',
         'mse',
@@ -3205,7 +3223,7 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     x, y = np.ones((10, 10)), np.ones((10, 1))
     layer = LambdaUpdateLayer()
     model = testing_utils.get_model_from_layers(
-        [layer, keras.layers.Dense(1)], input_shape=(10,))
+        [layer, layers_module.Dense(1)], input_shape=(10,))
     model.compile(
         'sgd',
         'mse',
@@ -3225,7 +3243,7 @@ class TestAutoUpdates(keras_parameterized.TestCase):
     layer = SubgraphUpdateLayer()
     x, y = np.ones((10, 10)), np.ones((10, 1))
     model = testing_utils.get_model_from_layers(
-        [layer, keras.layers.Dense(1)], input_shape=(10,))
+        [layer, layers_module.Dense(1)], input_shape=(10,))
     model.compile(
         'sgd',
         'mse',
@@ -3257,8 +3275,8 @@ class TestAutoUpdates(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_batchnorm_trainable_false(self):
-    bn = keras.layers.BatchNormalization()
-    model = testing_utils.get_model_from_layers([bn, keras.layers.Dense(1)],
+    bn = layers_module.BatchNormalization()
+    model = testing_utils.get_model_from_layers([bn, layers_module.Dense(1)],
                                                 input_shape=(10,))
     bn.trainable = False
     model.compile(

@@ -161,7 +161,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return state[0] * x
 
     init_fn = fn.get_initialization_function(constant_op.constant(1.0))
-    self.assertEqual(len(state), 1)
+    self.assertLen(state, 1)
     self.assertFalse(
         resource_variable_ops.var_is_initialized_op(state[0].handle))
     init_fn()
@@ -617,7 +617,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
-  # TODO(b/137148281): reenable
   @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
     a = []
@@ -634,8 +633,28 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       return a[0].read_value()
 
-    created_variable_read = create_variable()
+    create_variable()
     self.assertRegexpMatches(a[0].device, 'CPU')
+
+  @test_util.run_gpu_only
+  def testDeviceAnnotationForInitializerRespected(self):
+    a = []
+    initial_value = []
+
+    def initial_value_fn():
+      initial_value.append(random_ops.random_uniform((2, 3)))
+      return initial_value[0]
+
+    @def_function.function()
+    def create_variable():
+      with ops.init_scope():
+        if not a:
+          a.append(variables.Variable(initial_value_fn))
+
+    with ops.device('CPU:0'):
+      create_variable()
+    self.assertRegexpMatches(a[0].device, 'CPU')
+    self.assertRegexpMatches(initial_value[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)

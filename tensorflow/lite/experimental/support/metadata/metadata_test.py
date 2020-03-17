@@ -347,6 +347,17 @@ class MetadataDisplayerTest(MetadataTest):
     displayer = _metadata.MetadataDisplayer.with_model_file(self._model_file)
     self.assertIsInstance(displayer, _metadata.MetadataDisplayer)
 
+  def test_load_model_buffer_modelWithOutMetadata_throwsException(self):
+    with self.assertRaises(ValueError) as error:
+      _metadata.MetadataDisplayer.with_model_buffer(
+          self._create_empty_model_buf())
+    self.assertEqual("The model does not have metadata.", str(error.exception))
+
+  def test_load_model_buffer_modelWithMetadata(self):
+    displayer = _metadata.MetadataDisplayer.with_model_buffer(
+        open(self._model_file, "rb").read())
+    self.assertIsInstance(displayer, _metadata.MetadataDisplayer)
+
   def test_get_metadata_json_modelWithMetadata(self):
     displayer = _metadata.MetadataDisplayer.with_model_file(self._model_file)
     actual = displayer.get_metadata_json()

@@ -992,6 +992,45 @@ cc_test(
 )
 
 cc_library(
+    name = "quantize_and_dequantize",
+    srcs = ["quantize_and_dequantize.cc"],
+    hdrs = ["quantize_and_dequantize.h"],
+    deps = [
+        ":flt_type",
+        ":gpu_operation",
+        ":util",
+        "//tensorflow/lite/delegates/gpu/cl:cl_context",
+        "//tensorflow/lite/delegates/gpu/cl:cl_kernel",
+        "//tensorflow/lite/delegates/gpu/cl:linear_storage",
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:tensor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
+    ],
+)
+
+cc_test(
+    name = "quantize_and_dequantize_test",
+    srcs = ["quantize_and_dequantize_test.cc"],
+    linkstatic = True,
+    tags = tf_gpu_tests_tags() + [
+        "linux",
+        "local",
+    ],
+    deps = [
+        ":cl_test",
+        ":quantize_and_dequantize",
+        "//tensorflow/lite/delegates/gpu/cl:tensor",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/kernels/internal:quantization_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "relu",
     srcs = ["relu.cc"],
     hdrs = ["relu.h"],

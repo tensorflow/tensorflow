@@ -20,6 +20,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
@@ -444,7 +448,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
-    alwayslink = 1,
+    alwayslink = if_static(0, 1),
 )
 
 cc_library(

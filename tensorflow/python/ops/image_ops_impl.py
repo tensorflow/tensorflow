@@ -1372,11 +1372,11 @@ def resize_images_v2(images,
   >>> tf.image.resize(image[0], [3,5]).shape.as_list()
   [3, 5, 1]
 
-  When 'antialias' is true, the sampling filter will anti-alias the input image
+  When `antialias` is true, the sampling filter will anti-alias the input image
   as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
-  'antialias' has no effect when upsampling an image:
+  `antialias` has no effect when upsampling an image:
 
   >>> a = tf.image.resize(image, [5,10])
   >>> b = tf.image.resize(image, [5,10], antialias=True)
@@ -1386,8 +1386,8 @@ def resize_images_v2(images,
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
-  *   <b>`'bilinear'`</b>: [Bilinear interpolation.](
-    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
@@ -1405,9 +1405,9 @@ def resize_images_v2(images,
     sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-    'antialias' has no effect when used with nearest neighbor interpolation.
+    `antialias` has no effect when used with nearest neighbor interpolation.
   *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
-    'antialias' has no effect when used with area interpolation; it
+    `antialias` has no effect when used with area interpolation; it
     always anti-aliases.
   *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
     For synthetic images (especially those lacking proper prefiltering), less
@@ -3255,16 +3255,16 @@ def rgb_to_yuv(images):
 
   Usage Example:
 
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
+  >>> x = [[[0.1, 0.2, 0.3],
+  ...       [0.4, 0.5, 0.6]],
+  ...     [[0.7, 0.8, 0.9],
+  ...       [0.10, 0.11, 0.12]]]
   >>> tf.image.rgb_to_yuv(x)
   <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815    ,  0.5831516, -0.7149856],
-          [ 4.815    ,  0.5831516, -0.7149855]],
-         [[ 7.815    ,  0.5831516, -0.7149856],
-          [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
+  array([[[ 0.1815    ,  0.05831515, -0.07149857],
+          [ 0.4815    ,  0.05831517, -0.07149856]],
+         [[ 0.7815    ,  0.05831515, -0.07149857],
+          [ 0.10815   ,  0.00583152, -0.00714985]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be

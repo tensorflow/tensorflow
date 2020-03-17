@@ -212,6 +212,8 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   if (options.disable_gpuasm_optimizations) {
     ptxas_args.push_back("-O0");
   }
+  ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
+                    options.extra_flags.end());
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);

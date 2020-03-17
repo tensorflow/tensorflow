@@ -89,6 +89,7 @@ class DistributedValues(object):
   >>> distributed_values = strategy.run(run)
 
   3. As input into `run`:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -96,10 +97,10 @@ class DistributedValues(object):
   >>> @tf.function
   ... def run(input):
   ...   return input + 1.0
-  >>> updated_value = strategy.run(run,
-  ...                                              args=(distributed_values,))
+  >>> updated_value = strategy.run(run, args=(distributed_values,))
 
-  4. Reduce value
+  4. Reduce value:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))
@@ -108,7 +109,8 @@ class DistributedValues(object):
   ...                                 distributed_values,
   ...                                 axis = 0)
 
-  5. Inspect per replica values.
+  5. Inspect per replica values:
+
   >>> strategy = tf.distribute.MirroredStrategy()
   >>> dataset = tf.data.Dataset.from_tensor_slices([5., 6., 7., 8.]).batch(2)
   >>> dataset_iterator = iter(strategy.experimental_distribute_dataset(dataset))

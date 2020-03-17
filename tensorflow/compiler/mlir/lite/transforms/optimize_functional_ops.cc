@@ -60,7 +60,8 @@ static void UpdateFuncType(FuncOp func) {
 static bool IsSideEffectFree(FuncOp func) {
   return !func.getBody()
               .walk([&](Operation* op) {
-                if (!op->isKnownTerminator() && !op->hasNoSideEffect())
+                if (!MemoryEffectOpInterface::hasNoEffect(op) &&
+                    !op->isKnownTerminator())
                   return WalkResult::interrupt();
                 return WalkResult::advance();
               })

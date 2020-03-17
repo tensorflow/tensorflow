@@ -597,9 +597,11 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
     TF_RET_CHECK(input_buffer.size() == output_buffer.size())
         << "input: " << input_buffer.size()
         << " output: " << output_buffer.size();
-    TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
-        transfer_stream, dst_local_device->compute_stream(), input_buffer,
-        output_buffer));
+    if (input_buffer.size() != 0) {
+      TF_RETURN_IF_ERROR(transfer_local_device->ThenMemcpyDeviceToDevice(
+          transfer_stream, dst_local_device->compute_stream(), input_buffer,
+          output_buffer));
+    }
   }
 
   // We hold on to the `src_device_buffer` until the transfer is finished.
@@ -733,7 +735,10 @@ PyLocalExecutable::ExecuteHelper(
   }
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_state()->device_ordinal();
-  tensorflow::profiler::TraceMe traceme("LocalExecutable::Execute");
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat("LocalExecutable::Execute#run_id=", run_id.ToInt(),
+                        "#");
+  });
   VLOG(3) << "Replica " << replica << ", partition " << partition
           << " mapped to device ordinal for execution: " << device_ordinal;
 
@@ -859,8 +864,11 @@ StatusOr<std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>>
 PyLocalExecutable::ExecuteOnLocalDevices(
     absl::Span<const std::vector<PyLocalBuffer*>> argument_handles,
     const ExecuteOptions& options) const {
-  tensorflow::profiler::TraceMe traceme(
-      "LocalExecutable::ExecuteOnLocalDevices");
+  RunId run_id;
+  tensorflow::profiler::TraceMe traceme([&] {
+    return absl::StrCat(
+        "LocalExecutable::ExecuteOnLocalDevices#run_id=", run_id.ToInt(), "#");
+  });
 
   const int num_local_devices = local_devices_.size();
 
@@ -883,10 +891,9 @@ PyLocalExecutable::ExecuteOnLocalDevices(
     // current thread.
     const int replica = local_logical_device_ids_[0].first;
     const int partition = local_logical_device_ids_[0].second;
-    results[0] = ExecuteHelper(argument_handles[0], replica, partition, RunId(),
-                               options);
+    results[0] =
+        ExecuteHelper(argument_handles[0], replica, partition, run_id, options);
   } else {
-    RunId run_id;
     absl::Mutex mu;
     int running = num_local_devices;
     int failed = 0;

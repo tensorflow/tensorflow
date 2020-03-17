@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
@@ -33,8 +35,8 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 from tensorflow.python.training.experimental import mixed_precision
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class PolicyTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class PolicyTest(test.TestCase, parameterized.TestCase):
   """Tests Policies."""
 
   @testing_utils.enable_v2_dtype_behavior
@@ -293,9 +295,11 @@ class PolicyTest(test.TestCase):
       mixed_precision.enable_mixed_precision_graph_rewrite(
           gradient_descent.SGD(1.))
       with self.assertRaisesRegexp(
-          ValueError, 'the mixed precision graph rewrite has already been '
-                      'enabled'):
+          ValueError, 'cannot be set to "mixed_float16", .* the mixed '
+                      'precision graph rewrite has already been enabled'):
         mp_policy.set_policy('mixed_float16')
+      with mp_policy.policy_scope('float64'):
+        pass  # Non-mixed policies are allowed
     finally:
       mixed_precision.disable_mixed_precision_graph_rewrite()
 

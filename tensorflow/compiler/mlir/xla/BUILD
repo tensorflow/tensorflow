@@ -30,12 +30,27 @@ exports_files(["ir/hlo_ops.td"])
 filegroup(
     name = "hlo_ops_td_files",
     srcs = [
+        "ir/hlo_client_ops.td",
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
         "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@llvm-project//mlir:OpBaseTdFiles",
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
+    ],
+)
+
+gentbl(
+    name = "hlo_client_ops_inc_gen",
+    tbl_outs = [
+        ("-gen-op-decls", "ir/hlo_client_ops.h.inc"),
+        ("-gen-op-defs", "ir/hlo_client_ops.cc.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "ir/hlo_client_ops.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
     ],
 )
 
@@ -440,12 +455,14 @@ cc_library(
 cc_library(
     name = "hlo",
     srcs = [
+        "ir/hlo_client_ops.cc",
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
         "ir/hlo_utils.cc",
     ],
     hdrs = [
+        "ir/hlo_client_ops.h",
         "ir/hlo_ops.h",
         "ir/hlo_utils.h",
         "transforms/passes.h",
@@ -454,6 +471,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":convert_op_folder",
+        ":hlo_client_ops_inc_gen",
         ":hlo_ops_base_inc_gen",
         ":hlo_ops_inc_gen",
         ":xla_canonicalize_inc_gen",
@@ -699,6 +717,7 @@ genrule(
     name = "operator_writer_inc",
     srcs = [
         "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
         "@llvm-project//mlir:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",

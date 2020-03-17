@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
 
 import numpy as np
 
@@ -1600,4 +1601,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
+  os.environ[
+      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
+          "XLA_FLAGS", "")
   googletest.main()

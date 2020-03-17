@@ -792,7 +792,9 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",

@@ -310,13 +310,13 @@ def stateless_random_poisson(shape,
 
   This is a stateless version of `tf.random.poisson`: if run twice with the same
   seeds, it will produce the same pseudorandom numbers. The output is consistent
-  across multiple runs on the same hardware (and between CPU and GPU), but may
-  change between versions of TensorFlow or on non-CPU/GPU hardware.
+  across multiple runs on the same hardware, but may change between versions of
+  TensorFlow or on non-CPU/GPU hardware.
 
   A slight difference exists in the interpretation of the `shape` parameter
   between `stateless_poisson` and `poisson`: in `poisson`, the `shape` is always
-  prepended to the shape of `rate`; whereas in `stateless_poisson` the shape of
-  `rate` must match the trailing dimensions of `shape`.
+  prepended to the shape of `lam`; whereas in `stateless_poisson` the shape of
+  `lam` must match the trailing dimensions of `shape`.
 
   Example:
 

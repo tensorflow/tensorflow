@@ -1377,7 +1377,7 @@ class Strategy(StrategyBase):
         multiple_values.append(tf.constant(1.0))
 
     def value_fn(ctx):
-      return multiple_values[ctx.replica_id]
+      return multiple_values[ctx.replica_id_in_sync_group]
 
     distributed_values = strategy.
       experimental_distribute_values_from_function(

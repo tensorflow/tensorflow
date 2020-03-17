@@ -864,13 +864,12 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ReturnOp>();
 
   OwningRewritePatternList patterns;
-  patterns
-      .insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
-              ConvertTensorListFromTensor, ConvertTensorListGetItem,
-              ConvertTensorListLength, ConvertTensorListPushBack,
-              ConvertTensorListReserve, ConvertTensorListSetItem,
-              ConvertTensorListStack, ConvertTensorListResize, ConvertWhile>(
-          context);
+  populateWithGenerated(context, &patterns);
+  patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
+                  ConvertTensorListGetItem, ConvertTensorListLength,
+                  ConvertTensorListPushBack, ConvertTensorListReserve,
+                  ConvertTensorListSetItem, ConvertTensorListStack,
+                  ConvertTensorListResize, ConvertWhile>(context);
   return applyFullConversion(func, target, patterns);
 }
 
