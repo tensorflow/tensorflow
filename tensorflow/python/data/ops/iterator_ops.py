@@ -448,7 +448,7 @@ class Iterator(trackable.Trackable):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
@@ -677,7 +677,7 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
   def output_classes(self):
     """Returns the class of each component of an element of this iterator.
 
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+    The expected values are `tf.Tensor` and `tf.sparse.SparseTensor`.
 
     Returns:
       A nested structure of Python `type` objects corresponding to each
