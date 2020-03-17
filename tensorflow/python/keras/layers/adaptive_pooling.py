@@ -1,7 +1,9 @@
 import tensorflow as tf
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.util.tf_export import keras_export
 
 
+@keras_export('keras.layers.AdaptiveAveragePooling1D')
 class AdaptiveAveragePooling1D(Layer):
     """Average Pooling with adaptive kernel size and strides.
         Arguments:
@@ -46,6 +48,7 @@ class AdaptiveAveragePooling1D(Layer):
         return out_vect
 
 
+@keras_export('keras.layers.AdaptiveAveragePooling2D')
 class AdaptiveAveragePooling2D(Layer):
     """Average Pooling with adaptive kernel size and strides.
         Arguments:
@@ -89,6 +92,7 @@ class AdaptiveAveragePooling2D(Layer):
         return out_vect
 
 
+@keras_export('keras.layers.AdaptiveAveragePooling3D')
 class AdaptiveAveragePooling3D(Layer):
     """Average Pooling with adaptive kernel size and strides.
         Arguments:
@@ -138,6 +142,7 @@ class AdaptiveAveragePooling3D(Layer):
         return out_vect
 
 
+@keras_export('keras.layers.AdaptiveMaxPooling1D')
 class AdaptiveMaxPooling1D(Layer):
     """Max Pooling with adaptive kernel size and strides.
         Arguments:
@@ -182,6 +187,7 @@ class AdaptiveMaxPooling1D(Layer):
         return out_vect
 
 
+@keras_export('keras.layers.AdaptiveMaxPooling2D')
 class AdaptiveMaxPooling2D(Layer):
     """Max Pooling with adaptive kernel size and strides.
         Arguments:
@@ -225,6 +231,7 @@ class AdaptiveMaxPooling2D(Layer):
         return out_vect
 
 
+@keras_export('keras.layers.AdaptiveMaxPooling3D')
 class AdaptiveMaxPooling3D(Layer):
     """Max Pooling with adaptive kernel size and strides.
         Arguments:
