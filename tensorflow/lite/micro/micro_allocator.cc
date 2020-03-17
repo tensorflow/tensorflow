@@ -475,8 +475,8 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
                                        &(output[i].registration));
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Failed to get registration from op code % d\n ",
-                           opcode);
+                           "Failed to get registration from op code %s\n ",
+                           EnumNameBuiltinOperator(opcode->builtin_code()));
       return status;
     }
     const auto* registration = output[i].registration;
@@ -607,12 +607,18 @@ TfLiteStatus MicroAllocator::AllocatePersistentBuffer(size_t bytes,
 TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
                                                          size_t bytes,
                                                          int* buffer_idx) {
-  // A sanity check to make sure scratch_buffer_handles_ is contiguous.
-  if (reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
-      memory_allocator_->GetBuffer() - memory_allocator_->GetDataSize()) {
+  // A sanity check to make sure scratch_buffer_handles_ is contiguous i.e.
+  // scratch_buffer_handles_ is pointing to the last allocation from memory
+  // allocator.
+  if (scratch_buffer_handles_ != nullptr &&
+      reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
+          memory_allocator_->GetBuffer() +
+              memory_allocator_->GetMaxBufferSize() -
+              memory_allocator_->GetDataSize()) {
     TF_LITE_REPORT_ERROR(error_reporter_,
                          "Internal error: AllocateFromTail can not be called "
                          "between two RequestScratchBufferInArena calls.");
+    return kTfLiteError;
   }
 
   internal::ScratchBufferHandle* handle =

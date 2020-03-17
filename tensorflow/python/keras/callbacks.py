@@ -39,12 +39,14 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -221,6 +223,18 @@ class CallbackList(object):
     self._queue_length = 10
     self._reset_batch_timing()
 
+    # Determines if batch-level hooks need to be called.
+    # This is important for performance, because processing batch-level logs
+    # will cause async eager to block on each batch.
+    # pylint: disable=protected-access
+    self._should_call_train_batch_hooks = any(
+        cb._implements_train_batch_hooks() for cb in self.callbacks)
+    self._should_call_test_batch_hooks = any(
+        cb._implements_test_batch_hooks() for cb in self.callbacks)
+    self._should_call_predict_batch_hooks = any(
+        cb._implements_predict_batch_hooks() for cb in self.callbacks)
+    # pylint: enable=protected-access
+
   def _add_default_callbacks(self, add_history, add_progbar):
     """Adds `Callback`s that are always present."""
     self._progbar = None
@@ -311,12 +325,14 @@ class CallbackList(object):
       self.on_predict_end()
 
   def on_batch_begin(self, batch, logs=None):
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
+    if self._should_call_train_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
   def on_batch_end(self, batch, logs=None):
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
+    if self._should_call_train_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     """Calls the `on_epoch_begin` methods of its callbacks.
@@ -356,8 +372,11 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
+    # TODO(b/150629188): Make ProgBarLogger callback not use batch hooks
+    # when verbose != 1
+    if self._should_call_train_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TRAIN, 'begin', batch, logs=logs)
 
   def on_train_batch_end(self, batch, logs=None):
     """Calls the `on_train_batch_end` methods of its callbacks.
@@ -366,8 +385,9 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
+    if self._should_call_train_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
 
   def on_test_batch_begin(self, batch, logs=None):
     """Calls the `on_test_batch_begin` methods of its callbacks.
@@ -377,8 +397,9 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
+    if self._should_call_test_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TEST, 'begin', batch, logs=logs)
 
   def on_test_batch_end(self, batch, logs=None):
     """Calls the `on_test_batch_end` methods of its callbacks.
@@ -387,7 +408,9 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
+    if self._should_call_test_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
 
   def on_predict_batch_begin(self, batch, logs=None):
     """Calls the `on_predict_batch_begin` methods of its callbacks.
@@ -397,8 +420,9 @@ class CallbackList(object):
         logs: dict. Has keys `batch` and `size` representing the current batch
           number and the size of the batch.
     """
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
+    if self._should_call_predict_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.PREDICT, 'begin', batch, logs=logs)
 
   def on_predict_batch_end(self, batch, logs=None):
     """Calls the `on_predict_batch_end` methods of its callbacks.
@@ -407,8 +431,9 @@ class CallbackList(object):
         batch: integer, index of batch within the current epoch.
         logs: dict. Metric results for this batch.
     """
-    logs = self._process_logs(logs)
-    self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
+    if self._should_call_predict_batch_hooks:
+      logs = self._process_logs(logs)
+      self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
 
   def on_train_begin(self, logs=None):
     """Calls the `on_train_begin` methods of its callbacks.
@@ -524,10 +549,12 @@ class Callback(object):
     self.model = model
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_batch_begin(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_begin`."""
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_batch_end(self, batch, logs=None):
     """A backwards compatibility alias for `on_train_batch_end`."""
 
@@ -559,6 +586,7 @@ class Callback(object):
     """
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_train_batch_begin(self, batch, logs=None):
     """Called at the beginning of a training batch in `fit` methods.
 
@@ -573,6 +601,7 @@ class Callback(object):
     self.on_batch_begin(batch, logs=logs)
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_train_batch_end(self, batch, logs=None):
     """Called at the end of a training batch in `fit` methods.
 
@@ -586,6 +615,7 @@ class Callback(object):
     self.on_batch_end(batch, logs=logs)
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_test_batch_begin(self, batch, logs=None):
     """Called at the beginning of a batch in `evaluate` methods.
 
@@ -601,6 +631,7 @@ class Callback(object):
     """
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_test_batch_end(self, batch, logs=None):
     """Called at the end of a batch in `evaluate` methods.
 
@@ -615,6 +646,7 @@ class Callback(object):
     """
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_predict_batch_begin(self, batch, logs=None):
     """Called at the beginning of a batch in `predict` methods.
 
@@ -627,6 +659,7 @@ class Callback(object):
     """
 
   @doc_controls.for_subclass_implementers
+  @generic_utils.default
   def on_predict_batch_end(self, batch, logs=None):
     """Called at the end of a batch in `predict` methods.
 
@@ -702,6 +735,23 @@ class Callback(object):
         logs: dict. Currently no data is passed to this argument for this method
           but that may change in the future.
     """
+
+  def _implements_train_batch_hooks(self):
+    """Determines if this Callback should be called for each train batch."""
+    return (not generic_utils.is_default(self.on_batch_begin) or
+            not generic_utils.is_default(self.on_batch_end) or
+            not generic_utils.is_default(self.on_train_batch_begin) or
+            not generic_utils.is_default(self.on_train_batch_end))
+
+  def _implements_test_batch_hooks(self):
+    """Determines if this Callback should be called for each test batch."""
+    return (not generic_utils.is_default(self.on_test_batch_begin) or
+            not generic_utils.is_default(self.on_test_batch_end))
+
+  def _implements_predict_batch_hooks(self):
+    """Determines if this Callback should be called for each predict batch."""
+    return (not generic_utils.is_default(self.on_predict_batch_begin) or
+            not generic_utils.is_default(self.on_predict_batch_end))
 
 
 @keras_export('keras.callbacks.BaseLogger')
@@ -1105,8 +1155,8 @@ class ModelCheckpoint(Callback):
         self.model._training_state = None
 
   def on_batch_end(self, batch, logs=None):
-    logs = logs or {}
-    if isinstance(self.save_freq, int):
+    if self._implements_train_batch_hooks():
+      logs = logs or {}
       self._batches_seen_since_last_saving += 1
       if self._batches_seen_since_last_saving >= self.save_freq:
         self._save_model(epoch=self._current_epoch, logs=logs)
@@ -1306,6 +1356,10 @@ class ModelCheckpoint(Callback):
       # If there are more than one file having latest modified time, return
       # the file path with the largest file name.
       return file_path_with_largest_file_name
+
+  def _implements_train_batch_hooks(self):
+    # If save_freq="epoch", batch-level hooks don't need to be run.
+    return isinstance(self.save_freq, int)
 
 
 @keras_export('keras.callbacks.EarlyStopping')
@@ -1895,9 +1949,7 @@ class TensorBoard(Callback):
   def on_train_begin(self, logs=None):
     self._init_batch_steps()
     if self._start_batch == 1:
-      summary_ops_v2.trace_on(graph=True, profiler=False)
-      profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
-      self._is_tracing = True
+      self._enable_trace()
 
   def on_test_begin(self, logs=None):
     self._set_default_writer(self._validation_run_name)
@@ -1911,6 +1963,8 @@ class TensorBoard(Callback):
       batch: Integer, index of batch within the current epoch.
       logs: Dict. Metric results for this batch.
     """
+    # TODO(b/150629188): Make TensorBoard callback not use batch hooks
+    # by default.
     if self.update_freq == 'epoch' and self._start_batch is None:
       return
 
@@ -1921,14 +1975,14 @@ class TensorBoard(Callback):
       self._log_metrics(logs, prefix='batch_', step=train_batches)
 
     self._increment_step(self._train_run_name)
-
-    if context.executing_eagerly():
-      if self._is_tracing and math_ops.greater_equal(train_batches,
-                                                     self._stop_batch):
-        self._log_trace()
-      elif (not self._is_tracing and
-            math_ops.equal(train_batches, self._start_batch - 1)):
-        self._enable_trace()
+    if self._is_tracing:
+      control_flow_ops.cond(
+          math_ops.greater_equal(train_batches, self._stop_batch),
+          lambda: self._log_trace_return_true(), lambda: False)  # pylint: disable=unnecessary-lambda
+    else:
+      control_flow_ops.cond(
+          math_ops.equal(train_batches, self._start_batch - 1),
+          lambda: self._enable_trace_return_true(), lambda: False)  # pylint: disable=unnecessary-lambda
 
   def on_test_batch_end(self, batch, logs=None):
     if self.update_freq == 'epoch':
@@ -1965,21 +2019,48 @@ class TensorBoard(Callback):
           self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
 
   def _enable_trace(self):
+    """Starts to collect trace graph to TensorBoard.
+
+    Collects both trace and graph in eager mode, and trace only in graph mode.
+    """
     if context.executing_eagerly():
+      # Graph must be traced in eager mode.
       summary_ops_v2.trace_on(graph=True, profiler=False)
-      profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
-      self._is_tracing = True
+    profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
+    self._is_tracing = True
+
+  def _enable_trace_return_true(self):
+    """Starts to collect trace graph to TensorBoard and returns True.
+
+    Returns:
+      True.
+    """
+    self._enable_trace()
+    return True
 
   def _log_trace(self):
-    """Logs the trace graph to TensorBoard."""
+    """Logs the trace graph to TensorBoard.
+
+    Logs both trace and graph in eager mode, and trace only in graph mode.
+    """
+    profiler.stop()
     if context.executing_eagerly():
+      # Graph must be traced in eager mode.
       with self._get_writer(self._train_run_name).as_default(), \
           summary_ops_v2.always_record_summaries():
         # TODO(b/126388999): Remove step info in the summary name.
         step = K.get_value(self._total_batches_seen[self._train_run_name])
         summary_ops_v2.trace_export(name='batch_%d' % step, step=step)
-        profiler.stop()
-      self._is_tracing = False
+    self._is_tracing = False
+
+  def _log_trace_return_true(self):
+    """Logs the trace graph to TensorBoard and returns True.
+
+    Returns:
+      True.
+    """
+    self._log_trace()
+    return True
 
   def _log_metrics(self, logs, prefix, step):
     """Writes metrics out as custom scalar summaries.

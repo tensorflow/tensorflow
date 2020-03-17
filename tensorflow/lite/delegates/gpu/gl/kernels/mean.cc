@@ -47,8 +47,14 @@ class Mean : public NodeShader {
         {"input_data_0_w", input->tensor.shape.w}};
 
     std::string source = R"(
-      vec4 sum = vec4(0.0);
-      float size = float($input_data_0_w$ * $input_data_0_h$);
+      // Shaders may be compiled with a precision hint mediump, which means that
+      // GLSL compiler may drop the size of float data type from 32 to 16 bits.
+      // If "sum" and "size" variables are 16bit floats, their values range
+      // become not enough for providing a good results accuracy. That is why
+      // their precision is forced to be 32bit by using highp qualifier.
+
+      highp vec4 sum = vec4(0.0);
+      highp float size = float($input_data_0_w$ * $input_data_0_h$);
       for (int w = 0; w < $input_data_0_w$; w++) {
         for (int h = 0; h < $input_data_0_h$; h++) {
           sum += $input_data_0[w, h, gid.z]$;

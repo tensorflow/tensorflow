@@ -863,8 +863,7 @@ def _make_execution_function_without_cloning(model, mode):
       # PerReplicas as arguments.  On every replica inside this call, each
       # PerReplica object will return the value for that replica.  The outputs
       # are PerReplicas too.
-      outputs = strategy.experimental_run_v2(
-          per_replica_function, args=(x, y, sample_weights))
+      outputs = strategy.run(per_replica_function, args=(x, y, sample_weights))
       # Out of PerReplica outputs reduce or pick values to return.
       all_outputs = unwrap_outputs(
           strategy, outputs, with_loss_tensor=(mode != ModeKeys.PREDICT))

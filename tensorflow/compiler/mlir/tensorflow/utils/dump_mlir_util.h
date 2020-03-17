@@ -56,6 +56,14 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
 // cannot be determined and generates a warning message.
 std::string GetDumpDirFromEnvVar();
 
+// Dumps a raw string to a file and returns the file name used.
+//
+// This will create a file name via prefixing `name` with the value of the
+// TF_DUMP_GRAPH_PREFIX environment variable if `dirname` is empty and
+// suffixing `name` with ".mlir".
+std::string DumpRawStringToFile(llvm::StringRef name, llvm::StringRef content,
+                                llvm::StringRef dirname = "");
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DUMP_MLIR_UTIL_H_

@@ -427,7 +427,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
         str(error.exception))
 
   def testSizeNone(self):
-    self.skipTest('b/150489014')
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
           shape=[1, None, 16, 3], dtype=dtypes.float32)
@@ -893,17 +892,13 @@ class FromSessionTest(TestModels, parameterized.TestCase):
       ('NoRepresentativeData', False, False, True, False, False, False),
       # Post training quantization if both rep data and int8 included.
       ('UseSampleDataIncludeInt8', True, True, False, False, True, False),
-      # Error if no rep data and int8 included.
-      ('NoSampleDataIncludeInt8', False, True, False, True, False, False),
 
       # Quantize to Float16 even if rep data provided with mlir.
       ('UseRepresentativeDataMlir', True, False, True, False, False, True),
       # Quantize to Float16 if no rep data provided with mlir.
       ('NoRepresentativeDataMlir', False, False, True, False, False, True),
       # Post training quantization if both rep data and int8 included with mlir.
-      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True),
-      # Error if no rep data and int8 included with mlir.
-      ('NoSampleDataIncludeInt8Mlir', False, True, False, True, False, True))
+      ('SampleDataIncludeInt8Mlir', True, True, False, False, True, True))
   def testQuantizeFloat16(self, use_rep_data, include_int8,
                           is_float16_quantized, is_error,
                           is_post_training_quantized, enable_mlir):
@@ -974,7 +969,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.experimental_new_converter = enable_mlir
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.target_spec.supported_types = [lite.constants.FLOAT16]
-    # Specifiy only int8 builtin ops
+    # Specify only int8 builtin ops
     quantized_converter.target_spec.supported_ops = [
         lite.OpsSet.TFLITE_BUILTINS_INT8
     ]
@@ -1039,9 +1034,6 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     quantized_converter.target_spec.supported_types = [lite.constants.INT8]
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
-    # Ensure that restricting supported types to int8 forces
-    # all fixed point ops/tensors in converter.
-    self.assertTrue(quantized_converter._is_int8_target_required())
 
     # Ensure that the quantized weights tflite model is smaller.
     self.assertLess(len(quantized_tflite), len(float_tflite))
@@ -1082,7 +1074,7 @@ class FromSessionTest(TestModels, parameterized.TestCase):
     self.assertEqual(np.int8, output_details[0]['dtype'])
 
     # Ensure that the quantized weights tflite model is smaller.
-    self.assertTrue(len(quantized_tflite) < len(float_tflite))
+    self.assertLess(len(quantized_tflite), len(float_tflite))
 
   @parameterized.named_parameters(
       ('InferenceType_INT8', lite_constants.INT8),

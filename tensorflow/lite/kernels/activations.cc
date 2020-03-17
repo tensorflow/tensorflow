@@ -12,19 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cassert>
 #include <cmath>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
-#include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
@@ -76,9 +71,10 @@ struct LogSoftmaxOpData : public OpData {
 };
 
 struct LeakyReluOpData : public OpData {
-  uint8_t q_alpha;
-  int32_t output_multiplier = 0;
-  int output_shift = 0;
+  int32_t output_multiplier_alpha = 0;
+  int32_t output_shift_alpha = 0;
+  int32_t output_multiplier_identity = 0;
+  int32_t output_shift_identity = 0;
 };
 
 struct PreluOpData : public OpData {
@@ -363,20 +359,17 @@ TfLiteStatus LeakyReluPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   LeakyReluOpData* data = reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
-  if (output->type == kTfLiteUInt8) {
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
     const auto* params =
         reinterpret_cast<TfLiteLeakyReluParams*>(node->builtin_data);
-    // Quantize the alpha with same zero-point and scale as of input
-    data->q_alpha = static_cast<uint8_t>(std::max<float>(
-        std::numeric_limits<uint8_t>::min(),
-        std::min<float>(std::numeric_limits<uint8_t>::max(),
-                        std::round(input->params.zero_point +
-                                   (params->alpha / input->params.scale)))));
 
-    double real_multiplier =
-        input->params.scale * input->params.scale / output->params.scale;
-    QuantizeMultiplierSmallerThanOneExp(
-        real_multiplier, &data->output_multiplier, &data->output_shift);
+    double alpha_multiplier =
+        input->params.scale * params->alpha / output->params.scale;
+    QuantizeMultiplier(alpha_multiplier, &data->output_multiplier_alpha,
+                       &data->output_shift_alpha);
+    double identity_multiplier = input->params.scale / output->params.scale;
+    QuantizeMultiplier(identity_multiplier, &data->output_multiplier_identity,
+                       &data->output_shift_identity);
   }
   return context->ResizeTensor(context, output,
                                TfLiteIntArrayCopy(input->dims));
@@ -658,7 +651,7 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
                              input, output, data);
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 & int8/uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -686,10 +679,10 @@ TfLiteStatus Relu1Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int8 supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int8 supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -740,7 +733,7 @@ TfLiteStatus HardSwishEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -769,7 +762,7 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -840,10 +833,10 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int16 and int8 are supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int16 and int8 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
@@ -912,10 +905,10 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int16 and int8 are supported "
-                           "currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32, uint8, int16 and int8 are supported "
+                         "currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -936,7 +929,7 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
           CpuBackendContext::GetFromContext(context));
       return kTfLiteOk;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
           NumDimensions(input));
@@ -953,7 +946,7 @@ TfLiteStatus SoftmaxQuantized(TfLiteContext* context, const TfLiteTensor* input,
                            GetTensorData<T>(output));
     return kTfLiteOk;
   } else {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context, "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
         NumDimensions(input));
     return kTfLiteError;
@@ -981,7 +974,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8_t and Int8_t are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -1039,7 +1032,7 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     }
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Only float32, uint8 and int8 are supported currently, got %s.",
           TfLiteTypeGetName(input->type));
@@ -1080,30 +1073,12 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 and uint8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }
-
-namespace {
-template <typename T>
-void QLeakyRelu(const TfLiteTensor* input, TfLiteTensor* output, float alpha,
-                const LeakyReluOpData* data) {
-  LeakyReluParams op_params;
-  op_params.input_offset = input->params.zero_point;
-  op_params.alpha_offset = input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
-
-  op_params.output_multiplier = data->output_multiplier;
-  op_params.output_shift = data->output_shift;
-
-  reference_ops::QuantizeLeakyRelu(
-      op_params, data->q_alpha, GetTensorShape(input), GetTensorData<T>(input),
-      GetTensorShape(output), GetTensorData<T>(output));
-}
-}  // namespace
 
 TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
@@ -1114,21 +1089,42 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<LeakyReluOpData*>(node->user_data);
 
   LeakyReluParams op_params;
-  op_params.alpha = params->alpha;
   switch (input->type) {
     case kTfLiteFloat32: {
+      op_params.alpha = params->alpha;
       optimized_ops::LeakyRelu(
           op_params, GetTensorShape(input), GetTensorData<float>(input),
           GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     case kTfLiteUInt8: {
-      QLeakyRelu<uint8_t>(input, output, params->alpha, data);
+      op_params.input_offset = input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
+      op_params.output_shift_alpha = data->output_shift_alpha;
+      op_params.output_multiplier_identity = data->output_multiplier_identity;
+      op_params.output_shift_identity = data->output_shift_identity;
+      reference_ops::QuantizeLeakyRelu(
+          op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+          GetTensorShape(output), GetTensorData<uint8_t>(output));
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      op_params.input_offset = input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.output_multiplier_alpha = data->output_multiplier_alpha;
+      op_params.output_shift_alpha = data->output_shift_alpha;
+      op_params.output_multiplier_identity = data->output_multiplier_identity;
+      op_params.output_shift_identity = data->output_shift_identity;
+      reference_ops::QuantizeLeakyRelu(
+          op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+          GetTensorShape(output), GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
-          context, "Only float32 and uint8 is supported currently, got %s.",
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Only float32, int8 and uint8 is supported currently, got %s.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
@@ -1144,9 +1140,9 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(context,
-                           "Only float32 is supported currently, got %s.",
-                           TfLiteTypeGetName(input->type));
+      TF_LITE_KERNEL_LOG(context,
+                         "Only float32 is supported currently, got %s.",
+                         TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 }

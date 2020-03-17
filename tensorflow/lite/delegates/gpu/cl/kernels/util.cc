@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 
+#include <cfloat>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -719,6 +720,80 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
     }
   }
   return {1, 1, 1};
+}
+
+int GetRecommendedBlockSizeForConv(const CLDevice& device,
+                                   CalculationsPrecision precision,
+                                   int task_size) {
+  const float task_size_per_cu =
+      task_size / static_cast<float>(device.GetInfo().compute_units_count);
+  int block_size = 1;
+  float threshold_1 = FLT_MAX;
+  float threshold_2 = FLT_MAX;
+  float threshold_4 = FLT_MAX;
+  if (!device.IsMali()) {
+    return 1;
+  }
+  MaliInfo mali_info = device.GetInfo().mali_info;
+  switch (precision) {
+    case CalculationsPrecision::F16:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 4.0f;
+        threshold_4 = 256.0f * 8.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 256.0f * 2.0f;
+        threshold_2 = 256.0f * 8.0f;
+        threshold_4 = 256.0f * 16.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 6.0f;
+        threshold_4 = 256.0f * 16.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 4.0f;
+        threshold_2 = 256.0f * 16.0f;
+      }
+      break;
+    case CalculationsPrecision::F32_F16:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 3.0f;
+        threshold_4 = 256.0f * 32.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 256.0f * 2.0f;
+        threshold_2 = 256.0f * 8.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 8.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 4.0f;
+      }
+      break;
+    case CalculationsPrecision::F32:
+      if (mali_info.IsBifrostGen1()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 4.0f;
+      } else if (mali_info.IsBifrostGen2()) {
+        threshold_1 = 128.0f;
+        threshold_2 = 256.0f * 4.0f;
+      } else if (mali_info.IsBifrostGen3() || mali_info.IsValhall()) {
+        threshold_1 = 256.0f;
+        threshold_2 = 256.0f * 12.0f;
+      } else if (mali_info.IsMidgard()) {
+        threshold_1 = 256.0f * 16.0f;
+      }
+      break;
+  }
+  if (task_size_per_cu <= threshold_1) {
+    block_size = 1;
+  } else if (task_size_per_cu <= threshold_2) {
+    block_size = 2;
+  } else if (task_size_per_cu <= threshold_4) {
+    block_size = 4;
+  } else {
+    block_size = 8;
+  }
+  return block_size;
 }
 
 }  // namespace cl

@@ -39,6 +39,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_chromiumos",
     "if_not_android",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",  # @unused
@@ -55,11 +56,12 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
+
+# Authorized users go here.
+package_group(name = "friends")
 
 exports_files(
     [
@@ -347,7 +349,9 @@ filegroup(
         "platform.h",
         "tstring.h",
         "types.h",
-    ],
+    ] + if_windows([
+        "//tensorflow/core/platform/windows:xla_cpu_runtime_srcs",
+    ]),
 )
 
 cc_library(
@@ -595,6 +599,7 @@ cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -939,8 +944,6 @@ tf_cc_tests(
         "port_test.cc",
         "profile_utils/cpu_utils_test.cc",
         "scanner_test.cc",
-        "stacktrace_handler_test.cc",
-        "stacktrace_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
         "stringpiece_test.cc",
@@ -966,6 +969,37 @@ tf_cc_tests(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
         "@zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "stacktrace_test",
+    size = "small",
+    srcs = [
+        "stacktrace_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_tests(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = [
+        "stacktrace_handler_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":stacktrace_handler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -1231,6 +1265,7 @@ filegroup(
         "abi.h",
         "casts.h",
         "context.h",
+        "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
         "dynamic_annotations.h",

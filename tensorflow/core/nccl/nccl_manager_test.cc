@@ -60,7 +60,7 @@ class NcclManagerTest : public ::testing::Test {
 
     mutex mu;
     Status final_status;
-    int num_completed GUARDED_BY(mu) = 0;
+    int num_completed TF_GUARDED_BY(mu) = 0;
     condition_variable done_cv;
   };
 

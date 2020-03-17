@@ -564,6 +564,7 @@ py_library(
 tpu_py_test(
     name = "tpu_strategy_test",
     srcs = ["tpu_strategy_test.py"],
+    disable_experimental = True,
     python_version = "PY3",
     deps = [
         ":tpu_strategy",
@@ -791,7 +792,9 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -839,6 +842,8 @@ cuda_py_test(
     srcs = ["cross_device_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/151025792): enable after this is fixed.
+        "notap",  # TODO(b/151025792): enable after this is fixed.
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -932,6 +937,9 @@ distribute_py_test(
     main = "values_test.py",
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
     ],
     deps = [
         ":mirrored_strategy",

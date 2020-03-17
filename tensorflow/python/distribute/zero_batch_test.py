@@ -134,8 +134,7 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
           optimizer.apply_gradients(zip(grads, bn.variables))
           return loss
 
-        return distribution.experimental_run_v2(
-            step_fn, args=(inputs, targets))
+        return distribution.run(step_fn, args=(inputs, targets))
 
       for _ in range(100):
         np_output = train_step().numpy()
@@ -153,8 +152,7 @@ class NormalizationTest(test.TestCase, parameterized.TestCase):
           outputs = bn.apply(inputs, training=False)
           return outputs
 
-        return distribution.experimental_run_v2(
-            step_fn, args=(inputs,))
+        return distribution.run(step_fn, args=(inputs,))
 
       # Test inference.
       self.assertAllEqual(np.zeros(shape=(0, 4, 4, 3), dtype=np.float32),

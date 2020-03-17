@@ -25,6 +25,9 @@ READ_ONLY_RESOURCE_INPUTS_ATTR = "_read_only_resource_inputs"
 RESOURCE_READ_OPS = set()
 
 
+COLLECTIVE_MANAGER_IDS = "_collective_manager_ids"
+
+
 def register_read_only_resource_op(op_type):
   """Declares that `op_type` does not update its touched resource."""
   RESOURCE_READ_OPS.add(op_type)

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
+namespace {
+
+// Get the number of dimensions of a tensor with idx of an operator op.
+inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
+  return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
+}
+}  // namespace
 
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
@@ -296,11 +304,19 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+      if (op_sig.options.space_batch.num_dims != 4) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+      return 1;
+
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
-    case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SUB:
-    case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_MAXIMUM:
@@ -309,6 +325,7 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_SPACE_TO_DEPTH:
+    case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:
@@ -436,8 +453,12 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
     } break;
     // TODO(b/150176627): Add tests for GetOpSignature.
     case BuiltinOperator_STRIDED_SLICE: {
-      op_sig.options.strided_slice.num_dims =
-          subgraph->tensors()->Get(op->inputs()->Get(0))->shape()->size();
+      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
+    } break;
+
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND: {
+      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     default:

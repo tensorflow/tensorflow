@@ -129,6 +129,9 @@ class Conv(Layer):
     self.filters = filters
     self.kernel_size = conv_utils.normalize_tuple(
         kernel_size, rank, 'kernel_size')
+    if not all(self.kernel_size):
+      raise ValueError('The argument `kernel_size` cannot contain 0(s). '
+                       'Received: %s' % (kernel_size,))
     self.strides = conv_utils.normalize_tuple(strides, rank, 'strides')
     self.padding = conv_utils.normalize_padding(padding)
     if (self.padding == 'causal' and not isinstance(self,

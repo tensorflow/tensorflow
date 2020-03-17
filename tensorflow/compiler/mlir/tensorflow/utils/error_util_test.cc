@@ -58,7 +58,8 @@ TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
       emitError(loc) << "Second diagnostic message reported";
       return tensorflow::errors::Internal("Passed in error");
     };
-    Status s = StatusScopedDiagnosticHandler(&context).Combine(function());
+    StatusScopedDiagnosticHandler ssdh(&context);
+    Status s = ssdh.Combine(function());
     ASSERT_TRUE(tensorflow::errors::IsInternal(s));
     EXPECT_THAT(s.error_message(), HasSubstr("Passed in error"));
     EXPECT_THAT(s.error_message(), HasSubstr("Diagnostic message reported"));

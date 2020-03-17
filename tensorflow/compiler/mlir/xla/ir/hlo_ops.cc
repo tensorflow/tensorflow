@@ -30,6 +30,7 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
@@ -437,8 +438,8 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                       operandRank));
   }
 
-  auto dimensions = *op.broadcast_dimensions();
-  auto dimensionsType = op.broadcast_dimensions()->getType();
+  auto dimensions = op.broadcast_dimensions();
+  auto dimensionsType = op.broadcast_dimensions().getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
     return op.emitOpError(llvm::formatv(
@@ -879,6 +880,12 @@ static LogicalResult Verify(RecvOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CopyOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -968,6 +975,47 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
 static LogicalResult Verify(SelectOp op) {
   // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
   // corresponds to the client side HLO.
+  return success();
+}
+
+// Makes it such that a SelectOp that is a non-root operation in a DRR infers
+// the return type based on operand type.
+LogicalResult SelectOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto x_type = operands[1].getType();
+  auto y_type = operands[2].getType();
+  auto x_tensor = x_type.cast<TensorType>();
+  auto y_tensor = y_type.cast<TensorType>();
+
+  // Check for type compatibility in the select op. This requires that the two
+  // non-predicate operands:
+  //   (a) have the same element type
+  //   (b) have compatible shapes (i.e. the same shape and/or at least one
+  //       dynamic shape)
+  if (x_tensor.getElementType() != y_tensor.getElementType() ||
+      failed(mlir::verifyCompatibleShape(x_type, y_type))) {
+    return emitOptionalError(location, "incompatible operand types: ", x_type,
+                             " and ", y_type);
+  }
+
+  // TODO(lucyfox): Support output shape inference when operands have compatible
+  // shapes. (The output shape should be the most general of the operand shapes
+  // at each dimension.) For now, handle the straightforward cases and fail
+  // otherwise. When this is fully implemented, this logic should move into
+  // reusable functionality in MLIR Core.
+  Type output_type;
+  if (x_type == y_type || !x_tensor.hasRank()) {
+    output_type = x_type;
+  } else if (!y_tensor.hasRank()) {
+    output_type = y_type;
+  } else {
+    return emitOptionalError(location,
+                             "currently unsupported operand types: ", x_type,
+                             " and ", y_type);
+  }
+  inferredReturnTypes.assign({output_type});
   return success();
 }
 
@@ -1486,6 +1534,41 @@ void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
     return;
   }
   os << "<unknown xla_hlo type>";
+}
+
+//===----------------------------------------------------------------------===//
+// Shape inference
+//===----------------------------------------------------------------------===//
+
+LogicalResult deriveShapeFromFirstOperand(
+    OpBuilder* builder, Operation* op,
+    SmallVectorImpl<Value>* reifiedReturnShapes) {
+  Value operand = op->getOperand(0);
+  ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
+  if (!operand_type) {
+    op->emitOpError() << "first operand is not a shaped type";
+    return failure();
+  }
+  auto loc = op->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  auto shape_scalar_type = builder->getIntegerType(64);
+  for (auto element : llvm::enumerate(operand_type.getShape())) {
+    if (element.value() == ShapedType::kDynamicSize) {
+      Value dim = builder->create<DimOp>(loc, operand, element.index());
+      shape_values.push_back(
+          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+    } else {
+      shape_values.push_back(builder->create<ConstantOp>(
+          loc, builder->getI64IntegerAttr(element.value())));
+    }
+  }
+  *reifiedReturnShapes =
+      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
+          loc,
+          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
+          shape_values)};
+  return success();
 }
 
 }  // namespace xla_hlo

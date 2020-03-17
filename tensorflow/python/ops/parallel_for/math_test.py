@@ -50,7 +50,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
           x = math_ops.complex(x, y)
 
       # pylint: disable=cell-var-from-loop
-      output_dtypes = []
 
       def loop_fn(i):
         with g:
@@ -65,8 +64,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
           grad = g.gradient(loss, x1)
           if grad is not None:
             outputs.append(grad)
-        del output_dtypes[:]
-        output_dtypes.extend(t.dtype for t in outputs)
         return outputs
 
       # pylint: enable=cell-var-from-loop
@@ -373,6 +370,24 @@ class MathTest(PForTestCase, parameterized.TestCase):
           # pylint: enable=cell-var-from-loop
 
           self._test_loop_fn(loop_fn, 2)
+
+  def test_bucketize(self):
+    x = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      a = array_ops.gather(x, i)
+      return math_ops.bucketize(a, [-1, 0.5, 1])
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_clip_by_value(self):
+    x = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      a = array_ops.gather(x, i)
+      return clip_ops.clip_by_value(a, 0.5, 1.0)
+
+    self._test_loop_fn(loop_fn, 2)
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])

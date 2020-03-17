@@ -57,7 +57,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const string& ptxas_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_set<string>* seen_ptxas_paths GUARDED_BY(mu) =
+  static std::unordered_set<string>* seen_ptxas_paths TF_GUARDED_BY(mu) =
       new std::unordered_set<string>();
 
   tensorflow::mutex_lock lock(mu);
@@ -127,7 +127,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
   static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
-  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+  static auto& ptx_cache TF_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
 
   tensorflow::mutex_lock lock(ptx_cache_mutex);
@@ -212,6 +212,8 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   if (options.disable_gpuasm_optimizations) {
     ptxas_args.push_back("-O0");
   }
+  ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
+                    options.extra_flags.end());
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);

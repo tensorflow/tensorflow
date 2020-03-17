@@ -28,7 +28,6 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "no_oss_py38",
         "no_pip",
         "no_rocm",
         "no_windows",  # Bugs due to some paths.
@@ -41,23 +40,6 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "@six_archive//:six",
-    ],
-)
-
-py_test(
-    name = "deprecation_test",
-    srcs = ["deprecation_test.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_windows",  # Failing due to missing API symbols.
-        "v1only",
-    ],
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:client_testlib",
-        "//third_party/py/numpy",
         "@six_archive//:six",
     ],
 )

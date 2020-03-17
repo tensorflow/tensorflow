@@ -939,6 +939,8 @@ xla_test(
     tags = [
         "no_rocm",
         "optonly",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -1096,6 +1098,10 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
+    backend_tags = {
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "interpreter": ["nozapfhahn"],
+    },
     shard_count = 40,
     tags = [
         "no_rocm",
@@ -1134,7 +1140,11 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
+    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -1489,6 +1499,10 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    backend_tags = {
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "interpreter": ["nozapfhahn"],
+    },
     tags = [
         "no_rocm",
         "optonly",

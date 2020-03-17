@@ -1672,6 +1672,22 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(result, tf_result)
 
+  def testZeroSequenceSize(self):
+    dtype = dtypes.int32
+    for side in ("left", "right"):
+      self.assertAllEqual(
+          array_ops.searchsorted(array_ops.ones([2, 0]), array_ops.ones([2, 3]),
+                                 side=side, out_type=dtype),
+          array_ops.zeros([2, 3], dtype))
+
+  def testZeroValueSize(self):
+    dtype = dtypes.int32
+    for side in ("left", "right"):
+      self.assertAllEqual(
+          array_ops.searchsorted(array_ops.ones([2, 3]), array_ops.ones([2, 0]),
+                                 side=side, out_type=dtype),
+          array_ops.zeros([2, 0], dtype))
+
 
 class BatchGatherNdTest(test_util.TensorFlowTestCase):
 

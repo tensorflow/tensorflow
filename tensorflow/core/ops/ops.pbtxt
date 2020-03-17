@@ -4257,6 +4257,25 @@ op {
   }
 }
 op {
+  name: "BeginEpoch"
+  input_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "epoch_id"
+    type: DT_INT64
+  }
+}
+op {
   name: "BesselI0e"
   input_arg {
     name: "x"
@@ -10436,6 +10455,38 @@ op {
   }
 }
 op {
+  name: "DataServiceDataset"
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "max_outstanding_requests"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "DatasetCardinality"
   input_arg {
     name: "input_dataset"
@@ -11603,6 +11654,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -11673,6 +11733,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -11743,6 +11812,15 @@ op {
       list {
         s: "SAME"
         s: "VALID"
+        s: "EXPLICIT"
+      }
+    }
+  }
+  attr {
+    name: "explicit_paddings"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -18118,6 +18196,13 @@ op {
     name: "interpolation"
     type: "string"
   }
+  attr {
+    name: "fill_mode"
+    type: "string"
+    default_value {
+      s: "CONSTANT"
+    }
+  }
 }
 op {
   name: "ImageSummary"
@@ -21274,6 +21359,22 @@ op {
       }
     }
   }
+}
+op {
+  name: "MakeDataServiceIterator"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "epoch_id"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  is_stateful: true
 }
 op {
   name: "MakeIterator"
@@ -34572,6 +34673,29 @@ op {
   }
 }
 op {
+  name: "RegisterDataset"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "address"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "protocol"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "dataset_id"
+    type: DT_INT64
+  }
+  attr {
+    name: "external_state_policy"
+    type: "int"
+  }
+}
+op {
   name: "Relu"
   input_arg {
     name: "features"
@@ -35055,6 +35179,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_BFLOAT16
       }
     }
   }
@@ -35094,6 +35219,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_BFLOAT16
       }
     }
   }
@@ -35180,6 +35306,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_BFLOAT16
       }
     }
   }
@@ -35267,6 +35394,7 @@ op {
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_BFLOAT16
       }
     }
   }
@@ -48114,6 +48242,7 @@ op {
         type: DT_INT64
         type: DT_COMPLEX64
         type: DT_COMPLEX128
+        type: DT_UINT32
       }
     }
   }
@@ -52379,6 +52508,14 @@ op {
   attr {
     name: "shape"
     type: "shape"
+  }
+  attr {
+    name: "allowed_devices"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
   }
   is_stateful: true
 }

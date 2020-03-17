@@ -533,8 +533,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     kDone,
   };
 
-  void MarkDoneAndCompleteExchanges(Status status) EXCLUSIVE_LOCKS_REQUIRED(mu_)
-      UNLOCK_FUNCTION(mu_) {
+  void MarkDoneAndCompleteExchanges(Status status)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_UNLOCK_FUNCTION(mu_) {
     call_state_ = State::kDone;
     VLOG(2) << "Ending gRPC streaming call on the client side due to "
             << status.ToString();
@@ -548,7 +548,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     queue.CompleteAll(status);
   }
 
-  void MaybeIssueRequestWriteLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void MaybeIssueRequestWriteLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Exchange* exchange = exchanges_.GetReadyForRequestWriting();
     if (exchange == nullptr) {
       // There are no queued exchanges, there is already an outstanding write,
@@ -561,7 +561,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     call_->Write(exchange->request_buf(), &request_write_completed_tag_);
   }
 
-  void MaybeIssueResponseReadLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void MaybeIssueResponseReadLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Exchange* exchange = exchanges_.GetReadyForResponseReading();
     if (exchange == nullptr) {
       return;
@@ -572,7 +572,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     call_->Read(exchange->response_buf(), &response_read_completed_tag_);
   }
 
-  void IssueCallFinishLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void IssueCallFinishLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     call_state_ = State::kFinishing;
     Ref();
     VLOG(3) << "StreamingRPCState(" << this << ") calling grpc::Finish";
@@ -593,9 +593,9 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   std::unique_ptr<grpc::GenericClientAsyncReaderWriter> call_;
 
   mutable mutex mu_;
-  ExchangeQueue exchanges_ GUARDED_BY(mu_);
-  State call_state_ GUARDED_BY(mu_);
-  ::grpc::Status call_status_ GUARDED_BY(mu_);
+  ExchangeQueue exchanges_ TF_GUARDED_BY(mu_);
+  State call_state_ TF_GUARDED_BY(mu_);
+  ::grpc::Status call_status_ TF_GUARDED_BY(mu_);
 
   // We can get away with having single instances of these tags per
   // StreamingRPCState because we make sure (as gRPC requires) that
@@ -669,7 +669,7 @@ class StreamingRPCDispatcher {
   }
 
  private:
-  void CreateStreamingState() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void CreateStreamingState() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // ClientContext cannot be reused across calls.
     context_ = std::make_shared<::grpc::ClientContext>();
     // Don't immediately fail StartCall if the channel is not ready. Wait for
@@ -691,8 +691,8 @@ class StreamingRPCDispatcher {
   // Does not need synchronization since it is constant.
   const ::grpc::string method_;
 
-  std::shared_ptr<::grpc::ClientContext> context_ GUARDED_BY(mu_);
-  core::RefCountPtr<StreamingRPCState<Response>> state_ GUARDED_BY(mu_);
+  std::shared_ptr<::grpc::ClientContext> context_ TF_GUARDED_BY(mu_);
+  core::RefCountPtr<StreamingRPCState<Response>> state_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

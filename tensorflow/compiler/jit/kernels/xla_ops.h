@@ -165,7 +165,8 @@ class XlaCompileOp : public OpKernel {
   // error when compiling the cluster this _XlaCompile is supposed to compile.
   // If `cannot_compile_cluster_` is true then we avoid compiling this cluster
   // on any future calls to _XlaCompile.
-  bool cannot_compile_cluster_ GUARDED_BY(cannot_compile_cluster_mu_) = false;
+  bool cannot_compile_cluster_ TF_GUARDED_BY(cannot_compile_cluster_mu_) =
+      false;
 
   mutex cannot_compile_cluster_mu_;
 };

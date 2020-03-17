@@ -49,7 +49,7 @@ int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale);
 // uint8 |     X    |    X    |            |
 // int32 |          |    X    |     X      |
 //
-// The per-op quantizaiton spec can be found here:
+// The per-op quantization spec can be found here:
 // https://www.tensorflow.org/lite/performance/quantization_spec
 
 void AsymmetricQuantize(const float* input, int8_t* output, int num_elements,

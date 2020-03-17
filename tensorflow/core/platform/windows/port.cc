@@ -112,7 +112,7 @@ void* Malloc(size_t size) { return malloc(size); }
 
 void* Realloc(void* ptr, size_t size) { return realloc(ptr, size); }
 
-void Free(void* ptr) { return free(ptr); }
+void Free(void* ptr) { free(ptr); }
 
 void* NUMAMalloc(int node, size_t size, int minimum_alignment) {
   return AlignedMalloc(size, minimum_alignment);

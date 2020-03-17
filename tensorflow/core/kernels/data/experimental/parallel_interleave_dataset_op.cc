@@ -107,8 +107,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         output_types_(output_types),
         output_shapes_(output_shapes),
         traceme_metadata_(
-            {{"block_length", strings::Printf("%lld", block_length)},
-             {"cycle_length", strings::Printf("%lld", cycle_length)},
+            {{"block_length",
+              strings::Printf("%lld", static_cast<long long>(block_length))},
+             {"cycle_length",
+              strings::Printf("%lld", static_cast<long long>(cycle_length))},
              {"deterministic",
               deterministic.IsDeterministic() || deterministic.IsDefault()
                   ? "true"
@@ -395,6 +397,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status SaveInternal(IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
       // The order of locking is important here to avoid deadlock.
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
@@ -627,7 +630,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       WorkerThreadState() : output_elem(Status::OK()) {}
     };
 
-    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(mu_);
       cancelled_ = true;
       for (auto& worker : workers_) {
@@ -636,7 +639,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status EnsureWorkerThreadsStarted(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       if (worker_threads_.empty() && input_impl_) {
         worker_threads_.reserve(dataset()->num_threads());
         for (int64 i = 0; i < dataset()->num_threads(); ++i) {
@@ -872,7 +875,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status WriteWorkerStateLocked(IteratorStateWriter* writer, int index)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string iterator_name =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
       TF_RETURN_IF_ERROR(writer->WriteScalar(iterator_name, kInputSize,
@@ -898,7 +901,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     Status ReadWorkerStateLocked(IteratorStateReader* reader, int index,
                                  IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string worker_prefix =
           strings::StrCat(prefix(), "::", kWorker, "_", index);
       // Restore inputs.
@@ -930,7 +933,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     Status WriteWorkerThreadStateLocked(IteratorStateWriter* writer, int index)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string iterator_name =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       if (worker_thread_states_[index].iterator != nullptr) {
@@ -1005,7 +1008,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                  const OutputElem& output_elem,
                                  const string& iterator_name,
                                  const string& prefix)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(WriteStatusLocked(
           writer, iterator_name, strings::StrCat(prefix, "_", kStatus),
           output_elem.status));
@@ -1044,7 +1047,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     Status WriteStatusLocked(IteratorStateWriter* writer,
                              const string& iterator_name, const string& prefix,
                              const Status& status)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           iterator_name, strings::StrCat(prefix, "_", kCode),
           static_cast<int64>(status.code())));
@@ -1078,7 +1081,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Mutex & condition variable to guard mutable iterator internals and
     // coordinate among worker threads and client thread[s].
-    mutex mu_ ACQUIRED_BEFORE(ckpt_mu_);
+    mutex mu_ TF_ACQUIRED_BEFORE(ckpt_mu_);
     // The main thread waits on this condition variable if running in
     // nondeterministic mode and no values are available.
     condition_variable any_element_available_cond_var_;
@@ -1095,33 +1098,34 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // The iterator producing elements which are converted to datasets by
     // the dataset()->captured_func_ then interleaved together.
     // input_impl_ is reset when we have exhausted its input.
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
 
     // The WorkerState structs the worker threads operate on.
     // workers_ elements are in at most one of interleave_ and staging_.
-    std::vector<WorkerState> workers_ GUARDED_BY(mu_);
+    std::vector<WorkerState> workers_ TF_GUARDED_BY(mu_);
 
     // Stores the temporary state of WorkerThreads which is not stored in
     // WorkerState. This is used for checkpointing purposes only.
-    std::vector<WorkerThreadState> worker_thread_states_ GUARDED_BY(ckpt_mu_);
+    std::vector<WorkerThreadState> worker_thread_states_
+        TF_GUARDED_BY(ckpt_mu_);
 
     // Indices in `workers_` of iterators to interleave.
-    std::vector<int64> interleave_indices_ GUARDED_BY(mu_);
+    std::vector<int64> interleave_indices_ TF_GUARDED_BY(mu_);
     // Indices in `workers_` of prefetched iterators.
-    std::deque<int64> staging_indices_ GUARDED_BY(mu_);
+    std::deque<int64> staging_indices_ TF_GUARDED_BY(mu_);
 
     // The index into output_elements_ for next element to produce.
-    size_t next_index_ GUARDED_BY(mu_) = 0;
+    size_t next_index_ TF_GUARDED_BY(mu_) = 0;
     // The number of items produced so far within the block
-    size_t block_count_ GUARDED_BY(mu_) = 0;
+    size_t block_count_ TF_GUARDED_BY(mu_) = 0;
     // Flag to instruct the worker threads to exit.
-    bool cancelled_ GUARDED_BY(mu_) = false;
+    bool cancelled_ TF_GUARDED_BY(mu_) = false;
     // The worker threads. This must be last to ensure the
     // threads have exited before any other members are deallocated.
     // TODO(b/65178177): Avoid allocating additional threads.
-    std::vector<std::unique_ptr<Thread>> worker_threads_ GUARDED_BY(mu_);
+    std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
   };
 
   const DatasetBase* const input_;
@@ -1141,10 +1145,8 @@ ParallelInterleaveDatasetOp::ParallelInterleaveDatasetOp(
     OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx),
       op_version_(ctx->HasAttr(kDeterministic) ? 2 : 1) {
-  FunctionMetadata::Params params;
-  params.is_multi_device_function = true;
-  OP_REQUIRES_OK(ctx,
-                 FunctionMetadata::Create(ctx, kFunc, params, &func_metadata_));
+  OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kFunc, /*params=*/{},
+                                               &func_metadata_));
   if (op_version_ == 2) {
     std::string deterministic;
     OP_REQUIRES_OK(ctx, ctx->GetAttr(kDeterministic, &deterministic));

@@ -395,11 +395,12 @@ Status DebugIO::PublishDebugMetadata(
     } else if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
       const string core_metadata_path = AppendTimestampToFilePath(
-          io::JoinPath(
-              dump_root_dir,
-              strings::StrCat(DebugNodeKey::kMetadataFilePrefix,
-                              DebugIO::kCoreMetadataTag, "sessionrun",
-                              strings::Printf("%.14lld", session_run_index))),
+          io::JoinPath(dump_root_dir,
+                       strings::StrCat(
+                           DebugNodeKey::kMetadataFilePrefix,
+                           DebugIO::kCoreMetadataTag, "sessionrun",
+                           strings::Printf("%.14lld", static_cast<long long>(
+                                                          session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
           event, string(io::Dirname(core_metadata_path)),

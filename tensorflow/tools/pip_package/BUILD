@@ -33,6 +33,9 @@ transitive_hdrs(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/cc/saved_model:loader",
+        "//tensorflow/cc/saved_model:reader",
+        "//tensorflow/cc/saved_model:bundle_v2",
         # WARNING: None of the C/C++ code under python/ has any API guarantees, and TF team
         # reserves the right to change APIs and other header-level interfaces.  If your custom
         # op uses these headers, it may break when users upgrade their version of tensorflow.
@@ -71,6 +74,11 @@ filegroup_as_file(
     dep = "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
 )
 
+filegroup(
+    name = "xla_cmake",
+    srcs = ["xla_build/CMakeLists.txt"],
+)
+
 # Add dynamic kernel dso files here.
 DYNAMIC_LOADED_KERNELS = [
     "//tensorflow/core/kernels:libtfkernel_sobol_op.so",
@@ -82,7 +90,8 @@ COMMON_PIP_DEPS = [
     "README",
     "setup.py",
     ":included_headers",
-    ":xla_compiled_cpu_runtime_srcs.txt",
+    ":xla_compiled_cpu_runtime_srcs.txt_file",
+    ":xla_cmake",
     "//tensorflow:tensorflow_py",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_hdrs",
     "//tensorflow/compiler/tf2xla:xla_compiled_cpu_runtime_srcs",
@@ -113,6 +122,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/distribute:combinations",
     "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
@@ -124,6 +134,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
+    "//tensorflow/python/profiler:traceme",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",

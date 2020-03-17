@@ -357,7 +357,7 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
 
  private:
   Status FillBuffer(uint64 start) const
-      EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(buffer_mutex_) {
     buffer_start_ = start;
     buffer_.resize(buffer_size_);
     StringPiece str_piece;
@@ -381,9 +381,9 @@ class BufferedGcsRandomAccessFile : public RandomAccessFile {
   mutable mutex buffer_mutex_;
 
   // Offset of buffer from start of the file.
-  mutable uint64 buffer_start_ GUARDED_BY(buffer_mutex_);
+  mutable uint64 buffer_start_ TF_GUARDED_BY(buffer_mutex_);
 
-  mutable string buffer_ GUARDED_BY(buffer_mutex_);
+  mutable string buffer_ TF_GUARDED_BY(buffer_mutex_);
 };
 
 /// \brief GCS-based implementation of a writeable file.

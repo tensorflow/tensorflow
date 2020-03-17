@@ -1,0 +1,26 @@
+feed {
+  id { node_name: "input0" }
+  shape {
+    dim { size: 2 }
+    dim { size: 4 }
+  }
+}
+feed {
+  id { node_name: "input1" }
+  shape {
+    dim { size: 2 }
+    dim { size: 4 }
+  }
+}
+
+fetch {
+  id { node_name: "Add/FakeQuantWithMinMaxVars" }
+  shape {
+    dim { size: 2 }
+    dim { size: 4 }
+  }
+}
+
+conversion_options {
+  custom_fake_quant_op_calls: true
+}

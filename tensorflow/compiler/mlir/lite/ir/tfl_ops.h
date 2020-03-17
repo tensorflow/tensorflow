@@ -25,9 +25,11 @@ limitations under the License.
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // TF:llvm-project
+#include "mlir/Interfaces/LoopLikeInterface.h"  // TF:llvm-project
+#include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/LoopLikeInterface.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -38,6 +40,8 @@ namespace TFL {
 class TensorFlowLiteDialect : public Dialect {
  public:
   explicit TensorFlowLiteDialect(MLIRContext *context);
+
+  static StringRef getDialectNamespace() { return "tfl"; }
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.

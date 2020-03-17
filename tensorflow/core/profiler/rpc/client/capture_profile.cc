@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 
-#include <cstdio>
-#include <ctime>
 #include <vector>
 
 #include "grpcpp/grpcpp.h"
@@ -36,14 +34,6 @@ namespace profiler {
 namespace {
 
 constexpr uint64 kMaxEvents = 1000000;
-
-string GetCurrentTimeStampAsString() {
-  char s[128];
-  std::time_t t = std::time(nullptr);
-  auto result = std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t));
-  DCHECK_NE(result, 0);
-  return s;
-}
 
 ProfileRequest PopulateProfileRequest(int duration_ms,
                                       const string& repository_root,
@@ -107,8 +97,8 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.empty_trace()) {
-    TF_CHECK_OK(SaveTensorboardProfile(logdir, session_id, request.host_name(),
-                                       response, &std::cout));
+    TF_RETURN_IF_ERROR(SaveTensorboardProfile(
+        logdir, session_id, request.host_name(), response, &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms.\n"

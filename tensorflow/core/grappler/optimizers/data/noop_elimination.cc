@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
+#include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -30,6 +31,8 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 namespace {
+
+constexpr char kIdentity[] = "Identity";
 
 bool IsTakeAll(const NodeDef& take_node, const MutableGraphView& graph) {
   if (take_node.op() != "TakeDataset") return false;
@@ -64,9 +67,71 @@ bool IsPrefetchZero(const NodeDef& prefetch_node,
   return IsConstNodeWithValue(*graph.GetNode(prefetch_node.input(1)), 0);
 }
 
+bool IsOutputIdentityOfInput(const FunctionDef& fdef, const string& output_arg,
+                             const string& input_arg) {
+  if (!fdef.ret().contains(output_arg)) {
+    LOG(WARNING)
+        << "Malformed FunctionDef: ret dict does not contain output arg key.";
+    return false;
+  }
+
+  const auto& ret_val = fdef.ret().at(output_arg);
+  auto input = function_utils::FunctionDefTensorDesc(ret_val);
+
+  // Walk from output to input. If any node along the path is not an
+  // Identity node, return false.
+  while (function_utils::ContainsFunctionNodeWithName(input.node_name, fdef)) {
+    int idx = function_utils::FindFunctionNodeWithName(input.node_name, fdef);
+
+    const NodeDef& node = fdef.node_def(idx);
+    if (node.op() != kIdentity) {
+      return false;
+    }
+
+    input = function_utils::FunctionDefTensorDesc(node.input(0));
+  }
+
+  // If we get here, input is not a node. Check that it matches the correct
+  // input arg name.
+  return input.node_name == input_arg;
+}
+
+bool IsMapIdentity(const NodeDef& map_node, const MutableGraphView& graph) {
+  if (map_node.op() != "MapDataset" && map_node.op() != "ParallelMapDataset" &&
+      map_node.op() != "ParallelMapDatasetV2") {
+    return false;
+  }
+
+  // We are looking only for map(lambda *x: x) nodes.
+
+  // Don't eliminate map nodes with captured arguments.
+  if (map_node.attr().at("Targuments").list().type_size() != 0) return false;
+
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
+                                             graph.graph()->library());
+  const FunctionDef* fdef =
+      function_library.Find(map_node.attr().at("f").func().name());
+
+  // Don't eliminate map nodes with stateful functions.
+  if (function_utils::IsFunctionStateful(function_library, *fdef)) return false;
+
+  const auto& sig = fdef->signature();
+  if (sig.input_arg_size() != sig.output_arg_size()) return false;
+
+  // For each output, check that it maps to input i
+  for (int i = 0; i < sig.input_arg_size(); ++i) {
+    if (!IsOutputIdentityOfInput(*fdef, sig.output_arg(i).name(),
+                                 sig.input_arg(i).name())) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
-         IsRepeatOne(node, graph) || IsPrefetchZero(node, graph);
+         IsRepeatOne(node, graph) || IsPrefetchZero(node, graph) ||
+         IsMapIdentity(node, graph);
 }
 
 }  // namespace

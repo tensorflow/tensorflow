@@ -517,14 +517,18 @@ def ragged_one_hot(indices,
                    dtype=None,
                    name=None):
   """Applies tf.one_hot along the values of a RaggedTensor."""
-  with ops.name_scope(name, 'RaggedOneHot', [indices]):
+  # Get the adjusted axis value for the call to array_ops.one_hot.
+  # Note: the only negative `axis` value supported by array_ops.one_hot is -1.
+  if isinstance(axis, int) and axis >= 0:
+    if axis <= indices.ragged_rank:
+      raise ValueError('axis (%d) must be greater than indices.ragged_rank '
+                       '(%d).' % (axis, indices.ragged_rank))
+    axis -= indices.ragged_rank
+
+  with ops.name_scope(name, 'RaggedOneHot',
+                      [indices, depth, on_value, off_value, axis]):
     indices = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         indices, name='indices')
-    if axis is not None:
-      axis = array_ops.get_positive_axis(
-          axis, indices.shape.ndims, ndims_name='rank(indices)')
-      if axis < indices.ragged_rank:
-        raise ValueError('axis may not be less than indices.ragged_rank.')
     return indices.with_flat_values(
         array_ops.one_hot(indices.flat_values, depth, on_value, off_value, axis,
                           dtype, name))
@@ -804,6 +808,11 @@ def _cross_internal(inputs,
     else:
       out_row_splits_type = dtypes.int64
 
+    # Convert hash_key from uint64 -> int64, since we need to pass it via
+    # an int64 attr.
+    if hash_key > 2**63:
+      hash_key -= 2**64
+
     values_out, splits_out = gen_ragged_array_ops.ragged_cross(
         ragged_values=[rt.values for rt in ragged_inputs],
         ragged_row_splits=[rt.row_splits for rt in ragged_inputs],
@@ -815,8 +824,8 @@ def _cross_internal(inputs,
         hashed_output=hashed_output,
         num_buckets=num_buckets,
         hash_key=hash_key,
-        out_values_type=out_values_type,
-        out_row_splits_type=out_row_splits_type,
+        out_values_type=out_values_type.as_datatype_enum,
+        out_row_splits_type=out_row_splits_type.as_datatype_enum,
         name=name)
 
     return ragged_tensor.RaggedTensor.from_row_splits(

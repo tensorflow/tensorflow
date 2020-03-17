@@ -27,7 +27,7 @@ from tensorflow.lite.python import lite_constants
 _calibration_wrapper = LazyLoader(
     "_calibration_wrapper", globals(),
     "tensorflow.lite.python.optimize."
-    "tensorflow_lite_wrap_calibration_wrapper")
+    "_pywrap_tensorflow_lite_calibration_wrapper")
 
 
 class Calibrator(object):
@@ -48,8 +48,8 @@ class Calibrator(object):
     if not model_content:
       raise ValueError("`model_content` must be specified.")
     try:
-      self._calibrator = (_calibration_wrapper.CalibrationWrapper
-                          .CreateWrapperCPPFromBuffer(model_content))
+      self._calibrator = (
+          _calibration_wrapper.CalibrationWrapper(model_content))
     except Exception as e:
       raise ValueError("Failed to parse the model: %s." % e)
     if not self._calibrator:

@@ -85,6 +85,20 @@ struct TFInlinerInterface : public DialectInlinerInterface {
                                       /*truncate=*/builder.getBoolAttr(false));
   }
 };
+
+// Checks if a block wraps a single operation and the single operation results
+// are perfectly forwarded to the block's terminator.
+bool BlockWrapsSingleOp(Block* block) {
+  auto body = block->without_terminator();
+  if (!has_single_element(body)) return false;
+
+  Operation& wrapped_op = *body.begin();
+  Operation* terminator = block->getTerminator();
+  return wrapped_op.getNumResults() == terminator->getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(),
+                    terminator->getOperands().begin());
+}
 }  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
@@ -105,17 +119,7 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 
 // Checks if a tf_device.launch wraps a single operation and the single
 // operation results are perfectly forwarded to the launch return.
-bool LaunchOp::WrapsSingleOp() {
-  auto body = GetBody().without_terminator();
-  if (!has_single_element(body)) return false;
-
-  Operation& wrapped_op = *body.begin();
-  Operation* terminator = GetBody().getTerminator();
-  return wrapped_op.getNumResults() == terminator->getNumOperands() &&
-         std::equal(wrapped_op.getResults().begin(),
-                    wrapped_op.getResults().end(),
-                    terminator->getOperands().begin());
-}
+bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
 // tf_device.return
@@ -210,28 +214,30 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
   state.addTypes(output_types);
 }
 
-std::vector<OpResult> ParallelExecuteOp::GetRegionOutputs(
-    unsigned region_index) {
-  int num_region_results =
-      GetRegionBlockWithIndex(region_index).getTerminator()->getNumResults();
-  std::vector<OpResult> results;
-  results.reserve(num_region_results);
-
-  int return_value_offset = 0;
-  for (int region_id = 0; region_id < region_index; ++region_id)
-    return_value_offset +=
-        GetRegionBlockWithIndex(region_id).getTerminator()->getNumResults();
-
-  for (int i = 0; i < num_region_results; ++i)
-    results.emplace_back(getOperation()->getOpResult(return_value_offset + i));
-
-  return results;
-}
-
 LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
 
 Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
   return getOperation()->getRegion(index).front();
+}
+
+Operation::result_range ParallelExecuteOp::GetRegionOutputs(
+    unsigned region_index) {
+  int num_region_results =
+      GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
+
+  int return_value_offset = 0;
+  for (int region_id = 0; region_id < region_index; ++region_id)
+    return_value_offset +=
+        GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
+
+  Operation::result_range region_results(getOperation(),
+                                         /*startIndex=*/return_value_offset,
+                                         /*count=*/num_region_results);
+  return region_results;
+}
+
+bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
+  return BlockWrapsSingleOp(&GetRegionBlockWithIndex(index));
 }
 
 //===----------------------------------------------------------------------===//

@@ -9900,6 +9900,71 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
+// Creates an iterator for reading from the tf.data service.
+//
+// Returns the created operation.
+func MakeDataServiceIterator(scope *Scope, dataset tf.Output, epoch_id tf.Output, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MakeDataServiceIterator",
+		Input: []tf.Input{
+			dataset, epoch_id, iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Begins a tf.data service dataset epoch.
+func BeginEpoch(scope *Scope, dataset_id tf.Output, address tf.Output, protocol tf.Output) (epoch_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BeginEpoch",
+		Input: []tf.Input{
+			dataset_id, address, protocol,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Registers a dataset with the tf.data service.
+func RegisterDataset(scope *Scope, dataset tf.Output, address tf.Output, protocol tf.Output, external_state_policy int64) (dataset_id tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"external_state_policy": external_state_policy}
+	opspec := tf.OpSpec{
+		Type: "RegisterDataset",
+		Input: []tf.Input{
+			dataset, address, protocol,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that reads data from the tf.data service.
+func DataServiceDataset(scope *Scope, address tf.Output, protocol tf.Output, max_outstanding_requests tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DataServiceDataset",
+		Input: []tf.Input{
+			address, protocol, max_outstanding_requests,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Creates a dataset that contains the unique elements of `input_dataset`.
 func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -12116,7 +12181,7 @@ func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
 //     convert $src.gif -coalesce $dst.gif
 //
 // This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-// `tf.image.decode_image`.
+// `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
@@ -15424,7 +15489,7 @@ func DecodePngDtype(value tf.DataType) DecodePngAttr {
 // of color channels.
 //
 // This op also supports decoding JPEGs and non-animated GIFs since the interface
-// is the same, though it is cleaner to use `tf.image.decode_image`.
+// is the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The PNG-encoded image.
@@ -31376,6 +31441,17 @@ func VarHandleOpSharedName(value string) VarHandleOpAttr {
 	}
 }
 
+// VarHandleOpAllowedDevices sets the optional allowed_devices attribute to value.
+//
+// value: The allowed devices containing the resource variable. Set when the output
+// ResourceHandle represents a per-replica/partitioned resource variable.
+// If not specified, defaults to {}
+func VarHandleOpAllowedDevices(value []string) VarHandleOpAttr {
+	return func(m optionalAttr) {
+		m["allowed_devices"] = value
+	}
+}
+
 // Creates a handle to a Variable resource.
 //
 // Arguments:
@@ -42675,7 +42751,7 @@ func DecodeJpegDctMethod(value string) DecodeJpegAttr {
 //
 //
 // This op also supports decoding PNGs and non-animated GIFs since the interface is
-// the same, though it is cleaner to use `tf.image.decode_image`.
+// the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The JPEG-encoded image.
@@ -44696,6 +44772,19 @@ func Lu(scope *Scope, input tf.Output, optional ...LuAttr) (lu tf.Output, p tf.O
 	return op.Output(0), op.Output(1)
 }
 
+// ImageProjectiveTransformV2Attr is an optional argument to ImageProjectiveTransformV2.
+type ImageProjectiveTransformV2Attr func(optionalAttr)
+
+// ImageProjectiveTransformV2FillMode sets the optional fill_mode attribute to value.
+//
+// value: Fill mode, "REFLECT", "WRAP", or "CONSTANT".
+// If not specified, defaults to "CONSTANT"
+func ImageProjectiveTransformV2FillMode(value string) ImageProjectiveTransformV2Attr {
+	return func(m optionalAttr) {
+		m["fill_mode"] = value
+	}
+}
+
 // Applies the given transform to each of the images.
 //
 // If one row of `transforms` is `[a0, a1, a2, b0, b1, b2, c0, c1]`, then it maps
@@ -44714,11 +44803,14 @@ func Lu(scope *Scope, input tf.Output, optional ...LuAttr) (lu tf.Output, p tf.O
 //
 // Returns 4-D with shape
 // `[batch, new_height, new_width, channels]`.
-func ImageProjectiveTransformV2(scope *Scope, images tf.Output, transforms tf.Output, output_shape tf.Output, interpolation string) (transformed_images tf.Output) {
+func ImageProjectiveTransformV2(scope *Scope, images tf.Output, transforms tf.Output, output_shape tf.Output, interpolation string, optional ...ImageProjectiveTransformV2Attr) (transformed_images tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"interpolation": interpolation}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ImageProjectiveTransformV2",
 		Input: []tf.Input{

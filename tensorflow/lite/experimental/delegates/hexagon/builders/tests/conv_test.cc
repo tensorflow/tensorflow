@@ -256,4 +256,86 @@ TEST(QuantizedConvolutionOpModel, SimpleConvTestReLU6Activation) {
                                             1e-5)));
 }
 
+// Depthwise Conv with multiplier > 1 but input depth==1 should resolve into a
+// Conv op.
+TEST(QuantizedConvolutionOpModel, DepthwiseConvWithMultiplier_InputDepth1) {
+  QuantizedConvolutionOpModel m(BuiltinOperator_DEPTHWISE_CONV_2D,
+                                {TensorType_UINT8, {1, 6, 6, 1}, -63.5, 64},
+                                {TensorType_UINT8, {1, 5, 5, 3}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128},
+                                Padding_VALID);
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetFilter({1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5});
+  // clang-format on
+  m.SetBias({1, 2, 3});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput();
+
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-5)));
+}
+
+// Depthwise Conv with multiplier > 1 but input depth==1 should resolve into a
+// Conv op.
+TEST(QuantizedConvolutionOpModel,
+     DepthwiseConvWithMultiplier_InputDepth1_RELU) {
+  QuantizedConvolutionOpModel m(BuiltinOperator_DEPTHWISE_CONV_2D,
+                                {TensorType_UINT8, {1, 6, 6, 1}, -63.5, 64},
+                                {TensorType_UINT8, {1, 5, 5, 3}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128},
+                                Padding_VALID, /**dilation_factor**/ 1,
+                                /**stride**/ 2, ActivationFunctionType_RELU6);
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetFilter({1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5});
+  // clang-format on
+  m.SetBias({1, 2, 3});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput();
+
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-5)));
+}
+
 }  // namespace tflite

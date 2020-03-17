@@ -285,6 +285,10 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
 def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
+def OperandsBroadcastToOutputType : Constraint<CPred<
+  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
+                                     "$2.getType())">>;
+
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
@@ -293,15 +297,15 @@ def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_TileOp $input, (ConstantOp $tile)),
+  def : Pat<(BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
              $operand, $act_func),
   (BinaryOp $input, $operand, $act_func),
-  [(AreBroadcastableTypes $input, $operand)]>;
+  [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
 
-  def : Pat<(BinaryOp $operand,
+  def : Pat<(BinaryOp:$result $operand,
              (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
   (BinaryOp $operand, $input, $act_func),
-  [(AreBroadcastableTypes $operand, $input)]>;
+  [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.

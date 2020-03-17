@@ -97,6 +97,17 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
   }
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
+    int id, ValueId input_id, ValueId output_id,
+    const ConvolutionTransposedAttributes& attr,
+    const metal::RuntimeOptions& options) {
+  if (CheckConvolutionTransposed4x4Support(attr)) {
+    return ConvolutionTransposed4x4(id, input_id, output_id, attr, options);
+  } else {
+    return ConvolutionTransposed(id, input_id, output_id, attr, options);
+  }
+}
+
 std::vector<ComputeTaskDescriptorPtr> SelectPReLU(
     const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
     const PReLUAttributes& attr, const metal::RuntimeOptions& options) {
@@ -178,11 +189,11 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           options);
       break;
     case OperationType::CONVOLUTION_TRANSPOSED:
-      *tasks =
-          ConvolutionTransposed(node_id, inputs[0], outputs[0],
-                                absl::any_cast<ConvolutionTransposedAttributes>(
-                                    node->operation.attributes),
-                                options);
+      *tasks = SelectConvolutionTransposed(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<ConvolutionTransposedAttributes>(
+              node->operation.attributes),
+          options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
       *tasks =
@@ -294,6 +305,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

@@ -67,6 +67,7 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const xla::CustomShapeRepresentationFn shape_representation_fn,
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
@@ -88,8 +89,12 @@ Status GetXlaInputShapes(
     TF_ASSIGN_OR_RETURN(xla_shape,
                         shape_representation_fn(arg_shapes[i], dtype));
   }
-  xla_input_shapes->push_back(
-      xla::ShapeUtil::MakeTupleShape(individual_arg_shapes));
+  if (use_tuple_args) {
+    xla_input_shapes->push_back(
+        xla::ShapeUtil::MakeTupleShape(individual_arg_shapes));
+  } else {
+    *xla_input_shapes = individual_arg_shapes;
+  }
   return Status::OK();
 }
 
@@ -210,6 +215,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
@@ -222,13 +228,17 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   // and canonicalization opportunities that are necessary for the second
   // LegalizeTFPass(allow_partial_conversion=false) invocation.
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass(true));
-  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
 
-  if (VLOG_IS_ON(1))
-    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
+  if (VLOG_IS_ON(1)) {
+    // Print the whole module after each pass which requires disabling
+    // multi-threading as well.
+    tf2xla.disableMultithreading();
+    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+        /*print_module_scope=*/true));
+  }
 
   // Make sure we catch any error reported by MLIR and forward it to the TF
   // error reporting system. Report a generic error if pass manager failed
@@ -252,6 +262,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
   mlir::MLIRContext mlir_context;
@@ -273,7 +284,7 @@ Status CompileSerializedMlirToXlaHlo(
   // Convert MLIR module to XLA HLO proto contained in XlaComputation.
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
-      module_op, compilation_result->computation.get(), /*use_tuple_args=*/true,
+      module_op, compilation_result->computation.get(), use_tuple_args,
       /*return_tuple=*/true));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
@@ -286,7 +297,7 @@ Status CompileSerializedMlirToXlaHlo(
       };
 
   // Compute all input shapes.
-  TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes,
+  TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes, use_tuple_args,
                                        shape_representation_fn_no_fast_memory,
                                        &compilation_result->xla_input_shapes));
 

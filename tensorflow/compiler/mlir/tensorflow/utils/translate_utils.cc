@@ -41,20 +41,22 @@ mlir::LogicalResult ExtractTfVersions(mlir::ModuleOp module,
   auto version_attr = module.getAttrOfType<mlir::DictionaryAttr>("tf.versions");
   if (!version_attr) return mlir::failure();
 
-  auto producer = version_attr.get("producer").dyn_cast<mlir::IntegerAttr>();
+  auto producer =
+      version_attr.get("producer").dyn_cast_or_null<mlir::IntegerAttr>();
   if (!producer) return mlir::failure();
   versions->set_producer(producer.getInt());
 
   auto min_consumer =
-      version_attr.get("min_consumer").dyn_cast<mlir::IntegerAttr>();
-  if (!min_consumer) return mlir::failure();
-  versions->set_min_consumer(min_consumer.getInt());
+      version_attr.get("min_consumer").dyn_cast_or_null<mlir::IntegerAttr>();
+  if (min_consumer) versions->set_min_consumer(min_consumer.getInt());
 
   auto bad_consumers =
-      version_attr.get("bad_consumers").dyn_cast<mlir::ArrayAttr>();
-  if (!bad_consumers) return mlir::failure();
+      version_attr.get("bad_consumers").dyn_cast_or_null<mlir::ArrayAttr>();
+  if (!bad_consumers) return mlir::success();
+
   for (auto bad_consumer : bad_consumers) {
-    auto bad_consumer_int_attr = bad_consumer.dyn_cast<mlir::IntegerAttr>();
+    auto bad_consumer_int_attr =
+        bad_consumer.dyn_cast_or_null<mlir::IntegerAttr>();
     if (!bad_consumer_int_attr) return mlir::failure();
 
     versions->mutable_bad_consumers()->Add(bad_consumer_int_attr.getInt());

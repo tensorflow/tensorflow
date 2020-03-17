@@ -51,6 +51,7 @@ def sparse_const(matrix):
   return sparse_tensor.SparseTensorValue(indices, values, shape)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class RaggedCrossOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([

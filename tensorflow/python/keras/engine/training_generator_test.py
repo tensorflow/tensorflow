@@ -23,14 +23,17 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import layers as layers_module
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.keras.utils import data_utils
@@ -367,11 +370,13 @@ class TestGeneratorMethods(keras_parameterized.TestCase):
         yield pack_and_pad(queue)
 
     model = testing_utils.get_model_from_layers([
-        keras.layers.Embedding(input_dim=len(vocab) + 1, output_dim=4),
-        keras.layers.SimpleRNN(units=1),
-        keras.layers.Activation('sigmoid')], input_shape=(None,))
+        layers_module.Embedding(input_dim=len(vocab) + 1, output_dim=4),
+        layers_module.SimpleRNN(units=1),
+        layers_module.Activation('sigmoid')
+    ],
+                                                input_shape=(None,))
 
-    model.compile(loss=keras.losses.binary_crossentropy, optimizer='sgd')
+    model.compile(loss=losses.binary_crossentropy, optimizer='sgd')
     model.fit(data_gen(), epochs=1, steps_per_epoch=5)
 
 
@@ -471,16 +476,16 @@ class TestGeneratorMethodsWithSequences(keras_parameterized.TestCase):
       def on_epoch_end(self):
         self.epochs += 1
 
-    inputs = keras.Input(10)
-    outputs = keras.layers.Dense(1)(inputs)
-    model = keras.Model(inputs, outputs)
+    inputs = input_layer.Input(10)
+    outputs = layers_module.Dense(1)(inputs)
+    model = training.Model(inputs, outputs)
     model.compile('sgd', 'mse')
     my_seq = MySequence()
     model.fit(my_seq, epochs=2)
     self.assertEqual(my_seq.epochs, 2)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class TestConvertToGeneratorLike(test.TestCase, parameterized.TestCase):
   simple_inputs = (np.ones((10, 10)), np.ones((10, 1)))
   nested_inputs = ((np.ones((10, 10)), np.ones((10, 20))), (np.ones((10, 1)),

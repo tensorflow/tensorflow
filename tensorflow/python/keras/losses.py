@@ -861,7 +861,7 @@ class CategoricalHinge(LossFunctionWrapper):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1387,7 +1387,7 @@ def categorical_hinge(y_true, y_pred):
   """Computes the categorical hinge loss between `y_true` and `y_pred`.
 
   `loss = maximum(neg - pos + 1, 0)`
-  where `neg = sum(y_true * y_pred)` and `pos = maximum(1 - y_true)`
+  where `neg=maximum((1-y_true)*y_pred) and pos=sum(y_true*y_pred)`
 
   Usage:
 
@@ -1698,8 +1698,8 @@ def cosine_similarity(y_true, y_pred, axis=-1):
   >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
-  >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
-  >>> #       = ((0. + 0.) +  (0.5 + 0.5)) / 2
+  >>> # loss = -sum(l2_norm(y_true) . l2_norm(y_pred), axis=1)
+  >>> #       = -[0. + 0., 0.5 + 0.5]
   >>> loss.numpy()
   array([-0., -0.999], dtype=float32)
 
@@ -1718,9 +1718,16 @@ def cosine_similarity(y_true, y_pred, axis=-1):
 
 @keras_export('keras.losses.CosineSimilarity')
 class CosineSimilarity(LossFunctionWrapper):
-  """Computes the cosine similarity between `y_true` and `y_pred`.
+  """Computes the cosine similarity between labels and predictions.
 
-  `loss = -sum(y_true * y_pred)`
+  Note that it is a negative quantity between -1 and 0, where 0 indicates
+  orthogonality and values closer to -1 indicate greater similarity. This makes
+  it usable as a loss function in a setting where you try to maximize the
+  proximity between predictions and targets. If either `y_true` or `y_pred`
+  is a zero vector, cosine similarity will be 0 regardless of the proximity
+  between predictions and targets.
+
+  `loss = -sum(l2_norm(y_true) * l2_norm(y_pred))`
 
   Usage:
 
@@ -1732,7 +1739,7 @@ class CosineSimilarity(LossFunctionWrapper):
   >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
   >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
   >>> # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
-  >>> #       = ((0. + 0.) +  (0.5 + 0.5)) / 2
+  >>> #       = -((0. + 0.) +  (0.5 + 0.5)) / 2
   >>> cosine_loss(y_true, y_pred).numpy()
   -0.5
 
@@ -1765,13 +1772,12 @@ class CosineSimilarity(LossFunctionWrapper):
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `AUTO`. `AUTO` indicates that the reduction option will
       be determined by the usage context. For almost all cases this defaults to
-      `SUM_OVER_BATCH_SIZE`.
-      When used with `tf.distribute.Strategy`, outside of built-in training
-      loops such as `tf.keras` `compile` and `fit`, using `AUTO` or
-      `SUM_OVER_BATCH_SIZE` will raise an error. Please see this custom training
-      [tutorial]
-      (https://www.tensorflow.org/tutorials/distribute/custom_training)
-      for more details.
+      `SUM_OVER_BATCH_SIZE`. When used with `tf.distribute.Strategy`, outside of
+      built-in training loops such as `tf.keras` `compile` and `fit`, using
+      `AUTO` or `SUM_OVER_BATCH_SIZE` will raise an error. Please see this
+      custom training [tutorial]
+      (https://www.tensorflow.org/tutorials/distribute/custom_training) for more
+        details.
     name: Optional name for the op.
   """
 
@@ -1837,15 +1843,34 @@ def deserialize(name, custom_objects=None):
 
 @keras_export('keras.losses.get')
 def get(identifier):
-  """Retrieves a Keras loss function.
+  """Retrieves a Keras loss as a `function`/`Loss` class instance.
+
+  The `identifier` may be the string name of a loss function or `Loss` class.
+
+  >>> loss = tf.keras.losses.get("categorical_crossentropy")
+  >>> type(loss)
+  <class 'function'>
+  >>> loss = tf.keras.losses.get("CategoricalCrossentropy")
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
+
+  You can also specify `config` of the loss to this function by passing dict
+  containing `class_name` and `config` as an identifier. Also note that the
+  `class_name` must map to a `Loss` class
+
+  >>> identifier = {"class_name": "CategoricalCrossentropy",
+  ...               "config": {"from_logits": True}}
+  >>> loss = tf.keras.losses.get(identifier)
+  >>> type(loss)
+  <class '...tensorflow.python.keras.losses.CategoricalCrossentropy'>
 
   Arguments:
     identifier: A loss identifier. One of None or string name of a loss
-      function/class or loss configuration dictionary or a loss function or
-      a loss class instance
+      function/class or loss configuration dictionary or a loss function or a
+      loss class instance
 
   Returns:
-    A Keras loss function/ `Loss` class instance.
+    A Keras loss as a `function`/ `Loss` class instance.
 
   Raises:
     ValueError: If `identifier` cannot be interpreted.

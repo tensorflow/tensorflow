@@ -71,12 +71,6 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     rendez_ = NewLocalRendezvous();
-    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
-                                       Rendezvous** r) {
-      *r = rendez_;
-      rendez_->Ref();
-      return Status::OK();
-    };
     delete exec_;
     TF_CHECK_OK(NewLocalExecutor(params, *graph, &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
@@ -422,6 +416,7 @@ TEST_F(ExecutorTest, RecvInvalidRefDtype) {
 // maximum of 'width' nodes. All nodes are no-ops and all dependencies are
 // control dependencies.
 static void BM_executor(int iters, int width, int depth) {
+  testing::StopTiming();
 #ifdef PLATFORM_GOOGLE
   BenchmarkUseRealTime();
 #endif  // PLATFORM_GOOGLE
@@ -457,6 +452,7 @@ static void BM_executor(int iters, int width, int depth) {
   SetBenchmarkLabel(strings::StrCat("Nodes = ", cur));
   SetBenchmarkItemsProcessed(cur * static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  testing::StartTiming();
   test::Benchmark("cpu", g).Run(iters);
 }
 
@@ -472,6 +468,7 @@ BENCHMARK(BM_executor)->ArgPair(8192, 32);
 BENCHMARK(BM_executor)->ArgPair(1024, 1024);
 
 static void BM_FeedInputFetchOutput(int iters) {
+  testing::StopTiming();
   Graph* g = new Graph(OpRegistry::Global());
   // z = x + y: x and y are provided as benchmark inputs.  z is the
   // output of the benchmark.  Conceptually, the caller is ALICE, the
@@ -490,6 +487,7 @@ static void BM_FeedInputFetchOutput(int iters) {
 #ifdef PLATFORM_GOOGLE
   SetBenchmarkItemsProcessed(static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
+  testing::StartTiming();
   test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
                                                   {z_key}, iters);
 }

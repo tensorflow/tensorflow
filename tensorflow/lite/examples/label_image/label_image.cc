@@ -37,6 +37,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -98,6 +99,19 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
       LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
     } else {
       delegates.emplace("Hexagon", std::move(delegate));
+    }
+  }
+
+  if (s->xnnpack_delegate) {
+    TfLiteXNNPackDelegateOptions xnnpack_options =
+        TfLiteXNNPackDelegateOptionsDefault();
+    xnnpack_options.num_threads = s->number_of_threads;
+
+    auto delegate = evaluation::CreateXNNPACKDelegate(&xnnpack_options);
+    if (!delegate) {
+      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
+    } else {
+      delegates.emplace("XNNPACK", std::move(delegate));
     }
   }
 
@@ -236,12 +250,17 @@ void RunInference(Settings* s) {
   int wanted_width = dims->data[2];
   int wanted_channels = dims->data[3];
 
-  switch (interpreter->tensor(input)->type) {
+  s->input_type = interpreter->tensor(input)->type;
+  switch (s->input_type) {
     case kTfLiteFloat32:
-      s->input_floating = true;
       resize<float>(interpreter->typed_tensor<float>(input), in.data(),
                     image_height, image_width, image_channels, wanted_height,
                     wanted_width, wanted_channels, s);
+      break;
+    case kTfLiteInt8:
+      resize<int8_t>(interpreter->typed_tensor<int8_t>(input), in.data(),
+                     image_height, image_width, image_channels, wanted_height,
+                     wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
       resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in.data(),
@@ -253,7 +272,6 @@ void RunInference(Settings* s) {
                  << interpreter->tensor(input)->type << " yet";
       exit(-1);
   }
-
   auto profiler =
       absl::make_unique<profiling::Profiler>(s->max_profiling_buffer_entries);
   interpreter->SetProfiler(profiler.get());
@@ -305,12 +323,18 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
       get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       s->number_of_results, threshold, &top_results, true);
+                       s->number_of_results, threshold, &top_results,
+                       s->input_type);
+      break;
+    case kTfLiteInt8:
+      get_top_n<int8_t>(interpreter->typed_output_tensor<int8_t>(0),
+                        output_size, s->number_of_results, threshold,
+                        &top_results, s->input_type);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
                          output_size, s->number_of_results, threshold,
-                         &top_results, false);
+                         &top_results, s->input_type);
       break;
     default:
       LOG(FATAL) << "cannot handle output type "
@@ -350,6 +374,7 @@ void display_usage() {
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
       << "--warmup_runs, -w: number of warmup runs\n"
+      << "--xnnpack_delegate, -x: xnnpack delegate\n"
       << "\n";
 }
 
@@ -376,13 +401,14 @@ int Main(int argc, char** argv) {
         {"warmup_runs", required_argument, nullptr, 'w'},
         {"gl_backend", required_argument, nullptr, 'g'},
         {"hexagon_delegate", required_argument, nullptr, 'j'},
+        {"xnnpack_delegate", required_argument, nullptr, 'x'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
     c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:", long_options,
+                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -449,6 +475,9 @@ int Main(int argc, char** argv) {
       case 'w':
         s.number_of_warmup_runs =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
+        break;
+      case 'x':
+        s.xnnpack_delegate = optarg;
         break;
       case 'h':
       case '?':

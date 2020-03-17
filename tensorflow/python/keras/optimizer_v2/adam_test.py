@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
@@ -108,7 +109,7 @@ def get_beta_accumulators(opt, dtype):
   return (beta_1_power, beta_2_power)
 
 
-class AdamOptimizerTest(test.TestCase):
+class AdamOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
@@ -252,7 +253,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testResourceBasic(self):
     self.doTestBasic()
 
@@ -260,7 +261,7 @@ class AdamOptimizerTest(test.TestCase):
     with context.eager_mode():
       self.doTestBasic(use_callable_params=True)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithAmsgrad(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.cached_session(use_gpu=True):
@@ -304,7 +305,7 @@ class AdamOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSparseWithAmsgrad(self):
     # dtypes.half does not work on gpu + eager.
     for dtype in [dtypes.float32, dtypes.float64]:

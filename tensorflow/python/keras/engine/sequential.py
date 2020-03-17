@@ -23,7 +23,6 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
@@ -255,7 +254,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
