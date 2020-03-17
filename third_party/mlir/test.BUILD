@@ -59,6 +59,10 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-dialect-decls",
+            "lib/TestDialect/TestOpsDialect.h.inc",
+        ),
+        (
             "-gen-enum-decls",
             "lib/TestDialect/TestOpEnums.h.inc",
         ),
