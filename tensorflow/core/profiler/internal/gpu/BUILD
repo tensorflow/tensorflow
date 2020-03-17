@@ -30,6 +30,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
     ]) + if_rocm_is_configured_compat([
+        "//tensorflow/core/profiler/internal/gpu:rocm_tracer",
     ]),
     deps = [
         "//tensorflow/core:lib",
@@ -126,6 +127,25 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+tf_cuda_library(
+    name = "rocm_tracer",
+    srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
+    hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:annotation_stack",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/types:optional",
+    ] + if_rocm_is_configured_compat([
+        "@local_config_rocm//rocm:roctracer",
+    ]),
 )
 
 tf_cuda_library(
