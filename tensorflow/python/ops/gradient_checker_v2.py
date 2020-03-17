@@ -284,7 +284,7 @@ def _compute_gradient(f, y_shape, y_dtype, xs, param, delta):
 def _compute_gradient_list(f, xs, delta):
   """Compute gradients for a list of x values."""
   # convert xs to tensors so that dtype and shape have uniform types
-  xs = list(map(ops.convert_to_tensor, xs))
+  xs = [ops.convert_to_tensor(x) for x in xs]
   # run the function to get info of the result
   xs_dtypes = [x.dtype for x in xs]
   xs_shapes = [x.shape for x in xs]
@@ -304,7 +304,8 @@ def compute_gradient(f, x, delta=1e-3):
 
   Args:
     f: the function.
-    x: a list arguments for the function
+    x: the arguments for the function as a list or tuple of values convertible
+      to a Tensor.
     delta: (optional) perturbation used to compute numeric Jacobian.
 
   Returns:
@@ -329,9 +330,10 @@ def compute_gradient(f, x, delta=1e-3):
   # ((array([[2.]], dtype=float32),), (array([[2.000004]], dtype=float32),))
   ```
   """
-  if not isinstance(x, list):
+  if not isinstance(x, (list, tuple)):
     raise ValueError(
-        "`x` must be a list of Tensors (arguments to `f`), not a %s" % type(x))
+        "`x` must be a list or tuple of values convertible to a Tensor "
+        "(arguments to `f`), not a %s" % type(x))
   return _compute_gradient_list(f, x, delta)
 
 

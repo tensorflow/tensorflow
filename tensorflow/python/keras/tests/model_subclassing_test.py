@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -29,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.tests import model_subclassing_test_util as model_util
@@ -606,8 +608,8 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class CustomCallSignatureTests(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
 
   def test_no_inputs_in_signature(self):
     model = model_util.CustomCallModel()
@@ -669,7 +671,7 @@ class CustomCallSignatureTests(test.TestCase):
     arg = array_ops.ones([1])
     model(arg, a=3)
     if not context.executing_eagerly():
-      self.assertEqual(len(model.inputs), 1)
+      self.assertLen(model.inputs, 1)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created

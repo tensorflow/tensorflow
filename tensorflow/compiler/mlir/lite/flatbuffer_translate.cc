@@ -1397,7 +1397,7 @@ Optional<std::string> Translator::TranslateInternal() {
       err +=
           "Ops that need custom implementation (enabled via setting the "
           "-emit-custom-ops flag): " +
-          failed_custom_ops_list;
+          failed_custom_ops_list + ".";
 
     auto& failed_region = named_regions[first_failed_func];
     return failed_region.second->getParentOp()->emitError()

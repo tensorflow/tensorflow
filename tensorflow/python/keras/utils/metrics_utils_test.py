@@ -23,6 +23,7 @@ from absl.testing import parameterized
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
@@ -30,7 +31,7 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([
@@ -249,8 +250,8 @@ class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           metrics_utils.ragged_assert_compatible_and_get_flat_values([x, y])
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FilterTopKTest(test_util.TensorFlowTestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class FilterTopKTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_one_dimensional(self):
     x = constant_op.constant([.3, .1, .2, -.5, 42.])

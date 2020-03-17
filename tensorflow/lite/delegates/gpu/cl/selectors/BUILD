@@ -132,6 +132,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:padding",
         "//tensorflow/lite/delegates/gpu/cl/kernels:pooling",
         "//tensorflow/lite/delegates/gpu/cl/kernels:prelu",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/cl/kernels:relu",
         "//tensorflow/lite/delegates/gpu/cl/kernels:reshape",
         "//tensorflow/lite/delegates/gpu/cl/kernels:reshapex4",
