@@ -204,6 +204,53 @@ struct StoreForwardingPass : mlir::FunctionPass<StoreForwardingPass> {
   }
 };
 
+// Simple pass that replaces a constant load with the directly use of the
+// constant.
+struct ConstForwardingPass : mlir::FunctionPass<ConstForwardingPass> {
+  void runOnFunction() override {
+    getFunction().walk([&](mlir::AllocOp allocOp) {
+      auto result = allocOp.getResult();
+      // The memory is single stored in
+      mlir::StoreOp storeOp;
+      if (1 != llvm::count_if(result.getUsers(),
+            [&storeOp](mlir::Operation* op){
+              if (llvm::isa<mlir::StoreOp>(op)) {
+                storeOp = llvm::dyn_cast<mlir::StoreOp>(op);
+                return true;
+              }
+              return false;
+            })) {
+        return;
+      }
+
+      // The memory is a constant memory
+      mlir::Value storeInputValue = storeOp.getValueToStore();
+      if (!llvm::isa<mlir::ConstantOp>(storeInputValue.getDefiningOp())) {
+        return;
+      }
+
+      auto* storeBlock = storeOp.getOperation()->getBlock();
+      mlir::ConstantOp constantOp =
+          llvm::dyn_cast<mlir::ConstantOp>(storeInputValue.getDefiningOp());
+      for (auto result_user : result.getUsers()) {
+        if (llvm::isa<mlir::LoadOp>(result_user)) {
+          mlir::LoadOp loadOp = llvm::dyn_cast<mlir::LoadOp>(result_user);
+          auto* loadBlock = loadOp.getOperation()->getBlock();
+          if (loadBlock == storeBlock) {
+            loadOp.replaceAllUsesWith(storeInputValue);
+          } else {
+            mlir::OpBuilder builder(loadOp);
+            mlir::ConstantOp newConstantOp =
+                builder.cloneWithoutRegions(constantOp);
+            loadOp.replaceAllUsesWith(newConstantOp.getOperation());
+          }
+          break;
+        }
+      }
+    });
+  }
+};
+
 // Simple pass that removes temporary buffers that are only written to but
 // never read from or that are read but the read value is not used.
 // Needs an analysis that proves that loads and stores are side-effect free
@@ -301,6 +348,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   pm.addNestedPass<::mlir::FuncOp>(::mlir::createCSEPass());
   // Forward stores to buffers to loads.
   pm.addPass(absl::make_unique<StoreForwardingPass>());
+  // Forward constant to loads.
+  pm.addPass(absl::make_unique<ConstForwardingPass>());
   // Remove now unused temporary buffers.
   pm.addPass(absl::make_unique<DeadTempBufferRemoval>());
   // Coalesce generated loops to have 1d loops.
