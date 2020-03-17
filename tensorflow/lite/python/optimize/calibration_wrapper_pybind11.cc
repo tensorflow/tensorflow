@@ -40,17 +40,17 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
           })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float, bool enable_mlir_quantizer) {
+              bool allow_float, int activations_py_type, bool enable_mlir_quantizer) {
              return tensorflow::pyo_or_throw(
                  self.QuantizeModel(input_py_type, output_py_type, allow_float,
-                                    enable_mlir_quantizer));
+                                    activations_py_type, enable_mlir_quantizer));
            })
       .def("QuantizeModel",
            [](CalibrationWrapper& self, int input_py_type, int output_py_type,
-              bool allow_float) {
+              bool allow_float, int activations_py_type) {
              return tensorflow::pyo_or_throw(
                  self.QuantizeModel(input_py_type, output_py_type, allow_float,
-                                    /*enable_mlir_quantizer=*/false));
+                                    activations_py_type, /*enable_mlir_quantizer=*/false));
            })
       .def("QuantizeModel", [](CalibrationWrapper& self, int input_py_type,
                                int output_py_type, bool allow_float,
