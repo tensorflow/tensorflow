@@ -84,7 +84,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   (e.g. `tf.gather`).
 
   Contrast this representation with
-  `tf.SparseTensor`,
+  `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
