@@ -35,19 +35,21 @@ import six
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distributed_file_utils
 from tensorflow.python.distribute import multi_worker_util
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.data_utils import Sequence
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import profiler_v2 as profiler
 from tensorflow.python.training import checkpoint_management
@@ -1612,7 +1614,7 @@ class LearningRateScheduler(Callback):
 
 
 @keras_export('keras.callbacks.TensorBoard', v1=[])
-class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
+class TensorBoard(Callback):
   # pylint: disable=line-too-long
   """Enable visualizations for TensorBoard.
 
@@ -1674,10 +1676,11 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         batches. Note that writing too frequently to TensorBoard can slow down
         your training.
       profile_batch: Profile the batch(es) to sample compute characteristics.
-        profile_batch must be a non-negative integer or a tuple of integers.
-        A pair of positive integers signify a range of batches to profile.
-        By default, it will profile the second batch. Set profile_batch=0
-        to disable profiling. Must run in TensorFlow eager mode.
+        profile_batch must be a non-negative integer or a comma separated string
+        of pair of positive integers. A pair of positive integers signify a
+        range of batches to profile. By default, it will profile the second
+        batch. Set profile_batch=0 to disable profiling. Must run in TensorFlow
+        eager mode.
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
       embeddings_metadata: a dictionary which maps layer name to a file name in
@@ -1710,18 +1713,30 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.histogram_freq = histogram_freq
     self.write_graph = write_graph
     self.write_images = write_images
-    self.update_freq = 1 if update_freq == 'batch' else update_freq
+    if update_freq == 'batch':
+      self.update_freq = 1
+    else:
+      self.update_freq = update_freq
     self.embeddings_freq = embeddings_freq
     self.embeddings_metadata = embeddings_metadata
-    self._init_profile_batch(profile_batch)
-    self._epoch = 0
 
-    # Lazily initialized in order to avoid creating event files when
-    # not needed.
+    self._samples_seen = 0
+    self._samples_seen_at_last_write = 0
+    self._current_batch = 0
+
+    # A collection of file writers currently in use, to be closed when
+    # training ends for this callback. Writers are keyed by the
+    # directory name under the root logdir: e.g., "train" or
+    # "validation".
+    self._train_run_name = 'train'
+    self._validation_run_name = 'validation'
     self._writers = {}
-
-    # Used to restore any existing `SummaryWriter` after training ends.
-    self._prev_summary_state = []
+    self._start_batch, self._stop_batch = self._init_profile_batch(
+        profile_batch)
+    if self._start_batch > 0:
+      profiler.warmup()  # Improve the profiling accuracy.
+    # True when a trace is running.
+    self._is_tracing = False
 
   def _validate_kwargs(self, kwargs):
     """Handle arguments were supported in V1."""
@@ -1753,56 +1768,37 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
   def set_model(self, model):
     """Sets Keras model and writes graph if specified."""
     self.model = model
-    self._log_write_dir = self._get_log_write_dir()
 
-    self._train_dir = os.path.join(self._log_write_dir, 'train')
-    self._train_step = self.model._train_counter  # pylint: disable=protected-access
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # TensorBoard callback involves writing a summary file in a
+      # possibly distributed settings.
+      self._log_write_dir = distributed_file_utils.write_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+    else:
+      self._log_write_dir = self.log_dir
 
-    self._val_dir = os.path.join(self._log_write_dir, 'validation')
-    self._val_step = self.model._test_counter  # pylint: disable=protected-access
+    with context.eager_mode():
+      self._close_writers()
+      if self.write_graph:
+        with self._get_writer(self._train_run_name).as_default():
+          with summary_ops_v2.always_record_summaries():
+            if not model.run_eagerly:
+              summary_ops_v2.graph(K.get_graph(), step=0)
 
-    self._writers = {}  # Resets writers.
+            summary_writable = (
+                self.model._is_graph_network or  # pylint: disable=protected-access
+                self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
+            if summary_writable:
+              summary_ops_v2.keras_model('keras', self.model, step=0)
 
-    if self.write_graph:
-      self._write_keras_model_graph()
     if self.embeddings_freq:
       self._configure_embeddings()
 
-  @property
-  def _train_writer(self):
-    if 'train' not in self._writers:
-      self._writers['train'] = summary_ops_v2.create_file_writer_v2(
-          self._train_dir)
-    return self._writers['train']
-
-  @property
-  def _val_writer(self):
-    if 'val' not in self._writers:
-      self._writers['val'] = summary_ops_v2.create_file_writer_v2(self._val_dir)
-    return self._writers['val']
-
-  def _get_log_write_dir(self):
-    """For multi-worker, only chief should write, others write to '/tmp'."""
-    return distributed_file_utils.write_dirpath(self.log_dir,
-                                                self.model.distribute_strategy)
-
-  def _delete_tmp_write_dir(self):
-    """Deletes tmp write directories for multi-worker."""
-    distributed_file_utils.remove_temp_dirpath(self.log_dir,
-                                               self.model.distribute_strategy)
-
-  def _write_keras_model_graph(self):
-    """Writes Keras graph networks to TensorBoard."""
-    with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
-        if not self.model.run_eagerly:
-          summary_ops_v2.graph(K.get_graph(), step=0)
-
-        summary_writable = (
-            self.model._is_graph_network or  # pylint: disable=protected-access
-            self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
-        if summary_writable:
-          summary_ops_v2.keras_model('keras', self.model, step=0)
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    self._prev_summary_recording = summary_state.is_recording
+    self._prev_summary_writer = summary_state.writer
+    self._prev_summary_step = summary_state.step
 
   def _configure_embeddings(self):
     """Configure the Projector for embeddings."""
@@ -1843,44 +1839,74 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     writer = DummyWriter(self._log_write_dir)
     projector.visualize_embeddings(writer, config)
 
-  def _push_writer(self, writer, step):
+  def _close_writers(self):
+    """Close all remaining open file writers owned by this callback.
+
+    If there are no such file writers, this is a no-op.
+    """
+    with context.eager_mode():
+      for writer in six.itervalues(self._writers):
+        writer.close()
+      self._writers.clear()
+
+  def _get_writer(self, writer_name):
+    """Get a summary writer for the given subdirectory under the logdir.
+
+    A writer will be created if it does not yet exist.
+
+    Arguments:
+      writer_name: The name of the directory for which to create or
+        retrieve a writer. Should be either `self._train_run_name` or
+        `self._validation_run_name`.
+
+    Returns:
+      A `SummaryWriter` object.
+    """
+    if writer_name not in self._writers:
+      path = os.path.join(self._log_write_dir, writer_name)
+      writer = summary_ops_v2.create_file_writer_v2(path)
+      self._writers[writer_name] = writer
+    return self._writers[writer_name]
+
+  def _set_default_writer(self, writer_name):
     """Sets the default writer for custom batch-level summaries."""
     if self.update_freq == 'epoch':
+      # Writer is only used for custom summaries, which are written
+      # batch-by-batch.
       return
 
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    self._prev_summary_state.append({
-        'is_recording': summary_state.is_recording,
-        'writer': summary_state.writer,
-        'step': summary_state.step
-    })
+    step = self._total_batches_seen[writer_name]
 
-    if self.update_freq == 'epoch':
-      should_record = False
-      writer = None
+    def _should_record():
+      return math_ops.equal(step % self.update_freq, 0)
+
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.is_recording = _should_record
+    summary_state.writer = self._get_writer(writer_name)
+    summary_ops_v2.set_step(step)
+
+  def _init_batch_steps(self):
+    """Create the total batch counters."""
+    if ops.executing_eagerly_outside_functions():
+      # Variables are needed for the `step` value of custom tf.summaries
+      # to be updated inside a tf.function.
+      self._total_batches_seen = {
+          self._train_run_name: variables.Variable(0, dtype='int64'),
+          self._validation_run_name: variables.Variable(0, dtype='int64')
+      }
     else:
-      should_record = lambda: math_ops.equal(step % self.update_freq, 0)
+      # Custom tf.summaries are not supported in legacy graph mode.
+      self._total_batches_seen = {
+          self._train_run_name: 0,
+          self._validation_run_name: 0
+      }
 
-    summary_state.is_recording = should_record
-    summary_state.writer = writer
-    # TODO(b/151339474): Fix deadlock when not using .value() here.
-    summary_ops_v2.set_step(step.value())
-
-  def _pop_writer(self):
-    """Pops the current writer."""
-    if self.update_freq == 'epoch':
-      return
-
-    prev_state = self._prev_summary_state.pop()
-
-    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
-    summary_state.is_recording = prev_state['is_recording']
-    summary_state.writer = prev_state['writer']
-    summary_ops_v2.set_step(prev_state['step'])
-
-  def _close_writers(self):
-    for writer in self._writers.values():
-      writer.close()
+  def _increment_step(self, writer_name):
+    step = self._total_batches_seen[writer_name]
+    if isinstance(step, variables.Variable):
+      step.assign_add(1)
+    else:
+      self._total_batches_seen[writer_name] += 1
 
   def _init_profile_batch(self, profile_batch):
     """Validate profile_batch value and set the range of batches to profile.
@@ -1900,79 +1926,75 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
 
     """
     profile_batch_error_message = (
-        'profile_batch must be a non-negative integer or 2-tuple of positive '
-        'integers. A pair of positive integers signifies a range of batches '
-        'to profile. Found: {}'.format(profile_batch))
-
-    # Support legacy way of specifying "start,stop" or "start" as str.
-    if isinstance(profile_batch, six.string_types):
-      profile_batch = str(profile_batch).split(',')
-      profile_batch = nest.map_structure(int, profile_batch)
-
-    if isinstance(profile_batch, int):
-      self._start_batch = profile_batch
-      self._stop_batch = profile_batch
-    elif isinstance(profile_batch, (tuple, list)) and len(profile_batch) == 2:
-      self._start_batch, self._stop_batch = profile_batch
+        'profile_batch must be a non-negative integer or a comma separated '
+        'string of pair of positive integers. A pair of positive integers '
+        'signify a range of batches to profile.')
+    try:
+      profile_range = [int(i) for i in str(profile_batch).split(',')]
+    except ValueError:
+      raise ValueError(profile_batch_error_message)
+    if len(profile_range) == 1:  # single batch
+      start_batch, stop_batch = profile_range[0], profile_range[0]
+      if start_batch < 0:
+        raise ValueError(profile_batch_error_message)
+    elif len(profile_range) == 2:  # (start_batch, stop_batch)
+      start_batch, stop_batch = profile_range
+      # [0, 0], [-1, 100], [6, 5] are illegal.
+      if start_batch <= 0 or start_batch > stop_batch:
+        raise ValueError(profile_batch_error_message)
     else:
       raise ValueError(profile_batch_error_message)
-
-    if self._start_batch < 0 or self._stop_batch < self._start_batch:
-      raise ValueError(profile_batch_error_message)
-
-    if self._start_batch > 0:
-      profiler.warmup()  # Improve the profiling accuracy.
-    # True when a trace is running.
-    self._is_tracing = False
-
-    # Setting `profile_batch=0` disables profiling.
-    self._should_trace = not (self._start_batch == 0 and self._stop_batch == 0)
+    return start_batch, stop_batch
 
   def on_train_begin(self, logs=None):
-    self._push_writer(self._train_writer, self._train_step)
-
-  def on_train_end(self, logs=None):
-    self._pop_writer()
-
-    if self._is_tracing:
-      self._stop_trace()
-
-    self._close_writers()
-    self._delete_tmp_write_dir()
+    self._init_batch_steps()
+    if self._start_batch == 1:
+      self._enable_trace()
 
   def on_test_begin(self, logs=None):
-    self._push_writer(self._val_writer, self._val_step)
-
-  def on_test_end(self, logs=None):
-    self._pop_writer()
-
-  def on_train_batch_begin(self, batch, logs=None):
-    if not self._should_trace:
-      return
-
-    if self._epoch == 0 and batch == self._start_batch:
-      self._start_trace()
+    self._set_default_writer(self._validation_run_name)
 
   def on_train_batch_end(self, batch, logs=None):
-    """Performs profiling if current batch is in profiler_batches.
+    """Writes scalar summaries for metrics on every training batch.
+
+    Performs profiling if current batch is in profiler_batches.
 
     Arguments:
       batch: Integer, index of batch within the current epoch.
       logs: Dict. Metric results for this batch.
     """
-    if not self._should_trace:
+    # TODO(b/150629188): Make TensorBoard callback not use batch hooks
+    # by default.
+    if self.update_freq == 'epoch' and self._start_batch is None:
       return
 
-    if self._is_tracing and batch >= self._stop_batch:
-      self._stop_trace()
+    # Don't output batch_size and batch number as TensorBoard summaries
+    logs = logs or {}
+    train_batches = self._total_batches_seen[self._train_run_name]
+    if self.update_freq != 'epoch' and batch % self.update_freq == 0:
+      self._log_metrics(logs, prefix='batch_', step=train_batches)
+
+    self._increment_step(self._train_run_name)
+    if self._is_tracing:
+      control_flow_ops.cond(
+          math_ops.greater_equal(train_batches, self._stop_batch),
+          lambda: self._log_trace_return_true(), lambda: False)  # pylint: disable=unnecessary-lambda
+    else:
+      control_flow_ops.cond(
+          math_ops.equal(train_batches, self._start_batch - 1),
+          lambda: self._enable_trace_return_true(), lambda: False)  # pylint: disable=unnecessary-lambda
+
+  def on_test_batch_end(self, batch, logs=None):
+    if self.update_freq == 'epoch':
+      return
+    self._increment_step(self._validation_run_name)
 
   def on_epoch_begin(self, epoch, logs=None):
-    # Keeps track of epoch for profiling.
-    self._epoch = epoch
+    self._set_default_writer(self._train_run_name)
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
-    self._log_epoch_metrics(epoch, logs)
+    self._log_metrics(logs, prefix='epoch_', step=epoch)
 
     if self.histogram_freq and epoch % self.histogram_freq == 0:
       self._log_weights(epoch)
@@ -1980,57 +2002,124 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     if self.embeddings_freq and epoch % self.embeddings_freq == 0:
       self._log_embeddings(epoch)
 
-  def _start_trace(self):
-    summary_ops_v2.trace_on(graph=True, profiler=False)
-    profiler.start(logdir=self._train_dir)
+  def on_train_end(self, logs=None):
+    if self._is_tracing:
+      self._log_trace()
+    self._close_writers()
+
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.is_recording = self._prev_summary_recording
+    summary_state.writer = self._prev_summary_writer
+    summary_state.step = self._prev_summary_step
+
+    # In case this callback is used via native Keras, _get_distribution_strategy does not exist.
+    if hasattr(self.model, '_get_distribution_strategy'):
+      # Safely remove the unneeded temp files.
+      distributed_file_utils.remove_temp_dirpath(
+          self.log_dir, self.model._get_distribution_strategy())  # pylint: disable=protected-access
+
+  def _enable_trace(self):
+    """Starts to collect trace graph to TensorBoard.
+
+    Collects both trace and graph in eager mode, and trace only in graph mode.
+    """
+    if context.executing_eagerly():
+      # Graph must be traced in eager mode.
+      summary_ops_v2.trace_on(graph=True, profiler=False)
+    profiler.start(logdir=os.path.join(self._log_write_dir, 'train'))
     self._is_tracing = True
 
-  def _stop_trace(self, batch=None):
-    """Logs the trace graph to TensorBoard."""
-    if batch is None:
-      batch = self._stop_batch
-    with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
-        # TODO(b/126388999): Remove step info in the summary name.
-        summary_ops_v2.trace_export(name='batch_%d' % batch, step=batch)
+  def _enable_trace_return_true(self):
+    """Starts to collect trace graph to TensorBoard and returns True.
+
+    Returns:
+      True.
+    """
+    self._enable_trace()
+    return True
+
+  def _log_trace(self):
+    """Logs the trace graph to TensorBoard.
+
+    Logs both trace and graph in eager mode, and trace only in graph mode.
+    """
     profiler.stop()
+    if context.executing_eagerly():
+      # Graph must be traced in eager mode.
+      with self._get_writer(self._train_run_name).as_default(), \
+          summary_ops_v2.always_record_summaries():
+        # TODO(b/126388999): Remove step info in the summary name.
+        step = K.get_value(self._total_batches_seen[self._train_run_name])
+        summary_ops_v2.trace_export(name='batch_%d' % step, step=step)
     self._is_tracing = False
 
-  def _log_epoch_metrics(self, epoch, logs):
-    """Writes epoch metrics out as scalar summaries.
+  def _log_trace_return_true(self):
+    """Logs the trace graph to TensorBoard and returns True.
+
+    Returns:
+      True.
+    """
+    self._log_trace()
+    return True
+
+  def _log_metrics(self, logs, prefix, step):
+    """Writes metrics out as custom scalar summaries.
 
     Arguments:
-        epoch: Int. The global step to use for TensorBoard.
-        logs: Dict. Keys are scalar summary names, values are scalars.
+        logs: Dict. Keys are scalar summary names, values are NumPy scalars.
+        prefix: String. The prefix to apply to the scalar summary names.
+        step: Int. The global step to use for TensorBoard.
     """
-    if not logs:
-      return
+    if logs is None:
+      logs = {}
 
-    train_logs = {k: v for k, v in logs.items() if not k.startswith('val_')}
-    val_logs = {k: v for k, v in logs.items() if k.startswith('val_')}
+    # Group metrics by the name of their associated file writer. Values
+    # are lists of metrics, as (name, scalar_value) pairs.
+    logs_by_writer = {
+        self._train_run_name: [],
+        self._validation_run_name: [],
+    }
+    validation_prefix = 'val_'
+    for (name, value) in logs.items():
+      if name in ('batch', 'size', 'num_steps'):
+        # Scrub non-metric items.
+        continue
+      if name.startswith(validation_prefix):
+        name = name[len(validation_prefix):]
+        writer_name = self._validation_run_name
+      else:
+        writer_name = self._train_run_name
+      name = prefix + name  # assign batch or epoch prefix
+      logs_by_writer[writer_name].append((name, value))
 
-    with summary_ops_v2.always_record_summaries():
-      if train_logs:
-        with self._train_writer.as_default():
-          for name, value in train_logs.items():
-            summary_ops_v2.scalar('epoch_' + name, value, step=epoch)
-      if val_logs:
-        with self._val_writer.as_default():
-          for name, value in val_logs.items():
-            name = name[4:]  # Remove 'val_' prefix.
-            summary_ops_v2.scalar('epoch_' + name, value, step=epoch)
+    with context.eager_mode():
+      with summary_ops_v2.always_record_summaries():
+        for writer_name in logs_by_writer:
+          these_logs = logs_by_writer[writer_name]
+          if not these_logs:
+            # Don't create a "validation" events file if we don't
+            # actually have any validation data.
+            continue
+          writer = self._get_writer(writer_name)
+          with writer.as_default():
+            for (name, value) in these_logs:
+              summary_ops_v2.scalar(name, value, step=step)
 
   def _log_weights(self, epoch):
     """Logs the weights of the Model to TensorBoard."""
-    with self._train_writer.as_default():
-      with summary_ops_v2.always_record_summaries():
-        for layer in self.model.layers:
-          for weight in layer.weights:
-            weight_name = weight.name.replace(':', '_')
-            summary_ops_v2.histogram(weight_name, weight, step=epoch)
-            if self.write_images:
-              self._log_weight_as_image(weight, weight_name, epoch)
-        self._train_writer.flush()
+    writer = self._get_writer(self._train_run_name)
+    with context.eager_mode(), \
+          writer.as_default(), \
+          summary_ops_v2.always_record_summaries():
+      for layer in self.model.layers:
+        for weight in layer.weights:
+          weight_name = weight.name.replace(':', '_')
+          with ops.init_scope():
+            weight = K.get_value(weight)
+          summary_ops_v2.histogram(weight_name, weight, step=epoch)
+          if self.write_images:
+            self._log_weight_as_image(weight, weight_name, epoch)
+      writer.flush()
 
   def _log_weight_as_image(self, weight, weight_name, epoch):
     """Logs a weight as a TensorBoard image."""
@@ -2060,9 +2149,6 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     embeddings_ckpt = os.path.join(self._log_write_dir, 'train',
                                    'keras_embedding.ckpt-{}'.format(epoch))
     self.model.save_weights(embeddings_ckpt)
-
-  def _implements_train_batch_hooks(self):
-    return not (self._start_batch == 0 and self._stop_batch == 0)
 
 
 @keras_export('keras.callbacks.ReduceLROnPlateau')

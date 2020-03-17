@@ -2079,19 +2079,17 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
-        batch_size=32,
         callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=1)],
     )
     # Verifies trace exists in the first train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.logdir))
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
-        batch_size=32,
         callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=2)],
     )
     # Verifies trace exists in the second train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.logdir))
+    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):
     model = self._get_seq_model()
