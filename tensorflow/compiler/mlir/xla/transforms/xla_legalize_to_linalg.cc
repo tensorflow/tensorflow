@@ -94,9 +94,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // This doesnt account for implicit broadcast, but the working assumption
     // here is that are broadcasts have been made explicit.
     unsigned nloops = argType.getRank();
-    if (!nloops) {
-      return failure();
-    }
+
+    if (isLHLO && !nloops) ConversionPattern::matchFailure();
+
     int operandCount = (isLHLO ? args.size() - 1 : args.size());
     auto verifyArgOrResultType = [&](Value val) -> ShapedType {
       auto shapedType = val.getType().dyn_cast<ShapedType>();
@@ -105,8 +105,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
            !shapedType.isa<RankedTensorType>()) ||
           shapedType.getRank() != nloops)
         return nullptr;
-      indexingMaps.emplace_back(
-          AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
+      indexingMaps.emplace_back(AffineMapAttr::get(
+          nloops ? rewriter.getMultiDimIdentityMap(nloops)
+                 : AffineMap::get(nloops, 0, rewriter.getContext())));
       return shapedType;
     };
     for (const auto& arg : llvm::enumerate(args)) {
