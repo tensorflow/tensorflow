@@ -444,6 +444,22 @@ class Conv1D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+        
+    self.checkProperKernel()
+        
+  def checkProperKernel(self):
+        if(isinstance(self.kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(self.kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")
+
+
+        
+        
+        
 
 
 @keras_export('keras.layers.Conv2D', 'keras.layers.Convolution2D')
@@ -561,7 +577,7 @@ class Conv2D(Conv):
     ValueError: if `padding` is "causal".
     ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
-
+  print("In Conv2d")
   def __init__(self,
                filters,
                kernel_size,
@@ -597,6 +613,7 @@ class Conv2D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+    
         
     self.checkProperKernel()
         
@@ -752,6 +769,21 @@ class Conv3D(Conv):
         kernel_constraint=constraints.get(kernel_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+        
+        
+    self.checkProperKernel()
+        
+  def checkProperKernel(self):
+        if(isinstance(self.kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(self.kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")
+
+        
+
 
 
 @keras_export('keras.layers.Conv2DTranspose',
@@ -909,6 +941,24 @@ class Conv2DTranspose(Conv2D):
           raise ValueError('Stride ' + str(self.strides) + ' must be '
                            'greater than output padding ' +
                            str(self.output_padding))
+                           
+                           
+            
+    self.checkProperKernel()
+        
+  def checkProperKernel(self):
+        if(isinstance(self.kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(self.kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")
+
+
+                           
+                           
+                           
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1201,6 +1251,20 @@ class Conv3DTranspose(Conv3D):
           raise ValueError('Stride ' + str(self.strides) + ' must be '
                            'greater than output padding ' +
                            str(self.output_padding))
+                           
+            
+    self.checkProperKernel()
+        
+  def checkProperKernel(self):
+        if(isinstance(self.kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(self.kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")
+
+
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
