@@ -11736,14 +11736,6 @@ func NonMaxSuppressionV2(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 // DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
 type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
 
-// DepthwiseConv2dNativeBackpropFilterExplicitPaddings sets the optional explicit_paddings attribute to value.
-// If not specified, defaults to {}
-func DepthwiseConv2dNativeBackpropFilterExplicitPaddings(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["explicit_paddings"] = value
-	}
-}
-
 // DepthwiseConv2dNativeBackpropFilterDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -25960,14 +25952,6 @@ func AssignAddVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *
 // DepthwiseConv2dNativeBackpropInputAttr is an optional argument to DepthwiseConv2dNativeBackpropInput.
 type DepthwiseConv2dNativeBackpropInputAttr func(optionalAttr)
 
-// DepthwiseConv2dNativeBackpropInputExplicitPaddings sets the optional explicit_paddings attribute to value.
-// If not specified, defaults to {}
-func DepthwiseConv2dNativeBackpropInputExplicitPaddings(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
-	return func(m optionalAttr) {
-		m["explicit_paddings"] = value
-	}
-}
-
 // DepthwiseConv2dNativeBackpropInputDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -26267,14 +26251,6 @@ func RetrieveTPUEmbeddingFTRLParametersGradAccumDebug(scope *Scope, num_shards i
 
 // DepthwiseConv2dNativeAttr is an optional argument to DepthwiseConv2dNative.
 type DepthwiseConv2dNativeAttr func(optionalAttr)
-
-// DepthwiseConv2dNativeExplicitPaddings sets the optional explicit_paddings attribute to value.
-// If not specified, defaults to {}
-func DepthwiseConv2dNativeExplicitPaddings(value []int64) DepthwiseConv2dNativeAttr {
-	return func(m optionalAttr) {
-		m["explicit_paddings"] = value
-	}
-}
 
 // DepthwiseConv2dNativeDataFormat sets the optional data_format attribute to value.
 //
