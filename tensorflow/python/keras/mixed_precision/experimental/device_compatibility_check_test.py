@@ -21,7 +21,7 @@ from __future__ import print_function
 import re
 
 from tensorflow.core.framework import device_attributes_pb2
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.mixed_precision.experimental import device_compatibility_check
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -42,7 +42,7 @@ def _get_device_attrs(device_type, device_name=None, cc_major=None,
       device_type='GPU', physical_device_desc=physical_device_desc)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class DeviceCompatibilityCheckTest(test.TestCase):
 
   def _test_compat_check(self, device_attr_list, should_warn, expected_regex,
