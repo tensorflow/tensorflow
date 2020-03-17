@@ -2076,22 +2076,24 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     model.compile(gradient_descent.SGD(1), 'mse')
 
+    logdir = os.path.join(self.get_temp_dir(), 'tb1')
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
         batch_size=32,
-        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=1)],
+        callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=1)],
     )
-    # Verifies trace exists in the first train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.logdir))
+    # Verifies trace exists in the first logdir.
+    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
+    logdir = os.path.join(self.get_temp_dir(), 'tb2')
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
         batch_size=32,
-        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=2)],
+        callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=2)],
     )
-    # Verifies trace exists in the second train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.logdir))
+    # Verifies trace exists in the second logdir.
+    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):
     model = self._get_seq_model()

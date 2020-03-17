@@ -1677,7 +1677,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
         profile_batch must be a non-negative integer or a tuple of integers.
         A pair of positive integers signify a range of batches to profile.
         By default, it will profile the second batch. Set profile_batch=0
-        to disable profiling. Must run in TensorFlow eager mode.
+        to disable profiling.
       embeddings_freq: frequency (in epochs) at which embedding layers will be
         visualized. If set to 0, embeddings won't be visualized.
       embeddings_metadata: a dictionary which maps layer name to a file name in
@@ -1715,6 +1715,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self.embeddings_metadata = embeddings_metadata
     self._init_profile_batch(profile_batch)
     self._epoch = 0
+    self._global_train_batch = 0
 
     # Lazily initialized in order to avoid creating event files when
     # not needed.
@@ -1947,23 +1948,18 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._pop_writer()
 
   def on_train_batch_begin(self, batch, logs=None):
+    self._global_train_batch += 1
     if not self._should_trace:
       return
 
-    if self._epoch == 0 and batch == self._start_batch:
+    if self._global_train_batch == self._start_batch:
       self._start_trace()
 
   def on_train_batch_end(self, batch, logs=None):
-    """Performs profiling if current batch is in profiler_batches.
-
-    Arguments:
-      batch: Integer, index of batch within the current epoch.
-      logs: Dict. Metric results for this batch.
-    """
     if not self._should_trace:
       return
 
-    if self._is_tracing and batch >= self._stop_batch:
+    if self._is_tracing and self._global_train_batch >= self._stop_batch:
       self._stop_trace()
 
   def on_epoch_begin(self, epoch, logs=None):
