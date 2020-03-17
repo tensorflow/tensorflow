@@ -2113,8 +2113,8 @@ def reduce_variance(input_tensor, axis=None, keepdims=False, name=None):
     if isinstance(input_tensor, ragged_tensor.RaggedTensor):
       square_of_input = gen_math_ops.square(input_tensor)
       mean_of_square = reduce_mean(square_of_input,
-      	                     axis=axis,
-      	                     keepdims=keepdims)
+                                   axis=axis,
+                                   keepdims=keepdims)
       mean = reduce_mean(input_tensor, axis=axis, keepdims=keepdims)
       square_of_mean = gen_math_ops.square(mean)
       return mean_of_square - square_of_mean
