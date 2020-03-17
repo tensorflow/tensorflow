@@ -61,6 +61,55 @@ namespace mlir {
 namespace xla {
 
 //===----------------------------------------------------------------------===//
+// FunctionAndBlockSignatureConverter
+//===----------------------------------------------------------------------===//
+
+// Converts only the tensor-type function and block arguments to memref-type.
+class FunctionAndBlockSignatureConverter : public OpConversionPattern<FuncOp> {
+ public:
+  using OpConversionPattern::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      FuncOp funcOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto toMemrefConverter = [&](Type t) -> Type {
+      if (auto tensorType = t.dyn_cast<RankedTensorType>()) {
+        return MemRefType::get(tensorType.getShape(),
+                               tensorType.getElementType());
+      }
+      return t;
+    };
+    // Converting tensor-type function arguments to memref-type.
+    auto funcType = funcOp.getType();
+    TypeConverter::SignatureConversion conversion(funcType.getNumInputs());
+    for (auto argType : llvm::enumerate(funcType.getInputs())) {
+      conversion.addInputs(argType.index(), toMemrefConverter(argType.value()));
+    }
+    for (auto resType : funcType.getResults()) {
+      conversion.addInputs(toMemrefConverter(resType));
+    }
+    rewriter.updateRootInPlace(funcOp, [&] {
+      funcOp.setType(
+          rewriter.getFunctionType(conversion.getConvertedTypes(), llvm::None));
+      rewriter.applySignatureConversion(&funcOp.getBody(), conversion);
+    });
+    // Converting tensor-type block arugments of all blocks inside the
+    // function region to memref-type except for the entry block.
+    for (auto& block : funcOp.getBlocks()) {
+      if (block.isEntryBlock()) continue;
+      for (int i = 0, e = block.getNumArguments(); i < e; ++i) {
+        auto oldArg = block.getArgument(i);
+        auto newArg =
+            block.insertArgument(i, toMemrefConverter(oldArg.getType()));
+        oldArg.replaceAllUsesWith(newArg);
+        block.eraseArgument(i + 1, false);
+      }
+    }
+    return matchSuccess();
+  }
+};
+
+//===----------------------------------------------------------------------===//
 // BufferInsertPosition
 //===----------------------------------------------------------------------===//
 
@@ -74,6 +123,23 @@ BufferInsertPosition::BufferInsertPosition(Operation* allocPosition)
 /// Creates a new assignment builder.
 BufferAssignmentLegalizer::BufferAssignmentLegalizer(Operation* op)
     : operation(op), dominators(op) {}
+
+void BufferAssignmentLegalizer::applySignatureConversion(FuncOp& funcOp) {
+  OwningRewritePatternList patterns;
+  ConversionTarget target(*funcOp.getContext());
+  // Adding functions whose all arguments are memref type to the set of legal
+  // operations.
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    auto inputs = op.getType().getInputs();
+    return std::all_of(inputs.begin(), inputs.end(),
+                       [](Type input) { return input.isa<MemRefType>(); });
+  });
+  patterns.insert<FunctionAndBlockSignatureConverter>(funcOp.getContext());
+  if (failed(applyPartialConversion(funcOp, target, patterns, nullptr))) {
+    funcOp.emitOpError()
+        << "Failed to apply function and block signature conversions";
+  }
+}
 
 /// Computes the actual position to place allocs for the given value.
 BufferInsertPosition BufferAssignmentLegalizer::computeAllocPosition(
@@ -406,6 +472,11 @@ struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
 std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass() {
   return absl::make_unique<BufferAssignmentPass>();
 }
+
+static PassRegistration<BufferAssignmentPass> buffer_assignment_pass(
+    "buffer-assignment",
+    "Executes buffer assignment pass to automatically move alloc and dealloc "
+    "operations into their proper positions");
 
 /// A simple pass to print debug/test information for the buffer assignment
 /// analysis.

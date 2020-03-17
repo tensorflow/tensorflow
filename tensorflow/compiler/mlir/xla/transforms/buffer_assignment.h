@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"   // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 
 namespace mlir {
 namespace xla {
@@ -66,6 +67,7 @@ struct BufferInsertPosition {
 
   /// Inserts a new dialect-specific alloc operation that will be constructed in
   /// the right place using the arguments provided.
+  /// TODO(dfki): Value can be removed from arguments.
   template <typename AllocOpT, typename... Args>
   AllocOpT insertAlloc(Value value, Args... args) const {
     OpBuilder allocBuilder(value.getDefiningOp());
@@ -100,6 +102,10 @@ class BufferAssignmentLegalizer {
   /// Returns the operation this analysis was constructed from.
   Operation* getOperation() const { return operation; }
 
+  /// Automatically converts all tensor types in the scope of all signatures to
+  /// memref types.
+  void applySignatureConversion(FuncOp& funcOp);
+
   /// Computes the actual position to place allocs for the given value.
   BufferInsertPosition computeAllocPosition(Value value) const;
 
@@ -109,6 +115,23 @@ class BufferAssignmentLegalizer {
 
   /// The dominator analysis to place allocs in the appropriate blocks.
   detail::BufferAssignmentDominators<false> dominators;
+};
+
+/// Helper conversion pattern that encapsulates a BufferAssignmentLegalizer
+/// instance.
+template <typename SourceOp>
+class BufferAssignmentOpConversionPattern
+    : public OpConversionPattern<SourceOp> {
+ public:
+  BufferAssignmentOpConversionPattern(
+      MLIRContext* context_,
+      xla::BufferAssignmentLegalizer* bufferAssignment_ = nullptr,
+      PatternBenefit benefit_ = 1)
+      : OpConversionPattern<SourceOp>(context_, benefit_),
+        bufferAssignment(bufferAssignment_) {}
+
+ protected:
+  xla::BufferAssignmentLegalizer* bufferAssignment;
 };
 
 }  // namespace xla
