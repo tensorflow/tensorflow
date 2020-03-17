@@ -341,9 +341,9 @@ class api_export(object):  # pylint: disable=invalid-name
     # their own _tf_api_names as opposed to just inheriting it.
     if api_names_attr in func.__dict__:
       if not self._allow_multiple_exports:
-        # TODO(annarev): temporarily removing check to fix builds.
-        # Need to investigate why symbols get reported multiple times.
-        return
+        raise SymbolAlreadyExposedError(
+            'Symbol %s is already exposed as %s.' %
+            (func.__name__, getattr(func, api_names_attr)))  # pylint: disable=protected-access
     setattr(func, api_names_attr, names)
 
   def export_constant(self, module_name, name):
