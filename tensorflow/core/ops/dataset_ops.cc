@@ -403,6 +403,24 @@ REGISTER_OP("RangeDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("AnonymousSeedGenerator")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Input("reshuffle: bool")
+    .Output("handle: resource")
+    .Output("deleter: variant")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Scalar());
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("DeleteSeedGenerator")
+    .Input("handle: resource")
+    .Input("deleter: variant")
+    .SetShapeFn(shape_inference::NoOutputs);
+
+// Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
 REGISTER_OP("AnonymousRandomSeedGenerator")
     .Input("seed: int64")
     .Input("seed2: int64")
@@ -414,6 +432,7 @@ REGISTER_OP("AnonymousRandomSeedGenerator")
       return Status::OK();
     });
 
+// Deprecated in favor of AnonymousSeedGenerator/DeleteSeedGenerator.
 REGISTER_OP("DeleteRandomSeedGenerator")
     .Input("handle: resource")
     .Input("deleter: variant")

@@ -109,6 +109,10 @@ tf_module {
     argspec: "args=[\'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousSeedGenerator"
+    argspec: "args=[\'seed\', \'seed2\', \'reshuffle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Any"
     argspec: "args=[\'input\', \'axis\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -1062,6 +1066,10 @@ tf_module {
   }
   member_method {
     name: "DeleteRandomSeedGenerator"
+    argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DeleteSeedGenerator"
     argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

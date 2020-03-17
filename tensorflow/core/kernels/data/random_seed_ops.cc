@@ -26,31 +26,44 @@ namespace tensorflow {
 namespace data {
 namespace {
 
+const char kAnonymousRandomSeedGenerator[] = "AnonymousRandomSeedGenerator";
 const char kNumRandomSamples[] = "num_random_samples";
+const char kFixedSeedGenerator[] = "FixedSeedGenerator";
 const char kRandomSeedGenerator[] = "RandomSeedGenerator";
+const char kSeedGenerator[] = "SeedGenerator";
 const char kSeed[] = "seed";
 const char kSeed2[] = "seed2";
+const char kReshuffle[] = "reshuffle";
 
 }  // namespace
 
+int64 SeedGenerator::num_random_samples() {
+  tf_shared_lock l(mu_);
+  return num_random_samples_;
+}
+
+void SeedGenerator::set_num_random_samples(int64 num_random_samples) {
+  mutex_lock l(mu_);
+  num_random_samples_ = num_random_samples;
+}
+
+string FixedSeedGenerator::DebugString() const { return kFixedSeedGenerator; }
+
+void FixedSeedGenerator::GenerateSeeds(int64* seed1, int64* seed2) {
+  mutex_lock l(mu_);
+  num_random_samples_++;
+  *seed1 = seed_;
+  *seed2 = seed2_;
+}
+
 string RandomSeedGenerator::DebugString() const { return kRandomSeedGenerator; }
 
-void RandomSeedGenerator::GenerateRandomSeeds(int64* seed1, int64* seed2) {
+void RandomSeedGenerator::GenerateSeeds(int64* seed1, int64* seed2) {
   mutex_lock l(mu_);
   num_random_samples_++;
   *seed1 = generator_();
   num_random_samples_++;
   *seed2 = generator_();
-}
-
-int64 RandomSeedGenerator::num_random_samples() {
-  tf_shared_lock l(mu_);
-  return num_random_samples_;
-}
-
-void RandomSeedGenerator::set_num_random_samples(int64 num_random_samples) {
-  mutex_lock l(mu_);
-  num_random_samples_ = num_random_samples;
 }
 
 void RandomSeedGenerator::Reset() {
@@ -62,25 +75,11 @@ void RandomSeedGenerator::Reset() {
   generator_.Skip(num_random_samples_);
 }
 
-void RandomSeedGenerator::Serialize(OpKernelContext* ctx) {
-  mutex_lock l(mu_);
-  Tensor* num_random_samples;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(kNumRandomSamples, TensorShape({}),
-                                           &num_random_samples));
-  num_random_samples->scalar<int64>()() = num_random_samples_;
-  Tensor* seed;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(kSeed, TensorShape({}), &seed));
-  seed->scalar<int64>()() = seed_;
-  Tensor* seed2;
-  OP_REQUIRES_OK(ctx, ctx->allocate_output(kSeed2, TensorShape({}), &seed2));
-  seed2->scalar<int64>()() = seed2_;
-}
-
-AnonymousRandomSeedGeneratorHandleOp::AnonymousRandomSeedGeneratorHandleOp(
+AnonymousSeedGeneratorHandleOp::AnonymousSeedGeneratorHandleOp(
     OpKernelConstruction* ctx)
-    : AnonymousResourceOp<RandomSeedGenerator>(ctx) {}
+    : AnonymousResourceOp<SeedGenerator>(ctx) {}
 
-void AnonymousRandomSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
+void AnonymousSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   int64 seed;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed, &seed));
   int64 seed2;
@@ -91,22 +90,33 @@ void AnonymousRandomSeedGeneratorHandleOp::Compute(OpKernelContext* ctx) {
   }
   seed_ = seed;
   seed2_ = seed2;
-  AnonymousResourceOp<RandomSeedGenerator>::Compute(ctx);
+
+  // TODO(b/151115950): Remove this case when the forward compatibility window
+  // expires.
+  if (ctx->op_kernel().def().op() == kAnonymousRandomSeedGenerator) {
+    reshuffle_ = true;
+  } else {
+    OP_REQUIRES_OK(ctx,
+                   ParseScalarArgument<bool>(ctx, kReshuffle, &reshuffle_));
+  }
+  AnonymousResourceOp<SeedGenerator>::Compute(ctx);
 }
 
-string AnonymousRandomSeedGeneratorHandleOp::name() {
-  return kRandomSeedGenerator;
-}
+std::string AnonymousSeedGeneratorHandleOp::name() { return kSeedGenerator; }
 
-Status AnonymousRandomSeedGeneratorHandleOp::CreateResource(
+Status AnonymousSeedGeneratorHandleOp::CreateResource(
     OpKernelContext* ctx, std::unique_ptr<FunctionLibraryDefinition> flib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
-    FunctionLibraryRuntime* lib, RandomSeedGenerator** resource) {
-  *resource = new RandomSeedGenerator(seed_, seed2_);
+    FunctionLibraryRuntime* lib, SeedGenerator** resource) {
+  if (reshuffle_) {
+    *resource = new RandomSeedGenerator(seed_, seed2_);
+  } else {
+    *resource = new FixedSeedGenerator(seed_, seed2_);
+  }
   return Status::OK();
 }
 
-void DeleteRandomSeedGeneratorOp::Compute(OpKernelContext* ctx) {
+void DeleteSeedGeneratorOp::Compute(OpKernelContext* ctx) {
   ResourceHandle handle = ctx->input(0).flat<ResourceHandle>()(0);
   // The resource is guaranteed to exist because the variant tensor wrapping the
   // deleter is provided as an unused input to this op, which guarantees that it
@@ -115,12 +125,17 @@ void DeleteRandomSeedGeneratorOp::Compute(OpKernelContext* ctx) {
 }
 
 namespace {
+REGISTER_KERNEL_BUILDER(Name("AnonymousSeedGenerator").Device(DEVICE_CPU),
+                        AnonymousSeedGeneratorHandleOp);
+
+REGISTER_KERNEL_BUILDER(Name("DeleteSeedGenerator").Device(DEVICE_CPU),
+                        DeleteSeedGeneratorOp);
 
 REGISTER_KERNEL_BUILDER(Name("AnonymousRandomSeedGenerator").Device(DEVICE_CPU),
-                        AnonymousRandomSeedGeneratorHandleOp);
+                        AnonymousSeedGeneratorHandleOp);
 
 REGISTER_KERNEL_BUILDER(Name("DeleteRandomSeedGenerator").Device(DEVICE_CPU),
-                        DeleteRandomSeedGeneratorOp);
+                        DeleteSeedGeneratorOp);
 
 }  // namespace
 }  // namespace data

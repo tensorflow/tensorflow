@@ -3523,6 +3523,51 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
+class _SeedGeneratorDeleter(object):
+  """An object which cleans up an anonymous seed generator resource.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+
+
+class _SeedGenerator(object):
+  """Represents a fixed seed generator resource."""
+
+  def __init__(self, seed, seed2, reshuffle):
+    super(_SeedGenerator, self).__init__()
+    self._device = context.context().device_name
+    self._handle, self._deleter = (
+        gen_dataset_ops.anonymous_seed_generator(
+            seed=seed, seed2=seed2, reshuffle=reshuffle))
+    self._resource_deleter = _SeedGeneratorDeleter(
+        handle=self._handle, device=self._device, deleter=self._deleter)
+
+  @property
+  def handle(self):
+    return self._handle
+
+
+# TODO(b/151115950): Remove this class after forward compatibility window
+# expires
 class _RandomSeedGeneratorDeleter(object):
   """An object which cleans up an anonymous random seed generator resource.
 
@@ -3549,6 +3594,8 @@ class _RandomSeedGeneratorDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# TODO(b/151115950): Remove this class after forward compatibility window
+# expires
 class _RandomSeedGenerator(object):
   """Represents a random seed generator resource."""
 
@@ -3602,9 +3649,14 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
-    if tf2.enabled() and self._reshuffle_each_iteration and (
-        context.executing_eagerly() or ops.inside_function()):
-      self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
+    if (tf2.enabled() and (self._reshuffle_each_iteration or
+                           compat.forward_compatible(2020, 4, 10)) and
+        (context.executing_eagerly() or ops.inside_function())):
+      if compat.forward_compatible(2020, 4, 10):
+        self._seed_generator = _SeedGenerator(self._seed, self._seed2,
+                                              self._reshuffle_each_iteration)
+      else:
+        self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
       variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           buffer_size=self._buffer_size,

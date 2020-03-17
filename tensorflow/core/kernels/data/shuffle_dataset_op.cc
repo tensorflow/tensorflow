@@ -65,11 +65,12 @@ constexpr char kSlicesStart[] = "slices_start";
 constexpr char kSlicesEnd[] = "slices_end";
 constexpr char kBuffer[] = "buffer";
 constexpr char kSize[] = "size";
-constexpr char kRandomSeedGenerator[] = "RandomSeedGenerator";
+constexpr char kSeedGenerator[] = "SeedGenerator";
 constexpr char kTFData[] = "tf_data";
 constexpr char kDSNumRandomSamples[] = "ds_num_random_samples";
 constexpr char kFixedSeedDatasetPrefix[] = "FixedSeed";
-constexpr char kReshufflingDatasetPrefix[] = "Reshuffling";
+constexpr char kDatasetPrefix[] = "Dataset";
+constexpr char kDatasetV2Prefix[] = "DatasetV2";
 constexpr char kShuffleDataset[] = "ShuffleDataset";
 
 namespace {
@@ -448,16 +449,17 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
   const TraceMeMetadata traceme_metadata_;
 };
 
-// A dataset that uses a pseudorandom sequence of seeds for the iterators
-// created from it. Used when `reshuffle_each_iteration` is true.
-class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
+class ShuffleDatasetOp::Dataset : public ShuffleDatasetBase {
  public:
-  ReshufflingDataset(OpKernelContext* ctx, const DatasetBase* input,
-                     int64 buffer_size, Seeds seeds, int64 count)
-      : ShuffleDatasetBase(ctx, input, buffer_size, count), seeds_(seeds) {}
+  Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
+          Seeds seeds, int64 count, bool reshuffle_each_iteration)
+      : ShuffleDatasetBase(ctx, input, buffer_size, count),
+        seeds_(seeds),
+        reshuffle_each_iteration_(reshuffle_each_iteration) {}
+
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
-    params.dataset_prefix = kReshufflingDatasetPrefix;
+    params.dataset_prefix = kDatasetPrefix;
     params.set_args(buffer_size_, seeds_.seed_, seeds_.seed2_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
@@ -471,11 +473,10 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
   }
 
  protected:
-  class Iterator : public ShuffleDatasetBase::Iterator<ReshufflingDataset> {
+  class Iterator : public ShuffleDatasetBase::Iterator<Dataset> {
    public:
     Iterator(const Params& params, int64 seed, int64 seed2)
-        : ShuffleDatasetBase::Iterator<ReshufflingDataset>(params, seed,
-                                                           seed2) {}
+        : ShuffleDatasetBase::Iterator<Dataset>(params, seed, seed2) {}
 
     ~Iterator() override { seed_generator_->Unref(); }
 
@@ -483,10 +484,10 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
       // Firstly, lookup or create a seed generator from the IteratorResource
       // resource_mgr.
       ResourceMgr* mgr = ctx->resource_mgr();
-      RandomSeedGenerator* seed_generator;
+      SeedGenerator* seed_generator;
       const string name = strings::StrCat(
           prefix(), name_utils::kDelimiter, dataset()->type_string(),
-          name_utils::kDelimiter, kRandomSeedGenerator);
+          name_utils::kDelimiter, kSeedGenerator);
 
       int64 dataset_seed, dataset_seed2;
       {
@@ -496,18 +497,23 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
         dataset_seed = seed_;
         dataset_seed2 = seed2_;
       }
-      TF_RETURN_IF_ERROR(mgr->LookupOrCreate<RandomSeedGenerator>(
+      TF_RETURN_IF_ERROR(mgr->LookupOrCreate<SeedGenerator>(
           kTFData, name, &seed_generator,
-          [dataset_seed, dataset_seed2](RandomSeedGenerator** seed_generator) {
+          [this, dataset_seed, dataset_seed2](SeedGenerator** seed_generator) {
             // On the first iterator creation, use the original seeds from the
-            // dataset to seed a `RandomSeedGenerator` that will provide seeds
+            // dataset to seed a `SeedGenerator` that will provide seeds
             // for subsequent repetitions of the same dataset.
-            *seed_generator =
-                new RandomSeedGenerator(dataset_seed, dataset_seed2);
+            if (dataset()->reshuffle_each_iteration_) {
+              *seed_generator =
+                  new RandomSeedGenerator(dataset_seed, dataset_seed2);
+            } else {
+              *seed_generator =
+                  new FixedSeedGenerator(dataset_seed, dataset_seed2);
+            }
             return Status::OK();
           }));
       seed_generator_ = seed_generator;
-      seed_generator_->GenerateRandomSeeds(&seed_, &seed2_);
+      seed_generator_->GenerateSeeds(&seed_, &seed2_);
       mutex_lock l(mu_);
       ResetRngs();
       return Status::OK();
@@ -527,8 +533,7 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
                               seed_generator_->num_random_samples()));
 
       // Save the Iterator.
-      return ShuffleDatasetBase::Iterator<ReshufflingDataset>::SaveInternal(
-          writer);
+      return ShuffleDatasetBase::Iterator<Dataset>::SaveInternal(writer);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -541,12 +546,12 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
       seed_generator_->Reset();
 
       // Restore the Iterator.
-      return ShuffleDatasetBase::Iterator<ReshufflingDataset>::RestoreInternal(
-          ctx, reader);
+      return ShuffleDatasetBase::Iterator<Dataset>::RestoreInternal(ctx,
+                                                                    reader);
     }
 
    private:
-    RandomSeedGenerator* seed_generator_;
+    SeedGenerator* seed_generator_;
   };
 
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -561,8 +566,8 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
 
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     TF_RETURN_IF_ERROR(
-        AddSeeds(seeds_, ctx->preserve_random_seeds(), b, &seed, &seed2));
-    b->BuildAttrValue(true, &reshuffle_each_iteration);
+        AddSeeds(seeds_, /*preserve_random_seeds=*/true, b, &seed, &seed2));
+    b->BuildAttrValue(reshuffle_each_iteration_, &reshuffle_each_iteration);
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2},  // Inputs
         {std::make_pair(kReshuffleEachIteration,
@@ -573,25 +578,25 @@ class ShuffleDatasetOp::ReshufflingDataset : public ShuffleDatasetBase {
 
  private:
   const Seeds seeds_;
+  const bool reshuffle_each_iteration_;
 };
 
-// A dataset that uses a pseudorandom sequence of seeds for the iterators
-// created from it. Used in TF 2.0 when `reshuffle_each_iteration` is true.
-class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
+// A shuffle dataset that uses an external seed generator resource to choose the
+// shuffle seeds for each iteration.
+class ShuffleDatasetOp::DatasetV2 : public ShuffleDatasetBase {
  public:
-  ReshufflingDatasetV2(OpKernelContext* ctx, const DatasetBase* input,
-                       int64 buffer_size, int64 count,
-                       RandomSeedGenerator* seed_generator,
-                       std::unique_ptr<OwnedResourceHandle> handle)
+  DatasetV2(OpKernelContext* ctx, const DatasetBase* input, int64 buffer_size,
+            int64 count, SeedGenerator* seed_generator,
+            std::unique_ptr<OwnedResourceHandle> handle)
       : ShuffleDatasetBase(ctx, input, buffer_size, count),
         seed_generator_(seed_generator),
         handle_(std::move(handle)) {}
 
-  ~ReshufflingDatasetV2() override { seed_generator_->Unref(); }
+  ~DatasetV2() override { seed_generator_->Unref(); }
 
   string DebugString() const override {
     name_utils::DatasetDebugStringParams params;
-    params.dataset_prefix = kReshufflingDatasetPrefix;
+    params.dataset_prefix = kDatasetV2Prefix;
     params.set_args(buffer_size_);
     return name_utils::DatasetDebugString(kDatasetType, params);
   }
@@ -610,15 +615,15 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
   }
 
  protected:
-  class Iterator : public ShuffleDatasetBase::Iterator<ReshufflingDatasetV2> {
+  class Iterator : public ShuffleDatasetBase::Iterator<DatasetV2> {
    public:
-    Iterator(const Params& params, RandomSeedGenerator* seed_generator)
-        : ShuffleDatasetBase::Iterator<ReshufflingDatasetV2>(params, 0, 0),
+    Iterator(const Params& params, SeedGenerator* seed_generator)
+        : ShuffleDatasetBase::Iterator<DatasetV2>(params, 0, 0),
           seed_generator_(seed_generator) {}
 
     Status Initialize(IteratorContext* ctx) override {
       mutex_lock l(mu_);
-      seed_generator_->GenerateRandomSeeds(&seed_, &seed2_);
+      seed_generator_->GenerateSeeds(&seed_, &seed2_);
       ResetRngs();
       return Status::OK();
     }
@@ -636,8 +641,7 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
                               seed_generator_->num_random_samples()));
 
       // Save the tterator state.
-      return ShuffleDatasetBase::Iterator<ReshufflingDatasetV2>::SaveInternal(
-          writer);
+      return ShuffleDatasetBase::Iterator<DatasetV2>::SaveInternal(writer);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -650,12 +654,12 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
       seed_generator_->Reset();
 
       // Restore the iterator state.
-      return ShuffleDatasetBase::Iterator<
-          ReshufflingDatasetV2>::RestoreInternal(ctx, reader);
+      return ShuffleDatasetBase::Iterator<DatasetV2>::RestoreInternal(ctx,
+                                                                      reader);
     }
 
    private:
-    RandomSeedGenerator* seed_generator_;
+    SeedGenerator* seed_generator_;
   };
 
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -678,12 +682,13 @@ class ShuffleDatasetOp::ReshufflingDatasetV2 : public ShuffleDatasetBase {
   }
 
  private:
-  RandomSeedGenerator* seed_generator_ = nullptr;
+  SeedGenerator* seed_generator_ = nullptr;
   std::unique_ptr<OwnedResourceHandle> handle_;
 };
 
 // A dataset that uses the same fixed seed for all iterators created from it.
 // Used when `reshuffle_each_iteration` is false.
+// TODO(b/151115950): delete this class.
 class ShuffleDatasetOp::FixedSeedDataset : public ShuffleDatasetBase {
  public:
   FixedSeedDataset(OpKernelContext* ctx, const DatasetBase* input,
@@ -752,20 +757,20 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
 
   int64 count = 1;
   if (op_version_ == 2) {
-    RandomSeedGenerator* seed_generator = nullptr;
+    SeedGenerator* seed_generator = nullptr;
     OP_REQUIRES_OK(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 2), &seed_generator));
 
     // Create a fresh handle for the resource because the input handle can
     // become invalid after this op executes.
     std::unique_ptr<OwnedResourceHandle> handle;
-    OP_REQUIRES_OK(ctx,
-                   OwnedResourceHandle::Create(ctx, seed_generator,
-                                               kRandomSeedGenerator, &handle));
+    OP_REQUIRES_OK(
+        ctx, OwnedResourceHandle::Create(
+                 ctx, seed_generator, seed_generator->DebugString(), &handle));
 
-    // Ownership of seed generator is transferred onto `ReshufflingDatasetV2`.
-    *output = new ReshufflingDatasetV2(ctx, input, buffer_size, count,
-                                       seed_generator, std::move(handle));
+    // Ownership of seed generator is transferred onto `DatasetV2`.
+    *output = new ShuffleDatasetOp::DatasetV2(
+        ctx, input, buffer_size, count, seed_generator, std::move(handle));
     return;
   }
 
@@ -775,12 +780,17 @@ void ShuffleDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
   int64 seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, kSeed2, &seed2));
 
-  if (reshuffle_each_iteration_) {
-    *output = new ReshufflingDataset(ctx, input, buffer_size,
-                                     Seeds(seed, seed2), count);
-  } else {
+  if (!reshuffle_each_iteration_) {
+    // This dataset is only needed to support old clients running v2 eager with
+    // reshuffle_each_iteration_=false. We can't tell here whether we are in v2
+    // eager, so we conservatively always use FixedSeedDataset when
+    // reshuffle_each_iteration=false.
     *output = new FixedSeedDataset(ctx, input, buffer_size, Seeds(seed, seed2),
                                    count);
+  } else {
+    *output = new ShuffleDatasetOp::Dataset(ctx, input, buffer_size,
+                                            Seeds(seed, seed2), count,
+                                            reshuffle_each_iteration_);
   }
 }
 
@@ -817,7 +827,7 @@ class ShuffleAndRepeatDatasetOp::Dataset : public ShuffleDatasetBase {
 
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     TF_RETURN_IF_ERROR(
-        AddSeeds(seeds_, ctx->preserve_random_seeds(), b, &seed, &seed2));
+        AddSeeds(seeds_, /*preserve_random_seeds=*/true, b, &seed, &seed2));
     TF_RETURN_IF_ERROR(b->AddScalar(count_, &count));
     TF_RETURN_IF_ERROR(b->AddDataset(
         this, {input_graph_node, buffer_size, seed, seed2, count},  // Inputs
