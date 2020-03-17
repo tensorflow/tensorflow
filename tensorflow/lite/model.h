@@ -219,7 +219,7 @@ class InterpreterBuilder {
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
       Subgraph* subgraph);
-  TfLiteStatus ApplyDelegates(Interpreter* interpreter);
+  TfLiteStatus ApplyDelegates(Interpreter* interpreter, int num_threads);
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
                                  const std::vector<int>& dims);
@@ -236,6 +236,7 @@ class InterpreterBuilder {
   const Allocation* allocation_ = nullptr;
 
   bool has_flex_op_ = false;
+  int num_fp32_tensors_ = 0;
 };
 
 }  // namespace tflite

@@ -24,6 +24,13 @@ config_setting(
 )
 
 config_setting(
+    name = "tflite_with_xnnpack",
+    values = {
+        "copt": "-DTFLITE_ENABLE_XNNPACK_DELEGATE_BY_DEFAULT",
+    },
+)
+
+config_setting(
     name = "gemmlowp_profiling",
     values = {
         "copt": "-DGEMMLOWP_PROFILING",
@@ -251,6 +258,11 @@ cc_library(
             "//tensorflow/lite/profiling:platform_profiler",
         ],
         "//conditions:default": [],
+    }) + select({
+        ":tflite_with_xnnpack": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
+        "//conditions:default": [],
     }),
     alwayslink = 1,
 )
@@ -389,6 +401,42 @@ tf_cc_test(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test model framework with the XNNPACK delegate.
+cc_test(
+    name = "model_xnnpack_test",
+    size = "small",
+    srcs = [
+        # To avoid creating another 'framework' target that's compiled w/
+        # TFLITE_ENABLE_XNNPACK_DELEGATE_BY_DEFAULT defined, we simply include
+        # model.cc here and allow multiple defintions during linking (see
+        # linkopts below) as it's the only file where the macro is checked.
+        "model.cc",
+        "model_xnnpack_test.cc",
+    ],
+    data = [
+        "testdata/multi_add.bin",
+    ],
+    defines = ["TFLITE_ENABLE_XNNPACK_DELEGATE_BY_DEFAULT=1"],
+    linkopts = ["-z muldefs"],
+    tags = [
+        # As "-z muldefs" isn't recognized by xcrun, disable this test on iOS.
+        "tflite_not_portable_ios",  # TODO(b/151246885)
+    ],
+    deps = [
+        ":framework",
+        ":util",
+        ":version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

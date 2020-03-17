@@ -30,6 +30,10 @@ limitations under the License.
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
+#if defined(TFLITE_ENABLE_XNNPACK_DELEGATE_BY_DEFAULT)
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#endif
+
 #if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
 #include "tensorflow/lite/profiling/platform_profiler.h"
 #endif
@@ -567,6 +571,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     return kEmptyTensorName;
   };
 
+  num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
@@ -576,6 +581,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         kTfLiteOk) {
       status = kTfLiteError;
       continue;
+    }
+    if (type == kTfLiteFloat32) {
+      ++num_fp32_tensors_;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {
@@ -659,12 +667,27 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
-TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
-  // Apply Flex delegate if applicable.
-  if (!has_flex_op_ || AcquireFlexDelegate == nullptr) {
-    return kTfLiteOk;
-  } else if (auto flex_delegate = AcquireFlexDelegate()) {
-    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
+                                                int num_threads) {
+#if defined(TFLITE_ENABLE_XNNPACK_DELEGATE_BY_DEFAULT)
+  // First, apply XNNPACK delegate if applicable.
+  if (num_fp32_tensors_ > 0) {
+    auto opts = TfLiteXNNPackDelegateOptionsDefault();
+    if (num_threads > 0) opts.num_threads = num_threads;
+    auto xnnpack_delegate = Interpreter::TfLiteDelegatePtr(
+        TfLiteXNNPackDelegateCreate(&opts), TfLiteXNNPackDelegateDelete);
+    // The execution will fall back to default implementation if the XNNPACK
+    // delegate fails to be applied. Therefore, we ignore the return status
+    // here and let it fall through the rest of the code.
+    interpreter->ModifyGraphWithDelegate(std::move(xnnpack_delegate));
+  }
+#endif
+
+  // Secondly, apply Flex delegate if applicable.
+  if (has_flex_op_ && AcquireFlexDelegate) {
+    if (auto flex_delegate = AcquireFlexDelegate()) {
+      return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+    }
   }
 
   return kTfLiteOk;
@@ -777,7 +800,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     modified_subgraph->SetVariables(std::move(variables));
   }
 
-  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
+  if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
     return cleanup_and_error();
 
   return kTfLiteOk;
