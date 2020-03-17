@@ -1432,8 +1432,8 @@ def equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([ True,  True])>
 
   Args:
-    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
@@ -1468,8 +1468,8 @@ def not_equal(x, y, name=None):
   <tf.Tensor: shape=(2,), dtype=bool, numpy=array([False,  False])>
 
   Args:
-    x: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
-    y: A `tf.Tensor` or `tf.SparseTensor` or `tf.IndexedSlices`.
+    x: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
+    y: A `tf.Tensor` or `tf.sparse.SparseTensor` or `tf.IndexedSlices`.
     name: A name for the operation (optional).
 
   Returns:
@@ -2886,12 +2886,12 @@ def matmul(a,
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.SparseTensor` multiplication.
+      for some support for `tf.sparse.SparseTensor` multiplication.
     b_is_sparse: If `True`, `b` is treated as a sparse matrix. Notice, this
       **does not support `tf.sparse.SparseTensor`**, it just makes optimizations
       that assume most values in `a` are zero.
       See `tf.sparse.sparse_dense_matmul`
-      for some support for `tf.SparseTensor` multiplication.
+      for some support for `tf.sparse.SparseTensor` multiplication.
     name: Name for the operation (optional).
 
   Returns:
