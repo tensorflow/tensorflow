@@ -101,7 +101,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_normal(
             shape=[10000], seed=seed_t, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(np.isfinite(y)))
 
   def testDistributionOfStatelessRandomNormal(self):
