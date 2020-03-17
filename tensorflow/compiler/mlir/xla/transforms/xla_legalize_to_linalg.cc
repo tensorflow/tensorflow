@@ -73,7 +73,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
  public:
   using OpConversionPattern<OpTy>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
@@ -81,10 +81,10 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
         op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
     if (!argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects ranked args");
-      return ConversionPattern::matchFailure();
+      return failure();
     }
     if (!argType.getElementType().isSignlessIntOrFloat()) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     // Construct the indexing maps needed for linalg.generic ops.
@@ -95,7 +95,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // here is that are broadcasts have been made explicit.
     unsigned nloops = argType.getRank();
     if (!nloops) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
     int operandCount = (isLHLO ? args.size() - 1 : args.size());
     auto verifyArgOrResultType = [&](Value val) -> ShapedType {
@@ -111,7 +111,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     };
     for (const auto& arg : llvm::enumerate(args)) {
       auto shapedType = verifyArgOrResultType(arg.value());
-      if (!shapedType) return ConversionPattern::matchFailure();
+      if (!shapedType) return failure();
       auto& result_or_body_arg =
           arg.index() < operandCount ? bodyArgTypes : bodyResultTypes;
       result_or_body_arg.emplace_back(shapedType.getElementType());
@@ -122,7 +122,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
              "When lowering HLO ops result can't be part of arguments");
       Value result = op.getOperation()->getResult(0);
       auto shapedType = verifyArgOrResultType(result);
-      if (!shapedType) return ConversionPattern::matchFailure();
+      if (!shapedType) return failure();
       bodyResultTypes.push_back(shapedType.getElementType());
       opResultTypes.push_back(shapedType);
     }
@@ -152,11 +152,11 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<OpTy>(
         op, bodyResultTypes, bodyArgs, &rewriter);
     if (!opResult) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
     rewriter.create<linalg::YieldOp>(loc, opResult);
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
-    return ConversionPattern::matchSuccess();
+    return success();
   }
 };
 
@@ -165,7 +165,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
  public:
   using OpConversionPattern<LhloOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       LhloOp lhlo_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = lhlo_op.getLoc();
@@ -173,7 +173,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
         lhlo_op.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.getElementType().isSignlessIntOrFloat() ||
         (argType.getRank() != 0)) {
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     // Create two loads from the input.
@@ -185,7 +185,7 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
         &rewriter);
     rewriter.create<StoreOp>(loc, opResult, lhlo_op.out());
     rewriter.eraseOp(lhlo_op);
-    return ConversionPattern::matchSuccess();
+    return success();
   }
 };
 
@@ -199,18 +199,16 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
  public:
   using OpConversionPattern<OpTy>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
-      return ConversionPattern::matchFailure();
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
     auto operandType = op.operand().getType().template cast<ShapedType>();
     auto resultType = getXLAOpResultType<isLHLO>(op);
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
-      return ConversionPattern::matchFailure();
+    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op)) return failure();
     ArrayAttr indexingMapsAttr =
         static_cast<const Derived&>(*this).getIndexingMapsAttr(op, &rewriter);
-    if (!indexingMapsAttr) return ConversionPattern::matchFailure();
+    if (!indexingMapsAttr) return failure();
 
     OpBuilder::InsertionGuard linalgOpGuard(rewriter);
     auto nloops = resultType.getRank();
@@ -230,7 +228,7 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
     rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
 
     rewriter.replaceOp(op, linalgOp.getOperation()->getResults());
-    return ConversionPattern::matchSuccess();
+    return success();
   }
 };
 
@@ -377,15 +375,15 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
  public:
   using OpConversionPattern<xla_lhlo::IotaOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::IotaOp iotaOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto resultMemrefType =
         iotaOp.getOperand().getType().dyn_cast<MemRefType>();
-    if (!resultMemrefType) return matchFailure();
+    if (!resultMemrefType) return failure();
 
     auto resultElementType = resultMemrefType.getElementType();
-    if (!resultElementType.isSignlessIntOrFloat()) return matchFailure();
+    if (!resultElementType.isSignlessIntOrFloat()) return failure();
 
     // Construct the indexing maps needed for linalg.generic ops.
     unsigned nloops = resultMemrefType.getRank();
@@ -420,7 +418,7 @@ class IotaConverter : public OpConversionPattern<xla_lhlo::IotaOp> {
     }
     rewriter.create<linalg::YieldOp>(loc, castOp->getResult(0));
     rewriter.eraseOp(iotaOp);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -428,17 +426,17 @@ class ConstConverter : public OpConversionPattern<xla_lhlo::ConstOp> {
  public:
   using OpConversionPattern<xla_lhlo::ConstOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::ConstOp constOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = constOp.getLoc();
     auto valueAttr = constOp.value().cast<DenseElementsAttr>();
-    if (valueAttr.getType().getRank() != 0) return matchFailure();
+    if (valueAttr.getType().getRank() != 0) return failure();
     auto stdConstOp =
         rewriter.create<mlir::ConstantOp>(loc, valueAttr.getValue({}));
     rewriter.create<mlir::StoreOp>(loc, stdConstOp, constOp.getOperand());
     rewriter.eraseOp(constOp);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -446,7 +444,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
  public:
   using OpConversionPattern<xla_lhlo::SliceOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::SliceOp sliceOp, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = sliceOp.getLoc();
@@ -454,7 +452,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
         sliceOp.getOperand(0).getType().template dyn_cast<ShapedType>();
     if (!argType || !argType.hasRank()) {
       emitError(loc, "lhlo to linalg conversion expects known-rank args");
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     SmallVector<Value, 3> ranges;
@@ -472,7 +470,7 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
         rewriter.create<linalg::SliceOp>(loc, sliceOp.getOperand(0), ranges);
     rewriter.create<linalg::CopyOp>(loc, linalg_slice, sliceOp.getOperand(1));
     rewriter.eraseOp(sliceOp);
-    return matchSuccess();
+    return success();
   }
 };
 

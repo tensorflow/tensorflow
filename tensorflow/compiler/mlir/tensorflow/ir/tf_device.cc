@@ -514,16 +514,16 @@ namespace {
 struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
   using OpRewritePattern<LaunchOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(LaunchOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(LaunchOp op,
+                                PatternRewriter& rewriter) const override {
     Block& block = op.GetBody();
     // Check if launch only has a return.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map launch results to return operands.
     rewriter.replaceOp(op, block.front().getOperands());
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

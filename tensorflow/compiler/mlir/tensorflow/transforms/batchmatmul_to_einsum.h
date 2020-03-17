@@ -32,7 +32,7 @@ class ConvertTFBatchMatMulToEinsumOp
     : public OpRewritePattern<BatchMatMulOpType> {
   using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       BatchMatMulOpType op,
       PatternRewriter& rewriter) const override;  // NOLINT
 };

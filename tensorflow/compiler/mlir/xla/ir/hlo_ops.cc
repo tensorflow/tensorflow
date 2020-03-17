@@ -500,21 +500,21 @@ struct ExtractElementFromScalarsToDimensionTensor
     : public OpRewritePattern<ExtractElementOp> {
   using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ExtractElementOp extract,
-                                     PatternRewriter& rewriter) const override {
-    if (extract.indices().size() != 1) return matchFailure();
+  LogicalResult matchAndRewrite(ExtractElementOp extract,
+                                PatternRewriter& rewriter) const override {
+    if (extract.indices().size() != 1) return failure();
 
     if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
             extract.aggregate().getDefiningOp())) {
       APInt index;
       if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
-        return matchFailure();
+        return failure();
       }
       rewriter.replaceOp(extract,
                          scalars_to_tensor.getOperand(index.getZExtValue()));
-      return matchSuccess();
+      return success();
     }
-    return matchFailure();
+    return failure();
   }
 };
 

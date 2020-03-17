@@ -60,10 +60,10 @@ class GpuOpFusionPass : public FunctionPass<GpuOpFusionPass> {
 struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
   using OpRewritePattern<ReluOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ReluOp relu_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ReluOp relu_op,
+                                PatternRewriter &rewriter) const override {
     Operation *relu_input = relu_op.features().getDefiningOp();
-    if (!relu_input) return matchFailure();
+    if (!relu_input) return failure();
     auto batch_norm = dyn_cast_or_null<FusedBatchNormV3Op>(relu_input);
     AddV2Op add_op;
     Value side_input;
@@ -71,7 +71,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
       // We don't have a FusedBatchNorm as input to the ReLu, but we can get
       // through an AddV2 as well.
       add_op = dyn_cast_or_null<AddV2Op>(relu_input);
-      if (!add_op) return matchFailure();
+      if (!add_op) return failure();
 
       batch_norm =
           dyn_cast_or_null<FusedBatchNormV3Op>(add_op.x().getDefiningOp());
@@ -81,13 +81,13 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
         // Didn't get a FusedBatchNorm on the LHS of the AddV2, try the RHS.
         batch_norm =
             dyn_cast_or_null<FusedBatchNormV3Op>(add_op.y().getDefiningOp());
-        if (!batch_norm) return matchFailure();
+        if (!batch_norm) return failure();
         side_input = add_op.x();
       }
     }
     assert(batch_norm);
-    if (batch_norm.is_training()) return matchFailure();
-    if (!batch_norm.y().hasOneUse()) return matchFailure();
+    if (batch_norm.is_training()) return failure();
+    if (!batch_norm.y().hasOneUse()) return failure();
 
     // Build the newly fused operation to replace the batch norm
     OperationState state(batch_norm.getLoc(),
@@ -110,7 +110,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
       rewriter.replaceOp(add_op, op->getResult(0));
     }
 
-    return matchSuccess();
+    return success();
   }
 };
 

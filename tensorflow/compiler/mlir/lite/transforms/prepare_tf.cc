@@ -121,12 +121,12 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
       MLIRContext *ctx)
       : OpRewritePattern<TFFakeQuantOp>(ctx) {}
 
-  PatternMatchResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
+                                PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res.hasOneUse() || isa<QuantizeOp>(*res.user_begin()))
-      return this->matchFailure();
+      return failure();
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
@@ -137,8 +137,8 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
       min = id1.input();
     if (auto id2 = dyn_cast_or_null<TF::IdentityOp>(max.getDefiningOp()))
       max = id2.input();
-    if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
-    if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
+    if (!matchPattern(min, m_Constant(&min_value))) return failure();
+    if (!matchPattern(max, m_Constant(&max_value))) return failure();
 
     int quant_dim = -1;
     if (PerAxis) {
@@ -155,7 +155,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/false);
-    if (!qtype) this->matchFailure();
+    if (!qtype) failure();
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
@@ -168,7 +168,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
-    return this->matchSuccess();
+    return success();
   }
 };
 
@@ -208,8 +208,8 @@ struct ConvertTFConvOp : public RewritePattern {
       : RewritePattern(TFConvOpType::getOperationName(), 1, context),
         intAttrOne(Builder(context).getI32IntegerAttr(1)) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     // Assumes TensorFlow convolution op is already verified to be
     // in valid form.
 
@@ -223,10 +223,10 @@ struct ConvertTFConvOp : public RewritePattern {
     TFConvOpType tf_op = cast<TFConvOpType>(op);
 
     if (!TFTypeIsFloatTensor(tf_op.input()) || !TFDataFormatIsNHWC(op))
-      return matchFailure();
+      return failure();
 
     IntegerAttr height, width;
-    if (!TFIntListIs1XY1(op, "strides", &height, &width)) return matchFailure();
+    if (!TFIntListIs1XY1(op, "strides", &height, &width)) return failure();
 
     ConvertTFConvOpMatchState state;
     state.stride_height = height;
@@ -242,14 +242,14 @@ struct ConvertTFConvOp : public RewritePattern {
       state.dilation_width_factor = intAttrOne;
     }
 
-    if (!TFPaddingIsSameOrValid(op, &state.padding)) return matchFailure();
+    if (!TFPaddingIsSameOrValid(op, &state.padding)) return failure();
 
     // Additionally, we require the filter operand to be of 4-D tensor type so
     // that we can extract info from the shape (e.g., for constructing bias
     // tensor, for setting depth_multiplier attribute, etc.).
     auto filter = tf_op.filter();
     auto filter_type = filter.getType().template dyn_cast<RankedTensorType>();
-    if (!filter_type || filter_type.getRank() != 4) return matchFailure();
+    if (!filter_type || filter_type.getRank() != 4) return failure();
 
     // TensorFlow convolution op only has two inputs, while the TFLite one has
     // three, with the bias vector marked as optional. However, TOCO has a
@@ -274,7 +274,7 @@ struct ConvertTFConvOp : public RewritePattern {
         bias);
 
     rewriter.replaceOp(op, conv_op.getResult());
-    return matchSuccess();
+    return success();
   }
 
   const IntegerAttr intAttrOne;
@@ -418,8 +418,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
   explicit ConvertTFStridedSlice(MLIRContext *context)
       : RewritePattern(TF::StridedSliceOp::getOperationName(), 2, context) {}
 
-  PatternMatchResult RewriteNewAxisMask(Operation *op, uint64_t new_axis_mask,
-                                        PatternRewriter &rewriter) const {
+  LogicalResult RewriteNewAxisMask(Operation *op, uint64_t new_axis_mask,
+                                   PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
     // Insert a new reshape op.
@@ -474,11 +474,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
         rewriter.getI64IntegerAttr(0),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.shrink_axis_mask()));
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult RewriteEllipsisMask(Operation *op, uint64_t ellipsis_mask,
-                                         PatternRewriter &rewriter) const {
+  LogicalResult RewriteEllipsisMask(Operation *op, uint64_t ellipsis_mask,
+                                    PatternRewriter &rewriter) const {
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
 
     DenseIntElementsAttr begin_dense_elem_attr;
@@ -486,7 +486,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto begin_ranked_attr_type = begin.getType().dyn_cast<RankedTensorType>();
     if (!begin_ranked_attr_type ||
         !matchPattern(begin, m_Constant(&begin_dense_elem_attr))) {
-      return matchFailure();
+      return failure();
     }
 
     DenseIntElementsAttr end_dense_elem_attr;
@@ -494,7 +494,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     auto end_ranked_attr_type = end.getType().dyn_cast<RankedTensorType>();
     if (!end_ranked_attr_type ||
         !matchPattern(end, m_Constant(&end_dense_elem_attr))) {
-      return matchFailure();
+      return failure();
     }
 
     DenseIntElementsAttr stride_dense_elem_attr;
@@ -503,7 +503,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         stride.getType().dyn_cast<RankedTensorType>();
     if (!stride_ranked_attr_type ||
         !matchPattern(stride, m_Constant(&stride_dense_elem_attr))) {
-      return matchFailure();
+      return failure();
     }
 
     Value input = strided_slice_op.input();
@@ -516,7 +516,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     const ArrayRef<int64_t> begin_shape = begin_type.getShape();
     const int begin_dim = begin_shape.size();
 
-    if (begin_dim != 1) return matchFailure();
+    if (begin_dim != 1) return failure();
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
@@ -586,11 +586,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
                                 strided_slice_op.new_axis_mask()),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.shrink_axis_mask()));
-    return matchSuccess();
+    return success();
   }
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     // TODO(renjieliu): Consider expand the transformation for shrink
     // mask as well.
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
@@ -606,7 +606,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
     if (ellipsis_mask != 0) {
       return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
     }
-    return matchFailure();
+    return failure();
   }
 };
 

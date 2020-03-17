@@ -66,18 +66,18 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
  public:
   using OpConversionPattern<xla_lhlo::ReduceOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::ReduceOp xla_reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/137624192) Implement variadic reduce.
-    if (xla_reduce_op.out().size() != 1) return matchFailure();
+    if (xla_reduce_op.out().size() != 1) return failure();
 
     loop::ReduceOp reduce_op =
         CreateParallelLoopsWithReduceOp(xla_reduce_op, args, &rewriter);
     ConvertReductionOperator(xla_reduce_op,
                              &reduce_op.reductionOperator().front(), &rewriter);
     rewriter.replaceOp(xla_reduce_op, llvm::None);
-    return matchSuccess();
+    return success();
   }
 
  private:
