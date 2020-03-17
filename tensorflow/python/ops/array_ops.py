@@ -5480,17 +5480,17 @@ def repeat_with_axis(data, repeats, axis, name=None):
 
   Example usage:
 
-  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  >>> tf.repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
   <tf.Tensor: shape=(5,), dtype=string,
   numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
-  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  >>> tf.repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
   <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
   array([[1, 2],
          [1, 2],
          [3, 4],
          [3, 4],
          [3, 4]], dtype=int32)>
-  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  >>> tf.repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
   <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
   array([[1, 1, 2, 2, 2],
          [3, 3, 4, 4, 4]], dtype=int32)>
@@ -5613,11 +5613,11 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
 
   Example usage:
 
-  >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
+  >>> tf.repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
   <tf.Tensor: shape=(5,), dtype=string,
   numpy=array([b'a', b'a', b'a', b'c', b'c'], dtype=object)>
 
-  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
+  >>> tf.repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=0)
   <tf.Tensor: shape=(5, 2), dtype=int32, numpy=
   array([[1, 2],
          [1, 2],
@@ -5625,15 +5625,15 @@ def repeat(input, repeats, axis=None, name=None):  # pylint: disable=redefined-b
          [3, 4],
          [3, 4]], dtype=int32)>
 
-  >>> repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
+  >>> tf.repeat([[1, 2], [3, 4]], repeats=[2, 3], axis=1)
   <tf.Tensor: shape=(2, 5), dtype=int32, numpy=
   array([[1, 1, 2, 2, 2],
          [3, 3, 4, 4, 4]], dtype=int32)>
 
-  >>> repeat(3, repeats=4)
+  >>> tf.repeat(3, repeats=4)
   <tf.Tensor: shape=(4,), dtype=int32, numpy=array([3, 3, 3, 3], dtype=int32)>
 
-  >>> repeat([[1,2], [3,4]], repeats=2)
+  >>> tf.repeat([[1,2], [3,4]], repeats=2)
   <tf.Tensor: shape=(8,), dtype=int32,
   numpy=array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int32)>
 
