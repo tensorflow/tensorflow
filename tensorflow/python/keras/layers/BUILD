@@ -35,6 +35,7 @@ py_library(
         ":normalization",
         ":normalization_v2",
         ":pooling",
+        ":adaptive_pooling",
         ":recurrent",
         ":recurrent_v2",
         ":rnn_cell_wrapper_v2",
@@ -321,6 +322,15 @@ py_library(
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/utils:engine_utils",
+    ],
+)
+
+py_library(
+    name = "adaptive_pooling",
+    srcs = ["adaptive_pooling.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/keras:base_layer",
     ],
 )
 

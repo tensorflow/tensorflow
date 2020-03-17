@@ -7056,6 +7056,7 @@ py_library(
         "layers/layers.py",
         "layers/normalization.py",
         "layers/pooling.py",
+        "layers/adaptive_pooling.py",
     ],
     srcs_version = "PY2AND3",
     deps = [

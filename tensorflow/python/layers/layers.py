@@ -73,6 +73,14 @@ from tensorflow.python.layers.pooling import max_pooling2d
 from tensorflow.python.layers.pooling import average_pooling3d
 from tensorflow.python.layers.pooling import max_pooling3d
 
+# Adaptive Pooling layers.
+from tensorflow.python.layers.adaptive_pooling import AdaptiveAveragePooling1D
+from tensorflow.python.layers.adaptive_pooling import AdaptiveMaxPooling1D
+from tensorflow.python.layers.adaptive_pooling import AdaptiveAveragePooling2D
+from tensorflow.python.layers.adaptive_pooling import AdaptiveMaxPooling2D
+from tensorflow.python.layers.adaptive_pooling import AdaptiveAveragePooling3D
+from tensorflow.python.layers.adaptive_pooling import AdaptiveMaxPooling3D
+
 # Normalization layers.
 from tensorflow.python.layers.normalization import BatchNormalization
 
