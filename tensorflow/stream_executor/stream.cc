@@ -5251,7 +5251,7 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
       DeviceMemory<uint8> scratch_memory;
-      int ctc_loss_algo_id = 0;
+      int ctc_loss_algo_id;
       auto status = dnn->PrepareForCtcLoss(
                            this, probs_desc, probs_data, grads_desc,
                            labels_data, labels_lengths_data, input_lengths_data,

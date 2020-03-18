@@ -3947,42 +3947,38 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
 
-  // When determinism is required, we will only try the deterministic algo.
-  // Otherwise, we will first try the faster non-deterministic algo and then
-  // fall back to the deterministic algo.
-  auto algo_id =
+  // Try running with `algo`, if successful then pick it. The non-deterministic
+  // algorithm is first and thus preferentially picked when determinism is not
+  // required.
+  auto algo =
       RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
                                 : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC;
-  cudnnStatus_t _status = cudnnGetCTCLossWorkspaceSize(
+  cudnnStatus_t status = cudnnGetCTCLossWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
+      /*gradientsDesc=*/cudnn_grads_desc.handle(),
+      /*labels=*/labels_data.data(),
+      /*labelLengths=*/labels_lengths_data.data(),
+      /*inputLengths=*/input_lengths_data.data(),
+      /*algo=*/algo,
+      /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
+      /*sizeInBytes=*/&workspace_size_in_bytes);
+  if (RequireCudnnDeterminism()) {
+    RETURN_IF_CUDNN_ERROR(status);
+  }
+  
+  if (status != CUDNN_STATUS_SUCCESS) {
+    algo = CUDNN_CTC_LOSS_ALGO_DETERMINISTIC;
+    RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
         /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
         /*gradientsDesc=*/cudnn_grads_desc.handle(),
         /*labels=*/labels_data.data(),
         /*labelLengths=*/labels_lengths_data.data(),
         /*inputLengths=*/input_lengths_data.data(),
-        /*algo=*/algo_id,
-        /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
-        /*sizeInBytes=*/&workspace_size_in_bytes);
-
-  if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {
-    if (RequireCudnnDeterminism()) {
-      std::ostringstream oss;
-      oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__
-          << "): 'cudnnGetCTCLossWorkspaceSize'";
-      return port::Status(port::error::UNKNOWN, oss.str().c_str());
-    } else {
-      algo_id = CUDNN_CTC_LOSS_ALGO_DETERMINISTIC;
-      RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
-        /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
-        /*gradientsDesc=*/cudnn_grads_desc.handle(),
-        /*labels=*/labels_data.data(),
-        /*labelLengths=*/labels_lengths_data.data(),
-        /*inputLengths=*/input_lengths_data.data(),
-        /*algo=*/algo_id,
+        /*algo=*/algo,
         /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
         /*sizeInBytes=*/&workspace_size_in_bytes));
-    }
   }
-  *ctc_loss_algo_id = algo_id;
+  *ctc_loss_algo_id = algo;
 #else
   return port::Status(port::error::INVALID_ARGUMENT,
                       "No supported cudnnGetCTCLossWorkspaceSize when "
