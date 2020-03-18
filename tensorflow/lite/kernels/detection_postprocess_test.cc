@@ -737,7 +737,7 @@ TEST(DetectionPostprocessOpTest,
               ElementsAreArray(ArrayFloatNear({3.0}, 1e-1)));
 }
 
-TEST(DetectionPostprocessOpTest, FloatTestwithNoBackgroudClassAndKeypoints) {
+TEST(DetectionPostprocessOpTest, FloatTestwithNoBackgroundClassAndKeypoints) {
   DetectionPostprocessOpModelwithRegularNMS m(
       {TensorType_FLOAT32, {1, 6, 5}}, {TensorType_FLOAT32, {1, 6, 2}},
       {TensorType_FLOAT32, {6, 4}}, {TensorType_FLOAT32, {}},

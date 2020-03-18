@@ -790,7 +790,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
        SimpleTestQuantizedInt16OutputShuffled4x16Int8Weights) {
   // The shuffled weights block shape is 4x16. The shape of the weights matrix
   // is: rows = output_depth, cols = input_depth. It must be a multiple of 4x16.
-  // This means that output_depth must be a multiple of 4, and input_deth must
+  // This means that output_depth must be a multiple of 4, and input_depth must
   // be a multiple of 16.
   for (int input_depth_numblocks : {1, 3}) {
     for (int output_depth_numblocks : {1, 3}) {
