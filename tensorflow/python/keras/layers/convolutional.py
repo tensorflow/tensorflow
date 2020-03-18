@@ -426,35 +426,38 @@ class Conv1D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(Conv1D, self).__init__(
-        rank=1,
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        activation=activations.get(activation),
-        use_bias=use_bias,
-        kernel_initializer=initializers.get(kernel_initializer),
-        bias_initializer=initializers.get(bias_initializer),
-        kernel_regularizer=regularizers.get(kernel_regularizer),
-        bias_regularizer=regularizers.get(bias_regularizer),
-        activity_regularizer=regularizers.get(activity_regularizer),
-        kernel_constraint=constraints.get(kernel_constraint),
-        bias_constraint=constraints.get(bias_constraint),
-        **kwargs)
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(Conv1D, self).__init__(
+          rank=1,
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilation_rate=dilation_rate,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          kernel_initializer=initializers.get(kernel_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          kernel_regularizer=regularizers.get(kernel_regularizer),
+          bias_regularizer=regularizers.get(bias_regularizer),
+          activity_regularizer=regularizers.get(activity_regularizer),
+          kernel_constraint=constraints.get(kernel_constraint),
+          bias_constraint=constraints.get(bias_constraint),
+          **kwargs)
         
-    self.checkProperKernel()
+    
         
-  def checkProperKernel(self):
-        if(isinstance(self.kernel_size,tuple)):
-    	    for i in self.kernel_size:
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
-    	    if(self.kernel_size==0):
+    	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
+        return 0
 
 
         
@@ -577,7 +580,7 @@ class Conv2D(Conv):
     ValueError: if `padding` is "causal".
     ValueError: when both `strides` > 1 and `dilation_rate` > 1.
   """
-  print("In Conv2d")
+  
   def __init__(self,
                filters,
                kernel_size,
@@ -595,36 +598,41 @@ class Conv2D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(Conv2D, self).__init__(
-        rank=2,
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        activation=activations.get(activation),
-        use_bias=use_bias,
-        kernel_initializer=initializers.get(kernel_initializer),
-        bias_initializer=initializers.get(bias_initializer),
-        kernel_regularizer=regularizers.get(kernel_regularizer),
-        bias_regularizer=regularizers.get(bias_regularizer),
-        activity_regularizer=regularizers.get(activity_regularizer),
-        kernel_constraint=constraints.get(kernel_constraint),
-        bias_constraint=constraints.get(bias_constraint),
-        **kwargs)
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+    
+      super(Conv2D, self).__init__(
+          rank=2,
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilation_rate=dilation_rate,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          kernel_initializer=initializers.get(kernel_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          kernel_regularizer=regularizers.get(kernel_regularizer),
+          bias_regularizer=regularizers.get(bias_regularizer),
+          activity_regularizer=regularizers.get(activity_regularizer),
+          kernel_constraint=constraints.get(kernel_constraint),
+          bias_constraint=constraints.get(bias_constraint),
+          **kwargs)
+    
+    
     
         
-    self.checkProperKernel()
-        
-  def checkProperKernel(self):
-        if(isinstance(self.kernel_size,tuple)):
-    	    for i in self.kernel_size:
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
-    	    if(self.kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")
+    	    if(kernel_size==0):
+    	        
+    	        raise ValueError("Kernel size cannot be zero")
+        return 0
 
 
 @keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
@@ -751,36 +759,40 @@ class Conv3D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(Conv3D, self).__init__(
-        rank=3,
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        activation=activations.get(activation),
-        use_bias=use_bias,
-        kernel_initializer=initializers.get(kernel_initializer),
-        bias_initializer=initializers.get(bias_initializer),
-        kernel_regularizer=regularizers.get(kernel_regularizer),
-        bias_regularizer=regularizers.get(bias_regularizer),
-        activity_regularizer=regularizers.get(activity_regularizer),
-        kernel_constraint=constraints.get(kernel_constraint),
-        bias_constraint=constraints.get(bias_constraint),
-        **kwargs)
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(Conv3D, self).__init__(
+          rank=3,
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilation_rate=dilation_rate,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          kernel_initializer=initializers.get(kernel_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          kernel_regularizer=regularizers.get(kernel_regularizer),
+          bias_regularizer=regularizers.get(bias_regularizer),
+          activity_regularizer=regularizers.get(activity_regularizer),
+          kernel_constraint=constraints.get(kernel_constraint),
+          bias_constraint=constraints.get(bias_constraint),
+          **kwargs)
         
         
-    self.checkProperKernel()
+    
         
-  def checkProperKernel(self):
-        if(isinstance(self.kernel_size,tuple)):
-    	    for i in self.kernel_size:
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
-    	    if(self.kernel_size==0):
+    	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
+    		    
+        return 0
 
         
 
@@ -914,23 +926,25 @@ class Conv2DTranspose(Conv2D):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(Conv2DTranspose, self).__init__(
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        dilation_rate=dilation_rate,
-        activation=activations.get(activation),
-        use_bias=use_bias,
-        kernel_initializer=initializers.get(kernel_initializer),
-        bias_initializer=initializers.get(bias_initializer),
-        kernel_regularizer=regularizers.get(kernel_regularizer),
-        bias_regularizer=regularizers.get(bias_regularizer),
-        activity_regularizer=regularizers.get(activity_regularizer),
-        kernel_constraint=constraints.get(kernel_constraint),
-        bias_constraint=constraints.get(bias_constraint),
-        **kwargs)
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(Conv2DTranspose, self).__init__(
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilation_rate=dilation_rate,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          kernel_initializer=initializers.get(kernel_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          kernel_regularizer=regularizers.get(kernel_regularizer),
+          bias_regularizer=regularizers.get(bias_regularizer),
+          activity_regularizer=regularizers.get(activity_regularizer),
+          kernel_constraint=constraints.get(kernel_constraint),
+          bias_constraint=constraints.get(bias_constraint),
+          **kwargs)
 
     self.output_padding = output_padding
     if self.output_padding is not None:
@@ -944,16 +958,17 @@ class Conv2DTranspose(Conv2D):
                            
                            
             
-    self.checkProperKernel()
+    
         
-  def checkProperKernel(self):
-        if(isinstance(self.kernel_size,tuple)):
-    	    for i in self.kernel_size:
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
-    	    if(self.kernel_size==0):
+    	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
+        return 0
 
 
                            
@@ -1225,22 +1240,24 @@ class Conv3DTranspose(Conv3D):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(Conv3DTranspose, self).__init__(
-        filters=filters,
-        kernel_size=kernel_size,
-        strides=strides,
-        padding=padding,
-        data_format=data_format,
-        activation=activations.get(activation),
-        use_bias=use_bias,
-        kernel_initializer=initializers.get(kernel_initializer),
-        bias_initializer=initializers.get(bias_initializer),
-        kernel_regularizer=regularizers.get(kernel_regularizer),
-        bias_regularizer=regularizers.get(bias_regularizer),
-        activity_regularizer=regularizers.get(activity_regularizer),
-        kernel_constraint=constraints.get(kernel_constraint),
-        bias_constraint=constraints.get(bias_constraint),
-        **kwargs)
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(Conv3DTranspose, self).__init__(
+          filters=filters,
+          kernel_size=kernel_size,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          activation=activations.get(activation),
+          use_bias=use_bias,
+          kernel_initializer=initializers.get(kernel_initializer),
+          bias_initializer=initializers.get(bias_initializer),
+          kernel_regularizer=regularizers.get(kernel_regularizer),
+          bias_regularizer=regularizers.get(bias_regularizer),
+          activity_regularizer=regularizers.get(activity_regularizer),
+          kernel_constraint=constraints.get(kernel_constraint),
+          bias_constraint=constraints.get(bias_constraint),
+          **kwargs)
 
     self.output_padding = output_padding
     if self.output_padding is not None:
@@ -1253,16 +1270,17 @@ class Conv3DTranspose(Conv3D):
                            str(self.output_padding))
                            
             
-    self.checkProperKernel()
+    
         
-  def checkProperKernel(self):
-        if(isinstance(self.kernel_size,tuple)):
-    	    for i in self.kernel_size:
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
-    	    if(self.kernel_size==0):
+    	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
+        return 0
 
 
 
@@ -1502,7 +1520,9 @@ class SeparableConv(Conv):
                trainable=True,
                name=None,
                **kwargs):
-    super(SeparableConv, self).__init__(
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(SeparableConv, self).__init__(
         rank=rank,
         filters=filters,
         kernel_size=kernel_size,
@@ -1526,6 +1546,19 @@ class SeparableConv(Conv):
     self.pointwise_regularizer = regularizers.get(pointwise_regularizer)
     self.depthwise_constraint = constraints.get(depthwise_constraint)
     self.pointwise_constraint = constraints.get(pointwise_constraint)
+    
+    
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")  
+        return 0
+    
+  
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -1728,7 +1761,9 @@ class SeparableConv1D(SeparableConv):
                pointwise_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(SeparableConv1D, self).__init__(
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(SeparableConv1D, self).__init__(
         rank=1,
         filters=filters,
         kernel_size=kernel_size,
@@ -1750,6 +1785,17 @@ class SeparableConv1D(SeparableConv):
         pointwise_constraint=constraints.get(pointwise_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+        
+        
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")  
+        return 0
 
   def call(self, inputs):
     if self.padding == 'causal':
@@ -1913,6 +1959,7 @@ class SeparableConv2D(SeparableConv):
                pointwise_constraint=None,
                bias_constraint=None,
                **kwargs):
+    self.checkProperKernel(kernel_size)
     super(SeparableConv2D, self).__init__(
         rank=2,
         filters=filters,
@@ -1935,6 +1982,17 @@ class SeparableConv2D(SeparableConv):
         pointwise_constraint=constraints.get(pointwise_constraint),
         bias_constraint=constraints.get(bias_constraint),
         **kwargs)
+        
+        
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")  
+        return 0
 
   def call(self, inputs):
     # Apply the actual ops.
@@ -2057,7 +2115,9 @@ class DepthwiseConv2D(Conv2D):
                depthwise_constraint=None,
                bias_constraint=None,
                **kwargs):
-    super(DepthwiseConv2D, self).__init__(
+    rv=self.checkProperKernel(kernel_size)
+    if(rv==0):
+      super(DepthwiseConv2D, self).__init__(
         filters=None,
         kernel_size=kernel_size,
         strides=strides,
@@ -2074,6 +2134,18 @@ class DepthwiseConv2D(Conv2D):
     self.depthwise_regularizer = regularizers.get(depthwise_regularizer)
     self.depthwise_constraint = constraints.get(depthwise_constraint)
     self.bias_initializer = initializers.get(bias_initializer)
+    
+    
+    
+  def checkProperKernel(self,kernel_size):
+        if(isinstance(kernel_size,tuple)):
+    	    for i in self.kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(kernel_size==0):
+    		    raise ValueError("Kernel size cannot be zero")  
+        return 0
 
   def build(self, input_shape):
     if len(input_shape) < 4:
