@@ -196,6 +196,7 @@ cc_library(
         ":cpu_check",
         ":types",
         "@gemmlowp//:fixedpoint",
+        "//tensorflow/core/platform:macros",
     ],
 )
 

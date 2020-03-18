@@ -24,6 +24,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_check.h"
 #include "tensorflow/lite/kernels/internal/types.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tflite {
 
@@ -201,7 +202,7 @@ inline int CountLeadingSignBits(T integer_input) {
 // tanh(x) = 2*sigmoid(2*x) -1.
 // Both functions are symmetric, so the LUT table is only needed
 // for the absolute value of the input.
-static uint16_t sigmoid_table_uint16[256] = {
+TF_ATTRIBUTE_UNUSED static uint16_t sigmoid_table_uint16[256] = {
     32768, 33451, 34133, 34813, 35493, 36169, 36843, 37513, 38180, 38841, 39498,
     40149, 40794, 41432, 42064, 42688, 43304, 43912, 44511, 45102, 45683, 46255,
     46817, 47369, 47911, 48443, 48964, 49475, 49975, 50464, 50942, 51409, 51865,
