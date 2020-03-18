@@ -1083,7 +1083,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_DivOp : TFL_Op<"div", [ResultsBroadcastableShape, NoSideEffect]> {
+def TFL_DivOp : TFL_Op<"div", [
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Division operator";
 
   let description = [{
