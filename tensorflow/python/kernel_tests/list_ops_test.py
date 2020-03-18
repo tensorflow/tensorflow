@@ -26,6 +26,7 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1632,14 +1633,37 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(t, [1.0, 2.0, 3.0])
 
   def testTensorListStrings(self):
-    self.skipTest("b/150742232")
-
     @def_function.function
     def f():
       return map_fn.map_fn(string_ops.string_upper,
                            constant_op.constant(["a", "b", "c"]))
 
-    self.assertAllEqual(f(), ["A", "B", "C"])
+    self.assertAllEqual(f(), [b"A", b"B", b"C"])
+
+  def testTensorListStringsNoInline(self):
+    # Generator function output type is a variant with a host-only underlying
+    # data type. "ColocationGraph::AddHostOnlyDataTypesConstraints" needs to
+    # have "deep op inspection" to be able to correctly place the while loop
+    # generated from map_fn.
+    self.skipTest("b/150742232")
+
+    @function.defun_with_attributes(attributes={"_noinline": True})
+    def generator():
+      c = constant_op.constant(["a", "b", "c"])
+      return list_ops.tensor_list_from_tensor(c, element_shape=[])
+
+    @def_function.function
+    def f():
+      l = generator()
+
+      def upper(i):
+        e = list_ops.tensor_list_get_item(l, i, element_dtype=dtypes.string)
+        return string_ops.string_upper(e)
+
+      return map_fn.map_fn(
+          upper, constant_op.constant([0, 1, 2]), dtype=dtypes.string)
+
+    self.assertAllEqual(f(), [b"A", b"B", b"C"])
 
 
 if __name__ == "__main__":
