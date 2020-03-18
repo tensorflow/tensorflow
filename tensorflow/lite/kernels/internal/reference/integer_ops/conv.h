@@ -132,14 +132,12 @@ inline void ConvPerChannel(
     const std::int64_t* bias_data, const RuntimeShape& output_shape,
     int16* output_data) {
   // Get parameters.
-  const int32 input_offset = params.input_offset;  // r = s(q - Z)
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
   const int pad_width = params.padding_values.width;
   const int pad_height = params.padding_values.height;
-  const int32 output_offset = params.output_offset;
 
   // Set min and max value of the output.
   const int32 output_activation_min = params.quantized_activation_min;
