@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/c/c_core_api.h"
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"

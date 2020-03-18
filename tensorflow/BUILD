@@ -644,7 +644,6 @@ tf_cc_shared_object(
         "//tensorflow/core:lib_internal_impl",
         "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
-        "//tensorflow/c:c_core_api_no_xla",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
 )

@@ -42,7 +42,7 @@ tf_cuda_library(
         "//conditions:default": [
             "@com_google_absl//absl/algorithm:container",
             "@com_google_absl//absl/container:fixed_array",
-            "//tensorflow/c:c_core_api",
+            "//tensorflow/c:c_api",
             "//tensorflow/c:c_api_internal",
             "//tensorflow/c:tf_tensor_internal",
             "//tensorflow/core:core_cpu",

@@ -246,7 +246,6 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
-    list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
