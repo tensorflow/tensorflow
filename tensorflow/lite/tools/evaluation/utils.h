@@ -27,12 +27,18 @@ limitations under the License.
 #endif
 #endif
 
-#include "tensorflow/lite/context.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 
 namespace tflite {
 namespace evaluation {
+
+// Same w/ Interpreter::TfLiteDelegatePtr to avoid pulling
+// tensorflow/lite/interpreter.h dependency
+using TfLiteDelegatePtr =
+    std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
+
 std::string StripTrailingSlashes(const std::string& path);
 
 bool ReadFileLines(const std::string& file_path,
@@ -50,20 +56,22 @@ inline TfLiteStatus GetSortedFileNames(const std::string& directory,
                             std::unordered_set<std::string>());
 }
 
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate();
+TfLiteDelegatePtr CreateNNAPIDelegate();
 
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
-    StatefulNnApiDelegate::Options options);
+TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options);
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate();
+TfLiteDelegatePtr CreateGPUDelegate();
 #if defined(__ANDROID__)
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    TfLiteGpuDelegateOptionsV2* options);
+TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options);
 #endif
 
-Interpreter::TfLiteDelegatePtr CreateHexagonDelegate(
+TfLiteDelegatePtr CreateHexagonDelegate(
     const std::string& library_directory_path, bool profiling);
 
+TfLiteDelegatePtr CreateXNNPACKDelegate();
+TfLiteDelegatePtr CreateXNNPACKDelegate(
+    const TfLiteXNNPackDelegateOptions* options);
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads);
 }  // namespace evaluation
 }  // namespace tflite
 
