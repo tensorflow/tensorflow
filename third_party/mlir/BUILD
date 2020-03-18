@@ -557,6 +557,18 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "LLVMIRTransforms",
+    srcs = glob(["lib/Dialect/LLVMIR/Transforms/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
+    ],
+)
+
 filegroup(
     name = "GPUOpsTdFiles",
     srcs = [
@@ -1746,6 +1758,7 @@ cc_library(
         ":IR",
         ":LLVMConversionIncGen",
         ":LLVMDialect",
+        ":LLVMIRTransforms",
         ":OpenMPDialect",
         ":Support",
         "@llvm-project//llvm:core",
@@ -1975,6 +1988,7 @@ cc_library(
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
+        ":LLVMIRTransforms",
         ":LinalgOps",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
