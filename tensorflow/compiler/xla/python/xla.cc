@@ -960,23 +960,6 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("argument"), py::arg("client"), py::arg("device"),
           py::arg("force_copy") = false)
-      .def_static(
-          "make_tuple",
-          [](std::vector<PyLocalBuffer*> buffers,
-             std::shared_ptr<PyLocalClient> client,
-             Device* device) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
-            CHECK(device != nullptr);
-            auto iter = client->id_to_device().find(device->id());
-            if (iter->second != device) {
-              return InvalidArgument(
-                  "Cannot make tuple on device '%s' with '%s' backend",
-                  device->DebugString(), client->platform_name());
-            }
-            TF_ASSIGN_OR_RETURN(
-                std::unique_ptr<PyLocalBuffer> buffer,
-                PyLocalBuffer::MakeTuple(buffers, client.get(), device));
-            return WrapWithClient(std::move(client), std::move(buffer));
-          })
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, const ClientAndPtr<Device>& dst_device)
                -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
@@ -988,20 +971,6 @@ PYBIND11_MODULE(xla_extension, m) {
              return WrapWithClient(dst_device.client, std::move(out));
            })
       .def("delete", &PyLocalBuffer::Delete)
-      .def("destructure",
-           [](const PyLocalBuffer& buffer)
-               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
-             TF_ASSIGN_OR_RETURN(
-                 std::vector<std::unique_ptr<PyLocalBuffer>> parts,
-                 buffer.DestructureTuple());
-             std::vector<ClientAndUniquePtr<PyLocalBuffer>> output;
-             output.reserve(parts.size());
-             for (auto& part : parts) {
-               output.push_back(WrapWithClient(
-                   buffer.client()->shared_from_this(), std::move(part)));
-             }
-             return std::move(output);
-           })
       .def("block_host_until_ready",
            [](PyLocalBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();

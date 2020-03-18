@@ -496,107 +496,12 @@ class BufferTest(ComputationTest):
     with self.assertRaises(RuntimeError):
       compiled_c.Execute([arg_buffer], tuple_arguments=False)
 
-  def testDestructureTupleEmpty(self):
-    device = xla_client.get_local_backend().devices()[0]
-    local_buffer = xla_client.Buffer.make_tuple((), device=device)
-    pieces = local_buffer.destructure()
-    self.assertFalse(local_buffer.is_deleted())
-    self.assertEmpty(pieces)
-
-  def testDestructureTupleOneArrayElement(self):
-    device = xla_client.get_local_backend().devices()[0]
-    t = xla_client.Buffer.from_pyval(np.array([1, 2, 3, 4], dtype=np.int32))
-    local_buffer = xla_client.Buffer.make_tuple((t,), device)
-    pieces = local_buffer.destructure()
-    self.assertFalse(local_buffer.is_deleted())
-    self.assertLen(pieces, 1)
-    array = pieces[0]
-    got = array.to_py()
-    want = NumpyArrayS32([1, 2, 3, 4])
-    np.testing.assert_equal(want, got)
-
-  def testDestructureTupleTwoArrayElementDifferentType(self):
-    device = xla_client.get_local_backend().devices()[0]
-    t = (
-        xla_client.Buffer.from_pyval(
-            np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32)),
-        xla_client.Buffer.from_pyval(np.array([2, 3, 4, 5], dtype=np.int32)),
-    )
-    local_buffer = xla_client.Buffer.make_tuple(t, device)
-    # Run the test twice to verify that the original tuple buffer remains valid
-    # even after destructuring.
-    for _ in range(2):
-      pieces = local_buffer.destructure()
-      self.assertFalse(local_buffer.is_deleted())
-      self.assertLen(pieces, 2)
-      array0, array1 = pieces
-      got = array0.to_py()
-      want = NumpyArrayF32([1.0, 2.0, 3.0, 4.0])
-      np.testing.assert_equal(want, got)
-      got = array1.to_py()
-      want = NumpyArrayS32([2, 3, 4, 5])
-      np.testing.assert_equal(want, got)
-
-  def testDestructureTupleNested(self):
-    device = xla_client.get_local_backend().devices()[0]
-    t = xla_client.Buffer.make_tuple(
-        (xla_client.Buffer.from_pyval(NumpyArrayF32([1.0, 2.0])),
-         xla_client.Buffer.from_pyval(NumpyArrayS32([3, 4]))), device)
-    local_buffer = xla_client.Buffer.make_tuple(
-        (t, xla_client.Buffer.from_pyval(NumpyArrayS32([5]))), device)
-    pieces = local_buffer.destructure()
-    self.assertFalse(local_buffer.is_deleted())
-    self.assertLen(pieces, 2)
-    tuple0, array1 = pieces
-    got = array1.to_py()
-    want = NumpyArrayS32([5])
-    np.testing.assert_equal(want, got)
-    got = tuple0.to_py()
-    self.assertEqual(type(got), tuple)
-    self.assertLen(got, 2)
-    np.testing.assert_equal(NumpyArrayF32([1.0, 2.0]), got[0])
-    np.testing.assert_equal(NumpyArrayS32([3, 4]), got[1])
-
-  def testMakeTuple(self):
-    t = (
-        np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32),
-        np.array([2, 3, 4, 5], dtype=np.int32),
-    )
-    b0 = xla_client.Buffer.from_pyval(t[0])
-    b1 = xla_client.Buffer.from_pyval(t[1])
-    device = xla_client.get_local_backend().local_devices()[0]
-    btup = xla_client.Buffer.make_tuple([b0, b1], device=device)
-    pieces = btup.destructure()
-    self.assertLen(pieces, 2)
-    array0, array1 = pieces
-    np.testing.assert_equal(
-        np.array([1, 2, 3, 4], dtype=np.float32), array0.to_py())
-    np.testing.assert_equal(
-        np.array([2, 3, 4, 5], dtype=np.int32), array1.to_py())
-
   def testShape(self):
     pyval = np.array([[1., 2.]], np.float32)
     local_buffer = xla_client.Buffer.from_pyval(pyval)
     xla_shape = local_buffer.shape()
     self.assertEqual(xla_shape.dimensions(), (1, 2))
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
-
-  def testTupleShape(self):
-    t = (
-        np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32),
-        np.array([2, 3, 4, 5], dtype=np.int32),
-    )
-    b0 = xla_client.Buffer.from_pyval(t[0])
-    b1 = xla_client.Buffer.from_pyval(t[1])
-    device = xla_client.get_local_backend().local_devices()[0]
-    tuple_buffer = xla_client.Buffer.make_tuple([b0, b1], device=device)
-    tuple_shape = tuple_buffer.shape()
-    self.assertEqual(tuple_shape.leaf_count(), 2)
-    shapes = tuple_shape.tuple_shapes()
-    self.assertLen(shapes, 2)
-    shape1, shape2 = shapes
-    self.assertEqual(shape1.dimensions(), (1, 4))
-    self.assertEqual(shape2.dimensions(), (4,))
 
   def testBlockHostUntilReadyWorks(self):
     arg = np.array([[1., 2.]], np.float32)

@@ -125,21 +125,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
                 std::move(leaves), tree.shape, std::move(py_buffer_ref),
                 std::move(client), std::move(device));
           })
-      .def_static("make_tuple",
-                  [](const std::vector<PyTpuBuffer*> buffers,
-                     std::shared_ptr<PyTpuClient> client,
-                     std::shared_ptr<Device> device)
-                      -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
-                    CHECK(device != nullptr);
-                    auto iter = client->id_to_device().find(device->id());
-                    if (iter->second != device) {
-                      return InvalidArgument(
-                          "Cannot make tuple on device '%s' with '%s' backend",
-                          device->DebugString(), client->platform_name());
-                    }
-                    return PyTpuBuffer::MakeTuple(buffers, std::move(client),
-                                                  std::move(device));
-                  })
       .def("copy_to_device",
            [](PyTpuBuffer* buffer, std::shared_ptr<Device> dst_device) {
              CHECK(dst_device != nullptr);
@@ -148,7 +133,6 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              return buffer->CopyToDevice(std::move(dst_device));
            })
       .def("delete", &PyTpuBuffer::Delete)
-      .def("destructure", &PyTpuBuffer::DestructureTuple)
       .def("block_host_until_ready",
            [](PyTpuBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();

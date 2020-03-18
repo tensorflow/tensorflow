@@ -77,10 +77,6 @@ class Backend(object, metaclass=abc.ABCMeta):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
   @abc.abstractmethod
-  def make_tuple(self, c_buffers, device):
-    """Makes a tuple from a sequence of backend buffer objects."""
-
-  @abc.abstractmethod
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
@@ -136,9 +132,6 @@ class LocalBackend(Backend):
       device = self.local_devices()[0]
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device,
                                           force_copy)
-
-  def make_tuple(self, c_buffers, device):
-    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
 
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
@@ -396,18 +389,12 @@ class Buffer(object):
     backend = backend or get_local_backend()
     return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
 
-  @staticmethod
-  def make_tuple(buffers, device, backend=None):
-    backend = backend or get_local_backend()
-    return backend.make_tuple(buffers, device)
-
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
-  # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
   # def block_host_until_ready(self):
   #    """Blocks the calling thread until the buffer is ready on device."""
@@ -424,11 +411,6 @@ class Buffer(object):
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
-
-
-# TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
-# compatibility with Jaxlib versions older than 0.1.13.
-LocalBuffer = Buffer
 
 
 def shape_from_pyval(pyval):
