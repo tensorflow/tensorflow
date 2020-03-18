@@ -251,7 +251,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_size_array = nullptr;
   if (params->keep_num_dims) {
     // When number of dimensions are kept the filter operates along the last
-    // dimentions. In other words, for an input tensor with shape
+    // dimensions. In other words, for an input tensor with shape
     // [batch_size, ..., n_inputs] and a filter of shape [n_inputs, n_units]
     // this Op produces an output of shape [batch_size, ..., n_units].
     TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1],
