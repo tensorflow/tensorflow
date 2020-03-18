@@ -16,7 +16,7 @@
 """
 from __future__ import absolute_import
 from __future__ import division
-from __future__ import print_function
+from __future__ import printable_module_namefunction
 
 import abc
 
@@ -38,6 +38,8 @@ from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.ops.losses import util as tf_losses_util
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
+from tensorflow.math import reduce_sum, square
+from tensorflow import size, cast, float32
 
 
 @keras_export('keras.losses.Loss')
@@ -432,6 +434,41 @@ class MeanAbsolutePercentageError(LossFunctionWrapper):
     """
     super(MeanAbsolutePercentageError, self).__init__(
         mean_absolute_percentage_error, name=name, reduction=reduction)
+
+def call_huber(threshold=1.0):
+  """Returns the huber_fn for the HuberLoss update_state() function"""
+  def huber_fn(y_pred, y_true):
+    """Returns the huber loss for given output and truth label"""
+    step_error = y_true - y_pred
+    is_lesser = step_error < threshold
+    quadratic = square(error) / 2
+    linear = threshold * error - square(threshold) / 2
+    return array_ops.where(is_lesser, quadratic, linear)
+  return huber_fn
+
+
+@keras_export('keras.losses.HuberLoss')
+class HuberLoss(Loss):
+  """Huber loss implementation"""
+
+  def __init__(self, threshold=1.0, **kwargs):
+    super(HuberLoss, self).__init__(**kwargs)
+    self.threshold = threshold
+    self.total = self.add_weight("total", initializer="zeros")
+    self.count = self.add_weight("count", initializer="zeros")
+    self.huber_fn = call_huber(2.1)
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+      metric = self.huber_fn(y_true, y_pred)
+      self.total.assign_add(reduce_sum(metric), dtype=float32)
+      self.count.assign_add(cast(size(metric), float32))
+
+    def result(self):
+      return self.total / self.count
+
+    def get_config(self):
+      base_config = super().get_config()
+      return {**base_config, "threshold": self.threshold}
 
 
 @keras_export('keras.losses.MeanSquaredLogarithmicError')
