@@ -138,23 +138,27 @@ void Softmax4DFloat(const TfLiteTensor* input, TfLiteTensor* output,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                      TfLiteSoftmaxParams* params, OpData* data) {
   SoftmaxParams op_params;
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
+
   if (input->type == kTfLiteUInt8) {
     tflite::reference_ops::Softmax(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
         GetTensorShape(output), GetTensorData<uint8_t>(output));
   } else {
-    arm_softmax_s8(
-        GetTensorData<int8_t>(input),
-        input->dims->data[0] * input->dims->data[1] * input->dims->data[2],
-        input->dims->data[3], op_params.input_multiplier,
-        op_params.input_left_shift, op_params.diff_min,
-        GetTensorData<int8_t>(output));
+    const unsigned int num_dims = NumDimensions(input);
+
+    arm_softmax_s8(GetTensorData<int8_t>(input),
+                   (num_dims == 4 ? input->dims->data[0] : 1) *
+                       input->dims->data[num_dims - 3] *
+                       input->dims->data[num_dims - 2],
+                   input->dims->data[num_dims - 1], op_params.input_multiplier,
+                   op_params.input_left_shift, op_params.diff_min,
+                   GetTensorData<int8_t>(output));
   }
 }
 
@@ -198,13 +202,14 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax2DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      if (NumDimensions(input) == 4) {
-        Softmax4DQuantized(input, output, params, data);
+      if (NumDimensions(input) == 3 || NumDimensions(input) == 4) {
+        SoftmaxQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      TF_LITE_KERNEL_LOG(context,
-                         "Only 2D and 4D tensors supported currently, got %dD.",
-                         NumDimensions(input));
+      TF_LITE_KERNEL_LOG(
+          context,
+          "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
+          NumDimensions(input));
       return kTfLiteError;
     }
     default:
