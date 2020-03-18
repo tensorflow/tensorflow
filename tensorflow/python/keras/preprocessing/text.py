@@ -28,7 +28,7 @@ Tokenizer = text.Tokenizer
 
 
 @keras_export('keras.preprocessing.text.text_to_word_sequence')
-def text_to_word_sequence(text,
+def text_to_word_sequence(input_text,
                           filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                           lower=True, split=" "):
   """Converts a text to a sequence of words (or tokens).
@@ -36,12 +36,12 @@ def text_to_word_sequence(text,
   This function transforms a string of text into a list of words
   while ignoring `filters` which include punctuations by default.
 
-  >>> text = 'This is a sample sentence.'
-  >>> tf.keras.preprocessing.text.text_to_word_sequence(text)
+  >>> sample_text = 'This is a sample sentence.'
+  >>> tf.keras.preprocessing.text.text_to_word_sequence(sample_text)
   ['this', 'is', 'a', 'sample', 'sentence']
 
   Arguments:
-      text: Input text (string).
+      input_text: Input text (string).
       filters: list (or concatenation) of characters to filter out, such as
           punctuation. Default: `'!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n'`,
           includes basic punctuation, tabs, and newlines.
@@ -52,11 +52,11 @@ def text_to_word_sequence(text,
       A list of words (or tokens).
   """
   return text.text_to_word_sequence(
-      text, filters=filters, lower=lower, split=split)
+      input_text, filters=filters, lower=lower, split=split)
 
 
 @keras_export('keras.preprocessing.text.one_hot')
-def one_hot(text, n,
+def one_hot(input_text, n,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
             split=' '):
@@ -66,12 +66,12 @@ def one_hot(text, n,
   list of encoded integers each corresponding to a word (or token)
   in the given input string.
 
-  >>> text = 'This is a sample sentence.'
-  >>> tf.keras.preprocessing.text.one_hot(text, 20)
+  >>> sample_text = 'This is a sample sentence.'
+  >>> tf.keras.preprocessing.text.one_hot(sample_text, 20)
   [4, 18, 1, 15, 17]
 
   Arguments:
-      text: Input text (string).
+      input_text: Input text (string).
       n: int. Size of vocabulary.
       filters: list (or concatenation) of characters to filter out, such as
           punctuation. Default: ``!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\\t\\n``,
@@ -84,7 +84,7 @@ def one_hot(text, n,
       (unicity non-guaranteed).
   """
   return text.one_hot(
-      text, n, filters=filters, lower=lower, split=split)
+      input_text, n, filters=filters, lower=lower, split=split)
 
 
 # text.tokenizer_from_json is only available if keras_preprocessing >= 1.1.0
