@@ -1538,14 +1538,14 @@ def concat(values, axis, name="concat"):
 
   >>> t1 = [[1, 2, 3], [4, 5, 6]]
   >>> t2 = [[7, 8, 9], [10, 11, 12]]
-  >>> concat([t1, t2], 0)
+  >>> tf.concat([t1, t2], 0)
   <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
   array([[ 1,  2,  3],
          [ 4,  5,  6],
          [ 7,  8,  9],
          [10, 11, 12]], dtype=int32)>
 
-  >>> concat([t1, t2], 1)
+  >>> tf.concat([t1, t2], 1)
   <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
   array([[ 1,  2,  3,  7,  8,  9],
          [ 4,  5,  6, 10, 11, 12]], dtype=int32)>
