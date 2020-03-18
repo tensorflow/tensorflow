@@ -52,7 +52,7 @@ void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
 
 void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
                                          bool enable) {
-  options->useNNAPI = enable;
+  options->use_nnapi = enable;
 }
 
 #ifdef __cplusplus

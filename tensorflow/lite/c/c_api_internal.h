@@ -50,7 +50,7 @@ struct TfLiteInterpreterOptions {
 
   std::vector<TfLiteDelegate*> delegates;
 
-  bool useNNAPI = false;
+  bool use_nnapi = false;
 };
 
 struct TfLiteInterpreter {
