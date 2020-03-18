@@ -162,6 +162,8 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 #endif  // defined(__ANDROID__)
 }
 
+// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
+#if !defined(__Fuchsia__)
 TfLiteDelegatePtr CreateXNNPACKDelegate() {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
@@ -182,5 +184,6 @@ TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
   opts.num_threads = num_threads > 1 ? num_threads : 0;
   return CreateXNNPACKDelegate(&opts);
 }
+#endif
 }  // namespace evaluation
 }  // namespace tflite

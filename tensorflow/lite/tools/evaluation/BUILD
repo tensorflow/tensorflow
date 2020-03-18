@@ -42,7 +42,6 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -56,6 +55,11 @@ cc_library(
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
     }),
 )
 
