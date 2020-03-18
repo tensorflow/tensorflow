@@ -1634,8 +1634,8 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   prefix) are both treated as having a single dimension of size one.
 
   Args:
-    shapes: dictionary with (`Tensor` to shape) items. A shape must be an
-      iterable.
+    shapes: dictionary with (`Tensor` to shape) items, or a list of
+      (`Tensor`, shape) tuples. A shape must be an iterable.
     data: The tensors to print out if the condition is False.  Defaults to error
       message and first few entries of the violating tensor.
     summarize: Print this many entries of the tensor.
@@ -1658,14 +1658,27 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
   Example:
 
-  ```python
-  tf.assert_shapes([
-    (x, ('N', 'Q')),
-    (y, ('N', 'D')),
-    (param, ('Q',)),
-    (scalar, ())
-  ])
-  ```
+  >>> n = 10
+  >>> q = 3
+  >>> d = 7
+  >>> x = tf.zeros([n,q])
+  >>> y = tf.ones([n,d])
+  >>> param = tf.Variable([1.0, 2.0, 3.0])
+  >>> scalar = 1.0
+  >>> tf.debugging.assert_shapes([
+  ...  (x, ('N', 'Q')),
+  ...  (y, ('N', 'D')),
+  ...  (param, ('Q',)),
+  ...  (scalar, ()),
+  ... ])
+
+  >>> tf.debugging.assert_shapes([
+  ...   (x, ('N', 'D')),
+  ...   (y, ('N', 'D'))
+  ... ])
+  Traceback (most recent call last):
+  ...
+  ValueError: ...
 
   Example of adding a dependency to an operation:
 
@@ -1693,8 +1706,8 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
   prefix) are both treated as having a single dimension of size one.
 
   Args:
-    shapes: dictionary with (`Tensor` to shape) items. A shape must be an
-      iterable.
+    shapes: dictionary with (`Tensor` to shape) items, or a list of
+      (`Tensor`, shape) tuples. A shape must be an iterable.
     data: The tensors to print out if the condition is False.  Defaults to error
       message and first few entries of the violating tensor.
     summarize: Print this many entries of the tensor.
