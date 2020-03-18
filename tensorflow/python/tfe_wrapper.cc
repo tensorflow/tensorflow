@@ -461,9 +461,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
         tensorflow::make_safe(tensorflow::ProtoStringToTFBuffer(proto.ptr()));
+    Py_BEGIN_ALLOW_THREADS;
     TFE_ContextUpdateServerDef(tensorflow::InputTFE_Context(ctx),
                                keep_alive_secs, buf.get()->data,
                                buf.get()->length, status.get());
+    Py_END_ALLOW_THREADS;
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ContextCheckAlive", [](py::handle& ctx, const char* worker_name) {
