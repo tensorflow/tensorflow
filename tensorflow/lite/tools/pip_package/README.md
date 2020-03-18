@@ -8,6 +8,7 @@ Python without requiring the rest of TensorFlow.
 To build a binary wheel run this script:
 ```
 sudo apt install swig libjpeg-dev zlib1g-dev python3-dev python3-numpy
+sh tensorflow/lite/tools/make/download_dependencies.sh
 sh tensorflow/lite/tools/pip_package/build_pip_package.sh
 ```
 That will print out some output and a .whl file. You can then install that
