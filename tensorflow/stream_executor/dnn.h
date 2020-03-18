@@ -2396,11 +2396,13 @@ class DnnSupport {
                                  absl::Span<const int> labels_lengths_data,
                                  absl::Span<const int> input_lengths_data,
                                  ScratchAllocator* workspace_allocator,
-                                 DeviceMemory<uint8>* scratch_memory) {
+                                 DeviceMemory<uint8>* scratch_memory,
+                                 int* ctc_loss_algo_id) {
     return DoPrepareForCtcLoss(stream, ToDataType<ElementType>::value,
                                probs_desc, grads_desc, labels_data,
                                labels_lengths_data, input_lengths_data,
-                               workspace_allocator, scratch_memory);
+                               workspace_allocator, scratch_memory,
+                               ctc_loss_algo_id);
   }
 
   // Enqueue a CTC Loss operation onto the stream.
@@ -2433,7 +2435,8 @@ class DnnSupport {
                                  DeviceMemoryBase costs_data,
                                  const RnnStateTensorDescriptor& grads_desc,
                                  DeviceMemoryBase grads_data,
-                                 DeviceMemory<uint8> scratch_memory);
+                                 DeviceMemory<uint8> scratch_memory,
+                                 int ctc_loss_algo_id);
 
   template <typename ElementType>
   bool DoCtcLoss(Stream* stream,
@@ -2445,12 +2448,13 @@ class DnnSupport {
                  DeviceMemory<ElementType>* costs_data,
                  const dnn::RnnStateTensorDescriptor& grads_desc,
                  DeviceMemory<ElementType>* grads_data,
-                 DeviceMemory<uint8>* scratch_memory) {
+                 DeviceMemory<uint8>* scratch_memory,
+                 int ctc_loss_algo_id) {
     return IsStatusOk(
         DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
                   probs_data, labels_data, labels_lengths_data,
                   input_lengths_data, *costs_data, grads_desc, *grads_data,
-                  *scratch_memory),
+                  *scratch_memory, ctc_loss_algo_id),
         false);
   }
 
@@ -2717,7 +2721,8 @@ class DnnSupport {
       absl::Span<const int> labels_lengths_data,
       absl::Span<const int> input_lengths_data,
       ScratchAllocator* scratch_allocator,
-      DeviceMemory<uint8>* scratch_memory) {
+      DeviceMemory<uint8>* scratch_memory,
+      int* ctc_loss_algo_id) {
     *scratch_memory = {};
     return port::Status::OK();
   }

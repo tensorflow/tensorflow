@@ -627,7 +627,8 @@ port::Status DnnSupport::DoCtcLoss(Stream* stream, dnn::DataType element_type,
                                    DeviceMemoryBase costs_data,
                                    const RnnStateTensorDescriptor& grads_desc,
                                    DeviceMemoryBase grads_data,
-                                   DeviceMemory<uint8> scratch_memory) {
+                                   DeviceMemory<uint8> scratch_memory,
+                                   int ctc_loss_algo_id) {
   return port::UnimplementedError("CtcLoss not implemented");
 }
 

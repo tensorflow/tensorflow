@@ -2045,7 +2045,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const CudnnRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data, const CudnnCtcLossDescriptor& ctc_loss_desc,
-    DeviceMemory<uint8> scratch_memory) {
+    DeviceMemory<uint8> scratch_memory, int ctc_loss_algo_id) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   int kNumTimestamps = probs_desc.num_layers();
@@ -2055,6 +2055,8 @@ port::Status CudnnSupport::DoCtcLossImpl(
   (void)total_size;
 
 #if CUDNN_VERSION >= 7603
+  cudnnCTCLossAlgo_t ctc_loss_algo =
+      static_cast<cudnnCTCLossAlgo_t>(ctc_loss_algo_id);
   RETURN_IF_CUDNN_ERROR(cudnnCTCLoss(
       /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
       /*probs=*/probs_data.opaque(), /*labels=*/labels_data.data(),
@@ -2062,9 +2064,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
       /*inputLengths=*/input_lengths_data.data(),
       /*costs=*/costs_data.opaque(), /*gradientsDesc=*/grads_desc.handle(),
       /*gradients=*/grads_data.opaque(),
-      /*algo=*/
-      RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
-                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*algo=*/ctc_loss_algo,
       /*ctcLossDesc=*/ctc_loss_desc.handle(),
       /*workspace=*/scratch_memory.opaque(),
       /*workSpaceSizeInBytes=*/scratch_memory.size()));
@@ -3935,7 +3935,8 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data,
-    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory) {
+    ScratchAllocator* scratch_allocator, DeviceMemory<uint8>* scratch_memory,
+    int* ctc_loss_algo_id) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
@@ -3945,17 +3946,43 @@ port::Status CudnnSupport::DoPrepareForCtcLoss(
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
-  RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
-      /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
-      /*gradientsDesc=*/cudnn_grads_desc.handle(),
-      /*labels=*/labels_data.data(),
-      /*labelLengths=*/labels_lengths_data.data(),
-      /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/
+
+  // When determinism is required, we will only try the deterministic algo.
+  // Otherwise, we will first try the faster non-deterministic algo and then
+  // fall back to the deterministic algo.
+  auto algo_id =
       RequireCudnnDeterminism() ? CUDNN_CTC_LOSS_ALGO_DETERMINISTIC
-                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
-      /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
-      /*sizeInBytes=*/&workspace_size_in_bytes));
+                                : CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC;
+  cudnnStatus_t _status = cudnnGetCTCLossWorkspaceSize(
+        /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
+        /*gradientsDesc=*/cudnn_grads_desc.handle(),
+        /*labels=*/labels_data.data(),
+        /*labelLengths=*/labels_lengths_data.data(),
+        /*inputLengths=*/input_lengths_data.data(),
+        /*algo=*/algo_id,
+        /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
+        /*sizeInBytes=*/&workspace_size_in_bytes);
+
+  if (!SE_PREDICT_TRUE(_status == CUDNN_STATUS_SUCCESS)) {
+    if (RequireCudnnDeterminism()) {
+      std::ostringstream oss;
+      oss << ToString(_status) << "\nin " << __FILE__ << "(" << __LINE__
+          << "): 'cudnnGetCTCLossWorkspaceSize'";
+      return port::Status(port::error::UNKNOWN, oss.str().c_str());
+    } else {
+      algo_id = CUDNN_CTC_LOSS_ALGO_DETERMINISTIC;
+      RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
+        /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
+        /*gradientsDesc=*/cudnn_grads_desc.handle(),
+        /*labels=*/labels_data.data(),
+        /*labelLengths=*/labels_lengths_data.data(),
+        /*inputLengths=*/input_lengths_data.data(),
+        /*algo=*/algo_id,
+        /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
+        /*sizeInBytes=*/&workspace_size_in_bytes));
+    }
+  }
+  *ctc_loss_algo_id = algo_id;
 #else
   return port::Status(port::error::INVALID_ARGUMENT,
                       "No supported cudnnGetCTCLossWorkspaceSize when "
@@ -3980,12 +4007,12 @@ port::Status CudnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data,
-
     absl::Span<const int> labels_data,
     absl::Span<const int> labels_lengths_data,
     absl::Span<const int> input_lengths_data, DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor& grads_desc,
-    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory) {
+    DeviceMemoryBase grads_data, DeviceMemory<uint8> scratch_memory,
+    int ctc_loss_algo_id) {
   // Current cuDNN CTC Loss only supports the float datatype
   if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {
     return port::Status(port::error::INVALID_ARGUMENT,
@@ -4000,7 +4027,7 @@ port::Status CudnnSupport::DoCtcLoss(
   return DoCtcLossImpl(stream, cudnn_probs_desc, probs_data, labels_data,
                        labels_lengths_data, input_lengths_data, costs_data,
                        cudnn_grads_desc, grads_data, cudnn_ctc_loss_desc,
-                       scratch_memory);
+                       scratch_memory, ctc_loss_algo_id);
 }
 
 bool CudnnSupport::DoTransformTensor(Stream* stream,
