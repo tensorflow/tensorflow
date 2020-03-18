@@ -95,7 +95,7 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     // here is that are broadcasts have been made explicit.
     unsigned nloops = argType.getRank();
 
-    if (isLHLO && !nloops) ConversionPattern::matchFailure();
+    if (isLHLO && !nloops) return failure();
 
     int operandCount = (isLHLO ? args.size() - 1 : args.size());
     auto verifyArgOrResultType = [&](Value val) -> ShapedType {
