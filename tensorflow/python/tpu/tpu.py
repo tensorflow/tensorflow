@@ -223,7 +223,7 @@ def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
       return False
   # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
   # with the actual replicated inputs. This allows ACD to correct add control
-  # deps when there are multiple calls to `experimental_run_v2` in a
+  # deps when there are multiple calls to `run` in a
   # `tf.function`.
   def replace_with_unreplicated_resources(resource_inputs):
     """Replaces handles in `resource_inputs` with their unreplicated inputs."""
