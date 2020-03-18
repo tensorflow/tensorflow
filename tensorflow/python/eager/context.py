@@ -430,6 +430,7 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
+    self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -908,6 +909,9 @@ class Context(object):
 
     if self._enable_mlir_bridge is not None:
       config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    if self._enable_mlir_graph_optimization is not None:
+      config.experimental.enable_mlir_graph_optimization = (
+          self._enable_mlir_graph_optimization)
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1376,10 +1380,18 @@ class Context(object):
   def enable_mlir_bridge(self):
     return self._enable_mlir_bridge
 
+  @property
+  def enable_mlir_graph_optimization(self):
+    return self._enable_mlir_graph_optimization
+
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
     self._enable_mlir_bridge = enabled
+    self._thread_local_data.function_call_options = None
 
+  @enable_mlir_graph_optimization.setter
+  def enable_mlir_graph_optimization(self, enabled):
+    self._enable_mlir_graph_optimization = enabled
     self._thread_local_data.function_call_options = None
 
   @property
