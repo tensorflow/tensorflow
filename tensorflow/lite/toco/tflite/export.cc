@@ -53,7 +53,7 @@ namespace {
 
 // Check if a TensorFlow Op is a control flow op by its name.
 bool IsControlFlowOp(const string& tensorflow_op) {
-  // Technically this is equalivent to `::tensorflow::Node::IsControlFlow()`.
+  // Technically this is equivalent to `::tensorflow::Node::IsControlFlow()`.
   // It requires to construct a `::tensorflow::Graph` to use that helper
   // function, so we simply hardcode the list of control flow ops here.
   if (tensorflow_op == "Switch" || tensorflow_op == "RefSwitch" ||
@@ -477,7 +477,8 @@ tensorflow::Status Export(
   for (const string& input_array : model.GetInvalidInputArrays()) {
     if (model.HasArray(input_array)) {
       return tensorflow::errors::InvalidArgument(absl::StrCat(
-          "Placeholder ", input_array, " should be specied by input_arrays."));
+          "Placeholder ", input_array, " should be specified by "
+          "input_arrays."));
     }
   }
 
