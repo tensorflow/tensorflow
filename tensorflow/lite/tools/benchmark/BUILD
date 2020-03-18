@@ -106,6 +106,7 @@ cc_test(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
+        ":delegate_provider_hdr",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
