@@ -971,11 +971,12 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
