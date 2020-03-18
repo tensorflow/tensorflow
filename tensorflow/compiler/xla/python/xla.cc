@@ -1136,20 +1136,6 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "Execute",
           [](const PyLocalExecutable& executable,
-             absl::Span<PyLocalBuffer* const> args)
-              -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::unique_ptr<PyLocalBuffer>> output,
-                executable.Execute(args, ExecuteOptions()));
-            return WrapWithClient(executable.client()->shared_from_this(),
-                                  std::move(output.front()));
-          },
-          py::arg("arguments"))
-      // TODO(phawkins): remove in favor of overload that returns a vector.
-      .def(
-          "Execute",
-          [](const PyLocalExecutable& executable,
              absl::Span<PyLocalBuffer* const> args, bool tuple_arguments)
               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
             py::gil_scoped_release gil_release;
@@ -1168,27 +1154,6 @@ PYBIND11_MODULE(xla_extension, m) {
             return outputs;
           },
           py::arg("arguments"), py::arg("tuple_arguments"))
-      // TODO(phawkins): remove in favor of overload that returns a vector.
-      .def(
-          "ExecuteOnLocalDevices",
-          [](const PyLocalExecutable& executable,
-             absl::Span<const std::vector<PyLocalBuffer*>> args)
-              -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(
-                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
-                    output_buffers,
-                executable.ExecuteOnLocalDevices(args, ExecuteOptions()));
-            std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
-            outputs.reserve(output_buffers.size());
-            for (auto& buffers : output_buffers) {
-              outputs.push_back(
-                  WrapWithClient(executable.client()->shared_from_this(),
-                                 std::move(buffers.front())));
-            }
-            return outputs;
-          },
-          py::arg("arguments"))
       .def(
           "ExecuteOnLocalDevices",
           [](const PyLocalExecutable& executable,

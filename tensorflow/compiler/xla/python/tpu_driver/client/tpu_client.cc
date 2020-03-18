@@ -227,8 +227,8 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::FromLiterals(
 
 /* static */
 StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::MakeTuple(
-    const std::vector<PyTpuBuffer*> buffers,
-    std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device) {
+    absl::Span<PyTpuBuffer* const> buffers, std::shared_ptr<PyTpuClient> client,
+    std::shared_ptr<Device> device) {
   std::vector<Shape> child_shapes;
   std::vector<std::shared_ptr<TpuSharedBuffer>> child_device_buffers;
   std::vector<tpu_driver::BufferHandle*> child_handle_ptrs;
@@ -611,8 +611,8 @@ Status WaitForExecuteEvent(tpu_driver::Event* event) {
   return opt_status.value();
 }
 
-StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
-    absl::Span<PyTpuBuffer* const> argument_handles) {
+StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> PyTpuExecutable::Execute(
+    absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments) {
   if (num_replicas() != 1) {
     return InvalidArgument(
         "Attempted to execute computation with %d replicas using Execute().",
@@ -624,9 +624,18 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
         num_partitions());
   }
 
-  std::vector<PyTpuBuffer*> all_core_arguments(argument_handles.begin(),
-                                               argument_handles.end());
+  std::vector<PyTpuBuffer*> all_core_arguments;
 
+  std::unique_ptr<PyTpuBuffer> tupled_arguments;
+  if (tuple_arguments) {
+    TF_ASSIGN_OR_RETURN(tupled_arguments,
+                        PyTpuBuffer::MakeTuple(argument_handles, client_,
+                                               local_devices_.front()));
+    all_core_arguments = {tupled_arguments.get()};
+  } else {
+    all_core_arguments = std::vector<PyTpuBuffer*>(argument_handles.begin(),
+                                                   argument_handles.end());
+  }
   ExecuteResult result =
       ExecuteHelper(absl::MakeSpan(&all_core_arguments, 1), argument_handles,
                     /*replica=*/0, /*partition=*/0, RunId());
@@ -638,12 +647,19 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuExecutable::Execute(
     return status;
   }
 
-  return std::move(result.buffer);
+  if (result.buffer->on_host_shape().IsTuple()) {
+    return result.buffer->DestructureTuple();
+  } else {
+    std::vector<std::unique_ptr<PyTpuBuffer>> outputs;
+    outputs.push_back(std::move(result.buffer));
+    return outputs;
+  }
 }
 
-StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>>
+StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
 PyTpuExecutable::ExecuteOnLocalDevices(
-    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles) {
+    absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
+    bool tuple_arguments) {
   tensorflow::profiler::TraceMe traceme(
       "PyTpuExecutable::ExecuteOnLocalDevices");
 
@@ -660,6 +676,20 @@ PyTpuExecutable::ExecuteOnLocalDevices(
   VLOG(1) << "Executing computation; num_replicas=" << num_replicas()
           << " num_partitions=" << num_partitions()
           << " num_local_devices=" << num_local_devices;
+
+  std::vector<std::unique_ptr<PyTpuBuffer>> tupled_arguments;
+  std::vector<std::vector<PyTpuBuffer*>> tupled_argument_pointers;
+  if (tuple_arguments) {
+    tupled_arguments.resize(argument_handles.size());
+    tupled_argument_pointers.resize(argument_handles.size());
+    for (int i = 0; i < num_local_devices; ++i) {
+      TF_ASSIGN_OR_RETURN(tupled_arguments[i],
+                          PyTpuBuffer::MakeTuple(argument_handles[i], client_,
+                                                 local_devices_.at(i)));
+      tupled_argument_pointers[i] = {tupled_arguments[i].get()};
+    }
+    argument_handles = tupled_argument_pointers;
+  }
 
   absl::Mutex results_lock;
   std::vector<ExecuteResult> results(num_local_devices);
@@ -702,9 +732,15 @@ PyTpuExecutable::ExecuteOnLocalDevices(
   }
   VLOG(1) << "Replicated execution complete.";
 
-  std::vector<std::unique_ptr<PyTpuBuffer>> wrapped_results(num_local_devices);
+  std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>> wrapped_results(
+      num_local_devices);
   for (int i = 0; i < num_local_devices; ++i) {
-    wrapped_results[i] = std::move(results[i].buffer);
+    if (results[i].buffer->on_host_shape().IsTuple()) {
+      TF_ASSIGN_OR_RETURN(wrapped_results[i],
+                          results[i].buffer->DestructureTuple());
+    } else {
+      wrapped_results[i].push_back(std::move(results[i].buffer));
+    }
   }
   return wrapped_results;
 }
