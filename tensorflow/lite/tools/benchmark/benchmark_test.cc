@@ -325,10 +325,10 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
 
 class MaxDurationWorksTestListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
-    const int64_t num_actul_runs = results.inference_time_us().count();
-    TFLITE_LOG(INFO) << "number of actual runs: " << num_actul_runs;
-    EXPECT_GE(num_actul_runs, 1);
-    EXPECT_LT(num_actul_runs, 100000000);
+    const int64_t num_actual_runs = results.inference_time_us().count();
+    TFLITE_LOG(INFO) << "number of actual runs: " << num_actual_runs;
+    EXPECT_GE(num_actual_runs, 1);
+    EXPECT_LT(num_actual_runs, 100000000);
   }
 };
 
