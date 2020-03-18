@@ -168,8 +168,8 @@ void Softmax4DFloat(const TfLiteTensor* input, TfLiteTensor* output,
       GetTensorShape(output), GetTensorData<float>(output));
 }
 
-void Softmax4DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
+void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                      TfLiteSoftmaxParams* params, OpData* data) {
   SoftmaxParams op_params;
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
@@ -233,12 +233,13 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
         Softmax2DQuantized(input, output, params, data);
         return kTfLiteOk;
       }
-      if (NumDimensions(input) == 4) {
-        Softmax4DQuantized(input, output, params, data);
+      if (NumDimensions(input) == 3 || NumDimensions(input) == 4) {
+        SoftmaxQuantized(input, output, params, data);
         return kTfLiteOk;
       }
       TF_LITE_KERNEL_LOG(
-          context, "Only 1D, 2D and 4D tensors supported currently, got %dD.",
+          context,
+          "Only 1D, 2D, 3D and 4D tensors supported currently, got %dD.",
           NumDimensions(input));
       return kTfLiteError;
     }
