@@ -164,6 +164,7 @@ py_test(
     deps = [
         ":lite",
         ":lite_v2_test_util",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",

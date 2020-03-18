@@ -25,30 +25,15 @@ from absl.testing import parameterized
 import numpy as np
 from six.moves import range
 from six.moves import zip
+import tensorflow as tf
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.python import keras
-from tensorflow.python.client import session
-from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.keras.layers import recurrent_v2
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import rnn
-from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import save_options
 from tensorflow.python.saved_model import saved_model
@@ -71,7 +56,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testFloat(self, enable_mlir):
     root = self._getSimpleVariableModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
@@ -87,7 +72,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testScalarInput(self):
     root = self._getSimpleVariableModel()
-    input_data = constant_op.constant(1., shape=[])
+    input_data = tf.constant(1., shape=[])
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
@@ -103,7 +88,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testMultiFunctionModel(self):
     """Convert a single model in a multi-functional model."""
     root = self._getMultiFunctionModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     concrete_func = root.add.get_concrete_function(input_data)
 
     # Convert model and ensure model is not None.
@@ -119,7 +104,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testConvertMultipleFunctions(self):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     add_func = root.add.get_concrete_function(input_data)
     sub_func = root.sub.get_concrete_function(input_data)
 
@@ -136,16 +121,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     root = tracking.AutoTrackable()
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[1, 5, 5, 3], dtype=dtypes.float32)
-    ])
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[1, 5, 5, 3], dtype=tf.float32)])
     def func(inp):
-      conv = nn_ops.conv2d(
-          inp,
-          filter=array_ops.ones([3, 3, 3, 16]),
-          strides=[1, 1, 1, 1],
-          padding='SAME')
-      output = nn_ops.relu(conv, name='output')
+      conv = tf.nn.conv2d(
+          inp, tf.ones([3, 3, 3, 16]), strides=[1, 1, 1, 1], padding='SAME')
+      output = tf.nn.relu(conv, name='output')
       return output
 
     def calibration_gen():
@@ -216,7 +197,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLess(len(quantized_tflite), len(float_tflite))
 
   def _getTrainingTimeQuantizedModel(self):
-    class QLinear(keras.layers.Layer):
+
+    class QLinear(tf.keras.layers.Layer):
 
       def __init__(self, units=3, **kwargs):
         super(QLinear, self).__init__(**kwargs)
@@ -228,27 +210,27 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
                                  trainable=True)
         self.min_var = self.add_weight(
             'min',
-            initializer=keras.initializers.Constant(-6.0),
+            initializer=tf.keras.initializers.Constant(-6.0),
             trainable=False)
         self.max_var = self.add_weight(
             'max',
-            initializer=keras.initializers.Constant(6.0),
+            initializer=tf.keras.initializers.Constant(6.0),
             trainable=False)
 
       def call(self, inputs):
-        x = array_ops.fake_quant_with_min_max_vars(
+        x = tf.quantization.fake_quant_with_min_max_vars(
             inputs, self.min_var, self.max_var)
 
-        w_fq = array_ops.fake_quant_with_min_max_vars(
+        w_fq = tf.quantization.fake_quant_with_min_max_vars(
             self.w, self.min_var, self.max_var)
-        x = math_ops.matmul(x, w_fq)
+        x = tf.matmul(x, w_fq)
 
-        x = array_ops.fake_quant_with_min_max_vars(
+        x = tf.quantization.fake_quant_with_min_max_vars(
             x, self.min_var, self.max_var)
 
         return x
 
-    return keras.Sequential(QLinear(3, input_shape=(2,)))
+    return tf.keras.Sequential(QLinear(3, input_shape=(2,)))
 
   @test_util.run_v2_only
   def testTrainingTimeQuantizeConversion(self):
@@ -289,7 +271,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     new_tflite = quantized_converter.convert()
 
     for _ in range(5):
-      input_data = constant_op.constant(
+      input_data = tf.constant(
           np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32))
       old_value = self._evaluateTFLiteModel(old_tflite, [input_data])
       new_value = self._evaluateTFLiteModel(new_tflite, [input_data])
@@ -301,25 +283,23 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testEmbeddings(self, enable_mlir):
     """Test model with embeddings."""
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((20)), dtype=np.int32))
 
-    class EmbeddingModel(keras.Model):
+    class EmbeddingModel(tf.keras.Model):
 
       def __init__(self):
         super(EmbeddingModel, self).__init__()
         self.shared_weights = self.add_weight(
             'weights',
             shape=(2000, 300),
-            dtype=dtypes.float32,
-            initializer=init_ops.random_normal_initializer(
+            dtype=tf.float32,
+            initializer=tf.random_normal_initializer(
                 mean=0.0, stddev=300**(-0.5)))
 
-      @def_function.function(input_signature=[
-          tensor_spec.TensorSpec(shape=(20), dtype=dtypes.int32)
-      ])
+      @tf.function(input_signature=[tf.TensorSpec(shape=(20), dtype=tf.int32)])
       def func(self, x):
-        return array_ops.gather(self.shared_weights, x)
+        return tf.gather(self.shared_weights, x)
 
     # Building the model.
     root = EmbeddingModel()
@@ -339,9 +319,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
   def testGraphDebugInfo(self):
     """Test a concrete function has debug info captured."""
     root = tracking.AutoTrackable()
-    root.v1 = variables.Variable(3.)
-    root.f = def_function.function(lambda x: root.v1 * x)
-    input_data = constant_op.constant(1., shape=[1])
+    root.v1 = tf.Variable(3.)
+    root.f = tf.function(lambda x: root.v1 * x)
+    input_data = tf.constant(1., shape=[1])
     concrete_func = root.f.get_concrete_function(input_data)
 
     # Convert model.
@@ -355,24 +335,24 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def _createV1SavedModel(self, shape):
     """Create a simple SavedModel."""
     saved_model_dir = os.path.join(self.get_temp_dir(), 'simple_savedmodel')
-    with ops.Graph().as_default():
-      with session.Session() as sess:
-        in_tensor_1 = array_ops.placeholder(
-            shape=shape, dtype=dtypes.float32, name='inputB')
-        in_tensor_2 = array_ops.placeholder(
-            shape=shape, dtype=dtypes.float32, name='inputA')
-        variable_node = variables.Variable(1.0, name='variable_node')
+    with tf.Graph().as_default():
+      with tf.compat.v1.Session() as sess:
+        in_tensor_1 = tf.compat.v1.placeholder(
+            shape=shape, dtype=tf.float32, name='inputB')
+        in_tensor_2 = tf.compat.v1.placeholder(
+            shape=shape, dtype=tf.float32, name='inputA')
+        variable_node = tf.Variable(1.0, name='variable_node')
         out_tensor = in_tensor_1 + in_tensor_2 * variable_node
         inputs = {'x': in_tensor_1, 'y': in_tensor_2}
         outputs = {'z': out_tensor}
-        sess.run(variables.variables_initializer([variable_node]))
+        sess.run(tf.compat.v1.variables_initializer([variable_node]))
         saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
     return saved_model_dir
 
   @test_util.run_v2_only
   def testV1SimpleModel(self):
     """Test a SavedModel."""
-    with context.graph_mode():
+    with tf.Graph().as_default():
       saved_model_dir = self._createV1SavedModel(shape=[1, 16, 16, 3])
 
       # Convert model and ensure model is not None.
@@ -405,9 +385,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testConstModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     root = tracking.AutoTrackable()
-    root.f = def_function.function(lambda x: 2. * x)
+    root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
 
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
@@ -426,7 +406,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testVariableModel(self):
     """Test a basic model with Variables with saving/loading the SavedModel."""
     root = self._getSimpleVariableModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     to_save = root.f.get_concrete_function(input_data)
 
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
@@ -445,7 +425,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testSignatures(self):
     """Test values for `signature_keys` argument."""
     root = self._getSimpleVariableModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     to_save = root.f.get_concrete_function(input_data)
 
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
@@ -471,7 +451,7 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   def testMultipleFunctionModel(self):
     """Convert multiple functions in a multi-functional model."""
     root = self._getMultiFunctionModel()
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     add_func = root.add.get_concrete_function(input_data)
     sub_func = root.sub.get_concrete_function(input_data)
 
@@ -491,14 +471,14 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testKerasSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
-    input_data = constant_op.constant(1., shape=[1, 1])
+    input_data = tf.constant(1., shape=[1, 1])
 
     x = np.array([[1.], [2.]])
     y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential([
-        keras.layers.Dropout(0.2),
-        keras.layers.Dense(1),
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(1),
     ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
@@ -518,9 +498,9 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testGraphDebugInfo(self):
     """Test a SavedModel has debug info captured."""
-    input_data = constant_op.constant(1., shape=[1])
+    input_data = tf.constant(1., shape=[1])
     root = tracking.AutoTrackable()
-    root.f = def_function.function(lambda x: 2. * x)
+    root.f = tf.function(lambda x: 2. * x)
     to_save = root.f.get_concrete_function(input_data)
     options = save_options.SaveOptions(save_debug_info=True)
     save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
@@ -537,15 +517,15 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
-    input_data = constant_op.constant(1., shape=[1, 1])
+    input_data = tf.constant(1., shape=[1, 1])
 
     # Create a simple Keras model.
     x = np.array([[1.], [2.]])
     y = np.array([[2.], [4.]])
 
-    model = keras.models.Sequential([
-        keras.layers.Dropout(0.2),
-        keras.layers.Dense(units=1, input_shape=[1])
+    model = tf.keras.models.Sequential([
+        tf.keras.layers.Dropout(0.2),
+        tf.keras.layers.Dense(units=1, input_shape=[1])
     ])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
@@ -562,8 +542,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testSequentialMultiInputOutputModel(self):
     """Test a tf.Keras model with multiple inputs and outputs."""
-    left_input_data = constant_op.constant(1., shape=[1, 3])
-    right_input_data = constant_op.constant(1., shape=[1, 3])
+    left_input_data = tf.constant(1., shape=[1, 3])
+    right_input_data = tf.constant(1., shape=[1, 3])
 
     # Create a simple Keras model.
     input_a_np = np.random.random((10, 3))
@@ -571,22 +551,22 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     output_c_np = np.random.random((10, 3))
     output_d_np = np.random.random((10, 2))
 
-    input_a = keras.layers.Input(shape=(3,), name='input_a')
-    input_b = keras.layers.Input(shape=(3,), name='input_b')
+    input_a = tf.keras.layers.Input(shape=(3,), name='input_a')
+    input_b = tf.keras.layers.Input(shape=(3,), name='input_b')
 
-    dense = keras.layers.Dense(8, name='dense_1')
+    dense = tf.keras.layers.Dense(8, name='dense_1')
     interm_a = dense(input_a)
     interm_b = dense(input_b)
-    merged = keras.layers.concatenate([interm_a, interm_b], name='merge')
+    merged = tf.keras.layers.concatenate([interm_a, interm_b], name='merge')
 
-    output_c = keras.layers.Dense(
+    output_c = tf.keras.layers.Dense(
         3, activation='softmax', name='dense_2')(
             merged)
-    output_d = keras.layers.Dense(
+    output_d = tf.keras.layers.Dense(
         2, activation='softmax', name='dense_3')(
             merged)
 
-    model = keras.models.Model(
+    model = tf.keras.models.Model(
         inputs=[input_a, input_b], outputs=[output_c, output_d])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit([input_a_np, input_b_np], [output_c_np, output_d_np], epochs=1)
@@ -608,8 +588,8 @@ class FromKerasModelTest(lite_v2_test_util.ModelTest):
     # Create a simple Keras model.
     x = [-1, 0, 1, 2, 3, 4]
     y = [-3, -1, 1, 3, 5, 7]
-    model = keras.models.Sequential(
-        [keras.layers.Dense(units=1, input_shape=[1])])
+    model = tf.keras.models.Sequential(
+        [tf.keras.layers.Dense(units=1, input_shape=[1])])
     model.compile(optimizer='sgd', loss='mean_squared_error')
     model.fit(x, y, epochs=1)
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -622,24 +602,24 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
   @test_util.run_v2_only
   def testCond(self):
     input_data = {
-        'x': constant_op.constant([1., 2.], shape=[1, 2]),
-        'b': constant_op.constant(True)
+        'x': tf.constant([1., 2.], shape=[1, 2]),
+        'b': tf.constant(True)
     }
 
-    weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=dtypes.float32)
+    weights = tf.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=tf.float32)
 
     def true_fn(x):
-      return math_ops.matmul(x, weights)
+      return tf.matmul(x, weights)
 
     def false_fn(x):
-      return math_ops.add(x, weights)
+      return tf.add(x, weights)
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[1, 2], dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool)
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[1, 2], dtype=tf.float32),
+        tf.TensorSpec(shape=(), dtype=tf.bool)
     ])
     def model(x, b):
-      return control_flow_ops.cond(
+      return tf.cond(
           b, true_fn=lambda: true_fn(x), false_fn=lambda: false_fn(x))
 
     concrete_func = model.get_concrete_function()
@@ -657,18 +637,17 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testStaticRnn(self):
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((3, 10)), dtype=np.float32))
 
-    cell = rnn_cell_impl.LSTMCell(10)
+    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[3, 10], dtype=dtypes.float32)
-    ])
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[3, 10], dtype=tf.float32)])
     def model(x):
-      seq = array_ops.split(x, 3, 0)
-      return rnn.static_rnn(
-          cell, seq, dtype=dtypes.float32, sequence_length=[1])
+      seq = tf.split(x, 3, 0)
+      return tf.compat.v1.nn.static_rnn(
+          cell, seq, dtype=tf.float32, sequence_length=[1])
 
     concrete_func = model.get_concrete_function()
 
@@ -685,21 +664,20 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testWhileLoop(self):
-    input_data = constant_op.constant([1., 2., 3., 4.], shape=[2, 2])
+    input_data = tf.constant([1., 2., 3., 4.], shape=[2, 2])
 
-    weights = variables.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=dtypes.float32)
+    weights = tf.Variable([[0.1, 0.2], [0.3, 0.4]], dtype=tf.float32)
 
     def condition(x):
-      return math_ops.reduce_sum(x) < 100
+      return tf.reduce_sum(x) < 100
 
     def body(x):
-      return math_ops.add(x, weights)
+      return tf.add(x, weights)
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[2, 2], dtype=dtypes.float32)
-    ])
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[2, 2], dtype=tf.float32)])
     def model(x):
-      return control_flow_ops.while_loop(condition, body, [x])
+      return tf.while_loop(condition, body, [x])
 
     concrete_func = model.get_concrete_function()
 
@@ -709,22 +687,21 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
     tflite_model = converter.convert()
 
     # Check values from converted model.
-    expected_value = concrete_func(input_data)
+    expected_value = concrete_func(input_data)[0]
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])[0]
     np.testing.assert_almost_equal(expected_value.numpy(), actual_value)
 
   @test_util.run_v2_only
   def testDynamicRnn(self):
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((3, 10, 10)), dtype=np.float32))
 
-    cell = rnn_cell_impl.LSTMCell(10)
+    cell = tf.compat.v1.nn.rnn_cell.LSTMCell(10)
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[3, 10, 10], dtype=dtypes.float32)
-    ])
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[3, 10, 10], dtype=tf.float32)])
     def model(x):
-      return rnn.dynamic_rnn(cell, x, dtype=dtypes.float32)
+      return tf.compat.v1.nn.dynamic_rnn(cell, x, dtype=tf.float32)
 
     concrete_func = model.get_concrete_function()
 
@@ -750,10 +727,10 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
   def testKerasRNN(self, rnn_layer):
     # This relies on TFLiteConverter to rewrite unknown batch size to 1. The
     # model will fail if resizing the input to non-1 batch size.
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
     rnn_obj = rnn_layer(units=10, input_shape=(10, 10))
-    model = keras.models.Sequential([rnn_obj])
+    model = tf.keras.models.Sequential([rnn_obj])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -770,12 +747,12 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
                                   ('GRU', recurrent_v2.GRU))
   @test_util.run_v2_only
   def testKerasRNNMultiBatches(self, rnn_layer):
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((4, 10, 10)), dtype=np.float32))
     # Specify a fixed batch size(4) for the test model.
-    x = keras.layers.Input(batch_shape=(4, 10, 10))
+    x = tf.keras.layers.Input(batch_shape=(4, 10, 10))
     y = rnn_layer(units=10, input_shape=(10, 10))(x)
-    model = keras.Model(inputs=[x], outputs=[y])
+    model = tf.keras.Model(inputs=[x], outputs=[y])
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -789,16 +766,16 @@ class ControlFlowTest(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testKerasBidirectionalRNN(self):
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((1, 10, 10)), dtype=np.float32))
-    model = keras.models.Sequential()
+    model = tf.keras.models.Sequential()
     model.add(
-        keras.layers.Bidirectional(
+        tf.keras.layers.Bidirectional(
             recurrent_v2.LSTM(units=10, return_sequences=True),
             input_shape=(10, 10)))
-    model.add(keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
-    model.add(keras.layers.Dense(5))
-    model.add(keras.layers.Activation('softmax'))
+    model.add(tf.keras.layers.Bidirectional(recurrent_v2.LSTM(units=10)))
+    model.add(tf.keras.layers.Dense(5))
+    model.add(tf.keras.layers.Activation('softmax'))
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_keras_model(model)
@@ -817,14 +794,13 @@ class GrapplerTest(lite_v2_test_util.ModelTest):
   def testConstantFolding(self):
     # Constant folding handles the tf.broadcast_to operation which was not
     # supported by the TFLite at the time this test was added.
-    input_data = constant_op.constant([1., 2., 3., 4., 5., 6., 7., 8., 9.],
-                                      shape=[3, 3])
+    input_data = tf.constant([1., 2., 3., 4., 5., 6., 7., 8., 9.], shape=[3, 3])
 
-    @def_function.function
+    @tf.function
     def func(x):
-      y_const = constant_op.constant([1., 2., 3.])
-      y_broadcast = gen_array_ops.broadcast_to(y_const, [3, 3])
-      return math_ops.matmul(x, y_broadcast)
+      y_const = tf.constant([1., 2., 3.])
+      y_broadcast = tf.broadcast_to(y_const, [3, 3])
+      return tf.matmul(x, y_broadcast)
 
     root = tracking.AutoTrackable()
     root.f = func
@@ -851,16 +827,15 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
 
   @test_util.run_v2_only
   def testMatMul(self):
-    input_data = constant_op.constant(
+    input_data = tf.constant(
         np.array(np.random.random_sample((10, 4)), dtype=np.float32))
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[None, 4], dtype=dtypes.float32)
-    ])
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=[None, 4], dtype=tf.float32)])
     def model(in_tensor):
-      shape = array_ops.shape_v2(in_tensor)
-      fill = array_ops.transpose_v2(array_ops.fill(shape, 1.))
-      return math_ops.matmul(fill, in_tensor)
+      shape = tf.shape(in_tensor)
+      fill = tf.transpose(tf.fill(shape, 1.))
+      return tf.matmul(fill, in_tensor)
 
     concrete_func = model.get_concrete_function()
 
@@ -877,17 +852,17 @@ class UnknownShapes(lite_v2_test_util.ModelTest):
 
   def testBatchMatMul(self):
     self.skipTest('BatchMatMulV2 does not support unknown batch size.')
-    input_data_1 = constant_op.constant(
+    input_data_1 = tf.constant(
         np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
-    input_data_2 = constant_op.constant(
+    input_data_2 = tf.constant(
         np.array(np.random.random_sample((1, 256, 256)), dtype=np.float32))
 
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32),
-        tensor_spec.TensorSpec(shape=[None, 256, 256], dtype=dtypes.float32)
+    @tf.function(input_signature=[
+        tf.TensorSpec(shape=[None, 256, 256], dtype=tf.float32),
+        tf.TensorSpec(shape=[None, 256, 256], dtype=tf.float32)
     ])
     def model(in_tensor_1, in_tensor_2):
-      return math_ops.matmul(in_tensor_1, in_tensor_2)
+      return tf.matmul(in_tensor_1, in_tensor_2)
 
     concrete_func = model.get_concrete_function()
 
