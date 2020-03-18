@@ -23,15 +23,13 @@ limitations under the License.
 namespace tflite {
 namespace delegates {
 
-// Given a list(vector<int>) of indices, modifies it in-place to contain
-// max_subsets number of continuous subsets. Subsets are selected in descending
-// order of their length.
-// Resulting vector contains sorted list of pruned indices.
-//
-// This util can be used by delegates to avoid accepting too many node-subsets.
-TfLiteStatus PruneContinuousSubsets(TfLiteContext* context,
-                                    const int max_subsets,
-                                    std::vector<int>* indices);
+// Creates a new Read/Write tensor having the same shape as the original, but
+// with a different type.
+TfLiteStatus CreateNewTensorWithDifferentType(TfLiteContext* context,
+                                              const int original_tensor_index,
+                                              TfLiteType new_type,
+                                              TfLiteTensor** new_tensor,
+                                              int* new_tensor_index);
 
 }  // namespace delegates
 }  // namespace tflite

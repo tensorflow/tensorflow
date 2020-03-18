@@ -28,6 +28,7 @@ function install_pylint () {
   # TODO(gunan): figure out why we get stuck with later versions of pylint.
   # TODO(mihaimaruseac): this is used in the release build in the same way,
   # maybe extract out to a common?
+  sudo python3 -m pip install setuptools --upgrade
   sudo python2 -m pip install pylint==1.6.4
   sudo python3 -m pip install pylint==1.6.4
 }
@@ -64,7 +65,7 @@ EOF
   chmod +x tensorflow/tools/ci_build/${SANITY_OUT_TARGET}.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
-  # //tensorflow/core:platform_setround_test is not supported. See b/64264700
+  # //tensorflow/core/platform:setround_test is not supported. See b/64264700
   "${BAZEL_WRAPPER_PATH}" \
     --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
     test \
@@ -78,7 +79,7 @@ EOF
 
 
 source tensorflow/tools/ci_build/release/common.sh
-update_bazel_linux
+install_bazelisk
 which bazel
 
 install_pylint

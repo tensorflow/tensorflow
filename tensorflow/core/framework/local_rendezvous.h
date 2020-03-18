@@ -64,8 +64,8 @@ class LocalRendezvous {
 
   // TODO(zhifengc): shard table_.
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
-  Status status_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(LocalRendezvous);
 };

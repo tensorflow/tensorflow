@@ -2,6 +2,7 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -183,6 +184,12 @@ config_setting(
 config_setting(
     name = "ios",
     values = {"apple_platform_type": "ios"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "fuchsia",
+    values = {"cpu": "fuchsia"},
     visibility = ["//visibility:public"],
 )
 
@@ -447,19 +454,66 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Specifies via a config setting if this is a mobile build or not, makes
+# it easier to combine settings later.
+selects.config_setting_group(
+    name = "mobile",
+    match_any = [
+        ":android",
+        ":chromiumos",
+        ":emscripten",
+        ":ios",
+    ],
+)
+
+config_setting(
+    name = "lite_protos_legacy",
+    values = {"define": "TENSORFLOW_PROTOS=lite"},
+    visibility = ["//visibility:private"],
+)
+
+config_setting(
+    name = "full_protos",
+    values = {"define": "TENSORFLOW_PROTOS=full"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "lite_protos",
+    match_any = [":lite_protos_legacy"],
+)
+
+selects.config_setting_group(
+    name = "mobile_lite_protos",
+    match_all = [
+        ":lite_protos",
+        ":mobile",
+    ],
+)
+
+selects.config_setting_group(
+    name = "mobile_full_protos",
+    match_all = [
+        ":full_protos",
+        ":mobile",
+    ],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
     packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/...",
         "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
-        "//third_party/swift/tensorflow/x10/...",
     ],
 )
 
@@ -478,6 +532,7 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
+        "//tensorflow/core/platform:rules_cc_bzl",
         "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
@@ -492,8 +547,8 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc_unsecure"],
-        "//conditions:default": ["@grpc"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
     }),
 )
 
@@ -501,8 +556,8 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
-        "//conditions:default": ["@grpc//:grpc++"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
 
@@ -587,7 +642,9 @@ tf_cc_shared_object(
         "//tensorflow/core:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
+        "//tensorflow/c:c_core_api_no_xla",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
 )
@@ -906,7 +963,6 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        ":virtual_root_init_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",

@@ -41,13 +41,20 @@ limitations under the License.
 #include "tensorflow/lite/delegates/flex/delegate.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/optional_debug_tools.h"
 
+using llvm::cl::desc;
+using llvm::cl::init;
 using llvm::cl::opt;
 
 // NOLINTNEXTLINE
-static opt<std::string> inputFileName(llvm::cl::Positional,
-                                      llvm::cl::desc("<input file>"),
-                                      llvm::cl::init("-"));
+static opt<std::string> input_filename(llvm::cl::Positional,
+                                       desc("<input file>"), init("-"));
+
+// NOLINTNEXTLINE
+static opt<bool> dump_state("dump-interpreter-state",
+                            desc("dump interpreter state post execution"),
+                            init(false));
 
 // TODO(jpienaar): Move these functions to some debug utils.
 static std::string TfLiteTensorDimString(const TfLiteTensor& tensor) {
@@ -82,9 +89,9 @@ int main(int argc, char** argv) {
   llvm::InitLLVM y(argc, argv);
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR TFLite runner\n");
 
-  auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(inputFileName.c_str());
+  auto file_or_err = llvm::MemoryBuffer::getFileOrSTDIN(input_filename.c_str());
   if (std::error_code error = file_or_err.getError()) {
-    LOG(ERROR) << argv[0] << ": could not open input file '" << inputFileName
+    LOG(ERROR) << argv[0] << ": could not open input file '" << input_filename
                << "': " << error.message() << "\n";
     return 1;
   }
@@ -132,6 +139,8 @@ int main(int argc, char** argv) {
             TfLiteTypeGetName(out.type), TfLiteTensorDimString(out).c_str(),
             TfLiteTensorString(out).c_str());
   }
+
+  if (dump_state) tflite::PrintInterpreterState(interpreter.get());
 
   return 0;
 }

@@ -92,7 +92,7 @@ extern tflite::ErrorReporter* reporter;
 
 // TODO(petewarden): I'm going to hell for what I'm doing to this poor for loop.
 #define TF_LITE_MICRO_TEST(name)                                           \
-  micro_test::reporter->Report("Testing %s", #name);                       \
+  micro_test::reporter->Report("Testing " #name);                          \
   for (micro_test::is_test_complete = false,                               \
       micro_test::did_test_fail = false;                                   \
        !micro_test::is_test_complete; micro_test::is_test_complete = true, \
@@ -191,7 +191,7 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_EXPECT_TRUE(x)                                   \
   do {                                                                 \
-    if (!x) {                                                          \
+    if (!(x)) {                                                        \
       micro_test::reporter->Report(#x " was not true failed at %s:%d", \
                                    __FILE__, __LINE__);                \
       micro_test::did_test_fail = true;                                \
@@ -205,6 +205,23 @@ extern tflite::ErrorReporter* reporter;
                                    __FILE__, __LINE__);                 \
       micro_test::did_test_fail = true;                                 \
     }                                                                   \
+  } while (false)
+
+#define TF_LITE_MICRO_FAIL(msg)                                        \
+  do {                                                                 \
+    micro_test::reporter->Report("FAIL: %s", msg, __FILE__, __LINE__); \
+    micro_test::did_test_fail = true;                                  \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                   \
+  do {                                                                     \
+    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {       \
+      if (string1[i] != string2[i]) {                                      \
+        micro_test::reporter->Report("FAIL: %s did not match %s", string1, \
+                                     string2, __FILE__, __LINE__);         \
+        micro_test::did_test_fail = true;                                  \
+      }                                                                    \
+    }                                                                      \
   } while (false)
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

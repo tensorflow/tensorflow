@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
@@ -28,8 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
-#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
+#include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 
 namespace tensorflow {
@@ -47,16 +48,19 @@ class FakeDevice : public Device {
 
 // Translates the graph input information from tf2xla:::Config to
 // GraphImportConfig.
-Status ConvertInputInfo(const tf2xla::Config& config,
-                        GraphImportConfig* specs) {
+Status ConvertInputInfo(
+    const tf2xla::Config& config,
+    const std::unordered_map<std::string, std::string>& feed_name_remap,
+    GraphImportConfig* specs) {
   std::vector<std::string> array_names;
   std::vector<std::string> data_types;
   std::vector<std::vector<int>> shapes;
   for (const tf2xla::Feed& feed : config.feed()) {
-    array_names.push_back(feed.id().node_name());
-    if (feed.type() != DT_INVALID) {
-      data_types.push_back(DataType_Name(feed.type()));
-    }
+    std::string place_holder_name =
+        feed_name_remap.at(TensorIdToString(feed.id()));
+    array_names.push_back(place_holder_name);
+    data_types.push_back(
+        feed.type() == DT_INVALID ? "" : DataType_Name(feed.type()));
     std::vector<int> dims;
     dims.reserve(feed.shape().dim_size());
     absl::c_for_each(feed.shape().dim(), [&](const TensorShapeProto::Dim d) {
@@ -82,22 +86,57 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
 
 }  // namespace
 
-Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
-                                   const tf2xla::Config& config,
-                                   xla::XlaComputation* computation) {
-  GraphDebugInfo debug_info;
-  mlir::MLIRContext context;
+Status ConvertGraphDefToXlaViaMlir(
+    GraphDef graph_def, const tf2xla::Config& config,
+    xla::XlaComputation* computation, absl::string_view debug_info_filename,
+    absl::string_view debug_info_path_begin_marker) {
+  // AddPlaceholdersForFeeds prepares for PruneGraphDefInto and serves two
+  // purposes: (1) It creates a placeholder node for each feed, so that
+  // PruneGraphDefInfo can prune away the node containing the feed. (2) It
+  // is also a workaround for b/149029125. It replaces a feed representation
+  // with a placeholder node that contains a single output.
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), graph_def.library());
+  std::unique_ptr<Graph> graph(new Graph(flib_def));
+  std::unordered_map<string, string> feed_name_remap;
+  TF_RETURN_IF_ERROR(AddPlaceholdersForFeeds(config, graph->op_registry(),
+                                             &feed_name_remap, &graph_def));
+
+  // TODO(b/149024678): remove this workaround after the ticket is fixed.
+  //   Prune the GraphDef because MLIR importer doesn't allow unknown ops in
+  //   graph nodes even the nodes are not needed for computing the outputs.
+  GraphDef pruned_graph_def;
+  TF_RETURN_IF_ERROR(PruneGraphDefInto(config, graph_def, &pruned_graph_def));
+
   GraphImportConfig specs;
   specs.prune_unused_nodes = false;
   specs.convert_legacy_fed_inputs = false;
   specs.graph_as_function = false;
-  specs.upgrade_legacy = false;
-  TF_RETURN_IF_ERROR(ConvertInputInfo(config, &specs));
+  specs.upgrade_legacy = true;
+  TF_RETURN_IF_ERROR(ConvertInputInfo(config, feed_name_remap, &specs));
   TF_RETURN_IF_ERROR(ConvertOutputInfo(config, &specs));
+
+  GraphDebugInfo debug_info;
+  if (!debug_info_filename.empty()) {
+    TF_RETURN_IF_ERROR(LoadProtoFromFile(debug_info_filename, &debug_info));
+
+    if (!debug_info_path_begin_marker.empty()) {
+      for (size_t i = 0, e = debug_info.files_size(); i < e; ++i) {
+        std::string* file_name = debug_info.mutable_files(i);
+        size_t location =
+            file_name->rfind(std::string(debug_info_path_begin_marker));
+        if (location != -1) {
+          *file_name = file_name->substr(location +
+                                         debug_info_path_begin_marker.length());
+        }
+      }
+    }
+  }
+
+  mlir::MLIRContext context;
 
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      ConvertGraphdefToMlir(graph_def, debug_info, specs, &context));
+      ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
 
   // Construct a CPU device and add the device to the operations.
   DeviceSet device_set;
@@ -107,6 +146,11 @@ Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
   FakeDevice device(attr);
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
+
+  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
+          *module))) {
+    return errors::Internal("Problem with mark function visibility");
+  }
 
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));

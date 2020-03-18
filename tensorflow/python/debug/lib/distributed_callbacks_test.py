@@ -92,7 +92,7 @@ class DistributedDumpingCallbackTest(
 
       caught_error = None
       try:
-        distribution.experimental_run_v2(train_step)
+        distribution.run(train_step)
       except errors.InvalidArgumentError as error:
         caught_error = error
       self.assertTrue(caught_error)
@@ -128,7 +128,7 @@ class DistributedDumpingCallbackTest(
           grads_and_vars = zip(grads, mini_model.weights)
           optimizer.apply_gradients(grads_and_vars)
 
-      distribution.experimental_run_v2(train_step)
+      distribution.run(train_step)
 
       updated_var_values = self.evaluate(mini_model.variables)
       num_devices = len(distribution.extended.worker_devices)
@@ -171,7 +171,7 @@ class DistributedDumpingCallbackTest(
 
       if tensor_debug_mode == "NO_TENSOR":
         for trace in traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "FULL_TENSOR":
         device_0_matmul_values = [
             reader.graph_execution_trace_to_tensor_value(trace)
@@ -233,7 +233,7 @@ class DistributedDumpingCallbackTest(
       fit_executions = [
           execution.op_type
           for execution in executions
-          if "_distributed_function" in execution.op_type
+          if dumping_callback.is_op_type_function(execution.op_type)
       ]
       self.assertLen(fit_executions, epochs)
 
@@ -273,7 +273,7 @@ class DistributedDumpingCallbackTest(
 
       if tensor_debug_mode == "NO_TENSOR":
         for trace in traces:
-          self.assertEqual(trace.debug_tensor_value, [])
+          self.assertIsNone(trace.debug_tensor_value)
       elif tensor_debug_mode == "FULL_TENSOR":
         gpu_0_relu_values = [
             reader.graph_execution_trace_to_tensor_value(trace)

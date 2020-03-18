@@ -97,7 +97,8 @@ class WindowDataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
       return Status::OK();
@@ -113,7 +114,7 @@ class WindowDataset : public DatasetBase {
     }
 
     mutex mu_;
-    size_t i_ GUARDED_BY(mu_) = 0;
+    size_t i_ TF_GUARDED_BY(mu_) = 0;
   };
 
   const std::vector<std::vector<Tensor>> elements_;

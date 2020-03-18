@@ -48,12 +48,21 @@ def InceptionResNetV2(include_top=True,
                       input_shape=None,
                       pooling=None,
                       classes=1000,
+                      classifier_activation='softmax',
                       **kwargs):
   """Instantiates the Inception-ResNet v2 architecture.
+
+  Reference paper:
+  - [Inception-v4, Inception-ResNet and the Impact of
+     Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
+    (AAAI 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.inception_resnet_v2.preprocess_input` for an example.
 
   Arguments:
     include_top: whether to include the fully-connected
@@ -82,14 +91,19 @@ def InceptionResNetV2(include_top=True,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is `True`, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
 
   Returns:
-    A Keras `Model` instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -189,7 +203,9 @@ def InceptionResNetV2(include_top=True,
   if include_top:
     # Classification block
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='predictions')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -362,9 +378,39 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
 
 @keras_export('keras.applications.inception_resnet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments
+    x: A 4D numpy array consists of RGB values within [0, 255].
+
+  Returns
+    Preprocessed array.
+
+  Raises
+    ValueError: In case of unknown `data_format` argument.
+  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.inception_resnet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

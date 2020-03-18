@@ -29,6 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -51,11 +52,12 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
+#include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/round.h"
-#include "tensorflow/lite/kernels/internal/scoped_profiling_label_wrapper.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/types.h"
@@ -193,7 +195,7 @@ inline void Relu(const RuntimeShape& input_shape, const T* input_data,
 template <typename T>
 inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Relu1 (not fused)");
+  ruy::profiler::ScopeLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const T val = input_data[i];
@@ -206,7 +208,7 @@ inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
 
 inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("Relu6 (not fused)");
+  ruy::profiler::ScopeLabel label("Relu6 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -221,7 +223,7 @@ template <typename T>
 inline void ReluX(const tflite::ReluParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const int32 val = static_cast<int32_t>(input_data[i]);
@@ -239,7 +241,7 @@ template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
                   const RuntimeShape& input_shape, const T* input_data,
                   const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Quantized ReluX (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   const T max_value = params.quantized_activation_max;
   const T min_value = params.quantized_activation_min;
@@ -254,7 +256,7 @@ inline void ReluX(const tflite::ActivationParams& params,
 inline void LeakyRelu(const tflite::LeakyReluParams& params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
     const float val = input_data[i];
@@ -264,30 +266,32 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
 }
 
 template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                               const RuntimeShape& input_shape,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  ScopedProfilingLabelWrapper label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
-  static const int32 alpha_value = q_alpha - params.alpha_offset;
   for (int i = 0; i < flat_size; ++i) {
     const int32 input_value = input_data[i] - params.input_offset;
+    int32 unclamped_output;
     if (input_value >= 0) {
-      output_data[i] = input_data[i];
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_identity,
+                             params.output_shift_identity);
     } else {
-      const int32 unclamped_output =
-          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                                     input_value * alpha_value,
-                                     params.output_multiplier,
-                                     params.output_shift);
-      const T clamped_output =
-          std::min(quantized_max, std::max(quantized_min, unclamped_output));
-      output_data[i] = static_cast<uint8>(clamped_output);
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_alpha,
+                             params.output_shift_alpha);
     }
+    const T clamped_output =
+        std::min(quantized_max, std::max(quantized_min, unclamped_output));
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -295,7 +299,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -307,7 +311,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[depth * i + c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
     }
@@ -426,7 +431,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, int16* output_data) {
-  ScopedProfilingLabelWrapper label("Mul/Int16");
+  ruy::profiler::ScopeLabel label("Mul/Int16");
 
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -445,7 +450,7 @@ inline void Mul(const ArithmeticParams& params,
                 const RuntimeShape& input1_shape, const int16* input1_data,
                 const RuntimeShape& input2_shape, const int16* input2_data,
                 const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("Mul/Int16Uint8");
+  ruy::profiler::ScopeLabel label("Mul/Int16Uint8");
   int32 output_offset = params.output_offset;
   int32 output_activation_min = params.quantized_activation_min;
   int32 output_activation_max = params.quantized_activation_max;
@@ -582,7 +587,7 @@ inline void Div(const ArithmeticParams& params,
                 const RuntimeShape& output_shape, uint8* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
-  ScopedProfilingLabelWrapper label("Div/8bit");
+  ruy::profiler::ScopeLabel label("Div/8bit");
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
 
@@ -649,307 +654,11 @@ inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
   }
 }
 
-inline void SubNonBroadcast(const ArithmeticParams& params,
-                            const RuntimeShape& input1_shape,
-                            const float* input1_data,
-                            const RuntimeShape& input2_shape,
-                            const float* input2_data,
-                            const RuntimeShape& output_shape,
-                            float* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
-  }
-}
-
-inline void SubNonBroadcast(const ArithmeticParams& params,
-                            const RuntimeShape& input1_shape,
-                            const int32* input1_data,
-                            const RuntimeShape& input2_shape,
-                            const int32* input2_data,
-                            const RuntimeShape& output_shape,
-                            int32* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.quantized_activation_min,
-        params.quantized_activation_max);
-  }
-}
-
-// TODO(jiawen): We can implement BroadcastSub on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastSub is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const float* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const float* input2_data,
-                               const RuntimeShape& output_shape,
-                               float* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/float");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.float_activation_min, params.float_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const uint8* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const uint8* input2_data,
-                               const RuntimeShape& output_shape,
-                               uint8* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/uint8");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              params.input1_offset +
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              params.input2_offset +
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 shifted_input1_val =
-              input1_val * (1 << params.left_shift);
-          const int32 shifted_input2_val =
-              input2_val * (1 << params.left_shift);
-          const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input1_val, params.input1_multiplier,
-                  params.input1_shift);
-          const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input2_val, params.input2_multiplier,
-                  params.input2_shift);
-          const int32 raw_sub = scaled_input1_val - scaled_input2_val;
-          const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  raw_sub, params.output_multiplier, params.output_shift) +
-              params.output_offset;
-          const int32 clamped_output =
-              std::min(params.quantized_activation_max,
-                       std::max(params.quantized_activation_min, raw_output));
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
-  }
-}
-
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const int32* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const int32* input2_data,
-                               const RuntimeShape& output_shape,
-                               int32* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/int32");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.quantized_activation_min,
-                  params.quantized_activation_max);
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-void BroadcastSub4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& input1_shape, const T* input1_data,
-                        const RuntimeShape& input2_shape, const T* input2_data,
-                        const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("BroadcastSub4DSlow/templated");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.quantized_activation_min,
-                  params.quantized_activation_max);
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
-         const T* input1_data, const RuntimeShape& input2_shape,
-         const T* input2_data, const RuntimeShape& output_shape,
-         T* output_data) {
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-        }
-      }
-    }
-  }
-}
-
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const int32* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const int32* input2_data,
-                              const RuntimeShape& output_shape,
-                              int32* output_data) {
-  ScopedProfilingLabelWrapper label("SubWithActivation");
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.quantized_activation_min,
-        params.quantized_activation_max);
-  }
-}
-
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const float* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const float* input2_data,
-                              const RuntimeShape& output_shape,
-                              float* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
-  }
-}
-
 inline void Sub16(const ArithmeticParams& params,
                   const RuntimeShape& input1_shape, const int16_t* input1_data,
                   const RuntimeShape& input2_shape, const int16_t* input2_data,
                   const RuntimeShape& output_shape, int16_t* output_data) {
-  ScopedProfilingLabelWrapper label("Sub/Int16");
+  ruy::profiler::ScopeLabel label("Sub/Int16");
   const int input1_shift = params.input1_shift;
   const int flat_size =
       MatchingElementsSize(input1_shape, input2_shape, output_shape);
@@ -997,7 +706,7 @@ template <typename Scalar>
 void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
           const Scalar* const* input_data, const RuntimeShape& output_shape,
           Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("Pack");
+  ruy::profiler::ScopeLabel label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   int inputs_count = params.inputs_count;
@@ -1025,7 +734,7 @@ template <typename Scalar>
 void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
             const Scalar* input_data, const RuntimeShape& output_shape,
             Scalar* const* output_datas) {
-  ScopedProfilingLabelWrapper label("Unpack");
+  ruy::profiler::ScopeLabel label("Unpack");
   const int dimensions = input_shape.DimensionsCount();
   const int outputs_count = params.num_split;
 
@@ -1059,7 +768,7 @@ void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
                      const uint8* const* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("PackWithScaling");
+  ruy::profiler::ScopeLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
@@ -1109,7 +818,7 @@ void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,
                         const RuntimeShape& output_shape, Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("DepthConcatenation");
+  ruy::profiler::ScopeLabel label("DepthConcatenation");
   auto params_copy = params;
   params_copy.axis = 3;
   Concatenation(params_copy, input_shapes, input_data, output_shape,
@@ -1513,7 +1222,7 @@ template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
-  ScopedProfilingLabelWrapper label("Split");
+  ruy::profiler::ScopeLabel label("Split");
   const int split_dimensions = input_shape.DimensionsCount();
   int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
   int outputs_count = params.num_split;
@@ -1617,7 +1326,7 @@ inline void LogSoftmax(const SoftmaxParams& params,
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
-  ScopedProfilingLabelWrapper label("LogSoftmax/8bit");
+  ruy::profiler::ScopeLabel label("LogSoftmax/8bit");
   const int32 input_multiplier = params.input_multiplier;
   const int32 input_left_shift = params.input_left_shift;
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
@@ -1766,49 +1475,10 @@ inline void Dequantize(const RuntimeShape& input_shape,
   }
 }
 
-template <typename input_type, typename output_type>
-inline void Requantize(const input_type* input_data, int32_t size,
-                       int32_t effective_scale_multiplier,
-                       int32_t effective_scale_shift, int32_t input_zeropoint,
-                       int32_t output_zeropoint, output_type* output_data) {
-  ScopedProfilingLabelWrapper label("Requantize");
-  const bool same_scale =
-      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
-  if (same_scale) {
-    const bool mixed_type_int8_uint8 =
-        std::is_same<input_type, int8_t>::value &&
-        std::is_same<output_type, uint8_t>::value;
-    const bool mixed_type_uint8_int8 =
-        std::is_same<input_type, uint8_t>::value &&
-        std::is_same<output_type, int8_t>::value;
-    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
-    // Fast path to do requantization for the case when just a shift of 128 is
-    // needed.
-    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
-        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
-      for (int i = 0; i < size; ++i) {
-        output_data[i] = input_data[i] ^ 0x80;
-      }
-    }
-  }
-  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
-  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
-  for (int i = 0; i < size; ++i) {
-    const int32_t input = input_data[i] - input_zeropoint;
-    const int32_t output =
-        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
-                                      effective_scale_shift) +
-        output_zeropoint;
-    const int32_t clamped_output =
-        std::max(std::min(output, kMaxOutput), kMinOutput);
-    output_data[i] = static_cast<output_type>(clamped_output);
-  }
-}
-
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
-  ScopedProfilingLabelWrapper label("FakeQuant");
+  ruy::profiler::ScopeLabel label("FakeQuant");
   float rmin = op_params.minmax.min;
   float rmax = op_params.minmax.max;
   int num_bits = op_params.num_bits;
@@ -1861,7 +1531,7 @@ inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("Gather");
+  ruy::profiler::ScopeLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
     axis += input_shape.DimensionsCount();
@@ -1899,7 +1569,7 @@ inline void GatherNd(const RuntimeShape& params_shape,
                      const RuntimeShape& indices_shape,
                      const IndicesT* indices_data,
                      const RuntimeShape& output_shape, ParamsT* output_data) {
-  ScopedProfilingLabelWrapper label("GatherNd");
+  ruy::profiler::ScopeLabel label("GatherNd");
 
   int n_slices = 1;
   int slice_size = 1;
@@ -1936,7 +1606,7 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
                       const RuntimeShape& updates_shape,
                       const UpdatesT* updates_data,
                       const RuntimeShape& output_shape, UpdatesT* output_data) {
-  ScopedProfilingLabelWrapper label("ScatterNd");
+  ruy::profiler::ScopeLabel label("ScatterNd");
 
   int n_slices = 1;
   int slice_size = 1;
@@ -1972,6 +1642,22 @@ inline void ScatterNd(const RuntimeShape& indices_shape,
   }
 }
 
+inline void ComputeInterpolationValues(const float value, const float scale,
+                                       const bool half_pixel_centers,
+                                       int32 input_size, float* scaled_value,
+                                       int32* lower_bound, int32* upper_bound) {
+  if (half_pixel_centers) {
+    *scaled_value = (value + 0.5f) * scale - 0.5f;
+  } else {
+    *scaled_value = value * scale;
+  }
+  float scaled_value_floor = std::floor(*scaled_value);
+  *lower_bound =
+      std::max(static_cast<int32>(scaled_value_floor), static_cast<int32>(0));
+  *upper_bound =
+      std::min(static_cast<int32>(std::ceil(*scaled_value)), input_size - 1);
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
@@ -1980,6 +1666,8 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const int32* output_size_data,
                            const RuntimeShape& unextended_output_shape,
                            T* output_data) {
+  // If half_pixel_centers is True, align_corners must be False.
+  TFLITE_DCHECK(!op_params.half_pixel_centers || !op_params.align_corners);
   TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_size_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -2013,13 +1701,15 @@ inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
-      float input_y = y * height_scale;
-      int32 y0 = static_cast<int32>(std::floor(input_y));
-      int32 y1 = std::min(y0 + 1, input_height - 1);
+      float input_y;
+      int32 y0, y1;
+      ComputeInterpolationValues(y, height_scale, op_params.half_pixel_centers,
+                                 input_height, &input_y, &y0, &y1);
       for (int x = 0; x < output_width; ++x) {
-        float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(std::floor(input_x));
-        int32 x1 = std::min(x0 + 1, input_width - 1);
+        float input_x;
+        int32 x0, x1;
+        ComputeInterpolationValues(x, width_scale, op_params.half_pixel_centers,
+                                   input_width, &input_x, &x0, &x1);
         for (int c = 0; c < depth; ++c) {
           T interpolation =
               static_cast<T>(input_data[Offset(input_shape, b, y0, x0, c)] *
@@ -2044,13 +1734,25 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("SpaceToBatchND");
+  ruy::profiler::ScopeLabel label("SpaceToBatchND");
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);
@@ -2062,13 +1764,14 @@ inline void SpaceToBatchND(
   const int output_batch_size = output_shape.Dims(0);
 
   const int block_shape_height = block_shape_data[0];
-  const int block_shape_width = block_shape_data[1];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int padding_top = paddings_data[0];
-  const int padding_left = paddings_data[2];
+  const int padding_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? paddings_data[2] : 0;
 
   // For uint8 quantized, the correct padding "zero value" is the output offset.
   const int32_t pad_value = params.output_offset;
-
   for (int out_b = 0; out_b < output_batch_size; ++out_b) {
     int input_batch = out_b % input_batch_size;
     int shift_w = (out_b / input_batch_size) % block_shape_width;
@@ -2102,13 +1805,25 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("BatchToSpaceND");
+  ruy::profiler::ScopeLabel label("BatchToSpaceND");
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
@@ -2119,11 +1834,12 @@ inline void BatchToSpaceND(
   const int input_height = input1_shape.Dims(1);
   const int input_batch_size = input1_shape.Dims(0);
 
-  const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int crops_top = crops_data[0];
-  const int crops_left = crops_data[2];
-
+  const int crops_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
     const int out_batch = in_batch % output_batch_size;
     const int spatial_offset = in_batch / output_batch_size;
@@ -2208,7 +1924,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
-  ScopedProfilingLabelWrapper label("Exp");
+  ruy::profiler::ScopeLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
     output_data[idx] = std::exp(input_data[idx]);
   }
@@ -2793,7 +2509,7 @@ template <typename Scalar>
 void Reverse(int axis, const RuntimeShape& input_shape,
              const Scalar* input_data, const RuntimeShape& output_shape,
              Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("Reverse");
+  ruy::profiler::ScopeLabel label("Reverse");
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -2821,7 +2537,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
                      const int batch_dim, const RuntimeShape& input_shape,
                      const Scalar* input_data, const RuntimeShape& output_shape,
                      Scalar* output_data) {
-  ScopedProfilingLabelWrapper label("ReverseSequence");
+  ruy::profiler::ScopeLabel label("ReverseSequence");
 
   int outer_size = 1;
   int outer_dim = std::min(batch_dim, seq_dim);
@@ -2898,7 +2614,7 @@ void ReverseSequence(const TS* seq_lengths, const int seq_dim,
 template <typename T>
 inline void HardSwish(const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Float");
+  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Float");
   auto matching_size = MatchingFlatSize(input_shape, output_shape);
   const T* in_end = input_data + matching_size;
   for (; input_data < in_end; input_data++, output_data++) {
@@ -2932,7 +2648,7 @@ template <typename T>
 inline void HardSwish(const HardSwishParams& params,
                       const RuntimeShape& input_shape, const T* input_data,
                       const RuntimeShape& output_shape, T* output_data) {
-  ScopedProfilingLabelWrapper label("ReferenceHardSwish/Quantized");
+  ruy::profiler::ScopeLabel label("ReferenceHardSwish/Quantized");
 
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
 
@@ -3030,6 +2746,25 @@ inline void HardSwish(const HardSwishParams& params,
     output_value =
         std::max<int16_t>(output_value, std::numeric_limits<T>::min());
     output_data[i] = output_value;
+  }
+}
+
+template <typename T>
+inline void SegmentSum(const RuntimeShape& input_shape, const T* input_data,
+                       const RuntimeShape& segment_ids_shape,
+                       const int32_t* segment_ids_data,
+                       const RuntimeShape& output_shape, T* output_data) {
+  const int segment_flat_size =
+      MatchingFlatSizeSkipDim(input_shape, 0, output_shape);
+
+  memset(output_data, 0, sizeof(T) * output_shape.FlatSize());
+
+  for (int i = 0; i < input_shape.Dims(0); i++) {
+    int output_index = segment_ids_data[i];
+    for (int j = 0; j < segment_flat_size; ++j) {
+      output_data[output_index * segment_flat_size + j] +=
+          input_data[i * segment_flat_size + j];
+    }
   }
 }
 

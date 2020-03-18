@@ -1,12 +1,26 @@
 # Tensorflow default + linux implementations of tensorflow/core/platform libraries.
 load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_copts")
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
 
 package(
     default_visibility = [
         "//tensorflow/core/platform:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+cc_library(
+    name = "casts",
+    hdrs = ["casts.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
 )
 
 cc_library(
@@ -81,7 +95,7 @@ cc_library(
         "nobuilder",
     ],
     deps = [
-        "//tensorflow/core/lib/core:error_codes_proto_cc",
+        "//tensorflow/core:error_codes_proto_impl_cc",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:blocking_counter",
@@ -99,6 +113,7 @@ cc_library(
         "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:setround",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:str_util",
@@ -178,15 +193,13 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "monitoring",
-    srcs = ["monitoring.cc"],
-    hdrs = ["//tensorflow/core/platform:monitoring.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = [
+        "cord.h",
+        "dynamic_annotations.h",
+        "integral_types.h",
+    ] + if_not_windows(["env_time.cc"]),
 )
 
 cc_library(
@@ -277,13 +290,43 @@ cc_library(
         "@snappy",
     ] + select({
         # TF Additional NUMA dependencies
-        "//tensorflow:android": [],
-        "//tensorflow:ios": [],
-        "//tensorflow:macos": [],
-        "//conditions:default": [
+        "//tensorflow:with_numa_support": [
+            # Don't merge in a single line
             "@hwloc",
         ],
+        "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "resource",
+    srcs = ["resource.cc"],
+    hdrs = ["//tensorflow/core/platform:resource.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    srcs = ["resource_loader.cc"],
+    hdrs = ["//tensorflow/core/platform:resource_loader.h"],
+    tags = [
+        "manual",
+        "no_oss",
+        "nobuilder",
+    ],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:path",
+        "@bazel_tools//tools/cpp/runfiles",
+    ],
 )
 
 cc_library(
@@ -306,11 +349,6 @@ cc_library(
 cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:abi",
@@ -321,15 +359,12 @@ cc_library(
     name = "stacktrace_handler",
     srcs = ["stacktrace_handler.cc"],
     hdrs = ["//tensorflow/core/platform:stacktrace_handler.h"],
-    tags = [
-        "manual",
-        "no_oss",
-        "nobuilder",
-    ],
+    linkstatic = 1,
     deps = [
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -397,6 +432,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:net",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
         "@com_google_googletest//:gtest",
@@ -463,8 +499,43 @@ bzl_library(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+# Export source files needed for mobile builds, which do not use granular targets.
 filegroup(
-    name = "legacy_mobile_srcs",
+    name = "additional_mobile_srcs_no_runtime",
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_no_runtime",
+    srcs = [
+        "context.h",
+        "dynamic_annotations.h",
+        "env.cc",
+        "integral_types.h",
+        "load_library.cc",
+        "port.cc",
+        "posix_file_system.cc",
+        "posix_file_system.h",
+        "resource.cc",
+        "stacktrace.h",
+        "tracing_impl.h",
+    ],
+    visibility = ["//tensorflow/core/platform:__pkg__"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "casts.h",
+        "cord.h",
+        "mutex.h",
+        "mutex_data.h",
+        "notification.h",
+        "subprocess.cc",
+        "subprocess.h",
+        "unbounded_work_queue.cc",
+        "unbounded_work_queue.h",
+    ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )
 

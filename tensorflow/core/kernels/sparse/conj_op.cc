@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -92,12 +92,12 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(
     CONJ_VARIANT_UNARY_OP, DEVICE_CPU, CSRSparseMatrix,
     (CSRSparseMatrixUnaryHelper<CPUDevice, CSRSparseMatrixConjFunctor>));
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(
     CONJ_VARIANT_UNARY_OP, DEVICE_GPU, CSRSparseMatrix,
     (CSRSparseMatrixUnaryHelper<GPUDevice, CSRSparseMatrixConjFunctor>));
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

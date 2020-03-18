@@ -183,11 +183,11 @@ double DoubleFromFractionAndShift(int64_t fraction, int shift) {
   // Detect NaNs and infinities.
   if (shift == std::numeric_limits<int>::max()) {
     if (fraction == 0) {
-      return NAN;
+      return std::numeric_limits<double>::quiet_NaN();
     } else if (fraction > 0) {
-      return INFINITY;
+      return std::numeric_limits<double>::infinity();
     } else {
-      return -INFINITY;
+      return -std::numeric_limits<double>::infinity();
     }
   }
 
@@ -229,7 +229,7 @@ double IntegerDoubleMultiply(double a, double b) {
   // Detect NaNs and infinities.
   if (a_shift == std::numeric_limits<int>::max() ||
       (b_shift == std::numeric_limits<int>::max())) {
-    return NAN;
+    return std::numeric_limits<double>::quiet_NaN();
   }
   const int result_shift = a_shift + b_shift + 1;
   const int64_t result_fraction = (a_fraction * b_fraction) >> 32;
@@ -379,7 +379,7 @@ bool CheckedLog2(const float x, int* log2_result) {
   const float x_log2_fracpart = x_log2 - x_log2_rounded;
 
   *log2_result = static_cast<int>(x_log2_rounded);
-  return std::abs(x_log2_fracpart) < 1e-3;
+  return std::abs(x_log2_fracpart) < 1e-3f;
 }
 
 void QuantizeMultiplierArray(const double* effective_scales, size_t size,

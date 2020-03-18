@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -41,6 +42,7 @@ from tensorflow.python.keras.saving import saved_model_experimental as saving
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.generic_utils import CustomObjectScope
 from tensorflow.python.ops import gen_string_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.platform import test
 
@@ -289,6 +291,20 @@ class TextVectorizationPreprocessingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
+  def test_summary_before_adapt(self):
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=10,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=None,
+        ngrams=None,
+        output_mode=text_vectorization.TFIDF)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    # We are testing that model.summary() can be called without erroring out.
+    # (b/145726907)
+    model.summary()
+
   def test_normalization(self):
     input_array = np.array([["Earth", "wInD", "aNd", "firE"],
                             ["fire|", "an<>d", "{earth}", "michigan@%$"]])
@@ -296,6 +312,24 @@ class TextVectorizationPreprocessingTest(
                                 [b"fire", b"and", b"earth", b"michigan"]])
 
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=None,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_normalization_ragged_inputs(self):
+    input_array = ragged_factory_ops.constant([["Earth", "wInD", "aNd", "firE"],
+                                               ["fire|", "an<>d", "{earth}"]])
+    expected_output = [[b"earth", b"wind", b"and", b"fire"],
+                       [b"fire", b"and", b"earth"]]
+
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
     layer = get_layer_class()(
         max_tokens=None,
         standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
@@ -358,6 +392,30 @@ class TextVectorizationPreprocessingTest(
         standardize=None,
         split=custom_split,
         ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    output_dataset = model.predict(input_array)
+    self.assertAllEqual(expected_output, output_dataset)
+
+  def test_single_ngram_value_ragged_inputs(self):
+    input_array = ragged_factory_ops.constant([["earth", "wind", "and", "fire"],
+                                               ["fire", "and", "earth"]])
+    # pyformat: disable
+    expected_output = [[b"earth", b"wind", b"and", b"fire",
+                        b"earth wind", b"wind and", b"and fire",
+                        b"earth wind and", b"wind and fire"],
+                       [b"fire", b"and", b"earth",
+                        b"fire and", b"and earth",
+                        b"fire and earth"]]
+    # pyformat: enable
+
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=None,
+        ngrams=3,
         output_mode=None)
     int_data = layer(input_data)
     model = keras.Model(inputs=input_data, outputs=int_data)
@@ -455,6 +513,17 @@ class TextVectorizationPreprocessingTest(
                                 ".*tokenize strings, the first dimension.*"):
       _ = layer(input_data)
 
+  def test_string_splitting_with_non_1d_raggedarray_fails(self):
+    input_data = keras.Input(shape=(None,), ragged=True, dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=None,
+        split=text_vectorization.SPLIT_ON_WHITESPACE,
+        output_mode=None)
+    with self.assertRaisesRegex(RuntimeError,
+                                ".*tokenize strings, the first dimension.*"):
+      _ = layer(input_data)
+
   def test_standardization_with_invalid_standardize_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()()
@@ -466,7 +535,7 @@ class TextVectorizationPreprocessingTest(
   def test_splitting_with_invalid_split_arg(self):
     input_data = keras.Input(shape=(1,), dtype=dtypes.string)
     layer = get_layer_class()()
-    layer._split = "unsuppported"
+    layer._split = "unsupported"
     with self.assertRaisesRegex(ValueError, ".*is not a supported splitting.*"):
       _ = layer(input_data)
 
@@ -1303,8 +1372,11 @@ class TextVectorizationSavingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
-  def test_saving_errors(self):
+  def test_saving(self):
     vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
@@ -1320,11 +1392,23 @@ class TextVectorizationSavingTest(
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
 
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      model.save(output_path, save_format="tf")
+    model.save(output_path, save_format="tf")
 
-  def test_saving_errors_when_nested(self):
+    # Delete the session and graph to ensure that the loaded model is generated
+    # from scratch.
+    # TODO(b/149526183): Can't clear session when TF2 is disabled.
+    if tf2.enabled():
+      keras.backend.clear_session()
+
+    loaded_model = keras.models.load_model(
+        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    self.assertAllEqual(loaded_model.predict(input_array), expected_output)
+
+  def test_saving_when_nested(self):
     vocab_data = ["earth", "wind", "and", "fire"]
+    input_array = np.array([["earth", "wind", "and", "fire"],
+                            ["fire", "and", "earth", "michigan"]])
+    expected_output = [[2, 3, 4, 5], [5, 4, 2, 1]]
 
     # Build and validate a golden model.
     input_data = keras.Input(shape=(None,), dtype=dtypes.string)
@@ -1343,9 +1427,17 @@ class TextVectorizationSavingTest(
 
     # Save the model to disk.
     output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+    outer_model.save(output_path, save_format="tf")
 
-    with self.assertRaisesRegex(NotImplementedError, ".*Saving is not yet.*"):
-      outer_model.save(output_path, save_format="tf")
+    # Delete the session and graph to ensure that the loaded model is generated
+    # from scratch.
+    # TODO(b/149526183): Can't clear session when TF2 is disabled.
+    if tf2.enabled():
+      keras.backend.clear_session()
+
+    loaded_model = keras.models.load_model(
+        output_path, custom_objects={"TextVectorization": get_layer_class()})
+    self.assertAllEqual(loaded_model.predict(input_array), expected_output)
 
   def test_serialization_with_custom_callables(self):
     input_array = np.array([["earth>wind>and Fire"],

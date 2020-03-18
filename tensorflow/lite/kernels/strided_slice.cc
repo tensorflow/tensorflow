@@ -59,10 +59,6 @@ struct StridedSliceContext {
   int dims;
 };
 
-// This Op only supports 1-4D cases and since we use the reference 4D
-// implementation, the 1-3D tensors are mapped to 4D.
-const int kMaxDim = 4;
-
 StridedSliceParams BuildStridedSliceParams(StridedSliceContext* op_context) {
   StridedSliceParams op_params;
   op_params.start_indices_count = op_context->dims;
@@ -146,10 +142,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.begin->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, op_context.end->type, kTfLiteInt32);
   TF_LITE_ENSURE_EQ(context, op_context.strides->type, kTfLiteInt32);
-  TF_LITE_ENSURE_MSG(context, op_context.dims <= 4,
-                     "StridedSlice op only supports 1D-4D input arrays.");
+  TF_LITE_ENSURE_MSG(context, op_context.dims <= 5,
+                     "StridedSlice op only supports 1D-5D input arrays.");
 
-  // TODO(soroosh): add the following missing functionalities
+  // TODO(b/138098220): Remove when bug is resolved.
+  // Currently, working on using the compiler to cannonize strided_slice,
+  // so ellipis_mask will become part of begin/end mask, new_axis_mask will
+  // involve in a reshape to pad the dimensions.
   TF_LITE_ENSURE_MSG(context, op_context.params->ellipsis_mask == 0,
                      "ellipsis_mask is not implemented yet.");
   TF_LITE_ENSURE_MSG(context, op_context.params->new_axis_mask == 0,
@@ -205,6 +204,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8:
       if (kernel_type == kReference) {
         TF_LITE_STRIDED_SLICE(reference_ops, int8_t);
+      }
+      break;
+    case kTfLiteInt16:
+      if (kernel_type == kReference) {
+        TF_LITE_STRIDED_SLICE(reference_ops, int16_t);
       }
       break;
     case kTfLiteBool:

@@ -51,18 +51,26 @@ bool DetermineHloInstructionIsReplicated(
         return true;
       };
 
-  if (hlo->IsCrossReplicaAllReduce()) {
-    if (cross_partition_spmd) {
-      // Cross-replica all-reduce returns same values across partitions as long
-      // as its operands are replicated.
-      return all_operands_replicated(hlo);
+  if (hlo->opcode() == HloOpcode::kAllReduce) {
+    // All-reduce returns same values across partitions/replicas as long as its
+    // operands are replicated.
+    if (all_operands_replicated(hlo)) {
+      return true;
     }
-    // Only all-reduce across all cores are replicated, which means there
-    // is only one subgroup.
-    return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
-  }
-  if (hlo->IsCrossModuleAllReduce()) {
-    return cross_partition_spmd;
+    if (hlo->IsCrossReplicaAllReduce()) {
+      if (cross_partition_spmd) {
+        return false;
+      }
+      // Only all-reduce across all cores are replicated, which means there
+      // is only one subgroup.
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    } else {
+      CHECK(hlo->IsCrossModuleAllReduce());
+      if (cross_partition_spmd) {
+        return true;
+      }
+      return hlo->replica_groups().empty() || hlo->replica_groups().size() == 1;
+    }
   }
   if (hlo->HasSideEffectNoRecurse()) {
     return false;
@@ -245,6 +253,16 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
       ShapeTree<bool> shape_tree(inst->shape(), true);
       shape_tree.CopySubtreeFrom(hlo_replication_[inst->operand(0)],
                                  {inst->tuple_index()}, {});
+      changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
+    } else if (inst->opcode() == HloOpcode::kInfeed && cross_partition_spmd_) {
+      ShapeTree<bool> shape_tree(inst->shape(), false);
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding().GetAsShapeTree(inst->shape());
+        shape_tree.ForEachMutableElement(
+            [&sharding](const ShapeIndex& index, bool* data) {
+              *data = sharding.element(index).IsReplicated();
+            });
+      }
       changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
     } else {
       if (mark_everything_not_replicated) {

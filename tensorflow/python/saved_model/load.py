@@ -33,6 +33,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import function_deserialization
@@ -120,12 +121,6 @@ class Loader(object):
       self._concrete_functions[name] = _WrapperFunction(concrete_function)
 
     self._load_all()
-    # TODO(b/124045874): There are limitations with functions whose captures
-    # trigger other functions to be executed. For now it is only guaranteed to
-    # work if the captures of a function only trigger functions without
-    # captures.
-    self._setup_functions_structures()
-    self._setup_functions_captures()
     self._restore_checkpoint()
 
     for node in self._nodes:
@@ -133,6 +128,35 @@ class Loader(object):
         init_op = node._initialize()  # pylint: disable=protected-access
         if not context.executing_eagerly():
           ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
+
+  def _load_all(self):
+    """Loads all nodes and functions from the SavedModel and their edges."""
+    self._load_nodes()
+    self._load_edges()
+    # TODO(b/124045874): There are limitations with functions whose captures
+    # trigger other functions to be executed. For now it is only guaranteed to
+    # work if the captures of a function only trigger functions without
+    # captures.
+    self._setup_functions_structures()
+    self._setup_functions_captures()
+
+  def _load_edges(self):
+    """Adds edges from objects to other objects and functions."""
+    for node_id, object_proto in enumerate(self._proto.nodes):
+      self._add_object_graph_edges(object_proto, node_id)
+
+  def _add_object_graph_edges(self, proto, node_id):
+    """Adds edges from an object to its children."""
+    obj = self._nodes[node_id]
+    setter = self._node_setters[node_id]
+
+    for reference in proto.children:
+      setter(obj, reference.local_name, self._nodes[reference.node_id])
+      # Note: if an object has an attribute `__call__` add a class method
+      # that allows `obj()` syntax to work. This is done per-instance to
+      # allow `callable` to be used to find out if an object is callable.
+      if reference.local_name == "__call__" and not callable(obj):
+        setattr(type(obj), "__call__", _call_attribute)
 
   def _setup_functions_structures(self):
     """Setup structure for inputs and outputs of restored functions."""
@@ -216,8 +240,8 @@ class Loader(object):
         return obj.resource_handle
       raise ValueError("Can't convert node %s to tensor" % (type(obj)))
 
-  def _load_all(self):
-    """Load all saved objects and wire their properties."""
+  def _load_nodes(self):
+    """Load all saved objects."""
     # Maps from node ids to recreated objects
     nodes = {}
     # Maps from node ids to setter functions (same signature as setattr) for
@@ -237,7 +261,7 @@ class Loader(object):
         # Defer recreating slot variables so we can use the public Optimizer
         # interface.
         continue
-      node, setter = self._recreate(proto)
+      node, setter = self._recreate(proto, node_id)
       nodes[node_id] = node
       node_setters[node_id] = setter
 
@@ -254,21 +278,23 @@ class Loader(object):
         nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
         node_setters[slot_variable_proto.slot_variable_node_id] = setattr
 
-    self._nodes = []
+    self._nodes = [nodes[node_id] for node_id in range(len(self._proto.nodes))]
+    self._node_setters = node_setters
 
-    # After creating the objects, construct the edges between the objects.
-    for node_id, object_proto in enumerate(self._proto.nodes):
-      obj = nodes[node_id]
-      setter = node_setters[node_id]
-      self._nodes.append(obj)
+  @property
+  def _expect_partial_checkpoint(self):
+    """Whether to expect that some objects aren't loaded.
 
-      for reference in object_proto.children:
-        setter(obj, reference.local_name, nodes[reference.node_id])
-        # Note: if an object has an attribute `__call__` add a class method
-        # that allows `obj()` syntax to work. This is done per-instance to
-        # allow `callable` to be used to find out if an object is callable.
-        if reference.local_name == "__call__" and not callable(obj):
-          setattr(type(obj), "__call__", _call_attribute)
+    This should be set to True in subclasses of the Loader class which generate
+    a trackable object with an object graph that is different from the graph
+    in the SavedModel. Setting this property to True suppresses the warnings
+    that are printed out when there are unused parts of the checkpoint or
+    object.
+
+    Returns:
+      boolean
+    """
+    return False
 
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
@@ -278,7 +304,10 @@ class Loader(object):
     saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     with ops.device("CPU"):
       saver._file_prefix_placeholder = constant_op.constant(variables_path)
-    load_status = saver.restore(variables_path)
+    if self._expect_partial_checkpoint:
+      load_status = saver.restore(variables_path).expect_partial()
+    else:
+      load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
@@ -296,6 +325,10 @@ class Loader(object):
       if restore_ops:
         if resource_variable_ops.is_resource_variable(obj):
           obj._initializer_op = restore_ops
+        elif isinstance(obj, lookup_ops.LookupInterface):
+          # We don't need to check for eager execution here, since this code
+          # path should only be taken if we are restoring in graph mode.
+          ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, restore_ops)
         else:
           raise NotImplementedError(
               ("Missing functionality to restore state of object "
@@ -317,10 +350,11 @@ class Loader(object):
   def get(self, node_id):
     return self._nodes[node_id]
 
-  def _recreate(self, proto):
+  def _recreate(self, proto, node_id):
     """Creates a Python object from a SavedObject protocol buffer."""
     factory = {
-        "user_object": lambda: self._recreate_user_object(proto.user_object),
+        "user_object": (
+            lambda: self._recreate_user_object(proto.user_object, node_id)),
         "asset": lambda: self._recreate_asset(proto.asset),
         "function": lambda: self._recreate_function(proto.function),
         "bare_concrete_function": functools.partial(
@@ -335,15 +369,15 @@ class Loader(object):
       raise ValueError("Unknown SavedObject type: %r" % kind)
     return factory[kind]()
 
-  def _recreate_user_object(self, proto):
+  def _recreate_user_object(self, proto, node_id):
     """Instantiates a SavedUserObject."""
     looked_up = revived_types.deserialize(proto)
     if looked_up is None:
-      return self._recreate_base_user_object(proto)
+      return self._recreate_base_user_object(proto, node_id)
     return looked_up
 
-  def _recreate_base_user_object(self, proto):
-    del proto
+  def _recreate_base_user_object(self, proto, node_id):
+    del proto, node_id
     # Note: each user object has its own class. This allows making each one
     # individually callable by adding a `__call__` method to the classes of
     # the objects instances that have a `__call__` property.

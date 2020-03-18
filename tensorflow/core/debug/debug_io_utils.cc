@@ -27,8 +27,6 @@ limitations under the License.
 #ifndef PLATFORM_WINDOWS
 #include "grpcpp/create_channel.h"
 #else
-// winsock2.h is used in grpc, so Ws2_32.lib is needed
-#pragma comment(lib, "Ws2_32.lib")
 #endif  // #ifndef PLATFORM_WINDOWS
 
 #include "absl/strings/ascii.h"
@@ -397,11 +395,12 @@ Status DebugIO::PublishDebugMetadata(
     } else if (absl::StartsWith(absl::AsciiStrToLower(url), kFileURLScheme)) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
       const string core_metadata_path = AppendTimestampToFilePath(
-          io::JoinPath(
-              dump_root_dir,
-              strings::StrCat(DebugNodeKey::kMetadataFilePrefix,
-                              DebugIO::kCoreMetadataTag, "sessionrun",
-                              strings::Printf("%.14lld", session_run_index))),
+          io::JoinPath(dump_root_dir,
+                       strings::StrCat(
+                           DebugNodeKey::kMetadataFilePrefix,
+                           DebugIO::kCoreMetadataTag, "sessionrun",
+                           strings::Printf("%.14lld", static_cast<long long>(
+                                                          session_run_index)))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
           event, string(io::Dirname(core_metadata_path)),

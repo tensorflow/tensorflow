@@ -259,9 +259,9 @@ Status mlir::CustomOptionsToAttributes(
     attributes->emplace_back(builder.getNamedAttr(
         "stride_w", builder.getI32IntegerAttr(pool_params->stride_width)));
     attributes->emplace_back(builder.getNamedAttr(
-        "filter_w", builder.getI32IntegerAttr(pool_params->filter_height)));
+        "filter_h", builder.getI32IntegerAttr(pool_params->filter_height)));
     attributes->emplace_back(builder.getNamedAttr(
-        "filter_h", builder.getI32IntegerAttr(pool_params->filter_width)));
+        "filter_w", builder.getI32IntegerAttr(pool_params->filter_width)));
     return Status::OK();
 
   } else if (op_name == "tfl.convolution_2d_transpose_bias") {

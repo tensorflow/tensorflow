@@ -398,7 +398,7 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     # Define three mutually incompatible values/structures, and assert that:
     # 1. Using one structure to flatten a value with an incompatible structure
     #    fails.
-    # 2. Using one structure to restructre a flattened value with an
+    # 2. Using one structure to restructure a flattened value with an
     #    incompatible structure fails.
     value_tensor = constant_op.constant(42.0)
     s_tensor = structure.type_spec_from_value(value_tensor)

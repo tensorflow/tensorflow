@@ -19,7 +19,7 @@ limitations under the License.
 #include "am_bsp.h"
 #include "am_mcu_apollo.h"
 #include "am_util.h"
-#include "platform_Sparkfun_Edge.h"
+#include "platform.h"  // TARGET specific implementation
 
 //#define ENABLE_ASYNC
 
@@ -94,7 +94,7 @@ static uint32_t hm01b0_write_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -138,7 +138,7 @@ static uint32_t hm01b0_read_reg(hm01b0_cfg_t* psCfg, uint16_t ui16Reg,
   Transaction.ui32StatusSetClr = 0;
 
   //
-  // Execute the transction over IOM.
+  // Execute the transaction over IOM.
   //
   if (am_hal_iom_blocking_transfer(psCfg->pIOMHandle, &Transaction)) {
     return HM01B0_ERR_I2C;
@@ -468,7 +468,7 @@ uint32_t hm01b0_get_modelid(hm01b0_cfg_t* psCfg, uint16_t* pui16MID) {
 //! @param ui32ScriptCmdNum     - No. of commands in HM01B0 initialization
 //! script.
 //!
-//! This function initilizes HM01B0 with a given script.
+//! This function initializes HM01B0 with a given script.
 //!
 //! @return Error code.
 //

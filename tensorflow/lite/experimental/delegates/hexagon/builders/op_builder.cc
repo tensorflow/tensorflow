@@ -31,7 +31,9 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
     case kTfLiteBuiltinArgMin:
       return CreateArgMinMaxOpBuilder(this, OP_ArgMin_8);
     case kTfLiteBuiltinMul:
-      return CreateArithmeticBuilder(this, OP_QuantizedMul_8x8to8);
+      // The 32-bit version of Mul is more accurate, and robust to disparities
+      // in input/output ranges.
+      return CreateArithmeticBuilder(this, OP_QuantizedMul_8x8to32);
     case kTfLiteBuiltinSub:
       return CreateArithmeticBuilder(this, OP_QuantizedSub_8p8to8);
     case kTfLiteBuiltinMean:
@@ -80,6 +82,10 @@ OpBuilder* GraphBuilder::CreateOpBuilderFromTfLiteOp(int op_type) {
       return CreateNegOpBuilder(this, OP_QuantizedNeg_8);
     case kTfLiteBuiltinTranspose:
       return CreateTransposeBuilder(this, OP_Transpose_8);
+    case kTfLiteBuiltinSpaceToDepth:
+      return CreateSpaceToDepthBuilder(this, OP_SpaceToDepth_8);
+    case kTfLiteBuiltinDepthToSpace:
+      return CreateSpaceToDepthBuilder(this, OP_DepthToSpace_8);
     default:
       context_->ReportError(context_, "Op not supported: %d", op_type);
       return nullptr;
@@ -186,17 +192,20 @@ const OpNode* OpBuilder::Build() {
   return &op_node_;
 }
 
-OpBuilder* GraphBuilder::AddNode() {
+OpBuilder* GraphBuilder::AddNode(int tflite_node_index) {
   OpBuilder* op = new OpBuilder(this, OP_Nop);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   return op;
 }
 
-OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node) {
+OpBuilder* GraphBuilder::AddNodeFromTfLiteOp(int op_type, TfLiteNode* node,
+                                             int tflite_node_index) {
   OpBuilder* op = CreateOpBuilderFromTfLiteOp(op_type);
   builders_.emplace_back(op);
   op->SetNodeId(builders_.size());
+  op->SetTFLiteNodeId(tflite_node_index);
   op->SetBuiltinData(node->builtin_data);
   op->SetTfLiteNode(node);
   return op;

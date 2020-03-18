@@ -652,6 +652,9 @@ class LinearOperator(module.Module):
 
       return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def __matmul__(self, other):
+    return self.matmul(other)
+
   def _matvec(self, x, adjoint=False):
     x_mat = array_ops.expand_dims(x, axis=-1)
     y_mat = self.matmul(x_mat, adjoint=adjoint)
@@ -661,7 +664,7 @@ class LinearOperator(module.Module):
     """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
 
     ```python
-    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
 
     X = ... # shape [..., N], batch vector
@@ -748,20 +751,24 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._log_abs_determinant()
 
-  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    """Default implementation of _solve."""
-    if self.is_square is False:
+  def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Solve by conversion to a dense matrix."""
+    if self.is_square is False:  # pylint: disable=g-bool-id-comparison
       raise NotImplementedError(
           "Solve is not yet implemented for non-square operators.")
-    logging.warn(
-        "Using (possibly slow) default implementation of solve."
-        "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
-      return linear_operator_util.cholesky_solve_with_broadcast(
+      return linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self.to_dense()), rhs)
     return linear_operator_util.matrix_solve_with_broadcast(
         self.to_dense(), rhs, adjoint=adjoint)
+
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Default implementation of _solve."""
+    logging.warn(
+        "Using (possibly slow) default implementation of solve."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    return self._dense_solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "absl/types/span.h"
@@ -29,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/delegates/gpu/gl/api2.h"
 #include "tensorflow/lite/minimal_logging.h"
 
@@ -72,17 +72,12 @@ class Delegate {
 
   Status Prepare(TfLiteContext* context,
                  const TfLiteDelegateParams* delegate_params) {
+    thread_id_prepare_ = std::this_thread::get_id();
+
     // Extract TFLite delegate execution plan from the context and convert it
     // into FlowGraph32.
     GraphFloat32 graph;
-    RETURN_IF_ERROR(BuildModel(context, delegate_params, &graph));
-
-    // Apply general transformations on the graph.
-    NullTransformationReporter reporter;
-    ModelTransformer transformer(&graph, &reporter);
-    if (!ApplyGeneralTransformations(&transformer)) {
-      return InternalError("Graph general transformations failed");
-    }
+    RETURN_IF_ERROR(BuildFinalModel(context, delegate_params, &graph));
 
     std::vector<uint32_t> input_refs;
     {
@@ -102,11 +97,19 @@ class Delegate {
     }
 
     std::unique_ptr<InferenceBuilder> builder;
-    Status status = InitializeOpenClApi(&graph, &builder);
+    bool graph_is_destroyed;
+    Status status = InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
     if (!status.ok()) {
       context->ReportError(context, "%s", status.error_message().c_str());
       context->ReportError(context, "Falling back to OpenGL");
-      RETURN_IF_ERROR(InitializeOpenGlApi(&graph, &builder));
+
+      // Graph need to be re-created because it is moved above.
+      GraphFloat32 graph2;
+      if (graph_is_destroyed) {
+        RETURN_IF_ERROR(BuildFinalModel(context, delegate_params, &graph2));
+      }
+      RETURN_IF_ERROR(
+          InitializeOpenGlApi(graph_is_destroyed ? &graph2 : &graph, &builder));
     }
 
     // At this point tflite didn't allocate tensors yet, therefore, collect
@@ -144,6 +147,16 @@ class Delegate {
   }
 
   Status Invoke(TfLiteContext* context) {
+    if (thread_id_prepare_ != std::this_thread::get_id()) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "GpuDelegate invoke thread != prepare thread");
+      if (enforce_same_thread_) {
+        return FailedPreconditionError(
+            "GpuDelegate must run on the same thread where it was "
+            "initialized.");
+      }
+    }
+
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     return runner_->Run();
   }
@@ -166,7 +179,9 @@ class Delegate {
 
  private:
   Status InitializeOpenClApi(GraphFloat32* graph,
-                             std::unique_ptr<InferenceBuilder>* builder) {
+                             std::unique_ptr<InferenceBuilder>* builder,
+                             bool* graph_is_destroyed) {
+    *graph_is_destroyed = false;
     cl::InferenceEnvironmentOptions env_options;
     cl::InferenceEnvironmentProperties properties;
     RETURN_IF_ERROR(cl::NewInferenceEnvironment(env_options, &cl_environment_,
@@ -187,6 +202,7 @@ class Delegate {
       }
     }
     options.usage = ToUsage(options_.inference_preference);
+    *graph_is_destroyed = true;
     RETURN_IF_ERROR(cl_environment_->NewInferenceBuilder(
         options, std::move(*graph), builder));
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
@@ -207,6 +223,7 @@ class Delegate {
     options.priority3 = ToPriority(options_.inference_priority3);
     RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                          options, builder));
+    enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
     return OkStatus();
@@ -227,6 +244,9 @@ class Delegate {
   std::unique_ptr<InferenceRunner> runner_;
   std::vector<int64_t> input_indices_;
   std::vector<int64_t> output_indices_;
+
+  std::thread::id thread_id_prepare_;  // thread id used for Prapare()
+  bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
 };
 
 inline Delegate* GetDelegate(TfLiteNode* node) {

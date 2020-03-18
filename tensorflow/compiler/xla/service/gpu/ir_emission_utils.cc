@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -126,17 +127,30 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    const stream_executor::DeviceDescription* device_description) {
   if (reduction_dimensions.is_row_reduction) {
-    int64 tile_z = std::min(reduction_dimensions.dimensions[0], 8LL);
+    int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
       CHECK_EQ(reduction_dimensions.dimensions[0], 1);
       return {tile_z, 1, 16};
     }
-    if (reduction_dimensions.dimensions[2] % (kWarpSize * 64) == 0) {
+    if (reduction_dimensions.dimensions[2] % (kWarpSize * kWarpSize * 64) ==
+        0) {
       return {tile_z, 1, 64};
     }
-    return {tile_z, 1, 8};
+    int cc_major = 0, cc_minor = 0;
+    if (device_description != nullptr) {
+      device_description->cuda_compute_capability(&cc_major, &cc_minor);
+    }
+    int unroll_x = 8;
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+      unroll_x = 16;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
+    }
+    return {tile_z, 1, unroll_x};
   }
 
   // Column reduction.
@@ -308,26 +322,52 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
                         absl::Span<llvm::Value* const> arguments,
                         llvm::IRBuilder<>* builder) {
   std::vector<llvm::Type*> argument_types;
+
+  // Variadic arguments implicit promotion [1] converts float to double,
+  // and bool/char/short are converted to int.
+  // [1] https://en.cppreference.com/w/cpp/language/variadic_arguments
+  auto requires_int32_promotion = [](llvm::Type* type) {
+    return type->isIntegerTy(/*BitWidth=*/1) ||
+           type->isIntegerTy(/*BitWidth=*/8) ||
+           type->isIntegerTy(/*BitWidth=*/16);
+  };
+  auto requires_double_promotion = [](llvm::Type* type) {
+    return type->isFloatingPointTy();
+  };
+
   for (auto argument : arguments) {
-    argument_types.push_back(argument->getType());
+    llvm::Type* type = argument->getType();
+    if (requires_double_promotion(type)) {
+      argument_types.push_back(builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      argument_types.push_back(builder->getInt32Ty());
+    } else {
+      argument_types.push_back(type);
+    }
   }
   auto* arguments_type = llvm::StructType::create(argument_types);
   llvm::Value* arguments_ptr = builder->CreateAlloca(arguments_type);
   for (size_t i = 0; i < arguments.size(); ++i) {
+    llvm::Value* value = arguments[i];
+    llvm::Type* type = value->getType();
+    if (requires_double_promotion(type)) {
+      value = builder->CreateFPCast(value, builder->getDoubleTy());
+    } else if (requires_int32_promotion(type)) {
+      value = builder->CreateIntCast(value, builder->getInt32Ty(),
+                                     /*isSigned=*/true);
+    }
     builder->CreateStore(
-        arguments[i],
-        builder->CreateGEP(arguments_ptr,
-                           {builder->getInt64(0), builder->getInt32(i)}));
+        value, builder->CreateGEP(arguments_ptr, {builder->getInt64(0),
+                                                  builder->getInt32(i)}));
   }
+  llvm::Type* ptr_ty = builder->getInt8Ty()->getPointerTo();
   return builder->CreateCall(
       builder->GetInsertBlock()->getParent()->getParent()->getOrInsertFunction(
           "vprintf",
-          llvm::FunctionType::get(builder->getInt32Ty(),
-                                  {builder->getInt8Ty()->getPointerTo(),
-                                   arguments_type->getPointerTo()},
+          llvm::FunctionType::get(builder->getInt32Ty(), {ptr_ty, ptr_ty},
                                   /*isVarArg=*/false)),
       {builder->CreateGlobalStringPtr(llvm_ir::AsStringRef(fmt)),
-       arguments_ptr});
+       builder->CreatePointerCast(arguments_ptr, ptr_ty)});
 }
 
 // Helper function to emit call to AMDGPU shfl_down function.
@@ -427,6 +467,39 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(
   return InternalError("Unexpected call target: %s", target);
 }
 
+StatusOr<se::dnn::ConvolutionKind> GetDnnConvolutionKind(
+    const HloCustomCallInstruction* instr) {
+  absl::string_view target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    return se::dnn::ConvolutionKind::FORWARD;
+  }
+  if (target == kCudnnConvBackwardInputCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_DATA;
+  }
+  if (target == kCudnnConvBackwardFilterCallTarget) {
+    return se::dnn::ConvolutionKind::BACKWARD_FILTER;
+  }
+  return InternalError("Unexpected call target: %s", target);
+}
+
+StatusOr<se::dnn::DataType> GetDnnDataType(
+    const HloCustomCallInstruction* conv) {
+  PrimitiveType output_primitive_type =
+      conv->shape().tuple_shapes(0).element_type();
+  switch (output_primitive_type) {
+    case F16:
+      return se::dnn::ToDataType<Eigen::half>::value;
+    case F32:
+      return se::dnn::ToDataType<float>::value;
+    case F64:
+      return se::dnn::ToDataType<double>::value;
+    default:
+      break;
+  }
+  return InternalError("Unsupported convolution datatype : %s",
+                       conv->ToString());
+}
+
 string CudnnConvKindToString(CudnnConvKind kind) {
   switch (kind) {
     case CudnnConvKind::kForward:
@@ -447,7 +520,7 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
 }
 
 bool AreFusedReductionOutputsConsistent(

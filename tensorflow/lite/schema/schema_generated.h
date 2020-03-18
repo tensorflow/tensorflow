@@ -28,6 +28,15 @@ struct CustomQuantizationT;
 struct QuantizationParameters;
 struct QuantizationParametersT;
 
+struct Int32Vector;
+struct Int32VectorT;
+
+struct Uint16Vector;
+struct Uint16VectorT;
+
+struct Uint8Vector;
+struct Uint8VectorT;
+
 struct DimensionMetadata;
 struct DimensionMetadataT;
 
@@ -334,6 +343,9 @@ struct SelectV2OptionsT;
 struct DensifyOptions;
 struct DensifyOptionsT;
 
+struct SegmentSumOptions;
+struct SegmentSumOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -519,6 +531,119 @@ inline const char *EnumNameDimensionType(DimensionType e) {
   return EnumNamesDimensionType()[index];
 }
 
+enum SparseIndexVector {
+  SparseIndexVector_NONE = 0,
+  SparseIndexVector_Int32Vector = 1,
+  SparseIndexVector_Uint16Vector = 2,
+  SparseIndexVector_Uint8Vector = 3,
+  SparseIndexVector_MIN = SparseIndexVector_NONE,
+  SparseIndexVector_MAX = SparseIndexVector_Uint8Vector
+};
+
+inline const SparseIndexVector (&EnumValuesSparseIndexVector())[4] {
+  static const SparseIndexVector values[] = {
+    SparseIndexVector_NONE,
+    SparseIndexVector_Int32Vector,
+    SparseIndexVector_Uint16Vector,
+    SparseIndexVector_Uint8Vector
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesSparseIndexVector() {
+  static const char * const names[] = {
+    "NONE",
+    "Int32Vector",
+    "Uint16Vector",
+    "Uint8Vector",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameSparseIndexVector(SparseIndexVector e) {
+  if (e < SparseIndexVector_NONE || e > SparseIndexVector_Uint8Vector) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesSparseIndexVector()[index];
+}
+
+template<typename T> struct SparseIndexVectorTraits {
+  static const SparseIndexVector enum_value = SparseIndexVector_NONE;
+};
+
+template<> struct SparseIndexVectorTraits<Int32Vector> {
+  static const SparseIndexVector enum_value = SparseIndexVector_Int32Vector;
+};
+
+template<> struct SparseIndexVectorTraits<Uint16Vector> {
+  static const SparseIndexVector enum_value = SparseIndexVector_Uint16Vector;
+};
+
+template<> struct SparseIndexVectorTraits<Uint8Vector> {
+  static const SparseIndexVector enum_value = SparseIndexVector_Uint8Vector;
+};
+
+struct SparseIndexVectorUnion {
+  SparseIndexVector type;
+  void *value;
+
+  SparseIndexVectorUnion() : type(SparseIndexVector_NONE), value(nullptr) {}
+  SparseIndexVectorUnion(SparseIndexVectorUnion&& u) FLATBUFFERS_NOEXCEPT :
+    type(SparseIndexVector_NONE), value(nullptr)
+    { std::swap(type, u.type); std::swap(value, u.value); }
+  SparseIndexVectorUnion(const SparseIndexVectorUnion &) FLATBUFFERS_NOEXCEPT;
+  SparseIndexVectorUnion &operator=(const SparseIndexVectorUnion &u) FLATBUFFERS_NOEXCEPT
+    { SparseIndexVectorUnion t(u); std::swap(type, t.type); std::swap(value, t.value); return *this; }
+  SparseIndexVectorUnion &operator=(SparseIndexVectorUnion &&u) FLATBUFFERS_NOEXCEPT
+    { std::swap(type, u.type); std::swap(value, u.value); return *this; }
+  ~SparseIndexVectorUnion() { Reset(); }
+
+  void Reset();
+
+#ifndef FLATBUFFERS_CPP98_STL
+  template <typename T>
+  void Set(T&& val) {
+    using RT = typename std::remove_reference<T>::type;
+    Reset();
+    type = SparseIndexVectorTraits<typename RT::TableType>::enum_value;
+    if (type != SparseIndexVector_NONE) {
+      value = new RT(std::forward<T>(val));
+    }
+  }
+#endif  // FLATBUFFERS_CPP98_STL
+
+  static void *UnPack(const void *obj, SparseIndexVector type, const flatbuffers::resolver_function_t *resolver);
+  flatbuffers::Offset<void> Pack(flatbuffers::FlatBufferBuilder &_fbb, const flatbuffers::rehasher_function_t *_rehasher = nullptr) const;
+
+  Int32VectorT *AsInt32Vector() {
+    return type == SparseIndexVector_Int32Vector ?
+      reinterpret_cast<Int32VectorT *>(value) : nullptr;
+  }
+  const Int32VectorT *AsInt32Vector() const {
+    return type == SparseIndexVector_Int32Vector ?
+      reinterpret_cast<const Int32VectorT *>(value) : nullptr;
+  }
+  Uint16VectorT *AsUint16Vector() {
+    return type == SparseIndexVector_Uint16Vector ?
+      reinterpret_cast<Uint16VectorT *>(value) : nullptr;
+  }
+  const Uint16VectorT *AsUint16Vector() const {
+    return type == SparseIndexVector_Uint16Vector ?
+      reinterpret_cast<const Uint16VectorT *>(value) : nullptr;
+  }
+  Uint8VectorT *AsUint8Vector() {
+    return type == SparseIndexVector_Uint8Vector ?
+      reinterpret_cast<Uint8VectorT *>(value) : nullptr;
+  }
+  const Uint8VectorT *AsUint8Vector() const {
+    return type == SparseIndexVector_Uint8Vector ?
+      reinterpret_cast<const Uint8VectorT *>(value) : nullptr;
+  }
+};
+
+bool VerifySparseIndexVector(flatbuffers::Verifier &verifier, const void *obj, SparseIndexVector type);
+bool VerifySparseIndexVectorVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types);
+
 enum BuiltinOperator {
   BuiltinOperator_ADD = 0,
   BuiltinOperator_AVERAGE_POOL_2D = 1,
@@ -645,11 +770,12 @@ enum BuiltinOperator {
   BuiltinOperator_SCATTER_ND = 122,
   BuiltinOperator_SELECT_V2 = 123,
   BuiltinOperator_DENSIFY = 124,
+  BuiltinOperator_SEGMENT_SUM = 125,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_DENSIFY
+  BuiltinOperator_MAX = BuiltinOperator_SEGMENT_SUM
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[125] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[126] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -775,7 +901,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[125] {
     BuiltinOperator_NON_MAX_SUPPRESSION_V5,
     BuiltinOperator_SCATTER_ND,
     BuiltinOperator_SELECT_V2,
-    BuiltinOperator_DENSIFY
+    BuiltinOperator_DENSIFY,
+    BuiltinOperator_SEGMENT_SUM
   };
   return values;
 }
@@ -907,13 +1034,14 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "SCATTER_ND",
     "SELECT_V2",
     "DENSIFY",
+    "SEGMENT_SUM",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOperator(BuiltinOperator e) {
-  if (e < BuiltinOperator_ADD || e > BuiltinOperator_DENSIFY) return "";
+  if (e < BuiltinOperator_ADD || e > BuiltinOperator_SEGMENT_SUM) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOperator()[index];
 }
@@ -1019,11 +1147,12 @@ enum BuiltinOptions {
   BuiltinOptions_ScatterNdOptions = 97,
   BuiltinOptions_SelectV2Options = 98,
   BuiltinOptions_DensifyOptions = 99,
+  BuiltinOptions_SegmentSumOptions = 100,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_DensifyOptions
+  BuiltinOptions_MAX = BuiltinOptions_SegmentSumOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[100] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[101] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -1124,7 +1253,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[100] {
     BuiltinOptions_NonMaxSuppressionV5Options,
     BuiltinOptions_ScatterNdOptions,
     BuiltinOptions_SelectV2Options,
-    BuiltinOptions_DensifyOptions
+    BuiltinOptions_DensifyOptions,
+    BuiltinOptions_SegmentSumOptions
   };
   return values;
 }
@@ -1231,13 +1361,14 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "ScatterNdOptions",
     "SelectV2Options",
     "DensifyOptions",
+    "SegmentSumOptions",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameBuiltinOptions(BuiltinOptions e) {
-  if (e < BuiltinOptions_NONE || e > BuiltinOptions_DensifyOptions) return "";
+  if (e < BuiltinOptions_NONE || e > BuiltinOptions_SegmentSumOptions) return "";
   const size_t index = static_cast<size_t>(e);
   return EnumNamesBuiltinOptions()[index];
 }
@@ -1640,6 +1771,10 @@ template<> struct BuiltinOptionsTraits<SelectV2Options> {
 
 template<> struct BuiltinOptionsTraits<DensifyOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_DensifyOptions;
+};
+
+template<> struct BuiltinOptionsTraits<SegmentSumOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SegmentSumOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2466,6 +2601,14 @@ struct BuiltinOptionsUnion {
     return type == BuiltinOptions_DensifyOptions ?
       reinterpret_cast<const DensifyOptionsT *>(value) : nullptr;
   }
+  SegmentSumOptionsT *AsSegmentSumOptions() {
+    return type == BuiltinOptions_SegmentSumOptions ?
+      reinterpret_cast<SegmentSumOptionsT *>(value) : nullptr;
+  }
+  const SegmentSumOptionsT *AsSegmentSumOptions() const {
+    return type == BuiltinOptions_SegmentSumOptions ?
+      reinterpret_cast<const SegmentSumOptionsT *>(value) : nullptr;
+  }
 };
 
 bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type);
@@ -2781,6 +2924,7 @@ inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(
 inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantizationDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint8_t> *custom = nullptr) {
+  if (custom) { _fbb.ForceVectorAlignment(custom->size(), sizeof(uint8_t), 16); }
   auto custom__ = custom ? _fbb.CreateVector<uint8_t>(*custom) : 0;
   return tflite::CreateCustomQuantization(
       _fbb,
@@ -2945,12 +3089,203 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParametersD
 
 flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(flatbuffers::FlatBufferBuilder &_fbb, const QuantizationParametersT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct Int32VectorT : public flatbuffers::NativeTable {
+  typedef Int32Vector TableType;
+  std::vector<int32_t> values;
+  Int32VectorT() {
+  }
+};
+
+struct Int32Vector FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Int32VectorT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_VALUES = 4
+  };
+  const flatbuffers::Vector<int32_t> *values() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_VALUES);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_VALUES) &&
+           verifier.VerifyVector(values()) &&
+           verifier.EndTable();
+  }
+  Int32VectorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Int32VectorT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Int32Vector> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Int32VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Int32VectorBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_values(flatbuffers::Offset<flatbuffers::Vector<int32_t>> values) {
+    fbb_.AddOffset(Int32Vector::VT_VALUES, values);
+  }
+  explicit Int32VectorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Int32VectorBuilder &operator=(const Int32VectorBuilder &);
+  flatbuffers::Offset<Int32Vector> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Int32Vector>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Int32Vector> CreateInt32Vector(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> values = 0) {
+  Int32VectorBuilder builder_(_fbb);
+  builder_.add_values(values);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<Int32Vector> CreateInt32VectorDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<int32_t> *values = nullptr) {
+  auto values__ = values ? _fbb.CreateVector<int32_t>(*values) : 0;
+  return tflite::CreateInt32Vector(
+      _fbb,
+      values__);
+}
+
+flatbuffers::Offset<Int32Vector> CreateInt32Vector(flatbuffers::FlatBufferBuilder &_fbb, const Int32VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Uint16VectorT : public flatbuffers::NativeTable {
+  typedef Uint16Vector TableType;
+  std::vector<uint16_t> values;
+  Uint16VectorT() {
+  }
+};
+
+struct Uint16Vector FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Uint16VectorT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_VALUES = 4
+  };
+  const flatbuffers::Vector<uint16_t> *values() const {
+    return GetPointer<const flatbuffers::Vector<uint16_t> *>(VT_VALUES);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_VALUES) &&
+           verifier.VerifyVector(values()) &&
+           verifier.EndTable();
+  }
+  Uint16VectorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Uint16VectorT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Uint16Vector> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Uint16VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Uint16VectorBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_values(flatbuffers::Offset<flatbuffers::Vector<uint16_t>> values) {
+    fbb_.AddOffset(Uint16Vector::VT_VALUES, values);
+  }
+  explicit Uint16VectorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Uint16VectorBuilder &operator=(const Uint16VectorBuilder &);
+  flatbuffers::Offset<Uint16Vector> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Uint16Vector>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Uint16Vector> CreateUint16Vector(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<uint16_t>> values = 0) {
+  Uint16VectorBuilder builder_(_fbb);
+  builder_.add_values(values);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<Uint16Vector> CreateUint16VectorDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<uint16_t> *values = nullptr) {
+  if (values) { _fbb.ForceVectorAlignment(values->size(), sizeof(uint16_t), 4); }
+  auto values__ = values ? _fbb.CreateVector<uint16_t>(*values) : 0;
+  return tflite::CreateUint16Vector(
+      _fbb,
+      values__);
+}
+
+flatbuffers::Offset<Uint16Vector> CreateUint16Vector(flatbuffers::FlatBufferBuilder &_fbb, const Uint16VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct Uint8VectorT : public flatbuffers::NativeTable {
+  typedef Uint8Vector TableType;
+  std::vector<uint8_t> values;
+  Uint8VectorT() {
+  }
+};
+
+struct Uint8Vector FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef Uint8VectorT NativeTableType;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_VALUES = 4
+  };
+  const flatbuffers::Vector<uint8_t> *values() const {
+    return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_VALUES);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyOffset(verifier, VT_VALUES) &&
+           verifier.VerifyVector(values()) &&
+           verifier.EndTable();
+  }
+  Uint8VectorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(Uint8VectorT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<Uint8Vector> Pack(flatbuffers::FlatBufferBuilder &_fbb, const Uint8VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct Uint8VectorBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_values(flatbuffers::Offset<flatbuffers::Vector<uint8_t>> values) {
+    fbb_.AddOffset(Uint8Vector::VT_VALUES, values);
+  }
+  explicit Uint8VectorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  Uint8VectorBuilder &operator=(const Uint8VectorBuilder &);
+  flatbuffers::Offset<Uint8Vector> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<Uint8Vector>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<Uint8Vector> CreateUint8Vector(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> values = 0) {
+  Uint8VectorBuilder builder_(_fbb);
+  builder_.add_values(values);
+  return builder_.Finish();
+}
+
+inline flatbuffers::Offset<Uint8Vector> CreateUint8VectorDirect(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<uint8_t> *values = nullptr) {
+  if (values) { _fbb.ForceVectorAlignment(values->size(), sizeof(uint8_t), 4); }
+  auto values__ = values ? _fbb.CreateVector<uint8_t>(*values) : 0;
+  return tflite::CreateUint8Vector(
+      _fbb,
+      values__);
+}
+
+flatbuffers::Offset<Uint8Vector> CreateUint8Vector(flatbuffers::FlatBufferBuilder &_fbb, const Uint8VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct DimensionMetadataT : public flatbuffers::NativeTable {
   typedef DimensionMetadata TableType;
   DimensionType format;
   int32_t dense_size;
-  std::vector<int32_t> array_segments;
-  std::vector<int32_t> array_indices;
+  SparseIndexVectorUnion array_segments;
+  SparseIndexVectorUnion array_indices;
   DimensionMetadataT()
       : format(DimensionType_DENSE),
         dense_size(0) {
@@ -2962,8 +3297,10 @@ struct DimensionMetadata FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_FORMAT = 4,
     VT_DENSE_SIZE = 6,
-    VT_ARRAY_SEGMENTS = 8,
-    VT_ARRAY_INDICES = 10
+    VT_ARRAY_SEGMENTS_TYPE = 8,
+    VT_ARRAY_SEGMENTS = 10,
+    VT_ARRAY_INDICES_TYPE = 12,
+    VT_ARRAY_INDICES = 14
   };
   DimensionType format() const {
     return static_cast<DimensionType>(GetField<int8_t>(VT_FORMAT, 0));
@@ -2971,26 +3308,78 @@ struct DimensionMetadata FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   int32_t dense_size() const {
     return GetField<int32_t>(VT_DENSE_SIZE, 0);
   }
-  const flatbuffers::Vector<int32_t> *array_segments() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_ARRAY_SEGMENTS);
+  SparseIndexVector array_segments_type() const {
+    return static_cast<SparseIndexVector>(GetField<uint8_t>(VT_ARRAY_SEGMENTS_TYPE, 0));
   }
-  const flatbuffers::Vector<int32_t> *array_indices() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_ARRAY_INDICES);
+  const void *array_segments() const {
+    return GetPointer<const void *>(VT_ARRAY_SEGMENTS);
+  }
+  template<typename T> const T *array_segments_as() const;
+  const Int32Vector *array_segments_as_Int32Vector() const {
+    return array_segments_type() == SparseIndexVector_Int32Vector ? static_cast<const Int32Vector *>(array_segments()) : nullptr;
+  }
+  const Uint16Vector *array_segments_as_Uint16Vector() const {
+    return array_segments_type() == SparseIndexVector_Uint16Vector ? static_cast<const Uint16Vector *>(array_segments()) : nullptr;
+  }
+  const Uint8Vector *array_segments_as_Uint8Vector() const {
+    return array_segments_type() == SparseIndexVector_Uint8Vector ? static_cast<const Uint8Vector *>(array_segments()) : nullptr;
+  }
+  SparseIndexVector array_indices_type() const {
+    return static_cast<SparseIndexVector>(GetField<uint8_t>(VT_ARRAY_INDICES_TYPE, 0));
+  }
+  const void *array_indices() const {
+    return GetPointer<const void *>(VT_ARRAY_INDICES);
+  }
+  template<typename T> const T *array_indices_as() const;
+  const Int32Vector *array_indices_as_Int32Vector() const {
+    return array_indices_type() == SparseIndexVector_Int32Vector ? static_cast<const Int32Vector *>(array_indices()) : nullptr;
+  }
+  const Uint16Vector *array_indices_as_Uint16Vector() const {
+    return array_indices_type() == SparseIndexVector_Uint16Vector ? static_cast<const Uint16Vector *>(array_indices()) : nullptr;
+  }
+  const Uint8Vector *array_indices_as_Uint8Vector() const {
+    return array_indices_type() == SparseIndexVector_Uint8Vector ? static_cast<const Uint8Vector *>(array_indices()) : nullptr;
   }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FORMAT) &&
            VerifyField<int32_t>(verifier, VT_DENSE_SIZE) &&
+           VerifyField<uint8_t>(verifier, VT_ARRAY_SEGMENTS_TYPE) &&
            VerifyOffset(verifier, VT_ARRAY_SEGMENTS) &&
-           verifier.VerifyVector(array_segments()) &&
+           VerifySparseIndexVector(verifier, array_segments(), array_segments_type()) &&
+           VerifyField<uint8_t>(verifier, VT_ARRAY_INDICES_TYPE) &&
            VerifyOffset(verifier, VT_ARRAY_INDICES) &&
-           verifier.VerifyVector(array_indices()) &&
+           VerifySparseIndexVector(verifier, array_indices(), array_indices_type()) &&
            verifier.EndTable();
   }
   DimensionMetadataT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
   void UnPackTo(DimensionMetadataT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
   static flatbuffers::Offset<DimensionMetadata> Pack(flatbuffers::FlatBufferBuilder &_fbb, const DimensionMetadataT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
+
+template<> inline const Int32Vector *DimensionMetadata::array_segments_as<Int32Vector>() const {
+  return array_segments_as_Int32Vector();
+}
+
+template<> inline const Uint16Vector *DimensionMetadata::array_segments_as<Uint16Vector>() const {
+  return array_segments_as_Uint16Vector();
+}
+
+template<> inline const Uint8Vector *DimensionMetadata::array_segments_as<Uint8Vector>() const {
+  return array_segments_as_Uint8Vector();
+}
+
+template<> inline const Int32Vector *DimensionMetadata::array_indices_as<Int32Vector>() const {
+  return array_indices_as_Int32Vector();
+}
+
+template<> inline const Uint16Vector *DimensionMetadata::array_indices_as<Uint16Vector>() const {
+  return array_indices_as_Uint16Vector();
+}
+
+template<> inline const Uint8Vector *DimensionMetadata::array_indices_as<Uint8Vector>() const {
+  return array_indices_as_Uint8Vector();
+}
 
 struct DimensionMetadataBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
@@ -3001,10 +3390,16 @@ struct DimensionMetadataBuilder {
   void add_dense_size(int32_t dense_size) {
     fbb_.AddElement<int32_t>(DimensionMetadata::VT_DENSE_SIZE, dense_size, 0);
   }
-  void add_array_segments(flatbuffers::Offset<flatbuffers::Vector<int32_t>> array_segments) {
+  void add_array_segments_type(SparseIndexVector array_segments_type) {
+    fbb_.AddElement<uint8_t>(DimensionMetadata::VT_ARRAY_SEGMENTS_TYPE, static_cast<uint8_t>(array_segments_type), 0);
+  }
+  void add_array_segments(flatbuffers::Offset<void> array_segments) {
     fbb_.AddOffset(DimensionMetadata::VT_ARRAY_SEGMENTS, array_segments);
   }
-  void add_array_indices(flatbuffers::Offset<flatbuffers::Vector<int32_t>> array_indices) {
+  void add_array_indices_type(SparseIndexVector array_indices_type) {
+    fbb_.AddElement<uint8_t>(DimensionMetadata::VT_ARRAY_INDICES_TYPE, static_cast<uint8_t>(array_indices_type), 0);
+  }
+  void add_array_indices(flatbuffers::Offset<void> array_indices) {
     fbb_.AddOffset(DimensionMetadata::VT_ARRAY_INDICES, array_indices);
   }
   explicit DimensionMetadataBuilder(flatbuffers::FlatBufferBuilder &_fbb)
@@ -3023,30 +3418,18 @@ inline flatbuffers::Offset<DimensionMetadata> CreateDimensionMetadata(
     flatbuffers::FlatBufferBuilder &_fbb,
     DimensionType format = DimensionType_DENSE,
     int32_t dense_size = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> array_segments = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> array_indices = 0) {
+    SparseIndexVector array_segments_type = SparseIndexVector_NONE,
+    flatbuffers::Offset<void> array_segments = 0,
+    SparseIndexVector array_indices_type = SparseIndexVector_NONE,
+    flatbuffers::Offset<void> array_indices = 0) {
   DimensionMetadataBuilder builder_(_fbb);
   builder_.add_array_indices(array_indices);
   builder_.add_array_segments(array_segments);
   builder_.add_dense_size(dense_size);
+  builder_.add_array_indices_type(array_indices_type);
+  builder_.add_array_segments_type(array_segments_type);
   builder_.add_format(format);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<DimensionMetadata> CreateDimensionMetadataDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    DimensionType format = DimensionType_DENSE,
-    int32_t dense_size = 0,
-    const std::vector<int32_t> *array_segments = nullptr,
-    const std::vector<int32_t> *array_indices = nullptr) {
-  auto array_segments__ = array_segments ? _fbb.CreateVector<int32_t>(*array_segments) : 0;
-  auto array_indices__ = array_indices ? _fbb.CreateVector<int32_t>(*array_indices) : 0;
-  return tflite::CreateDimensionMetadata(
-      _fbb,
-      format,
-      dense_size,
-      array_segments__,
-      array_indices__);
 }
 
 flatbuffers::Offset<DimensionMetadata> CreateDimensionMetadata(flatbuffers::FlatBufferBuilder &_fbb, const DimensionMetadataT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -3154,6 +3537,7 @@ struct TensorT : public flatbuffers::NativeTable {
   std::unique_ptr<QuantizationParametersT> quantization;
   bool is_variable;
   std::unique_ptr<SparsityParametersT> sparsity;
+  std::vector<int32_t> shape_signature;
   TensorT()
       : type(TensorType_FLOAT32),
         buffer(0),
@@ -3170,7 +3554,8 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_NAME = 10,
     VT_QUANTIZATION = 12,
     VT_IS_VARIABLE = 14,
-    VT_SPARSITY = 16
+    VT_SPARSITY = 16,
+    VT_SHAPE_SIGNATURE = 18
   };
   const flatbuffers::Vector<int32_t> *shape() const {
     return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE);
@@ -3193,6 +3578,9 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const SparsityParameters *sparsity() const {
     return GetPointer<const SparsityParameters *>(VT_SPARSITY);
   }
+  const flatbuffers::Vector<int32_t> *shape_signature() const {
+    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_SHAPE_SIGNATURE);
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_SHAPE) &&
@@ -3206,6 +3594,8 @@ struct Tensor FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyField<uint8_t>(verifier, VT_IS_VARIABLE) &&
            VerifyOffset(verifier, VT_SPARSITY) &&
            verifier.VerifyTable(sparsity()) &&
+           VerifyOffset(verifier, VT_SHAPE_SIGNATURE) &&
+           verifier.VerifyVector(shape_signature()) &&
            verifier.EndTable();
   }
   TensorT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3237,6 +3627,9 @@ struct TensorBuilder {
   void add_sparsity(flatbuffers::Offset<SparsityParameters> sparsity) {
     fbb_.AddOffset(Tensor::VT_SPARSITY, sparsity);
   }
+  void add_shape_signature(flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature) {
+    fbb_.AddOffset(Tensor::VT_SHAPE_SIGNATURE, shape_signature);
+  }
   explicit TensorBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3257,8 +3650,10 @@ inline flatbuffers::Offset<Tensor> CreateTensor(
     flatbuffers::Offset<flatbuffers::String> name = 0,
     flatbuffers::Offset<QuantizationParameters> quantization = 0,
     bool is_variable = false,
-    flatbuffers::Offset<SparsityParameters> sparsity = 0) {
+    flatbuffers::Offset<SparsityParameters> sparsity = 0,
+    flatbuffers::Offset<flatbuffers::Vector<int32_t>> shape_signature = 0) {
   TensorBuilder builder_(_fbb);
+  builder_.add_shape_signature(shape_signature);
   builder_.add_sparsity(sparsity);
   builder_.add_quantization(quantization);
   builder_.add_name(name);
@@ -3277,9 +3672,11 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
     const char *name = nullptr,
     flatbuffers::Offset<QuantizationParameters> quantization = 0,
     bool is_variable = false,
-    flatbuffers::Offset<SparsityParameters> sparsity = 0) {
+    flatbuffers::Offset<SparsityParameters> sparsity = 0,
+    const std::vector<int32_t> *shape_signature = nullptr) {
   auto shape__ = shape ? _fbb.CreateVector<int32_t>(*shape) : 0;
   auto name__ = name ? _fbb.CreateString(name) : 0;
+  auto shape_signature__ = shape_signature ? _fbb.CreateVector<int32_t>(*shape_signature) : 0;
   return tflite::CreateTensor(
       _fbb,
       shape__,
@@ -3288,7 +3685,8 @@ inline flatbuffers::Offset<Tensor> CreateTensorDirect(
       name__,
       quantization,
       is_variable,
-      sparsity);
+      sparsity,
+      shape_signature__);
 }
 
 flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &_fbb, const TensorT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
@@ -4792,22 +5190,29 @@ flatbuffers::Offset<BidirectionalSequenceLSTMOptions> CreateBidirectionalSequenc
 struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
   typedef ResizeBilinearOptions TableType;
   bool align_corners;
+  bool half_pixel_centers;
   ResizeBilinearOptionsT()
-      : align_corners(false) {
+      : align_corners(false),
+        half_pixel_centers(false) {
   }
 };
 
 struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeBilinearOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_ALIGN_CORNERS = 8
+    VT_ALIGN_CORNERS = 8,
+    VT_HALF_PIXEL_CENTERS = 10
   };
   bool align_corners() const {
     return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
   }
+  bool half_pixel_centers() const {
+    return GetField<uint8_t>(VT_HALF_PIXEL_CENTERS, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
+           VerifyField<uint8_t>(verifier, VT_HALF_PIXEL_CENTERS) &&
            verifier.EndTable();
   }
   ResizeBilinearOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4820,6 +5225,9 @@ struct ResizeBilinearOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_align_corners(bool align_corners) {
     fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+  }
+  void add_half_pixel_centers(bool half_pixel_centers) {
+    fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_HALF_PIXEL_CENTERS, static_cast<uint8_t>(half_pixel_centers), 0);
   }
   explicit ResizeBilinearOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -4835,8 +5243,10 @@ struct ResizeBilinearOptionsBuilder {
 
 inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    bool align_corners = false) {
+    bool align_corners = false,
+    bool half_pixel_centers = false) {
   ResizeBilinearOptionsBuilder builder_(_fbb);
+  builder_.add_half_pixel_centers(half_pixel_centers);
   builder_.add_align_corners(align_corners);
   return builder_.Finish();
 }
@@ -8659,6 +9069,46 @@ inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(
 
 flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::FlatBufferBuilder &_fbb, const DensifyOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SegmentSumOptionsT : public flatbuffers::NativeTable {
+  typedef SegmentSumOptions TableType;
+  SegmentSumOptionsT() {
+  }
+};
+
+struct SegmentSumOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SegmentSumOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  SegmentSumOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SegmentSumOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SegmentSumOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit SegmentSumOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SegmentSumOptionsBuilder &operator=(const SegmentSumOptionsBuilder &);
+  flatbuffers::Offset<SegmentSumOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SegmentSumOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  SegmentSumOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -9092,6 +9542,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const DensifyOptions *builtin_options_as_DensifyOptions() const {
     return builtin_options_type() == BuiltinOptions_DensifyOptions ? static_cast<const DensifyOptions *>(builtin_options()) : nullptr;
   }
+  const SegmentSumOptions *builtin_options_as_SegmentSumOptions() const {
+    return builtin_options_type() == BuiltinOptions_SegmentSumOptions ? static_cast<const SegmentSumOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -9524,6 +9977,10 @@ template<> inline const DensifyOptions *Operator::builtin_options_as<DensifyOpti
   return builtin_options_as_DensifyOptions();
 }
 
+template<> inline const SegmentSumOptions *Operator::builtin_options_as<SegmentSumOptions>() const {
+  return builtin_options_as_SegmentSumOptions();
+}
+
 struct OperatorBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
@@ -9801,6 +10258,7 @@ inline flatbuffers::Offset<Buffer> CreateBuffer(
 inline flatbuffers::Offset<Buffer> CreateBufferDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     const std::vector<uint8_t> *data = nullptr) {
+  if (data) { _fbb.ForceVectorAlignment(data->size(), sizeof(uint8_t), 16); }
   auto data__ = data ? _fbb.CreateVector<uint8_t>(*data) : 0;
   return tflite::CreateBuffer(
       _fbb,
@@ -10062,6 +10520,7 @@ inline flatbuffers::Offset<CustomQuantization> CreateCustomQuantization(flatbuff
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const CustomQuantizationT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->custom.size(), sizeof(uint8_t), 16);
   auto _custom = _o->custom.size() ? _fbb.CreateVector(_o->custom) : 0;
   return tflite::CreateCustomQuantization(
       _fbb,
@@ -10112,6 +10571,86 @@ inline flatbuffers::Offset<QuantizationParameters> CreateQuantizationParameters(
       _quantized_dimension);
 }
 
+inline Int32VectorT *Int32Vector::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Int32VectorT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Int32Vector::UnPackTo(Int32VectorT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->values[_i] = _e->Get(_i); } } };
+}
+
+inline flatbuffers::Offset<Int32Vector> Int32Vector::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Int32VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateInt32Vector(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Int32Vector> CreateInt32Vector(flatbuffers::FlatBufferBuilder &_fbb, const Int32VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Int32VectorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
+  return tflite::CreateInt32Vector(
+      _fbb,
+      _values);
+}
+
+inline Uint16VectorT *Uint16Vector::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Uint16VectorT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Uint16Vector::UnPackTo(Uint16VectorT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->values[_i] = _e->Get(_i); } } };
+}
+
+inline flatbuffers::Offset<Uint16Vector> Uint16Vector::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Uint16VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUint16Vector(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Uint16Vector> CreateUint16Vector(flatbuffers::FlatBufferBuilder &_fbb, const Uint16VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Uint16VectorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->values.size(), sizeof(uint16_t), 4);
+  auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
+  return tflite::CreateUint16Vector(
+      _fbb,
+      _values);
+}
+
+inline Uint8VectorT *Uint8Vector::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new Uint8VectorT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void Uint8Vector::UnPackTo(Uint8VectorT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = values(); if (_e) { _o->values.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->values[_i] = _e->Get(_i); } } };
+}
+
+inline flatbuffers::Offset<Uint8Vector> Uint8Vector::Pack(flatbuffers::FlatBufferBuilder &_fbb, const Uint8VectorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateUint8Vector(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<Uint8Vector> CreateUint8Vector(flatbuffers::FlatBufferBuilder &_fbb, const Uint8VectorT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const Uint8VectorT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->values.size(), sizeof(uint8_t), 4);
+  auto _values = _o->values.size() ? _fbb.CreateVector(_o->values) : 0;
+  return tflite::CreateUint8Vector(
+      _fbb,
+      _values);
+}
+
 inline DimensionMetadataT *DimensionMetadata::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new DimensionMetadataT();
   UnPackTo(_o, _resolver);
@@ -10123,8 +10662,10 @@ inline void DimensionMetadata::UnPackTo(DimensionMetadataT *_o, const flatbuffer
   (void)_resolver;
   { auto _e = format(); _o->format = _e; };
   { auto _e = dense_size(); _o->dense_size = _e; };
-  { auto _e = array_segments(); if (_e) { _o->array_segments.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->array_segments[_i] = _e->Get(_i); } } };
-  { auto _e = array_indices(); if (_e) { _o->array_indices.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->array_indices[_i] = _e->Get(_i); } } };
+  { auto _e = array_segments_type(); _o->array_segments.type = _e; };
+  { auto _e = array_segments(); if (_e) _o->array_segments.value = SparseIndexVectorUnion::UnPack(_e, array_segments_type(), _resolver); };
+  { auto _e = array_indices_type(); _o->array_indices.type = _e; };
+  { auto _e = array_indices(); if (_e) _o->array_indices.value = SparseIndexVectorUnion::UnPack(_e, array_indices_type(), _resolver); };
 }
 
 inline flatbuffers::Offset<DimensionMetadata> DimensionMetadata::Pack(flatbuffers::FlatBufferBuilder &_fbb, const DimensionMetadataT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10137,13 +10678,17 @@ inline flatbuffers::Offset<DimensionMetadata> CreateDimensionMetadata(flatbuffer
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const DimensionMetadataT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _format = _o->format;
   auto _dense_size = _o->dense_size;
-  auto _array_segments = _o->array_segments.size() ? _fbb.CreateVector(_o->array_segments) : 0;
-  auto _array_indices = _o->array_indices.size() ? _fbb.CreateVector(_o->array_indices) : 0;
+  auto _array_segments_type = _o->array_segments.type;
+  auto _array_segments = _o->array_segments.Pack(_fbb);
+  auto _array_indices_type = _o->array_indices.type;
+  auto _array_indices = _o->array_indices.Pack(_fbb);
   return tflite::CreateDimensionMetadata(
       _fbb,
       _format,
       _dense_size,
+      _array_segments_type,
       _array_segments,
+      _array_indices_type,
       _array_indices);
 }
 
@@ -10195,6 +10740,7 @@ inline void Tensor::UnPackTo(TensorT *_o, const flatbuffers::resolver_function_t
   { auto _e = quantization(); if (_e) _o->quantization = std::unique_ptr<QuantizationParametersT>(_e->UnPack(_resolver)); };
   { auto _e = is_variable(); _o->is_variable = _e; };
   { auto _e = sparsity(); if (_e) _o->sparsity = std::unique_ptr<SparsityParametersT>(_e->UnPack(_resolver)); };
+  { auto _e = shape_signature(); if (_e) { _o->shape_signature.resize(_e->size()); for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) { _o->shape_signature[_i] = _e->Get(_i); } } };
 }
 
 inline flatbuffers::Offset<Tensor> Tensor::Pack(flatbuffers::FlatBufferBuilder &_fbb, const TensorT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10212,6 +10758,7 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
   auto _quantization = _o->quantization ? CreateQuantizationParameters(_fbb, _o->quantization.get(), _rehasher) : 0;
   auto _is_variable = _o->is_variable;
   auto _sparsity = _o->sparsity ? CreateSparsityParameters(_fbb, _o->sparsity.get(), _rehasher) : 0;
+  auto _shape_signature = _o->shape_signature.size() ? _fbb.CreateVector(_o->shape_signature) : 0;
   return tflite::CreateTensor(
       _fbb,
       _shape,
@@ -10220,7 +10767,8 @@ inline flatbuffers::Offset<Tensor> CreateTensor(flatbuffers::FlatBufferBuilder &
       _name,
       _quantization,
       _is_variable,
-      _sparsity);
+      _sparsity,
+      _shape_signature);
 }
 
 inline Conv2DOptionsT *Conv2DOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -10841,6 +11389,7 @@ inline void ResizeBilinearOptions::UnPackTo(ResizeBilinearOptionsT *_o, const fl
   (void)_o;
   (void)_resolver;
   { auto _e = align_corners(); _o->align_corners = _e; };
+  { auto _e = half_pixel_centers(); _o->half_pixel_centers = _e; };
 }
 
 inline flatbuffers::Offset<ResizeBilinearOptions> ResizeBilinearOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -10852,9 +11401,11 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(fl
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ResizeBilinearOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _align_corners = _o->align_corners;
+  auto _half_pixel_centers = _o->half_pixel_centers;
   return tflite::CreateResizeBilinearOptions(
       _fbb,
-      _align_corners);
+      _align_corners,
+      _half_pixel_centers);
 }
 
 inline ResizeNearestNeighborOptionsT *ResizeNearestNeighborOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -12818,6 +13369,29 @@ inline flatbuffers::Offset<DensifyOptions> CreateDensifyOptions(flatbuffers::Fla
       _fbb);
 }
 
+inline SegmentSumOptionsT *SegmentSumOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SegmentSumOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SegmentSumOptions::UnPackTo(SegmentSumOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<SegmentSumOptions> SegmentSumOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSegmentSumOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SegmentSumOptions> CreateSegmentSumOptions(flatbuffers::FlatBufferBuilder &_fbb, const SegmentSumOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SegmentSumOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateSegmentSumOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -12958,6 +13532,7 @@ inline flatbuffers::Offset<Buffer> CreateBuffer(flatbuffers::FlatBufferBuilder &
   (void)_rehasher;
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const BufferT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  _fbb.ForceVectorAlignment(_o->data.size(), sizeof(uint8_t), 16);
   auto _data = _o->data.size() ? _fbb.CreateVector(_o->data) : 0;
   return tflite::CreateBuffer(
       _fbb,
@@ -13104,6 +13679,117 @@ inline void QuantizationDetailsUnion::Reset() {
   }
   value = nullptr;
   type = QuantizationDetails_NONE;
+}
+
+inline bool VerifySparseIndexVector(flatbuffers::Verifier &verifier, const void *obj, SparseIndexVector type) {
+  switch (type) {
+    case SparseIndexVector_NONE: {
+      return true;
+    }
+    case SparseIndexVector_Int32Vector: {
+      auto ptr = reinterpret_cast<const Int32Vector *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case SparseIndexVector_Uint16Vector: {
+      auto ptr = reinterpret_cast<const Uint16Vector *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case SparseIndexVector_Uint8Vector: {
+      auto ptr = reinterpret_cast<const Uint8Vector *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    default: return true;
+  }
+}
+
+inline bool VerifySparseIndexVectorVector(flatbuffers::Verifier &verifier, const flatbuffers::Vector<flatbuffers::Offset<void>> *values, const flatbuffers::Vector<uint8_t> *types) {
+  if (!values || !types) return !values && !types;
+  if (values->size() != types->size()) return false;
+  for (flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+    if (!VerifySparseIndexVector(
+        verifier,  values->Get(i), types->GetEnum<SparseIndexVector>(i))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+inline void *SparseIndexVectorUnion::UnPack(const void *obj, SparseIndexVector type, const flatbuffers::resolver_function_t *resolver) {
+  switch (type) {
+    case SparseIndexVector_Int32Vector: {
+      auto ptr = reinterpret_cast<const Int32Vector *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case SparseIndexVector_Uint16Vector: {
+      auto ptr = reinterpret_cast<const Uint16Vector *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case SparseIndexVector_Uint8Vector: {
+      auto ptr = reinterpret_cast<const Uint8Vector *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    default: return nullptr;
+  }
+}
+
+inline flatbuffers::Offset<void> SparseIndexVectorUnion::Pack(flatbuffers::FlatBufferBuilder &_fbb, const flatbuffers::rehasher_function_t *_rehasher) const {
+  switch (type) {
+    case SparseIndexVector_Int32Vector: {
+      auto ptr = reinterpret_cast<const Int32VectorT *>(value);
+      return CreateInt32Vector(_fbb, ptr, _rehasher).Union();
+    }
+    case SparseIndexVector_Uint16Vector: {
+      auto ptr = reinterpret_cast<const Uint16VectorT *>(value);
+      return CreateUint16Vector(_fbb, ptr, _rehasher).Union();
+    }
+    case SparseIndexVector_Uint8Vector: {
+      auto ptr = reinterpret_cast<const Uint8VectorT *>(value);
+      return CreateUint8Vector(_fbb, ptr, _rehasher).Union();
+    }
+    default: return 0;
+  }
+}
+
+inline SparseIndexVectorUnion::SparseIndexVectorUnion(const SparseIndexVectorUnion &u) FLATBUFFERS_NOEXCEPT : type(u.type), value(nullptr) {
+  switch (type) {
+    case SparseIndexVector_Int32Vector: {
+      value = new Int32VectorT(*reinterpret_cast<Int32VectorT *>(u.value));
+      break;
+    }
+    case SparseIndexVector_Uint16Vector: {
+      value = new Uint16VectorT(*reinterpret_cast<Uint16VectorT *>(u.value));
+      break;
+    }
+    case SparseIndexVector_Uint8Vector: {
+      value = new Uint8VectorT(*reinterpret_cast<Uint8VectorT *>(u.value));
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+inline void SparseIndexVectorUnion::Reset() {
+  switch (type) {
+    case SparseIndexVector_Int32Vector: {
+      auto ptr = reinterpret_cast<Int32VectorT *>(value);
+      delete ptr;
+      break;
+    }
+    case SparseIndexVector_Uint16Vector: {
+      auto ptr = reinterpret_cast<Uint16VectorT *>(value);
+      delete ptr;
+      break;
+    }
+    case SparseIndexVector_Uint8Vector: {
+      auto ptr = reinterpret_cast<Uint8VectorT *>(value);
+      delete ptr;
+      break;
+    }
+    default: break;
+  }
+  value = nullptr;
+  type = SparseIndexVector_NONE;
 }
 
 inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *obj, BuiltinOptions type) {
@@ -13505,6 +14191,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
     }
     case BuiltinOptions_DensifyOptions: {
       auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
     default: return true;
@@ -13921,6 +14611,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const DensifyOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -14323,6 +15017,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const DensifyOptionsT *>(value);
       return CreateDensifyOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<const SegmentSumOptionsT *>(value);
+      return CreateSegmentSumOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -14723,6 +15421,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_DensifyOptions: {
       value = new DensifyOptionsT(*reinterpret_cast<DensifyOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SegmentSumOptions: {
+      value = new SegmentSumOptionsT(*reinterpret_cast<SegmentSumOptionsT *>(u.value));
       break;
     }
     default:
@@ -15224,6 +15926,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_DensifyOptions: {
       auto ptr = reinterpret_cast<DensifyOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SegmentSumOptions: {
+      auto ptr = reinterpret_cast<SegmentSumOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -18,13 +18,15 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 
 namespace tensorflow {
 namespace {
 // The list of all registered `XlaActivityListener`s.
 struct XlaActivityListenerList {
   absl::Mutex mutex;
-  std::vector<std::unique_ptr<XlaActivityListener>> listeners GUARDED_BY(mutex);
+  std::vector<std::unique_ptr<XlaActivityListener>> listeners
+      TF_GUARDED_BY(mutex);
 };
 
 void FlushAllListeners();

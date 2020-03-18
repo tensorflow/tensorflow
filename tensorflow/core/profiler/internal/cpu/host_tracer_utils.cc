@@ -68,35 +68,23 @@ void ConvertCompleteEventsToXPlane(uint64 start_timestamp_ns,
                                    const TraceMeRecorder::Events& events,
                                    XPlane* raw_plane) {
   XPlaneBuilder xplane(raw_plane);
-  absl::flat_hash_map<string, XEventMetadata*> xevent_metadata_by_name;
-  absl::flat_hash_map<string, XStatMetadata*> xstat_metadata_by_name;
   for (const auto& thread : events) {
-    XLineBuilder xline = xplane.AddLine();
-    xline.SetId(thread.thread.tid);
+    XLineBuilder xline = xplane.GetOrCreateLine(thread.thread.tid);
     xline.SetName(thread.thread.name);
     xline.SetTimestampNs(start_timestamp_ns);
     xline.ReserveEvents(thread.events.size());
     for (const auto& event : thread.events) {
       if (!IsCompleteEvent(event)) continue;
       Annotation annotation = ParseAnnotation(event.name);
-      XEventMetadata*& xevent_metadata =
-          xevent_metadata_by_name[annotation.name];
-      if (xevent_metadata == nullptr) {
-        xevent_metadata =
-            xplane.GetOrCreateEventMetadata(xevent_metadata_by_name.size());
-        xevent_metadata->set_name(string(annotation.name));
-      }
+      XEventMetadata* xevent_metadata =
+          xplane.GetOrCreateEventMetadata(annotation.name);
       XEventBuilder xevent = xline.AddEvent(*xevent_metadata);
       xevent.SetTimestampNs(event.start_time);
       xevent.SetEndTimestampNs(event.end_time);
       xevent.ReserveStats(annotation.metadata.size());
       for (const auto& metadata : annotation.metadata) {
-        XStatMetadata*& xstat_metadata = xstat_metadata_by_name[metadata.key];
-        if (xstat_metadata == nullptr) {
-          xstat_metadata =
-              xplane.GetOrCreateStatMetadata(xstat_metadata_by_name.size());
-          xstat_metadata->set_name(string(metadata.key));
-        }
+        XStatMetadata* xstat_metadata =
+            xplane.GetOrCreateStatMetadata(metadata.key);
         xevent.ParseAndAddStatValue(*xstat_metadata, metadata.value);
       }
     }

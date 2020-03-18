@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -426,7 +426,9 @@ void PreprocessTopoSortGraph(
 }
 
 bool IsSideEffectOp(Operation* op) {
-  if (op->hasNoSideEffect()) return false;
+  // TODO(riverriddle) Properly handle region side effects.
+  if (MemoryEffectOpInterface::hasNoEffect(op) && op->getNumRegions() == 0)
+    return false;
 
   // Identity op has no side effect.
   // Check the OperationName maybe more elegant here.
@@ -698,11 +700,10 @@ void ExtractOphintPass::runOnModule() {
       if (ophint_composite_ops.empty()) continue;
 
       // Verify: Make sure all ophint_composite_ops are valid.
+      // If not valid, we just don't do anything.
       for (const auto& kv : ophint_composite_ops) {
         if (failed(kv.getValue().VerifyOphint())) {
-          module.emitError()
-              << "Found malformed ophint regions: missing inputs or outputs.";
-          return signalPassFailure();
+          return;
         }
       }
 

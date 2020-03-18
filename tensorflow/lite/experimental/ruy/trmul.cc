@@ -21,7 +21,6 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/allocator.h"
 #include "tensorflow/lite/experimental/ruy/block_map.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
@@ -29,6 +28,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/opt_set.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/size_util.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
@@ -259,13 +259,16 @@ int GetThreadCount(Context* context, int rows, int cols, int depth) {
 }
 
 LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
-                               int depth,
-                               int cache_friendly_traversal_threshold) {
+                               int depth, int lhs_scalar_size,
+                               int rhs_scalar_size, int local_data_cache_size,
+                               int shared_data_cache_size) {
   if (tentative_thread_count == 1) {
-    // If we are in the GEMV case or the size is below the
-    // threshold, stay with the simple loop structure.
-    if ((cols == 1) ||
-        (rows + cols) * depth < cache_friendly_traversal_threshold) {
+    const BlockMapTraversalOrder traversal_order =
+        GetTraversalOrder(rows, cols, depth, lhs_scalar_size, rhs_scalar_size,
+                          local_data_cache_size, shared_data_cache_size);
+    // If we are in the GEMV case or the block_map would be using linear
+    // traversal anyway, use the simple loop.
+    if ((cols == 1) || traversal_order == BlockMapTraversalOrder::kLinear) {
       return LoopStructure::kSimple;
     }
   }
@@ -275,7 +278,10 @@ LoopStructure GetLoopStructure(int tentative_thread_count, int rows, int cols,
 }  // namespace
 
 void TrMul(TrMulParams* params, Context* context) {
-  gemmlowp::ScopedProfilingLabel label("TrMul");
+  profiler::ScopeLabel label(
+      "TrMul (Path=0x%x, max_num_threads=%d, is_prepacked=(%d,%d))",
+      static_cast<int>(params->path), context->max_num_threads,
+      params->is_prepacked[Side::kLhs], params->is_prepacked[Side::kRhs]);
 
   PMatrix& packed_lhs = params->packed[Side::kLhs];
   PMatrix& packed_rhs = params->packed[Side::kRhs];
@@ -287,9 +293,10 @@ void TrMul(TrMulParams* params, Context* context) {
   const int depth = lhs.layout.rows;
 
   const int tentative_thread_count = GetThreadCount(context, rows, cols, depth);
-  const auto loop_structure =
-      GetLoopStructure(tentative_thread_count, rows, cols, depth,
-                       params->cache_friendly_traversal_threshold);
+  const auto loop_structure = GetLoopStructure(
+      tentative_thread_count, rows, cols, depth, lhs.data_type.size,
+      rhs.data_type.size, params->local_data_cache_size,
+      params->shared_data_cache_size);
   Allocator* allocator = context->GetMainAllocator();
 
   // Allocate packed matrices
@@ -304,7 +311,7 @@ void TrMul(TrMulParams* params, Context* context) {
   // of this function is just an optimized, but functionally equivalent,
   // version of that.
   if (loop_structure == LoopStructure::kSimple) {
-    gemmlowp::ScopedProfilingLabel label_simple("TrMulImpl, simple loop");
+    profiler::ScopeLabel label_simple("TrMulImpl, simple loop");
     Tuning tuning = context->GetMainThreadTuning();
 
     const SidePair<int> origin{0, 0};
@@ -321,7 +328,7 @@ void TrMul(TrMulParams* params, Context* context) {
     return;
   }
 
-  gemmlowp::ScopedProfilingLabel label_general("TrMulImpl, general case");
+  profiler::ScopeLabel label_general("TrMulImpl, general case");
 
   auto* trace = NewTraceOrNull(&context->tracing, rows, depth, cols);
   TraceRecordStart(trace);
@@ -332,7 +339,8 @@ void TrMul(TrMulParams* params, Context* context) {
                packed_lhs.layout.kernel.cols, packed_rhs.layout.kernel.cols,
                packed_lhs.data_type.size, packed_rhs.data_type.size,
                tentative_thread_count, params->path,
-               params->cache_friendly_traversal_threshold, &block_map);
+               params->local_data_cache_size, params->shared_data_cache_size,
+               &block_map);
 
   // Initialize per-thread state.
   const int thread_count = block_map.thread_count;

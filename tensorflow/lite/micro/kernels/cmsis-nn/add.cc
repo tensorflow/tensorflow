@@ -85,15 +85,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteAddParams* params,
     QuantizeMultiplierSmallerThanOneExp(
         real_output_multiplier, &data->output_multiplier, &data->output_shift);
 
-    if (output->type == kTfLiteUInt8) {
-      CalculateActivationRangeUint8(params->activation, output,
-                                    &data->output_activation_min,
-                                    &data->output_activation_max);
-    } else {
-      CalculateActivationRangeInt8(params->activation, output,
-                                   &data->output_activation_min,
-                                   &data->output_activation_max);
-    }
+    TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+        context, params->activation, output, &data->output_activation_min,
+        &data->output_activation_max));
   }
 
   return kTfLiteOk;
@@ -192,8 +186,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, EvalAddQuantized(context, node, params, &data,
                                                 input1, input2, output));
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8|int8 types.");
+    TF_LITE_KERNEL_LOG(context,
+                       "Inputs and outputs not all float|uint8|int8 types.");
     return kTfLiteError;
   }
 

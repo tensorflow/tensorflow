@@ -116,7 +116,7 @@ class Thread {
       const auto& condition = [this]() {
         return state_.load(std::memory_order_acquire) != State::Ready;
       };
-      WaitUntil(condition, &state_cond_, &state_mutex_);
+      Wait(condition, &state_cond_, &state_mutex_);
 
       // Act on new state.
       switch (state_.load(std::memory_order_acquire)) {

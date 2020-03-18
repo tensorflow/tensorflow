@@ -39,6 +39,7 @@ TfLiteRegistration GetHexagonKernelRegistration() {
   // Prepare for prearing the delegate.
   // Free for any cleaning needed by the delegate.
   TfLiteRegistration kernel_registration;
+  kernel_registration.profiling_string = nullptr;
   kernel_registration.builtin_code = kTfLiteBuiltinDelegate;
   kernel_registration.custom_name = "TfLiteHexagonDelegate";
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
@@ -130,6 +131,30 @@ class HexagonDelegate : public TfLiteDelegate {
     auto* hexagon_nn = HexagonNNImplementation();
     if (hexagon_nn == nullptr) {
       return false;
+    }
+    if (hexagon_nn->hexagon_nn_version != nullptr &&
+        hexagon_nn->hexagon_nn_hexagon_interface_version) {
+      int hexagon_nn_version = -1;
+      int hexagon_interface_version =
+          hexagon_nn->hexagon_nn_hexagon_interface_version();
+      if (hexagon_nn->hexagon_nn_version(&hexagon_nn_version) != 0) {
+        TFLITE_LOG_PROD(tflite::TFLITE_LOG_WARNING,
+                        "Failed to fetch Hexagon NN version. This might be "
+                        "because you're using incompatible versions of "
+                        "libhexagon_interface and libhexagon_nn_skel. "
+                        "You must use compatible versions. "
+                        "Refer to Tensorflow Lite Hexagon Delegate Guide.");
+        return false;
+      }
+      if (hexagon_nn_version != hexagon_interface_version) {
+        TFLITE_LOG_PROD(
+            tflite::TFLITE_LOG_WARNING,
+            "Incompatible versions between interface library and "
+            "libhexagon_skel %d vs %d. You must use compatible versions. "
+            "Refer to Tensorflow Lite Hexagon Delegate Guide.",
+            hexagon_interface_version, hexagon_nn_version);
+        return false;
+      }
     }
     return hexagon_nn->hexagon_nn_is_device_supported &&
            hexagon_nn->hexagon_nn_is_device_supported();

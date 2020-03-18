@@ -50,15 +50,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
 
   TF_LITE_ENSURE_EQ(context, input1->type, input2->type);
 
-  if (output->type == kTfLiteUInt8) {
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
-  } else if (output->type == kTfLiteInt8) {
-    CalculateActivationRangeInt8(params->activation, output,
-                                 &data->output_activation_min,
-                                 &data->output_activation_max);
-  }
+  TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
+      context, params->activation, output, &data->output_activation_min,
+      &data->output_activation_max));
 
   double real_multiplier =
       input1->params.scale * input2->params.scale / output->params.scale;
@@ -160,8 +154,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, &data, input1, input2, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input1->type), input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input1->type), input1->type);
       return kTfLiteError;
   }
 

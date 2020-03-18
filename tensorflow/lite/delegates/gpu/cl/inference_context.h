@@ -116,6 +116,9 @@ class InferenceContext {
   // performance hacks
   bool need_flush_ = false;
 
+  bool flush_periodically_ = false;
+  int flush_period_ = 1;
+
   // In order to reduce memory leak on Mali a pipeline needs to be synchronized
   // with CPU to prevent growing internal global OpenCL kernel pool. One trick
   // is to enqueue an event from a previous run. Most of the time is should

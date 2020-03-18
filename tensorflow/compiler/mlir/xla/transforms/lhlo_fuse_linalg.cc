@@ -18,8 +18,11 @@ limitations under the License.
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "absl/memory/memory.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -27,7 +30,15 @@ namespace {
 
 using linalg::LinalgOp;
 
-struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
+class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
+ public:
+  LhloFuseLinalg() = default;
+  LhloFuseLinalg(const LhloFuseLinalg&) {}
+  LhloFuseLinalg(bool use_parallel_loops, llvm::ArrayRef<unsigned> tile_sizes) {
+    tile_sizes_->assign(tile_sizes.begin(), tile_sizes.end());
+    use_parallel_loops_.setValue(use_parallel_loops);
+  }
+
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -49,13 +60,15 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     OpBuilder b(func);
     OperationFolder folder(func.getContext());
     func.walk([&](linalg::GenericOp generic_op) {
-      const SmallVector<int64_t, 2> tile_sizes(
-          generic_op.getNumInputsAndOutputs(), 1);
+      SmallVector<int64_t, 2> tile_sizes(tile_sizes_.begin(),
+                                         tile_sizes_.end());
+      if (tile_sizes.empty()) {
+        tile_sizes = SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
+      }
       auto op = cast<LinalgOp>(generic_op.getOperation());
-      for (const Value result : op.getOutputs()) {
+      for (const Value result : op.getOutputBuffers()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(b, op, tile_sizes, /*permutation=*/{},
-                                 &folder)) {
+        if (tileGenericOp(op, tile_sizes, &b, &folder)) {
           generic_op.erase();
           return;
         }
@@ -82,12 +95,37 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     }
     for (auto* e : erase_set) e->erase();
   }
+
+ private:
+  bool tileGenericOp(LinalgOp op, ArrayRef<int64_t> tile_sizes, OpBuilder* b,
+                     OperationFolder* folder) {
+    auto tiled_generic_op =
+        use_parallel_loops_
+            ? linalg::tileLinalgOpToParallelLoops(*b, op, tile_sizes,
+                                                  /*permutation=*/{}, folder)
+            : linalg::tileLinalgOp(*b, op, tile_sizes,
+                                   /*permutation=*/{}, folder);
+    return tiled_generic_op.hasValue();
+  }
+
+  Option<bool> use_parallel_loops_{
+      *this, "use-parallel-loops",
+      llvm::cl::desc(
+          "Tiles GenericOp consumer to parallel loops before linalg fusion"),
+      llvm::cl::init(false)};
+
+  ListOption<unsigned> tile_sizes_{
+      *this, "tile-sizes",
+      llvm::cl::desc(
+          "Tile sizes by which to tile linalg generic before linalg fusion"),
+      llvm::cl::ZeroOrMore, llvm::cl::MiscFlags::CommaSeparated};
 };
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg() {
-  return absl::make_unique<LhloFuseLinalg>();
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+    bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
+  return absl::make_unique<LhloFuseLinalg>(use_parallel_loops, tile_sizes);
 }
 
 static PassRegistration<LhloFuseLinalg> legalize_pass(

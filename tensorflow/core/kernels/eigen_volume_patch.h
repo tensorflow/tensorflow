@@ -565,7 +565,7 @@ struct CustomTensorEvaluator {
 
   Dimensions m_dimensions;
 
-  // Parameters passed to the costructor.
+  // Parameters passed to the constructor.
   Index m_plane_strides;
   Index m_row_strides;
   Index m_col_strides;

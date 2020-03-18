@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/optional.h"
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -77,9 +78,6 @@ class HloFunctionImporter {
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
 
-  // Converts xla Primitive types to the corresponding MLIR type.
-  StatusOr<mlir::Type> ConvertType(const xla::Shape& shape);
-
   // Returns the output type of an HloInstruction.
   StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);
 
@@ -120,6 +118,26 @@ class HloFunctionImporter {
   // Converts the gather dimensions to attributes.
   mlir::NamedAttribute ConvertGatherDimensionNumbers(
       const xla::GatherDimensionNumbers& dnums);
+
+  // Converts the scatter dimensions to attributes.
+  mlir::NamedAttribute ConvertScatterDimensionNumbers(
+      const xla::ScatterDimensionNumbers& dnums);
+
+  // Converts replica groups to attribute
+  mlir::NamedAttribute ConvertReplicaGroups(
+      const std::vector<ReplicaGroup>& replica_groups);
+
+  // Converts channel id to attribute
+  mlir::NamedAttribute ConvertChannelHandle(
+      absl::optional<tensorflow::int64> channel_id);
+
+  // Converts channel handle to attribute
+  mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
+
+  // Converts XLA instruction source target pairs to MLIR attribute.
+  mlir::NamedAttribute ConvertSourceTargetPairs(
+      const std::vector<std::pair<tensorflow::int64, tensorflow::int64>>&
+          source_target_pairs);
 
   mlir::MLIRContext* context_;
   mlir::ModuleOp module_;

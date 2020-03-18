@@ -31,6 +31,7 @@ import collections
 import gast
 import six
 
+from tensorflow.python.autograph.pyct import gast_util
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
 
@@ -118,19 +119,18 @@ class AnfTransformer(transformer.Base):
       # These could be pulled out, but are generally considered to already be in
       # A-normal form.  Thus they are left in by default, but could be pulled
       # out if the configuration calls for it.
-      try:
-        # TODO(b/140808434): Fix this.
-        # gast pre-0.3
+      if gast_util.GAST2:
         literal_node_types = (
             gast.Num, gast.Str, gast.Bytes, gast.NameConstant,
             gast.Name  # Name is here to cover True, False, and None in Python 2
         )
-      except AttributeError:
-        # gast 0.3+
+      elif gast_util.GAST3:
         literal_node_types = (
             gast.Constant,
             gast.Name  # Name is here to cover True, False, and None in Python 2
         )
+      else:
+        assert False
 
       self._overrides = [
           (ASTEdgePattern(ANY, ANY, literal_node_types), LEAVE),
@@ -523,14 +523,9 @@ def _is_trivial(node):
   )
   if isinstance(node, trivial_node_types) and not _is_py2_name_constant(node):
     return True
-  try:
-    # gast pre-0.3
-    if isinstance(node, gast.Ellipsis):
-      return True
-  except AttributeError:
-    # gast 0.3+
-    if isinstance(node, gast.Constant) and node.value == Ellipsis:
-      return True
+  if gast_util.is_ellipsis(node):
+    return True
+
   return False
 
 

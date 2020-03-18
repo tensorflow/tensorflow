@@ -37,8 +37,12 @@ namespace py = pybind11;
 
 PYBIND11_MODULE(_pywrap_file_io, m) {
   m.def("FileExists", [](const std::string& filename) {
-    tensorflow::MaybeRaiseRegisteredFromStatus(
-        tensorflow::Env::Default()->FileExists(filename));
+    tensorflow::Status status;
+    {
+      py::gil_scoped_release release;
+      status = tensorflow::Env::Default()->FileExists(filename);
+    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
   });
   m.def("DeleteFile", [](const std::string& filename) {
     tensorflow::MaybeRaiseRegisteredFromStatus(
@@ -122,6 +126,13 @@ PYBIND11_MODULE(_pywrap_file_io, m) {
 
     tensorflow::MaybeRaiseRegisteredFromStatus(status);
     return true;
+  });
+  m.def("HasAtomicMove", [](const std::string& path) {
+    bool has_atomic_move;
+    const auto status =
+        tensorflow::Env::Default()->HasAtomicMove(path, &has_atomic_move);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+    return has_atomic_move;
   });
 
   py::class_<tensorflow::FileStatistics>(m, "FileStatistics")

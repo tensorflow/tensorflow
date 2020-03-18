@@ -18,13 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -76,11 +77,12 @@ def get_beta_accumulators(opt, dtype):
   return beta_1_power
 
 
-class AdamaxOptimizerTest(test.TestCase):
+class AdamaxOptimizerTest(test.TestCase, parameterized.TestCase):
 
-  def doTestSparse(self, use_resource=False):
+  def testResourceSparse(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         zero_slots = lambda: np.zeros((3), dtype=dtype.as_numpy_dtype)  # pylint: disable=cell-var-from-loop
         m0, v0, m1, v1 = zero_slots(), zero_slots(), zero_slots(), zero_slots()
@@ -124,14 +126,11 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  @test_util.run_deprecated_v1
-  def testResourceSparse(self):
-    self.doTestSparse(use_resource=True)
-
-  @test_util.run_deprecated_v1
   def testSparseDevicePlacement(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for index_dtype in [dtypes.int32, dtypes.int64]:
-      with self.cached_session(force_gpu=test.is_gpu_available()):
+      with ops.Graph().as_default(), self.cached_session(
+          force_gpu=test.is_gpu_available()):
         # If a GPU is available, tests that all optimizer ops can be placed on
         # it (i.e. they have GPU kernels).
         var = variables.Variable([[1.0], [2.0]])
@@ -142,10 +141,10 @@ class AdamaxOptimizerTest(test.TestCase):
         variables.global_variables_initializer().run()
         minimize_op.run()
 
-  @test_util.run_deprecated_v1
   def testSparseRepeatedIndices(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+      with ops.Graph().as_default(), self.cached_session():
         repeated_index_update_var = variables.Variable(
             [[1.0], [2.0]], dtype=dtype)
         aggregated_update_var = variables.Variable(
@@ -173,7 +172,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllClose(aggregated_update_var.eval(),
                               repeated_index_update_var.eval())
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasic(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.session(graph=ops.Graph(), use_gpu=True):
@@ -224,7 +223,7 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(
               var1_np, self.evaluate(var1), rtol=1e-2)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testBasicWithLearningRateDecay(self):
     for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
       with self.session(graph=ops.Graph(), use_gpu=True):
@@ -278,10 +277,10 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1),
                                              rtol=1e-2)
 
-  @test_util.run_deprecated_v1
   def testTensorLearningRate(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
@@ -315,10 +314,10 @@ class AdamaxOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, var0.eval())
           self.assertAllCloseAccordingToType(var1_np, var1.eval())
 
-  @test_util.run_deprecated_v1
   def testSharing(self):
+    # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session(use_gpu=True):
+      with ops.Graph().as_default(), self.cached_session(use_gpu=True):
         # Initialize variables for numpy implementation.
         m0, v0, m1, v1 = 0.0, 0.0, 0.0, 0.0
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)

@@ -14,13 +14,13 @@ Note: The procedures on this page require TensorFlow 1.15 or higher.
 There are several post-training quantization options to choose from. Here is a
 summary table of the choices and the benefits they provide:
 
-| Technique                  | Benefits                  | Hardware            |
-| -------------------------- | ------------------------- | ------------------- |
-| Weight quantization        | 4x smaller, 2-3x speedup, | CPU                 |
-:                            : accuracy                  :                     :
-| Full integer quantization  | 4x smaller, 3x+ speedup   | CPU, Edge TPU, etc. |
-| Float16 quantization       | 2x smaller, potential GPU | CPU/GPU             |
-:                            : acceleration              :                     :
+| Technique                 | Benefits                  | Hardware            |
+| ------------------------- | ------------------------- | ------------------- |
+| Dynamic range             | 4x smaller, 2-3x speedup, | CPU                 |
+: quantization              : accuracy                  :                     :
+| Full integer quantization | 4x smaller, 3x+ speedup   | CPU, Edge TPU, etc. |
+| Float16 quantization      | 2x smaller, potential GPU | CPU/GPU             |
+:                           : acceleration              :                     :
 
 This decision tree can help determine which post-training quantization method is
 best for your use case:
@@ -34,29 +34,29 @@ However, doing so requires some model modifications to add fake quantization
 nodes, whereas the post-training quantization techniques on this page use an
 existing pre-trained model.
 
+### Dynamic range quantization
 
-### Weight quantization
-
-The simplest form of post-training quantization quantizes only the weights from
-floating point to 8-bits of precision (also called "hybrid" quantization). This
-technique is enabled as an option in the [TensorFlow Lite
-converter](../convert/):
+The simplest form of post-training quantization statically quantizes only the
+weights from floating point to 8-bits of precision. This technique is enabled as
+an option in the [TensorFlow Lite converter](../convert/):
 
 ```
 import tensorflow as tf
 converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-converter.optimizations = [tf.lite.Optimize.OPTIMIZE_FOR_SIZE]
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
 tflite_quant_model = converter.convert()
 ```
 
 At inference, weights are converted from 8-bits of precision to floating point and
 computed using floating-point kernels. This conversion is done once and cached to reduce latency.
 
-To further improve latency, hybrid operators dynamically quantize activations to 8-bits and
-perform computations with 8-bit weights and activations. This optimization provides latencies
-close to fully fixed-point inference. However, the outputs are still stored using
-floating point, so that the speedup with hybrid ops is less than a full fixed-point computation.
-Hybrid ops are available for the most compute-intensive operators in a network:
+To further improve latency, "dynamic-range" operators dynamically quantize
+activations based on their range to 8-bits and perform computations with 8-bit
+weights and activations. This optimization provides latencies close to fully
+fixed-point inference. However, the outputs are still stored using floating
+point, so that the speedup with dynamic-range ops is less than a full
+fixed-point computation. Dynamic-range ops are available for the most
+compute-intensive operators in a network:
 
 *  [tf.contrib.layers.fully_connected](https://www.tensorflow.org/api_docs/python/tf/contrib/layers/fully_connected)
 *  [tf.nn.conv2d](https://www.tensorflow.org/api_docs/python/tf/nn/conv2d)

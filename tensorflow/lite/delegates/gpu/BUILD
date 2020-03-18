@@ -8,7 +8,7 @@ package(
 )
 
 exports_files([
-    "gpu_delegate.h",
+    "delegate.h",
     "metal_delegate.h",
 ])
 
@@ -99,6 +99,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "@com_google_absl//absl/types:span",
     ],
@@ -204,6 +205,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
         "@opencl_headers",
+        "@vulkan_headers//:vulkan_headers_no_prototypes",
     ],
 )
 
@@ -240,7 +242,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/delegates/gpu/gl:api2",
         "@com_google_absl//absl/types:span",
     ],

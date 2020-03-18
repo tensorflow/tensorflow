@@ -81,7 +81,9 @@ def set_inter_op_parallelism_threads(num_threads):
 def get_optimizer_jit():
   """Get if JIT compilation is enabled.
 
-  Note that optimizations are only applied in graph mode, (within tf.function).
+  Note that optimizations are only applied to code that is compiled into a
+  graph. In eager mode, which is the TF2 API default, that means only code that
+  is defined under a tf.function decorator.
 
   Returns:
     If JIT compilation is enabled.
@@ -92,6 +94,10 @@ def get_optimizer_jit():
 @tf_export('config.optimizer.set_jit')
 def set_optimizer_jit(enabled):
   """Set if JIT compilation is enabled.
+
+  Note that optimizations are only applied to code that is compiled into a
+  graph. In eager mode, which is the TF2 API default, that means only code that
+  is defined under a tf.function decorator.
 
   Args:
     enabled: Whether to enable JIT compilation.
@@ -620,7 +626,30 @@ def enable_mlir_bridge():
   context.context().enable_mlir_bridge = True
 
 
+@tf_export('config.experimental.enable_mlir_graph_optimization')
+def enable_mlir_graph_optimization():
+  """Enables experimental MLIR-Based TensorFlow Compiler Optimizations.
+
+  DO NOT USE, DEV AND TESTING ONLY AT THE MOMENT.
+
+  NOTE: MLIR-Based TensorFlow Compiler is under active development and has
+  missing features, please refrain from using. This API exists for development
+  and testing only.
+
+  TensorFlow Compiler Optimizations are responsible general graph level
+  optimizations that in the current stack mostly done by Grappler graph
+  optimizers.
+  """
+  context.context().enable_mlir_graph_optimization = True
+
+
 @tf_export('config.experimental.disable_mlir_bridge')
 def disable_mlir_bridge():
   """Disables experimental MLIR-Based TensorFlow Compiler Bridge."""
   context.context().enable_mlir_bridge = False
+
+
+@tf_export('config.experimental.disable_mlir_graph_optimization')
+def disable_mlir_graph_optimization():
+  """Disables experimental MLIR-Based TensorFlow Compiler Optimizations."""
+  context.context().enable_mlir_graph_optimization = False

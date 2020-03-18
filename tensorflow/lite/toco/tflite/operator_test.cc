@@ -416,9 +416,21 @@ TEST_F(OperatorTest, BuiltinMul) {
 TEST_F(OperatorTest, ResizeBilinear) {
   ResizeBilinearOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, ResizeNearestNeighbor) {
@@ -727,6 +739,13 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+TEST_F(OperatorTest, BuiltinSegmentSum) {
+  SegmentSumOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SEGMENT_SUM", OperatorType::kSegmentSum), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, BuiltinReverseSequence) {
   ReverseSequenceOperator op;
   op.seq_dim = 3;
@@ -821,7 +840,31 @@ TEST_F(OperatorTest, VersioningGreaterEqualTest) {
 }
 
 TEST_F(OperatorTest, VersioningSpaceToBatchNDTest) {
-  SimpleVersioningTest<SpaceToBatchNDOperator>();
+  SpaceToBatchNDOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.copy_shape({1, 2, 2, 2});
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.copy_shape({1, 2, 2, 2});
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+
+  Model float_model;
+  Array& float_array = float_model.GetOrCreateArray(op.inputs[0]);
+  float_array.copy_shape({1, 2, 2});
+  float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &op, .model = &float_model};
+  EXPECT_EQ(base_op->GetVersion(float_signature), 3);
 }
 
 TEST_F(OperatorTest, VersioningLogSoftmaxTest) {
@@ -858,7 +901,31 @@ TEST_F(OperatorTest, VersioningUnpackTest) {
 }
 
 TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
-  SimpleVersioningTest<BatchToSpaceNDOperator>();
+  BatchToSpaceNDOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  uint8_array.copy_shape({1, 2, 2, 2});
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  int8_array.copy_shape({1, 2, 2, 2});
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+
+  Model float_model;
+  Array& float_array = float_model.GetOrCreateArray(op.inputs[0]);
+  float_array.copy_shape({1, 2, 2});
+  float_array.data_type = ArrayDataType::kFloat;
+  OperatorSignature float_signature = {.op = &op, .model = &float_model};
+  EXPECT_EQ(base_op->GetVersion(float_signature), 3);
 }
 
 TEST_F(OperatorTest, VersioningTanhTest) {

@@ -25,7 +25,7 @@ import tempfile
 
 from absl.testing import parameterized
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 # OSS TF V2 import placeholder.
 
 from tensorflow.python.framework import test_util
@@ -449,7 +449,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       _, _, _, new_text = self._upgrade(text)
       self.assertEqual("tf.compat.v1." + ns_prefix + v + "(a, b)", new_text)
 
-  def testIntializers(self):
+  def testInitializers(self):
     initializers = [
         "zeros",
         "ones",

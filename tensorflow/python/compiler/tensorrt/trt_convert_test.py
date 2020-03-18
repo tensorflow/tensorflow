@@ -25,7 +25,7 @@ import tempfile
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -500,7 +500,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # Load and verify the converted model.
     #
     # TODO(laigd): the name of the new input_signature of the
-    # `root_with_trt.run` function is empty string (originaly was None),
+    # `root_with_trt.run` function is empty string (originally was None),
     # investigate why.
     root_with_trt = load.load(output_saved_model_dir)
     # TODO(laigd): `root_with_trt.run` is still using the original graph without

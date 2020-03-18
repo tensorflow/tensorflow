@@ -37,6 +37,7 @@ class ReductionDegenerateDimRemoverTest : public GpuCodegenTest {
     DebugOptions debug_options = GpuCodegenTest::GetDebugOptionsForTest();
     debug_options.add_xla_disable_hlo_passes("reduction-layout-normalizer");
     debug_options.add_xla_disable_hlo_passes("reduction-dimension-grouper");
+    debug_options.add_xla_disable_hlo_passes("gpu-tree-reduction-rewriter");
     return debug_options;
   }
 };
