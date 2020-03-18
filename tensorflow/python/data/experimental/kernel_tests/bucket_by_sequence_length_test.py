@@ -48,7 +48,7 @@ def _format_record(array, sparse):
     return {
         "values": array,
         "indices": [[i] for i in range(len(array))],
-        "dense_shape": [len(array),]
+        "dense_shape": (len(array),)
     }
   return array
 
@@ -402,16 +402,13 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
     bucket_size = 10
 
     def _build_dataset():
-      input_data = [list(range(i + 1)) for i in range(min_len, max_len)]
-
+      input_data = [range(i+1) for i in range(min_len, max_len)]
       def generator_fn():
         for record in input_data:
           yield _format_record(record, sparse=True)
-
       dataset = dataset_ops.Dataset.from_generator(
           generator=generator_fn,
           output_types=_get_record_type(sparse=True))
-
       dataset = dataset.map(_to_sparse_tensor)
       return dataset
 
