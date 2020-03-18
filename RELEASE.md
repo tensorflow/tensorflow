@@ -36,7 +36,7 @@
 ## Known Caveats
 * MacOS binaries are **not available** on pypi at tensorflow-cpu project, but they are identical to the binaries in [tensorflow project](https://pypi.org/project/tensorflow/2.2.0rc0/#files), since MacOS has no GPU.
 * Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
-* The current TensorFlow release **requires** gast dependency version to be updated to >=0.3.3.
+* The current TensorFlow release now **requires** gast version 0.3.3. 
 
 ## Bug Fixes and Other Changes
 * `tf.data`:
