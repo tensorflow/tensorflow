@@ -811,7 +811,7 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor true_branch:0 in true_fn is accessed from false_fn."):
+        "Tensor cond/true_branch:0 in true_fn is accessed from false_fn."):
       f()
 
   def testSwitchCaseAccessBranch1TensorInBranch4Raises(self):
@@ -838,7 +838,8 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     with self.assertRaisesRegexp(
         ValueError,
-        "Tensor br1_identity:0 in branch 1 is accessed from branch 4."):
+        "Tensor switch_case/indexed_case/br1_identity:0 in branch 1 is "
+        "accessed from branch 4."):
       f()
 
   def testCondListOutput(self):
