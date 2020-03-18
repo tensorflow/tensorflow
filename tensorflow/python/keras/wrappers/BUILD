@@ -28,7 +28,7 @@ py_library(
 
 tf_py_test(
     name = "scikit_learn_test",
-    size = "small",
+    size = "medium",
     srcs = ["scikit_learn_test.py"],
     python_version = "PY3",
     tags = ["notsan"],
