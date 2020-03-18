@@ -254,7 +254,7 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
   const DatasetBase* const selector_input_;
   const std::vector<DatasetBase*> data_inputs_;
   std::vector<PartialTensorShape> output_shapes_;
-};  // namespace experimental
+};
 
 DirectedInterleaveDatasetOp::DirectedInterleaveDatasetOp(
     OpKernelConstruction* ctx)
