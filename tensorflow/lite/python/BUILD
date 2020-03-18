@@ -163,6 +163,23 @@ py_test(
     ],
     deps = [
         ":lite",
+        ":lite_v2_test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "lite_v2_test_util",
+    testonly = 1,
+    srcs = ["lite_v2_test_util.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "@six_archive//:six",
