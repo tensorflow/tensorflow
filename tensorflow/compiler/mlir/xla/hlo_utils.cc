@@ -30,12 +30,12 @@ using mlir::AffineMap;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
 using mlir::ShapedType;
-using xla::Literal;
+using xla::LiteralBase;
 using xla::StatusOr;
 
 template <typename CppType>
-::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(const ShapedType& type,
-                                                     const Literal& literal) {
+::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
+    const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
@@ -78,7 +78,7 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, Builder builder) {
+    const LiteralBase& literal, Builder builder) {
   TF_ASSIGN_OR_RETURN(auto type,
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
                           literal.shape(), builder));
