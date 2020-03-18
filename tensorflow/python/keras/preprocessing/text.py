@@ -55,7 +55,7 @@ def text_to_word_sequence(text,
       text, filters=filters, lower=lower, split=split)
 
 
-@keras_export('tf.keras.preprocessing.text.one_hot')
+@keras_export('keras.preprocessing.text.one_hot')
 def one_hot(text, n,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
             lower=True,
