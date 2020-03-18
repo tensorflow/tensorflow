@@ -1,5 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
-load("//tensorflow/lite:build_def.bzl", "tflite_cc_shared_object", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "if_tflite_experimental_runtime", "tflite_cc_shared_object", "tflite_copts", "tflite_experimental_runtime_linkopts")
 load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -261,6 +261,11 @@ cc_library(
     ],
     hdrs = FRAMEWORK_LIB_HDRS,
     copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    defines = if_tflite_experimental_runtime(
+        if_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_EAGER"],
+        if_non_eager = ["TFLITE_EXPERIMENTAL_RUNTIME_NON_EAGER"],
+        if_none = [],
+    ),
     deps = [
         ":framework_lib",
         ":allocation",
@@ -285,7 +290,7 @@ cc_library(
             "//tensorflow/lite/profiling:platform_profiler",
         ],
         "//conditions:default": [],
-    }),
+    }) + tflite_experimental_runtime_linkopts(),
     alwayslink = 1,
 )
 
