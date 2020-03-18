@@ -431,10 +431,11 @@ struct DirectColMajorAccess {
       data = Side == Lhs ? data : data + vert_offset + horiz_offset * stride;  \
                                                                                \
       const bool is_no_op_packing = stride == rows;                            \
-      const StorageIndex adressable_mem = (stride * cols * sizeof(Scalar));    \
+      const StorageIndex addressable_mem = (stride * cols * sizeof(Scalar));   \
       const bool use_direct_access =                                           \
           is_no_op_packing || num_kernels == 1 /* used once */ ||              \
-          ((num_kernels == 2) && (adressable_mem < (256 << 10) /* 256 kb */)); \
+          ((num_kernels == 2) &&                                               \
+           (addressable_mem < (256 << 10) /* 256 kb */));                      \
                                                                                \
       if (use_direct_access) {                                                 \
         block->is_direct_access = true;                                        \
@@ -691,7 +692,7 @@ struct GemmKernelProvider<Eigen::QInt32, Eigen::QInt8, Eigen::QUInt8,
         /* the output mapper manually.                                      */ \
         /* WARNING(ezhulenev): This is optimized into a memset in a loop,   */ \
         /* could be much slower for small matrices. Currently this code     */ \
-        /* path used only for testing, and perormance does not matter.      */ \
+        /* path used only for testing, and performance does not matter.     */ \
         if (beta == 0.0) {                                                     \
           for (StorageIndex col = 0; col < cols; ++col) {                      \
             ResScalar* output_base = &output_mapper(0, col);                   \

@@ -21,6 +21,7 @@ extern "C" {
 void hexagon_nn_global_teardown(void);
 void hexagon_nn_global_init(void);
 bool hexagon_nn_is_device_supported();
+int hexagon_nn_hexagon_interface_version(void);
 #ifdef __cplusplus
 }
 #endif

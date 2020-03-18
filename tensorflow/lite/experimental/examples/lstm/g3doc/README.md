@@ -154,7 +154,7 @@ class MnistLstmModel(object):
     """Build the model using the given configs.
 
     Returns:
-      x: The input placehoder tensor.
+      x: The input placeholder tensor.
       logits: The logits of the output.
       output_class: The prediction.
     """

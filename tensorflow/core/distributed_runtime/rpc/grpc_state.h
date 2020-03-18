@@ -123,7 +123,9 @@ class RPCState : public GrpcClientCQTag {
     if (s.ok() && !ok) {
       // Since this function is only being used for processing the response
       // to Finish for client-side unary calls, ok should never be false
-      s.Update(errors::Internal("unexpected ok value at rpc completion"));
+      s.Update(
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen."));
     }
 
     if (s.ok()) {
@@ -219,7 +221,7 @@ class UntypedStreamingRPCState : public core::RefCounted {
     enum class TagType {
       kCallStarted,
       kRequestWriteCompleted,
-      kResponseReadCommpleted,
+      kResponseReadCompleted,
       kCallFinished,
     };
 
@@ -335,7 +337,7 @@ class ExchangeQueue {
 
   // Changes the state of the exchange that is current in kRequestWriteIssued
   // state to kRequestWriteCompleted state.
-  // REQUIRES: There is an exhange in kRequestWriteIssued state.
+  // REQUIRES: There is an exchange in kRequestWriteIssued state.
   void MarkRequestWriteCompleted();
 
   // Returns the exchange at the front of the queue.
@@ -453,8 +455,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     if (!ok) {
       // unlocks mu_
       MarkDoneAndCompleteExchanges(errors::Internal(
-          "Unexpected ok value at streaming rpc writing. ",
-          "Probably because the completion queue has been shut ",
+          "Not ok value returned by CompletionQueue when attempting streaming "
+          "rpc write. Probably because the completion queue has been shut "
           "down or the connection went down. ",
           context_->debug_error_string()));
       return;
@@ -511,7 +513,8 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     Status s = FromGrpcStatus(call_status_);
     if (s.ok() && !ok) {
       s.Update(
-          errors::Internal("unexpected ok value at streaming rpc completion. ",
+          errors::Internal("GRPC status is okay but CompletionQueueStatus is "
+                           "not.  This should never happen.",
                            context_->debug_error_string()));
     }
     // unlocks mu_
@@ -530,10 +533,10 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     kDone,
   };
 
-  void MarkDoneAndCompleteExchanges(Status status) EXCLUSIVE_LOCKS_REQUIRED(mu_)
-      UNLOCK_FUNCTION(mu_) {
+  void MarkDoneAndCompleteExchanges(Status status)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) TF_UNLOCK_FUNCTION(mu_) {
     call_state_ = State::kDone;
-    VLOG(2) << "Ending gRPC stremaing call on the client side due to "
+    VLOG(2) << "Ending gRPC streaming call on the client side due to "
             << status.ToString();
     // Swap the exchanges_ into a temporary ExchangeQueue so that we can
     // complete all exchanges without holding mu_ in case user callback
@@ -545,7 +548,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     queue.CompleteAll(status);
   }
 
-  void MaybeIssueRequestWriteLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void MaybeIssueRequestWriteLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Exchange* exchange = exchanges_.GetReadyForRequestWriting();
     if (exchange == nullptr) {
       // There are no queued exchanges, there is already an outstanding write,
@@ -558,7 +561,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     call_->Write(exchange->request_buf(), &request_write_completed_tag_);
   }
 
-  void MaybeIssueResponseReadLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void MaybeIssueResponseReadLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Exchange* exchange = exchanges_.GetReadyForResponseReading();
     if (exchange == nullptr) {
       return;
@@ -569,7 +572,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
     call_->Read(exchange->response_buf(), &response_read_completed_tag_);
   }
 
-  void IssueCallFinishLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void IssueCallFinishLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     call_state_ = State::kFinishing;
     Ref();
     VLOG(3) << "StreamingRPCState(" << this << ") calling grpc::Finish";
@@ -590,9 +593,9 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   std::unique_ptr<grpc::GenericClientAsyncReaderWriter> call_;
 
   mutable mutex mu_;
-  ExchangeQueue exchanges_ GUARDED_BY(mu_);
-  State call_state_ GUARDED_BY(mu_);
-  ::grpc::Status call_status_ GUARDED_BY(mu_);
+  ExchangeQueue exchanges_ TF_GUARDED_BY(mu_);
+  State call_state_ TF_GUARDED_BY(mu_);
+  ::grpc::Status call_status_ TF_GUARDED_BY(mu_);
 
   // We can get away with having single instances of these tags per
   // StreamingRPCState because we make sure (as gRPC requires) that
@@ -601,7 +604,7 @@ class StreamingRPCState : public UntypedStreamingRPCState {
   // Tags are immutable. No need to guard them.
   Tag call_started_tag_{this, Tag::TagType::kCallStarted};
   Tag request_write_completed_tag_{this, Tag::TagType::kRequestWriteCompleted};
-  Tag response_read_completed_tag_{this, Tag::TagType::kResponseReadCommpleted};
+  Tag response_read_completed_tag_{this, Tag::TagType::kResponseReadCompleted};
   Tag finished_tag_{this, Tag::TagType::kCallFinished};
 };
 
@@ -666,7 +669,7 @@ class StreamingRPCDispatcher {
   }
 
  private:
-  void CreateStreamingState() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void CreateStreamingState() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // ClientContext cannot be reused across calls.
     context_ = std::make_shared<::grpc::ClientContext>();
     // Don't immediately fail StartCall if the channel is not ready. Wait for
@@ -688,8 +691,8 @@ class StreamingRPCDispatcher {
   // Does not need synchronization since it is constant.
   const ::grpc::string method_;
 
-  std::shared_ptr<::grpc::ClientContext> context_ GUARDED_BY(mu_);
-  core::RefCountPtr<StreamingRPCState<Response>> state_ GUARDED_BY(mu_);
+  std::shared_ptr<::grpc::ClientContext> context_ TF_GUARDED_BY(mu_);
+  core::RefCountPtr<StreamingRPCState<Response>> state_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

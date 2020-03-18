@@ -57,7 +57,7 @@ limitations under the License.
 //
 // These are mostly sub-selections of architectures.
 
-// Detect NEON. Explictly avoid emulation, or anything like it, on x86.
+// Detect NEON. Explicitly avoid emulation, or anything like it, on x86.
 #if (defined(__ARM_NEON) || defined(__ARM_NEON__)) && !RUY_PLATFORM(X86)
 #define RUY_DONOTUSEDIRECTLY_NEON 1
 #else

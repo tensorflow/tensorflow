@@ -18,33 +18,34 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TestIsSymbolicTensor(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
 
   def test_default_behavior(self):
     if context.executing_eagerly():
       self.assertFalse(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          ops.convert_to_tensor(0.)))
+      self.assertFalse(
+          tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
       self.assertFalse(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
     else:
       self.assertTrue(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          ops.convert_to_tensor(0.)))
+      self.assertTrue(tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
       self.assertTrue(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
@@ -54,7 +55,7 @@ class TestIsSymbolicTensor(test.TestCase):
     class CustomClass(object):
 
       def value(self):
-        return ops.convert_to_tensor(42.)
+        return ops.convert_to_tensor_v2(42.)
 
     ops.register_tensor_conversion_function(
         CustomClass, lambda value, **_: value.value())
@@ -64,8 +65,8 @@ class TestIsSymbolicTensor(test.TestCase):
     if context.executing_eagerly():
       self.assertFalse(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertFalse(tf_utils.is_symbolic_tensor(
-          ops.convert_to_tensor(0.)))
+      self.assertFalse(
+          tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
       self.assertFalse(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
@@ -73,21 +74,22 @@ class TestIsSymbolicTensor(test.TestCase):
     else:
       self.assertTrue(tf_utils.is_symbolic_tensor(
           variables.Variable(name='blah', initial_value=0.)))
-      self.assertTrue(tf_utils.is_symbolic_tensor(
-          ops.convert_to_tensor(0.)))
+      self.assertTrue(tf_utils.is_symbolic_tensor(ops.convert_to_tensor_v2(0.)))
       self.assertTrue(tf_utils.is_symbolic_tensor(
           sparse_tensor.SparseTensor(
               indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4])))
       self.assertTrue(tf_utils.is_symbolic_tensor(CustomClass()))
 
   def test_enables_nontensor_plumbing(self):
+    if context.executing_eagerly():
+      self.skipTest('`compile` functionality changed.')
     # Setup.
 
     class Foo(object):
 
       def __init__(self, input_):
         self._input = input_
-        self.value = ops.convert_to_tensor([[42.]])
+        self.value = ops.convert_to_tensor_v2([[42.]])
 
       @property
       def dtype(self):
@@ -102,7 +104,7 @@ class TestIsSymbolicTensor(test.TestCase):
       def __init__(self, fn, **kwargs):
         def _fn(*fargs, **fkwargs):
           d = fn(*fargs, **fkwargs)
-          x = ops.convert_to_tensor(d)
+          x = ops.convert_to_tensor_v2(d)
           d.shape = x.shape
           d.get_shape = x.get_shape
           return d, x
@@ -130,7 +132,7 @@ class TestIsSymbolicTensor(test.TestCase):
     model = keras.Model(model.inputs, model(model.outputs))
     # Now we instantiate the model and verify we have a `Foo` object, not a
     # `Tensor`.
-    y = model(ops.convert_to_tensor([[7.]]))
+    y = model(ops.convert_to_tensor_v2([[7.]]))
     self.assertIsInstance(y, Foo)
     # Confirm that (custom) loss sees `Foo` instance, not Tensor.
     obtained_prediction_box = [None]

@@ -68,6 +68,11 @@ class CalibrationWrapper {
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
                           bool allow_float, const char* operator_output_name);
 
+  // Writes the in-memory calibration results to the model flatbuffer. The
+  // produced model is as same as the original input model, but the min/max
+  // in the quantization field.
+  PyObject* Calibrate();
+
  private:
   // CalibrationWrapper is not copyable or assignable. We avoid the use of
   // CalibrationWrapper() = delete here for SWIG compatibility.

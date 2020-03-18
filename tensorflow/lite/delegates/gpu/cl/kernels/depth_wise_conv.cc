@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 
 namespace tflite {
 namespace gpu {
@@ -75,6 +76,7 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
 std::string GenerateDepthWiseConvolutionCode(
     const OperationDef& op_def, bool stride_correction,
     const LinearStorage& biases, int channel_multiplier,
+    bool weights_are_buffer,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device) {
   TensorCodeGenerator src_tensor(
@@ -92,7 +94,7 @@ std::string GenerateDepthWiseConvolutionCode(
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  if (src_tensor_type == TensorStorageType::BUFFER) {
+  if (weights_are_buffer) {
     c += "    __global FLT4* filters,  \n";
   } else {
     c += "    __read_only image2d_t filters,  \n";
@@ -123,7 +125,7 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "  int x_offseted = X * stride.x + padding.x;\n";
   }
   c += "  int y_offseted = Y * stride.y + padding.y;\n";
-  if (src_tensor_type == TensorStorageType::BUFFER) {
+  if (weights_are_buffer) {
     c += "  int fx_c = Z * kernel_size.x * kernel_size.y;\n";
   } else {
     c += "  int fx_c = 0;\n";
@@ -137,7 +139,7 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "      int x_c = x_offseted + kx * dilation.x;\n";
     c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
     c += "      if (!outside_x && !outside_y) {\n";
-    if (src_tensor_type == TensorStorageType::BUFFER) {
+    if (weights_are_buffer) {
       c += "        FLT4 f = filters[fx_c];\n";
     } else {
       c += "        FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
@@ -156,7 +158,11 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "      int x_c = x_offseted + kx * dilation.x;\n";
     const auto access_mode = GetFastestZeroMode(device);
     c += GetSrcValue(src_tensor, channel_multiplier, access_mode);
-    c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
+    if (weights_are_buffer) {
+      c += "      FLT4 f = filters[fx_c];\n";
+    } else {
+      c += "      FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
+    }
     c += "      fx_c++;\n";
     c += "      r += TO_ACCUM_TYPE(src_final * f);\n";
     c += "    }\n";
@@ -175,8 +181,9 @@ std::string GenerateDepthWiseConvolutionCode(
 
 DepthWiseConvolution::DepthWiseConvolution(
     const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr)
+    const DepthwiseConvolution2DAttributes& attr, bool weights_are_buffer)
     : GPUOperation(definition),
+      weights_are_buffer_(weights_are_buffer),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.strides.w, attr.strides.h),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
@@ -186,6 +193,7 @@ DepthWiseConvolution::DepthWiseConvolution(
 
 DepthWiseConvolution::DepthWiseConvolution(DepthWiseConvolution&& operation)
     : GPUOperation(std::move(operation)),
+      weights_are_buffer_(operation.weights_are_buffer_),
       weights_tex2d_(std::move(operation.weights_tex2d_)),
       weights_buf_(std::move(operation.weights_buf_)),
       weights_(operation.weights_),
@@ -201,6 +209,7 @@ DepthWiseConvolution::DepthWiseConvolution(DepthWiseConvolution&& operation)
 DepthWiseConvolution& DepthWiseConvolution::operator=(
     DepthWiseConvolution&& operation) {
   if (this != &operation) {
+    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
     weights_tex2d_ = std::move(operation.weights_tex2d_);
     weights_buf_ = std::move(operation.weights_buf_);
     std::swap(weights_, operation.weights_);
@@ -218,10 +227,11 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
 }
 
 Status DepthWiseConvolution::Compile(const CreationContext& creation_context) {
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateDepthWiseConvolutionCode(
       definition_, stride_correction, biases_, channel_multiplier_,
-      linked_operations_, *creation_context.device);
+      weights_are_buffer_, linked_operations_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -269,12 +279,13 @@ Status CreateDepthWiseConvolution(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const DepthwiseConvolution2DAttributes& attr,
                                   DepthWiseConvolution* result) {
-  *result = DepthWiseConvolution(definition, attr);
+  bool weights_are_buffer = creation_context.device->IsMali();
+  *result = DepthWiseConvolution(definition, attr, weights_are_buffer);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
   LinearStorageCreateInfo create_info;
-  create_info.storage_type =
-      DeduceLinearStorageType(definition.GetPrimaryStorageType());
+  create_info.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
+                                                : LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition.GetDataType();
   create_info.name = "biases";
   create_info.aligned_size = attr.weights.shape.o * attr.weights.shape.i;

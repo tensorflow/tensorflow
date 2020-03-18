@@ -17,12 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
 
 # Pick a more recent version of xcode
 sudo xcode-select --switch /Applications/Xcode_9.2.app/Contents/Developer

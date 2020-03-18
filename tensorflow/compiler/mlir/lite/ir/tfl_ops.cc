@@ -23,9 +23,10 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Matchers.h"  // TF:llvm-project
@@ -35,10 +36,13 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
+#include "tensorflow/compiler/mlir/lite/ir/tfl_structs.cc.inc"
 namespace TFL {
 
 //===----------------------------------------------------------------------===//
@@ -52,10 +56,29 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   // Analysis Hooks
   //===--------------------------------------------------------------------===//
 
-  bool isLegalToInline(Operation *, Region *,
+  bool isLegalToInline(Operation *op, Region *dest,
                        BlockAndValueMapping &) const final {
     // No TFLite op restricts inlining today, revise as needed in the future.
     return true;
+  }
+  bool isLegalToInline(Region *dest, Region *src,
+                       BlockAndValueMapping &valueMapping) const final {
+    return isa<WhileOp>(dest->getParentOp());
+  }
+};
+
+struct TensorFlowLiteOpFolderDialectInterface
+    : public OpFolderDialectInterface {
+  using OpFolderDialectInterface::OpFolderDialectInterface;
+
+  // Registered hook to check if the given region, which is attached to an
+  // operation that is *not* isolated from above (i.e. no internal regions
+  // reference values defined in an enclosing region), should be used when
+  // materializing constants.
+  // In the TFLite dialect we materialize inside a while regions as slightly
+  // more efficient computationally.
+  bool shouldMaterializeInto(Region *region) const final {
+    return isa<WhileOp>(region->getParentOp());
   }
 };
 
@@ -65,7 +88,8 @@ TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
-  addInterfaces<TensorFlowLiteInlinerInterface>();
+  addInterfaces<TensorFlowLiteInlinerInterface,
+                TensorFlowLiteOpFolderDialectInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -268,7 +292,7 @@ Attribute ConstFoldBinaryOp(
     return ConstFoldBinaryOp<FloatAttr>(result_type, operands[0], operands[1],
                                         float_calculate, is_commutative);
 
-  if (elemType.isa<IntegerType>())
+  if (elemType.isSignlessInteger())
     return ConstFoldBinaryOp<IntegerAttr>(result_type, operands[0], operands[1],
                                           int_calculate, is_commutative);
 
@@ -716,12 +740,11 @@ static LogicalResult Verify(PackOp op) {
   }
 
   // Make sure all inputs have the same shape and element type.
-  // TODO(rahulsp): Simplify once b/135032064 is fixed.
-  for (Value operand : op.getOperands()) {
-    auto other_type = operand.getType().cast<ShapedType>();
-    if (input_type != other_type)
+  // TODO(b/135032063): Simplify once fixed.
+  for (Type operand_type : op.getOperandTypes()) {
+    if (failed(mlir::verifyCompatibleShape(input_type, operand_type)))
       return op.emitOpError("operands should be of the same type. got ")
-             << input_type << ", " << other_type;
+             << input_type << ", " << operand_type;
   }
 
   return success();
@@ -781,10 +804,10 @@ struct RemoveAdjacentReshape : public RewritePattern {
   RemoveAdjacentReshape(MLIRContext *context)
       : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     auto thisOp = cast<ReshapeOp>(op);
     auto prevOp = thisOp.getOperand(0).getDefiningOp();
-    return isa_and_nonnull<ReshapeOp>(prevOp) ? matchSuccess() : matchFailure();
+    return isa_and_nonnull<ReshapeOp>(prevOp) ? success() : failure();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -797,8 +820,7 @@ struct RemoveAdjacentReshape : public RewritePattern {
     // With
     //   %2 = "tfl.reshape"(%0, %shape1)
     rewriter.replaceOpWithNewOp<ReshapeOp>(
-        {prevOp.getResult()}, op, thisOp.getType(), prevOp.getOperand(0),
-        thisOp.getOperand(1));
+        op, thisOp.getType(), prevOp.getOperand(0), thisOp.getOperand(1));
   }
 };
 
@@ -862,28 +884,27 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
   explicit RemoveRedundantUnpackPack(MLIRContext *context)
       : RewritePattern(PackOp::getOperationName(), 2, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     TFL::PackOp pack_op = cast<TFL::PackOp>(op);
     Operation *first_input = pack_op.getOperand(0).getDefiningOp();
-    if (!first_input) return matchFailure();
+    if (!first_input) return failure();
     auto input_unpack_op = dyn_cast_or_null<TFL::UnpackOp>(first_input);
-    if (!input_unpack_op) return matchFailure();
+    if (!input_unpack_op) return failure();
 
     // The unpack & pack should have the same axis & num inputs/outputs.
     if (pack_op.axis() != input_unpack_op.axis() ||
         pack_op.values_count() != input_unpack_op.num())
-      return matchFailure();
+      return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults())
-      return matchFailure();
+    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
       Value unpack_output = std::get<1>(input_output);
       // Make sure the ordering is the same for the pack op & unpack op.
-      if (pack_input != unpack_output) return matchFailure();
+      if (pack_input != unpack_output) return failure();
     }
 
     // Replace the pack's output to the unpack's input.
@@ -891,7 +912,7 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
     // At this point, we don't manually remove the redundant pack op & unpack op
     // (we cannot actually), but trust the PatterRewriter to garbage collect
     // these two ops.
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1028,17 +1049,17 @@ struct DropFakeQuant : public RewritePattern {
   explicit DropFakeQuant(MLIRContext *context)
       : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     // We only match the op with valid "minmax" attribute.
-    if (!HasValidMinMaxAttribute(op)) return matchFailure();
+    if (!HasValidMinMaxAttribute(op)) return failure();
 
     // If all the users of this op have valid "minmax" attributes, it is matched
     // and can be removed.
     auto fakeQuantOp = cast<FakeQuantOp>(op);
     for (auto *operand : fakeQuantOp.getResult().getUsers())
-      if (!HasValidMinMaxAttribute(operand)) return matchFailure();
+      if (!HasValidMinMaxAttribute(operand)) return failure();
 
-    return matchSuccess();
+    return success();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -1102,10 +1123,10 @@ static LogicalResult VerifySplitOpOutputTypes(
   for (int64_t i = 0; i < num_splits; ++i) {
     auto expected_output_type = get_expected_output_type(i);
     Value output = op->getResult(i);
-    auto output_type = output.getType().dyn_cast<RankedTensorType>();
-    if (!output_type || output_type != expected_output_type)
+    if (failed(verifyCompatibleShape(output.getType(), expected_output_type)))
       return op->emitOpError()
-             << "output #" << i << " should be " << expected_output_type;
+             << "output #" << i << " should be " << expected_output_type
+             << " instead got " << output.getType();
   }
   return success();
 }
@@ -1265,6 +1286,20 @@ static LogicalResult Verify(UnidirectionalSequenceLSTMOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BidirectionalSequenceLSTMOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(BidirectionalSequenceLSTMOp op) {
+  auto operands = op.GetStatefulOperands();
+  if (operands.size() == 4 && operands[0] == 35 && operands[1] == 36 &&
+      operands[2] == 37 && operands[3] == 38) {
+    return success();
+  }
+  return op.emitError(
+      "BidirectionalSequenceLSTMOp expected to have four stateful operands");
+}
+
+//===----------------------------------------------------------------------===//
 // UnidirectionalSequenceRNNOp
 //===----------------------------------------------------------------------===//
 
@@ -1299,6 +1334,19 @@ OpFoldResult AbsOp::fold(ArrayRef<Attribute> operands) {
   if (!IsF32ShapedType(result_type)) return nullptr;
 
   auto compute = [](APFloat value) -> APFloat { return llvm::abs(value); };
+  return ConstFoldUnaryOp(result_type, operands[0], compute);
+}
+
+//===----------------------------------------------------------------------===//
+// NegOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult NegOp::fold(ArrayRef<Attribute> operands) {
+  Type result_type = getType();
+  // Only constant fold for tensor of f32 is implemented.
+  if (!IsF32ShapedType(result_type)) return nullptr;
+
+  auto compute = [](APFloat value) -> APFloat { return llvm::neg(value); };
   return ConstFoldUnaryOp(result_type, operands[0], compute);
 }
 
@@ -1542,7 +1590,7 @@ OpFoldResult RangeOp::fold(ArrayRef<Attribute> operands) {
            limit_tensor.getType().getRank() == 0 &&
            delta_tensor.getType().getRank() == 0);
     Type elem_type = getType().cast<ShapedType>().getElementType();
-    if (elem_type.isa<IntegerType>()) {
+    if (elem_type.isSignlessInteger()) {
       auto start_attr = start_tensor.getValue<IntegerAttr>({});
       auto limit_attr = limit_tensor.getValue<IntegerAttr>({});
       auto delta_attr = delta_tensor.getValue<IntegerAttr>({});
@@ -1644,7 +1692,7 @@ OpFoldResult TransposeOp::fold(ArrayRef<Attribute> operands) {
 
   // Do not try to fold elements attr of a quant type because
   // DenseElementsAttr does not support it.
-  if (!getType().cast<ShapedType>().getElementType().isIntOrFloat())
+  if (!getType().cast<ShapedType>().getElementType().isSignlessIntOrFloat())
     return nullptr;
 
   assert(perm_tensor.getType().getRank() == 1);
@@ -1724,6 +1772,128 @@ static LogicalResult Verify(TransposeOp op) {
   return success();
 }
 
+LogicalResult Verify(WhileOp op) {
+  if (op.getNumOperands() != op.getNumResults())
+    return op.emitOpError(llvm::formatv(
+        "number of operands does not match number of results ({0} != {1})",
+        op.getNumOperands(), op.getNumResults()));
+  // TODO(jpienaar): Verify operand, result & block arguments types
+  return success();
+}
+
+namespace {
+// Canonicalize While op so that results and operands match and external values
+// are via implicit capture rather than via block args.
+struct WhileResultOperandsMatchAndImplicitCapture
+    : public OpRewritePattern<WhileOp> {
+  using OpRewritePattern<WhileOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(WhileOp while_op,
+                                PatternRewriter &rewriter) const override {
+    // Replace values simply passed through the body with extern values. The
+    // block arguments of body and while match and so the corresponding cond
+    // argument can be easily found.
+    bool unchanged = true;
+    auto &body_block = while_op.body().front();
+    auto &cond_block = while_op.cond().front();
+    auto &yield = *body_block.getTerminator();
+    for (auto ba : body_block.getArguments()) {
+      if (ba == yield.getOperand(ba.getArgNumber())) {
+        unchanged = false;
+        auto value = while_op.getOperand(ba.getArgNumber());
+        ba.replaceAllUsesWith(value);
+        cond_block.getArgument(ba.getArgNumber()).replaceAllUsesWith(value);
+      }
+    }
+
+    // The While ops operands and result types need to match
+    SmallVector<Value, 4> new_operands;
+    SmallVector<Value, 4> new_body_yield;
+    SmallVector<bool, 4> const_operand(while_op.getNumOperands(), false);
+    llvm::SmallVector<Type, 4> types;
+    new_operands.reserve(while_op.getNumOperands());
+    new_body_yield.reserve(while_op.getNumOperands());
+    types.reserve(while_op.getNumOperands());
+
+    // Remove block arguments not used in either cond or body. This leaves the
+    // block arguments of body and cond matching still.
+    int arg_index = 0;
+    for (int while_index = 0, e = while_op.getNumOperands(); while_index < e;
+         ++while_index) {
+      auto value = while_op.getOperand(while_index);
+      if (body_block.getArgument(arg_index).use_empty() &&
+          cond_block.getArgument(arg_index).use_empty() &&
+          // This could be relaxed and casts inserted.
+          while_op.getResult(while_index).getType() == value.getType()) {
+        unchanged = false;
+        body_block.eraseArgument(arg_index);
+        cond_block.eraseArgument(arg_index);
+
+        // Mark operand as constant and replace all uses with input to while.
+        while_op.getResult(while_index).replaceAllUsesWith(value);
+        const_operand[while_index] = true;
+      } else {
+        new_operands.push_back(value);
+        new_body_yield.push_back(yield.getOperand(while_index));
+        auto type = while_op.getResult(while_index).getType();
+        types.push_back(type);
+        ++arg_index;
+      }
+    }
+
+    // Done if no values removed from blocks and operands & results match.
+    if (unchanged) return failure();
+
+    // Replace with new While with matching operands and results.
+    Operation *op = while_op.getOperation();
+    Operation *new_op = rewriter.insert(
+        Operation::create(op->getLoc(), op->getName(), types, new_operands,
+                          op->getAttrs(), {}, /*numRegions=*/2,
+                          /*resizableOperandList=*/true));
+
+    for (int i = 0; i < 2; ++i) new_op->getRegion(i).takeBody(op->getRegion(i));
+    int new_index = 0;
+    for (int op_index = 0, e = op->getNumResults(); op_index < e; ++op_index) {
+      if (const_operand[op_index]) continue;
+      op->getResult(op_index).replaceAllUsesWith(new_op->getResult(new_index));
+      ++new_index;
+    }
+    rewriter.eraseOp(op);
+
+    Block &new_body_block = cast<WhileOp>(new_op).body().front();
+    rewriter.setInsertionPointToEnd(&new_body_block);
+    rewriter.replaceOpWithNewOp<YieldOp>(new_body_block.getTerminator(),
+                                         new_body_yield);
+
+    return success();
+  }
+};
+
+}  // namespace
+
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<WhileResultOperandsMatchAndImplicitCapture>(context);
+}
+
+Region &WhileOp::getLoopBody() { return body(); }
+
+bool WhileOp::isDefinedOutsideOfLoop(Value value) {
+  // TODO(jpienaar): This is to overly conservative and disables anything other
+  // than constant hoisting initially.
+  return false;
+}
+
+LogicalResult WhileOp::moveOutOfLoop(llvm::ArrayRef<mlir::Operation *> ops) {
+  if (ops.empty()) return success();
+
+  // Move the hoisted value to just before the while.
+  Operation *while_op = this->getOperation();
+  for (auto op : ops) op->moveBefore(while_op);
+
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // TableGen'd op method definitions
 //===----------------------------------------------------------------------===//
@@ -1731,6 +1901,7 @@ static LogicalResult Verify(TransposeOp op) {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.cc.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
+#include "tensorflow/compiler/mlir/lite/runtime_verifiers.inc"
 
 Operation *TensorFlowLiteDialect::materializeConstant(OpBuilder &builder,
                                                       Attribute value,

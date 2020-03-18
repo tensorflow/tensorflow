@@ -48,9 +48,10 @@ def load_data(path='boston_housing.npz', test_split=0.2, seed=113):
   Returns:
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
 
-      x_train, x_test: numpy arrays with shape (num_samples, 13) containing
+      **x_train, x_test**: numpy arrays with shape (num_samples, 13) containing
         either the training samples (for x_train), or test samples (for y_train)
-      y_train, y_test: numpy arrays of shape (num_samples, ) containing the
+
+      **y_train, y_test**: numpy arrays of shape (num_samples, ) containing the
         target scalars. The targets are float scalars typically between 10 and
         50 that represent the home prices in k$.
   """

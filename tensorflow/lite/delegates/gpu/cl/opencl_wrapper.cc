@@ -171,6 +171,11 @@ void LoadOpenCLFunctions(void* libopencl, bool is_pixel) {
 
   // cl_khr_egl_event extension
   LoadFunction(clCreateEventFromEGLSyncKHR);
+
+  // EGL sharing
+  LoadFunction(clCreateFromEGLImageKHR);
+  LoadFunction(clEnqueueAcquireEGLObjectsKHR);
+  LoadFunction(clEnqueueReleaseEGLObjectsKHR);
 }
 
 // No OpenCL support, do not set function addresses
@@ -277,12 +282,19 @@ PFN_clCreateCommandQueue clCreateCommandQueue;
 PFN_clCreateSampler clCreateSampler;
 PFN_clEnqueueTask clEnqueueTask;
 
+// OpenGL sharing
 PFN_clCreateFromGLBuffer clCreateFromGLBuffer;
 PFN_clCreateFromGLTexture clCreateFromGLTexture;
 PFN_clEnqueueAcquireGLObjects clEnqueueAcquireGLObjects;
 PFN_clEnqueueReleaseGLObjects clEnqueueReleaseGLObjects;
 
+// cl_khr_egl_event extension
 PFN_clCreateEventFromEGLSyncKHR clCreateEventFromEGLSyncKHR;
+
+// EGL sharing
+PFN_clCreateFromEGLImageKHR clCreateFromEGLImageKHR;
+PFN_clEnqueueAcquireEGLObjectsKHR clEnqueueAcquireEGLObjectsKHR;
+PFN_clEnqueueReleaseEGLObjectsKHR clEnqueueReleaseEGLObjectsKHR;
 
 cl_mem CreateImage2DLegacy(cl_context context, cl_mem_flags flags,
                            const cl_image_format* image_format,

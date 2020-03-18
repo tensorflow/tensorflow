@@ -187,8 +187,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context, EvalAddQuantized(context, node, params, &data,
                                                 input1, input2, output));
   } else {
-    context->ReportError(context,
-                         "Inputs and outputs not all float|uint8|int8 types.");
+    TF_LITE_KERNEL_LOG(context,
+                       "Inputs and outputs not all float|uint8|int8 types.");
     return kTfLiteError;
   }
 
@@ -198,7 +198,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace add
 
 TfLiteRegistration* Register_ADD() {
-  static TfLiteRegistration r = {add::Init, add::Free, add::Prepare, add::Eval};
+  static TfLiteRegistration r = {};
+  r.init = add::Init;
+  r.free = add::Free;
+  r.prepare = add::Prepare;
+  r.invoke = add::Eval;
   return &r;
 }
 

@@ -100,7 +100,8 @@ void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
   Region* launch_op_region = &launch_op.body();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
     Value from = std::get<0>(p);
-    for (auto& use : from.getUses()) {
+    // TODO(jingpu): move this to RegionUtils.h in MLIR core.
+    for (auto& use : llvm::make_early_inc_range(from.getUses())) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
         continue;
       use.set(std::get<1>(p));

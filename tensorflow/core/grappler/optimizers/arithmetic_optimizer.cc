@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
@@ -1044,7 +1045,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       // short tree, pushing to the front will create a tall tree. We prefer to
       // get a wide tree, it minimizes the potential number of temporary tensors
       // required to keep in memory, though sometimes we can go up to prevent
-      // propagating a brodcast from leaves to the root. Example:
+      // propagating a broadcast from leaves to the root. Example:
       //
       // inputs: [s, s, s, M] (s - scalar, M - matrix)
       // @* - op with broadcast
@@ -1466,7 +1467,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       }
       if (NumControlOutputs(*node, *ctx().node_map) > 0) {
         // TODO(ezhulenev): Unary ops after Split might have a control path to
-        // the Split node, and we currently do not propertly handle cycles.
+        // the Split node, and we currently do not properly handle cycles.
         return false;
       }
       return num_split > 1 && !IsAlreadyOptimized(*node);
@@ -1509,7 +1510,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     // Follow the chains starting at each concat input or split output as long
     // as all the following conditions hold:
     //   1. The ops in all chains are the same.
-    //   2. The ops are unary elemenwise op.
+    //   2. The ops are unary elementwise op.
     //   3. The op output has only a single consumer (concat only).
     ChainLinkSet cur_tails;
     TF_RETURN_IF_ERROR(InitializeChains(root_node, &cur_tails));
@@ -3095,6 +3096,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 //    x = stack((a_0, a_1, ..., a_{n-1}), axis=k)[:,...,i:i+1,...]
 // with
 //    expand_dims(a_i, axis=k)
+// where the slice operator can be StridedSlice or Slice.
 //
 // TODO(ebrevdo): Extend to also replace operations of the form
 //    concat((a_0, a_1, ..., ), axis=k)[:, ..., s_i:s_{i+1}, ...]
@@ -3103,17 +3105,16 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
 // when
 //    s_i = cumsum(shape(a)[k] for a in (a_0, ...,))[i]
 // and slicing is in the k'th axis.
-class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
+class RemoveStackSliceSameAxis : public ArithmeticOptimizerStage {
  public:
-  explicit RemoveStackStridedSliceSameAxis(
-      const GraphOptimizerContext& ctx,
-      const ArithmeticOptimizerContext& ctx_ext)
+  explicit RemoveStackSliceSameAxis(const GraphOptimizerContext& ctx,
+                                    const ArithmeticOptimizerContext& ctx_ext)
       : ArithmeticOptimizerStage("RemoveStackStridedSliceSameAxis", ctx,
                                  ctx_ext) {}
-  ~RemoveStackStridedSliceSameAxis() override = default;
+  ~RemoveStackSliceSameAxis() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsStridedSlice(*node);
+    return IsStridedSlice(*node) || IsSlice(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3131,14 +3132,16 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
         CheckInputs(node, pack, &pack_output_shape, &pack_axis, &return_early));
     if (return_early) return Status::OK();
 
-    int slice_start_value;
+    int64 slice_start_value;
     bool found;
+    bool must_expand_dims;
     TF_RETURN_IF_ERROR(GetSliceAxis(node, pack, pack_output_shape, pack_axis,
-                                    &slice_start_value, &found));
+                                    &slice_start_value, &found,
+                                    &must_expand_dims));
     if (!found) return Status::OK();
 
     return RewriteGraph(node, pack, slice_start_value, pack_axis,
-                        simplified_node_name);
+                        must_expand_dims, simplified_node_name);
   }
 
  protected:
@@ -3171,8 +3174,113 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
 
   Status GetSliceAxis(const NodeDef* node, const NodeDef* pack,
                       const PartialTensorShape& pack_output_shape,
-                      int pack_axis, int* slice_start_value, bool* found) {
+                      int pack_axis, int64* slice_start_value, bool* found,
+                      bool* must_expand_dims) {
     *found = false;
+    if (IsSlice(*node)) {
+      *must_expand_dims = true;
+      return GetSimpleSliceAxis(node, pack, pack_output_shape, pack_axis,
+                                slice_start_value, found);
+    } else {
+      return GetStridedSliceAxis(node, pack, pack_output_shape, pack_axis,
+                                 slice_start_value, found, must_expand_dims);
+    }
+  }
+
+  Status GetSimpleSliceAxis(const NodeDef* node, const NodeDef* pack,
+                            const PartialTensorShape& pack_output_shape,
+                            int pack_axis, int64* slice_start_value,
+                            bool* found) {
+    NodeDef* slice_begin;
+    NodeDef* slice_size;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &slice_begin));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(2), &slice_size));
+    for (const auto* n : {slice_begin, slice_size}) {
+      if (!IsReallyConstant(*n)) return Status::OK();
+    }
+
+    Tensor slice_begin_t;
+    Tensor slice_size_t;
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_begin, "value"));
+    if (!slice_begin_t.FromProto(slice_begin->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_size, "value"));
+    if (!slice_size_t.FromProto(slice_size->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+
+    auto copy_tensor_values_to_vector =
+        [node](const Tensor& t, gtl::InlinedVector<int64, 4>* vec) {
+          if (t.dtype() == DT_INT32) {
+            auto t_flat = t.flat<int32>();
+            vec->assign(&t_flat(0), &t_flat(t.NumElements()));
+          } else if (t.dtype() == DT_INT64) {
+            auto t_flat = t.flat<int64>();
+            vec->assign(&t_flat(0), &t_flat(t.NumElements()));
+          } else {
+            return errors::InvalidArgument("Node ", node->name(),
+                                           " has invalid type for Index attr: ",
+                                           DataTypeString(t.dtype()));
+          }
+          return Status::OK();
+        };
+
+    gtl::InlinedVector<int64, 4> slice_begin_vec;
+    gtl::InlinedVector<int64, 4> slice_size_vec;
+    TF_RETURN_IF_ERROR(
+        copy_tensor_values_to_vector(slice_begin_t, &slice_begin_vec));
+    TF_RETURN_IF_ERROR(
+        copy_tensor_values_to_vector(slice_size_t, &slice_size_vec));
+
+    if (slice_begin_vec.size() != slice_size_vec.size()) {
+      return errors::InvalidArgument("Node ", node->name(),
+                                     " has mismatched lengths for begin (",
+                                     slice_begin_vec.size(), ") and size (",
+                                     slice_size_vec.size(), ") vectors.");
+    }
+    if (!pack_output_shape.unknown_rank() &&
+        slice_begin_vec.size() != pack_output_shape.dims()) {
+      return Status::OK();
+    }
+    if (pack_axis >= slice_begin_vec.size()) {
+      return errors::InvalidArgument(
+          "Input to node ", node->name(), " had pack_axis ", pack_axis,
+          " but rank was ", slice_begin_vec.size(), ".");
+    }
+
+    *slice_start_value = slice_begin_vec[pack_axis];
+    if (slice_size_vec[pack_axis] != 1) {
+      // Not slicing a single value out.
+      return Status::OK();
+    }
+
+    for (size_t i = 0; i < slice_begin_vec.size(); ++i) {
+      if (i != pack_axis) {
+        if (slice_begin_vec[i] != 0 ||
+            !(slice_size_vec[i] == -1 ||
+              slice_size_vec[i] == pack_output_shape.dim_size(i))) {
+          // Not slicing on the same axis as the Pack op.
+          return Status::OK();
+        }
+      }
+    }
+
+    if (*slice_start_value < 0 || *slice_start_value >= pack->input_size()) {
+      return errors::InvalidArgument(
+          "Node ", node->name(), " requested invalid slice index ",
+          *slice_start_value, " on axis ", pack_axis,
+          " from tensor of shape: ", pack_output_shape.DebugString());
+    }
+
+    *found = true;  // slice_start_value is valid.
+    return Status::OK();
+  }
+
+  Status GetStridedSliceAxis(const NodeDef* node, const NodeDef* pack,
+                             const PartialTensorShape& pack_output_shape,
+                             int pack_axis, int64* slice_start_value,
+                             bool* found, bool* must_expand_dims) {
     TF_RETURN_IF_ERROR(
         CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
                                 "new_axis_mask", "shrink_axis_mask"}));
@@ -3286,13 +3394,22 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
           " from tensor of shape: ", pack_output_shape.DebugString());
     }
 
+    if (shrink_axis_mask == 0) {
+      *must_expand_dims = true;
+    } else if (shrink_axis_mask == (1 << slice_axis)) {
+      *must_expand_dims = false;
+    } else {
+      // Shrinking on a different axis from the one that we are slicing on.
+      return Status::OK();
+    }
+
     *found = true;  // slice_start_value is valid.
     return Status::OK();
   }
 
   Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
-                      int slice_start_value, int pack_axis,
-                      string* simplified_node_name) {
+                      int64 slice_start_value, int pack_axis,
+                      bool must_expand_dims, string* simplified_node_name) {
     const string& input_slice = pack->input(slice_start_value);
 
     const OpInfo::TensorProperties* input_slice_properties;
@@ -3306,7 +3423,7 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
     PartialTensorShape output_shape(output_properties->shape());
     NodeDef* output =
         AddEmptyNode(OptimizedNodeName(ParseNodeScopeAndName(node->name())));
-    if (input_slice_shape.IsCompatibleWith(output_shape)) {
+    if (!must_expand_dims) {
       output->set_op("Identity");
       output->set_device(node->device());
       SetDataTypeToAttr(output_properties->dtype(), "T", output);
@@ -3344,216 +3461,6 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
 };
 
 }  // namespace
-
-class UniqueNodes {
- public:
-  NodeDef* FindOrAddRepresentative(NodeDef* node) {
-    uint64 sig = ComputeSignature(*node);
-    std::vector<NodeDef*>& candidates = rep_[sig];
-    for (auto& candidate : candidates) {
-      if ((candidate == node) || SameNode(*candidate, *node)) {
-        return candidate;
-      }
-    }
-    candidates.push_back(node);
-    return node;
-  }
-
-  void RemoveRepresentative(NodeDef* node) {
-    auto it = memoized_signatures_.find(node);
-    if (it == memoized_signatures_.end()) return;
-
-    std::vector<NodeDef*>& candidates = rep_[it->second];
-    for (int i = 0; i < candidates.size(); ++i) {
-      if (candidates[i] == node) {
-        std::swap(candidates[i], candidates[candidates.size() - 1]);
-        candidates.resize(candidates.size() - 1);
-        break;
-      }
-    }
-    memoized_signatures_.erase(node);
-  }
-
- private:
-  uint64 ComputeSignature(const NodeDef& node);
-  bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
-
-  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
-  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
-};
-
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
-  auto it = memoized_signatures_.find(&node);
-  if (it != memoized_signatures_.end()) return it->second;
-
-  uint64 h = Hash64(node.op());
-  h = Hash64Combine(Hash64(node.device()), h);
-
-  for (const auto& input : node.input()) {
-    const TensorId input_tensor = ParseTensorName(input);
-    uint64 input_hash = Hash64Combine(
-        Hash64(input_tensor.node().data(), input_tensor.node().size()),
-        std::hash<int>()(input_tensor.index()));
-    h = Hash64CombineUnordered(input_hash, h);
-  }
-  for (const auto& attr : node.attr()) {
-    uint64 attr_hash =
-        Hash64Combine(Hash64(attr.first), FastAttrValueHash(attr.second));
-    h = Hash64CombineUnordered(attr_hash, h);
-  }
-  memoized_signatures_.emplace(&node, h);
-  return h;
-}
-
-// PRECONDITION:
-//  Node input orders are assumed to be canonicalized, i.e. control inputs for
-//  all nodes as well as regular inputs for commutative nodes must be sorted.
-bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
-  if (node1.op() != node2.op()) {
-    return false;
-  }
-  if (node1.device() != node2.device()) {
-    return false;
-  }
-  if (node1.input_size() != node2.input_size()) {
-    return false;
-  }
-  if (node1.attr_size() != node2.attr_size()) {
-    return false;
-  }
-
-  // Compare inputs.
-  auto it1 = node1.input().begin();
-  auto it2 = node2.input().begin();
-  for (; it1 != node1.input().end(); ++it1, ++it2) {
-    if (*it1 != *it2) return false;
-  }
-
-  // Compare attributes.
-  for (const auto& attr1 : node1.attr()) {
-    auto it = node2.attr().find(attr1.first);
-    if (it == node2.attr().end()) return false;
-    if (!FastAreAttrValuesEqual(attr1.second, it->second)) return false;
-  }
-
-  return true;
-}
-
-bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
-  if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
-    return false;
-  }
-  if (IsEnter(node) || IsExit(node)) {
-    return false;
-  }
-  if (node.device().find("SPU") != string::npos) {
-    return false;
-  }
-  // Workaround for Assert and Print mistakenly being labeled as stateful.
-  if (IsAssert(node) || IsPrint(node)) {
-    return true;
-  }
-  return IsFreeOfSideEffect(node);
-}
-
-void ArithmeticOptimizer::DedupComputations() {
-  CanonicalizeGraph(optimized_graph_);
-
-  GraphTopologyView graph_view;
-  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
-    return;
-  }
-
-  // Populate feed_inplace_op;
-  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
-  for (const NodeDef& root : optimized_graph_->node()) {
-    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
-
-    if (ModifiesInputsInPlace(root)) {
-      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
-        return node->op() == root.op() || !NeverForwardsInputs(*node);
-      };
-
-      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
-                   DfsPredicates::Advance(is_continue_traversal),
-                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
-                     feeds_inplace_op.insert(node);
-                   }));
-    }
-  }
-
-  bool stop = true;
-  std::set<int> duplicates;
-  UniqueNodes nodes;
-  do {
-    stop = true;
-    for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-      if (duplicates.find(i) != duplicates.end()) {
-        continue;
-      }
-      NodeDef* node = optimized_graph_->mutable_node(i);
-      if (!CanDedup(*node) ||
-          feeds_inplace_op.find(node) != feeds_inplace_op.end()) {
-        continue;
-      }
-      NodeDef* rep = nodes.FindOrAddRepresentative(node);
-      if (rep == node) {
-        continue;
-      }
-      // If either node or rep feeds an inplace op, deduping them may cause data
-      // races. For example: If we dedup nodes initializing two independent
-      // inplace accumulations, they will write to the same buffer, clobbering
-      // each other's results.
-      if (feeds_inplace_op.find(rep) != feeds_inplace_op.end()) {
-        continue;
-      }
-      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
-      std::vector<NodeDef*> fanouts(tmp.begin(), tmp.end());
-      for (NodeDef* fanout : fanouts) {
-        // Update consumers of node.
-        bool updated_fanout = false;
-        for (int i = 0; i < fanout->input_size(); ++i) {
-          string* fanout_input = fanout->mutable_input(i);
-
-          const int position =
-              NodePositionIfSameNode(*fanout_input, node->name());
-          // Update name in-place.
-          if (position < -1) {
-            continue;
-          } else {
-            if (!updated_fanout) {
-              // The signature of the fanout node will change. Remove it from
-              // nodes.
-              nodes.RemoveRepresentative(fanout);
-            }
-            updated_fanout = true;
-            if (position > 0) {
-              *fanout_input = StrCat(rep->name(), ":", position);
-            } else if (position == 0) {
-              *fanout_input = rep->name();
-            } else {
-              *fanout_input = StrCat("^", rep->name());
-            }
-          }
-        }
-        if (updated_fanout) {
-          node_map_->UpdateInput(fanout->name(), node->name(), rep->name());
-          CanonicalizeNode(fanout);
-        }
-      }
-      duplicates.insert(i);
-      stop = false;
-    }
-  } while (!stop);
-
-  // Delete duplicates
-  if (fetch_nodes_known_ && !duplicates.empty()) {
-    EraseNodesFromGraph(duplicates, optimized_graph_);
-    // Rebuild the NodeMap which was invalidated by the node  swapping above.
-    node_map_.reset(new NodeMap(optimized_graph_));
-  }
-}
 
 Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   SetVector<NodeDef*> nodes_to_simplify;
@@ -3621,8 +3528,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<ConvertExpm1Stage>(ctx, ctx_ext);
   if (options_.unary_ops_composition)
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
-  if (options_.remove_stack_strided_slice_same_axis)
-    pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.remove_stack_slice_same_axis)
+    pipeline.AddStage<RemoveStackSliceSameAxis>(ctx, ctx_ext);
   if (options_.fuse_squared_diff)
     pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
@@ -3701,11 +3608,6 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // with more inputs.
   TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-
-  if (options_.dedup_computations) {
-    DedupComputations();
-    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
-  }
 
   graph_properties_.reset(new GraphProperties(optimized_item));
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;

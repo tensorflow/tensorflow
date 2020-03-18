@@ -92,7 +92,8 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testScalarInputError(self):
     dataset = dataset_ops.Dataset.range(1024)
     distribute._RebatchDataset(dataset.batch(4), num_replicas=4)
-    with self.assertRaisesRegexp(ValueError, "at least one dimension"):
+    with self.assertRaisesRegexp(ValueError, ("You can fix the issue "
+                                              "by adding the `batch`")):
       distribute._RebatchDataset(dataset, num_replicas=4)
 
   @combinations.generate(
@@ -497,6 +498,11 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.from_tensor_slices(
         ragged_tensor.RaggedTensor.from_row_lengths(values, row_lengths))
     dataset = dataset.batch(32, drop_remainder=True)
+
+    # The map changes the internal representation of the ragged tensor.
+    # This test will fail if we don't normalize the tensor representation.
+    dataset = dataset.map(lambda x: x)
+
     dataset = distribute._RebatchDataset(dataset, num_replicas=8)
     # After rebatching, batch size is now 4.
     expected_output = []

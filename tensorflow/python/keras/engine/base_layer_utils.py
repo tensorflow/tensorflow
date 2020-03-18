@@ -109,18 +109,17 @@ def make_variable(name,
   if initializer is not None and not callable(initializer):
     initializing_from_value = True
 
-  with ops.init_scope():
-    if initializing_from_value:
-      init_val = initializer
-      variable_dtype = None
-    else:
-      # Instantiate initializer if provided initializer is a type object.
-      if isinstance(
-          initializer,
-          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
-        initializer = initializer()
-      init_val = lambda: initializer(shape, dtype=dtype)
-      variable_dtype = dtype.base_dtype
+  if initializing_from_value:
+    init_val = initializer
+    variable_dtype = None
+  else:
+    # Instantiate initializer if provided initializer is a type object.
+    if isinstance(
+        initializer,
+        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+      initializer = initializer()
+    init_val = lambda: initializer(shape, dtype=dtype)
+    variable_dtype = dtype.base_dtype
   if use_resource is None:
     use_resource = True
 
@@ -182,7 +181,8 @@ def create_keras_history(tensors):
       operations and need to have Keras metadata assigned to them.
 
   Returns:
-    keras_tensors: The Tensors found that came from a Keras Layer.
+    created_layers: List. The `TensorFlowOpLayer` instances created to wrap
+      the raw Tensorflow operations.
   """
   _, created_layers = _create_keras_history_helper(tensors, set(), [])
   return created_layers
@@ -649,12 +649,6 @@ def mark_as_return(outputs, acd):
     # pylint: enable=protected-access
 
   return nest.map_structure(_mark_as_return, outputs)
-
-
-def default(method):
-  """Decorates a method to detect overrides in subclasses."""
-  method._is_default = True  # pylint: disable=protected-access
-  return method
 
 
 V2_DTYPE_BEHAVIOR = None

@@ -59,7 +59,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     int num_dimensions = NumDimensions(input);
 
     if (num_dimensions > 4) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Op Concatenation does not currently support num dimensions >4 "
           "Tensor '%s' has %d dimensions.",
@@ -202,7 +202,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Op Concatenation does not currently support Type '%s'.",
           TfLiteTypeGetName(output_type));
       return kTfLiteError;
@@ -214,9 +214,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {/* init */ nullptr,
-                                 /* free */ nullptr, concatenation::Prepare,
-                                 concatenation::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = concatenation::Prepare;
+  r.invoke = concatenation::Eval;
   return &r;
 }
 

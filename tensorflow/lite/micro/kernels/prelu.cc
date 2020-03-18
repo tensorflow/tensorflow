@@ -95,7 +95,7 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
       return kTfLiteOk;
     } break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Only float32 and uint8 are supported currently, got %d.",
           TfLiteTypeGetName(input->type));
       return kTfLiteError;
@@ -105,8 +105,9 @@ TfLiteStatus PreluEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration* Register_PRELU() {
-  static TfLiteRegistration r = {nullptr, nullptr, activations::PreluPrepare,
-                                 activations::PreluEval};
+  static TfLiteRegistration r = {};
+  r.prepare = activations::PreluPrepare;
+  r.invoke = activations::PreluEval;
   return &r;
 }
 

@@ -92,6 +92,15 @@ string CreateURI(tensorflow::StringPiece scheme, tensorflow::StringPiece host,
 // Creates a temporary file name with an extension.
 string GetTempFilename(const string& extension);
 
+// Reads the TEST_UNDECLARED_OUTPUTS_DIR environment variable, and if set
+// assigns `dir` to the value. `dir` is not modified if the environment variable
+// is unset. Returns true if the environment variable is set, otherwise false.
+// Passing `dir` as nullptr, will just probe for the environment variable.
+//
+// Note: This function obviates the need to deal with Bazel's odd path decisions
+// on Windows, and should be preferred over a simple `getenv`.
+bool GetTestUndeclaredOutputsDir(string* dir);
+
 }  // namespace io
 }  // namespace tensorflow
 

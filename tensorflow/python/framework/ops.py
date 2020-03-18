@@ -38,11 +38,12 @@ from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import config_pb2
 # pywrap_tensorflow must be imported first to avoid profobuf issues.
 # (b/143110113)
-# pylint: disable=invalid-import-order,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow as c_api
-from tensorflow.python import pywrap_tfe as c_api_new
-# pylint: enable=invalid-import-order,g-bad-import-order
+# pylint: disable=invalid-import-order,g-bad-import-order,unused-import
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
+# pylint: enable=invalid-import-order,g-bad-import-order,unused-import
 from tensorflow.python import tf2
+from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import monitoring
@@ -76,7 +77,6 @@ from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import kwarg_only
 from tensorflow.python.util.tf_export import tf_export
-from tensorflow.tools.docs.doc_controls import do_not_generate_docs
 
 ag_ctx = LazyLoader(
     "ag_ctx", globals(),
@@ -254,7 +254,7 @@ def register_dense_tensor_like_type(tensor_type):
 
 def uid():
   """A unique (within this program execution) integer."""
-  return c_api_new.TFE_Py_UID()
+  return pywrap_tfe.TFE_Py_UID()
 
 
 def numpy_text(tensor, is_repr=False):
@@ -450,50 +450,22 @@ class Tensor(_TensorLike):
 
   @property
   def shape(self):
-    """Returns the `TensorShape` that represents the shape of this tensor.
+    """Returns a `tf.TensorShape` that represents the shape of this tensor.
 
-    The shape is computed using shape inference functions that are
-    registered in the Op for each `Operation`.  See
-    `tf.TensorShape`
-    for more details of what a shape represents.
+    >>> t = tf.constant([1,2,3,4,5])
+    >>> t.shape
+    TensorShape([5])
 
-    The inferred shape of a tensor is used to provide shape
-    information without having to execute the underlying kernel. This
-    can be used for debugging and providing early error messages. For
-    example:
+    `tf.Tensor.shape` is equivalent to `tf.Tensor.get_shape()`.
 
-    ```python
-    >>> c = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    >>> print(c.shape) # will be TensorShape([2, 3])
-    (2, 3)
+    In a `tf.function` or when building a model using
+    `tf.keras.Input`, they return the build-time shape of the
+    tensor, which may be partially unknown.
 
-    >>> d = tf.constant([[1.0, 0.0], [0.0, 1.0], [1.0, 0.0], [0.0, 1.0]])
-    >>> print(d.shape)
-    (4, 2)
+    A `tf.TensorShape` is not a tensor. Use `tf.shape(t)` to get a tensor
+    containing the shape, calculated at runtime.
 
-    # Raises a ValueError, because `c` and `d` do not have compatible
-    # inner dimensions.
-    >>> e = tf.matmul(c, d)
-    Traceback (most recent call last):
-        ...
-    tensorflow.python.framework.errors_impl.InvalidArgumentError: Matrix
-    size-incompatible: In[0]: [2,3], In[1]: [4,2] [Op:MatMul] name: MatMul/
-
-    # This works because we have compatible shapes.
-    >>> f = tf.matmul(c, d, transpose_a=True, transpose_b=True)
-    >>> print(f.shape)
-    (3, 4)
-
-    ```
-
-    In some cases, the inferred shape may have unknown dimensions. If
-    the caller has additional information about the values of these
-    dimensions, `Tensor.set_shape()` can be used to augment the
-    inferred shape.
-
-    Returns:
-      A `tf.TensorShape` representing the shape of this tensor.
-
+    See `tf.Tensor.get_shape()`, and `tf.TensorShape` for details and examples.
     """
     if self._shape_val is None:
       self._shape_val = self._c_api_shape()
@@ -502,13 +474,13 @@ class Tensor(_TensorLike):
   def _c_api_shape(self):
     """Returns the TensorShape of this tensor according to the C API."""
     c_graph = self._op._graph._c_graph  # pylint: disable=protected-access
-    shape_vector, unknown_shape = c_api.TF_GraphGetTensorShapeHelper(
+    shape_vec, unknown_shape = pywrap_tf_session.TF_GraphGetTensorShapeHelper(
         c_graph, self._as_tf_output())
     if unknown_shape:
       return tensor_shape.unknown_shape()
     else:
-      shape_vector = [None if d == -1 else d for d in shape_vector]
-      return tensor_shape.TensorShape(shape_vector)
+      shape_vec = [None if d == -1 else d for d in shape_vec]
+      return tensor_shape.TensorShape(shape_vec)
 
   @property
   def _shape(self):
@@ -568,8 +540,7 @@ class Tensor(_TensorLike):
     if shape[0] is None:
       raise TypeError(
           "Cannot iterate over a tensor with unknown first dimension.")
-    for i in xrange(shape[0]):
-      yield self[i]
+    return _TensorIterator(self, shape[0])
 
   def _shape_as_list(self):
     if self.shape.ndims is not None:
@@ -592,37 +563,192 @@ class Tensor(_TensorLike):
     return self.shape.ndims
 
   def get_shape(self):
-    """Alias of `tf.Tensor.shape`."""
+    """Returns a `tf.TensorShape` that represents the shape of this tensor.
+
+    In eager execution the shape is always fully-known.
+
+    >>> a = tf.constant([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    >>> print(a.shape)
+    (2, 3)
+
+    `tf.Tensor.get_shape()` is equivalent to `tf.Tensor.shape`.
+
+
+    When executing in a `tf.function` or building a model using
+    `tf.keras.Input`, `Tensor.shape` may return a partial shape (including
+    `None` for unknown dimensions). See `tf.TensorShape` for more details.
+
+    >>> inputs = tf.keras.Input(shape = [10])
+    >>> # Unknown batch size
+    >>> print(inputs.shape)
+    (None, 10)
+
+    The shape is computed using shape inference functions that are
+    registered for each `tf.Operation`.
+
+    The returned `tf.TensorShape` is determined at *build* time, without
+    executing the underlying kernel. It is not a `tf.Tensor`. If you need a
+    shape *tensor*, either convert the `tf.TensorShape` to a `tf.constant`, or
+    use the `tf.shape(tensor)` function, which returns the tensor's shape at
+    *execution* time.
+
+    This is useful for debugging and providing early errors. For
+    example, when tracing a `tf.function`, no ops are being executed, shapes
+    may be unknown (See the [Concrete Functions
+    Guide](https://www.tensorflow.org/guide/concrete_function) for details).
+
+    >>> @tf.function
+    ... def my_matmul(a, b):
+    ...   result = a@b
+    ...   # the `print` executes during tracing.
+    ...   print("Result shape: ", result.shape)
+    ...   return result
+
+    The shape inference functions propagate shapes to the extent possible:
+
+    >>> _ = my_matmul.get_concrete_function(
+    ...   tf.TensorSpec([None,3]),
+    ...   tf.TensorSpec([3,5]))
+    Result shape: (None, 5)
+
+    Tracing may fail if a shape missmatch can be detected:
+
+    >>> _ = my_matmul.get_concrete_function(
+    ...   tf.TensorSpec([None,3]),
+    ...   tf.TensorSpec([4,5]))
+    Traceback (most recent call last):
+    ...
+    ValueError: Dimensions must be equal, but are 3 and 4 for 'matmul' (op:
+    'MatMul') with input shapes: [?,3], [4,5].
+
+    In some cases, the inferred shape may have unknown dimensions. If
+    the caller has additional information about the values of these
+    dimensions, `Tensor.set_shape()` can be used to augment the
+    inferred shape.
+
+    >>> @tf.function
+    ... def my_fun(a):
+    ...   a.set_shape([5, 5])
+    ...   # the `print` executes during tracing.
+    ...   print("Result shape: ", a.shape)
+    ...   return a
+
+    >>> _ = my_fun.get_concrete_function(
+    ...   tf.TensorSpec([None, None]))
+    Result shape: (5, 5)
+
+    Returns:
+      A `tf.TensorShape` representing the shape of this tensor.
+
+    """
     return self.shape
 
   def set_shape(self, shape):
     """Updates the shape of this tensor.
 
-    This method can be called multiple times, and will merge the given
-    `shape` with the current shape of this tensor. It can be used to
-    provide additional information about the shape of this tensor that
-    cannot be inferred from the graph alone. For example, this can be used
-    to provide additional information about the shapes of images:
+    With eager execution this operates as a shape assertion.
+    Here the shapes match:
 
-    ```python
-    _, image_data = tf.compat.v1.TFRecordReader(...).read(...)
-    image = tf.image.decode_png(image_data, channels=3)
+    >>> t = tf.constant([[1,2,3]])
+    >>> t.set_shape([1, 3])
 
-    # The height and width dimensions of `image` are data dependent, and
-    # cannot be computed without executing the op.
-    print(image.shape)
-    ==> TensorShape([Dimension(None), Dimension(None), Dimension(3)])
+    Passing a `None` in the new shape allows any value for that axis:
 
-    # We know that each image in this dataset is 28 x 28 pixels.
-    image.set_shape([28, 28, 3])
-    print(image.shape)
-    ==> TensorShape([Dimension(28), Dimension(28), Dimension(3)])
-    ```
+    >>> t.set_shape([1,None])
 
-    NOTE: This shape is not enforced at runtime. Setting incorrect shapes can
-    result in inconsistencies between the statically-known graph and the runtime
-    value of tensors. For runtime validation of the shape, use `tf.ensure_shape`
-    instead.
+    An error is raised if an incompatible shape is passed.
+
+    >>> t.set_shape([1,5])
+    Traceback (most recent call last):
+    ...
+    ValueError: Tensor's shape (1, 3) is not compatible with supplied
+    shape [1, 5]
+
+    When executing in a `tf.function`, or building a model using
+    `tf.keras.Input`, `Tensor.set_shape` will *merge* the given `shape` with
+    the current shape of this tensor, and set the tensor's shape to the
+    merged value (see `tf.TensorShape.merge_with` for details):
+
+    >>> t = tf.keras.Input(shape=[None, None, 3])
+    >>> print(t.shape)
+    (None, None, None, 3)
+
+    Dimensions set to `None` are not updated:
+
+    >>> t.set_shape([None, 224, 224, None])
+    >>> print(t.shape)
+    (None, 224, 224, 3)
+
+    The main use case for this is to provide additional shape information
+    that cannot be inferred from the graph alone.
+
+    For example if you know all the images in a dataset have shape [28,28,3] you
+    can set it with `tf.set_shape`:
+
+    >>> @tf.function
+    ... def load_image(filename):
+    ...   raw = tf.io.read_file(filename)
+    ...   image = tf.image.decode_png(raw, channels=3)
+    ...   # the `print` executes during tracing.
+    ...   print("Initial shape: ", image.shape)
+    ...   image.set_shape([28, 28, 3])
+    ...   print("Final shape: ", image.shape)
+    ...   return image
+
+    Trace the function, see the [Concrete Functions
+    Guide](https://www.tensorflow.org/guide/concrete_function) for details.
+
+    >>> _ = load_image.get_concrete_function(
+    ...     tf.TensorSpec([], dtype=tf.string))
+    Initial shape:  (None, None, 3)
+    Final shape: (28, 28, 3)
+
+    Similarly the `tf.io.parse_tensor` function could return a tensor with
+    any shape, even the `tf.rank` is unknown. If you know that all your
+    serialized tensors will be 2d, set it with `set_shape`:
+
+    >>> @tf.function
+    ... def my_parse(string_tensor):
+    ...   result = tf.io.parse_tensor(string_tensor, out_type=tf.float32)
+    ...   # the `print` executes during tracing.
+    ...   print("Initial shape: ", result.shape)
+    ...   result.set_shape([None, None])
+    ...   print("Final shape: ", result.shape)
+    ...   return result
+
+    Trace the function
+
+    >>> concrete_parse = my_parse.get_concrete_function(
+    ...     tf.TensorSpec([], dtype=tf.string))
+    Initial shape:  <unknown>
+    Final shape:  (None, None)
+
+    Make sure it works:
+
+    >>> t = tf.ones([5,3], dtype=tf.float32)
+    >>> serialized = tf.io.serialize_tensor(t)
+    >>> print(serialized.dtype)
+    <dtype: 'string'>
+    >>> print(serialized.shape)
+    ()
+    >>> t2 = concrete_parse(serialized)
+    >>> print(t2.shape)
+    (5, 3)
+
+    Caution: `set_shape` ensures that the applied shape is compatible with
+    the existing shape, but it does not check at runtime. Setting
+    incorrect shapes can result in inconsistencies between the
+    statically-known graph and the runtime value of tensors. For runtime
+    validation of the shape, use `tf.ensure_shape` instead. It also modifies
+    the `shape` of the tensor.
+
+    >>> # Serialize a rank-3 tensor
+    >>> t = tf.ones([5,5,5], dtype=tf.float32)
+    >>> serialized = tf.io.serialize_tensor(t)
+    >>> # The function still runs, even though it `set_shape([None,None])`
+    >>> t2 = concrete_parse(serialized)
+    >>> print(t2.shape)
+    (5, 5, 5)
 
     Args:
       shape: A `TensorShape` representing the shape of this tensor, a
@@ -649,7 +775,7 @@ class Tensor(_TensorLike):
         else:
           dim_list.append(dim.value)
     try:
-      c_api.TF_GraphSetTensorShape_wrapper(
+      pywrap_tf_session.TF_GraphSetTensorShape_wrapper(
           self._op._graph._c_graph,  # pylint: disable=protected-access
           self._as_tf_output(),
           dim_list,
@@ -669,7 +795,7 @@ class Tensor(_TensorLike):
     Returns:
       A list of `Operation`s.
     """
-    consumer_names = c_api.TF_OperationOutputConsumers_wrapper(
+    consumer_names = pywrap_tf_session.TF_OperationOutputConsumers_wrapper(
         self._as_tf_output())
     # pylint: disable=protected-access
     return [
@@ -723,9 +849,9 @@ class Tensor(_TensorLike):
   def __hash__(self):
     g = getattr(self, "graph", None)
     if (Tensor._USE_EQUALITY and executing_eagerly_outside_functions() and
-        (g is None or g._building_function)):  # pylint: disable=protected-access
-      raise TypeError("Tensor is unhashable if Tensor equality is enabled. "
-                      "Instead, use tensor.experimental_ref() as the key.")
+        (g is None or g.building_function)):
+      raise TypeError("Tensor is unhashable. "
+                      "Instead, use tensor.ref() as the key.")
     else:
       return id(self)
 
@@ -814,56 +940,48 @@ class Tensor(_TensorLike):
     """
     return _eval_using_default_session(self, feed_dict, self.graph, session)
 
+  @deprecation.deprecated(None, "Use ref() instead.")
   def experimental_ref(self):
-    # tf.Variable also has the same experimental_ref() API.  If you update the
-    # documenation here, please update tf.Variable.experimental_ref() as well.
+    return self.ref()
+
+  def ref(self):
+    # tf.Variable also has the same ref() API.  If you update the
+    # documentation here, please update tf.Variable.ref() as well.
     """Returns a hashable reference object to this Tensor.
 
-    Warning: Experimental API that could be changed or removed.
-
-    The primary usecase for this API is to put tensors in a set/dictionary.
+    The primary use case for this API is to put tensors in a set/dictionary.
     We can't put tensors in a set/dictionary as `tensor.__hash__()` is no longer
     available starting Tensorflow 2.0.
 
-    ```python
-    import tensorflow as tf
+    The following will raise an exception starting 2.0
 
-    x = tf.constant(5)
-    y = tf.constant(10)
-    z = tf.constant(10)
+    >>> x = tf.constant(5)
+    >>> y = tf.constant(10)
+    >>> z = tf.constant(10)
+    >>> tensor_set = {x, y, z}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
+    >>> tensor_dict = {x: 'five', y: 'ten'}
+    Traceback (most recent call last):
+      ...
+    TypeError: Tensor is unhashable. Instead, use tensor.ref() as the key.
 
-    # The followings will raise an exception starting 2.0
-    # TypeError: Tensor is unhashable if Tensor equality is enabled.
-    tensor_set = {x, y, z}
-    tensor_dict = {x: 'five', y: 'ten', z: 'ten'}
-    ```
+    Instead, we can use `tensor.ref()`.
 
-    Instead, we can use `tensor.experimental_ref()`.
-
-    ```python
-    tensor_set = {x.experimental_ref(),
-                  y.experimental_ref(),
-                  z.experimental_ref()}
-
-    print(x.experimental_ref() in tensor_set)
-    ==> True
-
-    tensor_dict = {x.experimental_ref(): 'five',
-                   y.experimental_ref(): 'ten',
-                   z.experimental_ref(): 'ten'}
-
-    print(tensor_dict[y.experimental_ref()])
-    ==> ten
-    ```
+    >>> tensor_set = {x.ref(), y.ref(), z.ref()}
+    >>> x.ref() in tensor_set
+    True
+    >>> tensor_dict = {x.ref(): 'five', y.ref(): 'ten', z.ref(): 'ten'}
+    >>> tensor_dict[y.ref()]
+    'ten'
 
     Also, the reference object provides `.deref()` function that returns the
     original Tensor.
 
-    ```python
-    x = tf.constant(5)
-    print(x.experimental_ref().deref())
-    ==> tf.Tensor(5, shape=(), dtype=int32)
-    ```
+    >>> x = tf.constant(5)
+    >>> x.ref().deref()
+    <tf.Tensor: shape=(), dtype=int32, numpy=5>
     """
     return object_identity.Reference(self)
 
@@ -1160,7 +1278,7 @@ class _EagerTensorBase(Tensor):
 
 # This call creates an EagerTensor class, as a subclass of _EagerTensorBase, and
 # registers it with the current module.
-EagerTensor = c_api_new.TFE_Py_InitEagerTensor(_EagerTensorBase)
+EagerTensor = pywrap_tfe.TFE_Py_InitEagerTensor(_EagerTensorBase)
 
 
 register_dense_tensor_like_type(Tensor)
@@ -1633,20 +1751,22 @@ def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
   # Refactor so we don't have to do this here.
   inputs = _reconstruct_sequence_inputs(op_def, inputs, node_def.attr)
   # pylint: disable=protected-access
-  op_desc = c_api.TF_NewOperation(graph._c_graph, compat.as_str(node_def.op),
-                                  compat.as_str(node_def.name))
+  op_desc = pywrap_tf_session.TF_NewOperation(graph._c_graph,
+                                              compat.as_str(node_def.op),
+                                              compat.as_str(node_def.name))
   if node_def.device:
-    c_api.TF_SetDevice(op_desc, compat.as_str(node_def.device))
+    pywrap_tf_session.TF_SetDevice(op_desc, compat.as_str(node_def.device))
   # Add inputs
   for op_input in inputs:
     if isinstance(op_input, (list, tuple)):
-      c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
+      pywrap_tf_session.TF_AddInputList(op_desc,
+                                        [t._as_tf_output() for t in op_input])
     else:
-      c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+      pywrap_tf_session.TF_AddInput(op_desc, op_input._as_tf_output())
 
   # Add control inputs
   for control_input in control_inputs:
-    c_api.TF_AddControlInput(op_desc, control_input._c_op)
+    pywrap_tf_session.TF_AddControlInput(op_desc, control_input._c_op)
   # pylint: enable=protected-access
 
   # Add attrs
@@ -1654,10 +1774,11 @@ def _create_c_op(graph, node_def, inputs, control_inputs, op_def=None):
     serialized = attr_value.SerializeToString()
     # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
     # It might be worth creating a convenient way to re-use the same status.
-    c_api.TF_SetAttrValueProto(op_desc, compat.as_str(name), serialized)
+    pywrap_tf_session.TF_SetAttrValueProto(op_desc, compat.as_str(name),
+                                           serialized)
 
   try:
-    c_op = c_api.TF_FinishOperation(op_desc)
+    c_op = pywrap_tf_session.TF_FinishOperation(op_desc)
   except errors.InvalidArgumentError as e:
     # Convert to ValueError for backwards compatibility.
     raise ValueError(str(e))
@@ -1744,7 +1865,7 @@ class Operation(object):
       if not _VALID_OP_NAME_REGEX.match(node_def.name):
         raise ValueError("'%s' is not a valid node name" % node_def.name)
       c_op = None
-    elif type(node_def).__name__ == "SwigPyObject":
+    elif type(node_def).__name__ == "TF_Operation":
       assert inputs is None
       assert output_types is None
       assert control_inputs is None
@@ -1814,7 +1935,7 @@ class Operation(object):
     # Initialize self._c_op.
     if c_op:
       self._c_op = c_op
-      op_def = g._get_op_def(c_api.TF_OperationOpType(c_op))
+      op_def = g._get_op_def(pywrap_tf_session.TF_OperationOpType(c_op))
       name = self.name
     else:
       if op_def is None:
@@ -1827,11 +1948,11 @@ class Operation(object):
     self._is_stateful = op_def.is_stateful
 
     # Initialize self._outputs.
-    num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+    num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
     self._outputs = []
     for i in range(num_outputs):
       tf_output = c_api_util.tf_output(self._c_op, i)
-      output_type = c_api.TF_OperationOutputType(tf_output)
+      output_type = pywrap_tf_session.TF_OperationOutputType(tf_output)
       tensor = Tensor._create_with_tf_output(self, i, output_type, tf_output)  # pylint: disable=protected-access
       self._outputs.append(tensor)
 
@@ -1900,7 +2021,7 @@ class Operation(object):
   @property
   def name(self):
     """The full name of this operation."""
-    return c_api.TF_OperationName(self._c_op)
+    return pywrap_tf_session.TF_OperationName(self._c_op)
 
   @property
   def _id(self):
@@ -1916,7 +2037,7 @@ class Operation(object):
       assigned, or an empty string if it has not been assigned to a
       device.
     """
-    return c_api.TF_OperationDevice(self._c_op)
+    return pywrap_tf_session.TF_OperationDevice(self._c_op)
 
   @property
   def _device_assignments(self):
@@ -1991,33 +2112,28 @@ class Operation(object):
     Returns:
       List of the types of the Tensors computed by this operation.
       Each element in the list is an integer whose value is one of
-      the TF_DataType enums defined in c_api.h
+      the TF_DataType enums defined in pywrap_tf_session.h
       The length of this list indicates the number of output endpoints
       of the operation.
     """
-    num_outputs = c_api.TF_OperationNumOutputs(self._c_op)
+    num_outputs = pywrap_tf_session.TF_OperationNumOutputs(self._c_op)
     output_types = [
-        c_api.TF_OperationOutputType(self._tf_output(i))
+        int(pywrap_tf_session.TF_OperationOutputType(self._tf_output(i)))
         for i in xrange(num_outputs)
     ]
-    # In all the tests we have output_types that are passed into
-    # Operation.__init__ are a list of ints (which is illegal according
-    # to the docstring), but input_types are instances of DType.
-    # This extra assert is to catch if we ever use DType for output_types.
-    if output_types:
-      assert isinstance(output_types[0], int)
+
     return output_types
 
   def _tf_output(self, output_idx):
     """Create and return a new TF_Output for output_idx'th output of this op."""
-    tf_output = c_api.TF_Output()
+    tf_output = pywrap_tf_session.TF_Output()
     tf_output.oper = self._c_op
     tf_output.index = output_idx
     return tf_output
 
   def _tf_input(self, input_idx):
     """Create and return a new TF_Input for input_idx'th input of this op."""
-    tf_input = c_api.TF_Input()
+    tf_input = pywrap_tf_session.TF_Input()
     tf_input.oper = self._c_op
     tf_input.index = input_idx
     return tf_input
@@ -2040,7 +2156,7 @@ class Operation(object):
     Args:
       device_str: A string specifying where to place this op.
     """
-    c_api.SetRequestedDevice(
+    pywrap_tf_session.SetRequestedDevice(
         self._graph._c_graph,  # pylint: disable=protected-access
         self._c_op,  # pylint: disable=protected-access
         device_str)
@@ -2065,7 +2181,7 @@ class Operation(object):
 
     # Reset cached inputs.
     self._inputs_val = None
-    c_api.UpdateEdge(
+    pywrap_tf_session.UpdateEdge(
         self._graph._c_graph,  # pylint: disable=protected-access
         tensor._as_tf_output(),  # pylint: disable=protected-access
         self._tf_input(index))
@@ -2090,7 +2206,7 @@ class Operation(object):
 
       # Reset cached inputs.
       self._inputs_val = None
-      c_api.AddWhileInputHack(
+      pywrap_tf_session.AddWhileInputHack(
           self._graph._c_graph,  # pylint: disable=protected-access
           tensor._as_tf_output(),  # pylint: disable=protected-access
           self._c_op)
@@ -2108,7 +2224,10 @@ class Operation(object):
     for op in ops:
       if not isinstance(op, Operation):
         raise TypeError("op must be an Operation: %s" % op)
-      c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+      pywrap_tf_session.AddControlInput(
+          self._graph._c_graph,  # pylint: disable=protected-access
+          self._c_op,  # pylint: disable=protected-access
+          op._c_op)  # pylint: disable=protected-access
 
   def _add_control_input(self, op):
     """Add a new control input to this operation.
@@ -2122,11 +2241,14 @@ class Operation(object):
     """
     if not isinstance(op, Operation):
       raise TypeError("op must be an Operation: %s" % op)
-    c_api.AddControlInput(self._graph._c_graph, self._c_op, op._c_op)  # pylint: disable=protected-access
+    pywrap_tf_session.AddControlInput(
+        self._graph._c_graph,  # pylint: disable=protected-access
+        self._c_op,  # pylint: disable=protected-access
+        op._c_op)  # pylint: disable=protected-access
 
   def _remove_all_control_inputs(self):
     """Removes any control inputs to this operation."""
-    c_api.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
+    pywrap_tf_session.RemoveAllControlInputs(self._graph._c_graph, self._c_op)  # pylint: disable=protected-access
 
   def _add_outputs(self, types, shapes):
     """Adds new Tensors to self.outputs.
@@ -2161,16 +2283,18 @@ class Operation(object):
     """The sequence of `Tensor` objects representing the data inputs of this op."""
     if self._inputs_val is None:
       # pylint: disable=protected-access
-      self._inputs_val = tuple(map(self.graph._get_tensor_by_tf_output,
-                                   c_api.GetOperationInputs(self._c_op)))
+      self._inputs_val = tuple(
+          map(self.graph._get_tensor_by_tf_output,
+              pywrap_tf_session.GetOperationInputs(self._c_op)))
       # pylint: enable=protected-access
     return self._inputs_val
 
   @property
   def _input_types(self):
-    num_inputs = c_api.TF_OperationNumInputs(self._c_op)
+    num_inputs = pywrap_tf_session.TF_OperationNumInputs(self._c_op)
     input_types = [
-        dtypes.as_dtype(c_api.TF_OperationInputType(self._tf_input(i)))
+        dtypes.as_dtype(
+            pywrap_tf_session.TF_OperationInputType(self._tf_input(i)))
         for i in xrange(num_inputs)
     ]
     return input_types
@@ -2189,11 +2313,12 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    control_c_ops = c_api.TF_OperationGetControlInputs_wrapper(self._c_op)
+    control_c_ops = pywrap_tf_session.TF_OperationGetControlInputs_wrapper(
+        self._c_op)
     # pylint: disable=protected-access
     return [
-        self.graph._get_operation_by_name_unsafe(c_api.TF_OperationName(c_op))
-        for c_op in control_c_ops
+        self.graph._get_operation_by_name_unsafe(
+            pywrap_tf_session.TF_OperationName(c_op)) for c_op in control_c_ops
     ]
     # pylint: enable=protected-access
 
@@ -2208,18 +2333,19 @@ class Operation(object):
       A list of `Operation` objects.
 
     """
-    control_c_ops = c_api.TF_OperationGetControlOutputs_wrapper(self._c_op)
+    control_c_ops = pywrap_tf_session.TF_OperationGetControlOutputs_wrapper(
+        self._c_op)
     # pylint: disable=protected-access
     return [
-        self.graph._get_operation_by_name_unsafe(c_api.TF_OperationName(c_op))
-        for c_op in control_c_ops
+        self.graph._get_operation_by_name_unsafe(
+            pywrap_tf_session.TF_OperationName(c_op)) for c_op in control_c_ops
     ]
     # pylint: enable=protected-access
 
   @property
   def type(self):
     """The type of the op (e.g. `"MatMul"`)."""
-    return c_api.TF_OperationOpType(self._c_op)
+    return pywrap_tf_session.TF_OperationOpType(self._c_op)
 
   @property
   def graph(self):
@@ -2238,8 +2364,8 @@ class Operation(object):
     """
     # pylint: enable=line-too-long
     with c_api_util.tf_buffer() as buf:
-      c_api.TF_OperationToNodeDef(self._c_op, buf)
-      data = c_api.TF_GetBuffer(buf)
+      pywrap_tf_session.TF_OperationToNodeDef(self._c_op, buf)
+      data = pywrap_tf_session.TF_GetBuffer(buf)
     node_def = node_def_pb2.NodeDef()
     node_def.ParseFromString(compat.as_bytes(data))
     return node_def
@@ -2264,17 +2390,18 @@ class Operation(object):
 
   def _set_attr(self, attr_name, attr_value):
     """Private method used to set an attribute in the node_def."""
-    buf = c_api.TF_NewBufferFromString(
+    buf = pywrap_tf_session.TF_NewBufferFromString(
         compat.as_bytes(attr_value.SerializeToString()))
     try:
       self._set_attr_with_buf(attr_name, buf)
     finally:
-      c_api.TF_DeleteBuffer(buf)
+      pywrap_tf_session.TF_DeleteBuffer(buf)
 
   def _set_attr_with_buf(self, attr_name, attr_buf):
     """Set an attr in the node_def with a pre-allocated buffer."""
     # pylint: disable=protected-access
-    c_api.SetAttr(self._graph._c_graph, self._c_op, attr_name, attr_buf)
+    pywrap_tf_session.SetAttr(self._graph._c_graph, self._c_op, attr_name,
+                              attr_buf)
     # pylint: enable=protected-access
 
   def _set_func_attr(self, attr_name, func_name):
@@ -2307,7 +2434,7 @@ class Operation(object):
   def _clear_attr(self, attr_name):
     """Private method used to clear an attribute in the node_def."""
     # pylint: disable=protected-access
-    c_api.ClearAttr(self._graph._c_graph, self._c_op, attr_name)
+    pywrap_tf_session.ClearAttr(self._graph._c_graph, self._c_op, attr_name)
     # pylint: enable=protected-access
 
   def get_attr(self, name):
@@ -2325,8 +2452,8 @@ class Operation(object):
     fields = ("s", "i", "f", "b", "type", "shape", "tensor", "func")
     try:
       with c_api_util.tf_buffer() as buf:
-        c_api.TF_OperationGetAttrValueProto(self._c_op, name, buf)
-        data = c_api.TF_GetBuffer(buf)
+        pywrap_tf_session.TF_OperationGetAttrValueProto(self._c_op, name, buf)
+        data = pywrap_tf_session.TF_GetBuffer(buf)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
@@ -2352,7 +2479,7 @@ class Operation(object):
   def _get_attr_type(self, name):
     """Returns the `DType` value of the attr of this op with the given `name`."""
     try:
-      dtype_enum = c_api.TF_OperationGetAttrType(self._c_op, name)
+      dtype_enum = pywrap_tf_session.TF_OperationGetAttrType(self._c_op, name)
       return _DTYPES_INTERN_TABLE[dtype_enum]
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
@@ -2361,7 +2488,7 @@ class Operation(object):
   def _get_attr_bool(self, name):
     """Returns the `bool` value of the attr of this op with the given `name`."""
     try:
-      return c_api.TF_OperationGetAttrBool(self._c_op, name)
+      return pywrap_tf_session.TF_OperationGetAttrBool(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
@@ -2369,7 +2496,7 @@ class Operation(object):
   def _get_attr_int(self, name):
     """Returns the `int` value of the attr of this op with the given `name`."""
     try:
-      return c_api.TF_OperationGetAttrInt(self._c_op, name)
+      return pywrap_tf_session.TF_OperationGetAttrInt(self._c_op, name)
     except errors.InvalidArgumentError as e:
       # Convert to ValueError for backwards compatibility.
       raise ValueError(str(e))
@@ -2812,7 +2939,7 @@ class Graph(object):
     # The C API requires all ops to have shape functions. Disable this
     # requirement (many custom ops do not have shape functions, and we don't
     # want to break these existing cases).
-    c_api.SetRequireShapeInferenceFns(self._c_graph, False)
+    pywrap_tf_session.SetRequireShapeInferenceFns(self._c_graph, False)
     if tf2.enabled():
       self.switch_to_thread_local()
 
@@ -2945,8 +3072,8 @@ class Graph(object):
     """
     # pylint: enable=line-too-long
     with c_api_util.tf_buffer() as buf:
-      c_api.TF_GraphVersions(self._c_graph, buf)
-      data = c_api.TF_GetBuffer(buf)
+      pywrap_tf_session.TF_GraphVersions(self._c_graph, buf)
+      data = pywrap_tf_session.TF_GetBuffer(buf)
     version_def = versions_pb2.VersionDef()
     version_def.ParseFromString(compat.as_bytes(data))
     return version_def
@@ -3047,8 +3174,8 @@ class Graph(object):
     # pylint: enable=line-too-long
     with self._lock:
       with c_api_util.tf_buffer() as buf:
-        c_api.TF_GraphToGraphDef(self._c_graph, buf)
-        data = c_api.TF_GetBuffer(buf)
+        pywrap_tf_session.TF_GraphToGraphDef(self._c_graph, buf)
+        data = pywrap_tf_session.TF_GetBuffer(buf)
       graph = graph_pb2.GraphDef()
       graph.ParseFromString(compat.as_bytes(data))
       # Strip the experimental library field iff it's empty.
@@ -3171,6 +3298,8 @@ class Graph(object):
     Raises:
       ValueError: if another function is defined with the same name.
     """
+    self._check_not_finalized()
+
     name = function.name
     # Sanity checks on gradient definition.
     if (function.grad_func_name is not None) and (function.python_grad_func is
@@ -3181,7 +3310,8 @@ class Graph(object):
     # pylint: disable=protected-access
     gradient = (
         function._grad_func._c_func.func if function._grad_func else None)
-    c_api.TF_GraphCopyFunction(self._c_graph, function._c_func.func, gradient)
+    pywrap_tf_session.TF_GraphCopyFunction(self._c_graph, function._c_func.func,
+                                           gradient)
     # pylint: enable=protected-access
 
     self._functions[compat.as_str(name)] = function
@@ -3454,6 +3584,8 @@ class Graph(object):
     Returns:
       A list of the new `Operation` objects.
     """
+    self._check_not_finalized()
+
     # Create all Operation objects before accessing their inputs since an op may
     # be created before its inputs.
     new_ops = [
@@ -3638,7 +3770,7 @@ class Graph(object):
     """Returns the `Operation` with the given `name`.
 
     This is a internal unsafe version of get_operation_by_name. It skips many
-    checks and does not have user friedly error messages but runs considerably
+    checks and does not have user friendly error messages but runs considerably
     faster. This method may be called concurrently from multiple threads.
 
     Args:
@@ -3658,7 +3790,7 @@ class Graph(object):
       return self._nodes_by_name[name]
 
   def _get_operation_by_tf_operation(self, tf_oper):
-    op_name = c_api.TF_OperationName(tf_oper)
+    op_name = pywrap_tf_session.TF_OperationName(tf_oper)
     return self._get_operation_by_name_unsafe(op_name)
 
   def get_tensor_by_name(self, name):
@@ -3711,9 +3843,10 @@ class Graph(object):
     except KeyError:
       with c_api_util.tf_buffer() as buf:
         # pylint: disable=protected-access
-        c_api.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type), buf)
+        pywrap_tf_session.TF_GraphGetOpDef(self._c_graph, compat.as_bytes(type),
+                                           buf)
         # pylint: enable=protected-access
-        data = c_api.TF_GetBuffer(buf)
+        data = pywrap_tf_session.TF_GetBuffer(buf)
       op_def = op_def_pb2.OpDef()
       op_def.ParseFromString(compat.as_bytes(data))
       self._op_def_cache[type] = op_def
@@ -4414,12 +4547,12 @@ class Graph(object):
 
     def add_op(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       self._seen_nodes.add(op)
 
     def op_in_group(self, op):
       if isinstance(op, Tensor):
-        op = op.experimental_ref()
+        op = op.ref()
       return op in self._seen_nodes
 
   def _push_control_dependencies_controller(self, controller):
@@ -5158,7 +5291,7 @@ def control_dependencies(control_inputs):
   """
   if context.executing_eagerly():
     if control_inputs:
-      # Excute any pending callables.
+      # Execute any pending callables.
       for control in control_inputs:
         if callable(control):
           control()
@@ -5546,8 +5679,31 @@ def init_scope():
         outer_graph._device_function_stack = outer_device_stack  # pylint: disable=protected-access
 
 
+@tf_export(v1=["executing_eagerly_outside_functions"])
 def executing_eagerly_outside_functions():
-  """Returns True if executing eagerly, even if inside a graph function."""
+  """Returns True if executing eagerly, even if inside a graph function.
+
+  This function will check the outermost context for the program and see if
+  it is in eager mode. It is useful comparing to `tf.executing_eagerly()`,
+  which checks the current context and will return `False` within a
+  `tf.function` body. It can be used to build library that behave differently
+  in eager runtime and v1 session runtime (deprecated).
+
+  Example:
+
+  >>> tf.compat.v1.enable_eager_execution()
+  >>> @tf.function
+  ... def func():
+  ...   # A function constructs TensorFlow graphs, it does not execute eagerly,
+  ...   # but the outer most context is still eager.
+  ...   assert not tf.executing_eagerly()
+  ...   return tf.compat.v1.executing_eagerly_outside_functions()
+  >>> func()
+  <tf.Tensor: shape=(), dtype=bool, numpy=True>
+
+  Returns:
+    boolean, whether the outermost context is in eager mode.
+  """
   if context.executing_eagerly():
     return True
   else:
@@ -6175,8 +6331,8 @@ def name_scope(name, default_name=None, values=None, skip_on_eager=True):
     values: The list of `Tensor` arguments that are passed to the op function.
     skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
       By default this is True since naming tensors and operations in eager mode
-      have little use and cause unecessary performance overhead. However, it is
-      important to preseve variable names since they are often useful for
+      have little use and cause unnecessary performance overhead. However, it is
+      important to preserve variable names since they are often useful for
       debugging and saved models.
 
   Returns:
@@ -6603,8 +6759,7 @@ register_tensor_conversion_function = \
 def to_raw_op(f):
   """Make a given op wrapper function `f` raw.
 
-  Raw op wrappers are not included in the docs, and can only be called
-  with keyword arguments.
+  Raw op wrappers can only be called with keyword arguments.
 
   Args:
     f: An op wrapper function to make raw.
@@ -6616,7 +6771,7 @@ def to_raw_op(f):
   # due to double-registration.
   f = types.FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__,
                          f.__closure__)
-  return kwarg_only(do_not_generate_docs(f))
+  return kwarg_only(f)
 
 
 def raise_from_not_ok_status(e, name):
@@ -6647,7 +6802,7 @@ def add_exit_callback_to_default_func_graph(fn):
       To be executed when exiting func graph scope.
 
   Raises:
-    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+    RuntimeError: If executed when the current default graph is not a FuncGraph,
       or not currently executing in function creation mode (e.g., if inside
       an init_scope).
   """
@@ -6693,3 +6848,30 @@ def _reconstruct_sequence_inputs(op_def, inputs, attrs):
 
   assert i == len(inputs)
   return grouped_inputs
+
+
+class _TensorIterator(object):
+  """Iterates over the leading dim of a Tensor. Performs no error checks."""
+
+  def __init__(self, tensor, dim0):
+    self._tensor = tensor
+    self._index = 0
+    self._limit = dim0
+
+  def __iter__(self):
+    return self
+
+  def __next__(self):
+    if self._index == self._limit:
+      raise StopIteration
+    result = self._tensor[self._index]
+    self._index += 1
+    return result
+
+  next = __next__  # python2.x compatibility.
+
+
+def set_int_list_attr(op, attr_name, ints):
+  """TF internal method used to set a list(int) attribute in the node_def."""
+  ints_list = attr_value_pb2.AttrValue.ListValue(i=ints)
+  op._set_attr(attr_name, attr_value_pb2.AttrValue(list=ints_list))  # pylint:disable=protected-access

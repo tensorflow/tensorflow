@@ -41,6 +41,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
 )
@@ -108,6 +109,8 @@ cuda_py_test(
     name = "control_flow_ops_test",
     srcs = ["control_flow_ops_test.py"],
     tags = ["no_rocm"],
+    # TODO(b/149957923): The test is flaky
+    xla_enable_strict_auto_jit = False,
     deps = [
         ":control_flow_ops",
         ":test_util",
@@ -127,7 +130,6 @@ cuda_py_test(
     name = "xla_control_flow_ops_test",
     srcs = ["xla_control_flow_ops_test.py"],
     tags = [
-        "no_rocm",
         # XLA is not enabled by default on Mac or Windows.
         "no_mac",
         "no_windows",

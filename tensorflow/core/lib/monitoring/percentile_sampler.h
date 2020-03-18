@@ -47,8 +47,10 @@ namespace monitoring {
 // This class is thread-safe.
 class PercentileSamplerCell {
  public:
-  PercentileSamplerCell(std::vector<double> percentiles, size_t max_samples)
-      : percentiles_(std::move(percentiles)),
+  PercentileSamplerCell(UnitOfMeasure unit_of_measure,
+                        std::vector<double> percentiles, size_t max_samples)
+      : unit_of_measure_(unit_of_measure),
+        percentiles_(std::move(percentiles)),
         samples_(max_samples),
         num_samples_(0),
         next_position_(0),
@@ -72,12 +74,13 @@ class PercentileSamplerCell {
                                  long double* accumulator) const;
 
   mutable mutex mu_;
+  UnitOfMeasure unit_of_measure_;
   const std::vector<double> percentiles_;
-  std::vector<Sample> samples_ GUARDED_BY(mu_);
-  size_t num_samples_ GUARDED_BY(mu_);
-  size_t next_position_ GUARDED_BY(mu_);
-  size_t total_samples_ GUARDED_BY(mu_);
-  long double accumulator_ GUARDED_BY(mu_);
+  std::vector<Sample> samples_ TF_GUARDED_BY(mu_);
+  size_t num_samples_ TF_GUARDED_BY(mu_);
+  size_t next_position_ TF_GUARDED_BY(mu_);
+  size_t total_samples_ TF_GUARDED_BY(mu_);
+  long double accumulator_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSamplerCell);
 };
@@ -106,16 +109,19 @@ class PercentileSampler {
   // Example;
   // auto* sampler_with_label =
   // PercentileSampler<1>::New({"/tensorflow/sampler",
-  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024);
+  //   "Tensorflow sampler", "MyLabelName"}, {10.0, 20.0, 30.0}, 1024,
+  //   UnitOfMeasure::kTime);
   static PercentileSampler* New(
       const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
           metric_def,
-      std::vector<double> percentiles, size_t max_samples);
+      std::vector<double> percentiles, size_t max_samples,
+      UnitOfMeasure unit_of_measure);
 
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  PercentileSamplerCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  PercentileSamplerCell* GetCell(const Labels&... labels)
+      TF_LOCKS_EXCLUDED(mu_);
 
   Status GetStatus() { return status_; }
 
@@ -124,8 +130,10 @@ class PercentileSampler {
 
   PercentileSampler(const MetricDef<MetricKind::kCumulative, Percentiles,
                                     NumLabels>& metric_def,
-                    std::vector<double> percentiles, size_t max_samples)
+                    std::vector<double> percentiles, size_t max_samples,
+                    UnitOfMeasure unit_of_measure)
       : metric_def_(metric_def),
+        unit_of_measure_(unit_of_measure),
         percentiles_(std::move(percentiles)),
         max_samples_(max_samples),
         registration_handle_(CollectionRegistry::Default()->Register(
@@ -165,6 +173,8 @@ class PercentileSampler {
   // register it for collection.
   const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels> metric_def_;
 
+  UnitOfMeasure unit_of_measure_ = UnitOfMeasure::kNumber;
+
   // The percentiles samples required for this metric.
   const std::vector<double> percentiles_;
 
@@ -178,7 +188,7 @@ class PercentileSampler {
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
-  std::map<LabelArray, PercentileSamplerCell> cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
 };
@@ -187,15 +197,16 @@ template <int NumLabels>
 PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
     const MetricDef<MetricKind::kCumulative, Percentiles, NumLabels>&
         metric_def,
-    std::vector<double> percentiles, size_t max_samples) {
+    std::vector<double> percentiles, size_t max_samples,
+    UnitOfMeasure unit_of_measure) {
   return new PercentileSampler<NumLabels>(metric_def, std::move(percentiles),
-                                          max_samples);
+                                          max_samples, unit_of_measure);
 }
 
 template <int NumLabels>
 template <typename... Labels>
 PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
-    const Labels&... labels) LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(
@@ -212,7 +223,8 @@ PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
   return &(cells_
                .emplace(std::piecewise_construct,
                         std::forward_as_tuple(label_array),
-                        std::forward_as_tuple(percentiles_, max_samples_))
+                        std::forward_as_tuple(unit_of_measure_, percentiles_,
+                                              max_samples_))
                .first->second);
 }
 

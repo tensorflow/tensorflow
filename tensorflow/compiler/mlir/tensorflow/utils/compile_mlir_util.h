@@ -29,6 +29,15 @@ namespace tensorflow {
 // should only contain operations in tf dialect. If the input module contains
 // operation in the tf_executor dialect, for example, returns an error.
 //
+// Operations in tf dialect are lowered to XLA HLO through the following steps:
+//   . Legalizes control flow operations.
+//   . Decomposes compound resource operations so that the only remaining
+//     operations on resource variables are resource reads/writes..
+//   . Replaces resource reads/writes with function inputs/outputs and
+//     eliminates the use of resource variables.
+//   . Legalizes the operations to XLA HLO operations.
+//   . Canonicalizes the XLA HLO operations.
+//
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
 // return_tuple: when this is true, always create a tuple result for the
@@ -41,6 +50,7 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result);
 }  // namespace tensorflow

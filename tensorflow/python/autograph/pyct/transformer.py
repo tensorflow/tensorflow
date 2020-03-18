@@ -244,75 +244,13 @@ class Base(gast.NodeTransformer):
     self._lineno = 0
     self._col_offset = 0
     self.ctx = ctx
-    self._enclosing_entities = []
-
-    # A stack that allows keeping mutable, scope-local state where scopes may be
-    # nested. For example, it can be used to track the usage of break
-    # statements in each loop, where loops may be nested.
-    self._local_scope_state = []
-    self.enter_local_scope()
 
     # Allows scoping of local variables to keep state across calls to visit_*
-    # methods. Multiple scope hierchies may exist and are keyed by tag. A scope
-    # is valid at one or more nodes and all its children. Scopes created in
-    # child nodes supersede their parent. Scopes are isolated from one another.
+    # methods. Multiple scope hierarchies may exist and are keyed by tag. A
+    # scope is valid at one or more nodes and all its children. Scopes created
+    # in child nodes supersede their parent. Scopes are isolated from one
+    # another.
     self.state = _State()
-
-  @property
-  def enclosing_entities(self):
-    return tuple(self._enclosing_entities)
-
-  @property
-  def local_scope_level(self):
-    return len(self._local_scope_state)
-
-  def enter_local_scope(self, inherit=None):
-    """Deprecated.
-
-    Use self.state instead.
-
-    Marks entry into a new local scope.
-
-    Args:
-      inherit: Optional enumerable of variable names to copy from the parent
-        scope.
-    """
-    scope_entered = {}
-    if inherit:
-      this_scope = self._local_scope_state[-1]
-      for name in inherit:
-        if name in this_scope:
-          scope_entered[name] = this_scope[name]
-    self._local_scope_state.append(scope_entered)
-
-  def exit_local_scope(self, keep=None):
-    """Deprecated.
-
-    Use self.state instead.
-
-    Marks exit from the current local scope.
-
-    Args:
-      keep: Optional enumerable of variable names to copy into the parent scope.
-
-    Returns:
-      A dict containing the scope that has just been exited.
-    """
-    scope_left = self._local_scope_state.pop()
-    if keep:
-      this_scope = self._local_scope_state[-1]
-      for name in keep:
-        if name in scope_left:
-          this_scope[name] = scope_left[name]
-    return scope_left
-
-  def set_local(self, name, value):
-    """Deprecated. Use self.state instead."""
-    self._local_scope_state[-1][name] = value
-
-  def get_local(self, name, default=None):
-    """Deprecated. Use self.state instead."""
-    return self._local_scope_state[-1].get(name, default)
 
   def debug_print(self, node):
     """Helper method useful for debugging. Prints the AST."""
@@ -479,33 +417,24 @@ class Base(gast.NodeTransformer):
                  type(node))
       raise ValueError(msg)
 
-    did_enter_function = False
-    local_scope_size_at_entry = len(self._local_scope_state)
-    processing_expr_node = False
+    if anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
+      return node
 
     parent_origin = self.ctx.current_origin
-    if isinstance(node, (gast.FunctionDef, gast.ClassDef, gast.Lambda)):
-      did_enter_function = True
-    elif isinstance(node, gast.Expr):
-      processing_expr_node = True
-
-    if did_enter_function:
-      self._enclosing_entities.append(node)
-
     if anno.hasanno(node, anno.Basic.ORIGIN):
       self.ctx.current_origin = anno.getanno(node, anno.Basic.ORIGIN)
 
-    if processing_expr_node:
-      entry_expr_value = node.value
+    try:
+      processing_expr_node = isinstance(node, gast.Expr)
+      if processing_expr_node:
+        entry_expr_value = node.value
 
-    if not anno.hasanno(node, anno.Basic.SKIP_PROCESSING):
       result = super(Base, self).visit(node)
-    self.ctx.current_origin = parent_origin
 
-    # Adjust for consistency: replacing the value of an Expr with
-    # an Assign node removes the need for the Expr node.
-    if processing_expr_node:
-      if isinstance(result, gast.Expr) and result.value != entry_expr_value:
+      # Adjust for consistency: replacing the value of an Expr with
+      # an Assign node removes the need for the Expr node.
+      if (processing_expr_node and isinstance(result, gast.Expr) and
+          (result.value is not entry_expr_value)):
         # When the replacement is a list, it is assumed that the list came
         # from a template that contained a number of statements, which
         # themselves are standalone and don't require an enclosing Expr.
@@ -513,29 +442,21 @@ class Base(gast.NodeTransformer):
                       (list, tuple, gast.Assign, gast.AugAssign)):
           result = result.value
 
-    # By default, all replacements receive the origin info of the replaced node.
-    if result is not node and result is not None:
-      nodes_to_adjust = result
-      if isinstance(result, (list, tuple)):
-        nodes_to_adjust = result
-      else:
-        nodes_to_adjust = (result,)
-      for n in nodes_to_adjust:
-        if not anno.hasanno(n, anno.Basic.ORIGIN):
-          inherited_origin = anno.getanno(
-              node, anno.Basic.ORIGIN, default=parent_origin)
-          if inherited_origin is not None:
-            anno.setanno(n, anno.Basic.ORIGIN, inherited_origin)
+      # By default, all replacements receive the origin info of the replaced
+      # node.
+      if result is not node and result is not None:
+        inherited_origin = anno.getanno(
+            node, anno.Basic.ORIGIN, default=parent_origin)
+        if inherited_origin is not None:
+          nodes_to_adjust = result
+          if isinstance(result, (list, tuple)):
+            nodes_to_adjust = result
+          else:
+            nodes_to_adjust = (result,)
+          for n in nodes_to_adjust:
+            if not anno.hasanno(n, anno.Basic.ORIGIN):
+              anno.setanno(n, anno.Basic.ORIGIN, inherited_origin)
+    finally:
+      self.ctx.current_origin = parent_origin
 
-    # On exception, the local scope integrity is not guaranteed.
-    if did_enter_function:
-      self._enclosing_entities.pop()
-
-    if local_scope_size_at_entry != len(self._local_scope_state):
-      raise AssertionError(
-          'Inconsistent local scope stack. Before entering node %s, the'
-          ' stack had length %d, after exit it has length %d. This'
-          ' indicates enter_local_scope and exit_local_scope are not'
-          ' well paired.' % (node, local_scope_size_at_entry,
-                             len(self._local_scope_state)))
     return result

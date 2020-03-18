@@ -65,10 +65,12 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(), 1, 2);
   AddBuiltin(BuiltinOperator_MUL, Register_MUL(), 1, 3);
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB(), 1, 2);
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(), 1, 2);
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6());
+  AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
 }
 
 }  // namespace micro

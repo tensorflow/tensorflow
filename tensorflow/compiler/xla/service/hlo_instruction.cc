@@ -31,6 +31,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/human_readable_json.h"
@@ -346,6 +348,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kRng:
       instruction = CreateRng(shape, proto.distribution(), all_operands());
       break;
+    case HloOpcode::kRngBitGenerator:
+      instruction =
+          CreateRngBitGenerator(shape, operands(0), proto.rng_algorithm());
+      break;
     case HloOpcode::kRngGetAndUpdateState:
       instruction = CreateRngGetAndUpdateState(shape, proto.delta());
       break;
@@ -401,7 +407,8 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
           /*constrain_layout=*/proto.constrain_layout(),
-          /*channel_id=*/channel_id);
+          /*channel_id=*/channel_id,
+          /*use_global_device_ids=*/proto.use_global_device_ids());
       break;
     }
     case HloOpcode::kAllToAll: {
@@ -409,12 +416,21 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       if (proto.channel_id() > 0) {
         channel_id = proto.channel_id();
       }
+      absl::optional<int64> split_dimension;
+      if (proto.dimensions_size() > 0) {
+        TF_RET_CHECK(proto.dimensions_size() == 1)
+            << "AllToAll cannot have more than 1 dimension (split dimension)";
+        TF_RET_CHECK(all_operands().size() == 1)
+            << "AllToAll must have a single operand when the split dimension "
+               "is specified";
+        split_dimension = proto.dimensions(0);
+      }
       instruction = CreateAllToAll(
           shape, all_operands(),
           /*replica_groups=*/
           std::vector<ReplicaGroup>(proto.replica_groups().begin(),
                                     proto.replica_groups().end()),
-          /*channel_id=*/channel_id);
+          /*channel_id=*/channel_id, split_dimension);
       break;
     }
     case HloOpcode::kCollectivePermute: {
@@ -482,9 +498,15 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
                              operand_shapes, proto.backend_config());
       } else {
-        instruction =
-            CreateCustomCall(shape, all_operands(), proto.custom_call_target(),
-                             proto.backend_config());
+        if (proto.called_computation_ids_size() == 1) {
+          instruction = CreateCustomCall(shape, all_operands(), computations(0),
+                                         proto.custom_call_target(),
+                                         proto.backend_config());
+        } else {
+          instruction = CreateCustomCall(shape, all_operands(),
+                                         proto.custom_call_target(),
+                                         proto.backend_config());
+        }
       }
       auto custom_call_instr =
           Cast<HloCustomCallInstruction>(instruction.get());
@@ -734,6 +756,13 @@ HloInstruction::CreateRngGetAndUpdateState(const Shape& shape, int64 delta) {
   return absl::make_unique<HloRngGetAndUpdateStateInstruction>(shape, delta);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
+                                      RandomAlgorithm algorithm) {
+  return absl::make_unique<HloRngBitGeneratorInstruction>(shape, state,
+                                                          algorithm);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateNary(
     const Shape& shape, HloOpcode opcode,
     absl::Span<HloInstruction* const> operands) {
@@ -902,18 +931,19 @@ HloInstruction::CreateReducePrecision(const Shape& shape,
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     HloComputation* reduce_computation,
     const std::vector<ReplicaGroup>& replica_groups, bool constrain_layout,
-    const absl::optional<int64>& channel_id) {
+    const absl::optional<int64>& channel_id, bool use_global_device_ids) {
   return absl::make_unique<HloAllReduceInstruction>(
       shape, operands, reduce_computation, replica_groups, constrain_layout,
-      channel_id);
+      channel_id, use_global_device_ids);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateAllToAll(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
     const std::vector<ReplicaGroup>& replica_groups,
-    const absl::optional<int64>& channel_id) {
-  return absl::make_unique<HloAllToAllInstruction>(shape, operands,
-                                                   replica_groups, channel_id);
+    const absl::optional<int64>& channel_id,
+    const absl::optional<int64>& split_dimension) {
+  return absl::make_unique<HloAllToAllInstruction>(
+      shape, operands, replica_groups, channel_id, split_dimension);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1387,6 +1417,14 @@ bool HloInstruction::HasSideEffect() const {
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
+    HloComputation* to_apply, absl::string_view custom_call_target,
+    string opaque) {
+  return absl::make_unique<HloCustomCallInstruction>(
+      shape, operands, to_apply, custom_call_target, std::move(opaque));
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCustomCall(
+    const Shape& shape, absl::Span<HloInstruction* const> operands,
     absl::string_view custom_call_target,
     absl::Span<const Shape> operand_shapes_with_layout, string opaque) {
   return absl::make_unique<HloCustomCallInstruction>(
@@ -1470,6 +1508,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
@@ -1623,7 +1662,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
   return clone;
 }
 
-HloInstruction::~HloInstruction() {
+void HloInstruction::DetachFromOperandsAndUsers() {
+  if (cleaned_up_) {
+    return;
+  }
+  cleaned_up_ = true;
   // Detach from operands. An instruction may be repeated as an operand. To
   // avoid calling RemoveUser twice on the same operand, check before remove.
   for (int64 operand_num = 0; operand_num < operand_count(); ++operand_num) {
@@ -1940,6 +1983,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTrace:
     case HloOpcode::kFusion:
     case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kParameter:
     case HloOpcode::kGetTupleElement:
@@ -2125,6 +2169,7 @@ HloComputation* HloInstruction::to_apply() const {
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kCustomCall:
       CHECK_EQ(called_computations_.size(), 1);
       return called_computations_[0];
     default:
@@ -2145,6 +2190,7 @@ void HloInstruction::set_to_apply(HloComputation* computation) {
     case HloOpcode::kAllReduce:
     case HloOpcode::kScatter:
     case HloOpcode::kSort:
+    case HloOpcode::kCustomCall:
       CHECK_EQ(called_computations_.size(), 1);
       called_computations_[0] = computation;
       break;
@@ -2389,15 +2435,17 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintNameInternal(name(), options), " = ");
   }
 
-  // Print shape.
-  if (options.include_layout_in_shapes()) {
-    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
-  } else {
-    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  if (options.print_result_shape()) {
+    // Print shape.
+    if (options.include_layout_in_shapes()) {
+      StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ");
+    } else {
+      StrAppend(&result, ShapeUtil::HumanString(shape()), " ");
+    }
   }
 
   // Print opcode, operand(s).
-  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
+  StrAppend(&result, HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2468,7 +2516,9 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
 
 std::vector<string> HloInstruction::ExtraAttributesToString(
     const HloPrintOptions& options) const {
-  std::vector<string> extra = ExtraAttributesToStringImpl(options);
+  std::vector<string> extra = options.print_extra_attributes()
+                                  ? ExtraAttributesToStringImpl(options)
+                                  : std::vector<string>();
 
   if (options.print_subcomputation_mode() ==
       HloPrintOptions::PrintSubcomputationMode::kNameOnly) {
@@ -2872,6 +2922,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleOutfeed(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
+    case HloOpcode::kRngBitGenerator:
+      return visitor->HandleRngBitGenerator(this);
     case HloOpcode::kRngGetAndUpdateState:
       return visitor->HandleRngGetAndUpdateState(this);
     case HloOpcode::kWhile:
@@ -3347,6 +3399,9 @@ string OpMetadataToString(const OpMetadata& metadata) {
 string RandomDistributionToString(const RandomDistribution& distribution) {
   return absl::AsciiStrToLower(RandomDistribution_Name(distribution));
 }
+string RandomAlgorithmToString(const RandomAlgorithm& algorithm) {
+  return absl::AsciiStrToLower(RandomAlgorithm_Name(algorithm));
+}
 
 string PrecisionToString(const PrecisionConfig::Precision& precision) {
   return absl::AsciiStrToLower(PrecisionConfig::Precision_Name(precision));
@@ -3389,6 +3444,24 @@ string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
         StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
   }
   return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
+StatusOr<RandomAlgorithm> StringToRandomAlgorithm(const string& name) {
+  static std::unordered_map<string, RandomAlgorithm>* map = [] {
+    static auto* map = new std::unordered_map<string, RandomAlgorithm>;
+    for (int i = 0; i < RandomAlgorithm_ARRAYSIZE; i++) {
+      if (RandomAlgorithm_IsValid(i)) {
+        auto value = static_cast<RandomAlgorithm>(i);
+        (*map)[RandomAlgorithmToString(value)] = value;
+      }
+    }
+    return map;
+  }();
+  auto found = map->find(absl::AsciiStrToLower(name));
+  if (found == map->end()) {
+    return InvalidArgument("Unknown algorithm");
+  }
+  return found->second;
 }
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {

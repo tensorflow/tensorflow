@@ -32,15 +32,21 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
  public:
   explicit DynamicDimensionInferenceVisitor(
       const DynamicParameterBinding& param_bindings,
-      DynamicDimensionInference* parent)
-      : param_bindings_(param_bindings), parent_(parent) {}
+      DynamicDimensionInference* parent,
+      DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler)
+      : param_bindings_(param_bindings),
+        parent_(parent),
+        custom_call_handler_(std::move(custom_call_handler)) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
   static Status Run(HloComputation* computation,
                     const DynamicParameterBinding& param_bindings,
-                    DynamicDimensionInference* parent) {
-    DynamicDimensionInferenceVisitor visitor(param_bindings, parent);
+                    DynamicDimensionInference* parent,
+                    DynamicDimensionInference::CustomCallInferenceHandler
+                        custom_call_handler = nullptr) {
+    DynamicDimensionInferenceVisitor visitor(param_bindings, parent,
+                                             std::move(custom_call_handler));
     return computation->Accept(&visitor);
   }
 
@@ -123,6 +129,9 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   // A pointer to DynamicDimensionInference, used to update the dynamic mapping.
   DynamicDimensionInference* parent_;
+
+  // A handler for custom calls.
+  DynamicDimensionInference::CustomCallInferenceHandler custom_call_handler_;
 };
 
 Status DynamicDimensionInferenceVisitor::DefaultAction(HloInstruction* hlo) {
@@ -193,6 +202,9 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
       }
     }
     return Status::OK();
+  }
+  if (custom_call_handler_) {
+    return custom_call_handler_(hlo, parent_);
   }
   return ForEachOperandDynamicDimension(
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
@@ -572,10 +584,13 @@ Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {
           HloInstruction* operand_dynamic_size,
           DimensionConstraint constraint) -> Status {
         HloInstruction* reshape = hlo;
-        TF_RET_CHECK(reshape->shape().rank() > 0)
-            << "Reshaping a dynamic dimension into a scalar, which has "
-               "undefined behavior. The offending instruction is: "
-            << reshape->ToString();
+        if (reshape->shape().rank() == 0) {
+          VLOG(0) << "Reshaping a dynamic dimension into a scalar, which has "
+                     "undefined behavior when input size is 0. The offending "
+                     "instruction is: "
+                  << reshape->ToString();
+          return Status::OK();
+        }
         auto common_factors = CommonFactors(operand->shape().dimensions(),
                                             reshape->shape().dimensions());
         int64 input_dim_start = -1;
@@ -1324,9 +1339,9 @@ void DynamicDimensionInference::CopyMapping(HloInstruction* from,
 
 /* static */
 StatusOr<DynamicDimensionInference> DynamicDimensionInference::Run(
-    HloModule* module) {
+    HloModule* module, CustomCallInferenceHandler custom_call_handler) {
   VLOG(2) << "Param Config " << module->dynamic_parameter_binding().ToString();
-  DynamicDimensionInference inference(module);
+  DynamicDimensionInference inference(module, std::move(custom_call_handler));
   TF_RETURN_IF_ERROR(inference.AnalyzeDynamicDimensions());
   return inference;
 }
@@ -1345,12 +1360,14 @@ string DynamicDimensionInference::ToString() const {
   return absl::StrJoin(pieces, "\n");
 }
 
-DynamicDimensionInference::DynamicDimensionInference(HloModule* module)
-    : module_(module) {}
+DynamicDimensionInference::DynamicDimensionInference(
+    HloModule* module, CustomCallInferenceHandler custom_call_handler)
+    : module_(module), custom_call_handler_(std::move(custom_call_handler)) {}
 
 Status DynamicDimensionInference::AnalyzeDynamicDimensions() {
   return DynamicDimensionInferenceVisitor::Run(
-      module_->entry_computation(), module_->dynamic_parameter_binding(), this);
+      module_->entry_computation(), module_->dynamic_parameter_binding(), this,
+      custom_call_handler_);
 }
 
 Status DynamicDimensionInference::ForwardDynamicSize(HloInstruction* inst,

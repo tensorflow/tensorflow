@@ -63,6 +63,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/mixed_precision/experimental:loss_scale_optimizer",
         "//tensorflow/python/keras/optimizer_v2",
     ],
@@ -86,6 +87,7 @@ cuda_py_test(
     deps = [
         ":device_compatibility_check",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -94,7 +96,7 @@ py_library(
     srcs = ["get_layer_policy.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras/engine:base_layer",
     ],
 )
 
@@ -137,6 +139,7 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -177,6 +180,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -211,26 +215,28 @@ cuda_py_test(
     size = "medium",
     srcs = ["keras_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 10,
     tags = ["no_windows"],  # b/139083295: bfloat16 tests fail on Windows
     deps = [
         ":test_util",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )
 
-cuda_py_test(
+py_test(
     name = "layer_correctness_test",
     size = "medium",
     srcs = ["layer_correctness_test.py"],
     python_version = "PY3",
-    tags = ["no_rocm"],
+    shard_count = 10,
     deps = [
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras",

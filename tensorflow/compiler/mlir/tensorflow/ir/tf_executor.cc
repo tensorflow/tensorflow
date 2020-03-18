@@ -26,7 +26,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/STLExtras.h"  // TF:llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -313,6 +314,19 @@ ParseResult ParseFetchOp(OpAsmParser &parser, OperationState &result) {
 
 YieldOp IslandOp::GetYield() { return llvm::cast<YieldOp>(GetBody().back()); }
 
+// Checks if a tf_executor.island wraps a single operation and the single
+// operation results are perfectly forwarded to the islands yield.
+bool IslandOp::WrapsSingleOp() {
+  auto body = GetBody().without_terminator();
+  if (!has_single_element(body)) return false;
+
+  Operation &wrapped_op = *body.begin();
+  YieldOp yield = GetYield();
+  return wrapped_op.getNumResults() == yield.getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(), yield.getOperands().begin());
+}
+
 namespace {
 
 LogicalResult Verify(IslandOp island) {
@@ -359,23 +373,17 @@ void Print(IslandOp op, OpAsmPrinter &p) {
   // Check if we can print the short "wraps" form: that is if the island
   // contains a single operation and the result of this operation are perfectly
   // forwarded to the yield.
-  if (op.getAttrs().empty() &&
-      std::next(op.GetBody().begin(), 2) == op.GetBody().end()) {
+  if (op.getAttrs().empty() && op.WrapsSingleOp()) {
     Operation &wrapped_op = op.GetBody().front();
-    Operation &yield_op = op.GetBody().back();
+    YieldOp yield_op = op.GetYield();
     // The "wraps" syntax only encodes a single location.
     // In order to correctly round-trip, we can only use this syntax when all
     // the locations are identical.
     if (wrapped_op.getLoc() == op.getLoc() &&
         yield_op.getLoc() == op.getLoc()) {
-      if (wrapped_op.getNumResults() == yield_op.getNumOperands() &&
-          std::equal(wrapped_op.getResults().begin(),
-                     wrapped_op.getResults().end(),
-                     yield_op.getOperands().begin())) {
-        p << " wraps ";
-        p.printGenericOp(&op.GetBody().front());
-        return;
-      }
+      p << " wraps ";
+      p.printGenericOp(&wrapped_op);
+      return;
     }
   }
   p.printRegion(op.getOperation()->getRegion(0));
@@ -565,9 +573,9 @@ void Print(SwitchNOp switchn, OpAsmPrinter &p) {
 
 ParseResult ParseSwitchNOp(OpAsmParser &parser, OperationState &result) {
   // Parsing:
-  //       %2:6 = tf_executor.SwitchN %0, %1 by 5 : tensor<??xf32>
+  //       %2:6 = tf_executor.SwitchN %0, %1 of 5 : tensor<??xf32>
   // Where the first operand is the data to replicate, the second is an i32
-  // indicating which output to populate, followed by the keyword `by` and the
+  // indicating which output to populate, followed by the keyword `of` and the
   // number of outputs (+1 for the control token).
   SmallVector<OpAsmParser::OperandType, 2> op_infos;
   SmallVector<Type, 1> types;
@@ -1059,16 +1067,16 @@ bool HasSingleOpInBlock(Block *block) {
 struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one fetch.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map graph results to fetch operands.
     rewriter.replaceOp(op, op.GetFetch().fetches());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1078,11 +1086,11 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
 struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one island.
-    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return failure();
 
     FetchOp fetch_op = op.GetFetch();
     auto island_op = llvm::cast<IslandOp>(block.front());
@@ -1112,7 +1120,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
         std::prev(island_body.end()));
     rewriter.replaceOp(op, new_rets);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace
@@ -1134,18 +1142,18 @@ struct DropEmptyIslandNoOperandNoDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1157,16 +1165,16 @@ struct DropEmptyIslandNoOperandOneDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
         !op.control().use_empty() ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1191,16 +1199,16 @@ namespace {
 struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
   using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
-                                     PatternRewriter &rewriter) const override {
-    if (op.getNumOperands() != 0) return matchFailure();
+  LogicalResult matchAndRewrite(ControlTriggerOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

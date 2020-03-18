@@ -20,7 +20,7 @@ limitations under the License.
 // WARNING: Unlike tensorflow/c/c_api.h, the API here is not guaranteed to be
 // stable and can change without notice.
 
-#include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_core_api.h"
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).

@@ -19,10 +19,12 @@ limitations under the License.
 
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <vector>
 
 #include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/test.h"
@@ -76,7 +78,7 @@ static const char kTestFlagString[] =
 // Test that the environment variable is parsed correctly.
 TEST(ParseFlagsFromEnv, Basic) {
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", kTestFlagString, true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in environment variable)");
 }
 
@@ -103,7 +105,7 @@ TEST(ParseFlagsFromEnv, File) {
   CHECK_EQ(ferror(fp), 0) << "writes failed to " << tmp_file;
   fclose(fp);
   // Prepare environment.
-  setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
+  tensorflow::setenv("TF_XLA_FLAGS", tmp_file.c_str(), true /*overwrite*/);
   TestParseFlagsFromEnv("(flags in file)");
   unlink(tmp_file.c_str());
 }
@@ -126,7 +128,7 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
   };
   for (int i = 0; i != TF_ARRAYSIZE(test); i++) {
     if (test[i].env != nullptr) {
-      setenv("TF_XLA_FLAGS", test[i].env, true /*overwrite*/);
+      tensorflow::setenv("TF_XLA_FLAGS", test[i].env, true /*overwrite*/);
     }
     tensorflow::SubProcess child;
     std::vector<string> argv;
@@ -141,6 +143,9 @@ TEST(ParseFlagsFromEnv, EnvAndFlag) {
     string stdout_str;
     int child_status = child.Communicate(nullptr, &stdout_str, nullptr);
     CHECK_EQ(child_status, 0) << "test " << i;
+    // On windows, we get CR characters. Remove them.
+    stdout_str.erase(std::remove(stdout_str.begin(), stdout_str.end(), '\r'),
+                     stdout_str.end());
     CHECK_EQ(stdout_str, test[i].expected_value) << "test " << i;
   }
 }

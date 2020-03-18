@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -47,7 +48,7 @@ std::string GenerateConvolutionTransposedCode(
   bool manual_clamp =
       image_buffer || src_tensor_type == TensorStorageType::BUFFER;
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
 
   for (int z = 0; z < block_size.z; ++z) {
@@ -109,7 +110,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size              \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int dst_x = (linear_id / dst_size.w);\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -183,7 +184,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   const std::string layer_offset =
       std::string("src_size.x * src_size.y") +
-      (op_def.batch_support ? " * src_size.w" : "");
+      (op_def.IsBatchSupported() ? " * src_size.w" : "");
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -220,6 +221,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   c += "      for (int s = 0; s < src_size.z; ++s) {\n";
   const auto mode = GetFastestZeroMode(device);
+  const bool conditional_read = device.IsMali();
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -229,9 +231,15 @@ std::string GenerateConvolutionTransposedCode(
         c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
              "; addr_" + id + " += dz_" + id + ";\n";
       } else if (manual_clamp) {
-        c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
-             " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" + id +
-             " += dz;\n";
+        if (conditional_read) {
+          c += "        FLT4 src" + id + " = in_x" + xindex + " && in_y" +
+               yindex + " ? " + src_tensor.Read("addr_" + id) +
+               " : (FLT4)(0.0f); addr_" + id + " += dz;\n";
+        } else {
+          c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
+               " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" +
+               id + " += dz;\n";
+        }
       } else {
         c += "        FLT4 src" + id + " = " +
              src_tensor.ReadWHSB("sx" + xindex, "sy" + yindex, "s", batch_id,
@@ -279,7 +287,7 @@ std::string GenerateConvolutionTransposedCode(
         c += "      if (xc < dst_size.x && yc < dst_size.y) {\n";
         c += "        FLT4 res = TO_FLT4(r" + id + ") + bias_val;\n";
         std::string x_3dcoord =
-            op_def.batch_support ? "xc * dst_size.w + B" : "xc";
+            op_def.IsBatchSupported() ? "xc * dst_size.w + B" : "xc";
         const LinkingContext context{"res", x_3dcoord, "yc", "dst_z"};
         c += PostProcess(linked_operations, context);
         c += "        " +
@@ -304,7 +312,24 @@ ConvolutionTransposed::ConvolutionTransposed(
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.stride.w, attr.stride.h),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h),
-      block_size_(2, 2, 2) {}
+      block_size_(2, 2, 2) {
+  const bool is_f16 = definition.precision == CalculationsPrecision::F16;
+  if (device.IsMali()) {
+    MaliInfo mali_info = device.GetInfo().mali_info;
+    if (mali_info.IsMidgard()) {
+      block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
+    } else {
+      block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
+    }
+  }
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  if (dst_depth == 1 || dst_depth == 3) {
+    if (!device.IsMali()) {
+      block_size_.y *= block_size_.z;
+    }
+    block_size_.z = 1;
+  }
+}
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
     : GPUOperation(std::move(operation)),

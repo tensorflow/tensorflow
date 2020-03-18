@@ -119,8 +119,10 @@ uint32_t BufferUseCount(ValueId id,
   }
 
   for (auto& chain : *chains) {
-    if (Contains(chain.begin()->get()->input_buffers, id)) {
-      use_count++;
+    for (auto& desc : chain) {
+      if (Contains(desc->input_buffers, id)) {
+        use_count++;
+      }
     }
   }
   return use_count;
@@ -175,19 +177,20 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
       // Check if all inputs of this operation are ready.
       if (Contains(ready_buffer_ids, task_descriptor->input_buffers)) {
         // Now find a chain to fuse with.
+        bool fused = false;
         for (auto& chain : *chains) {
           // We can fuse only single output for now.
           if (Contains(task_descriptor->input_buffers,
-                       chain.back()->output_buffer.id)) {
-            if (CanFuseOperations(chain.back(), task_descriptor, output_ids,
-                                  *descriptors, chains)) {
-              chain.push_back(task_descriptor);
-            } else {
-              // Start new chain.
-              chains->push_back({task_descriptor});
-            }
+                       chain.back()->output_buffer.id) &&
+              CanFuseOperations(chain.back(), task_descriptor, output_ids,
+                                *descriptors, chains)) {
+            chain.push_back(task_descriptor);
+            fused = true;
             break;
           }
+        }
+        if (!fused) {
+          chains->push_back({task_descriptor});
         }
 
         // Remove operation from original list and start from the beginning.
@@ -547,6 +550,9 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
   fused_desciptor->output_buffer = {
       fused_id, "", non_linkable->output_buffer.dimensions_function, alias};
   fused_desciptor->resize_function = non_linkable->resize_function;
+  for (const auto& desc : sequence) {
+    fused_desciptor->description += desc->description + "_";
+  }
   return fused_desciptor;
 }
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 
 #include <cmath>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -134,14 +135,26 @@ XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
                    ConstantR0WithType(builder, U64, 32));
 }
 
-// Given the initial state and the request number of random numbers to be
+// Given the initial state and the request shape of random numbers to be
 // generated, returns the input for the random number generator and a new state.
 std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
-    XlaOp initial_state, const int64 size) {
+    XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = initial_state.builder();
-  XlaOp input_u64 = Iota(builder, U64, size);
-  input_u64 = input_u64 + initial_state;
-  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, size);
+  auto u64_shape = ShapeUtil::MakeShape(U64, shape.dimensions());
+  // initial_state is an R1, so reshape it to a scalar.
+  auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
+  int64 trailing_dims_product = 1;
+  for (int64 i = shape.rank() - 1; i >= 0; --i) {
+    if (shape.dimensions(i) < 2) {
+      continue;
+    }
+    input_u64 =
+        input_u64 + (Iota(builder, u64_shape, i) *
+                     ConstantR0<uint64>(builder, trailing_dims_product));
+    trailing_dims_product *= shape.dimensions(i);
+  }
+  XlaOp new_state =
+      initial_state + ConstantR0<uint64>(builder, ShapeUtil::ElementsIn(shape));
   return std::make_pair(Uint64ToUint32s(input_u64), new_state);
 }
 
@@ -149,11 +162,46 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = key.builder();
+  // Try to split the shape on a dimension > 1 into two halves, each
+  // representing a U32 value.
+  std::vector<int64> half_shape_dims;
+  std::vector<int64> padded_full_shape_dims;
+  int64 split_dim = -1;
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    if (shape.dimensions(i) > 1 && split_dim < 0) {
+      half_shape_dims.push_back(CeilOfRatio<int64>(shape.dimensions(i), 2));
+      // Create a new trivial dim for the later concat, which is more friendly
+      // to sharding propagation.
+      half_shape_dims.push_back(1);
+      split_dim = i;
+      padded_full_shape_dims.push_back(half_shape_dims[i] * 2);
+    } else {
+      half_shape_dims.push_back(shape.dimensions(i));
+      padded_full_shape_dims.push_back(shape.dimensions(i));
+    }
+  }
+  auto half_shape = ShapeUtil::MakeShape(shape.element_type(), half_shape_dims);
+  if (split_dim >= 0) {
+    std::pair<ThreeFry2x32State, XlaOp> inputs_state =
+        GetThreeFryInputsAndUpdatedState(initial_state, half_shape);
+    ThreeFry2x32State inputs = inputs_state.first;
+    ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
+    XlaOp result = ConcatInDim(builder, outputs, split_dim + 1);
+    result = Reshape(result, padded_full_shape_dims);
+    if (shape.dimensions(split_dim) % 2 != 0) {
+      result = Slice(result, std::vector<int64>(shape.rank(), 0),
+                     shape.dimensions(), std::vector<int64>(shape.rank(), 1));
+    }
+    return {result, inputs_state.second};
+  }
+  // Use an R1 shape if the previous attempt failed.
   const int64 size = ShapeUtil::ElementsIn(shape);
   const int64 half_size = CeilOfRatio<int64>(size, 2);
   const bool size_is_odd = (half_size * 2 != size);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, half_size);
+      GetThreeFryInputsAndUpdatedState(
+          initial_state,
+          ShapeUtil::MakeShape(shape.element_type(), {half_size}));
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   if (size_is_odd) {
@@ -167,14 +215,12 @@ RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
 // Generates random 64bits with the given shape using the Three Fry
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit64(XlaOp key, XlaOp initial_state, const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, size);
+      GetThreeFryInputsAndUpdatedState(initial_state, shape);
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   XlaOp result = Uint32sToUint64(outputs);
-  return {Reshape(result, AsInt64Slice(shape.dimensions())),
-          inputs_state.second};
+  return {result, inputs_state.second};
 }
 
 // The key of the Philox random number generator.
@@ -305,17 +351,9 @@ std::pair<Philox4x32State, XlaOp> GetPhiloxInputsAndUpdatedState(
 // numbers are generated in the unit of 128bits.
 std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
                                                      XlaOp initial_state,
-                                                     Philox4x32Key key,
-                                                     bool scramble) {
+                                                     Philox4x32Key key) {
   Philox4x32State state;
-  if (scramble) {
-    // When `scramble` is true, `initial_state` is not used. This is because
-    // scramble is true only when this function is called by stateless random
-    // ops, for which `initial_state` is always zero.
-    std::tie(state, key) = ScramblePhiloxKey(key);
-  } else {
-    state = Uint128ToUint32s(Uint128FromOp(initial_state));
-  }
+  state = Uint128ToUint32s(Uint128FromOp(initial_state));
   const int64 num_vector4 = CeilOfRatio<int64>(num_elems, 4);
   Philox4x32State inputs;
   XlaOp new_state;
@@ -328,16 +366,15 @@ std::pair<Philox4x32State, XlaOp> GeneratePhiloxBits(int64 num_elems,
 // Generates an array of primitive type U32 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state, const Shape& shape,
-                         bool scramble) {
+RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state,
+                         const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
   Philox4x32Key key = Uint64ToUint32s(op_key);
   Philox4x32State bits;
   XlaOp new_state;
-  std::tie(bits, new_state) =
-      GeneratePhiloxBits(num_elems, initial_state, key, scramble);
+  std::tie(bits, new_state) = GeneratePhiloxBits(num_elems, initial_state, key);
   // Combining bits[i] in a round-robin fashion, to align with non-XLA
   // implementations
   int64 bits_len = (num_elems + 3) / 4;
@@ -356,8 +393,8 @@ RngOutput PhiloxRngBit32(XlaOp op_key, XlaOp initial_state, const Shape& shape,
 // Generates an array of primitive type U64 with the given shape containing
 // random bits generated by the Philox algorithm. Returns the array and the new
 // state of the random number generator.
-RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
-                         bool scramble) {
+RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state,
+                         const Shape& shape) {
   XlaBuilder* builder = op_key.builder();
   const int64 num_elems = ShapeUtil::ElementsIn(shape);
 
@@ -365,7 +402,7 @@ RngOutput PhiloxRngBit64(XlaOp op_key, XlaOp initial_state, const Shape& shape,
   Philox4x32State bits32;
   XlaOp new_state;
   std::tie(bits32, new_state) =
-      GeneratePhiloxBits(num_elems * 2, initial_state, key, scramble);
+      GeneratePhiloxBits(num_elems * 2, initial_state, key);
 
   std::array<XlaOp, 2> bits64;
   bits64[0] = Uint32sToUint64({bits32[0], bits32[1]});
@@ -463,18 +500,18 @@ RngOutput ThreeFryBitGenerator(XlaOp key, XlaOp initial_state,
   }
 }
 
-RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
-                             bool scramble) {
+RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state,
+                             const Shape& shape) {
   PrimitiveType type = shape.element_type();
   switch (type) {
     case F32:
     case U32:
     case S32:
-      return PhiloxRngBit32(key, initial_state, shape, scramble);
+      return PhiloxRngBit32(key, initial_state, shape);
     case F64:
     case U64:
     case S64:
-      return PhiloxRngBit64(key, initial_state, shape, scramble);
+      return PhiloxRngBit64(key, initial_state, shape);
     default:
       return {key.builder()->ReportError(Unimplemented(
                   "Types other than F32, F64, U32, S32, U64 and S64 "
@@ -482,6 +519,13 @@ RngOutput PhiloxBitGenerator(XlaOp key, XlaOp initial_state, const Shape& shape,
                   primitive_util::LowercasePrimitiveTypeName(type))),
               initial_state};
   }
+}
+
+std::pair<XlaOp, XlaOp> ScramblePhiloxKey(XlaOp key) {
+  Philox4x32Key pkey = Uint64ToUint32s(key);
+  auto state_key = ScramblePhiloxKey(pkey);
+  return std::make_pair(Uint128ToOp(Uint32sToUint128(state_key.first)),
+                        Uint32sToUint64(state_key.second));
 }
 
 RngOutput UniformFloatingPointDistribution(XlaOp key, XlaOp initial_state,

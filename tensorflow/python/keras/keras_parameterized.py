@@ -27,6 +27,7 @@ from absl.testing import parameterized
 from tensorflow.python import keras
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
@@ -57,8 +58,8 @@ def run_with_all_saved_model_formats(
   for each Keras saved model format.
 
   The Keras saved model formats include:
-  1. HDF5: 'hdf5', 'h5', 'keras'
-  2. SavedModel: 'tensorflow', 'tf'
+  1. HDF5: 'h5'
+  2. SavedModel: 'tf'
 
   Note: if stacking this decorator with absl.testing's parameterized decorators,
   those should be at the bottom of the stack.
@@ -132,8 +133,8 @@ def run_with_all_saved_model_formats(
   """
   # Exclude h5 save format if H5py isn't available.
   if h5py is None:
-    exclude_formats.append(['hdf5', 'h5', 'keras'])
-  saved_model_formats = ['hdf5', 'h5', 'keras', 'tensorflow', 'tf']
+    exclude_formats.append(['h5'])
+  saved_model_formats = ['h5', 'tf']
   params = [('_%s' % saved_format, saved_format)
             for saved_format in saved_model_formats
             if saved_format not in nest.flatten(exclude_formats)]
@@ -145,9 +146,9 @@ def run_with_all_saved_model_formats(
     @functools.wraps(f)
     def decorated(self, saved_format, *args, **kwargs):
       """A run of a single test case w/ the specified model type."""
-      if saved_format in ['hdf5', 'h5', 'keras']:
+      if saved_format == 'h5':
         _test_h5_saved_model_format(f, self, *args, **kwargs)
-      elif saved_format in ['tensorflow', 'tf']:
+      elif saved_format == 'tf':
         _test_tf_saved_model_format(f, self, *args, **kwargs)
       else:
         raise ValueError('Unknown model type: %s' % (saved_format,))
@@ -332,8 +333,7 @@ def run_all_keras_modes(test_or_class=None,
       metrics = ['mae']
       model.compile(
           optimizer, loss, metrics=metrics,
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
       inputs = np.zeros((10, 3))
       targets = np.zeros((10, 4))
@@ -399,8 +399,8 @@ def run_all_keras_modes(test_or_class=None,
 
 
 def _v1_session_test(f, test_or_class, config, *args, **kwargs):
-  with context.graph_mode(), testing_utils.run_eagerly_scope(False):
-    with testing_utils.experimental_run_tf_function_scope(False):
+  with ops.get_default_graph().as_default():
+    with testing_utils.run_eagerly_scope(False):
       with test_or_class.test_session(use_gpu=True, config=config):
         f(test_or_class, *args, **kwargs)
 
@@ -408,15 +408,13 @@ def _v1_session_test(f, test_or_class, config, *args, **kwargs):
 def _v2_eager_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(True):
-      with testing_utils.experimental_run_tf_function_scope(True):
-        f(test_or_class, *args, **kwargs)
+      f(test_or_class, *args, **kwargs)
 
 
 def _v2_function_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
-      with testing_utils.experimental_run_tf_function_scope(True):
-        f(test_or_class, *args, **kwargs)
+      f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):

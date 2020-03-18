@@ -16,7 +16,6 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_env_hdrs",
     "tf_additional_lib_hdrs",
-    "tf_additional_monitoring_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
     "tf_fingerprint_deps",
@@ -24,11 +23,11 @@ load(
     "tf_google_mobile_srcs_only_runtime",
     "tf_kernel_tests_linkstatic",
     "tf_logging_deps",
-    "tf_monitoring_deps",
     "tf_platform_alias",
     "tf_platform_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
+    "tf_resource_deps",
     "tf_windows_aware_platform_deps",
 )
 load(
@@ -40,10 +39,12 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_chromiumos",
     "if_not_android",
+    "if_windows",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_copts",  # @unused
     "tf_cuda_library",
+    "tf_portable_full_lite_protos",
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -55,11 +56,12 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 package(
-    default_visibility = [
-        "//tensorflow:__subpackages__",
-    ],
+    default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
+
+# Authorized users go here.
+package_group(name = "friends")
 
 exports_files(
     [
@@ -81,10 +83,11 @@ exports_files(
         "load_library.h",
         "logging.h",
         "mem.h",
-        "monitoring.h",
         "mutex.h",
         "net.h",
         "numa.h",
+        "resource_loader.h",
+        "resource.h",
         "snappy.h",
         "stacktrace_handler.h",
         "subprocess.h",
@@ -164,6 +167,7 @@ cc_library(
         ":byte_order",
         ":logging",
         ":platform_port",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -329,14 +333,25 @@ cc_library(
 )
 
 cc_library(
-    name = "monitoring",
-    textual_hdrs = ["monitoring.h"],
-    deps = tf_monitoring_deps(),
-)
-
-cc_library(
     name = "macros",
     hdrs = ["macros.h"],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = tf_platform_deps("xla_cpu_runtime_srcs") + [
+        "cord.h",
+        "ctstring.h",
+        "ctstring_internal.h",
+        "dynamic_annotations.h",
+        "env_time.h",
+        "macros.h",
+        "platform.h",
+        "tstring.h",
+        "types.h",
+    ] + if_windows([
+        "//tensorflow/core/platform/windows:xla_cpu_runtime_srcs",
+    ]),
 )
 
 cc_library(
@@ -447,10 +462,10 @@ cc_library(
         "protobuf_util.cc",
     ],
     hdrs = ["protobuf.h"],
-    defines = select({
-        "//tensorflow:android": ["TENSORFLOW_LITE_PROTOS"],
-        "//conditions:default": [],
-    }),
+    defines = tf_portable_full_lite_protos(
+        full = [],
+        lite = ["TENSORFLOW_LITE_PROTOS"],
+    ),
     deps = [
         ":platform",
         ":types",
@@ -506,10 +521,23 @@ cc_library(
     hdrs = ["regexp.h"],
     deps = [
         ":platform",
-        ":types",
-        "@com_google_absl//absl/strings",
         "@com_googlesource_code_re2//:re2",
     ],
+)
+
+cc_library(
+    name = "resource",
+    textual_hdrs = ["resource.h"],
+    deps = [
+        ":stringpiece",
+    ] + tf_resource_deps(),
+)
+
+cc_library(
+    name = "resource_loader",
+    testonly = 1,
+    textual_hdrs = ["resource_loader.h"],
+    deps = tf_platform_deps("resource_loader"),
 )
 
 cc_library(
@@ -571,6 +599,7 @@ cc_library(
     name = "stacktrace_handler",
     textual_hdrs = ["stacktrace_handler.h"],
     deps = tf_windows_aware_platform_deps("stacktrace_handler"),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -716,8 +745,13 @@ cc_library(
 
 cc_library(
     name = "tstring",
-    hdrs = ["tstring.h"],
+    hdrs = [
+        "ctstring.h",
+        "ctstring_internal.h",
+        "tstring.h",
+    ],
     deps = [
+        ":cord",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -737,6 +771,62 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_platform_deps("unbounded_work_queue"),
+)
+
+cc_library(
+    name = "retrying_utils",
+    srcs = [
+        "retrying_utils.cc",
+    ],
+    hdrs = [
+        "retrying_utils.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "retrying_file_system",
+    hdrs = [
+        "retrying_file_system.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":retrying_utils",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_file_system_test",
+    size = "small",
+    srcs = ["retrying_file_system_test.cc"],
+    deps = [
+        ":retrying_file_system",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":retrying_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:str_util",
+    ],
 )
 
 # This is a hacky, do-nothing, binary that makes it easy to verify ability to
@@ -770,6 +860,8 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
+        ":retrying_utils",
+        ":retrying_file_system",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -830,10 +922,12 @@ cc_library(
     }),
     visibility = ["//tensorflow/core:__pkg__"],
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:test",  # buildcleaner: keep
+        ":platform",
+        ":stacktrace_handler",
+        ":test",
+        ":test_benchmark",
         "//tensorflow/core/platform/default/build_config:test_main",
+        "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,
 )
@@ -850,8 +944,6 @@ tf_cc_tests(
         "port_test.cc",
         "profile_utils/cpu_utils_test.cc",
         "scanner_test.cc",
-        "stacktrace_handler_test.cc",
-        "stacktrace_test.cc",
         "str_util_test.cc",
         "strcat_test.cc",
         "stringpiece_test.cc",
@@ -876,7 +968,38 @@ tf_cc_tests(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "@zlib_archive//:zlib",
+        "@zlib",
+    ],
+)
+
+tf_cc_test(
+    name = "stacktrace_test",
+    size = "small",
+    srcs = [
+        "stacktrace_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_tests(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = [
+        "stacktrace_handler_test.cc",
+    ],
+    tags = ["no_windows"],
+    deps = [
+        ":logging",
+        ":stacktrace",
+        ":stacktrace_handler",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -884,11 +1007,56 @@ tf_cc_test(
     name = "subprocess_test",
     size = "small",
     srcs = ["subprocess_test.cc"],
-    tags = [
-        "no_windows",
+    data = [
+        "//tensorflow/core/platform/testdata:test_echo",
+        "//tensorflow/core/platform/testdata:test_echo_argv_1",
+        "//tensorflow/core/platform/testdata:test_noop",
+        "//tensorflow/core/platform/testdata:test_stderr",
     ],
     deps = [
+        ":path",
+        ":resource_loader",
+        ":strcat",
         ":subprocess",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "resource_loader_test",
+    size = "small",
+    srcs = ["resource_loader_test.cc"],
+    data = [
+        ":resource_loader.h",
+    ],
+    deps = [
+        ":resource_loader",
+        ":status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "ctstring_test",
+    size = "small",
+    srcs = ["ctstring_test.cc"],
+    deps = [
+        ":tstring",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "tstring_test",
+    size = "small",
+    srcs = ["tstring_test.cc"],
+    deps = [
+        ":cord",
+        ":tstring",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -900,7 +1068,7 @@ tf_cc_test(
     srcs = ["platform_strings_test.cc"],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
-        "platform_strings",
+        ":platform_strings",
         "//tensorflow/core:lib",
     ],
 )
@@ -1076,6 +1244,8 @@ filegroup(
     srcs = [
         "byte_order.h",
         "cord.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "env_time.h",
         "logging.h",
         "macros.h",
@@ -1095,11 +1265,13 @@ filegroup(
         "abi.h",
         "casts.h",
         "context.h",
+        "cord.h",
         "cpu_feature_guard.h",
         "cpu_info.h",
         "dynamic_annotations.h",
         "env.h",
         "error.h",
+        "errors.h",
         "file_statistics.h",
         "file_system.h",
         "file_system_helper.h",
@@ -1107,7 +1279,6 @@ filegroup(
         "init_main.h",
         "logger.h",
         "mem.h",
-        "monitoring.h",
         "mutex.h",
         "net.h",
         "notification.h",
@@ -1120,6 +1291,7 @@ filegroup(
         "profile_utils/cpu_utils.h",
         "profile_utils/i_cpu_utils_helper.h",
         "protobuf.h",
+        "resource.h",
         "stacktrace.h",
         "stacktrace_handler.h",
         "status.h",
@@ -1131,13 +1303,15 @@ filegroup(
         "subprocess.h",
         "thread_annotations.h",
         ":base_hdrs",
-    ] + tf_additional_monitoring_hdrs() + tf_additional_env_hdrs(),
+    ] + tf_additional_env_hdrs(),
     visibility = ["//tensorflow/core:__pkg__"],
 )
 
 filegroup(
     name = "lib_proto_parsing_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "init_main.h",
         "logging.h",
         "macros.h",
@@ -1152,6 +1326,7 @@ filegroup(
 
 filegroup(
     name = "test_hdrs",
+    testonly = 1,
     srcs = [
         "test.h",
         "test_benchmark.h",
@@ -1161,6 +1336,7 @@ filegroup(
 
 filegroup(
     name = "android_test_srcs",
+    testonly = 1,
     srcs = [
         "test.h",
     ],
@@ -1172,6 +1348,8 @@ filegroup(
     srcs = [
         "byte_order.h",
         "cpu_info.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "macros.h",
         "mutex.h",
@@ -1202,7 +1380,6 @@ filegroup(
         "demangle.h",
         "denormal.h",
         "host_info.h",
-        "monitoring.h",
         "platform.h",
         "protobuf_internal.h",
         "refcount.h",
@@ -1234,6 +1411,8 @@ filegroup(
 filegroup(
     name = "tflite_portable_logging_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "logging.h",
         "macros.h",
         "platform.h",
@@ -1246,6 +1425,8 @@ filegroup(
 filegroup(
     name = "jpeg_internal_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1261,6 +1442,8 @@ filegroup(
 filegroup(
     name = "gif_internal_hdrs",
     srcs = [
+        "ctstring.h",
+        "ctstring_internal.h",
         "dynamic_annotations.h",
         "logging.h",
         "macros.h",
@@ -1286,6 +1469,8 @@ filegroup(
         "cord.h",
         "cpu_info.cc",
         "cpu_info.h",
+        "ctstring.h",
+        "ctstring_internal.h",
         "demangle.h",
         "denormal.cc",
         "denormal.h",
@@ -1299,7 +1484,6 @@ filegroup(
         "file_statistics.h",
         "file_system.cc",
         "file_system.h",
-        "file_system_helper.cc",
         "file_system_helper.h",
         "hash.cc",
         "hash.h",
@@ -1322,6 +1506,7 @@ filegroup(
         "protobuf_util.cc",
         "raw_coding.h",
         "refcount.h",
+        "resource.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",
@@ -1340,10 +1525,8 @@ filegroup(
         "tensor_coding.cc",
         "tensor_coding.h",
         "thread_annotations.h",
-        "threadpool.cc",
         "threadpool.h",
         "threadpool_interface.h",
-        "tracing.cc",
         "tracing.h",
         "tstring.h",
         "types.h",
@@ -1351,6 +1534,9 @@ filegroup(
         tf_google_mobile_srcs_no_runtime(),
         otherwise = [
             "//tensorflow/core/platform/default:mobile_srcs_no_runtime",
+            "file_system_helper.cc",
+            "threadpool.cc",
+            "tracing.cc",
         ],
     ) + tf_platform_alias("additional_mobile_srcs_no_runtime"),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -1365,7 +1551,6 @@ filegroup(
         "cpu_feature_guard.cc",
         "cpu_feature_guard.h",
         "fingerprint.h",
-        "monitoring.h",
         "notification.h",
         "platform_strings.cc",
         "platform_strings.h",

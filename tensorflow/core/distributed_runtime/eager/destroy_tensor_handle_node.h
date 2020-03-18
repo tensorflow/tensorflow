@@ -67,6 +67,9 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
   void Abort(Status status) override {}
 
+  // Remote node deletions are best effort
+  bool Fatal() const override { return false; }
+
   string DebugString() const override {
     string out = "[DestroyTensorHandleNode]";
     strings::StrAppend(&out, " request: ", request_->DebugString());

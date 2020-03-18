@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import os
 
 import numpy as np
 
@@ -32,6 +33,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test as test_lib
 
 
 class BinaryOpsTest(xla_test.XLATestCase):
@@ -1069,6 +1071,10 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
       # Regression test for b/31472796.
       if dtype != np.float16 and hasattr(np, "matmul"):
+        # Skipping bfloat16 as ROCM doesn't support bfloat16 GEMM yet.
+        if (test_lib.is_built_with_rocm() and
+            dtype == dtypes.bfloat16.as_numpy_dtype):
+          return
         x = np.arange(0, 3 * 5 * 2 * 7, dtype=dtype).reshape((3, 5, 2, 7))
         self._testBinary(
             lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
@@ -1595,4 +1601,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
 
 
 if __name__ == "__main__":
+  # TODO(b/130689556): XLA CPU does not honor inf/nan which causes problems
+  os.environ[
+      "XLA_FLAGS"] = "--xla_cpu_enable_fast_math=false " + os.environ.get(
+          "XLA_FLAGS", "")
   googletest.main()

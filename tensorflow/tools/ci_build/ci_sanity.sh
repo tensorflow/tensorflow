@@ -328,7 +328,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -339,7 +339,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -357,12 +357,33 @@ do_external_licenses_check(){
 
   # Blacklist
   echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@bazel_tools//tools" -e "@local" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  grep \
+    -e "@bazel_tools//third_party/" \
+    -e "@bazel_tools//tools" \
+    -e "@local" \
+    -e "@com_google_absl//absl" \
+    -e "@org_tensorflow//" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
+    -e "@com_github_grpc_grpc//src/compiler" \
+    -e "@platforms//os" \
+    -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
   # Whitelist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "//third_party/mkl_dnn" -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@org_tensorflow//tensorflow" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -e "^//$" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep \
+    -e "//third_party/mkl" \
+    -e "//third_party/mkl_dnn" \
+    -e "@bazel_tools//src" \
+    -e "@bazel_tools//tools/" \
+    -e "@org_tensorflow//tensorflow" \
+    -e "@com_google_absl//" \
+    -e "//external" \
+    -e "@local" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
+    -e "@embedded_jdk//" \
+    -e "^//$" \
+    -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 

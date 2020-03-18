@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
@@ -25,18 +25,18 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/xla/transforms/map_lhlo_to_scalar_op.h"
+#include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
 namespace mlir {
 namespace xla_lhlo {
 namespace {
 
-template <typename LhloOp>
-struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
-  using OpRewritePattern<LhloOp>::OpRewritePattern;
+template <typename LhloOpTy>
+struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
+  using OpRewritePattern<LhloOpTy>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(LhloOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(LhloOpTy op,
+                                PatternRewriter& rewriter) const override {
     const auto& lhs = op.lhs();
     const auto& rhs = op.rhs();
     const auto& lhs_type = lhs.getType().template cast<MemRefType>();
@@ -44,7 +44,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {
-      return this->matchFailure();
+      return failure();
     }
     const auto& shape = lhs_type.getShape();
     SmallVector<Value, 4> induction_vars;
@@ -56,14 +56,14 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOp> {
     }
     auto l = rewriter.create<LoadOp>(loc, lhs, induction_vars);
     auto r = rewriter.create<LoadOp>(loc, rhs, induction_vars);
-    Value opResult = MapLhloOpToStdScalarOp<LhloOp>(
-        llvm::cast<LhloOp>(op), element_type, {l, r}, &rewriter);
+    Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<LhloOpTy>(
+        op, element_type, {l, r}, &rewriter);
     if (opResult == nullptr) {
-      return this->matchFailure();
+      return failure();
     }
     rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
-    return this->matchSuccess();
+    return success();
   }
 };
 

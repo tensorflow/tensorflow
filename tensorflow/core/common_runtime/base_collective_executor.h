@@ -165,14 +165,14 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   condition_variable launch_cv_;
   // collective instance key -> number of local devices for which NCCL ops have
   // been launched.
-  std::unordered_map<int32, int32> launched_ GUARDED_BY(launch_mu_);
+  std::unordered_map<int32, int32> launched_ TF_GUARDED_BY(launch_mu_);
 
  private:
   Status CreateCollective(const CollectiveParams& col_params,
                           CollectiveImplementationInterface** col_impl);
   // Check if all ops on which this collective depends on have launched.
   bool CheckDependencies(const CollectiveParams& col_params)
-      EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(launch_mu_);
 };
 
 }  // namespace tensorflow

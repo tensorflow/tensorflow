@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -200,6 +201,8 @@ shift_right_logical = _broadcasting_binary_op(_shift_right_logical_helper)
 shift_right_arithmetic = _broadcasting_binary_op(_shift_right_arithmetic_helper)
 
 igamma = _broadcasting_binary_op(math_ops.igamma)
+igamma_grad_a = _broadcasting_binary_op(gen_math_ops.igamma_grad_a)
+random_gamma_grad = _broadcasting_binary_op(gen_random_ops.random_gamma_grad)
 igammac = _broadcasting_binary_op(math_ops.igammac)
 
 

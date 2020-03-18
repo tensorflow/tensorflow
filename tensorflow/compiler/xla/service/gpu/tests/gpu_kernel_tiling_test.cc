@@ -374,12 +374,12 @@ TEST_F(GpuKernelTilingTest, ColumnReductionWithPowerOf2OutputElementsUnrolled) {
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
@@ -498,22 +498,22 @@ TEST_F(GpuKernelTilingTest, ColumnReductionMOFUnrolled) {
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
 ;
-; CHECK-LABEL: atomic_op_loop_body{{.*}}:
+; CHECK-LABEL: atomic_op_loop_body{{[0-9]*}}.atomic_op_loop_body{{[0-9]*}}_crit_edge:
 ; CHECK: %[[fadd:.*]] = fadd float %{{.*}}, %{{.*}}
 ; CHECK: %[[bitcast:.*]] = bitcast float %[[fadd]] to i32
 ; CHECK: %{{.*}} = cmpxchg i32* %{{.*}}, i32 %{{.*}}, i32 %[[bitcast]]
@@ -740,6 +740,103 @@ TEST_F(GpuKernelTilingTest, RowReductionWithSmallDimensionNotTiled) {
 
   // Check that the kernel runs correctly.
   EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
+TEST_F(GpuKernelTilingTest, RowReductionRequiring64BitIndex) {
+  const char *const kHloString = R"(
+  HloModule LargeReduction
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[3048576000] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT out = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto expected_ir = R"(
+; CHECK: i64
+  )";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
+TEST_F(GpuKernelTilingTest, ColumnReductionVectorization) {
+  const char *const kHloString = R"(
+HloModule column_reduce_powerof2
+
+reduction {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+}
+
+ENTRY kernel_entry {
+    constant0 = f32[] constant(0)
+    arg1 = f32[1024,512]{1,0} parameter(0)
+    ROOT reduce = f32[512]{0} reduce(arg1, constant0), dimensions={0}, to_apply=reduction
+}
+  )";
+  auto expected_ir = R"(
+; CHECK: load <2 x float>, <2 x float>
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
+}
+
+TEST_F(GpuKernelTilingTest, Hlo021CopyNoOobAccess) {
+  const char *const kHloString = R"(
+HloModule primitive_computation_svd.38
+
+%fused_computation (param_0.7: f32[3,29,29], param_1.10: pred[3]) -> f32[3,29,29] {
+  %param_1.10 = pred[3]{0} parameter(1)
+  %broadcast.7 = pred[3,29,29]{2,1,0} broadcast(pred[3]{0} %param_1.10), dimensions={0}
+  %param_0.7 = f32[3,29,29]{1,2,0} parameter(0)
+  %copy.6 = f32[3,29,29]{2,1,0} copy(f32[3,29,29]{1,2,0} %param_0.7)
+  %constant_1 = f32[] constant(nan)
+  %broadcast.6 = f32[3,29,29]{2,1,0} broadcast(f32[] %constant_1), dimensions={}
+  ROOT %select.0 = f32[3,29,29]{2,1,0} select(pred[3,29,29]{2,1,0} %broadcast.7, f32[3,29,29]{2,1,0} %copy.6, f32[3,29,29]{2,1,0} %broadcast.6)
+}
+
+ENTRY %primitive_computation_svd.38 (constant_5: f32[3,29,29], fusion.3: pred[3]) -> f32[3,29,29] {
+  %constant_5 = f32[3,29,29]{1,2,0} parameter(0)
+  %fusion.3 = pred[3]{0} parameter(1)
+  ROOT %fusion = f32[3,29,29]{2,1,0} fusion(f32[3,29,29]{1,2,0} %constant_5, pred[3]{0} %fusion.3), kind=kLoop, calls=%fused_computation
+}
+  )";
+
+  // Test against the OOB read due to a ptxas bug.
+  EXPECT_TRUE(RunAndCompareNoHloPasses(kHloString, ErrorSpec{0.001}));
+}
+
+TEST_F(GpuKernelTilingTest, RowReductionCorrectShmemUsage) {
+  const char *const kHloString = R"(
+  HloModule RowReduce
+
+  Sum {
+    x.1 = f32[] parameter(0)
+    y.1 = f32[] parameter(1)
+    ROOT add.1 = f32[] add(x.1, y.1)
+  }
+
+  ENTRY reduce.1 {
+    parameter = f32[1048576] parameter(0)
+    init_value = f32[] constant(0)
+    ROOT reduce = f32[] reduce(parameter, init_value), dimensions={0}, to_apply=Sum
+  }
+  )";
+  auto hlo_module = ParseAndReturnVerifiedModule(kHloString).ValueOrDie();
+  auto expected_ir = R"(
+; CHECK: shared_cache_{{[0-9]*}} = private addrspace({{[0-9]*}}) global [1 x [32 x float]]
+  )";
+  CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+                     /*match_optimized_ir=*/true);
 }
 
 }  // namespace

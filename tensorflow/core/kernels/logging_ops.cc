@@ -56,7 +56,7 @@ AssertOp::AssertOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 
 void AssertOp::Compute(OpKernelContext* ctx) {
   const Tensor& cond = ctx->input(0);
-  OP_REQUIRES(ctx, IsLegacyScalar(cond.shape()),
+  OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(cond.shape()),
               errors::InvalidArgument("In[0] should be a scalar: ",
                                       cond.shape().DebugString()));
 
@@ -109,7 +109,7 @@ class PrintOp : public OpKernel {
 
  private:
   mutex mu_;
-  int64 call_counter_ GUARDED_BY(mu_) = 0;
+  int64 call_counter_ TF_GUARDED_BY(mu_) = 0;
   int64 first_n_ = 0;
   int32 summarize_ = 0;
   string message_;

@@ -153,8 +153,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, &data, input1, input2, output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input1->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         input1->type);
       return kTfLiteError;
   }
 
@@ -163,7 +163,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace mul
 
 TfLiteRegistration* Register_MUL() {
-  static TfLiteRegistration r = {nullptr, nullptr, mul::Prepare, mul::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = mul::Prepare;
+  r.invoke = mul::Eval;
   return &r;
 }
 
