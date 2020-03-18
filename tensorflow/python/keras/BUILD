@@ -19,7 +19,6 @@ py_library(
         "ops.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
     deps = [
         ":backend",
         ":engine",
