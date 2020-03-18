@@ -66,10 +66,6 @@ def one_hot(input_text, n,
   list of encoded integers each corresponding to a word (or token)
   in the given input string.
 
-  >>> sample_text = 'This is a sample sentence.'
-  >>> tf.keras.preprocessing.text.one_hot(sample_text, 20)
-  [4, 18, 1, 15, 17]
-
   Arguments:
       input_text: Input text (string).
       n: int. Size of vocabulary.
