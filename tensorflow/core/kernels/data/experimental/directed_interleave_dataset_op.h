@@ -29,7 +29,7 @@ class DirectedInterleaveDatasetOp : public DatasetOpKernel {
   static constexpr const char* const kDataInputDatasets = "data_input_datasets";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kNumDatasets = "N";
+  static constexpr const char* const kNumInputDatasets = "N";
 
   explicit DirectedInterleaveDatasetOp(OpKernelConstruction* ctx);
 

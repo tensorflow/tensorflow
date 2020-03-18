@@ -34,7 +34,7 @@ namespace experimental {
 /* static */ constexpr const char* const
     DirectedInterleaveDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const
-    DirectedInterleaveDatasetOp::kNumDatasets;
+    DirectedInterleaveDatasetOp::kNumInputDatasets;
 
 class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
  public:
@@ -192,8 +192,8 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       if (selector_input_impl_) {
         TF_RETURN_IF_ERROR(SaveInput(ctx, writer, selector_input_impl_));
       } else {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(strings::StrCat("data_input_impl_empty[", i, "]")), ""));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("selector_input_impl_empty"), ""));
       }
       for (size_t i = 0; i < data_input_impls_.size(); ++i) {
         const auto& data_input_impl = data_input_impls_[i];
@@ -207,55 +207,53 @@ class DirectedInterleaveDatasetOp::Dataset : public DatasetBase {
       }
       return Status::OK();
     }
-    return Status::OK();
-  }
 
-  Status
-  RestoreInternal(IteratorContext* ctx, IteratorStateReader* reader) override {
-    mutex_lock l(mu_);
-    if (!reader->Contains(full_name("selector_input_impl_empty"))) {
-      TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, selector_input_impl_));
-    } else {
-      selector_input_impl_.reset();
-    }
-    for (size_t i = 0; i < data_input_impls_.size(); ++i) {
-      if (!reader->Contains(
-              full_name(strings::StrCat("data_input_impl_empty[", i, "]")))) {
-        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, data_input_impls_[i]));
+    Status RestoreInternal(IteratorContext* ctx,
+                           IteratorStateReader* reader) override {
+      mutex_lock l(mu_);
+      if (!reader->Contains(full_name("selector_input_impl_empty"))) {
+        TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, selector_input_impl_));
       } else {
-        data_input_impls_[i].reset();
+        selector_input_impl_.reset();
       }
+      for (size_t i = 0; i < data_input_impls_.size(); ++i) {
+        if (!reader->Contains(
+                full_name(strings::StrCat("data_input_impl_empty[", i, "]")))) {
+          TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, data_input_impls_[i]));
+        } else {
+          data_input_impls_[i].reset();
+        }
+      }
+      return Status::OK();
     }
-    return Status::OK();
-  }
 
- private:
-  mutex mu_;
-  std::unique_ptr<IteratorBase> selector_input_impl_ TF_GUARDED_BY(mu_);
-  std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
-      TF_GUARDED_BY(mu_);
-  int64 num_active_inputs_ TF_GUARDED_BY(mu_);
-};
+   private:
+    mutex mu_;
+    std::unique_ptr<IteratorBase> selector_input_impl_ TF_GUARDED_BY(mu_);
+    std::vector<std::unique_ptr<IteratorBase>> data_input_impls_
+        TF_GUARDED_BY(mu_);
+    int64 num_active_inputs_ TF_GUARDED_BY(mu_);
+  };
 
-static PartialTensorShape MostSpecificCompatibleShape(
-    const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
-  PartialTensorShape output_tensorshape;
-  if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
+  static PartialTensorShape MostSpecificCompatibleShape(
+      const PartialTensorShape& ts1, const PartialTensorShape& ts2) {
+    PartialTensorShape output_tensorshape;
+    if (ts1.dims() != ts2.dims() || ts1.unknown_rank() || ts2.unknown_rank())
+      return output_tensorshape;
+    auto dims1 = ts1.dim_sizes();
+    auto dims2 = ts2.dim_sizes();
+    for (int d = 0; d < ts1.dims(); ++d) {
+      if (dims1[d] == dims2[d])
+        output_tensorshape.Concatenate(dims1[d]);
+      else
+        output_tensorshape.Concatenate(-1);
+    }
     return output_tensorshape;
-  auto dims1 = ts1.dim_sizes();
-  auto dims2 = ts2.dim_sizes();
-  for (int d = 0; d < ts1.dims(); ++d) {
-    if (dims1[d] == dims2[d])
-      output_tensorshape.Concatenate(dims1[d]);
-    else
-      output_tensorshape.Concatenate(-1);
   }
-  return output_tensorshape;
-}
 
-const DatasetBase* const selector_input_;
-const std::vector<DatasetBase*> data_inputs_;
-std::vector<PartialTensorShape> output_shapes_;
+  const DatasetBase* const selector_input_;
+  const std::vector<DatasetBase*> data_inputs_;
+  std::vector<PartialTensorShape> output_shapes_;
 };  // namespace experimental
 
 DirectedInterleaveDatasetOp::DirectedInterleaveDatasetOp(
@@ -302,6 +300,6 @@ REGISTER_KERNEL_BUILDER(
     Name("ExperimentalDirectedInterleaveDataset").Device(DEVICE_CPU),
     DirectedInterleaveDatasetOp);
 }  // namespace
+}  // namespace experimental
 }  // namespace data
-}  // namespace tensorflow
 }  // namespace tensorflow
