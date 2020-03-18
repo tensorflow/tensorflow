@@ -371,8 +371,7 @@ class ComputationsWithConstantsTest(ComputationTest):
     c.CustomCall(
         b"test_subtract_f32",
         operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
-        shape_with_layout=xla_client.Shape.array_shape(
-            np.dtype(np.float32), (), ()),
+        shape=xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
         operand_shapes_with_layout=(
             xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),
             xla_client.Shape.array_shape(np.dtype(np.float32), (), ()),

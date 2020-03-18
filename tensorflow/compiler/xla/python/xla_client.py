@@ -1192,6 +1192,8 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
+  # TODO(skyewm): remove CustomCallWithLayout after callers are updated to use
+  # CustomCall.
   def CustomCallWithLayout(self,
                            call_target_name,
                            operands,
@@ -1213,13 +1215,35 @@ class ComputationBuilder(object):
       An XlaOp representing the added custom call op.
     """
     opaque = opaque or b''
-    return ops.CustomCall(self._builder, call_target_name,
-                          list(operands), shape_with_layout,
-                          list(operand_shapes_with_layout), opaque)
+    return ops.CustomCallWithLayout(
+        self._builder, call_target_name, list(operands), shape_with_layout,
+        list(operand_shapes_with_layout), opaque)
 
-  # TODO(phawkins): remove CustomCall after callers are updated to use
-  # CustomCallWithLayout.
-  CustomCall = CustomCallWithLayout
+  def CustomCall(self, call_target_name, operands, shape,
+                 operand_shapes_with_layout=None, opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of XlaOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape: the shape of the operator's output. Must have layout if
+        `operand_shapes_with_layout` is provided.
+      operand_shapes_with_layout: optional, the shapes of `operands` including
+        the expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      An XlaOp representing the added custom call op.
+    """
+    opaque = opaque or b''
+    if operand_shapes_with_layout is None:
+      return ops.CustomCall(self._builder, call_target_name, list(operands),
+                            shape, opaque)
+    else:
+      return ops.CustomCallWithLayout(
+          self._builder, call_target_name, list(operands), shape,
+          list(operand_shapes_with_layout), opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
