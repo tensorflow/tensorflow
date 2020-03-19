@@ -49,7 +49,6 @@ void TestFullyConnectedFloat(
 
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED, 1);
