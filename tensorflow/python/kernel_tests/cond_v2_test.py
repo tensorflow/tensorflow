@@ -260,6 +260,7 @@ class CondV2Test(test.TestCase):
         self.assertRegexpMatches(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
+  @test_util.run_v2_only
   def testInheritParentNameScope(self):
 
     @def_function.function

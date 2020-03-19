@@ -1175,6 +1175,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
     Fn()
 
+  @test_util.run_v2_only
   def testInheritParentNameScope(self):
 
     @def_function.function
