@@ -314,21 +314,17 @@ def random_crop(value, size, seed=None, name=None):
     value = ops.convert_to_tensor(value, name="value")
     size = ops.convert_to_tensor(size, dtype=dtypes.int32, name="size")
     shape = array_ops.shape(value)
-    if value.shape[0]:
-      if value.shape[0].compat.dimension_value() < size_dim[0]:
-        tmp = []
-        for ch in range(value.shape[2].value):
-          def pad_up_to(t, max_in_dims, constant_values):
-            s = array_ops.shape(t)
-            paddings = [[0, m - s[i]] for (i, m) in enumerate(max_in_dims)]
-            return array_ops.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
-          v0 = pad_up_to(value[:, :, ch], [size_dim[0], size_dim[1]], 0)
-          tmp.append(v0)
-        value = array_ops.stack(tmp, axis=2)
-        return value
-      # (temp) deal with dynamic shapes
-      else:
-
+    if value.shape[0] and value.shape[0].compat.dimension_value() < size_dim[0]:
+      tmp = []
+      for ch in range(value.shape[2].value):
+        def pad_up_to(t, max_in_dims, constant_values):
+          s = array_ops.shape(t)
+          paddings = [[0, m - s[i]] for (i, m) in enumerate(max_in_dims)]
+          return array_ops.pad(t, paddings, 'CONSTANT', constant_values=constant_values)
+        v0 = pad_up_to(value[:, :, ch], [size_dim[0], size_dim[1]], 0)
+        tmp.append(v0)
+      value = array_ops.stack(tmp, axis=2)
+      return value
     else:
       limit = shape - size + 1
       offset = random_uniform(
