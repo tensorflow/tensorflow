@@ -58,6 +58,11 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
+
+  // This parameter is used to indicate whether
+  // parameter scale is power of two.
+  // It is used in 16-bit -> 16-bit quantization.
+  bool pot_scale_16bit;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -95,12 +100,36 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, 16bit -> 16bit with general rescalings
-  bool general_16bit = input1->type == kTfLiteInt16 &&
-                       input2->type == kTfLiteInt16 &&
-                       output->type == kTfLiteInt16;
+  bool pot_scale_16bit = false;
+
+  bool input1_scale_is_pot = false;
+  bool input2_scale_is_pot = false;
+  bool output_scale_is_pot = false;
+
+  int input1_scale_log2_rounded;
+  int input2_scale_log2_rounded;
+  int output_scale_log2_rounded;
+
+  if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
+      output->type == kTfLiteInt16) {
+    // Check that param scale is POT
+    input1_scale_is_pot =
+        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+
+    input2_scale_is_pot =
+        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+
+    output_scale_is_pot =
+        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+
+    pot_scale_16bit = input1_scale_log2_rounded && input2_scale_log2_rounded &&
+                      output_scale_log2_rounded;
+  }
+
+  data->pot_scale_16bit = pot_scale_16bit;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      general_16bit) {
+      pot_scale_16bit) {
     // 8bit -> 8bit general quantized path, with general rescalings
     // as well as, 16bit -> 16bit with general rescalings
     data->input1_offset = -input1->params.zero_point;
@@ -110,7 +139,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // The shift is set to 15 for 16-bit and 20 in case of 8-bit, accordingly.
     // In case of 16-bit we have 65535 << 15 which is less than 1 << 31,
     // therefore the addition will still fit in a 32 bit accumulator.
-    data->left_shift = general_16bit ? 15 : 20;
+    data->left_shift = pot_scale_16bit ? 15 : 20;
     const double twice_max_input_scale =
         2 * std::max(input1->params.scale, input2->params.scale);
     const double real_input1_multiplier =
@@ -146,19 +175,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
 
-    int input1_scale_log2_rounded;
-    bool input1_scale_is_pot =
-        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
     TF_LITE_ENSURE(context, input1_scale_is_pot);
-
-    int input2_scale_log2_rounded;
-    bool input2_scale_is_pot =
-        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
     TF_LITE_ENSURE(context, input2_scale_is_pot);
-
-    int output_scale_log2_rounded;
-    bool output_scale_is_pot =
-        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
     TF_LITE_ENSURE(context, output_scale_is_pot);
 
     data->input1_shift = input1_scale_log2_rounded - output_scale_log2_rounded;
@@ -233,12 +251,8 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
                               const TfLiteTensor* input1,
                               const TfLiteTensor* input2,
                               TfLiteTensor* output) {
-  bool general_16bit = input1->type == kTfLiteInt16 &&
-                       input2->type == kTfLiteInt16 &&
-                       output->type == kTfLiteInt16;
-
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      general_16bit) {
+      data->pot_scale_16bit) {
     tflite::ArithmeticParams op_params;
     op_params.left_shift = data->left_shift;
     op_params.input1_offset = data->input1_offset;
@@ -277,7 +291,10 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
       if (need_broadcast) {
         TF_LITE_ADD(reference_ops, BroadcastAdd4DSlow, int16_t);
       } else {
-        TF_LITE_ADD(reference_ops, Add, int16_t);
+        reference_ops::Add(
+            op_params, GetTensorShape(input1), GetTensorData<int16_t>(input1),
+            GetTensorShape(input2), GetTensorData<int16_t>(input2),
+            GetTensorShape(output), GetTensorData<int16_t>(output), false);
       }
     } else {
       if (kernel_type == kReference) {
@@ -296,12 +313,12 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     }
 #undef TF_LITE_ADD
   } else if (output->type == kTfLiteInt16) {
+    tflite::ArithmeticParams op_params;
+    op_params.input1_shift = data->input1_shift;
+    op_params.input2_shift = data->input2_shift;
+    SetActivationParams(data->output_activation_min,
+                        data->output_activation_max, &op_params);
 #define TF_LITE_ADD(type, opname)                                      \
-  tflite::ArithmeticParams op_params;                                  \
-  op_params.input1_shift = data->input1_shift;                         \
-  op_params.input2_shift = data->input2_shift;                         \
-  SetActivationParams(data->output_activation_min,                     \
-                      data->output_activation_max, &op_params);        \
   type::opname(op_params, GetTensorShape(input1),                      \
                GetTensorData<int16_t>(input1), GetTensorShape(input2), \
                GetTensorData<int16_t>(input2), GetTensorShape(output), \
@@ -309,7 +326,7 @@ TfLiteStatus EvalAddQuantized(TfLiteContext* context, TfLiteNode* node,
     // The quantized version of Add doesn't support activations, so we
     // always use BroadcastAdd.
     if (kernel_type == kReference) {
-      TF_LITE_ADD(reference_ops, AddLSTM);
+      TF_LITE_ADD(reference_ops, Add);
     } else {
       TF_LITE_ADD(optimized_ops, Add);
     }

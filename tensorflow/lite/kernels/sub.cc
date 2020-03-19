@@ -60,6 +60,11 @@ struct OpData {
   int32 input1_offset;
   int32 input2_offset;
   int32 output_offset;
+
+  // This parameter is used to indicate whether
+  // parameter scale is power of two.
+  // It is used in 16-bit -> 16-bit quantization.
+  bool pot_scale_16bit;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -147,10 +152,11 @@ TfLiteStatus PrepareGeneralSubOp(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-TfLiteStatus PrepareLSTMSubOp(TfLiteContext* context,
-                              const TfLiteTensor* input1,
-                              const TfLiteTensor* input2, TfLiteTensor* output,
-                              TfLiteSubParams* params, OpData* data) {
+TfLiteStatus PrepareInt16SubOpPOT(TfLiteContext* context,
+                                  const TfLiteTensor* input1,
+                                  const TfLiteTensor* input2,
+                                  TfLiteTensor* output, TfLiteSubParams* params,
+                                  OpData* data) {
   // 16bit -> 16bit special quantized path, supporting only a rather
   // narrow case of quantization parameters: zero_points must all be 0
   // ("symmetric quantization") and scales must be power-of-two (which
@@ -219,19 +225,42 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, 16bit -> 16bit with general rescalings
+  bool pot_scale_16bit = false;
 
-  bool general_16bit = output->type == kTfLiteInt16 &&
-                       input1->type == kTfLiteInt16 &&
-                       input2->type == kTfLiteInt16;
+  bool input1_scale_is_pot = false;
+  bool input2_scale_is_pot = false;
+  bool output_scale_is_pot = false;
+
+  int input1_scale_log2_rounded;
+  int input2_scale_log2_rounded;
+  int output_scale_log2_rounded;
+
+  if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
+      output->type == kTfLiteInt16) {
+    // Check that param scale is POT
+    input1_scale_is_pot =
+        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+
+    input2_scale_is_pot =
+        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+
+    output_scale_is_pot =
+        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+
+    pot_scale_16bit = input1_scale_log2_rounded && input2_scale_log2_rounded &&
+                      output_scale_log2_rounded;
+  }
+
+  data->pot_scale_16bit = pot_scale_16bit;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      general_16bit) {
+      pot_scale_16bit) {
     TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
                                                    output, params, data, -1));
   } else if (output->type == kTfLiteInt16) {
     // LSTM-special case with scale parameter of POT
-    TF_LITE_ENSURE_OK(context, PrepareLSTMSubOp(context, input1, input2, output,
-                                                params, data));
+    TF_LITE_ENSURE_OK(context, PrepareInt16SubOpPOT(context, input1, input2,
+                                                    output, params, data));
   }
 
   return context->ResizeTensor(context, output, output_size);
@@ -306,11 +335,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   const bool need_broadcast = optimized_ops::ProcessBroadcastShapes(
       GetTensorShape(input1), GetTensorShape(input2), &op_params);
 
-  // 16bit -> 16bit with general rescaling
-  bool general_16bit = output->type == kTfLiteInt16 &&
-                       input1->type == kTfLiteInt16 &&
-                       input2->type == kTfLiteInt16;
-
 #define TF_LITE_SUB(type, opname, data_type)                             \
   type::opname(op_params, GetTensorShape(input1),                        \
                GetTensorData<data_type>(input1), GetTensorShape(input2), \
@@ -324,11 +348,14 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       TF_LITE_SUB(reference_integer_ops, Add, int8_t);
     }
-  } else if (general_16bit) {
+  } else if (data->pot_scale_16bit) {
     if (need_broadcast) {
       TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
     } else {
-      TF_LITE_SUB(reference_ops, Add, int16_t);
+      reference_ops::Add(op_params, GetTensorShape(input1),
+                         GetTensorData<int16_t>(input1), GetTensorShape(input2),
+                         GetTensorData<int16_t>(input2), GetTensorShape(output),
+                         GetTensorData<int16_t>(output), false);
     }
   } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {

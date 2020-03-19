@@ -137,10 +137,13 @@ inline void Add(const ArithmeticParams& params,
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
-inline void Add(const ArithmeticParams& params,
-                const RuntimeShape& input1_shape, const int16* input1_data,
-                const RuntimeShape& input2_shape, const int16* input2_data,
-                const RuntimeShape& output_shape, int16* output_data) {
+inline void AddGeneralParamScale(const ArithmeticParams& params,
+                                 const RuntimeShape& input1_shape,
+                                 const int16* input1_data,
+                                 const RuntimeShape& input2_shape,
+                                 const int16* input2_data,
+                                 const RuntimeShape& output_shape,
+                                 int16* output_data) {
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   const int flat_size =
@@ -155,10 +158,17 @@ inline void Add(const ArithmeticParams& params,
   AddElementwise(flat_size, params, input1_data, input2_data, output_data);
 }
 
-inline void AddLSTM(const ArithmeticParams& params,
-                    const RuntimeShape& input1_shape, const int16* input1_data,
-                    const RuntimeShape& input2_shape, const int16* input2_data,
-                    const RuntimeShape& output_shape, int16* output_data) {
+inline void Add(const ArithmeticParams& params,
+                const RuntimeShape& input1_shape, const int16* input1_data,
+                const RuntimeShape& input2_shape, const int16* input2_data,
+                const RuntimeShape& output_shape, int16* output_data,
+                bool pot_scale = true) {
+  if (!pot_scale) {
+    AddGeneralParamScale(params, input1_shape, input1_data, input2_shape,
+                         input2_data, output_shape, output_data);
+    return;
+  }
+
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
 
