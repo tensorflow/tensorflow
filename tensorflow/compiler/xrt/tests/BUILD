@@ -58,6 +58,10 @@ tf_cc_test(
         "--xla_test_device=XLA_CPU",
         "--xla_platform=CPU",
     ],
+    tags = [
+        # TODO(b/151948649): Fails on 2020-03-19.
+        "notsan",
+    ],
     deps = [
         ":raw_api_test_lib",
         "//tensorflow/compiler/jit:xla_cpu_device",
