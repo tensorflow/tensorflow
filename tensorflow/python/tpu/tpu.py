@@ -314,7 +314,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
       job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
-      devices_to_vars = {v.device: v for v in vars_}
+      devices_to_vars = {device_util.canonicalize(v.device): v for v in vars_}
       replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):
