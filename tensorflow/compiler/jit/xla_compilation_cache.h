@@ -82,7 +82,7 @@ class XlaCompilationCache : public ResourceBase {
   Status CompileSingleOp(
       const XlaCompiler::Options& options,
       absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
-      const XlaCompiler::CompileOptions& compile_options, bool use_mlir_bridge,
+      const XlaCompiler::CompileOptions& compile_options,
       const XlaCompiler::CompilationResult** out_compilation_result,
       xla::LocalExecutable** out_executable);
 

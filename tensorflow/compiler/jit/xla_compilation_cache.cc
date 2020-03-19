@@ -22,7 +22,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -41,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -255,7 +253,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
 Status XlaCompilationCache::CompileSingleOp(
     const XlaCompiler::Options& options,
     absl::Span<const XlaCompiler::Argument> args, OpKernelContext* ctx,
-    const XlaCompiler::CompileOptions& compile_options, bool use_mlir_bridge,
+    const XlaCompiler::CompileOptions& compile_options,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
   const NodeDef& def = ctx->op_kernel().def();
@@ -275,27 +273,8 @@ Status XlaCompilationCache::CompileSingleOp(
 
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
-
-    bool are_params = absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
-      return arg.kind == XlaCompiler::Argument::kParameter;
-    });
-    // Use MLIR bridge if all the arguments are parameters.
-    // TODO(hinsu): Support other argument types.
-    if (!use_mlir_bridge || !are_params) {
-      return compiler->CompileGraph(compile_options, node_def.name(),
-                                    std::move(graph), args, result);
-    }
-
-    absl::InlinedVector<TensorShape, 4> arg_shapes;
-    arg_shapes.reserve(args.size());
-    for (const XlaCompiler::Argument& arg : args) {
-      arg_shapes.push_back(absl::get<TensorShape>(arg.shape));
-    }
-    GraphDebugInfo debug_info;
-    return CompileGraphToXlaHlo(*graph, {arg_shapes.data(), arg_shapes.size()},
-                                compile_options.use_tuple_arg,
-                                *options.flib_def, debug_info,
-                                options.shape_representation_fn, result);
+    return compiler->CompileGraph(compile_options, node_def.name(),
+                                  std::move(graph), args, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,

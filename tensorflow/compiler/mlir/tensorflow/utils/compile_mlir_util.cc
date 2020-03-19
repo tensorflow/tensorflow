@@ -28,8 +28,6 @@ limitations under the License.
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -262,11 +260,18 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   return Status::OK();
 }
 
-static Status CompileMlirToXlaHlo(
-    mlir::ModuleOp module_op, llvm::ArrayRef<TensorShape> arg_shapes,
+Status CompileSerializedMlirToXlaHlo(
+    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
     bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
+  mlir::MLIRContext mlir_context;
+  mlir::OwningModuleRef mlir_module;
+
+  TF_RETURN_IF_ERROR(
+      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
+  auto module_op = mlir_module.get();
+
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("mlir_compile_before", module_op);
 
@@ -287,14 +292,9 @@ static Status CompileMlirToXlaHlo(
   GetInputMappingForMlir(arg_shapes.size(), &compilation_result->input_mapping);
 
   auto shape_representation_fn_no_fast_memory =
-      [shape_representation_fn](const TensorShape& shape,
-                                DataType dtype) -> StatusOr<xla::Shape> {
-    if (shape_representation_fn)
-      return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
-    xla::Shape xla_shape;
-    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
-    return xla_shape;
-  };
+      [shape_representation_fn](const TensorShape& shape, DataType dtype) {
+        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
+      };
 
   // Compute all input shapes.
   TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes, use_tuple_args,
@@ -314,38 +314,6 @@ static Status CompileMlirToXlaHlo(
     tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
 
   return Status::OK();
-}
-
-Status CompileSerializedMlirToXlaHlo(
-    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
-    bool use_tuple_args,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result) {
-  mlir::MLIRContext mlir_context;
-  mlir::OwningModuleRef mlir_module;
-
-  TF_RETURN_IF_ERROR(
-      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
-  return CompileMlirToXlaHlo(mlir_module.get(), arg_shapes, use_tuple_args,
-                             shape_representation_fn, compilation_result);
-}
-
-Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<TensorShape> arg_shapes,
-    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
-    const GraphDebugInfo& debug_info,
-    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    XlaCompiler::CompilationResult* compilation_result) {
-  mlir::MLIRContext context;
-  GraphImportConfig config;
-  config.graph_as_function = true;
-  auto module_or =
-      ConvertGraphToMlir(graph, debug_info, flib_def, config, &context);
-  if (!module_or.ok()) return module_or.status();
-
-  return CompileMlirToXlaHlo(module_or.ValueOrDie().get(), arg_shapes,
-                             use_tuple_args, shape_representation_fn,
-                             compilation_result);
 }
 
 }  // namespace tensorflow

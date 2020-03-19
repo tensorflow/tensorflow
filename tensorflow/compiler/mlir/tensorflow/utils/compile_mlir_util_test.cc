@@ -20,9 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
@@ -249,43 +246,6 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
       R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]))";
   EXPECT_THAT(status_or_hlo_module.ValueOrDie()->ToString(),
               ::testing::HasSubstr(expected_signature));
-}
-
-// Verify that conversion from Graph to MLIR and empty shape representation
-// function is successful.
-TEST(CompileGraphToXlaHlo, Basic) {
-  setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
-  FunctionLibraryDefinition flib_def(OpRegistry::Global(), {});
-  Graph graph(OpRegistry::Global());
-
-  Tensor dummy_tensor(DT_FLOAT, TensorShape({1}));
-  test::FillValues<float>(&dummy_tensor, {-1.0});
-
-  Node* arg = test::graph::Arg(&graph, 0, DT_FLOAT);
-  test::graph::Retval(&graph, 0, arg);
-
-  XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(CompileGraphToXlaHlo(
-      graph, /*arg_shapes=*/{TensorShape()}, /*use_tuple_args=*/false, flib_def,
-      GraphDebugInfo(), /*shape_representation_fn=*/nullptr, &result));
-
-  const xla::HloModuleConfig module_config(
-      result.computation->GetProgramShape().ValueOrDie());
-  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
-      result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
-
-  string expected_hlo_module_string = R"(HloModule main.3
-
-ENTRY %main.3 (Arg_0.1: f32[]) -> (f32[]) {
-  %Arg_0.1 = f32[] parameter(0)
-  ROOT %tuple.2 = (f32[]) tuple(f32[] %Arg_0.1)
-}
-
-)";
-
-  EXPECT_EQ(expected_hlo_module_string,
-            status_or_hlo_module.ValueOrDie()->ToString());
 }
 
 }  // namespace

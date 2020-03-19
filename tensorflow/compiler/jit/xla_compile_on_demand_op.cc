@@ -188,8 +188,7 @@ Status XlaCompileOnDemandOp::Compile(
   XlaCompiler::Options options;
   options.device_type = metadata.jit_device_type();
   options.client = metadata.client();
-  FunctionLibraryRuntime* flr = ctx->function_library();
-  options.flib_def = flr->GetFunctionLibraryDefinition();
+  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.shape_representation_fn = metadata.shape_representation_fn();
 
   XlaCompiler::CompileOptions compile_options;
@@ -205,10 +204,8 @@ Status XlaCompileOnDemandOp::Compile(
   TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
       constant_arguments, variable_args, ctx, &args));
 
-  const ConfigProto* config = flr->config_proto();
-  bool use_mlir = config ? config->experimental().enable_mlir_bridge() : false;
-  return cache->CompileSingleOp(options, args, ctx, compile_options, use_mlir,
-                                result, executable);
+  return cache->CompileSingleOp(options, args, ctx, compile_options, result,
+                                executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
