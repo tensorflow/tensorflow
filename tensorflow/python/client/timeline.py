@@ -618,7 +618,17 @@ class Timeline(object):
     self._allocator_maximums = alloc_maxes
 
   def _preprocess_op_time(self, op_time):
-    """Modified the start and end of ops in step stats"""
+    """Update the start and end time of ops in step stats.
+
+    Args:
+    op_time: How the execution time of op is shown in timeline.
+      Possible values are "schedule", "gpu" and "all".
+      "schedule" will show op from the time it is scheduled to the end of the scheduling.
+        Notice by the end of its scheduling its async kernels may not start yet.
+        It is shown using the default value from step_stats.
+      "gpu" will show op with the execution time of its kernels on GPU.
+      "all" will show op from the start of its scheduling to the end of its last kernel.
+    """
     if op_time == "schedule":
       self._step_stats = self._origin_step_stats
       return
@@ -633,7 +643,7 @@ class Timeline(object):
         job_stats.append(stats)
 
     # Record the start time of the first kernel and the end time of
-    # the last kernel for all ops.
+    # the last gpu kernel for all ops.
     op_gpu_start = {}
     op_gpu_end = {}
     for stats in stream_all_stats:
@@ -648,7 +658,7 @@ class Timeline(object):
           op_gpu_start[name] = start
           op_gpu_end[name] = end
 
-    # Update the start and end time of each op according to the op_timement
+    # Update the start and end time of each op according to the op_time
     for stats in job_stats:
       for op in stats.node_stats:
         if op.node_name in op_gpu_start:
@@ -658,6 +668,24 @@ class Timeline(object):
           op.all_end_rel_micros = end - op.all_start_micros
 
   def analyze_step_stats(self, show_dataflow=True, show_memory=True, op_time="schedule"):
+    """Analyze the step stats and format it into Chrome Trace Format
+    
+    Args:
+      show_dataflow: (Optional.) If True, add flow events to the trace
+        connecting producers and consumers of tensors.
+      show_memory: (Optional.) If True, add object snapshot events to the trace
+        showing the sizes and lifetimes of tensors.
+      op_time: (Optional.) How the execution time of op is shown in timeline.
+        Possible values are "schedule", "gpu" and "all".
+        "schedule" will show op from the time it is scheduled to the end of the scheduling.
+          Notice by the end of its scheduling its async kernels may not start yet.
+          It is shown using the default value from step_stats.
+        "gpu" will show op with the execution time of its kernels on GPU.
+        "all" will show op from the start of its scheduling to the end of its last kernel.
+
+    Returns:
+      A 'StepStatsAnalysis' object.
+    """
     self._preprocess_op_time(op_time)
     self._allocate_pids()
     self._assign_lanes()
@@ -682,7 +710,7 @@ class Timeline(object):
         "schedule" will show op from the time it is scheduled to the end of the scheduling.
           Notice by the end of its scheduling its async kernels may not start yet.
           It is shown using the default value from step_stats.
-        "gpu" will show op with the execution time of its kernels.
+        "gpu" will show op with the execution time of its kernels on GPU.
         "all" will show op from the start of its scheduling to the end of its last kernel.
 
     Returns:
