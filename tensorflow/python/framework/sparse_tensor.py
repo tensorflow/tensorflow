@@ -126,6 +126,9 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
       ValueError: When building an eager SparseTensor if `dense_shape` is
         unknown or contains unknown elements (None or -1).
     """
+    if dense_shape != dtypes.int64:
+      raise ValueError("`dense_shape.dtype` must be int64,"
+                        f" got {dense_shape.dtype} instead.")
     with ops.name_scope(None, "SparseTensor", [indices, values, dense_shape]):
       indices = ops.convert_to_tensor(
           indices, name="indices", dtype=dtypes.int64)
