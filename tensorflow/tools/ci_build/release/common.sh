@@ -140,8 +140,8 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
   ${SUDO_CMD} ${PIP_CMD} install grpcio
   ${SUDO_CMD} ${PIP_CMD} install portpicker
-  ${SUDO_CMD} ${PIP_CMD} install scipy
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
+  ${SUDO_CMD} ${PIP_CMD} install scipy==1.2.3
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.4
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
@@ -173,8 +173,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install six==1.12.0 --user
   "${PIP_CMD}" install grpcio --user
   "${PIP_CMD}" install portpicker --user
-  "${PIP_CMD}" install scipy --user
-  "${PIP_CMD}" install scikit-learn --user
+  "${PIP_CMD}" install scipy==1.2.3 --user
+  "${PIP_CMD}" install scikit-learn==0.20.4 --user
   "${PIP_CMD}" install PyYAML==3.13 --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
@@ -209,9 +209,10 @@ function install_macos_pip_deps {
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install --upgrade setuptools==39.1.0
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker grpcio
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
-  ${SUDO_CMD} ${PIP_CMD} install scikit-learn
+  ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.4
+  ${SUDO_CMD} ${PIP_CMD} install scipy==1.2.3
   ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0

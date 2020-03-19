@@ -36,6 +36,8 @@ SET PATH=%PATH%;C:\%PYTHON_DIRECTORY%
 %PIP_EXE% install protobuf --upgrade --no-deps
 %PIP_EXE% install keras_preprocessing==1.1.0 --upgrade --no-deps
 %PIP_EXE% install wrapt --upgrade --no-deps
+%PIP_EXE% install scipy==1.2.3 --upgrade --no-deps
+%PIP_EXE% install scikit-learn==0.20.4 --upgrade --no-deps
 
 IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install absl-py==0.5.0
@@ -46,8 +48,8 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
     %PIP_EXE% install portpicker==1.2.0
     %PIP_EXE% install parso==0.1.1
     %PIP_EXE% install protobuf==3.8.0
-    %PIP_EXE% install scikit-learn==0.19.2
-    %PIP_EXE% install scipy==1.1.0
+    %PIP_EXE% install scikit-learn==0.22.2
+    %PIP_EXE% install scipy==1.4.1
     %PIP_EXE% install termcolor==1.1.0
 )
 

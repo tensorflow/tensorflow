@@ -82,7 +82,7 @@ pip2 install scipy==1.2.2
 pip3 install scipy==1.4.1
 
 pip2 install scikit-learn==0.18.1
-pip3 install scikit-learn==0.19.2
+pip3 install scikit-learn==0.18.1
 
 # pandas required by `inflow`
 pip2 install pandas==0.19.2

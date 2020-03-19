@@ -78,7 +78,7 @@ pip3 install --no-binary=:all: --upgrade numpy==1.14.5
 
 pip3 install scipy==1.4.1
 
-pip3 install scikit-learn==0.19.2
+pip3 install scikit-learn==0.19.1
 
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
