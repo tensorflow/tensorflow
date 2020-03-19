@@ -1121,6 +1121,39 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
 }  // namespace TF
 
 //===----------------------------------------------------------------------===//
+// DataFormatVecPermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DataFormatVecPermuteOp op) {
+  auto input_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return success();
+
+  int rank = input_ty.getRank();
+  if (rank != 1 && rank != 2)
+    return op.emitOpError("requires input of rank 1 or 2");
+
+  if (rank == 1) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError("requires 1D input of size 4");
+  }
+
+  if (rank == 2) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError(
+          "requires first dimensions of 2D input to be of size 4");
+
+    int64_t dim1 = input_ty.getDimSize(1);
+    if (dim1 != ShapedType::kDynamicSize && dim1 != 2)
+      return op.emitOpError(
+          "requires second dimensions of 2D input to be of size 2");
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // DivOp
 //===----------------------------------------------------------------------===//
 

@@ -87,6 +87,29 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
   let hasFolder = 1;
 }
 
+def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect]> {
+  let summary = "Permute input tensor from `src_format` to `dst_format`";
+
+  let description = [{
+Input tensor must be a vector of size 4, or a 4x2 tensor.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$x,
+
+    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
+    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
+}
+
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
   let summary = "Creates and returns an empty tensor list.";
 

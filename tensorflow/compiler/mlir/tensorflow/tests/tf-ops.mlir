@@ -2463,3 +2463,36 @@ func @testBatchMatMulV2(%lhs: tensor<10x10xf32>, %rhs: tensor<f32>) {
   // expected-error @+1 {{requires rhs operand to have rank at least two}}
   %0 = "tf.BatchMatMulV2"(%lhs, %rhs) : (tensor<10x10xf32>, tensor<f32>) -> tensor<10x10xf32>
 }
+
+// -----
+
+func @testDataFormatVecPermuteInvalid1dInput(%x: tensor<5xi32>) {
+  // expected-error @+1 {{requires 1D input of size 4}}
+  %0 = "tf.DataFormatVecPermute"(%x): (tensor<5xi32>) -> tensor<5xi32>
+  return
+}
+
+// -----
+
+func @testDataFormatVecPermuteInvalid2dDim0Input(%x: tensor<5x2xi32>) {
+  // expected-error @+1 {{requires first dimensions of 2D input to be of size 4}}
+  %0 = "tf.DataFormatVecPermute"(%x): (tensor<5x2xi32>) -> tensor<5x2xi32>
+  return
+}
+
+// -----
+
+func @testDataFormatVecPermuteInvalid2dDim1Input(%x: tensor<4x3xi32>) {
+  // expected-error @+1 {{requires second dimensions of 2D input to be of size 2}}
+  %0 = "tf.DataFormatVecPermute"(%x): (tensor<4x3xi32>) -> tensor<4x3xi32>
+  return
+}
+
+// -----
+
+func @testDataFormatVecPermuteInvalid3dInput(%x: tensor<4x2x2xi32>) {
+  // expected-error @+1 {{requires input of rank 1 or 2}}
+  %0 = "tf.DataFormatVecPermute"(%x): (tensor<4x2x2xi32>) -> tensor<4x2x2xi32>
+  return
+}
+
