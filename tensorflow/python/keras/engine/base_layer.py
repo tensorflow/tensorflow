@@ -1185,7 +1185,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     ```python
     class MyLayer(tf.keras.layers.Layer):
-      def call(inputs, self):
+      def call(self, inputs):
         self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
         return inputs
     ```
