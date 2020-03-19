@@ -111,6 +111,7 @@ py_library(
         ":base_layer_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
