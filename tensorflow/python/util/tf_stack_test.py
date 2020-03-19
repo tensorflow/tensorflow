@@ -60,7 +60,7 @@ def extract_stack(limit=None):
 
 def convert_stack_frame(frame):
   """Converts a TF stack frame into Python's."""
-  # TODO(mihaimaruseac): Remove except case when dropping suport for py2
+  # TODO(mihaimaruseac): Remove except case when dropping support for py2
   try:
     return traceback.FrameSummary(
         frame.filename, frame.lineno, frame.name, line=frame.line)
