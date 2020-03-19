@@ -19,6 +19,7 @@ tf_cc_shared_object(
 cc_library(
     name = "posix_filesystem_impl",
     srcs = ["posix_filesystem.cc"],
+    hdrs = ["posix_filesystem.h"],
     deps = [
         ":posix_filesystem_helper",
         "//tensorflow/c:tf_status",
