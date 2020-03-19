@@ -250,7 +250,12 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-    ],
+    ] + select({
+        ":enable_default_profiler": [
+            "//tensorflow/lite/profiling:platform_profiler",
+        ],
+        "//conditions:default": [],
+    }),
     alwayslink = 1,
 )
 
@@ -285,12 +290,7 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":enable_default_profiler": [
-            "//tensorflow/lite/profiling:platform_profiler",
-        ],
-        "//conditions:default": [],
-    }) + tflite_experimental_runtime_linkopts(),
+    ] + tflite_experimental_runtime_linkopts(),
     alwayslink = 1,
 )
 
