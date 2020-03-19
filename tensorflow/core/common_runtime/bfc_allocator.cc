@@ -460,9 +460,7 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
                             ",bytes_available=", bytes_available,
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
                             ",requested_bytes=", requested_bytes,
-#ifdef TENSORFLOW_MEM_DEBUG
                             ",tf_op=", pending_op_name, ",id=", pending_step_id,
-#endif
                             "#");
       },
       traceme_level);

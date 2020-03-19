@@ -361,8 +361,7 @@ class EagerContext : public core::RefCounted {
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
       const std::vector<string>& remove_remote_contexts, uint64 context_id,
-      Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-      DistributedFunctionLibraryRuntime* cluster_flr);
+      Rendezvous* r);
 
   // Similar with InitializeRemoteMaster but this context will not kill remote
   // contexts in shutdown.

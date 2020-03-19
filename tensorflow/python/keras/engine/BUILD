@@ -5,7 +5,12 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/feature_column:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -106,6 +111,7 @@ py_library(
         ":base_layer_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:tf2",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",

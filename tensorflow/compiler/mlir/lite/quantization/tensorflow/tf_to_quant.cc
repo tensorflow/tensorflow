@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -73,12 +73,12 @@ struct InsertQuantOpsAfterTFFakeQuantOp
       MLIRContext *ctx)
       : OpRewritePattern<TFFakeQuantOp>(ctx) {}
 
-  PatternMatchResult matchAndRewrite(TFFakeQuantOp tf_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TFFakeQuantOp tf_op,
+                                PatternRewriter &rewriter) const override {
     // We don't want to insert quantize/dequantize if the quantize op exists.
     auto res = tf_op.outputs();
     if (!res.hasOneUse() || isa<quant::QuantizeCastOp>(*res.user_begin()))
-      return this->matchFailure();
+      return failure();
 
     // Extract the min/max constant values from the operands. We also consider
     // a special case that there are tf.Identity ops between the min/max
@@ -95,8 +95,8 @@ struct InsertQuantOpsAfterTFFakeQuantOp
       max = tf_op.max();
       rewriter.eraseOp(id2);
     }
-    if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
-    if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
+    if (!matchPattern(min, m_Constant(&min_value))) return failure();
+    if (!matchPattern(max, m_Constant(&max_value))) return failure();
 
     int quant_dim = -1;
     if (PerAxis) {
@@ -114,7 +114,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
         rewriter, res_type, min_value, max_value, quant_dim, num_bits,
         narrow_range, /*is_signed=*/true);
-    if (!qtype) this->matchFailure();
+    if (!qtype) failure();
 
     // Finally, use the quantization parameter to create the quantize and
     // dequantize ops, and insert them between the tf.FakeQuantWithMinMaxVarsOp
@@ -127,7 +127,7 @@ struct InsertQuantOpsAfterTFFakeQuantOp
     value.replaceAllUsesWith(dequantize);
     quantize.getOperation()->replaceUsesOfWith(dequantize, value);
 
-    return this->matchSuccess();
+    return success();
   }
 };
 

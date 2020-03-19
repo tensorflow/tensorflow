@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/lite/tfl_to_std.h"
 
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 
 namespace mlir {

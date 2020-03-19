@@ -149,6 +149,7 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinGreaterEqual:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
+    case kTfLiteBuiltinPow:
       return true;
     default:
       return false;
@@ -1757,7 +1758,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReluN1To1:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinLogistic: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTanh: {

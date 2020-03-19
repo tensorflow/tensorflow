@@ -737,6 +737,21 @@ class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
       self.assertLen(new_model.variables, 1)
       self.assertLen(new_model.layers, 1)
 
+  def test_batch_counters_not_in_variables(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = keras.layers.Dense(4)
+
+      def call(self, obs):
+        return self.layer(obs)
+
+    model = MyModel()
+    model(np.ones((10, 10)))
+    self.assertLen(model.variables, 2)
+
 
 if __name__ == '__main__':
   test.main()

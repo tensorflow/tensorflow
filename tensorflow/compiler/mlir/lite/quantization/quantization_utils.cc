@@ -22,11 +22,11 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantizeUtils.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/UniformSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantizeUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project

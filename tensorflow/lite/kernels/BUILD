@@ -526,7 +526,7 @@ cc_library(
         ":lstm_shared",
         ":op_macros",
         ":padding",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
@@ -660,7 +660,7 @@ cc_library(
     ],
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:common",
     ],
 )

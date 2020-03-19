@@ -937,7 +937,7 @@ def func_graph_from_py_func(name,
           x = ops.convert_to_tensor_or_composite(x)
         except (ValueError, TypeError):
           raise TypeError(
-              "To be compatible with tf.contrib.eager.defun, Python functions "
+              "To be compatible with tf.eager.defun, Python functions "
               "must return zero or more Tensors; in compilation of %s, found "
               "return value of type %s, which is not a Tensor." %
               (str(python_func), type(x)))
@@ -1281,3 +1281,7 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
+
+
+def override_func_graph_name_scope(func_graph, name_scope):
+  func_graph._name_stack = name_scope  # pylint: disable=protected-access

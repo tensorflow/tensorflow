@@ -37,7 +37,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/examples/label_image/bitmap_helpers.h"
 #include "tensorflow/lite/examples/label_image/get_top_n.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -99,19 +98,6 @@ TfLiteDelegatePtrMap GetDelegates(Settings* s) {
       LOG(INFO) << "Hexagon acceleration is unsupported on this platform.";
     } else {
       delegates.emplace("Hexagon", std::move(delegate));
-    }
-  }
-
-  if (s->xnnpack_delegate) {
-    TfLiteXNNPackDelegateOptions xnnpack_options =
-        TfLiteXNNPackDelegateOptionsDefault();
-    xnnpack_options.num_threads = s->number_of_threads;
-
-    auto delegate = evaluation::CreateXNNPACKDelegate(&xnnpack_options);
-    if (!delegate) {
-      LOG(INFO) << "XNNPACK acceleration is unsupported on this platform.";
-    } else {
-      delegates.emplace("XNNPACK", std::move(delegate));
     }
   }
 
@@ -374,7 +360,6 @@ void display_usage() {
       << "--threads, -t: number of threads\n"
       << "--verbose, -v: [0|1] print more information\n"
       << "--warmup_runs, -w: number of warmup runs\n"
-      << "--xnnpack_delegate, -x: xnnpack delegate\n"
       << "\n";
 }
 
@@ -401,14 +386,13 @@ int Main(int argc, char** argv) {
         {"warmup_runs", required_argument, nullptr, 'w'},
         {"gl_backend", required_argument, nullptr, 'g'},
         {"hexagon_delegate", required_argument, nullptr, 'j'},
-        {"xnnpack_delegate", required_argument, nullptr, 'x'},
         {nullptr, 0, nullptr, 0}};
 
     /* getopt_long stores the option index here. */
     int option_index = 0;
 
     c = getopt_long(argc, argv,
-                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:x:", long_options,
+                    "a:b:c:d:e:f:g:i:j:l:m:p:r:s:t:v:w:", long_options,
                     &option_index);
 
     /* Detect the end of the options. */
@@ -475,9 +459,6 @@ int Main(int argc, char** argv) {
       case 'w':
         s.number_of_warmup_runs =
             strtol(optarg, nullptr, 10);  // NOLINT(runtime/deprecated_fn)
-        break;
-      case 'x':
-        s.xnnpack_delegate = optarg;
         break;
       case 'h':
       case '?':

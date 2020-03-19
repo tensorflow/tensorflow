@@ -45,8 +45,8 @@ struct ConvertTFEinsumOp : public OpRewritePattern<TF::EinsumOp> {
   explicit ConvertTFEinsumOp(MLIRContext* context)
       : OpRewritePattern<TF::EinsumOp>(context) {}
 
-  PatternMatchResult matchAndRewrite(TF::EinsumOp op,
-                                     PatternRewriter& rewriter) const override;
+  LogicalResult matchAndRewrite(TF::EinsumOp op,
+                                PatternRewriter& rewriter) const override;
 };
 
 }  // namespace TF

@@ -243,6 +243,41 @@ Usage:
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AsStringOp : TF_Op<"AsString", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Converts each entry in the given tensor to strings.";
+
+  let description = [{
+Supports many numeric types and boolean.
+
+For Unicode, see the
+[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+tutorial.
+
+Examples:
+
+>>> tf.strings.as_string([3, 2])
+<tf.Tensor: shape=(2,), dtype=string, numpy=array([b'3', b'2'], dtype=object)>
+>>> tf.strings.as_string([3.1415926, 2.71828], precision=2).numpy()
+array([b'3.14', b'2.72'], dtype=object)
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$input,
+
+    DefaultValuedAttr<I64Attr, "-1">:$precision,
+    DefaultValuedAttr<BoolAttr, "false">:$scientific,
+    DefaultValuedAttr<BoolAttr, "false">:$shortest,
+    DefaultValuedAttr<I64Attr, "-1">:$width,
+    StrAttr:$fill
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AssertOp : TF_Op<"Assert", []> {
   let summary = "Asserts that the given condition is true.";
 
@@ -2607,6 +2642,24 @@ def TF_InfeedDequeueTupleOp : TF_Op<"InfeedDequeueTuple", []> {
   TF_DerivedResultTypeListAttr dtypes = TF_DerivedResultTypeListAttr<0>;
 }
 
+def TF_InvOp : TF_Op<"Inv", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes the reciprocal of x element-wise.";
+
+  let description = [{
+I.e., \\(y = 1 / x\\).
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
@@ -4591,6 +4644,23 @@ gradients in some corner cases.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PrintV2Op : TF_Op<"PrintV2", []> {
+  let summary = "Prints a string scalar.";
+
+  let description = [{
+Prints a string scalar to the desired output_stream.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$input,
+
+    DefaultValuedAttr<StrAttr, "stderr">:$output_stream,
+    DefaultValuedAttr<StrAttr, "\n">:$end
+  );
+
+  let results = (outs);
 }
 
 def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {

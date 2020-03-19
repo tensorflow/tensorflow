@@ -225,9 +225,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
       serialized graph.
     """
     if external_state_policy:
-      policy = None
-      if external_state_policy:
-        policy = external_state_policy.value
+      policy = external_state_policy.value
       return gen_dataset_ops.dataset_to_graph_v2(
           self._variant_tensor,
           external_state_policy=policy,
@@ -1031,14 +1029,14 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Example:
       If we had the following files on our filesystem:
-      
+
         - /path/to/dir/a.txt
         - /path/to/dir/b.py
         - /path/to/dir/c.py
-      
+
       If we pass "/path/to/dir/*.py" as the directory, the dataset
       would produce:
-      
+
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
@@ -2731,15 +2729,12 @@ class Options(options_lib.OptionsBase):
   experimental_external_state_policy = options_lib.create_option(
       name="experimental_external_state_policy",
       ty=distribute_options.ExternalStatePolicy,
-      docstring="By default, tf.data will refuse to serialize a dataset or "
-      "checkpoint its iterator if the dataset contains a stateful op as the "
-      "serialization / checkpointing won't be able to capture its state. "
-      "Users can -- at their own risk -- override this restriction by "
-      "explicitly specifying that they are fine throwing away the state "
-      "in these ops. There are three settings available - IGNORE: in which we"
-      "completely ignore any state; WARN: We warn the user that some state "
-      "might be thrown away; FAIL: We fail if any state is being captured.",
-      default_factory=lambda: distribute_options.ExternalStatePolicy.WARN)
+      docstring="This option can be used to override the default policy for "
+      "how to handle external state when serializing a dataset or "
+      "checkpointing its iterator. There are three settings available - "
+      "IGNORE: in which we completely ignore any state; WARN: We warn the "
+      "user that some state might be thrown away; FAIL: We fail if any state "
+      "is being captured.")
 
   def _graph_rewrites(self):
     """Produces the list of enabled static graph rewrites."""
@@ -3523,6 +3518,51 @@ class CacheDataset(UnaryUnchangedStructureDataset):
     super(CacheDataset, self).__init__(input_dataset, variant_tensor)
 
 
+class _SeedGeneratorDeleter(object):
+  """An object which cleans up an anonymous seed generator resource.
+
+  An alternative to defining a __del__ method on an object. Even if the parent
+  object is part of a reference cycle, the cycle will be collectable.
+  """
+
+  def __init__(self, handle, device, deleter):
+    self._deleter = deleter
+    self._handle = handle
+    self._device = device
+    self._eager_mode = context.executing_eagerly()
+
+  def __del__(self):
+    with ops.device(self._device):
+      # Make sure the resource is deleted in the same mode as it was created in.
+      if self._eager_mode:
+        with context.eager_mode():
+          gen_dataset_ops.delete_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+      else:
+        with context.graph_mode():
+          gen_dataset_ops.delete_seed_generator(
+              handle=self._handle, deleter=self._deleter)
+
+
+class _SeedGenerator(object):
+  """Represents a fixed seed generator resource."""
+
+  def __init__(self, seed, seed2, reshuffle):
+    super(_SeedGenerator, self).__init__()
+    self._device = context.context().device_name
+    self._handle, self._deleter = (
+        gen_dataset_ops.anonymous_seed_generator(
+            seed=seed, seed2=seed2, reshuffle=reshuffle))
+    self._resource_deleter = _SeedGeneratorDeleter(
+        handle=self._handle, device=self._device, deleter=self._deleter)
+
+  @property
+  def handle(self):
+    return self._handle
+
+
+# TODO(b/151115950): Remove this class after forward compatibility window
+# expires
 class _RandomSeedGeneratorDeleter(object):
   """An object which cleans up an anonymous random seed generator resource.
 
@@ -3549,6 +3589,8 @@ class _RandomSeedGeneratorDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
+# TODO(b/151115950): Remove this class after forward compatibility window
+# expires
 class _RandomSeedGenerator(object):
   """Represents a random seed generator resource."""
 
@@ -3602,9 +3644,14 @@ class ShuffleDataset(UnaryUnchangedStructureDataset):
     else:
       self._reshuffle_each_iteration = reshuffle_each_iteration
 
-    if tf2.enabled() and self._reshuffle_each_iteration and (
-        context.executing_eagerly() or ops.inside_function()):
-      self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
+    if (tf2.enabled() and (self._reshuffle_each_iteration or
+                           compat.forward_compatible(2020, 4, 10)) and
+        (context.executing_eagerly() or ops.inside_function())):
+      if compat.forward_compatible(2020, 4, 10):
+        self._seed_generator = _SeedGenerator(self._seed, self._seed2,
+                                              self._reshuffle_each_iteration)
+      else:
+        self._seed_generator = _RandomSeedGenerator(self._seed, self._seed2)
       variant_tensor = gen_dataset_ops.shuffle_dataset_v2(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           buffer_size=self._buffer_size,

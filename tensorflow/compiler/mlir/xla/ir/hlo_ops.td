@@ -288,16 +288,16 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
 
-def HLO_DivOp : HLO_BinaryElementwiseOp<"div",
+def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
 
-def HLO_MaxOp : HLO_BinaryElementwiseOp<"max",
+def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp;
 
-def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
+def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp;
 
-def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
+def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
 def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
@@ -315,7 +315,7 @@ def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic
 def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
 
-def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
+def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
 //===----------------------------------------------------------------------===//

@@ -26,6 +26,7 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "experimental/tfl_hardware_interfaces.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
@@ -204,6 +205,7 @@ cc_library(
 cc_library(
     name = "tensorflow_lite",
     srcs = [
+        "experimental/estimators/estimator.h",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -439,6 +441,7 @@ genrule(
     srcs = [
         "ir/tfl_ops.td",
         "ir/tfl_op_interfaces.td",
+        "experimental/tfl_hardware_interfaces.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],

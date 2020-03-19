@@ -100,8 +100,32 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
 
 // This list is not exhaustive.
 bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
-  return (absl::StrContains(tf_op_name, "Conv") ||
-          absl::StrContains(tf_op_name, "Einsum"));
+  // Disable formatting to keep inline comments vertically aligned.
+  // clang-format off
+  return false
+      // Using EndsWith to match Fused operations.
+      || absl::EndsWith(tf_op_name, "Conv2D")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropFilter")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropInput")
+      || absl::EndsWith(tf_op_name, "Conv3D")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNative")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropFilter")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropInput")
+      // Using Contains because of numeric suffix and possible Xla prefix.
+      || absl::StrContains(tf_op_name, "Einsum")
+      // Using Contains to match V2/V3 suffixes.
+      || absl::StrContains(tf_op_name, "BatchMatMul")
+      // MatMul requires exact matching.
+      || absl::EndsWith(tf_op_name, "/MatMul")
+      || absl::EndsWith(tf_op_name, "FusedMatMul")
+      // cuDNN operations.
+      || absl::EndsWith(tf_op_name, "/CudnnRNN")
+      || absl::StrContains(tf_op_name, "CudnnRNNV")
+      || absl::StrContains(tf_op_name, "CudnnRNNForward")
+      || absl::StrContains(tf_op_name, "CudnnRNNBackprop")
+      // Special cases.
+      || absl::EndsWith(tf_op_name, "XlaDot");
+  // clang-format on
 }
 
 bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,

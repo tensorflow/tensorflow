@@ -4,7 +4,12 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        # TODO(scottzhu): Remove non-keras deps from TF.
+        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
+        "//tensorflow/tools/docs:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

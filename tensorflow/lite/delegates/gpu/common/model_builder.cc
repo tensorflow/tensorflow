@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
+#include "tensorflow/lite/delegates/utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
@@ -1444,8 +1445,9 @@ class MulOperationParser : public TFLiteOperationParser {
     if (tflite_node->inputs->size != 2) {
       return UnimplementedError("MUL requires two input tensors.");
     }
-    // TODO(eignasheva): Add params check.
-    return OkStatus();
+    TfLiteMulParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+    return IsActivationSupported(tf_options->activation);
   }
 
   Status Parse(const TfLiteNode* tflite_node,
@@ -1485,21 +1487,30 @@ class MulOperationParser : public TFLiteOperationParser {
         input_tensor0 = 1;
         input_tensor1 = 0;
       }
-      return ParseApplyMask(node, input_tensor0, input_tensor1, graph, reader);
+      RETURN_IF_ERROR(
+          ParseApplyMask(node, input_tensor0, input_tensor1, graph, reader));
+    } else {
+      // The runtime input tensor must be bound to 1st input and the constant
+      // input tensor must be bound to 2nd input.
+      int runtime_tensor = 0;
+      int constant_tensor = 1;
+      TfLiteIntArray* constant_dims = input1->dims;
+      if (constant_tensor0 && runtime_tensor1) {
+        runtime_tensor = 1;
+        constant_tensor = 0;
+        constant_dims = input0->dims;
+      }
+      RETURN_IF_ERROR(ParseMultiplyScalar(node, runtime_tensor, constant_tensor,
+                                          constant_dims, graph, reader));
     }
 
-    // The runtime input tensor must be bound to 1st input and the constant
-    // input tensor must be bound to 2nd input.
-    int runtime_tensor = 0;
-    int constant_tensor = 1;
-    TfLiteIntArray* constant_dims = input1->dims;
-    if (constant_tensor0 && runtime_tensor1) {
-      runtime_tensor = 1;
-      constant_tensor = 0;
-      constant_dims = input0->dims;
+    const auto* tf_options =
+        reinterpret_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
+    if (!tf_options) {
+      return InternalError("Missing TfLiteMulParams");
     }
-    return ParseMultiplyScalar(node, runtime_tensor, constant_tensor,
-                               constant_dims, graph, reader);
+    return MaybeFuseActivationToTheSingleOutput(tf_options->activation, graph,
+                                                node);
   }
 
  private:
@@ -2761,131 +2772,18 @@ Status GetNodeAndRegistration(TfLiteContext* context, int node_id,
   return OkStatus();
 }
 
-using IsNodeSupportedFn =
-    std::function<Status(TfLiteContext*, TfLiteNode*, TfLiteRegistration*)>;
+using IsNodeSupportedFn = tflite::delegates::IsNodeSupportedFn;
 
-// A utility class to help model graph parition and decide the partition to be
-// offloaded to GPU.
-// TODO(b/151152967): move the following to lite/delegates/utils
-class GraphPartitionHelper {
- public:
-  GraphPartitionHelper(TfLiteContext* context,
-                       IsNodeSupportedFn is_node_supported_fn)
-      : is_node_supported_fn_(is_node_supported_fn), context_(context) {}
-
-  virtual ~GraphPartitionHelper() { TfLiteIntArrayFree(supported_nodes_); }
-
-  // Partitions the graph into multiple subgraphs, each of which is in
-  // dependency order with others
-  virtual Status Partition(std::set<std::string>* unsupported_nodes_info) {
-    RETURN_IF_ERROR(PrepareSupportedNodes(unsupported_nodes_info));
-
-    TfLiteDelegateParams* partition_params_array_ = nullptr;
-    int num_partitions_ = 0;
-    if (context_->PreviewDelegatePartitioning(context_, supported_nodes_,
-                                              &partition_params_array_,
-                                              &num_partitions_) != kTfLiteOk) {
-      return InvalidArgumentError("Unable to preview delegate partition.");
-    }
-
-    for (int i = 0; i < num_partitions_; ++i) {
-      partitions_.push_back(partition_params_array_ + i);
-    }
-
-    return OkStatus();
-  }
-
-  // Returns the first n largest partitions or all if #partitions is less than
-  // 'n'. Note that partitions are ranked according to the number of nodes that
-  // a partition has, and the returned TfLiteDelegateParams objects are *owned*
-  // by the TfLite runtime.
-  std::vector<TfLiteDelegateParams*> GetFirstNLargestPartitions(int n) {
-    const int total = num_partitions();
-    // We only sort partitions according to their sizes if necessary.
-    if (n < total) {
-      partitions_.sort(CompareTwoPartitions);
-    }
-    std::vector<TfLiteDelegateParams*> results;
-    auto p_it = partitions_.begin();
-    for (int i = 0; i < std::min(total, n); ++i, ++p_it) {
-      results.push_back(*p_it);
-    }
-    return results;
-  }
-
-  int num_total_nodes() const { return num_total_nodes_; }
-  int num_partitions() const { return partitions_.size(); }
-
- private:
-  static bool CompareTwoPartitions(TfLiteDelegateParams* left,
-                                   TfLiteDelegateParams* right) {
-    // Reverse sort
-    return left->nodes_to_replace->size > right->nodes_to_replace->size;
-  }
-
-  Status PrepareSupportedNodes(
-      std::set<std::string>* unsupported_nodes_info = nullptr) {
-    TfLiteIntArray* execution_plan = nullptr;
-    if (context_->GetExecutionPlan(context_, &execution_plan) != kTfLiteOk) {
-      return InvalidArgumentError("Unable to get graph execution plan.");
-    }
-
-    num_total_nodes_ = execution_plan->size;
-    supported_nodes_ = TfLiteIntArrayCreate(num_total_nodes_);
-    supported_nodes_->size = 0;
-    for (int node_id : TfLiteIntArrayView(execution_plan)) {
-      TfLiteNode* node;
-      TfLiteRegistration* registration;
-      auto status =
-          GetNodeAndRegistration(context_, node_id, &node, &registration);
-      if (!status.ok()) {
-        supported_nodes_->size = 0;
-        return status;
-      }
-
-      status = IsNodeSupported(context_, node, registration, node_id);
-      if (status.ok()) {
-        supported_nodes_->data[supported_nodes_->size++] = node_id;
-      } else if (unsupported_nodes_info) {
-        unsupported_nodes_info->insert(
-            absl::StrCat(GetOpNameByRegistration(*registration), ": ",
-                         status.error_message()));
-      }
-    }
-    return OkStatus();
-  }
-
-  // The number of total nodes passed in for partition (i.e. the
-  // execution_plan size)
-  int num_total_nodes_ = 0;
-
-  // Tells whether a node is replaceable.
-  const IsNodeSupportedFn is_node_supported_fn_;
-  TfLiteIntArray* supported_nodes_;  // owns the memory
-
- protected:
-  virtual Status IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
-                                 TfLiteRegistration* registration,
-                                 int node_id) {
-    return is_node_supported_fn_(context, node, registration);
-  }
-
-  TfLiteContext* const context_ = nullptr;
-
-  // Doesn't own the memory of each TfLiteDelegateParams object as it's
-  // managed by the TfLite runtime itself. See
-  // TfLiteContext::PreviewDelegatePartitioning for details.
-  std::list<TfLiteDelegateParams*> partitions_;
-};
-
-class GraphWithDequantPartitionHelper : public GraphPartitionHelper {
+class GraphWithDequantPartitionHelper
+    : public tflite::delegates::GraphPartitionHelper {
  public:
   GraphWithDequantPartitionHelper(TfLiteContext* context,
                                   IsNodeSupportedFn is_node_supported_fn)
       : GraphPartitionHelper(context, std::move(is_node_supported_fn)) {}
 
-  Status Partition(std::set<std::string>* unsupported_nodes_info) override {
-    auto status = GraphPartitionHelper::Partition(unsupported_nodes_info);
+  TfLiteStatus Partition(
+      std::set<std::string>* unsupported_nodes_info) override {
+    const auto status = GraphPartitionHelper::Partition(unsupported_nodes_info);
     // Clean up those partitions that have a single dequant op. NoteThose
     // removed dequant ops have to be reserved in the graph and should not be
     // delegated.
@@ -2914,9 +2812,9 @@ class GraphWithDequantPartitionHelper : public GraphPartitionHelper {
   }
 
  protected:
-  Status IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
-                         TfLiteRegistration* registration,
-                         int node_id) override {
+  bool IsNodeSupported(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteRegistration* registration, int node_id,
+                       std::string* unsupported_details) override {
     // If we need to handle dequant nodes, we have to remap input tensors of
     // this node if some of them come from a dequant node before testing if
     // the node is supported.
@@ -2927,10 +2825,10 @@ class GraphWithDequantPartitionHelper : public GraphPartitionHelper {
       // dequant node is first added as supported. Later, this dequant node
       // will be removed if it has to be preserved in the graph which happens
       // when its immediate downstream nodes cannot be supported.
-      return OkStatus();
+      return true;
     }
     const auto status = GraphPartitionHelper::IsNodeSupported(
-        context, node, registration, node_id);
+        context, node, registration, node_id, unsupported_details);
     RestoreToOrigInputTensors(node, orig_inputs);
     return status;
   }
@@ -3086,21 +2984,29 @@ Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
 TfLiteIntArray* GetOpsToReplace(TfLiteContext* context) {
   IsNodeSupportedFn node_supported_fn =
       [=](TfLiteContext* context, TfLiteNode* node,
-          TfLiteRegistration* registration) -> Status {
-    RETURN_IF_ERROR(IsSupported(context, node, registration));
-    return (IsAllFloatTensors(context, node->inputs) &&
-            IsAllFloatTensors(context, node->outputs))
-               ? OkStatus()
-               : FailedPreconditionError(
-                     "OP is supported, but tensor type isn't matched!");
+          TfLiteRegistration* registration,
+          std::string* unsupported_details) -> bool {
+    const auto status = IsSupported(context, node, registration);
+    if (!status.ok()) {
+      if (unsupported_details) *unsupported_details = status.error_message();
+      return false;
+    }
+
+    if (!IsAllFloatTensors(context, node->inputs) ||
+        !IsAllFloatTensors(context, node->outputs)) {
+      if (unsupported_details) {
+        *unsupported_details =
+            "OP is supported, but tensor type isn't matched!";
+      }
+      return false;
+    }
+    return true;
   };
 
   GraphWithDequantPartitionHelper partition_helper(context, node_supported_fn);
   std::set<std::string> unsupported_nodes_info;
-  auto status = partition_helper.Partition(&unsupported_nodes_info);
-  if (!status.ok()) {
-    TF_LITE_KERNEL_LOG(context, status.error_message().c_str());
-    return nullptr;
+  if (partition_helper.Partition(&unsupported_nodes_info) != kTfLiteOk) {
+    return TfLiteIntArrayCreate(0);
   }
 
   // We simply get 1st largest partition, but we could later explore whether

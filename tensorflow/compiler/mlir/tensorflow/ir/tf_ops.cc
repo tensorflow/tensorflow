@@ -580,16 +580,16 @@ namespace {
 struct AssertWithTrue : public OpRewritePattern<AssertOp> {
   using OpRewritePattern<AssertOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(AssertOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AssertOp op,
+                                PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
       if (cst.getValue<BoolAttr>({}).getValue()) {
         rewriter.eraseOp(op);
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace
@@ -3085,15 +3085,15 @@ namespace {
 // function and can be removed.
 class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
   using OpRewritePattern<ToBoolOp>::OpRewritePattern;
-  PatternMatchResult matchAndRewrite(ToBoolOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ToBoolOp op,
+                                PatternRewriter &rewriter) const override {
     if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
       if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
         rewriter.replaceOp(op, op.getOperand());
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace

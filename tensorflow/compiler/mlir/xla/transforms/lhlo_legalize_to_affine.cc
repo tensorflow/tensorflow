@@ -35,8 +35,8 @@ template <typename LhloOpTy>
 struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
   using OpRewritePattern<LhloOpTy>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(LhloOpTy op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(LhloOpTy op,
+                                PatternRewriter& rewriter) const override {
     const auto& lhs = op.lhs();
     const auto& rhs = op.rhs();
     const auto& lhs_type = lhs.getType().template cast<MemRefType>();
@@ -44,7 +44,7 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
     const auto& element_type = lhs_type.getElementType();
 
     if (lhs_type.getShape() != rhs_type.getShape()) {
-      return this->matchFailure();
+      return failure();
     }
     const auto& shape = lhs_type.getShape();
     SmallVector<Value, 4> induction_vars;
@@ -59,11 +59,11 @@ struct BinaryOpConverter : public OpRewritePattern<LhloOpTy> {
     Value opResult = xla_lhlo::XlaOpToStdScalarOp::map<LhloOpTy>(
         op, element_type, {l, r}, &rewriter);
     if (opResult == nullptr) {
-      return this->matchFailure();
+      return failure();
     }
     rewriter.create<StoreOp>(loc, opResult, op.out(), induction_vars);
     rewriter.eraseOp(op);
-    return this->matchSuccess();
+    return success();
   }
 };
 

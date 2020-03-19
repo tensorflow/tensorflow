@@ -7723,8 +7723,9 @@ tf_py_test(
     tags = [
         "grappler",
         "no_cuda_on_cpu_tap",
+        "no_mac",
         "no_pip",
-        "nomac",
+        "no_windows",  # TODO(b/151942037)
     ],
     deps = [
         ":array_ops",

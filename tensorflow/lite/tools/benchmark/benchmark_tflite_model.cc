@@ -615,11 +615,14 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
-  delegates_ = GetDelegates();
-  for (const auto& delegate : delegates_) {
-    if (interpreter_->ModifyGraphWithDelegate(delegate.second.get()) !=
-        kTfLiteOk) {
-      TFLITE_LOG(ERROR) << "Failed to apply " << delegate.first << " delegate.";
+  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+    auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
+    // It's possible that a delegate of certain type won't be created as
+    // user-specified benchmark params tells not to.
+    if (delegate == nullptr) continue;
+    if (interpreter_->ModifyGraphWithDelegate(delegate.get()) != kTfLiteOk) {
+      TFLITE_LOG(ERROR) << "Failed to apply " << delegate_provider->GetName()
+                        << " delegate.";
       return kTfLiteError;
     } else {
       bool fully_delegated = true;
@@ -629,7 +632,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
         int first_node_id = interpreter_->execution_plan()[0];
         const TfLiteNode first_node =
             interpreter_->node_and_registration(first_node_id)->first;
-        if (delegate.second.get() != first_node.delegate) {
+        if (delegate.get() != first_node.delegate) {
           fully_delegated = false;
         }
       }
@@ -639,7 +642,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
       }
       const std::string delegate_status =
           fully_delegated ? "completely" : "partially";
-      TFLITE_LOG(INFO) << "Applied " << delegate.first
+      TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
                        << " delegate, and the model graph will be "
                        << delegate_status << " executed w/ the delegate.";
     }
@@ -696,19 +699,6 @@ TfLiteStatus BenchmarkTfLiteModel::LoadModel() {
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
   return kTfLiteOk;
-}
-
-BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
-    const {
-  TfLiteDelegatePtrMap delegates;
-  for (const auto& delegate_util : GetRegisteredDelegateProviders()) {
-    auto delegate = delegate_util->CreateTfLiteDelegate(params_);
-    if (delegate != nullptr) {
-      delegates.emplace(delegate_util->GetName(), std::move(delegate));
-    }
-  }
-
-  return delegates;
 }
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()

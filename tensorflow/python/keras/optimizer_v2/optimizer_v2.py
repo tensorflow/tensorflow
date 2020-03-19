@@ -486,7 +486,7 @@ class OptimizerV2(trackable.Trackable):
       if distribute_ctx.in_cross_replica_context():
         raise RuntimeError(
             "`apply_gradients() cannot be called in cross-replica context. "
-            "Use `tf.distribute.Strategy.experimental_run_v2` to enter replica "
+            "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
 
       apply_state = self._prepare(var_list)

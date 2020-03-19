@@ -1,0 +1,3016 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index de319ef..fefb60b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -179,7 +179,6 @@ IF(CPUINFO_SUPPORTED_PLATFORM)
+     LIST(APPEND CPUINFO_SRCS
+       src/linux/smallfile.c
+       src/linux/multiline.c
+-      src/linux/current.c
+       src/linux/cpulist.c
+       src/linux/processors.c)
+   ELSEIF(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+diff --git a/CMakeLists.txt.orig b/CMakeLists.txt.orig
+deleted file mode 100644
+index a71aede..0000000
+--- a/CMakeLists.txt.orig
++++ /dev/null
+@@ -1,819 +0,0 @@
+-CMAKE_MINIMUM_REQUIRED(VERSION 2.8.12 FATAL_ERROR)
+-
+-INCLUDE(GNUInstallDirs)
+-
+-# ---[ Project and semantic versioning.
+-PROJECT(cpuinfo C CXX)
+-
+-# ---[ Options.
+-SET(CPUINFO_LIBRARY_TYPE "default" CACHE STRING "Type of cpuinfo library (shared, static, or default) to build")
+-SET_PROPERTY(CACHE CPUINFO_LIBRARY_TYPE PROPERTY STRINGS default static shared)
+-SET(CPUINFO_RUNTIME_TYPE "default" CACHE STRING "Type of runtime library (shared, static, or default) to use")
+-SET_PROPERTY(CACHE CPUINFO_RUNTIME_TYPE PROPERTY STRINGS default static shared)
+-SET(CPUINFO_LOG_LEVEL "default" CACHE STRING "Minimum logging level (info with lower severity will be ignored)")
+-SET_PROPERTY(CACHE CPUINFO_LOG_LEVEL PROPERTY STRINGS default debug info warning error fatal none)
+-OPTION(CPUINFO_BUILD_TOOLS "Build command-line tools" ON)
+-OPTION(CPUINFO_BUILD_UNIT_TESTS "Build cpuinfo unit tests" ON)
+-OPTION(CPUINFO_BUILD_MOCK_TESTS "Build cpuinfo mock tests" ON)
+-OPTION(CPUINFO_BUILD_BENCHMARKS "Build cpuinfo micro-benchmarks" ON)
+-
+-# ---[ CMake options
+-IF(CPUINFO_BUILD_UNIT_TESTS OR CPUINFO_BUILD_MOCK_TESTS)
+-  ENABLE_TESTING()
+-ENDIF()
+-
+-MACRO(CPUINFO_TARGET_ENABLE_C99 target)
+-  IF(${CMAKE_VERSION} VERSION_LESS "3.1")
+-    IF(NOT MSVC)
+-      TARGET_COMPILE_OPTIONS(${target} PRIVATE -std=c99)
+-    ENDIF()
+-  ELSE()
+-    SET_TARGET_PROPERTIES(${target} PROPERTIES
+-      C_STANDARD 99
+-      C_EXTENSIONS NO)
+-  ENDIF()
+-ENDMACRO()
+-
+-MACRO(CPUINFO_TARGET_ENABLE_CXX11 target)
+-  IF(${CMAKE_VERSION} VERSION_LESS "3.1")
+-    IF(NOT MSVC)
+-      TARGET_COMPILE_OPTIONS(${target} PRIVATE -std=c++11)
+-    ENDIF()
+-  ELSE()
+-    SET_TARGET_PROPERTIES(${target} PROPERTIES
+-      CXX_STANDARD 11
+-      CXX_EXTENSIONS NO)
+-  ENDIF()
+-ENDMACRO()
+-
+-MACRO(CPUINFO_TARGET_RUNTIME_LIBRARY target)
+-  IF(MSVC AND NOT CPUINFO_RUNTIME_TYPE STREQUAL "default")
+-    IF(CPUINFO_RUNTIME_TYPE STREQUAL "shared")
+-      TARGET_COMPILE_OPTIONS(${target} PRIVATE
+-        "/MD$<$<CONFIG:Debug>:d>")
+-    ELSEIF(CPUINFO_RUNTIME_TYPE STREQUAL "static")
+-      TARGET_COMPILE_OPTIONS(${target} PRIVATE
+-        "/MT$<$<CONFIG:Debug>:d>")
+-    ENDIF()
+-  ENDIF()
+-ENDMACRO()
+-
+-# ---[ Build flags
+-SET(CPUINFO_SUPPORTED_PLATFORM TRUE)
+-IF(NOT CMAKE_SYSTEM_PROCESSOR)
+-  IF(NOT IOS)
+-    MESSAGE(WARNING
+-      "Target processor architecture is not specified. "
+-      "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
+-    SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
+-  ENDIF()
+-ELSEIF(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86(_64)?|armv[5-8].*|aarch64)$")
+-  MESSAGE(WARNING
+-    "Target processor architecture \"${CMAKE_SYSTEM_PROCESSOR}\" is not supported in cpuinfo. "
+-    "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
+-  SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
+-ENDIF()
+-
+-IF(NOT CMAKE_SYSTEM_NAME)
+-    MESSAGE(WARNING
+-      "Target operating system is not specified. "
+-      "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
+-  SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
+-ELSEIF(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Darwin|Linux|Android)$")
+-  IF(${CMAKE_VERSION} VERSION_GREATER_EQUAL "3.14" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+-    MESSAGE(WARNING
+-      "Target operating system \"${CMAKE_SYSTEM_NAME}\" is not supported in cpuinfo. "
+-      "cpuinfo will compile, but cpuinfo_initialize() will always fail.")
+-    SET(CPUINFO_SUPPORTED_PLATFORM FALSE)
+-  ENDIF()
+-ENDIF()
+-
+-# ---[ Download deps
+-SET(CONFU_DEPENDENCIES_SOURCE_DIR ${CMAKE_SOURCE_DIR}/deps
+-  CACHE PATH "Confu-style dependencies source directory")
+-SET(CONFU_DEPENDENCIES_BINARY_DIR ${CMAKE_BINARY_DIR}/deps
+-  CACHE PATH "Confu-style dependencies binary directory")
+-
+-IF(CPUINFO_BUILD_MOCK_TESTS OR CPUINFO_BUILD_UNIT_TESTS)
+-  IF(CPUINFO_SUPPORTED_PLATFORM AND NOT DEFINED GOOGLETEST_SOURCE_DIR)
+-    MESSAGE(STATUS "Downloading Google Test to ${CONFU_DEPENDENCIES_SOURCE_DIR}/googletest (define GOOGLETEST_SOURCE_DIR to avoid it)")
+-    CONFIGURE_FILE(cmake/DownloadGoogleTest.cmake "${CONFU_DEPENDENCIES_BINARY_DIR}/googletest-download/CMakeLists.txt")
+-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+-      WORKING_DIRECTORY "${CONFU_DEPENDENCIES_BINARY_DIR}/googletest-download")
+-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" --build .
+-      WORKING_DIRECTORY "${CONFU_DEPENDENCIES_BINARY_DIR}/googletest-download")
+-    SET(GOOGLETEST_SOURCE_DIR "${CONFU_DEPENDENCIES_SOURCE_DIR}/googletest" CACHE STRING "Google Test source directory")
+-  ENDIF()
+-ENDIF()
+-
+-IF(CPUINFO_BUILD_BENCHMARKS)
+-  IF(CPUINFO_SUPPORTED_PLATFORM AND NOT DEFINED GOOGLEBENCHMARK_SOURCE_DIR)
+-    MESSAGE(STATUS "Downloading Google Benchmark to ${CONFU_DEPENDENCIES_SOURCE_DIR}/googlebenchmark (define GOOGLEBENCHMARK_SOURCE_DIR to avoid it)")
+-    CONFIGURE_FILE(cmake/DownloadGoogleBenchmark.cmake "${CONFU_DEPENDENCIES_BINARY_DIR}/googlebenchmark-download/CMakeLists.txt")
+-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" -G "${CMAKE_GENERATOR}" .
+-      WORKING_DIRECTORY "${CONFU_DEPENDENCIES_BINARY_DIR}/googlebenchmark-download")
+-    EXECUTE_PROCESS(COMMAND "${CMAKE_COMMAND}" --build .
+-      WORKING_DIRECTORY "${CONFU_DEPENDENCIES_BINARY_DIR}/googlebenchmark-download")
+-    SET(GOOGLEBENCHMARK_SOURCE_DIR "${CONFU_DEPENDENCIES_SOURCE_DIR}/googlebenchmark" CACHE STRING "Google Benchmark source directory")
+-  ENDIF()
+-ENDIF()
+-
+-# ---[ cpuinfo library
+-SET(CPUINFO_SRCS
+-  src/init.c
+-  src/api.c)
+-
+-IF(CPUINFO_SUPPORTED_PLATFORM)
+-  IF(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86(_64)?)$" OR IOS_ARCH MATCHES "^(i386|x86_64)$")
+-    LIST(APPEND CPUINFO_SRCS
+-      src/x86/init.c
+-      src/x86/info.c
+-      src/x86/vendor.c
+-      src/x86/uarch.c
+-      src/x86/name.c
+-      src/x86/topology.c
+-      src/x86/isa.c
+-      src/x86/cache/init.c
+-      src/x86/cache/descriptor.c
+-      src/x86/cache/deterministic.c)
+-    IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-      LIST(APPEND CPUINFO_SRCS
+-        src/x86/linux/init.c
+-        src/x86/linux/cpuinfo.c)
+-    ELSEIF(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+-      LIST(APPEND CPUINFO_SRCS src/x86/mach/init.c)
+-    ELSEIF(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+-      LIST(APPEND CPUINFO_SRCS src/x86/windows/init.c)
+-    ENDIF()
+-  ELSEIF(CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv[5-8].*|aarch64)$" OR IOS_ARCH MATCHES "^(armv7.*|arm64.*)$")
+-    LIST(APPEND CPUINFO_SRCS
+-      src/arm/uarch.c
+-      src/arm/cache.c)
+-    IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-      LIST(APPEND CPUINFO_SRCS
+-        src/arm/linux/init.c
+-        src/arm/linux/cpuinfo.c
+-        src/arm/linux/clusters.c
+-        src/arm/linux/chipset.c
+-        src/arm/linux/midr.c
+-        src/arm/linux/hwcap.c)
+-      IF(CMAKE_SYSTEM_PROCESSOR MATCHES "^armv[5-8]")
+-        LIST(APPEND CPUINFO_SRCS src/arm/linux/aarch32-isa.c)
+-        IF(CMAKE_SYSTEM_NAME STREQUAL "Android" AND ANDROID_ABI STREQUAL "armeabi")
+-          SET_SOURCE_FILES_PROPERTIES(src/arm/linux/aarch32-isa.c PROPERTIES COMPILE_FLAGS -marm)
+-        ENDIF()
+-      ELSEIF(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
+-        LIST(APPEND CPUINFO_SRCS src/arm/linux/aarch64-isa.c)
+-      ENDIF()
+-    ELSEIF(IOS)
+-      LIST(APPEND CPUINFO_SRCS src/arm/mach/init.c)
+-    ENDIF()
+-    IF(CMAKE_SYSTEM_NAME STREQUAL "Android")
+-      LIST(APPEND CPUINFO_SRCS
+-        src/arm/android/properties.c)
+-    ENDIF()
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    LIST(APPEND CPUINFO_SRCS
+-      src/linux/smallfile.c
+-      src/linux/multiline.c
+-      src/linux/current.c
+-      src/linux/cpulist.c
+-      src/linux/processors.c)
+-  ELSEIF(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "iOS")
+-    LIST(APPEND CPUINFO_SRCS src/mach/topology.c)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    SET(CMAKE_THREAD_PREFER_PTHREAD TRUE)
+-    SET(THREADS_PREFER_PTHREAD_FLAG TRUE)
+-    FIND_PACKAGE(Threads REQUIRED)
+-  ENDIF()
+-ENDIF()
+-
+-IF(CPUINFO_LIBRARY_TYPE STREQUAL "default")
+-  ADD_LIBRARY(cpuinfo ${CPUINFO_SRCS})
+-ELSEIF(CPUINFO_LIBRARY_TYPE STREQUAL "shared")
+-  ADD_LIBRARY(cpuinfo SHARED ${CPUINFO_SRCS})
+-ELSEIF(CPUINFO_LIBRARY_TYPE STREQUAL "static")
+-  ADD_LIBRARY(cpuinfo STATIC ${CPUINFO_SRCS})
+-ELSE()
+-  MESSAGE(FATAL_ERROR "Unsupported library type ${CPUINFO_LIBRARY_TYPE}")
+-ENDIF()
+-ADD_LIBRARY(cpuinfo_internals STATIC ${CPUINFO_SRCS})
+-CPUINFO_TARGET_ENABLE_C99(cpuinfo)
+-CPUINFO_TARGET_ENABLE_C99(cpuinfo_internals)
+-CPUINFO_TARGET_RUNTIME_LIBRARY(cpuinfo)
+-SET_TARGET_PROPERTIES(cpuinfo PROPERTIES PUBLIC_HEADER include/cpuinfo.h)
+-TARGET_INCLUDE_DIRECTORIES(cpuinfo BEFORE PUBLIC include)
+-TARGET_INCLUDE_DIRECTORIES(cpuinfo BEFORE PRIVATE src)
+-TARGET_INCLUDE_DIRECTORIES(cpuinfo_internals BEFORE PUBLIC include src)
+-IF(CPUINFO_LOG_LEVEL STREQUAL "default")
+-  # default logging level: error (subject to change)
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=2)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "debug")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=5)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "info")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=4)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "warning")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=3)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "error")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=2)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "fatal")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=1)
+-ELSEIF(CPUINFO_LOG_LEVEL STREQUAL "none")
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE CPUINFO_LOG_LEVEL=0)
+-ELSE()
+-  MESSAGE(FATAL_ERROR "Unsupported logging level ${CPUINFO_LOG_LEVEL}")
+-ENDIF()
+-TARGET_COMPILE_DEFINITIONS(cpuinfo_internals PRIVATE CPUINFO_LOG_LEVEL=0)
+-
+-IF(CPUINFO_SUPPORTED_PLATFORM)
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo INTERFACE CPUINFO_SUPPORTED_PLATFORM=1)
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    TARGET_LINK_LIBRARIES(cpuinfo PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+-    TARGET_LINK_LIBRARIES(cpuinfo_internals PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+-    TARGET_COMPILE_DEFINITIONS(cpuinfo PRIVATE _GNU_SOURCE=1)
+-    TARGET_COMPILE_DEFINITIONS(cpuinfo_internals PRIVATE _GNU_SOURCE=1)
+-  ENDIF()
+-ELSE()
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo INTERFACE CPUINFO_SUPPORTED_PLATFORM=0)
+-ENDIF()
+-
+-# ---[ cpuinfo dependencies: clog
+-IF(NOT DEFINED CLOG_SOURCE_DIR)
+-  SET(CLOG_SOURCE_DIR "${PROJECT_SOURCE_DIR}/deps/clog")
+-ENDIF()
+-IF(NOT TARGET clog)
+-  SET(CLOG_BUILD_TESTS OFF CACHE BOOL "")
+-  SET(CLOG_RUNTIME_TYPE "${CPUINFO_RUNTIME_TYPE}" CACHE STRING "")
+-  ADD_SUBDIRECTORY(
+-    "${CLOG_SOURCE_DIR}")
+-  # We build static version of clog but a dynamic library may indirectly depend on it
+-  SET_PROPERTY(TARGET clog PROPERTY POSITION_INDEPENDENT_CODE ON)
+-ENDIF()
+-TARGET_LINK_LIBRARIES(cpuinfo PRIVATE clog)
+-TARGET_LINK_LIBRARIES(cpuinfo_internals PRIVATE clog)
+-
+-INSTALL(TARGETS cpuinfo
+-  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+-  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+-  PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+-
+-# ---[ cpuinfo micro-benchmarks
+-IF(CPUINFO_SUPPORTED_PLATFORM AND CPUINFO_BUILD_BENCHMARKS)
+-  # ---[ Build google benchmark
+-  IF(NOT TARGET benchmark)
+-    SET(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "")
+-    ADD_SUBDIRECTORY(
+-      "${GOOGLEBENCHMARK_SOURCE_DIR}"
+-      "${CONFU_DEPENDENCIES_BINARY_DIR}/googlebenchmark")
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME MATCHES "^(Linux|Android)$")
+-    ADD_EXECUTABLE(get-current-bench bench/get-current.cc)
+-    TARGET_LINK_LIBRARIES(get-current-bench cpuinfo benchmark)
+-  ENDIF()
+-
+-  ADD_EXECUTABLE(init-bench bench/init.cc)
+-  TARGET_LINK_LIBRARIES(init-bench cpuinfo benchmark)
+-ENDIF()
+-
+-IF(CPUINFO_SUPPORTED_PLATFORM)
+-  IF(CPUINFO_BUILD_MOCK_TESTS OR CPUINFO_BUILD_UNIT_TESTS)
+-    # ---[ Build google test
+-    IF(NOT TARGET gtest)
+-      IF(MSVC AND NOT CPUINFO_RUNTIME_TYPE STREQUAL "static")
+-        SET(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+-      ENDIF()
+-      ADD_SUBDIRECTORY(
+-        "${GOOGLETEST_SOURCE_DIR}"
+-        "${CONFU_DEPENDENCIES_BINARY_DIR}/googletest")
+-    ENDIF()
+-  ENDIF()
+-ENDIF()
+-
+-# ---[ cpuinfo mock library and mock tests
+-IF(CPUINFO_SUPPORTED_PLATFORM AND CPUINFO_BUILD_MOCK_TESTS)
+-  SET(CPUINFO_MOCK_SRCS "${CPUINFO_SRCS}")
+-  IF(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86_64)$")
+-    LIST(APPEND CPUINFO_MOCK_SRCS src/x86/mockcpuid.c)
+-  ENDIF()
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    LIST(APPEND CPUINFO_MOCK_SRCS src/linux/mockfile.c)
+-  ENDIF()
+-
+-  ADD_LIBRARY(cpuinfo_mock STATIC ${CPUINFO_MOCK_SRCS})
+-  CPUINFO_TARGET_ENABLE_C99(cpuinfo_mock)
+-  CPUINFO_TARGET_RUNTIME_LIBRARY(cpuinfo_mock)
+-  SET_TARGET_PROPERTIES(cpuinfo_mock PROPERTIES PUBLIC_HEADER include/cpuinfo.h)
+-  TARGET_INCLUDE_DIRECTORIES(cpuinfo_mock BEFORE PUBLIC include)
+-  TARGET_INCLUDE_DIRECTORIES(cpuinfo_mock BEFORE PRIVATE src)
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo_mock PUBLIC CPUINFO_MOCK=1)
+-  TARGET_COMPILE_DEFINITIONS(cpuinfo_mock PRIVATE CLOG_LOG_TO_STDIO=1)
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    TARGET_LINK_LIBRARIES(cpuinfo_mock PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+-    TARGET_COMPILE_DEFINITIONS(cpuinfo_mock PRIVATE _GNU_SOURCE=1)
+-  ENDIF()
+-  TARGET_LINK_LIBRARIES(cpuinfo_mock PRIVATE clog)
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Android" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv5te|armv7-a)$")
+-    ADD_EXECUTABLE(atm7029b-tablet-test test/mock/atm7029b-tablet.cc)
+-    TARGET_INCLUDE_DIRECTORIES(atm7029b-tablet-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(atm7029b-tablet-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(atm7029b-tablet-test atm7029b-tablet-test)
+-
+-    ADD_EXECUTABLE(blu-r1-hd-test test/mock/blu-r1-hd.cc)
+-    TARGET_INCLUDE_DIRECTORIES(blu-r1-hd-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(blu-r1-hd-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(blu-r1-hd-test blu-r1-hd-test)
+-
+-    ADD_EXECUTABLE(galaxy-a3-2016-eu-test test/mock/galaxy-a3-2016-eu.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-a3-2016-eu-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-a3-2016-eu-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-a3-2016-eu-test galaxy-a3-2016-eu-test)
+-
+-    ADD_EXECUTABLE(galaxy-a8-2016-duos-test test/mock/galaxy-a8-2016-duos.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-a8-2016-duos-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-a8-2016-duos-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-a8-2016-duos-test galaxy-a8-2016-duos-test)
+-
+-    ADD_EXECUTABLE(galaxy-grand-prime-value-edition-test test/mock/galaxy-grand-prime-value-edition.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-grand-prime-value-edition-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-grand-prime-value-edition-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-grand-prime-value-edition-test galaxy-grand-prime-value-edition-test)
+-
+-    ADD_EXECUTABLE(galaxy-j1-2016-test test/mock/galaxy-j1-2016.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-j1-2016-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-j1-2016-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-j1-2016-test galaxy-j1-2016-test)
+-
+-    ADD_EXECUTABLE(galaxy-j5-test test/mock/galaxy-j5.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-j5-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-j5-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-j5-test galaxy-j5-test)
+-
+-    ADD_EXECUTABLE(galaxy-j7-prime-test test/mock/galaxy-j7-prime.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-j7-prime-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-j7-prime-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-j7-prime-test galaxy-j7-prime-test)
+-
+-    ADD_EXECUTABLE(galaxy-j7-tmobile-test test/mock/galaxy-j7-tmobile.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-j7-tmobile-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-j7-tmobile-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-j7-tmobile-test galaxy-j7-tmobile-test)
+-
+-    ADD_EXECUTABLE(galaxy-j7-uae-test test/mock/galaxy-j7-uae.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-j7-uae-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-j7-uae-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-j7-uae-test galaxy-j7-uae-test)
+-
+-    ADD_EXECUTABLE(galaxy-s3-us-test test/mock/galaxy-s3-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s3-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s3-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s3-us-test galaxy-s3-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-s4-us-test test/mock/galaxy-s4-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s4-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s4-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s4-us-test galaxy-s4-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-s5-global-test test/mock/galaxy-s5-global.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s5-global-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s5-global-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s5-global-test galaxy-s5-global-test)
+-
+-    ADD_EXECUTABLE(galaxy-s5-us-test test/mock/galaxy-s5-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s5-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s5-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s5-us-test galaxy-s5-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-tab-3-7.0-test test/mock/galaxy-tab-3-7.0.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-tab-3-7.0-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-tab-3-7.0-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-tab-3-7.0-test galaxy-tab-3-7.0-test)
+-
+-    ADD_EXECUTABLE(galaxy-tab-3-lite-test test/mock/galaxy-tab-3-lite.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-tab-3-lite-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-tab-3-lite-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-tab-3-lite-test galaxy-tab-3-lite-test)
+-
+-    ADD_EXECUTABLE(galaxy-win-duos-test test/mock/galaxy-win-duos.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-win-duos-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-win-duos-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-win-duos-test galaxy-win-duos-test)
+-
+-    ADD_EXECUTABLE(huawei-ascend-p7-test test/mock/huawei-ascend-p7.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-ascend-p7-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-ascend-p7-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-ascend-p7-test huawei-ascend-p7-test)
+-
+-    ADD_EXECUTABLE(huawei-honor-6-test test/mock/huawei-honor-6.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-honor-6-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-honor-6-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-honor-6-test huawei-honor-6-test)
+-
+-    ADD_EXECUTABLE(lenovo-a6600-plus-test test/mock/lenovo-a6600-plus.cc)
+-    TARGET_INCLUDE_DIRECTORIES(lenovo-a6600-plus-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(lenovo-a6600-plus-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(lenovo-a6600-plus-test lenovo-a6600-plus-test)
+-
+-    ADD_EXECUTABLE(lenovo-vibe-x2-test test/mock/lenovo-vibe-x2.cc)
+-    TARGET_INCLUDE_DIRECTORIES(lenovo-vibe-x2-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(lenovo-vibe-x2-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(lenovo-vibe-x2-test lenovo-vibe-x2-test)
+-
+-    ADD_EXECUTABLE(lg-k10-eu-test test/mock/lg-k10-eu.cc)
+-    TARGET_INCLUDE_DIRECTORIES(lg-k10-eu-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(lg-k10-eu-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(lg-k10-eu-test lg-k10-eu-test)
+-
+-    ADD_EXECUTABLE(lg-optimus-g-pro-test test/mock/lg-optimus-g-pro.cc)
+-    TARGET_INCLUDE_DIRECTORIES(lg-optimus-g-pro-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(lg-optimus-g-pro-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(lg-optimus-g-pro-test lg-optimus-g-pro-test)
+-
+-    ADD_EXECUTABLE(moto-e-gen1-test test/mock/moto-e-gen1.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-e-gen1-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-e-gen1-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-e-gen1-test moto-e-gen1-test)
+-
+-    ADD_EXECUTABLE(moto-g-gen1-test test/mock/moto-g-gen1.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-g-gen1-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-g-gen1-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-g-gen1-test moto-g-gen1-test)
+-
+-    ADD_EXECUTABLE(moto-g-gen2-test test/mock/moto-g-gen2.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-g-gen2-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-g-gen2-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-g-gen2-test moto-g-gen2-test)
+-
+-    ADD_EXECUTABLE(moto-g-gen3-test test/mock/moto-g-gen3.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-g-gen3-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-g-gen3-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-g-gen3-test moto-g-gen3-test)
+-
+-    ADD_EXECUTABLE(moto-g-gen4-test test/mock/moto-g-gen4.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-g-gen4-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-g-gen4-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-g-gen4-test moto-g-gen4-test)
+-
+-    ADD_EXECUTABLE(moto-g-gen5-test test/mock/moto-g-gen5.cc)
+-    TARGET_INCLUDE_DIRECTORIES(moto-g-gen5-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(moto-g-gen5-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(moto-g-gen5-test moto-g-gen5-test)
+-
+-    ADD_EXECUTABLE(nexus-s-test test/mock/nexus-s.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus-s-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus-s-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus-s-test nexus-s-test)
+-
+-    ADD_EXECUTABLE(nexus4-test test/mock/nexus4.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus4-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus4-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus4-test nexus4-test)
+-
+-    ADD_EXECUTABLE(nexus6-test test/mock/nexus6.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus6-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus6-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus6-test nexus6-test)
+-
+-    ADD_EXECUTABLE(nexus10-test test/mock/nexus10.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus10-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus10-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus10-test nexus10-test)
+-
+-    ADD_EXECUTABLE(padcod-10.1-test test/mock/padcod-10.1.cc)
+-    TARGET_INCLUDE_DIRECTORIES(padcod-10.1-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(padcod-10.1-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(padcod-10.1-test padcod-10.1-test)
+-
+-    ADD_EXECUTABLE(xiaomi-redmi-2a-test test/mock/xiaomi-redmi-2a.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xiaomi-redmi-2a-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xiaomi-redmi-2a-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xiaomi-redmi-2a-test xiaomi-redmi-2a-test)
+-
+-    ADD_EXECUTABLE(xperia-sl-test test/mock/xperia-sl.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xperia-sl-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xperia-sl-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xperia-sl-test xperia-sl-test)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Android" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv5te|armv7-a|aarch64)$")
+-    ADD_EXECUTABLE(alcatel-revvl-test test/mock/alcatel-revvl.cc)
+-    TARGET_INCLUDE_DIRECTORIES(alcatel-revvl-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(alcatel-revvl-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(alcatel-revvl-test alcatel-revvl-test)
+-
+-    ADD_EXECUTABLE(galaxy-a8-2018-test test/mock/galaxy-a8-2018.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-a8-2018-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-a8-2018-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-a8-2018-test galaxy-a8-2018-test)
+-
+-    ADD_EXECUTABLE(galaxy-c9-pro-test test/mock/galaxy-c9-pro.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-c9-pro-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-c9-pro-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-c9-pro-test galaxy-c9-pro-test)
+-
+-    ADD_EXECUTABLE(galaxy-s6-test test/mock/galaxy-s6.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s6-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s6-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s6-test galaxy-s6-test)
+-
+-    ADD_EXECUTABLE(galaxy-s7-us-test test/mock/galaxy-s7-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s7-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s7-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s7-us-test galaxy-s7-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-s7-global-test test/mock/galaxy-s7-global.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s7-global-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s7-global-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s7-global-test galaxy-s7-global-test)
+-
+-    ADD_EXECUTABLE(galaxy-s8-us-test test/mock/galaxy-s8-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s8-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s8-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s8-us-test galaxy-s8-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-s8-global-test test/mock/galaxy-s8-global.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s8-global-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s8-global-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s8-global-test galaxy-s8-global-test)
+-
+-    ADD_EXECUTABLE(galaxy-s9-us-test test/mock/galaxy-s9-us.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s9-us-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s9-us-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s9-us-test galaxy-s9-us-test)
+-
+-    ADD_EXECUTABLE(galaxy-s9-global-test test/mock/galaxy-s9-global.cc)
+-    TARGET_INCLUDE_DIRECTORIES(galaxy-s9-global-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(galaxy-s9-global-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(galaxy-s9-global-test galaxy-s9-global-test)
+-
+-    ADD_EXECUTABLE(huawei-mate-8-test test/mock/huawei-mate-8.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-mate-8-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-mate-8-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-mate-8-test huawei-mate-8-test)
+-
+-    ADD_EXECUTABLE(huawei-mate-9-test test/mock/huawei-mate-9.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-mate-9-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-mate-9-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-mate-9-test huawei-mate-9-test)
+-
+-    ADD_EXECUTABLE(huawei-mate-10-test test/mock/huawei-mate-10.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-mate-10-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-mate-10-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-mate-10-test huawei-mate-10-test)
+-
+-    ADD_EXECUTABLE(huawei-mate-20-test test/mock/huawei-mate-20.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-mate-20-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-mate-20-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-mate-20-test huawei-mate-20-test)
+-
+-    ADD_EXECUTABLE(huawei-p8-lite-test test/mock/huawei-p8-lite.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-p8-lite-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-p8-lite-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-p8-lite-test huawei-p8-lite-test)
+-
+-    ADD_EXECUTABLE(huawei-p9-lite-test test/mock/huawei-p9-lite.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-p9-lite-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-p9-lite-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-p9-lite-test huawei-p9-lite-test)
+-
+-    ADD_EXECUTABLE(huawei-p20-pro-test test/mock/huawei-p20-pro.cc)
+-    TARGET_INCLUDE_DIRECTORIES(huawei-p20-pro-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(huawei-p20-pro-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(huawei-p20-pro-test huawei-p20-pro-test)
+-
+-    ADD_EXECUTABLE(iconia-one-10-test test/mock/iconia-one-10.cc)
+-    TARGET_INCLUDE_DIRECTORIES(iconia-one-10-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(iconia-one-10-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(iconia-one-10-test iconia-one-10-test)
+-
+-    ADD_EXECUTABLE(meizu-pro-6-test test/mock/meizu-pro-6.cc)
+-    TARGET_INCLUDE_DIRECTORIES(meizu-pro-6-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(meizu-pro-6-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(meizu-pro-6-test meizu-pro-6-test)
+-
+-    ADD_EXECUTABLE(meizu-pro-6s-test test/mock/meizu-pro-6s.cc)
+-    TARGET_INCLUDE_DIRECTORIES(meizu-pro-6s-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(meizu-pro-6s-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(meizu-pro-6s-test meizu-pro-6s-test)
+-
+-    ADD_EXECUTABLE(meizu-pro-7-plus-test test/mock/meizu-pro-7-plus.cc)
+-    TARGET_INCLUDE_DIRECTORIES(meizu-pro-7-plus-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(meizu-pro-7-plus-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(meizu-pro-7-plus-test meizu-pro-7-plus-test)
+-
+-    ADD_EXECUTABLE(nexus5x-test test/mock/nexus5x.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus5x-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus5x-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus5x-test nexus5x-test)
+-
+-    ADD_EXECUTABLE(nexus6p-test test/mock/nexus6p.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus6p-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus6p-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus6p-test nexus6p-test)
+-
+-    ADD_EXECUTABLE(nexus9-test test/mock/nexus9.cc)
+-    TARGET_INCLUDE_DIRECTORIES(nexus9-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(nexus9-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(nexus9-test nexus9-test)
+-
+-    ADD_EXECUTABLE(oneplus-3t-test test/mock/oneplus-3t.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oneplus-3t-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oneplus-3t-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oneplus-3t-test oneplus-3t-test)
+-
+-    ADD_EXECUTABLE(oneplus-5-test test/mock/oneplus-5.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oneplus-5-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oneplus-5-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oneplus-5-test oneplus-5-test)
+-
+-    ADD_EXECUTABLE(oneplus-5t-test test/mock/oneplus-5t.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oneplus-5t-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oneplus-5t-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oneplus-5t-test oneplus-5t-test)
+-
+-    ADD_EXECUTABLE(oppo-a37-test test/mock/oppo-a37.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oppo-a37-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oppo-a37-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oppo-a37-test oppo-a37-test)
+-
+-    ADD_EXECUTABLE(oppo-r9-test test/mock/oppo-r9.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oppo-r9-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oppo-r9-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oppo-r9-test oppo-r9-test)
+-
+-    ADD_EXECUTABLE(oppo-r15-test test/mock/oppo-r15.cc)
+-    TARGET_INCLUDE_DIRECTORIES(oppo-r15-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(oppo-r15-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(oppo-r15-test oppo-r15-test)
+-
+-    ADD_EXECUTABLE(pixel-test test/mock/pixel.cc)
+-    TARGET_INCLUDE_DIRECTORIES(pixel-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(pixel-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(pixel-test pixel-test)
+-
+-    ADD_EXECUTABLE(pixel-c-test test/mock/pixel-c.cc)
+-    TARGET_INCLUDE_DIRECTORIES(pixel-c-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(pixel-c-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(pixel-c-test pixel-c-test)
+-
+-    ADD_EXECUTABLE(pixel-xl-test test/mock/pixel-xl.cc)
+-    TARGET_INCLUDE_DIRECTORIES(pixel-xl-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(pixel-xl-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(pixel-xl-test pixel-xl-test)
+-
+-    ADD_EXECUTABLE(pixel-2-xl-test test/mock/pixel-2-xl.cc)
+-    TARGET_INCLUDE_DIRECTORIES(pixel-2-xl-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(pixel-2-xl-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(pixel-2-xl-test pixel-2-xl-test)
+-
+-    ADD_EXECUTABLE(xiaomi-mi-5c-test test/mock/xiaomi-mi-5c.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xiaomi-mi-5c-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xiaomi-mi-5c-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xiaomi-mi-5c-test xiaomi-mi-5c-test)
+-
+-    ADD_EXECUTABLE(xiaomi-redmi-note-3-test test/mock/xiaomi-redmi-note-3.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xiaomi-redmi-note-3-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xiaomi-redmi-note-3-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xiaomi-redmi-note-3-test xiaomi-redmi-note-3-test)
+-
+-    ADD_EXECUTABLE(xiaomi-redmi-note-4-test test/mock/xiaomi-redmi-note-4.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xiaomi-redmi-note-4-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xiaomi-redmi-note-4-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xiaomi-redmi-note-4-test xiaomi-redmi-note-4-test)
+-
+-    ADD_EXECUTABLE(xperia-c4-dual-test test/mock/xperia-c4-dual.cc)
+-    TARGET_INCLUDE_DIRECTORIES(xperia-c4-dual-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(xperia-c4-dual-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(xperia-c4-dual-test xperia-c4-dual-test)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Android" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(i686|x86_64)$")
+-    ADD_EXECUTABLE(alldocube-iwork8-test test/mock/alldocube-iwork8.cc)
+-    TARGET_INCLUDE_DIRECTORIES(alldocube-iwork8-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(alldocube-iwork8-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(alldocube-iwork8-test alldocube-iwork8-test)
+-
+-    ADD_EXECUTABLE(leagoo-t5c-test test/mock/leagoo-t5c.cc)
+-    TARGET_INCLUDE_DIRECTORIES(leagoo-t5c-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(leagoo-t5c-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(leagoo-t5c-test leagoo-t5c-test)
+-
+-    ADD_EXECUTABLE(memo-pad-7-test test/mock/memo-pad-7.cc)
+-    TARGET_INCLUDE_DIRECTORIES(memo-pad-7-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(memo-pad-7-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(memo-pad-7-test memo-pad-7-test)
+-
+-    ADD_EXECUTABLE(zenfone-c-test test/mock/zenfone-c.cc)
+-    TARGET_INCLUDE_DIRECTORIES(zenfone-c-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(zenfone-c-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(zenfone-c-test zenfone-c-test)
+-
+-    ADD_EXECUTABLE(zenfone-2-test test/mock/zenfone-2.cc)
+-    TARGET_INCLUDE_DIRECTORIES(zenfone-2-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(zenfone-2-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(zenfone-2-test zenfone-2-test)
+-
+-    ADD_EXECUTABLE(zenfone-2e-test test/mock/zenfone-2e.cc)
+-    TARGET_INCLUDE_DIRECTORIES(zenfone-2e-test BEFORE PRIVATE test/mock)
+-    TARGET_LINK_LIBRARIES(zenfone-2e-test PRIVATE cpuinfo_mock gtest)
+-    ADD_TEST(zenfone-2e-test zenfone-2e-test)
+-  ENDIF()
+-ENDIF()
+-
+-# ---[ cpuinfo unit tests
+-IF(CPUINFO_SUPPORTED_PLATFORM AND CPUINFO_BUILD_UNIT_TESTS)
+-  ADD_EXECUTABLE(init-test test/init.cc)
+-  CPUINFO_TARGET_ENABLE_CXX11(init-test)
+-  CPUINFO_TARGET_RUNTIME_LIBRARY(init-test)
+-  TARGET_LINK_LIBRARIES(init-test PRIVATE cpuinfo gtest gtest_main)
+-  ADD_TEST(init-test init-test)
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+-    ADD_EXECUTABLE(get-current-test test/get-current.cc)
+-    CPUINFO_TARGET_ENABLE_CXX11(get-current-test)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(get-current-test)
+-    TARGET_LINK_LIBRARIES(get-current-test PRIVATE cpuinfo gtest gtest_main)
+-    ADD_TEST(get-current-test get-current-test)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86_64)$")
+-    ADD_EXECUTABLE(brand-string-test test/name/brand-string.cc)
+-    CPUINFO_TARGET_ENABLE_CXX11(brand-string-test)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(brand-string-test)
+-    TARGET_LINK_LIBRARIES(brand-string-test PRIVATE cpuinfo_internals gtest gtest_main)
+-    ADD_TEST(brand-string-test brand-string-test)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_NAME STREQUAL "Android" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv[5-8].*|aarch64)$")
+-    ADD_LIBRARY(android_properties_interface STATIC test/name/android-properties-interface.c)
+-    CPUINFO_TARGET_ENABLE_C99(android_properties_interface)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(android_properties_interface)
+-    TARGET_LINK_LIBRARIES(android_properties_interface PRIVATE cpuinfo_internals)
+-
+-    ADD_EXECUTABLE(chipset-test
+-      test/name/proc-cpuinfo-hardware.cc
+-      test/name/ro-product-board.cc
+-      test/name/ro-board-platform.cc
+-      test/name/ro-mediatek-platform.cc
+-      test/name/ro-arch.cc
+-      test/name/ro-chipname.cc
+-      test/name/android-properties.cc)
+-    CPUINFO_TARGET_ENABLE_CXX11(chipset-test)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(chipset-test)
+-    TARGET_LINK_LIBRARIES(chipset-test PRIVATE android_properties_interface gtest gtest_main)
+-    ADD_TEST(chipset-test chipset-test)
+-
+-    ADD_EXECUTABLE(cache-test test/arm-cache.cc)
+-    CPUINFO_TARGET_ENABLE_CXX11(cache-test)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(cache-test)
+-    TARGET_COMPILE_DEFINITIONS(cache-test PRIVATE __STDC_LIMIT_MACROS=1 __STDC_CONSTANT_MACROS=1)
+-    TARGET_LINK_LIBRARIES(cache-test PRIVATE cpuinfo_internals gtest gtest_main)
+-    ADD_TEST(cache-test, cache-test)
+-  ENDIF()
+-ENDIF()
+-
+-# ---[ Helper and debug tools
+-IF(CPUINFO_SUPPORTED_PLATFORM AND CPUINFO_BUILD_TOOLS)
+-  ADD_EXECUTABLE(isa-info tools/isa-info.c)
+-  CPUINFO_TARGET_ENABLE_C99(isa-info)
+-  CPUINFO_TARGET_RUNTIME_LIBRARY(isa-info)
+-  TARGET_LINK_LIBRARIES(isa-info PRIVATE cpuinfo)
+-  INSTALL(TARGETS isa-info RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+-
+-  ADD_EXECUTABLE(cpu-info tools/cpu-info.c)
+-  CPUINFO_TARGET_ENABLE_C99(cpu-info)
+-  CPUINFO_TARGET_RUNTIME_LIBRARY(cpu-info)
+-  TARGET_LINK_LIBRARIES(cpu-info PRIVATE cpuinfo)
+-  INSTALL(TARGETS cpu-info RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+-
+-  ADD_EXECUTABLE(cache-info tools/cache-info.c)
+-  CPUINFO_TARGET_ENABLE_C99(cache-info)
+-  CPUINFO_TARGET_RUNTIME_LIBRARY(cache-info)
+-  TARGET_LINK_LIBRARIES(cache-info PRIVATE cpuinfo)
+-  INSTALL(TARGETS cache-info RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+-
+-  IF(CMAKE_SYSTEM_NAME MATCHES "^(Android|Linux)$" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(armv[5-8].*|aarch64)$")
+-    ADD_EXECUTABLE(auxv-dump tools/auxv-dump.c)
+-    CPUINFO_TARGET_ENABLE_C99(auxv-dump)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(auxv-dump)
+-    TARGET_LINK_LIBRARIES(auxv-dump PRIVATE ${CMAKE_DL_LIBS} cpuinfo)
+-
+-    ADD_EXECUTABLE(cpuinfo-dump tools/cpuinfo-dump.c)
+-    CPUINFO_TARGET_ENABLE_C99(cpuinfo-dump)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(cpuinfo-dump)
+-  ENDIF()
+-
+-  IF(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i[3-6]86|AMD64|x86_64)$")
+-    ADD_EXECUTABLE(cpuid-dump tools/cpuid-dump.c)
+-    CPUINFO_TARGET_ENABLE_C99(cpuid-dump)
+-    CPUINFO_TARGET_RUNTIME_LIBRARY(cpuid-dump)
+-    TARGET_INCLUDE_DIRECTORIES(cpuid-dump BEFORE PRIVATE src)
+-    TARGET_INCLUDE_DIRECTORIES(cpuid-dump BEFORE PRIVATE include)
+-    INSTALL(TARGETS cpuid-dump RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+-  ENDIF()
+-ENDIF()
+diff --git a/README.md b/README.md
+index 7d383ff..ee5fb82 100644
+--- a/README.md
++++ b/README.md
+@@ -152,21 +152,20 @@ pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpu_set);
+   - [x] Using `ro.chipname`, `ro.board.platform`, `ro.product.board`, `ro.mediatek.platform`, `ro.arch` properties (Android)
+   - [ ] Using kernel log (`dmesg`) on ARM Linux
+ - Vendor and microarchitecture detection
+-  - [x] Intel-designed x86/x86-64 cores (up to Kaby Lake, Airmont, and Knights Mill)
+-  - [x] AMD-designed x86/x86-64 cores (up to Puma/Jaguar and Zen)
++  - [x] Intel-designed x86/x86-64 cores (up to Sunny Cove, Goldmont Plus, and Knights Mill)
++  - [x] AMD-designed x86/x86-64 cores (up to Puma/Jaguar and Zen 2)
+   - [ ] VIA-designed x86/x86-64 cores
+   - [ ] Other x86 cores (DM&P, RDC, Transmeta, Cyrix, Rise)
+-  - [x] ARM-designed ARM cores (up to Cortex-A55 and Cortex-A75)
+-  - [x] Qualcomm-designed ARM cores (up to Kryo, Kryo-280, and Kryo-385)
+-  - [x] Nvidia-designed ARM cores (Denver)
++  - [x] ARM-designed ARM cores (up to Cortex-A55, Cortex-A77, and Neoverse E1/N1)
++  - [x] Qualcomm-designed ARM cores (Scorpion, Krait, and Kryo)
++  - [x] Nvidia-designed ARM cores (Denver and Carmel)
+   - [x] Samsung-designed ARM cores (Exynos)
+   - [x] Intel-designed ARM cores (XScale up to 3rd-gen)
+-  - [x] Apple-designed ARM cores (up to Hurricane)
++  - [x] Apple-designed ARM cores (up to Lightning and Thunder)
+   - [x] Cavium-designed ARM cores (ThunderX)
+   - [x] AppliedMicro-designed ARM cores (X-Gene)
+ - Instruction set detection
+   - [x] Using CPUID (x86/x86-64)
+-  - [x] Using dynamic code generation validator (Native Client/x86-64)
+   - [x] Using `/proc/cpuinfo` on 32-bit ARM EABI (Linux)
+   - [x] Using microarchitecture heuristics on (32-bit ARM)
+   - [x] Using `FPSID` and `WCID` registers (32-bit ARM)
+diff --git a/bench/get-current.cc b/bench/get-current.cc
+index 91b35a0..b547df0 100644
+--- a/bench/get-current.cc
++++ b/bench/get-current.cc
+@@ -21,4 +21,13 @@ static void cpuinfo_get_current_core(benchmark::State& state) {
+ }
+ BENCHMARK(cpuinfo_get_current_core)->Unit(benchmark::kNanosecond);
+ 
++static void cpuinfo_get_current_uarch_index(benchmark::State& state) {
++	cpuinfo_initialize();
++	while (state.KeepRunning()) {
++		const uint32_t uarch_index = cpuinfo_get_current_uarch_index();
++		benchmark::DoNotOptimize(uarch_index);
++	}
++}
++BENCHMARK(cpuinfo_get_current_uarch_index)->Unit(benchmark::kNanosecond);
++
+ BENCHMARK_MAIN();
+diff --git a/cmake/DownloadGoogleTest.cmake b/cmake/DownloadGoogleTest.cmake
+index d69d19a..dc86c9c 100644
+--- a/cmake/DownloadGoogleTest.cmake
++++ b/cmake/DownloadGoogleTest.cmake
+@@ -4,8 +4,8 @@ PROJECT(googletest-download NONE)
+ 
+ INCLUDE(ExternalProject)
+ ExternalProject_Add(googletest
+-	URL https://github.com/google/googletest/archive/release-1.8.0.zip
+-	URL_HASH SHA256=f3ed3b58511efd272eb074a3a6d6fb79d7c2e6a0e374323d1e6bcbcc1ef141bf
++	URL https://github.com/google/googletest/archive/release-1.10.0.zip
++	URL_HASH SHA256=94c634d499558a76fa649edb13721dce6e98fb1e7018dfaeba3cd7a083945e91
+ 	SOURCE_DIR "${CONFU_DEPENDENCIES_SOURCE_DIR}/googletest"
+ 	BINARY_DIR "${CONFU_DEPENDENCIES_BINARY_DIR}/googletest"
+ 	CONFIGURE_COMMAND ""
+diff --git a/configure.py b/configure.py
+index a340c4c..0e58dba 100755
+--- a/configure.py
++++ b/configure.py
+@@ -26,8 +26,8 @@ def main(args):
+         sources = ["init.c", "api.c"]
+         if build.target.is_x86 or build.target.is_x86_64:
+             sources += [
+-                "x86/init.c", "x86/info.c", "x86/vendor.c", "x86/uarch.c", "x86/name.c",
+-                "x86/topology.c",
++                "x86/init.c", "x86/info.c", "x86/isa.c", "x86/vendor.c",
++                "x86/uarch.c", "x86/name.c", "x86/topology.c",
+                 "x86/cache/init.c", "x86/cache/descriptor.c", "x86/cache/deterministic.c",
+             ]
+             if build.target.is_macos:
+@@ -37,7 +37,6 @@ def main(args):
+                     "x86/linux/init.c",
+                     "x86/linux/cpuinfo.c",
+                 ]
+-            sources.append("x86/isa.c" if not build.target.is_nacl else "x86/nacl/isa.c")
+         if build.target.is_arm or build.target.is_arm64:
+             sources += ["arm/uarch.c", "arm/cache.c"]
+             if build.target.is_linux or build.target.is_android:
+diff --git a/include/cpuinfo.h b/include/cpuinfo.h
+index 9938d2b..e4d2d0c 100644
+--- a/include/cpuinfo.h
++++ b/include/cpuinfo.h
+@@ -34,10 +34,6 @@
+ 	#define CPUINFO_ARCH_PPC64 1
+ #endif
+ 
+-#if defined(__pnacl__)
+-	#define CPUINFO_ARCH_PNACL 1
+-#endif
+-
+ #if defined(__asmjs__)
+ 	#define CPUINFO_ARCH_ASMJS 1
+ #endif
+@@ -80,10 +76,6 @@
+ 	#define CPUINFO_ARCH_PPC64 0
+ #endif
+ 
+-#ifndef CPUINFO_ARCH_PNACL
+-	#define CPUINFO_ARCH_PNACL 0
+-#endif
+-
+ #ifndef CPUINFO_ARCH_ASMJS
+ 	#define CPUINFO_ARCH_ASMJS 0
+ #endif
+@@ -190,6 +182,12 @@ enum cpuinfo_vendor {
+ 	 * Processors are designed by HiSilicon, a subsidiary of Huawei.
+ 	 */
+ 	cpuinfo_vendor_huawei   = 15,
++	/**
++	 * Hygon (Chengdu Haiguang Integrated Circuit Design Co., Ltd), Vendor of x86-64 processor microarchitectures.
++	 *
++	 * Processors are variants of AMD cores.
++	 */
++	cpuinfo_vendor_hygon    = 16,
+ 
+ 	/* Active vendors of embedded CPUs */
+ 
+@@ -401,6 +399,8 @@ enum cpuinfo_uarch {
+ 	cpuinfo_uarch_cortex_a35   = 0x00300335,
+ 	/** ARM Cortex-A53. */
+ 	cpuinfo_uarch_cortex_a53   = 0x00300353,
++	/** ARM Cortex-A55 revision 0 (restricted dual-issue capabilities compared to revision 1+). */
++	cpuinfo_uarch_cortex_a55r0 = 0x00300354,
+ 	/** ARM Cortex-A55. */
+ 	cpuinfo_uarch_cortex_a55   = 0x00300355,
+ 	/** ARM Cortex-A57. */
+@@ -478,6 +478,10 @@ enum cpuinfo_uarch {
+ 	cpuinfo_uarch_vortex    = 0x00700107,
+ 	/** Apple A12 processor (little cores). */
+ 	cpuinfo_uarch_tempest   = 0x00700108,
++	/** Apple A13 processor (big cores). */
++	cpuinfo_uarch_lightning = 0x00700109,
++	/** Apple A13 processor (little cores). */
++	cpuinfo_uarch_thunder   = 0x0070010A,
+ 
+ 	/** Cavium ThunderX. */
+ 	cpuinfo_uarch_thunderx = 0x00800100,
+@@ -494,6 +498,9 @@ enum cpuinfo_uarch {
+ 
+ 	/** Applied Micro X-Gene. */
+ 	cpuinfo_uarch_xgene = 0x00B00100,
++
++	/* Hygon Dhyana (a modification of AMD Zen for Chinese market). */
++	cpuinfo_uarch_dhyana = 0x01000100,
+ };
+ 
+ struct cpuinfo_processor {
+@@ -613,6 +620,22 @@ struct cpuinfo_package {
+ 	uint32_t cluster_count;
+ };
+ 
++struct cpuinfo_uarch_info {
++	/** Type of CPU microarchitecture */
++	enum cpuinfo_uarch uarch;
++#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
++	/** Value of CPUID leaf 1 EAX register for the microarchitecture */
++	uint32_t cpuid;
++#elif CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++	/** Value of Main ID Register (MIDR) for the microarchitecture */
++	uint32_t midr;
++#endif
++	/** Number of logical processors with the microarchitecture */
++	uint32_t processor_count;
++	/** Number of cores with the microarchitecture */
++	uint32_t core_count;
++};
++
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+@@ -1721,6 +1744,7 @@ const struct cpuinfo_processor* CPUINFO_ABI cpuinfo_get_processors(void);
+ const struct cpuinfo_core* CPUINFO_ABI cpuinfo_get_cores(void);
+ const struct cpuinfo_cluster* CPUINFO_ABI cpuinfo_get_clusters(void);
+ const struct cpuinfo_package* CPUINFO_ABI cpuinfo_get_packages(void);
++const struct cpuinfo_uarch_info* CPUINFO_ABI cpuinfo_get_uarchs(void);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1i_caches(void);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1d_caches(void);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l2_caches(void);
+@@ -1731,6 +1755,7 @@ const struct cpuinfo_processor* CPUINFO_ABI cpuinfo_get_processor(uint32_t index
+ const struct cpuinfo_core* CPUINFO_ABI cpuinfo_get_core(uint32_t index);
+ const struct cpuinfo_cluster* CPUINFO_ABI cpuinfo_get_cluster(uint32_t index);
+ const struct cpuinfo_package* CPUINFO_ABI cpuinfo_get_package(uint32_t index);
++const struct cpuinfo_uarch_info* CPUINFO_ABI cpuinfo_get_uarch(uint32_t index);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1i_cache(uint32_t index);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1d_cache(uint32_t index);
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l2_cache(uint32_t index);
+@@ -1741,6 +1766,7 @@ uint32_t CPUINFO_ABI cpuinfo_get_processors_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_cores_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_clusters_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_packages_count(void);
++uint32_t CPUINFO_ABI cpuinfo_get_uarchs_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_l1i_caches_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_l1d_caches_count(void);
+ uint32_t CPUINFO_ABI cpuinfo_get_l2_caches_count(void);
+@@ -1752,9 +1778,31 @@ uint32_t CPUINFO_ABI cpuinfo_get_l4_caches_count(void);
+  */
+ uint32_t CPUINFO_ABI cpuinfo_get_max_cache_size(void);
+ 
++/**
++ * Identify the logical processor that executes the current thread.
++ *
++ * There is no guarantee that the thread will stay on the same logical processor for any time.
++ * Callers should treat the result as only a hint, and be prepared to handle NULL return value.
++ */
+ const struct cpuinfo_processor* CPUINFO_ABI cpuinfo_get_current_processor(void);
++
++/**
++ * Identify the core that executes the current thread.
++ *
++ * There is no guarantee that the thread will stay on the same core for any time.
++ * Callers should treat the result as only a hint, and be prepared to handle NULL return value.
++ */
+ const struct cpuinfo_core* CPUINFO_ABI cpuinfo_get_current_core(void);
+ 
++/**
++ * Identify the microarchitecture index of the core that executes the current thread.
++ * If the system does not support such identification, the function return 0.
++ *
++ * There is no guarantee that the thread will stay on the same type of core for any time.
++ * Callers should treat the result as only a hint.
++ */
++uint32_t CPUINFO_ABI cpuinfo_get_current_uarch_index(void);
++
+ #ifdef __cplusplus
+ } /* extern "C" */
+ #endif
+diff --git a/src/api.c b/src/api.c
+index b180d80..0cc5d4e 100644
+--- a/src/api.c
++++ b/src/api.c
+@@ -1,9 +1,16 @@
++#include <stdbool.h>
+ #include <stddef.h>
+ 
+ #include <cpuinfo.h>
+ #include <cpuinfo/internal-api.h>
+ #include <cpuinfo/log.h>
+ 
++#ifdef __linux__
++	#include <linux/api.h>
++
++	#include <unistd.h>
++	#include <sys/syscall.h>
++#endif
+ 
+ bool cpuinfo_is_initialized = false;
+ 
+@@ -20,235 +27,347 @@ uint32_t cpuinfo_packages_count = 0;
+ uint32_t cpuinfo_cache_count[cpuinfo_cache_level_max] = { 0 };
+ uint32_t cpuinfo_max_cache_size = 0;
+ 
++#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++	struct cpuinfo_uarch_info* cpuinfo_uarchs = NULL;
++	uint32_t cpuinfo_uarchs_count = 0;
++#else
++	struct cpuinfo_uarch_info cpuinfo_global_uarch = { cpuinfo_uarch_unknown };
++#endif
++
++#ifdef __linux__
++	uint32_t cpuinfo_linux_cpu_max = 0;
++	const struct cpuinfo_processor** cpuinfo_linux_cpu_to_processor_map = NULL;
++	const struct cpuinfo_core** cpuinfo_linux_cpu_to_core_map = NULL;
++	#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++		const uint32_t* cpuinfo_linux_cpu_to_uarch_index_map = NULL;
++	#endif
++#endif
++
+ 
+ const struct cpuinfo_processor* cpuinfo_get_processors(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "processors");
+ 	}
+ 	return cpuinfo_processors;
+ }
+ 
+ const struct cpuinfo_core* cpuinfo_get_cores(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "core");
+ 	}
+ 	return cpuinfo_cores;
+ }
+ 
+ const struct cpuinfo_cluster* cpuinfo_get_clusters(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "clusters");
+ 	}
+ 	return cpuinfo_clusters;
+ }
+ 
+ const struct cpuinfo_package* cpuinfo_get_packages(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "packages");
+ 	}
+ 	return cpuinfo_packages;
+ }
+ 
+-const struct cpuinfo_processor* cpuinfo_get_processor(uint32_t index) {
++const struct cpuinfo_uarch_info* cpuinfo_get_uarchs() {
+ 	if (!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "uarchs");
++	}
++	#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++		return cpuinfo_uarchs;
++	#else
++		return &cpuinfo_global_uarch;
++	#endif
++}
++
++const struct cpuinfo_processor* cpuinfo_get_processor(uint32_t index) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "processor");
+ 	}
+-	if (index < cpuinfo_processors_count) {
+-		return cpuinfo_processors + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_processors_count) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_processors[index];
+ }
+ 
+ const struct cpuinfo_core* cpuinfo_get_core(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "core");
+ 	}
+-	if (index < cpuinfo_cores_count) {
+-		return cpuinfo_cores + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cores_count) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cores[index];
+ }
+ 
+ const struct cpuinfo_cluster* cpuinfo_get_cluster(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "cluster");
+ 	}
+-	if (index < cpuinfo_clusters_count) {
+-		return cpuinfo_clusters + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_clusters_count) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_clusters[index];
+ }
+ 
+ const struct cpuinfo_package* cpuinfo_get_package(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "package");
+ 	}
+-	if (index < cpuinfo_packages_count) {
+-		return cpuinfo_packages + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_packages_count) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_packages[index];
+ }
+ 
+-uint32_t cpuinfo_get_processors_count(void) {
++const struct cpuinfo_uarch_info* cpuinfo_get_uarch(uint32_t index) {
+ 	if (!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "uarch");
++	}
++	#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++		if CPUINFO_UNLIKELY(index >= cpuinfo_uarchs_count) {
++			return NULL;
++		}
++		return &cpuinfo_uarchs[index];
++	#else
++		if CPUINFO_UNLIKELY(index != 0) {
++			return NULL;
++		}
++		return &cpuinfo_global_uarch;
++	#endif
++}
++
++uint32_t cpuinfo_get_processors_count(void) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "processors_count");
+ 	}
+ 	return cpuinfo_processors_count;
+ }
+ 
+ uint32_t cpuinfo_get_cores_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "cores_count");
+ 	}
+ 	return cpuinfo_cores_count;
+ }
+ 
+ uint32_t cpuinfo_get_clusters_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "clusters_count");
+ 	}
+ 	return cpuinfo_clusters_count;
+ }
+ 
+ uint32_t cpuinfo_get_packages_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "packages_count");
+ 	}
+ 	return cpuinfo_packages_count;
+ }
+ 
+-const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1i_caches(void) {
++uint32_t cpuinfo_get_uarchs_count(void) {
+ 	if (!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "uarchs_count");
++	}
++	#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++		return cpuinfo_uarchs_count;
++	#else
++		return 1;
++	#endif
++}
++
++const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1i_caches(void) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1i_caches");
+ 	}
+ 	return cpuinfo_cache[cpuinfo_cache_level_1i];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1d_caches(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1d_caches");
+ 	}
+ 	return cpuinfo_cache[cpuinfo_cache_level_1d];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l2_caches(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l2_caches");
+ 	}
+ 	return cpuinfo_cache[cpuinfo_cache_level_2];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l3_caches(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l3_caches");
+ 	}
+ 	return cpuinfo_cache[cpuinfo_cache_level_3];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l4_caches(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l4_caches");
+ 	}
+ 	return cpuinfo_cache[cpuinfo_cache_level_4];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1i_cache(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1i_cache");
+ 	}
+-	if (index < cpuinfo_cache_count[cpuinfo_cache_level_1i]) {
+-		return cpuinfo_cache[cpuinfo_cache_level_1i] + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cache_count[cpuinfo_cache_level_1i]) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cache[cpuinfo_cache_level_1i][index];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l1d_cache(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1d_cache");
+ 	}
+-	if (index < cpuinfo_cache_count[cpuinfo_cache_level_1d]) {
+-		return cpuinfo_cache[cpuinfo_cache_level_1d] + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cache_count[cpuinfo_cache_level_1d]) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cache[cpuinfo_cache_level_1d][index];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l2_cache(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l2_cache");
+ 	}
+-	if (index < cpuinfo_cache_count[cpuinfo_cache_level_2]) {
+-		return cpuinfo_cache[cpuinfo_cache_level_2] + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cache_count[cpuinfo_cache_level_2]) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cache[cpuinfo_cache_level_2][index];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l3_cache(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l3_cache");
+ 	}
+-	if (index < cpuinfo_cache_count[cpuinfo_cache_level_3]) {
+-		return cpuinfo_cache[cpuinfo_cache_level_3] + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cache_count[cpuinfo_cache_level_3]) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cache[cpuinfo_cache_level_3][index];
+ }
+ 
+ const struct cpuinfo_cache* CPUINFO_ABI cpuinfo_get_l4_cache(uint32_t index) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l4_cache");
+ 	}
+-	if (index < cpuinfo_cache_count[cpuinfo_cache_level_4]) {
+-		return cpuinfo_cache[cpuinfo_cache_level_4] + index;
+-	} else {
++	if CPUINFO_UNLIKELY(index >= cpuinfo_cache_count[cpuinfo_cache_level_4]) {
+ 		return NULL;
+ 	}
++	return &cpuinfo_cache[cpuinfo_cache_level_4][index];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_l1i_caches_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1i_caches_count");
+ 	}
+ 	return cpuinfo_cache_count[cpuinfo_cache_level_1i];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_l1d_caches_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l1d_caches_count");
+ 	}
+ 	return cpuinfo_cache_count[cpuinfo_cache_level_1d];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_l2_caches_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l2_caches_count");
+ 	}
+ 	return cpuinfo_cache_count[cpuinfo_cache_level_2];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_l3_caches_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l3_caches_count");
+ 	}
+ 	return cpuinfo_cache_count[cpuinfo_cache_level_3];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_l4_caches_count(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "l4_caches_count");
+ 	}
+ 	return cpuinfo_cache_count[cpuinfo_cache_level_4];
+ }
+ 
+ uint32_t CPUINFO_ABI cpuinfo_get_max_cache_size(void) {
+-	if (!cpuinfo_is_initialized) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
+ 		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "max_cache_size");
+ 	}
+ 	return cpuinfo_max_cache_size;
+ }
++
++const struct cpuinfo_processor* CPUINFO_ABI cpuinfo_get_current_processor(void) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "current_processor");
++	}
++	#ifdef __linux__
++		unsigned cpu;
++		if CPUINFO_UNLIKELY(syscall(__NR_getcpu, &cpu, NULL, NULL) != 0) {
++			return 0;
++		}
++		if CPUINFO_UNLIKELY((uint32_t) cpu >= cpuinfo_linux_cpu_max) {
++			return 0;
++		}
++		return cpuinfo_linux_cpu_to_processor_map[cpu];
++	#else
++		return NULL;
++	#endif
++}
++
++const struct cpuinfo_core* CPUINFO_ABI cpuinfo_get_current_core(void) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "current_core");
++	}
++	#ifdef __linux__
++		unsigned cpu;
++		if CPUINFO_UNLIKELY(syscall(__NR_getcpu, &cpu, NULL, NULL) != 0) {
++			return 0;
++		}
++		if CPUINFO_UNLIKELY((uint32_t) cpu >= cpuinfo_linux_cpu_max) {
++			return 0;
++		}
++		return cpuinfo_linux_cpu_to_core_map[cpu];
++	#else
++		return NULL;
++	#endif
++}
++
++uint32_t CPUINFO_ABI cpuinfo_get_current_uarch_index(void) {
++	if CPUINFO_UNLIKELY(!cpuinfo_is_initialized) {
++		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "current_uarch_index");
++	}
++	#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++		#ifdef __linux__
++			if (cpuinfo_linux_cpu_to_uarch_index_map == NULL) {
++				/* Special case: avoid syscall on systems with only a single type of cores */
++				return 0;
++			}
++
++			/* General case */
++			unsigned cpu;
++			if CPUINFO_UNLIKELY(syscall(__NR_getcpu, &cpu, NULL, NULL) != 0) {
++				return 0;
++			}
++			if CPUINFO_UNLIKELY((uint32_t) cpu >= cpuinfo_linux_cpu_max) {
++				return 0;
++			}
++			return cpuinfo_linux_cpu_to_uarch_index_map[cpu];
++		#else
++			/* Fallback: pretend to be on the big core. */
++			return 0;
++		#endif
++	#else
++		/* Only ARM/ARM64 processors may include cores of different types in the same package. */
++		return 0;
++	#endif
++}
+diff --git a/src/arm/cache.c b/src/arm/cache.c
+index ccadeb4..c2bc7d2 100644
+--- a/src/arm/cache.c
++++ b/src/arm/cache.c
+@@ -659,6 +659,7 @@ void cpuinfo_arm_decode_cache(
+ 				};
+ 			}
+ 			break;
++		case cpuinfo_uarch_cortex_a55r0:
+ 		case cpuinfo_uarch_cortex_a55:
+ 			/*
+ 			 * ARM Cortex-A55 Core Technical Reference Manual
+diff --git a/src/arm/linux/api.h b/src/arm/linux/api.h
+index 275d072..f99da66 100644
+--- a/src/arm/linux/api.h
++++ b/src/arm/linux/api.h
+@@ -153,6 +153,7 @@ struct cpuinfo_arm_linux_processor {
+ 	uint32_t midr;
+ 	enum cpuinfo_vendor vendor;
+ 	enum cpuinfo_uarch uarch;
++	uint32_t uarch_index;
+ 	/**
+ 	 * ID of the physical package which includes this logical processor.
+ 	 * The value is parsed from /sys/devices/system/cpu/cpu<N>/topology/physical_package_id
+@@ -346,3 +347,6 @@ CPUINFO_INTERNAL uint32_t cpuinfo_arm_linux_detect_cluster_midr(
+ 	uint32_t max_processors,
+ 	uint32_t usable_processors,
+ 	struct cpuinfo_arm_linux_processor processors[restrict static max_processors]);
++
++extern CPUINFO_INTERNAL const uint32_t* cpuinfo_linux_cpu_to_uarch_index_map;
++extern CPUINFO_INTERNAL uint32_t cpuinfo_linux_cpu_to_uarch_index_map_entries;
+diff --git a/src/arm/linux/init.c b/src/arm/linux/init.c
+index f0c432c..6272abf 100644
+--- a/src/arm/linux/init.c
++++ b/src/arm/linux/init.c
+@@ -106,12 +106,14 @@ void cpuinfo_arm_linux_init(void) {
+ 	struct cpuinfo_processor* processors = NULL;
+ 	struct cpuinfo_core* cores = NULL;
+ 	struct cpuinfo_cluster* clusters = NULL;
+-	const struct cpuinfo_processor** linux_cpu_to_processor_map = NULL;
+-	const struct cpuinfo_core** linux_cpu_to_core_map = NULL;
++	struct cpuinfo_uarch_info* uarchs = NULL;
+ 	struct cpuinfo_cache* l1i = NULL;
+ 	struct cpuinfo_cache* l1d = NULL;
+ 	struct cpuinfo_cache* l2 = NULL;
+ 	struct cpuinfo_cache* l3 = NULL;
++	const struct cpuinfo_processor** linux_cpu_to_processor_map = NULL;
++	const struct cpuinfo_core** linux_cpu_to_core_map = NULL;
++	uint32_t* linux_cpu_to_uarch_index_map = NULL;
+ 
+ 	const uint32_t max_processors_count = cpuinfo_linux_get_max_processors_count();
+ 	cpuinfo_log_debug("system maximum processors count: %"PRIu32, max_processors_count);
+@@ -400,6 +402,18 @@ void cpuinfo_arm_linux_init(void) {
+ 		}
+ 	}
+ 
++	uint32_t uarchs_count = 0;
++	enum cpuinfo_uarch last_uarch;
++	for (uint32_t i = 0; i < arm_linux_processors_count; i++) {
++		if (bitmask_all(arm_linux_processors[i].flags, CPUINFO_LINUX_FLAG_VALID)) {
++			if (uarchs_count == 0 || arm_linux_processors[i].uarch != last_uarch) {
++				last_uarch = arm_linux_processors[i].uarch;
++				uarchs_count += 1;
++			}
++			arm_linux_processors[i].uarch_index = uarchs_count - 1;
++		}
++	}
++
+ 	/*
+ 	 * Assumptions:
+ 	 * - No SMP (i.e. each core supports only one hardware thread).
+@@ -432,6 +446,13 @@ void cpuinfo_arm_linux_init(void) {
+ 		goto cleanup;
+ 	}
+ 
++	uarchs = calloc(uarchs_count, sizeof(struct cpuinfo_uarch_info));
++	if (uarchs == NULL) {
++		cpuinfo_log_error("failed to allocate %zu bytes for descriptions of %"PRIu32" microarchitectures",
++			uarchs_count * sizeof(struct cpuinfo_uarch_info), uarchs_count);
++		goto cleanup;
++	}
++
+ 	linux_cpu_to_processor_map = calloc(arm_linux_processors_count, sizeof(struct cpuinfo_processor*));
+ 	if (linux_cpu_to_processor_map == NULL) {
+ 		cpuinfo_log_error("failed to allocate %zu bytes for %"PRIu32" logical processor mapping entries",
+@@ -446,6 +467,15 @@ void cpuinfo_arm_linux_init(void) {
+ 		goto cleanup;
+ 	}
+ 
++	if (uarchs_count > 1) {
++		linux_cpu_to_uarch_index_map = calloc(arm_linux_processors_count, sizeof(uint32_t));
++		if (linux_cpu_to_uarch_index_map == NULL) {
++			cpuinfo_log_error("failed to allocate %zu bytes for %"PRIu32" uarch index mapping entries",
++				arm_linux_processors_count * sizeof(uint32_t), arm_linux_processors_count);
++			goto cleanup;
++		}
++	}
++
+ 	l1i = calloc(valid_processors, sizeof(struct cpuinfo_cache));
+ 	if (l1i == NULL) {
+ 		cpuinfo_log_error("failed to allocate %zu bytes for descriptions of %"PRIu32" L1I caches",
+@@ -460,6 +490,22 @@ void cpuinfo_arm_linux_init(void) {
+ 		goto cleanup;
+ 	}
+ 
++	uint32_t uarchs_index = 0;
++	for (uint32_t i = 0; i < arm_linux_processors_count; i++) {
++		if (bitmask_all(arm_linux_processors[i].flags, CPUINFO_LINUX_FLAG_VALID)) {
++			if (uarchs_index == 0 || arm_linux_processors[i].uarch != last_uarch) {
++				last_uarch = arm_linux_processors[i].uarch;
++				uarchs[uarchs_index] = (struct cpuinfo_uarch_info) {
++					.uarch = arm_linux_processors[i].uarch,
++					.midr = arm_linux_processors[i].midr,
++				};
++				uarchs_index += 1;
++			}
++			uarchs[uarchs_index - 1].processor_count += 1;
++			uarchs[uarchs_index - 1].core_count += 1;
++		}
++	}
++
+ 	uint32_t l2_count = 0, l3_count = 0, big_l3_size = 0, cluster_id = UINT32_MAX;
+ 	/* Indication whether L3 (if it exists) is shared between all cores */
+ 	bool shared_l3 = true;
+@@ -499,6 +545,11 @@ void cpuinfo_arm_linux_init(void) {
+ 		cores[i].midr = arm_linux_processors[i].midr;
+ 		linux_cpu_to_core_map[arm_linux_processors[i].system_processor_id] = &cores[i];
+ 
++		if (linux_cpu_to_uarch_index_map != NULL) {
++			linux_cpu_to_uarch_index_map[arm_linux_processors[i].system_processor_id] =
++				arm_linux_processors[i].uarch_index;
++		}
++
+ 		struct cpuinfo_cache temp_l2 = { 0 }, temp_l3 = { 0 };
+ 		cpuinfo_arm_decode_cache(
+ 			arm_linux_processors[i].uarch,
+@@ -658,12 +709,11 @@ void cpuinfo_arm_linux_init(void) {
+ 	}
+ 
+ 	/* Commit */
+-	cpuinfo_linux_cpu_to_processor_map = linux_cpu_to_processor_map;
+-	cpuinfo_linux_cpu_to_core_map = linux_cpu_to_core_map;
+ 	cpuinfo_processors = processors;
+ 	cpuinfo_cores = cores;
+ 	cpuinfo_clusters = clusters;
+ 	cpuinfo_packages = &package;
++	cpuinfo_uarchs = uarchs;
+ 	cpuinfo_cache[cpuinfo_cache_level_1i] = l1i;
+ 	cpuinfo_cache[cpuinfo_cache_level_1d] = l1d;
+ 	cpuinfo_cache[cpuinfo_cache_level_2]  = l2;
+@@ -673,33 +723,42 @@ void cpuinfo_arm_linux_init(void) {
+ 	cpuinfo_cores_count = valid_processors;
+ 	cpuinfo_clusters_count = cluster_count;
+ 	cpuinfo_packages_count = 1;
++	cpuinfo_uarchs_count = uarchs_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1i] = valid_processors;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1d] = valid_processors;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
+-
+ 	cpuinfo_max_cache_size = cpuinfo_arm_compute_max_cache_size(&processors[0]);
+ 
++	cpuinfo_linux_cpu_max = arm_linux_processors_count;
++	cpuinfo_linux_cpu_to_processor_map = linux_cpu_to_processor_map;
++	cpuinfo_linux_cpu_to_core_map = linux_cpu_to_core_map;
++	cpuinfo_linux_cpu_to_uarch_index_map = linux_cpu_to_uarch_index_map;
++
+ 	__sync_synchronize();
+ 
+ 	cpuinfo_is_initialized = true;
+ 
+-	linux_cpu_to_processor_map = NULL;
+-	linux_cpu_to_core_map = NULL;
+ 	processors = NULL;
+ 	cores = NULL;
+ 	clusters = NULL;
++	uarchs = NULL;
+ 	l1i = l1d = l2 = l3 = NULL;
++	linux_cpu_to_processor_map = NULL;
++	linux_cpu_to_core_map = NULL;
++	linux_cpu_to_uarch_index_map = NULL;
+ 
+ cleanup:
+ 	free(arm_linux_processors);
+-	free(linux_cpu_to_processor_map);
+-	free(linux_cpu_to_core_map);
+ 	free(processors);
+ 	free(cores);
+ 	free(clusters);
++	free(uarchs);
+ 	free(l1i);
+ 	free(l1d);
+ 	free(l2);
+ 	free(l3);
++	free(linux_cpu_to_processor_map);
++	free(linux_cpu_to_core_map);
++	free(linux_cpu_to_uarch_index_map);
+ }
+diff --git a/src/arm/mach/init.c b/src/arm/mach/init.c
+index e64cc18..bd27259 100644
+--- a/src/arm/mach/init.c
++++ b/src/arm/mach/init.c
+@@ -14,6 +14,16 @@
+ #include <cpuinfo/internal-api.h>
+ #include <cpuinfo/log.h>
+ 
++/* Polyfill recent CPUFAMILY_ARM_* values for older SDKs */
++#ifndef CPUFAMILY_ARM_MONSOON_MISTRAL
++	#define CPUFAMILY_ARM_MONSOON_MISTRAL   0xE81E7EF6
++#endif
++#ifndef CPUFAMILY_ARM_VORTEX_TEMPEST
++	#define CPUFAMILY_ARM_VORTEX_TEMPEST    0x07D34B9F
++#endif
++#ifndef CPUFAMILY_ARM_LIGHTNING_THUNDER
++	#define CPUFAMILY_ARM_LIGHTNING_THUNDER 0x462504D2
++#endif
+ 
+ struct cpuinfo_arm_isa cpuinfo_isa = {
+ #if CPUINFO_ARCH_ARM
+@@ -82,37 +92,34 @@ static enum cpuinfo_uarch decode_uarch(uint32_t cpu_family, uint32_t cpu_subtype
+ 			return cpuinfo_uarch_twister;
+ 		case CPUFAMILY_ARM_HURRICANE:
+ 			return cpuinfo_uarch_hurricane;
+-#ifdef CPUFAMILY_ARM_MONSOON_MISTRAL
+ 		case CPUFAMILY_ARM_MONSOON_MISTRAL:
+-#else
+-		case 0xe81e7ef6:
+-			/* Hard-coded value for older SDKs which do not define CPUFAMILY_ARM_MONSOON_MISTRAL */
+-#endif
+ 			/* 2x Monsoon + 4x Mistral cores */
+ 			return core_index < 2 ? cpuinfo_uarch_monsoon : cpuinfo_uarch_mistral;
+-#ifdef CPUFAMILY_ARM_VORTEX_TEMPEST
+ 		case CPUFAMILY_ARM_VORTEX_TEMPEST:
+-#else
+-		case 0x07d34b9f:
+-			/* Hard-coded value for older SDKs which do not define CPUFAMILY_ARM_VORTEX_TEMPEST */
+-#endif
+ 			/* Hexa-core: 2x Vortex + 4x Tempest; Octa-core: 4x Cortex + 4x Tempest */
+ 			return core_index + 4 < core_count ? cpuinfo_uarch_vortex : cpuinfo_uarch_tempest;
++		case CPUFAMILY_ARM_LIGHTNING_THUNDER:
++			/* Hexa-core: 2x Lightning + 4x Thunder; Octa-core (presumed): 4x Lightning + 4x Thunder */
++			return core_index + 4 < core_count ? cpuinfo_uarch_lightning : cpuinfo_uarch_thunder;
+ 		default:
+ 			/* Use hw.cpusubtype for detection */
+ 			break;
+ 	}
+ 
+-	switch (cpu_subtype) {
+-		case CPU_SUBTYPE_ARM_V7:
+-			return cpuinfo_uarch_cortex_a8;
+-		case CPU_SUBTYPE_ARM_V7F:
+-			return cpuinfo_uarch_cortex_a9;
+-		case CPU_SUBTYPE_ARM_V7K:
+-			return cpuinfo_uarch_cortex_a7;
+-		default:
+-			return cpuinfo_uarch_unknown;
+-	}
++	#if CPUINFO_ARCH_ARM
++		switch (cpu_subtype) {
++			case CPU_SUBTYPE_ARM_V7:
++				return cpuinfo_uarch_cortex_a8;
++			case CPU_SUBTYPE_ARM_V7F:
++				return cpuinfo_uarch_cortex_a9;
++			case CPU_SUBTYPE_ARM_V7K:
++				return cpuinfo_uarch_cortex_a7;
++			default:
++				return cpuinfo_uarch_unknown;
++		}
++	#else
++		return cpuinfo_uarch_unknown;
++	#endif
+ }
+ 
+ static void decode_package_name(char* package_name) {
+@@ -244,6 +251,7 @@ void cpuinfo_arm_mach_init(void) {
+ 	struct cpuinfo_core* cores = NULL;
+ 	struct cpuinfo_cluster* clusters = NULL;
+ 	struct cpuinfo_package* packages = NULL;
++	struct cpuinfo_uarch_info* uarchs = NULL;
+ 	struct cpuinfo_cache* l1i = NULL;
+ 	struct cpuinfo_cache* l1d = NULL;
+ 	struct cpuinfo_cache* l2 = NULL;
+@@ -330,21 +338,12 @@ void cpuinfo_arm_mach_init(void) {
+ 	 * Thus, we whitelist CPUs known to support these instructions.
+ 	 */
+ 	switch (cpu_family) {
+-#ifdef CPUFAMILY_ARM_MONSOON_MISTRAL
+ 		case CPUFAMILY_ARM_MONSOON_MISTRAL:
+-#else
+-		case 0xe81e7ef6:
+-			/* Hard-coded value for older SDKs which do not define CPUFAMILY_ARM_MONSOON_MISTRAL */
+-#endif
+-#ifdef CPUFAMILY_ARM_VORTEX_TEMPEST
+ 		case CPUFAMILY_ARM_VORTEX_TEMPEST:
+-#else
+-		case 0x07d34b9f:
+-			/* Hard-coded value for older SDKs which do not define CPUFAMILY_ARM_VORTEX_TEMPEST */
+-#endif
+-#if CPUINFO_ARCH_ARM64
+-			cpuinfo_isa.atomics = true;
+-#endif
++		case CPUFAMILY_ARM_LIGHTNING_THUNDER:
++			#if CPUINFO_ARCH_ARM64
++				cpuinfo_isa.atomics = true;
++			#endif
+ 			cpuinfo_isa.fp16arith = true;
+ 	}
+ 
+@@ -379,10 +378,22 @@ void cpuinfo_arm_mach_init(void) {
+ 			num_clusters * sizeof(struct cpuinfo_cluster), num_clusters);
+ 		goto cleanup;
+ 	}
++	uarchs = calloc(num_clusters, sizeof(struct cpuinfo_uarch_info));
++	if (uarchs == NULL) {
++		cpuinfo_log_error(
++			"failed to allocate %zu bytes for descriptions of %"PRIu32" uarchs",
++			num_clusters * sizeof(enum cpuinfo_uarch), num_clusters);
++		goto cleanup;
++	}
+ 	uint32_t cluster_idx = UINT32_MAX;
+ 	for (uint32_t i = 0; i < mach_topology.cores; i++) {
+ 		if (i == 0 || cores[i].uarch != cores[i - 1].uarch) {
+ 			cluster_idx++;
++			uarchs[cluster_idx] = (struct cpuinfo_uarch_info) {
++				.uarch = cores[i].uarch,
++				.processor_count = 1,
++				.core_count = 1,
++			};
+ 			clusters[cluster_idx] = (struct cpuinfo_cluster) {
+ 				.processor_start = i * threads_per_core,
+ 				.processor_count = 1,
+@@ -394,6 +405,8 @@ void cpuinfo_arm_mach_init(void) {
+ 				.uarch = cores[i].uarch,
+ 			};
+ 		} else {
++			uarchs[cluster_idx].processor_count++;
++			uarchs[cluster_idx].core_count++;
+ 			clusters[cluster_idx].processor_count++;
+ 			clusters[cluster_idx].core_count++;
+ 		}
+@@ -542,26 +555,25 @@ void cpuinfo_arm_mach_init(void) {
+ 	}
+ 
+ 	/* Commit changes */
+-	cpuinfo_cache[cpuinfo_cache_level_1i] = l1i;
+-	cpuinfo_cache[cpuinfo_cache_level_1d] = l1d;
+-	cpuinfo_cache[cpuinfo_cache_level_2]  = l2;
+-	cpuinfo_cache[cpuinfo_cache_level_3]  = l3;
+-
+ 	cpuinfo_processors = processors;
+ 	cpuinfo_cores = cores;
+ 	cpuinfo_clusters = clusters;
+ 	cpuinfo_packages = packages;
+-
+-	cpuinfo_cache_count[cpuinfo_cache_level_1i] = l1_count;
+-	cpuinfo_cache_count[cpuinfo_cache_level_1d] = l1_count;
+-	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
+-	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
++	cpuinfo_uarchs = uarchs;
++	cpuinfo_cache[cpuinfo_cache_level_1i] = l1i;
++	cpuinfo_cache[cpuinfo_cache_level_1d] = l1d;
++	cpuinfo_cache[cpuinfo_cache_level_2]  = l2;
++	cpuinfo_cache[cpuinfo_cache_level_3]  = l3;
+ 
+ 	cpuinfo_processors_count = mach_topology.threads;
+ 	cpuinfo_cores_count = mach_topology.cores;
+ 	cpuinfo_clusters_count = num_clusters;
+ 	cpuinfo_packages_count = mach_topology.packages;
+-
++	cpuinfo_uarchs_count = num_clusters;
++	cpuinfo_cache_count[cpuinfo_cache_level_1i] = l1_count;
++	cpuinfo_cache_count[cpuinfo_cache_level_1d] = l1_count;
++	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
++	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
+ 	cpuinfo_max_cache_size = cpuinfo_compute_max_cache_size(&processors[0]);
+ 
+ 	__sync_synchronize();
+@@ -572,6 +584,7 @@ void cpuinfo_arm_mach_init(void) {
+ 	cores = NULL;
+ 	clusters = NULL;
+ 	packages = NULL;
++	uarchs = NULL;
+ 	l1i = l1d = l2 = l3 = NULL;
+ 
+ cleanup:
+@@ -579,6 +592,7 @@ cleanup:
+ 	free(cores);
+ 	free(clusters);
+ 	free(packages);
++	free(uarchs);
+ 	free(l1i);
+ 	free(l1d);
+ 	free(l2);
+diff --git a/src/arm/uarch.c b/src/arm/uarch.c
+index a38250a..2aef9e7 100644
+--- a/src/arm/uarch.c
++++ b/src/arm/uarch.c
+@@ -58,7 +58,9 @@ void cpuinfo_arm_decode_vendor_uarch(
+ 					*uarch = cpuinfo_uarch_cortex_a35;
+ 					break;
+ 				case 0xD05:
+-					*uarch = cpuinfo_uarch_cortex_a55;
++					// Note: use Variant, not Revision, field
++					*uarch = (midr & CPUINFO_ARM_MIDR_VARIANT_MASK) == 0 ?
++						cpuinfo_uarch_cortex_a55r0 : cpuinfo_uarch_cortex_a55;
+ 					break;
+ 				case 0xD06:
+ 					*uarch = cpuinfo_uarch_cortex_a65;
+@@ -257,9 +259,9 @@ void cpuinfo_arm_decode_vendor_uarch(
+ 					*vendor = cpuinfo_vendor_arm;
+ 					*uarch = cpuinfo_uarch_cortex_a75;
+ 					break;
+-				case 0x803: /* Low-power Kryo 385 "Silver" -> Cortex-A55 */
++				case 0x803: /* Low-power Kryo 385 "Silver" -> Cortex-A55r0 */
+ 					*vendor = cpuinfo_vendor_arm;
+-					*uarch = cpuinfo_uarch_cortex_a55;
++					*uarch = cpuinfo_uarch_cortex_a55r0;
+ 					break;
+ 				case 0x804: /* High-performance Kryo 485 "Gold" / "Gold Prime" -> Cortex-A76 */
+ 					*vendor = cpuinfo_vendor_arm;
+diff --git a/src/cpuinfo/common.h b/src/cpuinfo/common.h
+index 6ba746e..b2b404d 100644
+--- a/src/cpuinfo/common.h
++++ b/src/cpuinfo/common.h
+@@ -12,29 +12,29 @@
+ #define CPUINFO_COUNT_OF(array) (sizeof(array) / sizeof(0[array]))
+ 
+ #if defined(__GNUC__)
+-  #define CPUINFO_LIKELY(condition) (__builtin_expect(!!(condition), 1))
+-  #define CPUINFO_UNLIKELY(condition) (__builtin_expect(!!(condition), 0))
++	#define CPUINFO_LIKELY(condition) (__builtin_expect(!!(condition), 1))
++	#define CPUINFO_UNLIKELY(condition) (__builtin_expect(!!(condition), 0))
+ #else
+-  #define CPUINFO_LIKELY(condition) (!!(condition))
+-  #define CPUINFO_UNLIKELY(condition) (!!(condition))
++	#define CPUINFO_LIKELY(condition) (!!(condition))
++	#define CPUINFO_UNLIKELY(condition) (!!(condition))
+ #endif
+ 
+ #ifndef CPUINFO_INTERNAL
+-  #if defined(__ELF__)
+-    #define CPUINFO_INTERNAL __attribute__((__visibility__("internal")))
+-  #elif defined(__MACH__)
+-    #define CPUINFO_INTERNAL __attribute__((__visibility__("hidden")))
+-  #else
+-    #define CPUINFO_INTERNAL
+-  #endif
++	#if defined(__ELF__)
++		#define CPUINFO_INTERNAL __attribute__((__visibility__("internal")))
++	#elif defined(__MACH__)
++		#define CPUINFO_INTERNAL __attribute__((__visibility__("hidden")))
++	#else
++		#define CPUINFO_INTERNAL
++	#endif
+ #endif
+ 
+ #ifndef CPUINFO_PRIVATE
+-  #if defined(__ELF__)
+-    #define CPUINFO_PRIVATE __attribute__((__visibility__("hidden")))
+-  #elif defined(__MACH__)
+-    #define CPUINFO_PRIVATE __attribute__((__visibility__("hidden")))
+-  #else
+-    #define CPUINFO_PRIVATE
+-  #endif
++	#if defined(__ELF__)
++		#define CPUINFO_PRIVATE __attribute__((__visibility__("hidden")))
++	#elif defined(__MACH__)
++		#define CPUINFO_PRIVATE __attribute__((__visibility__("hidden")))
++	#else
++		#define CPUINFO_PRIVATE
++	#endif
+ #endif
+diff --git a/src/cpuinfo/internal-api.h b/src/cpuinfo/internal-api.h
+index f12c48d..c6eed0b 100644
+--- a/src/cpuinfo/internal-api.h
++++ b/src/cpuinfo/internal-api.h
+@@ -21,11 +21,13 @@ enum cpuinfo_cache_level {
+ };
+ 
+ extern CPUINFO_INTERNAL bool cpuinfo_is_initialized;
++
+ extern CPUINFO_INTERNAL struct cpuinfo_processor* cpuinfo_processors;
+ extern CPUINFO_INTERNAL struct cpuinfo_core* cpuinfo_cores;
+ extern CPUINFO_INTERNAL struct cpuinfo_cluster* cpuinfo_clusters;
+ extern CPUINFO_INTERNAL struct cpuinfo_package* cpuinfo_packages;
+ extern CPUINFO_INTERNAL struct cpuinfo_cache* cpuinfo_cache[cpuinfo_cache_level_max];
++
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_processors_count;
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_cores_count;
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_clusters_count;
+@@ -33,6 +35,19 @@ extern CPUINFO_INTERNAL uint32_t cpuinfo_packages_count;
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_cache_count[cpuinfo_cache_level_max];
+ extern CPUINFO_INTERNAL uint32_t cpuinfo_max_cache_size;
+ 
++#if CPUINFO_ARCH_ARM || CPUINFO_ARCH_ARM64
++	extern CPUINFO_INTERNAL struct cpuinfo_uarch_info* cpuinfo_uarchs;
++	extern CPUINFO_INTERNAL uint32_t cpuinfo_uarchs_count;
++#else
++	extern CPUINFO_INTERNAL struct cpuinfo_uarch_info cpuinfo_global_uarch;
++#endif
++
++#ifdef __linux__
++	extern CPUINFO_INTERNAL uint32_t cpuinfo_linux_cpu_max;
++	extern CPUINFO_INTERNAL const struct cpuinfo_processor** cpuinfo_linux_cpu_to_processor_map;
++	extern CPUINFO_INTERNAL const struct cpuinfo_core** cpuinfo_linux_cpu_to_core_map;
++#endif
++
+ CPUINFO_PRIVATE void cpuinfo_x86_mach_init(void);
+ CPUINFO_PRIVATE void cpuinfo_x86_linux_init(void);
+ #ifdef _WIN32
+diff --git a/src/linux/current.c b/src/linux/current.c
+deleted file mode 100644
+index 472a4c9..0000000
+--- a/src/linux/current.c
++++ /dev/null
+@@ -1,41 +0,0 @@
+-#include <stdbool.h>
+-#include <stdint.h>
+-#include <stdlib.h>
+-#include <string.h>
+-#include <errno.h>
+-
+-#include <sched.h>
+-
+-#include <cpuinfo.h>
+-#include <cpuinfo/internal-api.h>
+-#include <cpuinfo/log.h>
+-#include <linux/api.h>
+-
+-
+-const struct cpuinfo_processor** cpuinfo_linux_cpu_to_processor_map = NULL;
+-const struct cpuinfo_core** cpuinfo_linux_cpu_to_core_map = NULL;
+-
+-
+-const struct cpuinfo_processor* CPUINFO_ABI cpuinfo_get_current_processor(void) {
+-	if (!cpuinfo_is_initialized) {
+-		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "current_processor");
+-	}
+-	const int cpu = sched_getcpu();
+-	if (cpu >= 0) {
+-		return cpuinfo_linux_cpu_to_processor_map[cpu];
+-	} else {
+-		return &cpuinfo_processors[0];
+-	}
+-}
+-
+-const struct cpuinfo_core* CPUINFO_ABI cpuinfo_get_current_core(void) {
+-	if (!cpuinfo_is_initialized) {
+-		cpuinfo_log_fatal("cpuinfo_get_%s called before cpuinfo is initialized", "current_core");
+-	}
+-	const int cpu = sched_getcpu();
+-	if (cpu >= 0) {
+-		return cpuinfo_linux_cpu_to_core_map[cpu];
+-	} else {
+-		return &cpuinfo_cores[0];
+-	}
+-}
+diff --git a/src/x86/api.h b/src/x86/api.h
+index 5f5e76d..213c2d8 100644
+--- a/src/x86/api.h
++++ b/src/x86/api.h
+@@ -93,7 +93,6 @@ CPUINFO_INTERNAL struct cpuinfo_x86_isa cpuinfo_x86_detect_isa(
+ 	const struct cpuid_regs basic_info, const struct cpuid_regs extended_info,
+ 	uint32_t max_base_index, uint32_t max_extended_index,
+ 	enum cpuinfo_vendor vendor, enum cpuinfo_uarch uarch);
+-CPUINFO_INTERNAL struct cpuinfo_x86_isa cpuinfo_x86_nacl_detect_isa(void);
+ 
+ CPUINFO_INTERNAL void cpuinfo_x86_detect_topology(
+ 	uint32_t max_base_index,
+diff --git a/src/x86/cache/init.c b/src/x86/cache/init.c
+index d581016..dd1f1ea 100644
+--- a/src/x86/cache/init.c
++++ b/src/x86/cache/init.c
+@@ -65,7 +65,7 @@ iterate_descriptors:
+ 			}
+ 		}
+ 
+-		if (vendor != cpuinfo_vendor_amd && max_base_index >= 4) {
++		if (vendor != cpuinfo_vendor_amd && vendor != cpuinfo_vendor_hygon && max_base_index >= 4) {
+ 			struct cpuid_regs leaf4;
+ 			uint32_t input_ecx = 0;
+ 			uint32_t package_cores_max = 0;
+diff --git a/src/x86/cpuid.h b/src/x86/cpuid.h
+index 829ec21..9e9e013 100644
+--- a/src/x86/cpuid.h
++++ b/src/x86/cpuid.h
+@@ -67,18 +67,13 @@
+ 	}
+ #endif
+ 
+-/*
+- * This instruction may be not supported by Native Client validator,
+- * make sure it doesn't appear in the binary
+- */
+-#ifndef __native_client__
+-	static inline uint64_t xgetbv(uint32_t ext_ctrl_reg) {
+-		#ifdef _MSC_VER
+-			return (uint64_t)_xgetbv((unsigned int)ext_ctrl_reg);
+-		#else
+-			uint32_t lo, hi;
+-			__asm__(".byte 0x0F, 0x01, 0xD0" : "=a" (lo), "=d" (hi) : "c" (ext_ctrl_reg));
+-			return ((uint64_t) hi << 32) | (uint64_t) lo;
+-		#endif
+-	}
+-#endif
++static inline uint64_t xgetbv(uint32_t ext_ctrl_reg) {
++	#ifdef _MSC_VER
++		return (uint64_t)_xgetbv((unsigned int)ext_ctrl_reg);
++	#else
++		uint32_t lo, hi;
++		__asm__(".byte 0x0F, 0x01, 0xD0" : "=a" (lo), "=d" (hi) : "c" (ext_ctrl_reg));
++		return ((uint64_t) hi << 32) | (uint64_t) lo;
++	#endif
++}
++
+diff --git a/src/x86/init.c b/src/x86/init.c
+index d736578..244359c 100644
+--- a/src/x86/init.c
++++ b/src/x86/init.c
+@@ -61,12 +61,8 @@ void cpuinfo_x86_init_processor(struct cpuinfo_x86_processor* processor) {
+ 
+ 		cpuinfo_x86_detect_topology(max_base_index, max_extended_index, leaf1, &processor->topology);
+ 
+-		#ifdef __native_client__
+-			cpuinfo_isa = cpuinfo_x86_nacl_detect_isa();			
+-		#else
+-			cpuinfo_isa = cpuinfo_x86_detect_isa(leaf1, leaf0x80000001,
+-				max_base_index, max_extended_index, vendor, uarch);
+-		#endif
++		cpuinfo_isa = cpuinfo_x86_detect_isa(leaf1, leaf0x80000001,
++			max_base_index, max_extended_index, vendor, uarch);
+ 	}
+ 	if (max_extended_index >= UINT32_C(0x80000004)) {
+ 		struct cpuid_regs brand_string[3];
+diff --git a/src/x86/isa.c b/src/x86/isa.c
+index d27dbca..f2e5a28 100644
+--- a/src/x86/isa.c
++++ b/src/x86/isa.c
+@@ -244,6 +244,7 @@ struct cpuinfo_x86_isa cpuinfo_x86_detect_isa(
+ 			 */
+ 			break;
+ 		case cpuinfo_vendor_amd:
++		case cpuinfo_vendor_hygon:
+ 			isa.prefetch = !!((extended_info.ecx & UINT32_C(0x00000100)) | (extended_info.edx & UINT32_C(0xE0000000)));
+ 			break;
+ 		default:
+@@ -265,6 +266,7 @@ struct cpuinfo_x86_isa cpuinfo_x86_detect_isa(
+ 	 */
+ 	switch (vendor) {
+ 		case cpuinfo_vendor_amd:
++		case cpuinfo_vendor_hygon:
+ 			isa.prefetchw = !!((extended_info.ecx & UINT32_C(0x00000100)) | (extended_info.edx & UINT32_C(0xE0000000)));
+ 			break;
+ 		default:
+diff --git a/src/x86/linux/init.c b/src/x86/linux/init.c
+index c096336..f565789 100644
+--- a/src/x86/linux/init.c
++++ b/src/x86/linux/init.c
+@@ -569,9 +569,6 @@ void cpuinfo_x86_linux_init(void) {
+ 	}
+ 
+ 	/* Commit changes */
+-	cpuinfo_linux_cpu_to_processor_map = linux_cpu_to_processor_map;
+-	cpuinfo_linux_cpu_to_core_map = linux_cpu_to_core_map;
+-
+ 	cpuinfo_processors = processors;
+ 	cpuinfo_cores = cores;
+ 	cpuinfo_clusters = clusters;
+@@ -591,24 +588,32 @@ void cpuinfo_x86_linux_init(void) {
+ 	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_4]  = l4_count;
+-
+ 	cpuinfo_max_cache_size = cpuinfo_compute_max_cache_size(&processors[0]);
+ 
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info) {
++		.uarch = x86_processor.uarch,
++		.cpuid = x86_processor.cpuid,
++		.processor_count = processors_count,
++		.core_count = cores_count,
++	};
++
++	cpuinfo_linux_cpu_max = x86_linux_processors_count;
++	cpuinfo_linux_cpu_to_processor_map = linux_cpu_to_processor_map;
++	cpuinfo_linux_cpu_to_core_map = linux_cpu_to_core_map;
++
+ 	__sync_synchronize();
+ 
+ 	cpuinfo_is_initialized = true;
+ 
+-	linux_cpu_to_processor_map = NULL;
+-	linux_cpu_to_core_map = NULL;
+ 	processors = NULL;
+ 	cores = NULL;
+ 	clusters = NULL;
+ 	packages = NULL;
+ 	l1i = l1d = l2 = l3 = l4 = NULL;
++	linux_cpu_to_processor_map = NULL;
++	linux_cpu_to_core_map = NULL;
+ 
+ cleanup:
+-	free(linux_cpu_to_processor_map);
+-	free(linux_cpu_to_core_map);
+ 	free(x86_linux_processors);
+ 	free(processors);
+ 	free(cores);
+@@ -619,4 +624,6 @@ cleanup:
+ 	free(l2);
+ 	free(l3);
+ 	free(l4);
++	free(linux_cpu_to_processor_map);
++	free(linux_cpu_to_core_map);
+ }
+diff --git a/src/x86/mach/init.c b/src/x86/mach/init.c
+index ae2be33..b44d3ad 100644
+--- a/src/x86/mach/init.c
++++ b/src/x86/mach/init.c
+@@ -305,30 +305,34 @@ void cpuinfo_x86_mach_init(void) {
+ 	}
+ 
+ 	/* Commit changes */
++	cpuinfo_processors = processors;
++	cpuinfo_cores = cores;
++	cpuinfo_clusters = clusters;
++	cpuinfo_packages = packages;
+ 	cpuinfo_cache[cpuinfo_cache_level_1i] = l1i;
+ 	cpuinfo_cache[cpuinfo_cache_level_1d] = l1d;
+ 	cpuinfo_cache[cpuinfo_cache_level_2]  = l2;
+ 	cpuinfo_cache[cpuinfo_cache_level_3]  = l3;
+ 	cpuinfo_cache[cpuinfo_cache_level_4]  = l4;
+ 
+-	cpuinfo_processors = processors;
+-	cpuinfo_cores = cores;
+-	cpuinfo_clusters = clusters;
+-	cpuinfo_packages = packages;
+-
++	cpuinfo_processors_count = mach_topology.threads;
++	cpuinfo_cores_count = mach_topology.cores;
++	cpuinfo_clusters_count = mach_topology.packages;
++	cpuinfo_packages_count = mach_topology.packages;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1i] = l1_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1d] = l1_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_4]  = l4_count;
+-
+-	cpuinfo_processors_count = mach_topology.threads;
+-	cpuinfo_cores_count = mach_topology.cores;
+-	cpuinfo_clusters_count = mach_topology.packages;
+-	cpuinfo_packages_count = mach_topology.packages;
+-
+ 	cpuinfo_max_cache_size = cpuinfo_compute_max_cache_size(&processors[0]);
+ 
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info) {
++		.uarch = x86_processor.uarch,
++		.cpuid = x86_processor.cpuid,
++		.processor_count = mach_topology.threads,
++		.core_count = mach_topology.cores,
++	};
++
+ 	__sync_synchronize();
+ 
+ 	cpuinfo_is_initialized = true;
+diff --git a/src/x86/nacl/isa.c b/src/x86/nacl/isa.c
+deleted file mode 100644
+index 662be33..0000000
+--- a/src/x86/nacl/isa.c
++++ /dev/null
+@@ -1,306 +0,0 @@
+-#include <stdbool.h>
+-#include <stdint.h>
+-#include <stddef.h>
+-
+-#include <irt.h>
+-
+-#define NACL_CODE_BUNDLE_SIZE 32
+-#include <cpuinfo.h>
+-#include <x86/api.h>
+-
+-static const uint8_t cmpxchg16b_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* MOV edi, edi */
+-	0x89, 0xFF,
+-	/* CMPXCHG16B [r15 + rdi * 1] */
+-	0x49, 0x0F, 0xC7, 0x0C, 0x3F,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t lzcnt_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* LZCNT eax, ecx */
+-	0xF3, 0x0F, 0xBD, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t popcnt_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* POPCNT eax, ecx */
+-	0xF3, 0x0F, 0xB8, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t movbe_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* MOV ecx, ecx */
+-	0x89, 0xC9,
+-	/* MOVBE eax, [r15 + rcx * 1] */
+-	0x41, 0x0F, 0x38, 0xF0, 0x04, 0x0F,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t bmi_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* ANDN eax, ecx, edx */
+-	0xC4, 0xE2, 0x70, 0xF2, 0xC2,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t tbm_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* BLCS eax, ecx */
+-	0x8F, 0xE9, 0x78, 0x01, 0xD9,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t three_d_now_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PFADD mm0, mm1 */
+-	0x0F, 0x0F, 0xC1, 0x9E,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t three_d_now_plus_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PFNACC mm0, mm1 */
+-	0x0F, 0x0F, 0xC1, 0x8A,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t sse3_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* HADDPS xmm0, xmm1 */
+-	0xF2, 0x0F, 0x7C, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t ssse3_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PSHUFB xmm0, xmm1 */
+-	0x66, 0x0F, 0x38, 0x00, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t sse4_1_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PMULLD xmm0, xmm1 */
+-	0x66, 0x0F, 0x38, 0x40, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t sse4_2_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PCMPGTQ xmm0, xmm1 */
+-	0x66, 0x0F, 0x38, 0x37, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t sse4a_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* EXTRQ xmm0, xmm1 */
+-	0x66, 0x0F, 0x79, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t aes_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* AESENC xmm0, xmm1 */
+-	0x66, 0x0F, 0x38, 0xDC, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t pclmulqdq_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* PCLMULQDQ xmm0, xmm1, 0 */
+-	0x66, 0x0F, 0x3A, 0x44, 0xC1, 0x00,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t avx_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VPERMILPS ymm0, ymm1, 0xAA */
+-	0xC4, 0xE3, 0x7D, 0x04, 0xC1, 0xAA,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t fma3_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VFMADDSUB213PS ymm0, ymm1, ymm2 */
+-	0xC4, 0xE2, 0x75, 0xA6, 0xC2,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t fma4_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VFMADDPS ymm0, ymm1, ymm2, ymm3 */
+-	0xC4, 0xE3, 0xF5, 0x68, 0xC3, 0x20,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t xop_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VPHADDBQ xmm0, xmm1 */
+-	0x8F, 0xE9, 0x78, 0xC3, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t f16c_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VCVTPH2PS ymm0, xmm1 */
+-	0xC4, 0xE2, 0x7D, 0x13, 0xC1,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-static const uint8_t avx2_bundle[NACL_CODE_BUNDLE_SIZE] = {
+-	/* VPERMPS ymm0, ymm1, ymm2 */
+-	0xC4, 0xE2, 0x75, 0x16, 0xC2,
+-	/* Fill remainder with HLTs */
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-	0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4, 0xF4,
+-};
+-
+-
+-struct cpuinfo_x86_isa cpuinfo_x86_nacl_detect_isa(void) {
+-	/*
+-	 * Under Native Client sandbox we can't just ask the CPU:
+-	 * - First, some instructions (XGETBV) necessary to query AVX support are not white-listed in the validator.
+-	 * - Secondly, even if CPU supports some instruction, but validator doesn't know about it (e.g. due a bug in the
+-	 *   ISA detection in the validator), all instructions from the "unsupported" ISA extensions will be replaced by
+-	 *   HLTs when the module is loaded.
+-	 * Thus, instead of quering the CPU about supported ISA extensions, we query the validator: we pass bundles with
+-	 * instructions from ISA extensions to dynamic code generation APIs, and test if they are accepted.
+-	 */
+-
+-	struct cpuinfo_x86_isa isa = { 0 };
+-
+-	struct nacl_irt_code_data_alloc nacl_irt_code_data_alloc = { 0 };
+-	struct nacl_irt_dyncode nacl_irt_dyncode = { 0 };
+-	if (sizeof(nacl_irt_code_data_alloc) != nacl_interface_query(NACL_IRT_CODE_DATA_ALLOC_v0_1,
+-	                                                             &nacl_irt_code_data_alloc,
+-	                                                             sizeof(nacl_irt_code_data_alloc)))
+-	{
+-		goto finish;
+-	}
+-
+-	if (sizeof(nacl_irt_dyncode) != nacl_interface_query(NACL_IRT_DYNCODE_v0_1,
+-	                                                     &nacl_irt_dyncode,
+-	                                                     sizeof(nacl_irt_dyncode)))
+-	{
+-		goto finish;
+-	}
+-
+-	const size_t allocation_size = 65536;
+-	uintptr_t code_segment = 0;
+-	if (0 != nacl_irt_code_data_alloc.allocate_code_data(0, allocation_size, 0, 0, &code_segment))
+-	{
+-		goto finish;
+-	}
+-
+-	isa.cmpxchg16b = !nacl_irt_dyncode.dyncode_create((void*) code_segment, cmpxchg16b_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.lzcnt = !nacl_irt_dyncode.dyncode_create((void*) code_segment, lzcnt_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.popcnt = !nacl_irt_dyncode.dyncode_create((void*) code_segment, popcnt_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.movbe = !nacl_irt_dyncode.dyncode_create((void*) code_segment, movbe_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.bmi = !nacl_irt_dyncode.dyncode_create((void*) code_segment, bmi_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.tbm = !nacl_irt_dyncode.dyncode_create((void*) code_segment, tbm_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.three_d_now = !nacl_irt_dyncode.dyncode_create((void*) code_segment, three_d_now_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.three_d_now_plus =
+-		!nacl_irt_dyncode.dyncode_create((void*) code_segment, three_d_now_plus_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.sse3 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, sse3_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.ssse3 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, ssse3_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.sse4_1 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, sse4_1_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.sse4_2 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, sse4_2_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.sse4a = !nacl_irt_dyncode.dyncode_create((void*) code_segment, sse4a_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.aes = !nacl_irt_dyncode.dyncode_create((void*) code_segment, aes_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.pclmulqdq = !nacl_irt_dyncode.dyncode_create((void*) code_segment, pclmulqdq_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.avx = !nacl_irt_dyncode.dyncode_create((void*) code_segment, avx_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.fma3 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, fma3_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.fma4 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, fma4_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.xop = !nacl_irt_dyncode.dyncode_create((void*) code_segment, xop_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.f16c = !nacl_irt_dyncode.dyncode_create((void*) code_segment, f16c_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-	code_segment += NACL_CODE_BUNDLE_SIZE;
+-
+-	isa.avx2 = !nacl_irt_dyncode.dyncode_create((void*) code_segment, avx2_bundle, NACL_CODE_BUNDLE_SIZE) &&
+-		(*((const uint8_t*) code_segment) != 0xF4);
+-
+-finish:
+-	return isa;
+-}
+diff --git a/src/x86/name.c b/src/x86/name.c
+index 708be1d..e0d5a5b 100644
+--- a/src/x86/name.c
++++ b/src/x86/name.c
+@@ -671,6 +671,7 @@ static const char* vendor_string_map[] = {
+ 	[cpuinfo_vendor_intel] = "Intel",
+ 	[cpuinfo_vendor_amd] = "AMD",
+ 	[cpuinfo_vendor_via] = "VIA",
++	[cpuinfo_vendor_hygon] = "Hygon",
+ 	[cpuinfo_vendor_rdc] = "RDC",
+ 	[cpuinfo_vendor_dmp] = "DM&P",
+ 	[cpuinfo_vendor_transmeta] = "Transmeta",
+diff --git a/src/x86/uarch.c b/src/x86/uarch.c
+index ba72d8a..ecaa762 100644
+--- a/src/x86/uarch.c
++++ b/src/x86/uarch.c
+@@ -79,6 +79,8 @@ enum cpuinfo_uarch cpuinfo_x86_decode_uarch(
+ 						case 0x5E: // Sky Lake Client DT/H/S
+ 						case 0x8E: // Kaby/Whiskey/Amber/Comet Lake Y/U
+ 						case 0x9E: // Kaby/Coffee Lake DT/H/S
++						case 0xA5: // Comet Lake H/S
++						case 0xA6: // Comet Lake U/Y
+ 							return cpuinfo_uarch_sky_lake;
+ 						case 0x66: // Cannon Lake (Core i3-8121U)
+ 							return cpuinfo_uarch_palm_cove;
+@@ -94,7 +96,7 @@ enum cpuinfo_uarch cpuinfo_x86_decode_uarch(
+ 							return cpuinfo_uarch_bonnell;
+ 						case 0x27: // Medfield
+ 						case 0x35: // Cloverview
+-						case 0x36: // Cedarview, Centerton 
++						case 0x36: // Cedarview, Centerton
+ 							return cpuinfo_uarch_saltwell;
+ 						case 0x37: // Bay Trail
+ 						case 0x4A: // Merrifield
+@@ -110,6 +112,7 @@ enum cpuinfo_uarch cpuinfo_x86_decode_uarch(
+ 							return cpuinfo_uarch_goldmont;
+ 						case 0x7A: // Gemini Lake
+ 							return cpuinfo_uarch_goldmont_plus;
++
+ 						/* Knights-series cores */
+ 						case 0x57:
+ 							return cpuinfo_uarch_knights_landing;
+@@ -173,7 +176,7 @@ enum cpuinfo_uarch cpuinfo_x86_decode_uarch(
+ 						case 0x38: // Godavari
+ 						case 0x30: // Kaveri
+ 							return cpuinfo_uarch_steamroller;
+-						case 0x60: // Carrizo 
++						case 0x60: // Carrizo
+ 						case 0x65: // Bristol Ridge
+ 						case 0x70: // Stoney Ridge
+ 							return cpuinfo_uarch_excavator;
+@@ -201,14 +204,22 @@ enum cpuinfo_uarch cpuinfo_x86_decode_uarch(
+ 					switch (model_info->model) {
+ 						case 0x01: // 14 nm Naples, Whitehaven, Summit Ridge, Snowy Owl
+ 						case 0x08: // 12 nm Pinnacle Ridge
+-						case 0x11: // 14 nm Raven Ridge
++						case 0x11: // 14 nm Raven Ridge, Great Horned Owl
+ 						case 0x18: // 12 nm Picasso
+ 							return cpuinfo_uarch_zen;
++						case 0x31: // Rome, Castle Peak
++						case 0x60: // Renoir
+ 						case 0x71: // Matisse
+ 							return cpuinfo_uarch_zen2;
+ 					}
+ 			}
+ 			break;
++		case cpuinfo_vendor_hygon:
++			switch (model_info->family) {
++				case 0x00:
++					return cpuinfo_uarch_dhyana;
++			}
++			break;
+ 		default:
+ 			break;
+ 	}
+diff --git a/src/x86/vendor.c b/src/x86/vendor.c
+index 3f3c753..2bba90d 100644
+--- a/src/x86/vendor.c
++++ b/src/x86/vendor.c
+@@ -26,6 +26,11 @@
+ #define auls UINT32_C(0x736C7561)
+ #define VIA  UINT32_C(0x20414956)
+ 
++/* Hygon vendor string: "HygonGenuine" */
++#define Hygo UINT32_C(0x6F677948)
++#define nGen UINT32_C(0x6E65476E)
++#define uine UINT32_C(0x656E6975)
++
+ /* Transmeta vendor strings: "GenuineTMx86", "TransmetaCPU" */
+ #define ineT UINT32_C(0x54656E69)
+ #define Mx86 UINT32_C(0x3638784D)
+@@ -105,6 +110,12 @@ enum cpuinfo_vendor cpuinfo_x86_decode_vendor(uint32_t ebx, uint32_t ecx, uint32
+ 				return cpuinfo_vendor_via;
+ 			}
+ 			break;
++		case Hygo:
++			if (edx == nGen && ecx == uine) {
++				/* "HygonGenuine" */
++				return cpuinfo_vendor_hygon;
++			}
++			break;
+ #if CPUINFO_ARCH_X86
+ 		case AMDi:
+ 			if (edx == sbet && ecx == ter) {
+diff --git a/src/x86/windows/init.c b/src/x86/windows/init.c
+index 7a2090e..2c7e3cd 100644
+--- a/src/x86/windows/init.c
++++ b/src/x86/windows/init.c
+@@ -417,9 +417,6 @@ BOOL CALLBACK cpuinfo_x86_windows_init(PINIT_ONCE init_once, PVOID parameter, PV
+ 	for (uint32_t i = 0; i < processors_count; i++) {
+ 		const uint32_t apic_id = processors[i].apic_id;
+ 
+-		//linux_cpu_to_processor_map[x86_linux_processors[i].linux_id] = processors + processor_index;
+-		//linux_cpu_to_core_map[x86_linux_processors[i].linux_id] = cores + core_index;
+-
+ 		if (x86_processor.cache.l1i.size != 0) {
+ 			const uint32_t l1i_id = apic_id & ~bit_mask(x86_processor.cache.l1i.apic_bits);
+ 			processors[i].cache.l1i = &l1i[l1i_index];
+@@ -549,30 +546,34 @@ BOOL CALLBACK cpuinfo_x86_windows_init(PINIT_ONCE init_once, PVOID parameter, PV
+ 
+ 
+ 	/* Commit changes */
++	cpuinfo_processors = processors;
++	cpuinfo_cores = cores;
++	cpuinfo_clusters = clusters;
++	cpuinfo_packages = packages;
+ 	cpuinfo_cache[cpuinfo_cache_level_1i] = l1i;
+ 	cpuinfo_cache[cpuinfo_cache_level_1d] = l1d;
+ 	cpuinfo_cache[cpuinfo_cache_level_2]  = l2;
+ 	cpuinfo_cache[cpuinfo_cache_level_3]  = l3;
+ 	cpuinfo_cache[cpuinfo_cache_level_4]  = l4;
+ 
+-	cpuinfo_processors = processors;
+-	cpuinfo_cores = cores;
+-	cpuinfo_clusters = clusters;
+-	cpuinfo_packages = packages;
+-
++	cpuinfo_processors_count = processors_count;
++	cpuinfo_cores_count = cores_count;
++	cpuinfo_clusters_count = packages_count;
++	cpuinfo_packages_count = packages_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1i] = l1i_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_1d] = l1d_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_2]  = l2_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_3]  = l3_count;
+ 	cpuinfo_cache_count[cpuinfo_cache_level_4]  = l4_count;
+-
+-	cpuinfo_processors_count = processors_count;
+-	cpuinfo_cores_count = cores_count;
+-	cpuinfo_clusters_count = packages_count;
+-	cpuinfo_packages_count = packages_count;
+-
+ 	cpuinfo_max_cache_size = cpuinfo_compute_max_cache_size(&processors[0]);
+ 
++	cpuinfo_global_uarch = (struct cpuinfo_uarch_info) {
++		.uarch = x86_processor.uarch,
++		.cpuid = x86_processor.cpuid,
++		.processor_count = processors_count,
++		.core_count = cores_count,
++	};
++
+ 	MemoryBarrier();
+ 
+ 	cpuinfo_is_initialized = true;
+diff --git a/test/arm-cache.cc b/test/arm-cache.cc
+index 8373f7c..7d2e4a4 100644
+--- a/test/arm-cache.cc
++++ b/test/arm-cache.cc
+@@ -766,7 +766,7 @@ TEST(QUALCOMM, snapdragon_845) {
+ 	struct cpuinfo_cache little_l2 = { 0 };
+ 	struct cpuinfo_cache little_l3 = { 0 };
+ 	cpuinfo_arm_decode_cache(
+-		cpuinfo_uarch_cortex_a55, 4, UINT32_C(0x518F803C),
++		cpuinfo_uarch_cortex_a55r0, 4, UINT32_C(0x518F803C),
+ 		&chipset, 1, 8,
+ 		&little_l1i, &little_l1d, &little_l2, &little_l3);
+ 
+@@ -910,7 +910,7 @@ TEST(SAMSUNG, exynos_9810) {
+ 	struct cpuinfo_cache little_l2 = { 0 };
+ 	struct cpuinfo_cache little_l3 = { 0 };
+ 	cpuinfo_arm_decode_cache(
+-		cpuinfo_uarch_cortex_a55, 4, UINT32_C(0x410FD051),
++		cpuinfo_uarch_cortex_a55r0, 4, UINT32_C(0x410FD051),
+ 		&chipset, 1, 8,
+ 		&little_l1i, &little_l1d, &little_l2, &little_l3);
+ 
+diff --git a/test/get-current.cc b/test/get-current.cc
+index 4a80cab..f410b12 100644
+--- a/test/get-current.cc
++++ b/test/get-current.cc
+@@ -3,34 +3,36 @@
+ #include <cpuinfo.h>
+ 
+ 
+-TEST(CURRENT_PROCESSOR, not_null) {
+-	ASSERT_TRUE(cpuinfo_initialize());
+-
+-	ASSERT_TRUE(cpuinfo_get_current_processor());
+-}
+-
+ TEST(CURRENT_PROCESSOR, within_bounds) {
+ 	ASSERT_TRUE(cpuinfo_initialize());
+ 
+ 	const struct cpuinfo_processor* current_processor = cpuinfo_get_current_processor();
++	if (current_processor == nullptr) {
++		GTEST_SKIP();
++	}
++
+ 	const struct cpuinfo_processor* processors_begin = cpuinfo_get_processors();
+ 	const struct cpuinfo_processor* processors_end = processors_begin + cpuinfo_get_processors_count();
+ 	ASSERT_GE(current_processor, processors_begin);
+ 	ASSERT_LT(current_processor, processors_end);
+ }
+ 
+-TEST(CURRENT_CORE, not_null) {
+-	ASSERT_TRUE(cpuinfo_initialize());
+-
+-	ASSERT_TRUE(cpuinfo_get_current_core());
+-}
+-
+ TEST(CURRENT_CORE, within_bounds) {
+ 	ASSERT_TRUE(cpuinfo_initialize());
+ 
+ 	const struct cpuinfo_core* current_core = cpuinfo_get_current_core();
++	if (current_core == nullptr) {
++		GTEST_SKIP();
++	}
++
+ 	const struct cpuinfo_core* cores_begin = cpuinfo_get_cores();
+ 	const struct cpuinfo_core* cores_end = cores_begin + cpuinfo_get_cores_count();
+ 	ASSERT_GE(current_core, cores_begin);
+ 	ASSERT_LT(current_core, cores_end);
+ }
++
++TEST(CURRENT_UARCH_INDEX, within_bounds) {
++	ASSERT_TRUE(cpuinfo_initialize());
++
++	ASSERT_LT(cpuinfo_get_current_uarch_index(), cpuinfo_get_uarchs_count());
++}
+diff --git a/test/init.cc b/test/init.cc
+index 941cb97..718eb96 100644
+--- a/test/init.cc
++++ b/test/init.cc
+@@ -678,6 +678,72 @@ TEST(PACKAGE, consistent_cluster) {
+ 	cpuinfo_deinitialize();
+ }
+ 
++TEST(UARCHS_COUNT, within_bounds) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	EXPECT_NE(0, cpuinfo_get_uarchs_count());
++	EXPECT_LE(cpuinfo_get_packages_count(), cpuinfo_get_cores_count());
++	EXPECT_LE(cpuinfo_get_packages_count(), cpuinfo_get_processors_count());
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCHS, non_null) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	EXPECT_TRUE(cpuinfo_get_uarchs());
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCH, non_null) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		EXPECT_TRUE(cpuinfo_get_uarch(i));
++	}
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCH, non_zero_processors) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		const cpuinfo_uarch_info* uarch = cpuinfo_get_uarch(i);
++		ASSERT_TRUE(uarch);
++
++		EXPECT_NE(0, uarch->processor_count);
++	}
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCH, valid_processors) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		const cpuinfo_uarch_info* uarch = cpuinfo_get_uarch(i);
++		ASSERT_TRUE(uarch);
++
++		EXPECT_LE(uarch->processor_count, cpuinfo_get_processors_count());
++	}
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCH, non_zero_cores) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		const cpuinfo_uarch_info* uarch = cpuinfo_get_uarch(i);
++		ASSERT_TRUE(uarch);
++
++		EXPECT_NE(0, uarch->core_count);
++	}
++	cpuinfo_deinitialize();
++}
++
++TEST(UARCH, valid_cores) {
++	ASSERT_TRUE(cpuinfo_initialize());
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		const cpuinfo_uarch_info* uarch = cpuinfo_get_uarch(i);
++		ASSERT_TRUE(uarch);
++
++		EXPECT_LE(uarch->core_count, cpuinfo_get_cores_count());
++	}
++	cpuinfo_deinitialize();
++}
++
+ TEST(L1I_CACHES_COUNT, within_bounds) {
+ 	ASSERT_TRUE(cpuinfo_initialize());
+ 	EXPECT_NE(0, cpuinfo_get_l1i_caches_count());
+diff --git a/test/mock/galaxy-s9-global.cc b/test/mock/galaxy-s9-global.cc
+index 7a67129..6c72513 100644
+--- a/test/mock/galaxy-s9-global.cc
++++ b/test/mock/galaxy-s9-global.cc
+@@ -207,7 +207,7 @@ TEST(CORES, uarch) {
+ 			case 5:
+ 			case 6:
+ 			case 7:
+-				ASSERT_EQ(cpuinfo_uarch_cortex_a55, cpuinfo_get_core(i)->uarch);
++				ASSERT_EQ(cpuinfo_uarch_cortex_a55r0, cpuinfo_get_core(i)->uarch);
+ 				break;
+ 		}
+ 	}
+@@ -329,7 +329,7 @@ TEST(CLUSTERS, uarch) {
+ 				ASSERT_EQ(cpuinfo_uarch_exynos_m3, cpuinfo_get_cluster(i)->uarch);
+ 				break;
+ 			case 1:
+-				ASSERT_EQ(cpuinfo_uarch_cortex_a55, cpuinfo_get_cluster(i)->uarch);
++				ASSERT_EQ(cpuinfo_uarch_cortex_a55r0, cpuinfo_get_cluster(i)->uarch);
+ 				break;
+ 		}
+ 	}
+diff --git a/test/mock/galaxy-s9-us.cc b/test/mock/galaxy-s9-us.cc
+index 6df7f3c..ceea969 100644
+--- a/test/mock/galaxy-s9-us.cc
++++ b/test/mock/galaxy-s9-us.cc
+@@ -168,7 +168,7 @@ TEST(CORES, uarch) {
+ 			case 5:
+ 			case 6:
+ 			case 7:
+-				ASSERT_EQ(cpuinfo_uarch_cortex_a55, cpuinfo_get_core(i)->uarch);
++				ASSERT_EQ(cpuinfo_uarch_cortex_a55r0, cpuinfo_get_core(i)->uarch);
+ 				break;
+ 		}
+ 	}
+@@ -283,7 +283,7 @@ TEST(CLUSTERS, uarch) {
+ 				ASSERT_EQ(cpuinfo_uarch_cortex_a75, cpuinfo_get_cluster(i)->uarch);
+ 				break;
+ 			case 1:
+-				ASSERT_EQ(cpuinfo_uarch_cortex_a55, cpuinfo_get_cluster(i)->uarch);
++				ASSERT_EQ(cpuinfo_uarch_cortex_a55r0, cpuinfo_get_cluster(i)->uarch);
+ 				break;
+ 		}
+ 	}
+@@ -817,4 +817,4 @@ int main(int argc, char* argv[]) {
+ 	cpuinfo_initialize();
+ 	::testing::InitGoogleTest(&argc, argv);
+ 	return RUN_ALL_TESTS();
+-}
+\ No newline at end of file
++}
+diff --git a/tools/cpu-info.c b/tools/cpu-info.c
+index 7fa5187..7963c00 100644
+--- a/tools/cpu-info.c
++++ b/tools/cpu-info.c
+@@ -14,6 +14,8 @@ static const char* vendor_to_string(enum cpuinfo_vendor vendor) {
+ 			return "Intel";
+ 		case cpuinfo_vendor_amd:
+ 			return "AMD";
++		case cpuinfo_vendor_hygon:
++			return "Hygon";
+ 		case cpuinfo_vendor_arm:
+ 			return "ARM";
+ 		case cpuinfo_vendor_qualcomm:
+@@ -161,6 +163,8 @@ static const char* uarch_to_string(enum cpuinfo_uarch uarch) {
+ 			return "Cortex-A35";
+ 		case cpuinfo_uarch_cortex_a53:
+ 			return "Cortex-A53";
++		case cpuinfo_uarch_cortex_a55r0:
++			return "Cortex-A55r0";
+ 		case cpuinfo_uarch_cortex_a55:
+ 			return "Cortex-A55";
+ 		case cpuinfo_uarch_cortex_a57:
+@@ -223,6 +227,10 @@ static const char* uarch_to_string(enum cpuinfo_uarch uarch) {
+ 			return "Vortex";
+ 		case cpuinfo_uarch_tempest:
+ 			return "Tempest";
++		case cpuinfo_uarch_lightning:
++			return "Lightning";
++		case cpuinfo_uarch_thunder:
++			return "Thunder";
+ 		case cpuinfo_uarch_thunderx:
+ 			return "ThunderX";
+ 		case cpuinfo_uarch_thunderx2:
+@@ -253,6 +261,17 @@ int main(int argc, char** argv) {
+ 			printf("\t%"PRIu32": %s\n", i, cpuinfo_get_package(i)->name);
+ 		}
+ 	#endif
++	printf("Microarchitectures:\n");
++	for (uint32_t i = 0; i < cpuinfo_get_uarchs_count(); i++) {
++		const struct cpuinfo_uarch_info* uarch_info = cpuinfo_get_uarch(i);
++		const char* uarch_string = uarch_to_string(uarch_info->uarch);
++		if (uarch_string == NULL) {
++			printf("\t%"PRIu32"x Unknown (0x%08"PRIx32"\n",
++				uarch_info->core_count, (uint32_t) uarch_info->uarch);
++		} else {
++			printf("\t%"PRIu32"x %s\n", uarch_info->core_count, uarch_string);
++		}
++	}
+ 	printf("Cores:\n");
+ 	for (uint32_t i = 0; i < cpuinfo_get_cores_count(); i++) {
+ 		const struct cpuinfo_core* core = cpuinfo_get_core(i);
+@@ -277,17 +296,17 @@ int main(int argc, char** argv) {
+ 		}
+ 	}
+ 	printf("Logical processors");
+-  #if defined(__linux__)
+-    printf(" (System ID)");
+-  #endif
+-  printf(":\n");
++	#if defined(__linux__)
++		printf(" (System ID)");
++	#endif
++	printf(":\n");
+ 	for (uint32_t i = 0; i < cpuinfo_get_processors_count(); i++) {
+ 		const struct cpuinfo_processor* processor = cpuinfo_get_processor(i);
+-    printf("\t%"PRIu32"", i);
++		printf("\t%"PRIu32"", i);
+ 
+-    #if defined(__linux__)
+-      printf(" (%"PRId32")", processor->linux_id);
+-    #endif
++		#if defined(__linux__)
++			printf(" (%"PRId32")", processor->linux_id);
++		#endif
+ 
+ 		#if CPUINFO_ARCH_X86 || CPUINFO_ARCH_X86_64
+ 			printf(": APIC ID 0x%08"PRIx32"\n", processor->apic_id);

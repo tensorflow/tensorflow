@@ -71,18 +71,35 @@ TfLiteStatus CalculateOpData(TfLiteContext* context,
 }  // namespace
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  OpData* data = nullptr;
+  TfLiteStatus status = context->AllocatePersistentBuffer(
+      context, sizeof(OpData), reinterpret_cast<void**>(&data));
+  if (status != kTfLiteOk || data == nullptr) {
+    return nullptr;
+  }
+  return data;
 }
 
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+  auto* params =
+      reinterpret_cast<TfLiteFullyConnectedParams*>(node->builtin_data);
+
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kWeightsTensor);
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
+
+  TfLiteType data_type = input->type;
+  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
+                                        filter, bias, output, data));
+
   return kTfLiteOk;
 }
 
@@ -178,11 +195,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  TfLiteType data_type = input->type;
-  OpData local_data_object;
-  OpData* data = &local_data_object;
-  TF_LITE_ENSURE_STATUS(CalculateOpData(context, params, data_type, input,
-                                        filter, bias, output, data));
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   // Checks in Prepare ensure input, output and filter types are all the same.
   switch (input->type) {

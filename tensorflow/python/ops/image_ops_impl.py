@@ -3253,19 +3253,6 @@ def rgb_to_yuv(images):
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
 
-  Usage Example:
-
-  >>> x = [[[0.1, 0.2, 0.3],
-  ...       [0.4, 0.5, 0.6]],
-  ...     [[0.7, 0.8, 0.9],
-  ...       [0.10, 0.11, 0.12]]]
-  >>> tf.image.rgb_to_yuv(x)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[ 0.1815    ,  0.05831515, -0.07149857],
-          [ 0.4815    ,  0.05831517, -0.07149856]],
-         [[ 0.7815    ,  0.05831515, -0.07149857],
-          [ 0.10815   ,  0.00583152, -0.00714985]]], dtype=float32)>
-
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be
       size 3.

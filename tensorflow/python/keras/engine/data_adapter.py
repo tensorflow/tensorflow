@@ -830,7 +830,7 @@ class GeneratorDataAdapter(DataAdapter):
     x, y, sample_weight = unpack_x_y_sample_weight(data)
     data = pack_x_y_sample_weight(x, y, sample_weight)
 
-    data = nest._list_to_tuple(data)  # pylint: disable=protected-access
+    data = nest.list_to_tuple(data)
 
     def _convert_dtype(t):
       if (isinstance(t, np.ndarray) and issubclass(t.dtype.type, np.floating)):
@@ -1023,7 +1023,7 @@ def _process_tensorlike(inputs):
     return x
 
   inputs = nest.map_structure(_convert_numpy_and_scipy, inputs)
-  return nest._list_to_tuple(inputs)  # pylint: disable=protected-access
+  return nest.list_to_tuple(inputs)
 
 
 def is_none_or_empty(inputs):

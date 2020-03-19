@@ -396,13 +396,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                                 /*parameters=*/{});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       // The order of locking is important here to avoid deadlock.
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputExhausted, ""));
       }
@@ -416,7 +418,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(WriteWorkerStateLocked(writer, i));
       }
       for (int i = 0; i < worker_thread_states_.size(); ++i) {
-        TF_RETURN_IF_ERROR(WriteWorkerThreadStateLocked(writer, i));
+        TF_RETURN_IF_ERROR(WriteWorkerThreadStateLocked(ctx, writer, i));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInterleaveSize,
                                              interleave_indices_.size()));
@@ -932,13 +934,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status WriteWorkerThreadStateLocked(IteratorStateWriter* writer, int index)
+    Status WriteWorkerThreadStateLocked(SerializationContext* ctx,
+                                        IteratorStateWriter* writer, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string iterator_name =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       if (worker_thread_states_[index].iterator != nullptr) {
         TF_RETURN_IF_ERROR(
-            SaveInput(writer, worker_thread_states_[index].iterator));
+            SaveInput(ctx, writer, worker_thread_states_[index].iterator));
       } else {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(iterator_name, kIteratorExhausted, ""));

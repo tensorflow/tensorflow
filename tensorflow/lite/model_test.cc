@@ -386,7 +386,7 @@ TEST(BasicFlatBufferModel, TestParseModelWithSparseTensor) {
   ASSERT_EQ(InterpreterBuilder(*model, TrivialResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(interpreter->tensors_size(), 1);
+  ASSERT_EQ(interpreter->tensors_size(), 2);
   TfLiteTensor* t1 = interpreter->tensor(0);
   ASSERT_EQ(t1->allocation_type, kTfLiteMmapRo);
 

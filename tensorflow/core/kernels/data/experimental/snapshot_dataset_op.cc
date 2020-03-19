@@ -389,9 +389,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, iterator_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, iterator_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kState), static_cast<int64>(state_)));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kHashDir), hash_dir_));
@@ -623,7 +624,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
-        Status SaveInternal(IteratorStateWriter* writer) override {
+        Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name(kHashDir), hash_dir_));
@@ -1037,9 +1039,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
-        Status SaveInternal(IteratorStateWriter* writer) override {
+        Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
           mutex_lock l(mu_);
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
           if (end_of_sequence_) {
             TF_RETURN_IF_ERROR(
                 writer->WriteScalar(full_name(kEndOfSequence), ""));
@@ -1482,8 +1485,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         }
 
        protected:
-        Status SaveInternal(IteratorStateWriter* writer) override {
-          return SaveInput(writer, input_impl_);
+        Status SaveInternal(SerializationContext* ctx,
+                            IteratorStateWriter* writer) override {
+          return SaveInput(ctx, writer, input_impl_);
         }
 
         Status RestoreInternal(IteratorContext* ctx,
