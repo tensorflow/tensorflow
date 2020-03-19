@@ -7780,6 +7780,8 @@ cusparseStatus_t CUSPARSEAPI cusparseCsr2cscEx2_bufferSize(
                   bufferSize);
 }
 
+#if !defined(_WIN32)
+
 cusparseStatus_t CUSPARSEAPI
 cusparseCreateSpVec(cusparseSpVecDescr_t *spVecDescr, int64_t size, int64_t nnz,
                     void *indices, void *values, cusparseIndexType_t idxType,
@@ -8222,5 +8224,7 @@ cusparseStatus_t CUSPARSEAPI cusparseConstrainedGeMM_bufferSize(
   return func_ptr(handle, opA, opB, alpha, matA, matB, beta, matC, computeType,
                   bufferSize);
 }
+
+#endif // _WIN32
 
 }  // extern "C"
