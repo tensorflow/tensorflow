@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.distribute.cluster_resolver import SlurmClusterResolver
-from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_hostlist, expand_tasks_per_node
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_hostlist
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import expand_tasks_per_node
+from tensorflow.python.distribute.cluster_resolver.slurm_cluster_resolver import SlurmClusterResolver
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
