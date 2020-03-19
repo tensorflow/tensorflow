@@ -119,8 +119,8 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
   }
 
   if (sparsity->dim_metadata) {
-    int i;
-    for (i = 0; i < sparsity->dim_metadata_size; i++) {
+    int i = 0;
+    for (; i < sparsity->dim_metadata_size; i++) {
       TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
       if (metadata.format == kTfLiteDimSparseCSR) {
         TfLiteIntArrayFree(metadata.array_segments);
