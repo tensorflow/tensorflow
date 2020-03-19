@@ -936,30 +936,6 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(layer.bias.name, 'MyName/bias:0')
     self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
 
-  def test_name_scope_functional_api(self):
-    inputs = input_layer.Input((3,))
-    layer = layers.Dense(10, name='MyName')
-    _ = layer(inputs)
-    self.assertEqual(layer.bias.name, 'MyName/bias:0')
-    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
-
-  def test_name_scope_functional_api_nested(self):
-
-    class NestedLayer(base_layer.Layer):
-
-      def __init__(self, name='OuterName'):
-        super(NestedLayer, self).__init__(name=name)
-        self.dense = layers.Dense(10, name='InnerName')
-
-      def call(self, inputs):
-        return self.dense(inputs)
-
-    inputs = input_layer.Input((3,))
-    layer = NestedLayer()
-    _ = layer(inputs)
-    self.assertEqual(layer.dense.bias.name, 'OuterName/InnerName/bias:0')
-    self.assertEqual(layer.dense.kernel.name, 'OuterName/InnerName/kernel:0')
-
   def test_name_scope_sublayer(self):
 
     class NameScopeTracker(base_layer.Layer):
