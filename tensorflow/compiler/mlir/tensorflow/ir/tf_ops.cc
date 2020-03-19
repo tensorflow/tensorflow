@@ -1119,10 +1119,10 @@ LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
 
   // Permute filter sizes operand.
   OpBuilder builder(getOperation());
-  auto data_format_permute = builder.create<TF::DataFormatVecPermuteOp>(
+  auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
       getLoc(), filter_sizes(), StringAttr::get(src_data_format, getContext()),
       StringAttr::get(data_format, getContext()));
-  setOperand(1, data_format_permute);
+  setOperand(1, filter_sizes_permuted);
 
   return success();
 }
@@ -1148,7 +1148,7 @@ StringRef Conv2DBackpropFilterOp::GetOptimalLayout(
 }
 
 //===----------------------------------------------------------------------===//
-// Conv2dBackpropInputOp
+// Conv2DBackpropInputOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(Conv2DBackpropInputOp op) {
@@ -1166,7 +1166,51 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
   }
 
   return success();
-}  // namespace TF
+}
+
+LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
+  StringRef src_data_format = this->data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  // Permute input sizes operand.
+  OpBuilder builder(getOperation());
+  auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
+      getLoc(), input_sizes(), StringAttr::get(src_data_format, getContext()),
+      StringAttr::get(data_format, getContext()));
+  setOperand(0, input_sizes_permuted);
+
+  return success();
+}
+
+StringRef Conv2DBackpropInputOp::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Filter must be a tensor.
+  auto filter_ty = filter().getType().dyn_cast<TensorType>();
+  if (!filter_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = filter_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // Otherwise always use "NCHW".
+  return "NCHW";
+}
 
 //===----------------------------------------------------------------------===//
 // DataFormatVecPermuteOp

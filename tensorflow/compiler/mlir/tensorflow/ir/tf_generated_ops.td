@@ -1135,7 +1135,7 @@ Computes the gradients of convolution with respect to the filter.
   }];
 }
 
-def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the input.
   }];
@@ -1164,6 +1164,14 @@ Computes the gradients of convolution with respect to the input.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {2}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 

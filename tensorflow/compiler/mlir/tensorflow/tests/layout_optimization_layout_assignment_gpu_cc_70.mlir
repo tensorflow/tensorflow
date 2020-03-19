@@ -103,4 +103,44 @@ func @transposeConv2DBackpropFilter_f16(
   return %0 : tensor<1x1x64x64xf16>
 }
 
+// CHECK-LABEL: func @transposeConv2DBackpropInput_f32
+func @transposeConv2DBackpropInput_f32(
+  %input_size:   tensor<4xi32>,
+  %filter:       tensor<1x28x28x64xf32>,
+  %out_backprop: tensor<1x28x28x64xf32>
+) -> tensor<1x28x28x64xf32> {
+
+  // CHECK: "tf.Conv2DBackpropInput"
+  // CHECK-SAME: data_format = "NCHW"
+  %0 = "tf.Conv2DBackpropInput"(%input_size, %filter, %out_backprop)
+       {
+         data_format = "NHWC",
+         padding = "VALID",
+         strides = [1, 1, 1, 1]
+       } : (tensor<4xi32>, tensor<1x28x28x64xf32>, tensor<1x28x28x64xf32>)
+        -> tensor<1x28x28x64xf32>
+
+  return %0 : tensor<1x28x28x64xf32>
+}
+
+// CHECK-LABEL: func @transposeConv2DBackpropInput_f16
+func @transposeConv2DBackpropInput_f16(
+  %input_size:   tensor<4xi32>,
+  %filter:       tensor<1x64x28x28xf16>,
+  %out_backprop: tensor<1x64x28x28xf16>
+) -> tensor<1x64x28x28xf16> {
+
+  // CHECK: "tf.Conv2DBackpropInput"
+  // CHECK-SAME: data_format = "NHWC"
+  %0 = "tf.Conv2DBackpropInput"(%input_size, %filter, %out_backprop)
+       {
+         data_format = "NCHW",
+         padding = "VALID",
+         strides = [1, 1, 1, 1]
+       } : (tensor<4xi32>, tensor<1x64x28x28xf16>, tensor<1x64x28x28xf16>)
+        -> tensor<1x64x28x28xf16>
+
+  return %0 : tensor<1x64x28x28xf16>
+}
+
 }
