@@ -426,9 +426,9 @@ class Conv1D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(Conv1D, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(Conv1D, self).__init__(
           rank=1,
           filters=filters,
           kernel_size=kernel_size,
@@ -450,14 +450,16 @@ class Conv1D(Conv):
     
         
   def checkProperKernel(self,kernel_size):
+        
         if(isinstance(kernel_size,tuple)):
     	    for i in kernel_size:
     		    if(i==0):
     			    raise ValueError("Kernel dimension cannot be zero")
         else:
     	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")
-        return 0
+                
+                raise ValueError("Kernel size cannot be zero")
+        return 
 
 
         
@@ -598,10 +600,10 @@ class Conv2D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
     
-      super(Conv2D, self).__init__(
+    super(Conv2D, self).__init__(
           rank=2,
           filters=filters,
           kernel_size=kernel_size,
@@ -632,7 +634,7 @@ class Conv2D(Conv):
     	    if(kernel_size==0):
     	        
     	        raise ValueError("Kernel size cannot be zero")
-        return 0
+        return 
 
 
 @keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
@@ -759,9 +761,9 @@ class Conv3D(Conv):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(Conv3D, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(Conv3D, self).__init__(
           rank=3,
           filters=filters,
           kernel_size=kernel_size,
@@ -792,7 +794,7 @@ class Conv3D(Conv):
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
     		    
-        return 0
+        return 
 
         
 
@@ -926,9 +928,9 @@ class Conv2DTranspose(Conv2D):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(Conv2DTranspose, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(Conv2DTranspose, self).__init__(
           filters=filters,
           kernel_size=kernel_size,
           strides=strides,
@@ -968,7 +970,7 @@ class Conv2DTranspose(Conv2D):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
-        return 0
+        return 
 
 
                            
@@ -1240,9 +1242,9 @@ class Conv3DTranspose(Conv3D):
                kernel_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(Conv3DTranspose, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(Conv3DTranspose, self).__init__(
           filters=filters,
           kernel_size=kernel_size,
           strides=strides,
@@ -1280,7 +1282,7 @@ class Conv3DTranspose(Conv3D):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")
-        return 0
+        return 
 
 
 
@@ -1520,9 +1522,9 @@ class SeparableConv(Conv):
                trainable=True,
                name=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(SeparableConv, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(SeparableConv, self).__init__(
         rank=rank,
         filters=filters,
         kernel_size=kernel_size,
@@ -1556,7 +1558,7 @@ class SeparableConv(Conv):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")  
-        return 0
+        return 
     
   
 
@@ -1761,9 +1763,9 @@ class SeparableConv1D(SeparableConv):
                pointwise_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(SeparableConv1D, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(SeparableConv1D, self).__init__(
         rank=1,
         filters=filters,
         kernel_size=kernel_size,
@@ -1795,7 +1797,7 @@ class SeparableConv1D(SeparableConv):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")  
-        return 0
+        return 
 
   def call(self, inputs):
     if self.padding == 'causal':
@@ -1992,7 +1994,7 @@ class SeparableConv2D(SeparableConv):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")  
-        return 0
+        return 
 
   def call(self, inputs):
     # Apply the actual ops.
@@ -2115,9 +2117,9 @@ class DepthwiseConv2D(Conv2D):
                depthwise_constraint=None,
                bias_constraint=None,
                **kwargs):
-    rv=self.checkProperKernel(kernel_size)
-    if(rv==0):
-      super(DepthwiseConv2D, self).__init__(
+    self.checkProperKernel(kernel_size)
+    #if(rv==0):
+    super(DepthwiseConv2D, self).__init__(
         filters=None,
         kernel_size=kernel_size,
         strides=strides,
@@ -2145,7 +2147,7 @@ class DepthwiseConv2D(Conv2D):
         else:
     	    if(kernel_size==0):
     		    raise ValueError("Kernel size cannot be zero")  
-        return 0
+        return 
 
   def build(self, input_shape):
     if len(input_shape) < 4:
