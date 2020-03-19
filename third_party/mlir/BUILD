@@ -1317,6 +1317,27 @@ cc_library(
 )
 
 cc_library(
+    name = "StandardToStandard",
+    srcs = glob([
+        "lib/Conversion/StandardToStandard/*.cpp",
+        "lib/Conversion/StandardToStandard/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/StandardToStandard/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/StandardToStandard",
+    ],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":StandardOps",
+        ":Transforms",
+    ],
+)
+
+cc_library(
     name = "SPIRVSerialization",
     srcs = glob(
         [
@@ -1943,6 +1964,7 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":StandardToSPIRVConversions",
+        ":StandardToStandard",
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
@@ -2035,6 +2057,7 @@ cc_library(
         ":Shape",
         ":StandardOps",
         ":StandardToSPIRVConversions",
+        ":StandardToStandard",
         ":Transforms",
         ":VectorOps",
     ],
