@@ -796,7 +796,8 @@ def preprocess_input(x, data_format=None):
   Raises
     ValueError: In case of unknown `data_format` argument.
   """
-  return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
+  return imagenet_utils.preprocess_input(
+      x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.nasnet.decode_predictions')
@@ -819,7 +820,7 @@ def decode_predictions(preds, top=5):
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', 
+    mode='',
     ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
     error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

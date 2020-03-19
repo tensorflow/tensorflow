@@ -450,7 +450,8 @@ def preprocess_input(x, data_format=None):
   Raises
     ValueError: In case of unknown `data_format` argument.
   """
-  return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
+  return imagenet_utils.preprocess_input(
+      x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet.decode_predictions')

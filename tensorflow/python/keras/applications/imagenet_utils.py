@@ -83,13 +83,10 @@ PREPROCESS_INPUT_MODE_DOC = """
   """
 
 PREPROCESS_INPUT_DEFAULT_ERROR_DOC = """
-    ValueError: In case of unknown `mode` or `data_format` argument.
-  """
+    ValueError: In case of unknown `mode` or `data_format` argument."""
 
 PREPROCESS_INPUT_ERROR_DOC = """
-    ValueError: In case of unknown `data_format` argument.
-  """
-
+    ValueError: In case of unknown `data_format` argument."""
 
 PREPROCESS_INPUT_RET_DOC_TF = """
       The inputs pixel values are scaled between -1 and 1, sample-wise."""
