@@ -221,7 +221,20 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
     return self.task_type
 
   def get_tpu_system_metadata(self):
-    """Retrieves TPU system metadata given a TPUClusterResolver."""
+    """Returns the metadata of the TPU system.
+
+    Users can call this method to get some facts of the TPU system, like
+    total number of cores, number of TPU workers and the devices. E.g.
+    ```python
+
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tpu_system_medata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_medata.num_hosts
+    ```
+
+    Returns:
+      A `tf.tpu.experimental.TPUSystemMetadata` object.
+    """
     cluster_spec = self.cluster_spec()
     cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
     tpu_system_metadata = (
@@ -229,6 +242,8 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
             self.master(),
             cluster_def=cluster_def,
             query_topology=False))
+
+    return tpu_system_metadata
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.
