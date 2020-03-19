@@ -172,6 +172,9 @@ ifeq ($(BUILD_WITH_RUY),true)
   CXXFLAGS += -DTFLITE_WITH_RUY
 endif
 
+# Not to include XNNPACK.
+CXXFLAGS += -DTFLITE_WITHOUT_XNNPACK
+
 BUILD_WITH_NNAPI ?= false
 ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_ALL_SRCS += tensorflow/lite/delegates/nnapi/nnapi_delegate.cc
@@ -212,7 +215,11 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*_test.cc) \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
-	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc, \
+	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
+	$(BENCHMARK_SRCS_DIR)/gpu_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/hexagon_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/nnapi_delegate_provider.cc \
+	$(BENCHMARK_SRCS_DIR)/xnnpack_delegate_provider.cc, \
 	$(BENCHMARK_ALL_SRCS))
 
 # These target-specific makefiles should modify or replace options like

@@ -163,7 +163,11 @@ TfLiteDelegatePtr CreateHexagonDelegate(
 }
 
 // TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
-#if !defined(__Fuchsia__)
+#if defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+  return CreateNullDelegate();
+}
+#else
 TfLiteDelegatePtr CreateXNNPACKDelegate() {
   TfLiteXNNPackDelegateOptions xnnpack_options =
       TfLiteXNNPackDelegateOptionsDefault();
