@@ -414,6 +414,9 @@ cuda_py_test(
     srcs = [
         "multi_worker_continuous_run_test.py",
     ],
+    tags = [
+        "notsan",  # TODO(b/151841995)
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":multi_process_runner",
