@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
@@ -174,6 +175,8 @@ Status TFDataMetaOptimizer::Init(
   enabled_optimizers_["function"] = MakeUnique<FunctionOptimizer>(
       RewriterConfig::ON, /*lower_control_flow=*/true);
   enabled_optimizers_["shape"] = MakeUnique<ShapeOptimizer>();
+  enabled_optimizers_["common_subgraph_elimination"] =
+      MakeUnique<CommonSubgraphElimination>();
   enabled_optimizers_["arithmetic"] = MakeUnique<ArithmeticOptimizer>();
   enabled_optimizers_["dependency"] = MakeUnique<DependencyOptimizer>();
 
