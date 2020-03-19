@@ -537,7 +537,7 @@ def tf_cc_shared_object(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = if_not_windows(["-lrt"]),
         framework_so = tf_binary_additional_srcs(),
         soversion = None,
         kernels = [],
@@ -641,7 +641,7 @@ def tf_cc_binary(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = if_not_windows(["-lrt"]),
         copts = tf_copts(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
@@ -737,7 +737,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl", "-lrt"]),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -924,7 +924,7 @@ def tf_gen_op_wrapper_py(
     tf_cc_binary(
         name = tool_name,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + cc_linkopts,
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl", "-lrt"]) + cc_linkopts,
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         visibility = [clean_dep("//tensorflow:internal")],
         deps = ([
@@ -1221,7 +1221,7 @@ def tf_cc_tests(
         tags = [],
         size = "medium",
         args = None,
-        linkopts = [],
+        linkopts = if_not_windows(["-lrt"]),
         kernels = [],
         create_named_test_suite = False,
         visibility = None):
