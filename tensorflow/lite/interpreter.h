@@ -36,6 +36,10 @@ limitations under the License.
 
 namespace tflite {
 
+class InterpreterTest;
+
+namespace impl {
+
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -494,7 +498,7 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
-  friend class InterpreterTest;
+  friend class tflite::InterpreterTest;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -541,6 +545,10 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 };
+
+}  // namespace impl
+
+using Interpreter = impl::Interpreter;
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_
