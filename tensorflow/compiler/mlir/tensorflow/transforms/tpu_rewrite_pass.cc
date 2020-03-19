@@ -488,11 +488,11 @@ Operation* BuildExecuteOp(
 
 // Creates a tf_device.parallel_execute op that wraps TPUExecute op to
 // represent execution of TPU program in multiple logical cores.
-tf_device::ParallelExecuteOp BuildParallelExecuteOp(
+LogicalResult BuildParallelExecuteOp(
     llvm::ArrayRef<llvm::SmallVector<std::string, 8>> execution_devices,
     llvm::ArrayRef<xla::OpSharding> output_sharding_config,
     Operation* compile_op, tf_device::LaunchFuncOp launch_func,
-    OpBuilder* builder) {
+    OpBuilder* builder, tf_device::ParallelExecuteOp* parallel_execute_op) {
   const int num_cores_per_replica = execution_devices.front().size();
   // parallel_execute op returns concatenated list of return values of
   // all its regions.
@@ -510,20 +510,23 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
     for (Type t : output_types) concatenated_output_types.emplace_back(t);
   }
 
-  auto parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
+  *parallel_execute_op = builder->create<tf_device::ParallelExecuteOp>(
       launch_func.getLoc(), num_cores_per_replica, concatenated_output_types);
 
   // Extract inputs for each region of the parallel_execute op. The i-th
   // element in the list represents the input lists to TPU computation for
   // i-th logical core.
-  auto input_list = tensorflow::ExtractInputsForLogicalDevices(
-      num_cores_per_replica, launch_func);
+  llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4> input_list;
+  builder->setInsertionPoint(*parallel_execute_op);
+  auto result = tensorflow::ExtractInputsForLogicalDevices(
+      num_cores_per_replica, launch_func, builder, &input_list);
+  if (failed(result)) return failure();
 
   const bool replicated = execution_devices.size() != 1;
   // For each logical core, create a region with TPUExecute op.
   assert(input_list.size() == num_cores_per_replica);
   for (int core = 0; core < num_cores_per_replica; ++core) {
-    auto& region = parallel_execute_op.GetRegionBlockWithIndex(core);
+    auto& region = parallel_execute_op->GetRegionBlockWithIndex(core);
     builder->setInsertionPointToEnd(&region);
 
     // Create Execute op.
@@ -551,7 +554,7 @@ tf_device::ParallelExecuteOp BuildParallelExecuteOp(
                                          region_launch_op.getResults());
   }
 
-  return parallel_execute_op;
+  return success();
 }
 
 tf_device::LaunchOp AssignDevicesToReplicatedExecute(
@@ -703,9 +706,12 @@ LogicalResult Rewrite(
   if (num_cores_per_replica > 1) {
     // For model parallelism, tf_device.parallel_execute is used to express
     // concurrent device execution across multiple logical devices.
-    tf_device::ParallelExecuteOp execute_op = BuildParallelExecuteOp(
-        tpu_device_assignment.execution_devices, output_shardings, compile_op,
-        launch_func, builder);
+
+    tf_device::ParallelExecuteOp execute_op;
+    result = BuildParallelExecuteOp(tpu_device_assignment.execution_devices,
+                                    output_shardings, compile_op, launch_func,
+                                    builder, &execute_op);
+    if (failed(result)) return failure();
 
     // As tf_device.parallel_execute wraps # logical cores number of TPUExecute
     // ops, the number of return values of parallel_execute op exceeds that of
