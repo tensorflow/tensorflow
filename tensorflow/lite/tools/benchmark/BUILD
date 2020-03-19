@@ -147,6 +147,7 @@ cc_library(
         ":delegate_provider_hdr",
         ":gpu_delegate_provider",
         ":hexagon_delegate_provider",
+        ":external_delegate_provider",
         ":logging",
         ":nnapi_delegate_provider",
         "@com_google_absl//absl/base:core_headers",
@@ -301,6 +302,20 @@ cc_library(
         ":delegate_provider_hdr",
         ":logging",
         "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "external_delegate_provider",
+    srcs = ["external_delegate_provider.cc"],
+    copts = tflite_copts(),
+    linkstatic = True,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":benchmark_model_lib",
+        ":delegate_provider_hdr",
+        ":logging",
     ],
     alwayslink = 1,
 )
