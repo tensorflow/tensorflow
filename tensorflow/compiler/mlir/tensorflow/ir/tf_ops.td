@@ -87,7 +87,7 @@ def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect]> {
   let hasFolder = 1;
 }
 
-def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect]> {
+def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Permute input tensor from `src_format` to `dst_format`";
 
   let description = [{
