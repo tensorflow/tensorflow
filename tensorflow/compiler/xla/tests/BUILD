@@ -1497,8 +1497,6 @@ xla_test(
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
     tags = [
-        "manual",  # TODO(b/151876386)
-        "no_oss",
         "no_rocm",
         "optonly",
     ],
