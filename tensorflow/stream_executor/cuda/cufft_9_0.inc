@@ -275,6 +275,14 @@ cufftResult CUFFTAPI cufftSetStream(cufftHandle plan, cudaStream_t stream) {
   return func_ptr(plan, stream);
 }
 
+cufftResult CUFFTAPI cufftSetCompatibilityMode(cufftHandle plan,
+                                               cufftCompatibility mode) {
+  using FuncPtr = cufftResult(CUFFTAPI *)(cufftHandle, cufftCompatibility);
+  static auto func_ptr = LoadSymbol<FuncPtr>("cufftSetCompatibilityMode");
+  if (!func_ptr) return GetSymbolNotFoundError();
+  return func_ptr(plan, mode);
+}
+
 cufftResult CUFFTAPI cufftDestroy(cufftHandle plan) {
   using FuncPtr = cufftResult(CUFFTAPI *)(cufftHandle);
   static auto func_ptr = LoadSymbol<FuncPtr>("cufftDestroy");
