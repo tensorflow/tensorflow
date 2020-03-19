@@ -285,7 +285,10 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
 
 class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
-      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
+      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>,
+       // All TFL ops are supported on CPU.
+       DeclareOpInterfaceMethods<TFL_CpuTargetOp>
+      ])> {
   // FlatBuffer generation specific information.
   // -------------------------------------------
   // When generating the FlatBuffer output some operations have
