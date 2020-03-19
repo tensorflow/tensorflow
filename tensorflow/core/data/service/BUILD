@@ -4,6 +4,10 @@ load(
     "tf_additional_all_protos",
     "tf_proto_library",
 )
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = [
@@ -38,6 +42,39 @@ tf_proto_library(
     cc_api_version = 2,
     protodeps = tf_additional_all_protos() + [
         ":common_proto",
+    ],
+)
+
+cc_library(
+    name = "compression_utils",
+    srcs = ["compression_utils.cc"],
+    hdrs = [
+        "compression_utils.h",
+    ],
+    deps = [
+        ":common_proto_cc",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "compression_utils_test",
+    srcs = ["compression_utils_test.cc"],
+    deps = [
+        ":compression_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
     ],
 )
 
