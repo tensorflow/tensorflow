@@ -383,7 +383,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     self._auto_track_sub_layers = True
 
   @trackable.no_automatic_dependency_tracking
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -407,9 +407,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
+    Note here that `call()` method in `tf.keras` is little bit different
+    from `keras` API. In `keras` API, you can pass support masking for
+    layers as additional arguements. Whereas `tf.keras` has `compute_mask()`
+    method to support masking.
+
     Arguments:
         inputs: Input tensor, or list/tuple of input tensors.
-        **kwargs: Additional keyword arguments.
+        **kwargs: Additional keyword arguments. Currently unused.
 
     Returns:
         A tensor or list/tuple of tensors.
@@ -508,7 +513,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
-      # The policy is "infer", so we infer the policy from the variable dtype.
+      # The policy is "_infer", so we infer the policy from the variable dtype.
       self._dtype_policy = policy.Policy(dtype.base_dtype.name)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
@@ -597,7 +602,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         self._non_trainable_weights.append(variable)
     return variable
 
-  @base_layer_utils.default
+  @generic_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -737,7 +742,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
-  @base_layer_utils.default
+  @generic_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -1180,7 +1185,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
     ```python
     class MyLayer(tf.keras.layers.Layer):
-      def call(inputs, self):
+      def call(self, inputs):
         self.add_loss(tf.abs(tf.reduce_mean(inputs)), inputs=True)
         return inputs
     ```
@@ -1350,23 +1355,17 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     elif from_metric_obj:
       name = value._metric_obj.name
 
-    if in_call_context:
+    if not in_call_context and not is_symbolic:
+      raise ValueError('Expected a symbolic Tensor for the metric value, '
+                       'received: ' + str(value))
+
+    # If a metric was added in a Layer's `call` or `build`.
+    if in_call_context or not getattr(self, '_is_graph_network', False):
       # TF Function path should take the eager path.
       if is_symbolic and not base_layer_utils.is_in_tf_function():
-        self._symbolic_add_metric(value, aggregation, name)
-      else:
-        self._eager_add_metric(value, aggregation, name)
+        base_layer_utils.check_graph_consistency(value, method='add_metric')
+      self._add_metric(value, aggregation, name)
     else:
-      if not is_symbolic:
-        raise ValueError('Expected a symbolic Tensor for the metric value, '
-                         'received: ' + str(value))
-
-      # Possible a metric was added in a Layer's `build`.
-      if not getattr(self, '_is_graph_network', False):
-        with backend.get_graph().as_default():
-          self._symbolic_add_metric(value, aggregation, name)
-        return
-
       if from_metric_obj:
         raise ValueError('Using the result of calling a `Metric` object '
                          'when calling `add_metric` on a Functional '
@@ -2052,7 +2051,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           "Layer {self.name} is casting an input tensor from dtype "
           "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
           "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          "because it's dtype defaults to floatx.\n\n"
+          'because its dtype defaults to floatx.\n\n'
           ""
           "If you intended to run this layer in {layer_dtype}, you can safely "
           "ignore this warning. If in doubt, this warning is likely only an "
@@ -2104,7 +2103,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           'We found {} metrics with the name: "{}"'.format(len(match), name))
     return match[0]
 
-  def _eager_add_metric(self, value, aggregation=None, name=None):
+  def _add_metric(self, value, aggregation=None, name=None):
     # If the given metric is available in `metrics` list we just update state
     # on it, otherwise we create a new metric instance and
     # add it to the `metrics` list.
@@ -2132,43 +2131,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if should_update_state:
       metric_obj(value)
     return
-
-  def _symbolic_add_metric(self, value, aggregation=None, name=None):
-    base_layer_utils.check_graph_consistency(value, method='add_metric')
-    match = self._get_existing_metric(name)
-    if aggregation is None:
-      # Iterate over the metrics and check if the given metric exists already.
-      # This can happen when a metric instance is created in subclassed model
-      # layer `__init__` and we have tracked that instance already in
-      # model.__setattr__.
-      if match:
-        result_tensor = value
-        metric_obj = match
-      elif hasattr(value, '_metric_obj'):
-        # We track the instance using the metadata on the result tensor.
-        result_tensor = value
-        metric_obj = result_tensor._metric_obj
-        self._metrics.append(metric_obj)
-      else:
-        raise ValueError(
-            'We do not support adding an aggregated metric result tensor that '
-            'is not the output of a `tf.keras.metrics.Metric` metric instance. '
-            'Without having access to the metric instance we cannot reset the '
-            'state of a metric after every epoch during training. You can '
-            'create a `tf.keras.metrics.Metric` instance and pass the result '
-            'here or pass an un-aggregated result with `aggregation` parameter '
-            'set as `mean`. For example: `self.add_metric(tf.reduce_sum(inputs)'
-            ', name=\'mean_activation\', aggregation=\'mean\')`')
-    else:
-      # If a non-aggregated tensor is given as input (ie. `aggregation` is
-      # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
-      if match:
-        result_tensor = match(value)
-        metric_obj = match
-      else:
-        metric_obj, result_tensor = base_layer_utils.create_mean_metric(
-            value, name)
-        self._metrics.append(metric_obj)
 
   def _handle_weight_regularization(self, name, variable, regularizer):
     """Create lambdas which compute regularization losses."""
@@ -2938,7 +2900,7 @@ class KerasHistory(
     layer: The Layer that produced the Tensor.
     node_index: The specific call to the Layer that produced this Tensor. Layers
       can be called multiple times in order to share weights. A new node is
-      created every time a Tensor is called.
+      created every time a Layer is called.
     tensor_index: The output index for this Tensor. Always zero if the Layer
       that produced this Tensor only has one output. Nested structures of
       Tensors are deterministically assigned an index via `nest.flatten`.

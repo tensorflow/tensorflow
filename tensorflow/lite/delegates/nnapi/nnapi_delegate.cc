@@ -30,6 +30,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/lite/nnapi/NeuralNetworksTypes.h"
+
 #ifdef __ANDROID__
 #include <sys/system_properties.h>
 #endif
@@ -147,6 +149,7 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinGreaterEqual:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
+    case kTfLiteBuiltinPow:
       return true;
     default:
       return false;
@@ -1755,7 +1758,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReluN1To1:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinLogistic: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTanh: {
@@ -2063,6 +2066,18 @@ bool NNAPIDelegateKernel::Validate(
       const auto input_type = context->tensors[node->inputs->data[0]].type;
       EXPECT_INPUT_TYPE_IN(input_type, kTfLiteFloat32, kTfLiteUInt8,
                            kTfLiteInt8, kTfLiteInt32);
+      const TfLiteTensor& operand0 = context->tensors[node->inputs->data[0]];
+      if (operand0.dims->size == 0) {
+        Expect(operand0.allocation_type == kTfLiteMmapRo,
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "Scalar operand should be constant", &val_ctx);
+      }
+      const TfLiteTensor& operand1 = context->tensors[node->inputs->data[1]];
+      if (operand1.dims->size == 0) {
+        Expect(operand1.allocation_type == kTfLiteMmapRo,
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "Scalar operand should be constant", &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinCast: {
       ExpectOpVersion(version, 1, &val_ctx);
@@ -3657,6 +3672,61 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
             default:
               return kTfLiteError;
           }
+        }
+      } else if (reg->builtin_code == kTfLiteBuiltinMaximum ||
+                 reg->builtin_code == kTfLiteBuiltinMinimum) {
+        const TfLiteTensor& operand_tensor = context->tensors[input_pos];
+        if (operand_tensor.dims->size == 0) {
+          int tensor_index;
+
+          TF_LITE_ENSURE_EQ(context, operand_tensor.allocation_type,
+                            kTfLiteMmapRo);
+          switch (operand_tensor.type) {
+            case kTfLiteFloat32:
+              TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_FLOAT32, operand_tensor.type, {1},
+                  std::vector<float>(1, operand_tensor.data.f[0]),
+                  operand_tensor.params, &tensor_index));
+              break;
+            case kTfLiteUInt8:
+              TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_QUANT8_ASYMM, operand_tensor.type, {1},
+                  std::vector<uint8_t>(1, operand_tensor.data.uint8[0]),
+                  operand_tensor.params, &tensor_index));
+              break;
+            case kTfLiteInt8:
+              TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_QUANT8_SYMM, operand_tensor.type, {1},
+                  std::vector<int8_t>(1, operand_tensor.data.int8[0]),
+                  operand_tensor.params, &tensor_index));
+              break;
+            case kTfLiteInt32:
+              TF_LITE_ENSURE_STATUS(builder.AddNewInputConstantTensor(
+                  ANEURALNETWORKS_TENSOR_INT32, operand_tensor.type, {1},
+                  std::vector<int32_t>(1, operand_tensor.data.i32[0]),
+                  operand_tensor.params, &tensor_index));
+              break;
+            default:
+              return kTfLiteError;
+          }
+        } else {
+          TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
+                                                       input_tensor_flags));
+        }
+      } else if ((reg->builtin_code == kTfLiteBuiltinReduceAny ||
+                  reg->builtin_code == kTfLiteBuiltinReduceMax ||
+                  reg->builtin_code == kTfLiteBuiltinReduceMin ||
+                  reg->builtin_code == kTfLiteBuiltinReduceProd ||
+                  reg->builtin_code == kTfLiteBuiltinSum) &&
+                 (input_pos == 1)) {
+        // The axis needs, be converted to a tensor if specified as scalar
+        const TfLiteTensor& axis_tensor = context->tensors[1];
+        if (axis_tensor.dims->size == 0) {
+          TF_LITE_ENSURE_STATUS(
+              builder.AddVectorInt32Operand(axis_tensor.data.i32, 1));
+        } else {
+          TF_LITE_ENSURE_STATUS(builder.AddTensorInput(input_index, hybrid_op,
+                                                       input_tensor_flags));
         }
       } else {
         TF_LITE_ENSURE_STATUS(

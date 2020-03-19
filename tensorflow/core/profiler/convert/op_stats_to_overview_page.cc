@@ -230,23 +230,19 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
-  OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
-  InputPipelineAnalysisResult input_analysis =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(input_analysis.step_details());
-  OverviewPageRecommendation recommendation = ComputeGenericRecommendation(
-      bottleneck, op_stats.device_op_metrics_db().precision_stats());
-  SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
-                          &recommendation);
-
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
-  *overview_page.mutable_analysis() = analysis;
-  *overview_page.mutable_input_analysis() = input_analysis;
-  *overview_page.mutable_recommendation() = recommendation;
+  *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
+  *overview_page.mutable_input_analysis() =
+      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
+      bottleneck, op_stats.device_op_metrics_db().precision_stats());
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          overview_page.mutable_recommendation());
   return overview_page;
 }
 

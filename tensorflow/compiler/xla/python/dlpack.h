@@ -24,7 +24,7 @@ namespace xla {
 StatusOr<pybind11::capsule> BufferToDLPackManagedTensor(PyLocalBuffer* buffer);
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> DLPackManagedTensorToBuffer(
-    const pybind11::capsule& tensor, std::shared_ptr<PyLocalClient> client);
+    const pybind11::capsule& tensor, PyLocalClient* client);
 
 }  // namespace xla
 

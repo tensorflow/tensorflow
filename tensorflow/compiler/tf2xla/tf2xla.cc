@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/versions.pb.h"
@@ -42,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/dump_graph.h"
@@ -128,19 +130,31 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   return Status::OK();
 }
 
-void ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
-  for (auto& node : *graph_def->mutable_node()) {
+Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
+  auto update_var_handle_op_node = [](NodeDef& node) -> Status {
     if (node.op() == "VarHandleOp") {
       node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
+      const auto& it = node.attr().find("allowed_devices");
+      if (it != node.attr().end()) {
+        if (!it->second.list().s().empty()) {
+          // TODO(b/149512838): Support non-empty allowed devices.
+          return errors::InvalidArgument(
+              "VarHandleOp with non-empty allowed devices is not supported.");
+        }
+        node.mutable_attr()->erase("allowed_devices");
+      }
     }
+    return Status::OK();
+  };
+  for (auto& node : *graph_def->mutable_node()) {
+    TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
   }
   for (auto& fn : *graph_def->mutable_library()->mutable_function()) {
     for (auto& node : *fn.mutable_node_def()) {
-      if (node.op() == "VarHandleOp") {
-        node.set_op(tfcompile::kXlaAotOnlyVarHandleOp);
-      }
+      TF_RETURN_IF_ERROR(update_var_handle_op_node(node));
     }
   }
+  return Status::OK();
 }
 
 }  // namespace
@@ -149,7 +163,7 @@ Status ConvertGraphDefToXla(GraphDef graph_def, const tf2xla::Config& config,
                             xla::Client* client,
                             xla::XlaComputation* computation) {
   std::unique_ptr<Graph> graph;
-  ConvertVarHandlesToAotVarHandles(&graph_def);
+  TF_RETURN_IF_ERROR(ConvertVarHandlesToAotVarHandles(&graph_def));
   TF_RETURN_IF_ERROR(InitGraph(graph_def, config, &graph));
   TF_RETURN_IF_ERROR(
       ConvertGraphToXla(std::move(graph), config, client, computation));

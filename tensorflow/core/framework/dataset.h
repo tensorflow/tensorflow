@@ -481,6 +481,25 @@ class SerializationContext {
     kFail = 2,
   };
 
+  // Handles the CheckExternalState status according to the external state
+  // policy.
+  Status HandleCheckExternalStateStatus(Status s) {
+    if (s.ok()) {
+      return s;
+    }
+    switch (params_.external_state_policy) {
+      case ExternalStatePolicy::kWarn:
+        LOG(WARNING) << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kIgnore:
+        VLOG(2) << "Ignoring error status: " << s.ToString();
+        return Status::OK();
+      case ExternalStatePolicy::kFail:
+        return s;
+    }
+    LOG(FATAL) << "Control should never reach here";
+  }
+
   struct Params {
     std::vector<std::pair<string, Tensor>>* input_list = nullptr;  // Not owned.
 
@@ -493,7 +512,7 @@ class SerializationContext {
     // `input_list`.
     bool fail_if_unimplemented = true;
 
-    // Indicates whether (potentionally large) data tensors should be
+    // Indicates whether (potentially large) data tensors should be
     // serialized, or replaced with a placeholder returned in `input_list`. The
     // latter makes sense to do when performing data agnostic graph rewrites to
     // reduce the memory usage.
@@ -589,7 +608,7 @@ class IteratorBase {
 
   // Saves the state of this iterator.
   virtual Status Save(SerializationContext* ctx, IteratorStateWriter* writer) {
-    return SaveInternal(writer);
+    return SaveInternal(ctx, writer);
   }
 
  protected:
@@ -604,9 +623,17 @@ class IteratorBase {
 
   // This is needed so that sub-classes of IteratorBase can call
   // `SaveInternal` on their input iterators.
+  Status SaveInput(SerializationContext* ctx, IteratorStateWriter* writer,
+                   const std::unique_ptr<IteratorBase>& input) {
+    return input->SaveInternal(ctx, writer);
+  }
+
+  // TODO(jsimsa): Remove this override when all callers are migrated to the
+  // override that uses SerializationContext.
   Status SaveInput(IteratorStateWriter* writer,
                    const std::unique_ptr<IteratorBase>& input) {
-    return input->SaveInternal(writer);
+    SerializationContext ctx(/*params=*/{});
+    return input->SaveInternal(&ctx, writer);
   }
 
   // This is needed so that sub-classes of IteratorBase can call
@@ -619,11 +646,17 @@ class IteratorBase {
   // Saves the state of this iterator.
   //
   // This method is used to store the state of the iterator in a checkpoint.
-  //
-  // TODO(jsimsa): Make this method pure virtual once all `IteratorBase`
   // implementations have an override.
+  virtual Status SaveInternal(SerializationContext* ctx,
+                              IteratorStateWriter* writer) {
+    return SaveInternal(writer);
+  }
+
+  // TODO(jsimsa): Remove this override when all subclasses are migrated to the
+  // override that accepts SerializationContext and make that override pure
+  // virtual.
   virtual Status SaveInternal(IteratorStateWriter* writer) {
-    return errors::Unimplemented("SaveInternal");
+    return errors::Unimplemented("checkpointing is not supported");
   }
 
   // Restores the state of this iterator.
@@ -633,15 +666,11 @@ class IteratorBase {
   // Implementations may assume that the iterator is in a clean state. That is,
   // its `Initialize` method has been called, but its `GetNext` method has
   // never been called.
-  //
-  // TODO(jsimsa): Make this method pure virtual once all `IteratorBase`
   // implementations have an override.
   virtual Status RestoreInternal(IteratorContext* ctx,
-                                 IteratorStateReader* reader) {
-    return errors::Unimplemented("RestoreInternal");
-  }
+                                 IteratorStateReader* reader) = 0;
 
-  // Returns the number of elements produced by this itertaor.
+  // Returns the number of elements produced by this iterator.
   int64 num_elements() const {
     if (node_) return node_->num_elements();
     return 0;
@@ -749,22 +778,6 @@ class DatasetBase : public core::RefCounted {
     return MakeIterator(&ctx, parent, output_prefix, iterator);
   }
 
-  // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
-  // that passes in the parent iterator pointer.
-  ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
-  Status MakeIterator(IteratorContext* ctx, const string& output_prefix,
-                      std::unique_ptr<IteratorBase>* iterator) const {
-    return MakeIterator(ctx, /*parent=*/nullptr, output_prefix, iterator);
-  }
-
-  // TODO(jsimsa): Remove this overlead once all callers are migrated to the API
-  // that passes in the parent iterator pointer.
-  ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
-  Status MakeIterator(IteratorContext&& ctx, const string& output_prefix,
-                      std::unique_ptr<IteratorBase>* iterator) const {
-    return MakeIterator(&ctx, output_prefix, iterator);
-  }
-
   // Returns a new iterator restored from the checkpoint data in `reader`.
   Status MakeIteratorFromCheckpoint(
       IteratorContext* ctx, const string& output_prefix,
@@ -807,26 +820,11 @@ class DatasetBase : public core::RefCounted {
   // A human-readable debug string for this dataset.
   virtual string DebugString() const = 0;
 
-  // If the dataset is stateful it will not be possible to save its graph or
-  // checkpoint the state of its iterators.
-  //
-  // TODO(jsimsa): Remove this method once all `DatasetBase` implementations are
-  // migrated over to `CheckExternalState`.
-  ABSL_DEPRECATED("Use CheckExternalState instead.")
-  virtual bool IsStateful() const { return false; }
-
-  // Indicates whether the dataset depends on any external state. If so, the
-  // method returns `errors::FailedPrecondition` with a message that identifies
-  // the external state. Otherwise, the method returns `Status::OK()`.
-  //
-  // TODO(jsimsa): Make this method pure virtual once all `DatasetBase`
-  // implementations have an override.
-  virtual Status CheckExternalState() const {
-    if (IsStateful()) {
-      return errors::FailedPrecondition("Dataset cannot be serialized.");
-    }
-    return Status::OK();
-  }
+  // Indicates whether the dataset depends on any external state which would
+  // prevent it from being serializable. If so, the method returns
+  // `errors::FailedPrecondition` with a message that identifies the external
+  // state. Otherwise, the method returns `Status::OK()`.
+  virtual Status CheckExternalState() const = 0;
 
  protected:
   friend Status AsGraphDef(
@@ -907,17 +905,6 @@ class DatasetBaseIterator : public IteratorBase {
   }
 
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
-    Status s = params_.dataset->CheckExternalState();
-    if (!s.ok()) {
-      if (ctx->external_state_policy() ==
-          SerializationContext::ExternalStatePolicy::kWarn) {
-        LOG(WARNING) << "Dataset contains external state: " << s.ToString();
-      }
-      if (ctx->external_state_policy() ==
-          SerializationContext::ExternalStatePolicy::kFail) {
-        return s;
-      }
-    }
     return IteratorBase::Save(ctx, writer);
   }
 
@@ -1086,6 +1073,8 @@ class DatasetOpKernel : public OpKernel {
   // the `DatasetOpKernel` class.
   static bool IsDatasetOp(const OpDef* op_def);
 
+  string TraceString(OpKernelContext* ctx, bool verbose) override;
+
  protected:
   // Subclasses should implement this method. It will be called during Compute
   // execution.
@@ -1149,8 +1138,8 @@ class BackgroundWorker {
   std::unique_ptr<Thread> thread_;
   mutex mu_;
   condition_variable cond_var_;
-  bool cancelled_ GUARDED_BY(mu_) = false;
-  std::deque<std::function<void()>> work_queue_ GUARDED_BY(mu_);
+  bool cancelled_ TF_GUARDED_BY(mu_) = false;
+  std::deque<std::function<void()>> work_queue_ TF_GUARDED_BY(mu_);
 };
 
 // Registry of names of ops whose kernels subclass the `DatasetOpKernel` class.

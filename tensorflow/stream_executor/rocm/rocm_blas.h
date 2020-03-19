@@ -78,7 +78,7 @@ class ROCMBlas : public blas::BlasSupport {
   // rocBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into rocBLAS.
-  bool SetStream(Stream *stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real rocBLAS function together with error
   // handling.
@@ -188,7 +188,7 @@ class ROCMBlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // rocBLAS library handle on the device.
-  rocblas_handle blas_ GUARDED_BY(mu_);
+  rocblas_handle blas_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };

@@ -58,15 +58,15 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
   explicit RewriteDequantize(int64_t size, MLIRContext *context)
       : OpRewritePattern<quant::DequantizeCastOp>(context), size_(size) {}
 
-  PatternMatchResult matchAndRewrite(quant::DequantizeCastOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(quant::DequantizeCastOp op,
+                                PatternRewriter &rewriter) const override {
     // quant.dcast
     // xla_hlo dequantize only takes min/max, so let's recover them from
     // the quantization parameters.
     Value dcast = op.arg();
     auto type = quant::QuantizedType::getQuantizedElementType(dcast.getType());
     if (!type || !type.isa<quant::UniformQuantizedType>()) {
-      return matchFailure();
+      return failure();
     }
     auto qtype = type.cast<quant::UniformQuantizedType>();
     double scale = qtype.getScale();
@@ -77,7 +77,7 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
     // quant.qcast
     auto qcast =
         llvm::dyn_cast_or_null<quant::QuantizeCastOp>(dcast.getDefiningOp());
-    if (!qcast) return matchFailure();
+    if (!qcast) return failure();
 
     // constant
     DenseFPElementsAttr attr;
@@ -88,7 +88,7 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
         attr.getNumElements() <= size_ ||
         attr.getType().getDimSize(attr.getType().getRank() - 1) % 4 != 0) {
       op.getResult().replaceAllUsesWith(qcast.arg());
-      return matchSuccess();
+      return success();
     }
     // TODO(fengliuai): implement transpose if it has high dimension.
 
@@ -96,7 +96,7 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
     auto quantized_result =
         quant::Quantize(attr, qtype).dyn_cast_or_null<DenseIntElementsAttr>();
     if (!quantized_result) {
-      return matchFailure();
+      return failure();
     }
 
     // Pack the uint8 bits to uint32. The shape is changed from from
@@ -133,7 +133,7 @@ class RewriteDequantize : public OpRewritePattern<quant::DequantizeCastOp> {
     // Convert bf16 output back to f32
     rewriter.replaceOpWithNewOp<ConvertOp>(op, op.getResult().getType(),
                                            dequantize);
-    return matchSuccess();
+    return success();
   }
 
  private:

@@ -33,6 +33,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_tflite_model_lib",
         ":logging",
@@ -52,6 +53,7 @@ cc_binary(
         ],
         "//conditions:default": [],
     }),
+    tags = ["builder_default_android_arm64"],
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
@@ -90,10 +92,12 @@ cc_test(
     args = [
         "--fp32_graph=$(location //tensorflow/lite:testdata/multi_add.bin)",
         "--int8_graph=$(location //tensorflow/lite:testdata/add_quantized_int8.bin)",
+        "--string_graph=$(location //tensorflow/lite:testdata/string_input_model.bin)",
     ],
     data = [
         "//tensorflow/lite:testdata/add_quantized_int8.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
+        "//tensorflow/lite:testdata/string_input_model.bin",
     ],
     tags = [
         "tflite_not_portable_android",
@@ -102,10 +106,13 @@ cc_test(
     deps = [
         ":benchmark_performance_options",
         ":benchmark_tflite_model_lib",
+        ":delegate_provider_hdr",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/algorithm",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -148,6 +155,7 @@ cc_library(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/experimental/ruy/profiler",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:profile_summary_formatter",
         "//tensorflow/lite/tools/evaluation:utils",

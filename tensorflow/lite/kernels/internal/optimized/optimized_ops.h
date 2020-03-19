@@ -1318,7 +1318,7 @@ inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, filter_rows, filter_cols, gemm_input_data,
       scaling_factors_ptr, /*n_batch=*/gemm_input_rows, accum_scratch,
-      output_data, /*result_stride=*/1, context);
+      output_data, context);
   AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
                                    bias_shape, bias_data, output_shape,
                                    output_data);
@@ -3973,7 +3973,7 @@ inline void LocalResponseNormalization(
   // In a few cases, the pow computation could benefit from speedups.
   if (op_params.beta == 1) {
     data_out.array() = data_in.array() * data_out.array().inverse();
-  } else if (op_params.beta == 0.5) {
+  } else if (op_params.beta == 0.5f) {
     data_out.array() = data_in.array() * data_out.array().sqrt().inverse();
   } else {
     data_out.array() = data_in.array() * data_out.array().pow(-op_params.beta);
@@ -4071,16 +4071,20 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
-inline int32_t QuantizeSoftmaxOutput(int8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
+template <typename T>
+inline int32_t QuantizeSoftmaxOutput(float prob_rescaled, int32_t zero_point) {
   const int32_t prob_rnd = static_cast<int32_t>(std::round(prob_rescaled));
   return prob_rnd + zero_point;
 }
 
-inline int32_t QuantizeSoftmaxOutput(uint8_t* output_data, float prob_rescaled,
-                                     int32_t zero_point) {
-  return static_cast<int32_t>(prob_rescaled + 0.5);
+#if !__aarch64__
+// With ARM64, rounding is faster than add + truncation.
+template <>
+inline int32_t QuantizeSoftmaxOutput<uint8_t>(float prob_rescaled,
+                                              int32_t zero_point) {
+  return static_cast<int32_t>(prob_rescaled + 0.5f);
 }
+#endif
 
 inline void PopulateSoftmaxLookupTable(SoftmaxParams* data, float input_scale,
                                        float beta) {
@@ -4123,7 +4127,7 @@ inline void Softmax(const SoftmaxParams& params,
     for (int j = 0; j < last_dim; ++j) {
       const float prob_rescaled = table_offset[input_data[j]] * inv_sum_exp;
       const int32_t prob_quantized =
-          QuantizeSoftmaxOutput(output_data, prob_rescaled, params.zero_point);
+          QuantizeSoftmaxOutput<T>(prob_rescaled, params.zero_point);
       output_data[j] = static_cast<T>(
           std::max(std::min(clamp_max, prob_quantized), clamp_min));
     }
@@ -4964,12 +4968,24 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BatchToSpaceND");
 
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
@@ -4980,10 +4996,12 @@ inline void BatchToSpaceND(
   const int input_height = input1_shape.Dims(1);
   const int input_batch_size = input1_shape.Dims(0);
 
-  const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int crops_top = crops_data[0];
-  const int crops_left = crops_data[2];
+  const int crops_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
 
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
     const int out_batch = in_batch % output_batch_size;

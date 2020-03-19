@@ -30,27 +30,34 @@ using mlir::AffineMap;
 using mlir::Builder;
 using mlir::DenseElementsAttr;
 using mlir::ShapedType;
-using xla::Literal;
+using xla::LiteralBase;
 using xla::StatusOr;
 
 template <typename CppType>
-::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(const ShapedType& type,
-                                                     const Literal& literal) {
+::mlir::DenseElementsAttr CreateDenseAttrFromLiteral(
+    const ShapedType& type, const LiteralBase& literal) {
   auto data_span = literal.data<CppType>();
   return ::mlir::DenseElementsAttr::get(
       type, llvm::makeArrayRef(data_span.data(), data_span.size()));
 }
 
-llvm::SmallVector<AffineMap, 2> GetPermutationIfAvailable(
+StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     const Shape& shape, mlir::Builder builder) {
-  if (!shape.has_layout() || shape.layout().minor_to_major().empty()) {
-    return {};
+  if (!shape.has_layout() ||
+      LayoutUtil::IsMonotonicWithDim0Major(shape.layout())) {
+    return llvm::SmallVector<AffineMap, 1>{};
   }
-  llvm::SmallVector<unsigned, 2> permutation;
+  if (!shape.is_static()) {
+    return tensorflow::errors::Internal(
+        "Permutations for dynamic shapes are not yet supported");
+  }
+  llvm::SmallVector<int64_t, 2> permuted_sizes;
   for (auto dim : llvm::reverse(shape.layout().minor_to_major())) {
-    permutation.push_back(dim);
+    permuted_sizes.push_back(shape.dimensions(dim));
   }
-  return {AffineMap::getPermutationMap(permutation, builder.getContext())};
+  return llvm::SmallVector<AffineMap, 1>{AffineMap::get(
+      permuted_sizes.size(), 0,
+      makeCanonicalStridedLayoutExpr(permuted_sizes, builder.getContext()))};
 }
 
 }  // namespace
@@ -64,12 +71,14 @@ StatusOr<mlir::MemRefType> ConvertTensorShapeToMemRefType(
   using mlir::MemRefType;
   auto dimensions = shape.dimensions();
   llvm::SmallVector<int64_t, 4> array(dimensions.begin(), dimensions.end());
+  auto permutation_or = GetPermutationIfAvailable(shape, builder);
+  if (!permutation_or.ok()) return permutation_or.status();
   return MemRefType::get(array, element_type_or.ValueOrDie(),
-                         GetPermutationIfAvailable(shape, builder));
+                         permutation_or.ValueOrDie());
 }
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, Builder builder) {
+    const LiteralBase& literal, Builder builder) {
   TF_ASSIGN_OR_RETURN(auto type,
                       ConvertTensorShapeToType<mlir::RankedTensorType>(
                           literal.shape(), builder));

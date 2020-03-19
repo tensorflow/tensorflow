@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
+
 from tensorflow.python.eager import test
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -28,7 +30,7 @@ class ProfilerClientTest(test_util.TensorFlowTestCase):
 
   def testStartTracing_ProcessInvalidAddress(self):
     with self.assertRaises(errors.UnavailableError):
-      profiler_client.trace('localhost:6006', '/tmp/', 2000)
+      profiler_client.trace('localhost:6006', tempfile.mkdtemp(), 2000)
 
   def testMonitor_ProcessInvalidAddress(self):
     with self.assertRaises(errors.UnavailableError):

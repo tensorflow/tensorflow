@@ -1201,9 +1201,6 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
     if not size.get_shape().is_compatible_with([2]):
       raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width')
-    size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape.dims[0].value
-    new_width_const = size_const_as_shape.dims[1].value
 
     if preserve_aspect_ratio:
       # Get the current shapes of the image, even if dynamic.
@@ -1211,10 +1208,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
 
       # do the computation to find the right scale and height/width.
       scale_factor_height = (
-          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(size[0], dtypes.float32) /
           math_ops.cast(current_height, dtypes.float32))
       scale_factor_width = (
-          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(size[1], dtypes.float32) /
           math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
       scaled_height_const = math_ops.cast(
@@ -1230,9 +1227,10 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
                                    dtypes.int32,
                                    name='size')
-      size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape.dims[0].value
-      new_width_const = size_const_as_shape.dims[1].value
+
+    size_const_as_shape = tensor_util.constant_value_as_shape(size)
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
@@ -1374,11 +1372,11 @@ def resize_images_v2(images,
   >>> tf.image.resize(image[0], [3,5]).shape.as_list()
   [3, 5, 1]
 
-  When 'antialias' is true, the sampling filter will anti-alias the input image
+  When `antialias` is true, the sampling filter will anti-alias the input image
   as well as interpolate.  When downsampling an image with [anti-aliasing](
   https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
   kernel is scaled in order to properly anti-alias the input image signal.
-  'antialias' has no effect when upsampling an image:
+  `antialias` has no effect when upsampling an image:
 
   >>> a = tf.image.resize(image, [5,10])
   >>> b = tf.image.resize(image, [5,10], antialias=True)
@@ -1388,8 +1386,8 @@ def resize_images_v2(images,
   The `method` argument expects an item from the `image.ResizeMethod` enum, or
   the string equivalent. The options are:
 
-  *   <b>`'bilinear'`</b>: [Bilinear interpolation.](
-    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If `antialias` is
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
@@ -1407,9 +1405,9 @@ def resize_images_v2(images,
     sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-    'antialias' has no effect when used with nearest neighbor interpolation.
+    `antialias` has no effect when used with nearest neighbor interpolation.
   *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
-    'antialias' has no effect when used with area interpolation; it
+    `antialias` has no effect when used with area interpolation; it
     always anti-aliases.
   *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
     For synthetic images (especially those lacking proper prefiltering), less
@@ -2512,7 +2510,7 @@ tf_export(
         gen_image_ops.extract_jpeg_shape)
 
 
-@tf_export('image.encode_png')
+@tf_export('io.encode_png', 'image.encode_png')
 def encode_png(image, compression=-1, name=None):
   r"""PNG-encode an image.
 
@@ -3254,19 +3252,6 @@ def rgb_to_yuv(images):
   Outputs a tensor of the same shape as the `images` tensor, containing the YUV
   value of the pixels.
   The output is only well defined if the value in images are in [0,1].
-
-  Usage Example:
-
-  >>> x = [[[1.0, 2.0, 3.0],
-  ...       [4.0, 5.0, 6.0]],
-  ...     [[7.0, 8.0, 9.0],
-  ...       [10.0, 11.0, 12.0]]]
-  >>> tf.image.rgb_to_yuv(x)
-  <tf.Tensor: shape=(2, 2, 3), dtype=float32, numpy=
-  array([[[ 1.815    ,  0.5831516, -0.7149856],
-          [ 4.815    ,  0.5831516, -0.7149855]],
-         [[ 7.815    ,  0.5831516, -0.7149856],
-          [10.815001 ,  0.5831518, -0.7149852]]], dtype=float32)>
 
   Args:
     images: 2-D or higher rank. Image data to convert. Last dimension must be

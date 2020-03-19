@@ -164,6 +164,11 @@ class Conv2DTest(keras_parameterized.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv2d_zero_kernel_size(self):
+    kwargs = {'filters': 2, 'kernel_size': 0}
+    with self.assertRaises(ValueError):
+      keras.layers.Conv2D(**kwargs)
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv3DTest(keras_parameterized.TestCase):

@@ -368,14 +368,20 @@ bool GraphCycles::CanContractEdge(int32 a, int32 b) {
   return !reachable;
 }
 
-bool GraphCycles::ContractEdge(int32 a, int32 b) {
+absl::optional<int32> GraphCycles::ContractEdge(int32 a, int32 b) {
   CHECK(HasEdge(a, b));
   RemoveEdge(a, b);
 
   if (IsReachableNonConst(a, b)) {
     // Restore the graph to its original state.
     InsertEdge(a, b);
-    return false;
+    return absl::nullopt;
+  }
+
+  if (rep_->nodes_[b]->in.Size() + rep_->nodes_[b]->out.Size() >
+      rep_->nodes_[a]->in.Size() + rep_->nodes_[a]->out.Size()) {
+    // Swap "a" and "b" to minimize copying.
+    std::swap(a, b);
   }
 
   Node* nb = rep_->nodes_[b];
@@ -399,7 +405,8 @@ bool GraphCycles::ContractEdge(int32 a, int32 b) {
     InsertEdge(y, a);
   }
 
-  return true;
+  // Note, if the swap happened it might be what originally was called "b".
+  return a;
 }
 
 absl::Span<const int32> GraphCycles::Successors(int32 node) const {

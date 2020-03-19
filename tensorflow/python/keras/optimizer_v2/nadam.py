@@ -61,6 +61,8 @@ class Nadam(optimizer_v2.OptimizerV2):
     See [Dozat, T., 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
   """
 
+  _HAS_ALL_REDUCE_SUM_GRAD = True
+
   def __init__(self,
                learning_rate=0.001,
                beta_1=0.9,
@@ -78,7 +80,7 @@ class Nadam(optimizer_v2.OptimizerV2):
         rate for the exponentially weighted infinity norm.
       epsilon: A small constant for numerical stability.
       name: Optional name for the operations created when applying gradients.
-        Defaults to "Adamax".
+        Defaults to "Nadam".
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
         `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
         gradients by value, `decay` is included for backward compatibility to

@@ -546,13 +546,13 @@ Status IsOptimizationAlgorithmInternal(OptimizationAlgorithm alg,
     case OptimizationAlgorithm::kCenteredRmsProp:
     case OptimizationAlgorithm::kMdlAdagradLight:
     case OptimizationAlgorithm::kAdadelta:
-    case OptimizationAlgorithm::kProximalAdagrad: {
+    case OptimizationAlgorithm::kProximalAdagrad:
+    case OptimizationAlgorithm::kProximalYogi: {
       *internal = false;
       return Status::OK();
     }
     case OptimizationAlgorithm::kBoundedAdagrad:
-    case OptimizationAlgorithm::kOnlineYogi:
-    case OptimizationAlgorithm::kProximalYogi: {
+    case OptimizationAlgorithm::kOnlineYogi: {
       *internal = true;
       return Status::OK();
     }

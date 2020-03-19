@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow/core/platform/default:distribute.bzl", "distribute_py_test")
+load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -163,7 +164,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
@@ -560,6 +560,19 @@ py_library(
     ],
 )
 
+tpu_py_test(
+    name = "tpu_strategy_test",
+    srcs = ["tpu_strategy_test.py"],
+    disable_experimental = True,
+    python_version = "PY3",
+    deps = [
+        ":tpu_strategy",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 # Used only by estimator.
 py_library(
     name = "estimator_training",
@@ -778,7 +791,9 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -826,6 +841,8 @@ cuda_py_test(
     srcs = ["cross_device_ops_test.py"],
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # TODO(b/151025792): enable after this is fixed.
+        "notap",  # TODO(b/151025792): enable after this is fixed.
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -919,6 +936,9 @@ distribute_py_test(
     main = "values_test.py",
     tags = [
         "multi_and_single_gpu",
+    ],
+    tpu_tags = [
+        "no_oss",  # Target too big to run serially reliably.
     ],
     deps = [
         ":mirrored_strategy",

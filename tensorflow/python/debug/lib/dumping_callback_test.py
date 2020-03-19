@@ -46,6 +46,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging
 
 
 def _create_simple_recurrent_keras_model(input_shape):
@@ -106,6 +108,27 @@ class TracingCallbackTest(
       dumping_callback.enable_dump_debug_info(
           self.dump_root, tensor_debug_mode="NONSENSICAL")
 
+  @parameterized.named_parameters(
+      ("NoTensor", "NO_TENSOR"),
+      ("CurtHealth", "CURT_HEALTH"),
+      ("ConciseHealth", "CONCISE_HEALTH"),
+      ("Shape", "SHAPE"),
+      ("FulHealth", "FULL_HEALTH"),
+      ("FullTensor", "FULL_TENSOR"),
+  )
+  def testEnableDumpDebugInfoLogsTensorDebugModeAsStringName(self,
+                                                             tensor_debug_mode):
+    log_messages = []
+    def fake_logging_info(*args):
+      log_messages.append(args)
+    with test.mock.patch.object(
+        tf_logging, "info", side_effect=fake_logging_info):
+      dumping_callback.enable_dump_debug_info(
+          self.dump_root, tensor_debug_mode=tensor_debug_mode)
+      self.assertLen(log_messages, 1)
+      self.assertIn(self.dump_root, log_messages[0])
+      self.assertIn(tensor_debug_mode, log_messages[0])
+
   def testDisablingTracingCallbackWithoutEnablingFirstIsTolerated(self):
     dumping_callback.disable_dump_debug_info()
 
@@ -114,6 +137,7 @@ class TracingCallbackTest(
       ("CurtHealth", "CURT_HEALTH"),
       ("ConciseHealth", "CONCISE_HEALTH"),
       ("Shape", "SHAPE"),
+      ("FullHealth", "FULL_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testPureEagerOpExecution(self, tensor_debug_mode):
@@ -186,6 +210,17 @@ class TracingCallbackTest(
             # Remaining elements: no -inf, inf or nan in these
             self.assertAllClose(
                 execution.debug_tensor_values, [[-1, 1, 0, 0, 0]])
+        elif tensor_debug_mode == "FULL_HEALTH":
+          if execution.op_type in ("AddV2", "Mul", "RealDiv"):
+            # Elements: [
+            #   -1 is the unset tensor_id for eager op execution,
+            #   device ID (set to -1 for now),
+            #   dtype, rank, element_count,
+            #   neg_inf_count, pos_inf_count, nan_count
+            #   neg_finite_count, zero_count, pos_finite_count]
+            self.assertAllClose(
+                execution.debug_tensor_values,
+                [[-1, -1, 1, 0, 1, 0, 0, 0, 0, 0, 1]])
         elif tensor_debug_mode == "SHAPE":
           if execution.op_type in ("AddV2", "Mul", "RealDiv"):
             # 1st element: -1 is the unset tensor_id for eager op execution.
@@ -248,6 +283,7 @@ class TracingCallbackTest(
   @parameterized.named_parameters(
       ("CurtHealth", "CURT_HEALTH"),
       ("ConciseHealth", "CONCISE_HEALTH"),
+      ("FullHealth", "FULL_HEALTH"),
       ("Shape", "SHAPE"),
   )
   @test_util.run_in_graph_and_eager_modes
@@ -261,6 +297,7 @@ class TracingCallbackTest(
 
     x = np.array([-3, -1, 0, 0, 1, 1, 1, 2], dtype=np.float16)
     y = np.array([2, -1, 0, 0, 1, 1, 1, 3], dtype=np.float16)
+    # x - y = [-5, 0, 0, 0, 0, 0, 0, -1]
     # (x + y) / (x - y) = [0.2, -inf, nan, nan, inf, inf, inf, -5].
     self.evaluate(func(x, y))
     writer.FlushNonExecutionFiles()
@@ -296,6 +333,22 @@ class TracingCallbackTest(
           else:
             self.assertAllClose(trace.debug_tensor_value,
                                 [tensor_id, 8, 0, 0, 0])
+      elif tensor_debug_mode == "FULL_HEALTH":
+        for trace in graph_exec_traces:
+          # Elements: [
+          #   -1 is the unset tensor_id for eager op execution,
+          #   device ID (set to -1 for now),
+          #   dtype, rank, element_count,
+          #   neg_inf_count, pos_inf_count, nan_count
+          #   neg_finite_count, zero_count, pos_finite_count]
+          tensor_id = reader.graph_execution_trace_to_tensor_id(trace)
+          self.assertGreaterEqual(tensor_id, 0)
+          if trace.op_type == "RealDiv":
+            self.assertAllClose(trace.debug_tensor_value,
+                                [tensor_id, -1, 19, 1, 8, 1, 3, 2, 1, 0, 1])
+          elif trace.op_type == "Sub":
+            self.assertAllClose(trace.debug_tensor_value,
+                                [tensor_id, -1, 19, 1, 8, 0, 0, 0, 2, 6, 0])
       else:  # SHAPE.
         for trace in graph_exec_traces:
           # 1st element: tensor_id, should be >= 0.
@@ -379,6 +432,7 @@ class TracingCallbackTest(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
       ("ConciseHealth", "CONCISE_HEALTH"),
+      ("FullHealth", "FULL_HEALTH"),
       ("Shape", "SHAPE"),
       ("FullTensor", "FULL_TENSOR"),
   )
@@ -573,6 +627,49 @@ class TracingCallbackTest(
         self.assertAllClose(
             non_placeholder_traces[3].debug_tensor_value,
             [sin_op_digests[0].output_tensor_ids[0], 1.0, 0.0, 0.0, 0.0])
+      elif tensor_debug_mode == "FULL_HEALTH":
+        # Elements: [
+        #   -1 is the unset tensor_id for eager op execution,
+        #   device ID (set to -1 for now),
+        #   dtype, rank, element_count,
+        #   neg_inf_count, pos_inf_count, nan_count
+        #   neg_finite_count, zero_count, pos_finite_count]
+        self.assertAllClose(  # 1st outer placeholder.
+            placeholder_traces[0].debug_tensor_value,
+            [placeholder_op_digests[0].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        self.assertAllClose(  # 2nd outer placeholder.
+            placeholder_traces[1].debug_tensor_value,
+            [placeholder_op_digests[1].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        self.assertAllClose(  # 1st inner placeholder.
+            placeholder_traces[2].debug_tensor_value,
+            [placeholder_op_digests[2].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        self.assertAllClose(  # 2nd outer placeholder.
+            placeholder_traces[3].debug_tensor_value,
+            [placeholder_op_digests[3].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        # 1st AddV2 op.
+        self.assertAllClose(
+            non_placeholder_traces[0].debug_tensor_value,
+            [add_op_digests[0].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        # Log op.
+        self.assertAllClose(
+            non_placeholder_traces[1].debug_tensor_value,
+            [log_op_digests[0].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        # 2nd AddV2 op.
+        self.assertAllClose(
+            non_placeholder_traces[2].debug_tensor_value,
+            [add_op_digests[1].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
+        # Sin op.
+        self.assertAllClose(
+            non_placeholder_traces[3].debug_tensor_value,
+            [sin_op_digests[0].output_tensor_ids[0],
+             -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
       elif tensor_debug_mode == "SHAPE":
         # 1st element: tensor_id.
         # 2nd element: dtype (float32).
@@ -1070,6 +1167,7 @@ class TracingCallbackTest(
       ("NoTensor", "NO_TENSOR"),
       ("CurtHealth", "CURT_HEALTH"),
       ("ConciseHealth", "CONCISE_HEALTH"),
+      ("FullHealth", "FULL_HEALTH"),
       ("Shape", "SHAPE"),
       ("FullTensor", "FULL_TENSOR"),
   )
@@ -1134,6 +1232,18 @@ class TracingCallbackTest(
         # 2nd element: element count. Remaining elements: all zero because there
         # is no -inf, inf or nan.
         self.assertAllClose(trace.debug_tensor_value, [tensor_id, 1, 0, 0, 0])
+    elif tensor_debug_mode == "FULL_HEALTH":
+      for trace in graph_exec_traces:
+        tensor_id = reader.graph_execution_trace_to_tensor_id(trace)
+        # Elements: [
+        #   -1 is the unset tensor_id for eager op execution,
+        #   device ID (set to -1 for now),
+        #   dtype, rank, element_count,
+        #   neg_inf_count, pos_inf_count, nan_count
+        #   neg_finite_count, zero_count, pos_finite_count]
+        self.assertAllClose(
+            trace.debug_tensor_value,
+            [tensor_id, -1, 1, 0, 1, 0, 0, 0, 0, 0, 1])
     elif tensor_debug_mode == "SHAPE":
       for trace in graph_exec_traces:
         if trace.op_type == "Mul":

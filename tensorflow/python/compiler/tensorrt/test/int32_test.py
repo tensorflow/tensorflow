@@ -81,7 +81,8 @@ class CalibrationInt32Support(trt_test.TfTrtIntegrationTestBase):
     # Although test passes with all configurations but only
     # execute INT8 with use_calibration=True because
     # that is the purpose of the test.
-    return trt_test.IsQuantizationWithCalibration(run_params)
+    return trt_test.IsQuantizationWithCalibration(
+        run_params), 'test calibration and INT8'
 
   def ExpectedEnginesToBuild(self, run_params):
     return ['TRTEngineOp_0']

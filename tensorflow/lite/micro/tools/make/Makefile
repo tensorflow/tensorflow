@@ -93,6 +93,9 @@ $(wildcard tensorflow/lite/micro/*test.cc) \
 $(wildcard tensorflow/lite/micro/kernels/*test.cc) \
 $(wildcard tensorflow/lite/micro/memory_planner/*test.cc)
 
+MICROLITE_BENCHMARK_SRCS := \
+$(wildcard tensorflow/lite/micro/kernels/xtensa-hifimini/*benchmark.cc)
+
 MICROLITE_TEST_HDRS := \
 $(wildcard tensorflow/lite/micro/testing/*.h)
 
@@ -106,9 +109,11 @@ tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc \
-tensorflow/lite/kernels/kernel_util.cc
+tensorflow/lite/kernels/kernel_util.cc \
+tensorflow/lite/micro/testing/test_utils.cc
 
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
+MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_BENCHMARK_SRCS), $(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/micro/*.h) \
@@ -157,6 +162,7 @@ tensorflow/lite/kernels/internal/reference/reduce.h \
 tensorflow/lite/kernels/internal/reference/requantize.h \
 tensorflow/lite/kernels/internal/reference/round.h \
 tensorflow/lite/kernels/internal/reference/softmax.h \
+tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \

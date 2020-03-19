@@ -57,7 +57,9 @@ cuda_py_test(
     name = "profiler_v2_test",
     srcs = ["profiler_v2_test.py"],
     python_version = "PY3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+    ],
     deps = [
         ":profiler_v2",
         "//tensorflow/python:constant_op",
@@ -216,12 +218,23 @@ py_test(
 )
 
 py_library(
+    name = "trace",
+    srcs = ["trace.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:util",
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
     name = "traceme",
     srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python/profiler/internal:_pywrap_traceme",
-        "@six_archive//:six",
+        ":trace",
     ],
 )
 

@@ -632,7 +632,7 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
     greater_op_outputs = instrument.graph_internal_ndarrays[_GREATER_OP]
     self.assertEqual(len(greater_op_outputs), 1)
     self.assertAllClose(greater_op_outputs[0], False)
-    pow_op_outputs = instrument.graph_internal_ndarrays[b"pow"]
+    pow_op_outputs = instrument.graph_internal_ndarrays[b"cond/pow"]
     self.assertEqual(len(pow_op_outputs), 1)
     self.assertAllClose(pow_op_outputs[0], -64.0)
 
@@ -660,9 +660,9 @@ class OpCallbacksTest(test_util.TensorFlowTestCase):
 
     # Check the graph internal ndarrays recorded at runtime.
     read_variable_op_outputs = instrument.graph_internal_ndarrays[
-        _READ_VARIABLE_OP]
+        b"while/" + _READ_VARIABLE_OP]
     self.assertAllClose(read_variable_op_outputs, [1.0, 2.0, 4.0, 8.0])
-    less_op_outputs = instrument.graph_internal_ndarrays[_LESS_OP]
+    less_op_outputs = instrument.graph_internal_ndarrays[b"while/" + _LESS_OP]
     self.assertAllClose(less_op_outputs, [True, True, True, True, False])
 
   # TODO(cais): The following isn't decorated with

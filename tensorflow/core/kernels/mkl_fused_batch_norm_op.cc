@@ -42,15 +42,29 @@ struct MklBatchNormFwdParams {
   int depth;
   float eps;
   bool training;
+#ifndef ENABLE_MKLDNN_V1
   MEMORY_FORMAT src_format;
+#else
+  memory::desc src_md;
+#endif  // !ENABLE_MKLDNN_V1
 
   MklBatchNormFwdParams(const memory::dims& src_dims, int depth, float eps,
+#ifndef ENABLE_MKLDNN_V1
                         bool training, MEMORY_FORMAT src_format)
+#else
+                        bool training, memory::desc src_md)
+#endif  // !ENABLE_MKLDNN_V1
       : src_dims(src_dims),
         depth(depth),
         eps(eps),
         training(training),
-        src_format(src_format) {}
+#ifndef ENABLE_MKLDNN_V1
+        src_format(src_format) {
+  }
+#else
+        src_md(src_md) {
+  }
+#endif  // !ENABLE_MKLDNN_V1
 };
 
 template <typename T, typename U>
@@ -177,16 +191,17 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     context_.pkind = fwdParams.training ? prop_kind::forward_training
                                         : prop_kind::forward_scoring;
 
-    // Memory descriptor
-    auto src_md = memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                               fwdParams.src_format);
-
 #ifdef ENABLE_MKLDNN_V1
+    // Memory descriptor
+    auto src_md = fwdParams.src_md;
     // Create forward BatchNorm descriptor and primitive descriptor.
     auto fwd_desc = batch_normalization_forward::desc(
         context_.pkind, src_md, fwdParams.eps,
         static_cast<mkldnn::normalization_flags>(context_.flags));
 #else
+    // Memory descriptor
+    auto src_md = memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
+                               fwdParams.src_format);
     auto fwd_desc = batch_normalization_forward::desc(
         context_.pkind, src_md, fwdParams.eps, context_.flags);
 #endif  // ENABLE_MKLDNN_V1
@@ -368,17 +383,36 @@ struct MklBatchNormBwdParams {
   int depth;
   float eps;
   bool training;
+
+#ifndef ENABLE_MKLDNN_V1
   MEMORY_FORMAT src_format;
+#else
+  memory::desc src_md;
+  memory::desc diff_dst_md;
+#endif  // !ENABLE_MKLDNN_V1
 
   MklBatchNormBwdParams(memory::dims src_dims, memory::dims diff_dst_dims,
                         int depth, float eps, bool training,
+#ifndef ENABLE_MKLDNN_V1
                         MEMORY_FORMAT src_format)
       : src_dims(src_dims),
         diff_dst_dims(diff_dst_dims),
         depth(depth),
         eps(eps),
         training(training),
-        src_format(src_format) {}
+        src_format(src_format) {
+  }
+#else
+                        memory::desc src_md, memory::desc diff_dst_md)
+      : src_dims(src_dims),
+        diff_dst_dims(diff_dst_dims),
+        depth(depth),
+        eps(eps),
+        training(training),
+        src_md(src_md),
+        diff_dst_md(diff_dst_md) {
+  }
+#endif  // !ENABLE_MKLDNN_V1
 };
 
 template <typename T, typename U>
@@ -432,12 +466,9 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     // Execute backward batch-normalization primitives.
-    // TODO(intel-tf): Use execute_primitive instead of the inlined code.
     DCHECK_EQ(context_.bwd_primitives.size(), context_.net_args.size());
-    for (size_t i = 0; i < context_.bwd_primitives.size(); ++i) {
-      context_.bwd_primitives.at(i).execute(*context_.bwd_stream,
-                                            context_.net_args.at(i));
-    }
+    execute_primitives(context_.bwd_primitives, context_.bwd_stream,
+                       context_.net_args);
 #else
     context_.bwd_stream->submit(context_.bwd_primitives);
 #endif  // ENABLE_MKLDNN_V1
@@ -516,10 +547,15 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
             : (GET_FLAG(use_scale_shift) | GET_FLAG(use_global_stats));
 
     // Memory descriptors.
+#ifndef ENABLE_MKLDNN_V1
     auto src_md = memory::desc({bwdParams.src_dims}, MklDnnType<T>(),
                                bwdParams.src_format);
     auto diff_dst_md = memory::desc({bwdParams.diff_dst_dims}, MklDnnType<T>(),
                                     bwdParams.src_format);
+#else
+    auto src_md = bwdParams.src_md;
+    auto diff_dst_md = bwdParams.diff_dst_md;
+#endif  // !ENABLE_MKLDNN_V1
     auto variance_desc =
         memory::desc({1, bwdParams.depth}, MklDnnType<U>(), MEMORY_FORMAT::nc);
     auto mean_desc =
@@ -648,6 +684,10 @@ class MklFusedBatchNormOp : public OpKernel {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
     epsilon_ = epsilon;
+    float exponential_avg_factor;
+    OP_REQUIRES_OK(context, context->GetAttr("exponential_avg_factor",
+                                             &exponential_avg_factor));
+    exponential_avg_factor_ = static_cast<U>(exponential_avg_factor);
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
@@ -701,17 +741,6 @@ class MklFusedBatchNormOp : public OpKernel {
           context, est_variance_tensor.dims() == 1,
           errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                   est_variance_tensor.shape().DebugString()));
-
-      if (is_training_) {
-        OP_REQUIRES(
-            context, est_mean_tensor.dim_size(0) == 0,
-            errors::InvalidArgument("estimated_mean must be empty for training",
-                                    est_mean_tensor.shape().DebugString()));
-        OP_REQUIRES(context, est_variance_tensor.dim_size(0) == 0,
-                    errors::InvalidArgument(
-                        "estimated_variance must be empty for training",
-                        est_variance_tensor.shape().DebugString()));
-      }
 
       // Handle the special case: input with 0 element and 0 batch size.
       Tensor* dst_tensor = nullptr;
@@ -794,7 +823,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
 #ifdef ENABLE_MKLDNN_V1
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_,
-                                      dnn_fmt);
+                                      src_md);
 #else
       MklBatchNormFwdParams fwdParams(
           src_dims, depth_, epsilon_, is_training_,
@@ -839,28 +868,42 @@ class MklFusedBatchNormOp : public OpKernel {
       bn_fwd->Execute(src_data, weights_op_data, dst_data, mean_op_data,
                       variance_op_data);
 
-      // Copy batch_mean data
-      U* batch_mean_data_tf = batch_mean_tensor->flat<U>().data();
-      std::memcpy(reinterpret_cast<char*>(batch_mean_data_tf),
-                  reinterpret_cast<char*>(saved_mean_data_tf),
-                  depth_ * sizeof(U));
-
-      // Copy batch_variance data with Bessel's correction.
       float adjust_factor = 1.0;
       if (is_training_) {
         size_t orig_size = src_dims[0] * src_dims[2] * src_dims[3];
-        size_t adjust_size = orig_size - 1;
+        size_t adjust_size = (orig_size > 1) ? (orig_size - 1) : 1;
         adjust_factor = (static_cast<float>(orig_size)) / adjust_size;
       }
 
+      auto mean_data = reinterpret_cast<U*>(saved_mean_data_tf);
       auto variance_data = reinterpret_cast<U*>(saved_variance_data_tf);
+      auto batch_mean_data = batch_mean_tensor->flat<U>().data();
       auto batch_variance_data = batch_variance_tensor->flat<U>().data();
+      auto est_mean_data = est_mean_tensor.flat<U>().data();
+      auto est_variance_data = est_variance_tensor.flat<U>().data();
+
+      // TODO(intel-tf): Merge the `is_training && exponential_avg_factor == 1`
+      // case with the `else` (`!is_training`) case if possible.
       if (is_training_) {
-        for (int k = 0; k < depth_; k++) {
-          batch_variance_data[k] =
-              variance_data[k] * static_cast<U>(adjust_factor);
+        if (exponential_avg_factor_ == U(1.0)) {
+          for (int k = 0; k < depth_; k++) {
+            batch_mean_data[k] = mean_data[k];
+            batch_variance_data[k] =
+                static_cast<U>(adjust_factor) * variance_data[k];
+          }
+        } else {
+          U one_minus_factor = U(1.0) - exponential_avg_factor_;
+          for (int k = 0; k < depth_; k++) {
+            batch_mean_data[k] = one_minus_factor * est_mean_data[k] +
+                                 exponential_avg_factor_ * mean_data[k];
+            batch_variance_data[k] = one_minus_factor * est_variance_data[k] +
+                                     exponential_avg_factor_ *
+                                         static_cast<U>(adjust_factor) *
+                                         variance_data[k];
+          }
         }
       } else {
+        std::memcpy(batch_mean_data, mean_data, depth_ * sizeof(U));
         std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
@@ -875,6 +918,7 @@ class MklFusedBatchNormOp : public OpKernel {
 
  private:
   float epsilon_;
+  U exponential_avg_factor_;
   TensorFormat tensor_format_;
   bool is_training_;
   U* mean_values_;
@@ -1149,7 +1193,7 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
 #ifdef ENABLE_MKLDNN_V1
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
-                                      is_training_, dnn_fmt);
+                                      is_training_, src_md, diff_dst_md);
 #else
       MklBatchNormBwdParams bwdParams(
           src_dims, diff_dst_dims, depth_, epsilon_, is_training_,
@@ -1158,19 +1202,10 @@ class MklFusedBatchNormGradOp : public OpKernel {
       MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
           MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
-      // Check if src/diff_dst needs to be reordered.
-      const T* src_data = nullptr;
+      const T* src_data = src_tensor.flat<T>().data();
+      const T* diff_dst_data = diff_dst_tensor.flat<T>().data();
+      // Check if diff_dst input needs to be reordered
       std::shared_ptr<BatchNormBwdPd> bn_bwd_pd = bn_bwd->GetBatchNormBwdPd();
-      if (IS_SRC_REORDER_NEEDED(src_md, bn_bwd_pd, bn_bwd)) {
-        src.SetUsrMem(src_md, &src_tensor);
-        src.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(
-            GET_SRC_DESC_FROM_OP_PD(bn_bwd_pd), cpu_engine_));
-        src_data = static_cast<T*>(src.GetOpMem().get_data_handle());
-      } else {
-        src_data = static_cast<T*>(const_cast<T*>(src_tensor.flat<T>().data()));
-      }
-
-      const T* diff_dst_data = nullptr;
       if (IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, bn_bwd_pd, bn_bwd)) {
         diff_dst.SetUsrMem(diff_dst_md, &diff_dst_tensor);
         diff_dst.CheckReorderToOpMem(MEMORY_PD_WITHOUT_DATA(

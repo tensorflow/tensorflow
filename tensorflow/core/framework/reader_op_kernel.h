@@ -41,7 +41,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
   // ReaderInterface descendant allocated with new that ReaderOpKernel
   // will take ownership of.
   void SetReaderFactory(std::function<ReaderInterface*()> factory)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     DCHECK(resource_ == nullptr);
     factory_ = factory;
@@ -70,7 +70,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
   virtual void Cancel() {}
 
   Status CreateResource(ReaderInterface** reader)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
     *reader = factory_();
     if (*reader == nullptr) {
       return errors::ResourceExhausted("Failed to allocate reader");
@@ -80,7 +80,7 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
     return Status::OK();
   }
 
-  std::function<ReaderInterface*()> factory_ GUARDED_BY(mu_);
+  std::function<ReaderInterface*()> factory_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

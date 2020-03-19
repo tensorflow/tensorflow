@@ -448,7 +448,7 @@ tf_py_test(
     size = "medium",
     srcs = ["convolutional_recurrent_test.py"],
     python_version = "PY3",
-    shard_count = 6,
+    shard_count = 8,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -496,6 +496,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -514,6 +515,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -554,6 +556,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -567,6 +570,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -581,6 +585,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -594,6 +599,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -623,6 +629,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -638,6 +645,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -653,6 +661,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -741,6 +750,7 @@ cuda_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -754,6 +764,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -779,6 +790,7 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:backend",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras:initializers",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
@@ -798,6 +810,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/ops/ragged:ragged_concat_ops",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//third_party/py/numpy",
@@ -817,6 +830,7 @@ tf_py_test(
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

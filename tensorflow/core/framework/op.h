@@ -140,31 +140,31 @@ class OpRegistry : public OpRegistryInterface {
   // Ensures that all the functions in deferred_ get called, their OpDef's
   // registered, and returns with deferred_ empty.  Returns true the first
   // time it is called. Prints a fatal log if any op registration fails.
-  bool MustCallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool MustCallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Calls the functions in deferred_ and registers their OpDef's
   // It returns the Status of the first failed op registration or Status::OK()
   // otherwise.
-  Status CallDeferred() const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status CallDeferred() const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
   Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
-      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   const OpRegistrationData* LookUpSlow(const string& op_type_name) const;
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
-  mutable std::vector<OpRegistrationDataFactory> deferred_ GUARDED_BY(mu_);
+  mutable std::vector<OpRegistrationDataFactory> deferred_ TF_GUARDED_BY(mu_);
   // Values are owned.
   mutable std::unordered_map<string, const OpRegistrationData*> registry_
-      GUARDED_BY(mu_);
-  mutable bool initialized_ GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
+  mutable bool initialized_ TF_GUARDED_BY(mu_);
 
   // Registry watcher.
-  mutable Watcher watcher_ GUARDED_BY(mu_);
+  mutable Watcher watcher_ TF_GUARDED_BY(mu_);
 
   std::function<Status(const OpRegistryInterface&)> op_registry_validator_;
 };
@@ -261,9 +261,8 @@ class OpDefBuilderWrapper<true> {
     builder_.Doc(std::move(text));
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetShapeFn(
-      Status (*fn)(shape_inference::InferenceContext*)) {
-    builder_.SetShapeFn(fn);
+  OpDefBuilderWrapper<true>& SetShapeFn(OpShapeInferenceFn fn) {
+    builder_.SetShapeFn(std::move(fn));
     return *this;
   }
   const ::tensorflow::OpDefBuilder& builder() const { return builder_; }

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/versioning/op_version.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,6 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 
 namespace tflite {
+namespace {
+
+// Get the number of dimensions of a tensor with idx of an operator op.
+inline int GetNumDims(const SubGraph* subgraph, const Operator* op, int idx) {
+  return subgraph->tensors()->Get(op->inputs()->Get(idx))->shape()->size();
+}
+}  // namespace
 
 int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
   switch (op_sig.op) {
@@ -234,6 +242,10 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
       }
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
       return 1;
 
     case BuiltinOperator_DEQUANTIZE:
@@ -266,6 +278,9 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
     case BuiltinOperator_STRIDED_SLICE:
+      if (op_sig.options.strided_slice.num_dims > 4) {
+        return 4;
+      }
       // If the op takes bool input, it is version 3.
       if (op_sig.input_types.at(0) == TensorType_BOOL) {
         return 3;
@@ -287,32 +302,62 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      return 1;
+
+    case BuiltinOperator_PACK:
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
+      }
+
+      if (op_sig.input_types.at(0) == TensorType_INT16 &&
+          op_sig.output_types.at(0) == TensorType_INT16) {
+        return 3;
+      }
+      return 1;
+
     case BuiltinOperator_TILE:
       if (op_sig.input_types.at(0) == TensorType_STRING) {
+        return 2;
+      }
+
+      return 1;
+
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND:
+      if (op_sig.options.space_batch.num_dims != 4) {
+        return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
         return 2;
       }
       return 1;
 
     case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
-    case BuiltinOperator_SPACE_TO_BATCH_ND:
     case BuiltinOperator_SUB:
-    case BuiltinOperator_BATCH_TO_SPACE_ND:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAX_POOL_2D:
-    case BuiltinOperator_MAXIMUM:
-    case BuiltinOperator_MINIMUM:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
     case BuiltinOperator_SPACE_TO_DEPTH:
+    case BuiltinOperator_SPLIT_V:
     case BuiltinOperator_MEAN:
     case BuiltinOperator_SUM:
     case BuiltinOperator_REDUCE_MAX:
     case BuiltinOperator_REDUCE_MIN:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_RESIZE_NEAREST_NEIGHBOR:
-    case BuiltinOperator_PACK:
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
@@ -430,6 +475,15 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
         op_sig.options.resize_bilinear.half_pixel_centers =
             resize_bilinear_option->half_pixel_centers();
       }
+    } break;
+    // TODO(b/150176627): Add tests for GetOpSignature.
+    case BuiltinOperator_STRIDED_SLICE: {
+      op_sig.options.strided_slice.num_dims = GetNumDims(subgraph, op, 0);
+    } break;
+
+    case BuiltinOperator_SPACE_TO_BATCH_ND:
+    case BuiltinOperator_BATCH_TO_SPACE_ND: {
+      op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
     default:

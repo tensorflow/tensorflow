@@ -66,7 +66,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         return v.read_value()
 
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(step_fn, args=(grads,)))
+          distribution.run(step_fn, args=(grads,)))
 
     self.assertAllClose(optimize(), expected)
 
@@ -92,7 +92,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
         return v.read_value()
 
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(step_fn, args=(grads,)))
+          distribution.run(step_fn, args=(grads,)))
 
     self.assertAllClose(optimize(), [[-0.1, -0.1]])
 

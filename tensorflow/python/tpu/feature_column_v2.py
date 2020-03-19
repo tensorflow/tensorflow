@@ -107,7 +107,10 @@ def embedding_column_v2(categorical_column,
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of embedding_column, otherwise performence
+      may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core".
       If specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
@@ -266,7 +269,10 @@ def shared_embedding_columns_v2(categorical_columns,
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of shared_embedding_columns, otherwise
+      performence may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
       specifying "tpu_tensor_core", a tensor_core_shape must be supplied.

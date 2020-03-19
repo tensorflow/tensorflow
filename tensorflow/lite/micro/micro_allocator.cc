@@ -95,24 +95,63 @@ TfLiteStatus AllocateVariables(
   return kTfLiteOk;
 }
 
-AllocationInfo* AllocateAndCalculateAllocationInfo(
-    ErrorReporter* error_reporter, size_t allocation_info_size,
-    const SubGraph* subgraph, TfLiteTensor* runtime_tensors,
-    SimpleMemoryAllocator* allocator) {
-  AllocationInfo* allocation_info = reinterpret_cast<AllocationInfo*>(
-      allocator->AllocateFromTail(sizeof(AllocationInfo) * allocation_info_size,
-                                  alignof(AllocationInfo)));
-  if (allocation_info == nullptr) {
-    TF_LITE_REPORT_ERROR(
-        error_reporter,
-        "Failed to allocate memory for allocation_info, %d bytes required",
-        sizeof(TfLiteTensor) * allocation_info_size);
-    return nullptr;
+// A helper class to construct AllocationInfo array. This array contains the
+// lifetime of tensors / scratch_buffer and will be used to calculate the memory
+// plan. Methods need to be called in order from `Init`, `Add*`, to `Finish`.
+class AllocationInfoBuilder {
+ public:
+  AllocationInfoBuilder(ErrorReporter* reporter,
+                        SimpleMemoryAllocator* allocator)
+      : reporter_(reporter), allocator_(allocator) {}
+
+  // Initializes the builder by allocating AllocationInfo array from the
+  // simple memory allocator.
+  TfLiteStatus Init(size_t tensor_count, size_t scratch_buffer_count) {
+    tensor_count_ = tensor_count;
+    buffer_count_ = scratch_buffer_count;
+    return Allocate();
   }
 
-  // Set up the runtime data structures for all tensors.
-  for (size_t i = 0; i < allocation_info_size; ++i) {
-    AllocationInfo* current = &allocation_info[i];
+  // Add allocaiton information for the tensors.
+  TfLiteStatus AddTensors(const SubGraph* subgraph,
+                          TfLiteTensor* runtime_tensors);
+  // Add allocation information for the scratch buffers.
+  TfLiteStatus AddScratchBuffers(internal::ScratchBufferHandle* buffer_handles);
+
+  // Returns a pointer to the built AllocationInfo array.
+  const AllocationInfo* Finish() const { return info_; }
+  size_t Size() const { return tensor_count_ + buffer_count_; }
+
+ private:
+  // Allocate the output AllocationInfo array from the allocator_;
+  TfLiteStatus Allocate();
+
+  ErrorReporter* reporter_ = nullptr;
+  SimpleMemoryAllocator* allocator_ = nullptr;
+  size_t tensor_count_ = 0;
+  size_t buffer_count_ = 0;
+  AllocationInfo* info_ = nullptr;
+};
+
+TfLiteStatus AllocationInfoBuilder::Allocate() {
+  size_t bytes = sizeof(AllocationInfo) * Size();
+  info_ = reinterpret_cast<AllocationInfo*>(
+      allocator_->AllocateFromTail(bytes, alignof(AllocationInfo)));
+  if (info_ == nullptr) {
+    TF_LITE_REPORT_ERROR(
+        reporter_,
+        "Failed to allocate memory for allocation_info, %d bytes required",
+        bytes);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
+                                               TfLiteTensor* runtime_tensors) {
+  // Set up allocation info for all tensors.
+  for (size_t i = 0; i < tensor_count_; ++i) {
+    AllocationInfo* current = &info_[i];
     // TfLiteTensor.uint8 field is deprecated so use .data field instead.
     current->output_ptr = &(runtime_tensors[i].data.data);
     current->bytes = runtime_tensors[i].bytes;
@@ -124,14 +163,14 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
 
   for (size_t i = 0; i < subgraph->inputs()->size(); ++i) {
     const int tensor_index = subgraph->inputs()->Get(i);
-    AllocationInfo* current = &allocation_info[tensor_index];
+    AllocationInfo* current = &info_[tensor_index];
     current->first_created = 0;
   }
 
   // Mark all outputs as persistent to the end of the invocation.
   for (size_t i = 0; i < subgraph->outputs()->size(); ++i) {
     const int tensor_index = subgraph->outputs()->Get(i);
-    AllocationInfo* current = &allocation_info[tensor_index];
+    AllocationInfo* current = &info_[tensor_index];
     current->last_used = subgraph->operators()->size() - 1;
   }
 
@@ -140,14 +179,14 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
     const auto* op = subgraph->operators()->Get(i);
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
-      AllocationInfo* current = &allocation_info[tensor_index];
+      AllocationInfo* current = &info_[tensor_index];
       if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }
     }
     for (size_t n = 0; n < op->outputs()->size(); ++n) {
       const int tensor_index = op->outputs()->Get(n);
-      AllocationInfo* current = &allocation_info[tensor_index];
+      AllocationInfo* current = &info_[tensor_index];
       if ((current->first_created == -1) || (current->first_created > i)) {
         current->first_created = i;
       }
@@ -155,8 +194,8 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
   }
 
   // Work out which tensors need to be allocated.
-  for (size_t i = 0; i < allocation_info_size; ++i) {
-    AllocationInfo* current = &allocation_info[i];
+  for (size_t i = 0; i < tensor_count_; ++i) {
+    AllocationInfo* current = &info_[i];
     const bool is_read_only =
         (current->first_created == -1) && (current->last_used != -1);
     if (is_read_only) {
@@ -167,16 +206,31 @@ AllocationInfo* AllocateAndCalculateAllocationInfo(
         ((current->first_created == -1) || (current->last_used == -1));
     if (has_partial_lifetime && current->needs_allocating) {
       TF_LITE_REPORT_ERROR(
-          error_reporter,
+          reporter_,
           "Logic error in memory planner, tensor %d has an invalid lifetime: "
           "first_created: %d, last_used: %d",
           i, current->first_created, current->last_used);
-      return nullptr;
+      return kTfLiteError;
     }
-  }  // namespace
+  }
+  return kTfLiteOk;
+}
 
-  return allocation_info;
-}  // namespace tflite
+TfLiteStatus AllocationInfoBuilder::AddScratchBuffers(
+    internal::ScratchBufferHandle* buffer_handles) {
+  // Set up allocation info for buffers.
+  for (size_t i = tensor_count_; i < tensor_count_ + buffer_count_; ++i) {
+    AllocationInfo* current = &info_[i];
+    internal::ScratchBufferHandle* handle =
+        &(buffer_handles[i - tensor_count_]);
+    current->output_ptr = reinterpret_cast<void**>(&handle->data);
+    current->bytes = handle->bytes;
+    current->first_created = handle->node_idx;
+    current->last_used = handle->node_idx;
+    current->needs_allocating = true;
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
                         const AllocationInfo* allocation_info,
@@ -197,12 +251,12 @@ TfLiteStatus CreatePlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
 
 TfLiteStatus CommitPlan(ErrorReporter* error_reporter, MemoryPlanner* planner,
                         uint8_t* starting_point,
-                        AllocationInfo* allocation_info,
+                        const AllocationInfo* allocation_info,
                         size_t allocation_info_size) {
   // Figure out the actual memory addresses for each buffer, based on the plan.
   int planner_index = 0;
   for (size_t i = 0; i < allocation_info_size; ++i) {
-    AllocationInfo* current = &allocation_info[i];
+    const AllocationInfo* current = &allocation_info[i];
     if (current->needs_allocating) {
       int offset = -1;
       TF_LITE_ENSURE_STATUS(
@@ -317,7 +371,9 @@ TfLiteStatus InitializeRuntimeTensor(
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }
-  result->name = flatbuffer_tensor.name()->c_str();
+  if (flatbuffer_tensor.name() != nullptr) {
+    result->name = flatbuffer_tensor.name()->c_str();
+  }
   return kTfLiteOk;
 }
 }  // namespace internal
@@ -419,8 +475,8 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
                                        &(output[i].registration));
     if (status != kTfLiteOk) {
       TF_LITE_REPORT_ERROR(error_reporter_,
-                           "Failed to get registration from op code % d\n ",
-                           opcode);
+                           "Failed to get registration from op code %s\n ",
+                           EnumNameBuiltinOperator(opcode->builtin_code()));
       return status;
     }
     const auto* registration = output[i].registration;
@@ -463,13 +519,9 @@ TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
     *node = {};
     node->inputs = inputs_array;
     node->outputs = outputs_array;
-    // This is OK for now as temporary array is not in used.
-    node->temporaries = nullptr;
-    node->user_data = nullptr;  // Will be filled in after `init`
     node->builtin_data = reinterpret_cast<void*>(builtin_data);
     node->custom_initial_data = custom_data;
     node->custom_initial_data_size = custom_data_size;
-    node->delegate = nullptr;
   }
   *node_and_registrations = output;
   return kTfLiteOk;
@@ -480,30 +532,33 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     return kTfLiteError;
   }
 
-  // Create static memory plan. AllocationInfo is needed for creating the plan
-  // but is thrown away afterwards.
+  // Create static memory plan
+  // 1. Calculate AllocationInfo to know the lifetime of each tensor/buffer.
+  // 2. Add them into the planner (such as the GreedyMemoryPlanner).
+  // 3. Static memory planning using the planner.
+  // 4. Set tensor/buffer pointers based on the offsets from the previous step.
+  // Note that AllocationInfo is only needed for creating the plan. It will be
+  // thrown away when the child allocator (tmp_allocator) goes out of scope.
   {
     SimpleMemoryAllocator tmp_allocator =
         memory_allocator_->CreateChildAllocator();
-    size_t allocation_info_size = tensors_->size();
-    AllocationInfo* allocation_info = AllocateAndCalculateAllocationInfo(
-        error_reporter_, allocation_info_size, subgraph_, context_->tensors,
-        &tmp_allocator);
-    if (allocation_info == nullptr) {
-      return kTfLiteError;
-    }
+
+    AllocationInfoBuilder builder(error_reporter_, &tmp_allocator);
+    TF_LITE_ENSURE_STATUS(
+        builder.Init(tensors_->size(), scratch_buffer_count_));
+    TF_LITE_ENSURE_STATUS(builder.AddTensors(subgraph_, context_->tensors));
+    TF_LITE_ENSURE_STATUS(builder.AddScratchBuffers(scratch_buffer_handles_));
+    const AllocationInfo* allocation_info = builder.Finish();
 
     uint8_t* aligned_arena = memory_allocator_->GetBuffer();
     size_t arena_size = memory_allocator_->GetMaxBufferSize();
-
     // Remaining arena size that memory planner can use for calculating offsets.
     // The remaining size should always be a positive number since the parent
     // allocator is always bigger than the child allocator.
     size_t remaining_arena_size = arena_size - tmp_allocator.GetDataSize();
     GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
-    TF_LITE_ENSURE_STATUS(CreatePlan(error_reporter_, &planner, allocation_info,
-                                     allocation_info_size));
-
+    TF_LITE_ENSURE_STATUS(
+        CreatePlan(error_reporter_, &planner, allocation_info, builder.Size()));
     // Actual size available for placing tensors. This includes memory held by
     // the tensor info array, which will be released.
     size_t actual_available_arena_size =
@@ -519,7 +574,7 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
     }
 
     TF_LITE_ENSURE_STATUS(CommitPlan(error_reporter_, &planner, aligned_arena,
-                                     allocation_info, allocation_info_size));
+                                     allocation_info, builder.Size()));
   }
 
   // Data in variables need to be kept for the next invocation so allocating
@@ -534,6 +589,69 @@ TfLiteStatus MicroAllocator::FinishTensorAllocation() {
 
   active_ = false;
   return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::AllocatePersistentBuffer(size_t bytes,
+                                                      void** ptr) {
+  uint8_t* data = memory_allocator_->AllocateFromTail(bytes, kBufferAlignment);
+  if (data == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to allocate persistent buffer of size %d",
+                         bytes);
+    return kTfLiteError;
+  }
+  (*ptr) = data;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::RequestScratchBufferInArena(int node_id,
+                                                         size_t bytes,
+                                                         int* buffer_idx) {
+  // A sanity check to make sure scratch_buffer_handles_ is contiguous i.e.
+  // scratch_buffer_handles_ is pointing to the last allocation from memory
+  // allocator.
+  if (scratch_buffer_handles_ != nullptr &&
+      reinterpret_cast<uint8_t*>(scratch_buffer_handles_) !=
+          memory_allocator_->GetBuffer() +
+              memory_allocator_->GetMaxBufferSize() -
+              memory_allocator_->GetDataSize()) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Internal error: AllocateFromTail can not be called "
+                         "between two RequestScratchBufferInArena calls.");
+    return kTfLiteError;
+  }
+
+  internal::ScratchBufferHandle* handle =
+      reinterpret_cast<internal::ScratchBufferHandle*>(
+          memory_allocator_->AllocateFromTail(
+              sizeof(internal::ScratchBufferHandle),
+              alignof(internal::ScratchBufferHandle)));
+  if (handle == nullptr) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Failed to register scratch buffer handle for node %s",
+                         node_id);
+    return kTfLiteError;
+  }
+  *handle = {};
+  handle->bytes = bytes;
+  handle->node_idx = node_id;
+  *buffer_idx = scratch_buffer_count_;
+  scratch_buffer_count_ += 1;
+  // scratch_buffer_handles_ is in reverse order. The following code ensures
+  // that scratch_buffers[0] is pointing to the newly allocated handle.
+  scratch_buffer_handles_ = handle;
+  return kTfLiteOk;
+}
+
+void* MicroAllocator::GetScratchBuffer(int buffer_idx) const {
+  if (static_cast<size_t>(buffer_idx) >= scratch_buffer_count_) {
+    TF_LITE_REPORT_ERROR(error_reporter_,
+                         "Buffer %d not found. %d buffers available.",
+                         buffer_idx, scratch_buffer_count_);
+    return nullptr;
+  }
+  // scratch_buffer_handles_ is in reverse order.
+  return scratch_buffer_handles_[scratch_buffer_count_ - buffer_idx - 1].data;
 }
 
 }  // namespace tflite

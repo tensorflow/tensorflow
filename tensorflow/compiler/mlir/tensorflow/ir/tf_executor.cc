@@ -1067,16 +1067,16 @@ bool HasSingleOpInBlock(Block *block) {
 struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one fetch.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map graph results to fetch operands.
     rewriter.replaceOp(op, op.GetFetch().fetches());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1086,11 +1086,11 @@ struct DropEmptyGraph : public OpRewritePattern<GraphOp> {
 struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
   using OpRewritePattern<GraphOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(GraphOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(GraphOp op,
+                                PatternRewriter &rewriter) const override {
     Block &block = op.GetBody();
     // Check if graph only has one island.
-    if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
+    if (!HasSingleOpInBlock<IslandOp>(&block)) return failure();
 
     FetchOp fetch_op = op.GetFetch();
     auto island_op = llvm::cast<IslandOp>(block.front());
@@ -1120,7 +1120,7 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
         std::prev(island_body.end()));
     rewriter.replaceOp(op, new_rets);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace
@@ -1142,18 +1142,18 @@ struct DropEmptyIslandNoOperandNoDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 1 ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1165,16 +1165,16 @@ struct DropEmptyIslandNoOperandOneDataResult
     : public OpRewritePattern<IslandOp> {
   using OpRewritePattern<IslandOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(IslandOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(IslandOp op,
+                                PatternRewriter &rewriter) const override {
     if (op.getNumOperands() != 0 || op.getNumResults() != 2 ||
         !op.control().use_empty() ||
         !HasSingleOpInBlock<YieldOp>(&op.GetBody()))
-      return matchFailure();
+      return failure();
 
     rewriter.replaceOp(op, {op.GetYield().getOperand(0), nullptr});
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1199,16 +1199,16 @@ namespace {
 struct DropEmptyControlTrigger : public OpRewritePattern<ControlTriggerOp> {
   using OpRewritePattern<ControlTriggerOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ControlTriggerOp op,
-                                     PatternRewriter &rewriter) const override {
-    if (op.getNumOperands() != 0) return matchFailure();
+  LogicalResult matchAndRewrite(ControlTriggerOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 0) return failure();
 
     for (auto &use : llvm::make_early_inc_range(op.control().getUses()))
       use.getOwner()->eraseOperand(use.getOperandNumber());
 
     rewriter.eraseOp(op);
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

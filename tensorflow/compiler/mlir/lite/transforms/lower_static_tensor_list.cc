@@ -175,33 +175,33 @@ TF::SliceOp CreateSliceOpForTensorList(Location loc, Value input_list,
 struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::ConstOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     // Verify that the opaque elements attribute contains tensor of type variant
     // and scalar shape. The variant type should hold a TensorList.
     auto opaque_attr = op.value().dyn_cast<OpaqueElementsAttr>();
-    if (!opaque_attr) return matchFailure();
+    if (!opaque_attr) return failure();
     tensorflow::Tensor tensor;
     if (!tensorflow::ConvertToTensor(opaque_attr, &tensor).ok())
-      return matchFailure();
-    if (tensor.dtype() != tensorflow::DT_VARIANT) return matchFailure();
+      return failure();
+    if (tensor.dtype() != tensorflow::DT_VARIANT) return failure();
     if (!tensorflow::TensorShapeUtils::IsScalar(tensor.shape()))
-      return matchFailure();
+      return failure();
 
     const tensorflow::TensorList *list =
         tensor.scalar<tensorflow::Variant>()().get<tensorflow::TensorList>();
-    if (!list) return matchFailure();
+    if (!list) return failure();
 
     // Verify output type is variant and contains exactly one ranked subtypes.
     auto variant_ty =
         getElementTypeOrSelf(op.getType()).dyn_cast<TF::VariantType>();
-    if (!variant_ty) return matchFailure();
+    if (!variant_ty) return failure();
     ArrayRef<TensorType> subtypes = variant_ty.getSubtypes();
-    if (subtypes.size() != 1) return matchFailure();
+    if (subtypes.size() != 1) return failure();
     RankedTensorType list_element_ty =
         subtypes.front().dyn_cast<RankedTensorType>();
-    if (!list_element_ty) return matchFailure();
+    if (!list_element_ty) return failure();
 
     // Extract tensor elements for the TensorList and construct result type
     // based on the number of elements and element shape.
@@ -225,9 +225,9 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
       tensorflow::Tensor tensor(list->element_dtype,
                                 tensorflow::TensorShape(tf_shape));
       auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
-      if (!attr_or.ok()) return matchFailure();
+      if (!attr_or.ok()) return failure();
       rewriter.replaceOpWithNewOp<TF::ConstOp>(op, attr_or.ValueOrDie());
-      return matchSuccess();
+      return success();
     }
 
     // Extract individual tensor list element and combine them using the tf.Pack
@@ -237,14 +237,14 @@ struct ConvertConst : public OpConversionPattern<TF::ConstOp> {
     values.reserve(tensors.size());
     for (const tensorflow::Tensor &tensor : tensors) {
       auto attr_or = tensorflow::ConvertTensor(tensor, &rewriter);
-      if (!attr_or.ok()) return matchFailure();
+      if (!attr_or.ok()) return failure();
 
       auto value = rewriter.create<TF::ConstOp>(loc, attr_or.ValueOrDie());
       values.push_back(value);
     }
     rewriter.replaceOpWithNewOp<TF::PackOp>(
         op, result_ty, values, /*axis=*/rewriter.getI64IntegerAttr(0));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -264,7 +264,7 @@ struct ConvertTensorListSetItem
   //        (Slice $input, [0, 0, ...], (Concat (ExpandDims $index, expand_dim =
   //        0), [-1, -1, ...])), (ExpandDims $item, expand_dim = 0), (Slice
   //        $input, [$index + 1, 0, 0, ...], [-1, -1, ...]))>;
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListSetItemOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
@@ -311,7 +311,7 @@ struct ConvertTensorListSetItem
     rewriter.replaceOpWithNewOp<TF::ConcatOp>(
         op, input.getType(), scalar_zero,
         ArrayRef<Value>({slice1, expanded_item, slice2}));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -330,7 +330,7 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
   // Rewrites the original op into `tf.fill`. The result tensor shape is
   // [num_element, element_shape]. All the values in the result tensor will be
   // initialized to 0.
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       OpT op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Type dtype = op.element_dtype();
@@ -342,11 +342,21 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
           "requires element_dtype to be 1-bit/8-bit/16-bit/32-bit/64-bit "
           "integer or 16-bit/32-bit/64-bit float type during TF Lite "
           "transformation pass");
-      return ConversionPattern::matchFailure();
+      return failure();
     }
 
     Value element_shape = operands[0];
     Type shape_dtype = getElementTypeOrSelf(element_shape.getType());
+    // If the `element_shape` is a scalar, we know that it's dynamic shape
+    // and returns an error.
+    if (auto shaped_type = element_shape.getType().dyn_cast<ShapedType>()) {
+      if (shaped_type.getRank() == 0) {
+        op.emitError(
+            "requires element_shape to be 1D tensor during TF Lite "
+            "transformation pass");
+        return failure();
+      }
+    }
 
     DenseIntElementsAttr dense_elem_attr;
     if (matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
@@ -424,7 +434,7 @@ struct ConvertTensorListInitOp : public OpConversionPattern<OpT> {
     auto zero = rewriter.create<ConstantOp>(loc, zero_type, zero_attr);
 
     rewriter.replaceOpWithNewOp<TF::FillOp>(op, result_type, list_shape, zero);
-    return Pattern::matchSuccess();
+    return success();
   }
 };
 
@@ -462,7 +472,7 @@ struct ConvertTensorListPushBack
     : public OpConversionPattern<TF::TensorListPushBackOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListPushBackOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Value input_handle = operands[0];
@@ -488,7 +498,7 @@ struct ConvertTensorListPushBack
     rewriter.replaceOpWithNewOp<TF::ConcatOp>(
         op, result_type, scalar_zero,
         ArrayRef<Value>({input_handle, expanded_item}));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -506,7 +516,7 @@ struct ConvertTensorListResize
     : public OpConversionPattern<TF::TensorListResizeOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListResizeOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Value input_handle = operands[0];
@@ -572,7 +582,7 @@ struct ConvertTensorListResize
         /*else_branch=*/rewriter.getSymbolRefAttr(else_branch_op),
         /*output_shapes=*/rewriter.getStrArrayAttr({"{}"}),
         /*is_stateless=*/rewriter.getBoolAttr(true));
-    return matchSuccess();
+    return success();
   }
 
  private:
@@ -650,14 +660,14 @@ struct ConvertTensorListGetItem
     : public OpConversionPattern<TF::TensorListGetItemOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListGetItemOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Value input = operands[0];
     Value index = operands[1];
     rewriter.replaceOpWithNewOp<TF::GatherOp>(op, op.getType(), input, index,
                                               rewriter.getBoolAttr(true));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -665,7 +675,7 @@ struct ConvertTensorListLength
     : public OpConversionPattern<TF::TensorListLengthOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListLengthOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
@@ -677,7 +687,7 @@ struct ConvertTensorListLength
     rewriter.replaceOpWithNewOp<TF::GatherOp>(
         op, op.getType(), shape, CreateI32SplatConst(loc, &rewriter, {}, 0),
         /*validate_indices=*/true_attr);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -685,7 +695,7 @@ struct ConvertTensorListStack
     : public OpConversionPattern<TF::TensorListStackOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::TensorListStackOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
@@ -703,7 +713,7 @@ struct ConvertTensorListStack
         !matchPattern(element_shape, m_Constant(&dense_elem_attr))) {
       // If no constant is spotted, just forward the operand.
       rewriter.replaceOp(op, {input});
-      return matchSuccess();
+      return success();
     }
 
     RankedTensorType shape_type =
@@ -716,20 +726,20 @@ struct ConvertTensorListStack
         RankedTensorType::get(output_shape, getElementTypeOrSelf(input));
     rewriter.replaceOpWithNewOp<TF::ReshapeOp>(op, result_type, input,
                                                new_shape);
-    return matchSuccess();
+    return success();
   }
 };
 
 struct ConvertIdentity : public OpConversionPattern<TF::IdentityOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::IdentityOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     Value input = operands[0];
     rewriter.replaceOpWithNewOp<TF::IdentityOp>(op, input.getType(), operands,
                                                 op.getAttrs());
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -794,7 +804,7 @@ static LogicalResult UpdateFunctionTypes(TF::WhileOp op) {
 struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       TF::WhileOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter &rewriter) const override {
     llvm::SmallVector<Type, 8> result_types;
@@ -818,7 +828,7 @@ struct ConvertWhile : public OpConversionPattern<TF::WhileOp> {
     UpdateFunctionTypes(cloned);
 
     rewriter.replaceOp(op, cloned.getResults());
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -854,13 +864,12 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ReturnOp>();
 
   OwningRewritePatternList patterns;
-  patterns
-      .insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
-              ConvertTensorListFromTensor, ConvertTensorListGetItem,
-              ConvertTensorListLength, ConvertTensorListPushBack,
-              ConvertTensorListReserve, ConvertTensorListSetItem,
-              ConvertTensorListStack, ConvertTensorListResize, ConvertWhile>(
-          context);
+  populateWithGenerated(context, &patterns);
+  patterns.insert<ConvertConst, ConvertEmptyTensorList, ConvertIdentity,
+                  ConvertTensorListGetItem, ConvertTensorListLength,
+                  ConvertTensorListPushBack, ConvertTensorListReserve,
+                  ConvertTensorListSetItem, ConvertTensorListStack,
+                  ConvertTensorListResize, ConvertWhile>(context);
   return applyFullConversion(func, target, patterns);
 }
 

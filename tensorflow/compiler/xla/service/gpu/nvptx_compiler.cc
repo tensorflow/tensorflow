@@ -148,18 +148,23 @@ Status NVPTXCompiler::OptimizeHloConvolutionCanonicalization(
 Status NVPTXCompiler::OptimizeHloPostLayoutAssignment(
     HloModule* hlo_module, se::StreamExecutor* stream_exec,
     se::DeviceMemoryAllocator* device_allocator) {
+  HloPassPipeline pre_pipeline("nvptx post-layout_assignment part 1");
+  // Pad the dimensions of matrices in dot operations to multiples of 8.
+  // This needs to run before GemmRewriter, which is part of
+  // OptimizeHloPostLayoutAssignment().
+  if (IsVoltaOrLater(*stream_exec)) {
+    pre_pipeline.AddPass<CublasGemmPadForTensorCores>();
+  }
+  TF_RETURN_IF_ERROR(pre_pipeline.Run(hlo_module).status());
+
   TF_RETURN_IF_ERROR(GpuCompiler::OptimizeHloPostLayoutAssignment(
       hlo_module, stream_exec, device_allocator));
 
-  HloPassPipeline pipeline("nvptx post-layout_assignment");
-  // Pad the dimensions of matrices in dot operations to multiples of 8.
-  if (IsVoltaOrLater(*stream_exec)) {
-    pipeline.AddPass<CublasGemmPadForTensorCores>();
-  }
+  HloPassPipeline post_pipeline("nvptx post-layout_assignment part 2");
 
   // Find the fastest algorithm for GEMMs.
-  pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
-  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  post_pipeline.AddPass<GemmAlgorithmPicker>(stream_exec, device_allocator);
+  TF_RETURN_IF_ERROR(post_pipeline.Run(hlo_module).status());
 
   return Status::OK();
 }
@@ -228,13 +233,14 @@ bool MaybeLoadPtxFromFile(const HloModule* module, std::string* ptx) {
   // and warn when a file is not used to ease catching typo in filename.
   std::string prefix = xla::FilenameFor(*module, "", *ptx);
   std::string matched_filename;
-  for (const string filename :
+  for (const string full_filename :
        module->config().debug_options().xla_gpu_ptx_file()) {
     // To ease comparing many PTX versions, accept different suffixes then
     // the original filename.
+    auto filename = tensorflow::io::Basename(full_filename);
     if (absl::StartsWith(filename, prefix)) {
-      matched_filename = filename;
-      VLOG(0) << "RunBackend() - Will load PTX from file: " << filename;
+      matched_filename = full_filename;
+      VLOG(0) << "RunBackend() - Will load PTX from file: " << full_filename;
       break;
     }
   }

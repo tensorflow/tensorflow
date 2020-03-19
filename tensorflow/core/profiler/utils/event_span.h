@@ -147,7 +147,8 @@ using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
 bool operator==(const StepEvents& a, const StepEvents& b);
 
 // Returns the event type of the given CPU event.
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id);
+EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+                           bool has_device);
 
 // Returns the event type of the given GPU event and tensor shapes.
 EventType ClassifyGpuEvent(absl::string_view event_name,

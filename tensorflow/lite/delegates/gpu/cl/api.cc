@@ -601,9 +601,9 @@ class InferenceBuilderImpl : public InferenceBuilder {
       preferred_storage_types = {GetFastestStorageType(environment_->device()),
                                  TensorStorageType::BUFFER};
     } else {
-      preferred_storage_types = {TensorStorageType::IMAGE_BUFFER,
-                                 GetFastestStorageType(environment_->device()),
-                                 TensorStorageType::BUFFER};
+      preferred_storage_types = {
+          GetStorageTypeWithMinimalMemoryConsumption(environment_->device()),
+          TensorStorageType::BUFFER};
     }
 
     for (TensorStorageType storage_type : preferred_storage_types) {

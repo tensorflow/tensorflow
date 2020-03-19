@@ -22,12 +22,13 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, mlir::Builder builder);
+    const LiteralBase& literal, mlir::Builder builder);
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64> vector, mlir::Builder builder);
@@ -68,6 +69,9 @@ static StatusOr<mlir::Type> ConvertShapeToType(const Shape& shape,
       contents.push_back(mlir_subtype);
     }
     return builder.getTupleType(contents);
+  }
+  if (shape.IsToken()) {
+    return mlir::xla_hlo::TokenType::get(builder.getContext());
   }
   return ConvertTensorShapeToType<TypeT>(shape, builder);
 }

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pad.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
@@ -85,6 +86,8 @@ class Registry : public NodeShader {
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
     insert_op(Type::PRELU, NewPReLUNodeShader);
+    insert_op(Type::QUANTIZE_AND_DEQUANTIZE,
+              NewQuantizeAndDequantizeNodeShader);
     insert_op(Type::RELU, NewReLUNodeShader);
     insert_op(Type::RESIZE, NewResizeNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);

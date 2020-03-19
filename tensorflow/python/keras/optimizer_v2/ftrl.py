@@ -52,6 +52,9 @@ class Ftrl(optimizer_v2.OptimizerV2):
   Check the documentation for the l2_shrinkage_regularization_strength
   parameter for more details when shrinkage is enabled, where gradient is
   replaced with gradient_with_shrinkage.
+
+  References: See
+  [paper](https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
   """
 
   def __init__(self,
@@ -100,10 +103,6 @@ class Ftrl(optimizer_v2.OptimizerV2):
 
     Raises:
       ValueError: If one of the arguments is invalid.
-
-    References
-      See [paper]
-        (https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf)
     """
     super(Ftrl, self).__init__(name, **kwargs)
 

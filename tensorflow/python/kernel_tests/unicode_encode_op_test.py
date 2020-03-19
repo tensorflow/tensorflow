@@ -21,8 +21,10 @@ from __future__ import print_function
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl as errors
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
@@ -284,6 +286,16 @@ class UnicodeEncodeOpTest(test.TestCase, parameterized.TestCase):
                          u"cube.".encode(encoding)]]]]
     unicode_encode_op = ragged_string_ops.unicode_encode(test_value, encoding)
     self.assertAllEqual(unicode_encode_op, expected_value)
+
+  def testUnknownInputRankError(self):
+    # Use a tf.function that erases shape information.
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(None)])
+    def f(v):
+      return ragged_string_ops.unicode_encode(v, "UTF-8")
+
+    with self.assertRaisesRegexp(
+        ValueError, "Rank of input_tensor must be statically known."):
+      f([72, 101, 108, 108, 111])
 
 
 if __name__ == "__main__":

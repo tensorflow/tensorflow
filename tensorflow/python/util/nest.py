@@ -1375,7 +1375,7 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
-def _list_to_tuple(structure):
+def list_to_tuple(structure):
   """Replace all lists with tuples.
 
   The fork of nest that tf.data uses treats lists as single elements, while
@@ -1396,10 +1396,6 @@ def _list_to_tuple(structure):
 
   return _pack_sequence_as(structure, flatten(structure), False,
                            sequence_fn=sequence_fn)
-
-
-# TODO(b/143287251): Only have `list_to_tuple`
-list_to_tuple = _list_to_tuple
 
 
 _pywrap_utils.RegisterType("Mapping", _collections_abc.Mapping)
