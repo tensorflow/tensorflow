@@ -105,8 +105,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      is_deferred_(is_deferred) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -133,8 +132,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      is_deferred_(is_deferred) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -148,11 +146,6 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 }
 
 OpKernel::~OpKernel() {}
-
-const uint64 OpKernel::kInitialCostEstimateCycles;
-const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
-const uint64 OpKernel::kCostDecay;
-
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
