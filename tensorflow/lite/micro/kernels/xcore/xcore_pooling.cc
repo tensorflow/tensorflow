@@ -1,5 +1,14 @@
 #include <iostream>
-#include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
+
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "flatbuffers/flexbuffers.h"
+
+extern "C" {
+    #include "lib_nn/api/nn_operator.h"
+    #include "lib_nn/api/nn_types.h"
+}
 
 namespace tflite {
 namespace ops {

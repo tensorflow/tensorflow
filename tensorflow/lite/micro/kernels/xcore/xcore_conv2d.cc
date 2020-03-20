@@ -1,7 +1,11 @@
 #include <iostream>
-#include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
 
-#include "conv2d.hpp"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+#include "flatbuffers/flexbuffers.h"
+
+#include "lib_ops/api/conv2d.h"
 
 namespace tflite {
 namespace ops {
