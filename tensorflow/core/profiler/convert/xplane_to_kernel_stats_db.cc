@@ -42,6 +42,7 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
       absl::string_view tf_op_fullname;
       KernelReport kernel;
 
+      absl::string_view equation;
       event.ForEachStat([&](const tensorflow::profiler::XStatVisitor& stat) {
         if (stat.Type() == StatType::kLevel0) {
           tf_op_fullname = stat.StrValue();
@@ -53,14 +54,18 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
           kernel.set_min_duration_ns(event.DurationNs());
           kernel.set_max_duration_ns(event.DurationNs());
           ParseKernelLaunchParams(stat.StrValue(), &kernel);
+        } else if (stat.Type() == StatType::kEquation) {
+          equation = stat.StrValue();
         }
       });
 
       if (!tf_op_fullname.empty()) {
         tensorflow::profiler::TfOp tf_op = ParseTfOpFullname(tf_op_fullname);
+
         if (kernel.total_duration_ns()) {
           kernel.set_op_name(tf_op.name.data(), tf_op.name.size());
-          bool tensor_core_eligible = IsOpTensorCoreEligible(kernel.op_name());
+          bool tensor_core_eligible = IsEinsumTensorCoreEligible(equation) ||
+                                      IsOpTensorCoreEligible(kernel.op_name());
 #if defined(LOG_IF)
           LOG_IF(INFO,
                  !tensor_core_eligible && kernel.is_kernel_using_tensor_core())
