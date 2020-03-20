@@ -68,10 +68,13 @@ enum AssociatedFileType : byte {
 
   // Contains sigmoid-based score calibration parameters, formatted as CSV.
   // Lines contain for each index of an output tensor the scale, slope, offset
-  // and min_score parameters to be used for sigmoid fitting (in this order and
-  // in `strtof`-compatible [1] format).
+  // and (optional) min_score parameters to be used for sigmoid fitting (in this
+  // order and in `strtof`-compatible [1] format).
   // A line may be left empty to default calibrated scores for this index to
-  // default_score. See documentation for ScoreCalibrationOptions for details.
+  // default_score.
+  // In summary, each line should thus contain 0, 3 or 4 comma-separated values.
+  //
+  // See documentation for ScoreCalibrationOptions for details.
   //
   // [1]: https://en.cppreference.com/w/c/string/byte/strtof
   TENSOR_AXIS_SCORE_CALIBRATION = 4,
@@ -332,11 +335,12 @@ enum ScoreTransformationType : byte {
 // output, e.g. image classification or detection models.
 //
 // For each index in the output tensor, this applies:
-// * `f(x) = scale / (1 + e^-(slope*g(x)+offset))` if `x > min_score`,
-// * `f(x) = default_score` otherwise or if no scale, slope, offset and
-//    min_score have been specified.
+// * `f(x) = scale / (1 + e^-(slope*g(x)+offset))` if `x > min_score` or if no
+//   `min_score` has been specified,
+// * `f(x) = default_score` otherwise or if no scale, slope and offset have been
+//   specified.
 // Where:
-// * scale, slope, offset and min_score are index-specific parameters
+// * scale, slope, offset and (optional) min_score are index-specific parameters
 // * g(x) is an index-independent transform among those defined in
 //   ScoreTransformationType
 // * default_score is an index-independent parameter.

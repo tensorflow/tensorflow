@@ -257,14 +257,13 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "com_github_googleapis_googleapis",
-        build_file = clean_dep("//third_party:googleapis.BUILD"),
-        sha256 = "824870d87a176f26bcef663e92051f532fac756d1a06b404055dc078425f4378",
-        strip_prefix = "googleapis-f81082ea1e2f85c43649bee26e0d9871d4b41cdb",
-        system_build_file = clean_dep("//third_party/systemlibs:googleapis.BUILD"),
+        name = "com_google_googleapis",
+        build_file = clean_dep("//third_party/googleapis:googleapis.BUILD"),
+        sha256 = "7ebab01b06c555f4b6514453dc3e1667f810ef91d1d4d2d3aa29bb9fcb40a900",
+        strip_prefix = "googleapis-541b1ded4abadcc38e8178680b0677f65594ea6f",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
-            "https://github.com/googleapis/googleapis/archive/f81082ea1e2f85c43649bee26e0d9871d4b41cdb.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip",
+            "https://github.com/googleapis/googleapis/archive/541b1ded4abadcc38e8178680b0677f65594ea6f.zip",
         ],
     )
 
@@ -472,26 +471,19 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         },
     )
 
-    # 310ba5ee72661c081129eb878c1bbcec936b20f0 is based on 3.8.0 with a fix for protobuf.bzl.
-    PROTOBUF_URLS = [
-        "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
-        "https://github.com/protocolbuffers/protobuf/archive/310ba5ee72661c081129eb878c1bbcec936b20f0.tar.gz",
-    ]
-    PROTOBUF_SHA256 = "b9e92f9af8819bbbc514e2902aec860415b70209f31dfc8c4fa72515a5df9d59"
-    PROTOBUF_STRIP_PREFIX = "protobuf-310ba5ee72661c081129eb878c1bbcec936b20f0"
-
-    PROTOBUF_PATCH = "//third_party/protobuf:protobuf.patch"
-
     tf_http_archive(
         name = "com_google_protobuf",
-        patch_file = clean_dep(PROTOBUF_PATCH),
-        sha256 = PROTOBUF_SHA256,
-        strip_prefix = PROTOBUF_STRIP_PREFIX,
+        patch_file = clean_dep("//third_party/protobuf:protobuf.patch"),
+        sha256 = "cfcba2df10feec52a84208693937c17a4b5df7775e1635c1e3baffc487b24c9b",
+        strip_prefix = "protobuf-3.9.2",
         system_build_file = clean_dep("//third_party/systemlibs:protobuf.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:protobuf.bzl": "protobuf.bzl",
         },
-        urls = PROTOBUF_URLS,
+        urls = [
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+            "https://github.com/protocolbuffers/protobuf/archive/v3.9.2.zip",
+        ],
     )
 
     tf_http_archive(

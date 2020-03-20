@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
@@ -38,9 +39,10 @@ llvm::Optional<mlir::StringRef> ParseShardingAttribute(
 // i-th element is a list of mlir::Value's which represent inputs for the
 // TPU computation correponding to i-th logical device. If the attribute
 // does not exist, the all inputs are placed on logical core 0.
-llvm::SmallVector<llvm::SmallVector<mlir::Value, 4>, 4>
-ExtractInputsForLogicalDevices(int num_logical_cores,
-                               mlir::tf_device::LaunchFuncOp launch_func);
+mlir::LogicalResult ExtractInputsForLogicalDevices(
+    int num_logical_cores, mlir::tf_device::LaunchFuncOp launch_func,
+    mlir::OpBuilder* builder,
+    llvm::SmallVectorImpl<llvm::SmallVector<mlir::Value, 4>>* input_list);
 
 // Extracts a list of OpSharding that represent output sharding configuration
 // of `tf_device.launch`.

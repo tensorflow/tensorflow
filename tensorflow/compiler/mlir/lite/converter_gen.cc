@@ -442,22 +442,20 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
     verify_ctx.withOp("top");
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-      for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-        auto &value = op.getOperand(i);
-        // Skip from from first variadic operands for now. Else getOperand index
-        // used below doesn't match.
-        if (value.isVariadic()) break;
-        if (!value.name.empty())
-          verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
-      }
-      for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-        auto &value = op.getResult(i);
-        // Skip from from first variadic results for now. Else getResult index
-        // used below doesn't match.
-        if (value.isVariadic()) break;
-        if (!value.name.empty())
-          verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
-      }
+      auto &value = op.getOperand(i);
+      // Skip from from first variadic operands for now. Else getOperand index
+      // used below doesn't match.
+      if (value.isVariadic()) break;
+      if (!value.name.empty())
+        verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
+    }
+    for (int i = 0, e = op.getNumResults(); i < e; ++i) {
+      auto &value = op.getResult(i);
+      // Skip from from first variadic results for now. Else getResult index
+      // used below doesn't match.
+      if (value.isVariadic()) break;
+      if (!value.name.empty())
+        verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
     }
     GenOperandResultVerifier(os, def->getValueAsDag("arguments")->getArgs(),
                              "operand");

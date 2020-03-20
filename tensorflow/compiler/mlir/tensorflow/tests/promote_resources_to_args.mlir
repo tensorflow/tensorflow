@@ -1,7 +1,7 @@
 // RUN: tf-opt %s -split-input-file -verify-diagnostics -tf-promote-resources-to-args | FileCheck %s -dump-input-on-failure
 
 // One resource, one read.
-// CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<2xf32>
+// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
 func @main() -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
@@ -19,7 +19,7 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // One resource, two reads using different resource handles.
-// CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<2xf32>
+// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
 func @main() -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
@@ -42,7 +42,7 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // Two resources, two reads using different resources.
-// CHECK-LABEL: func @main(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<2xf32>
+// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}, %arg1: tensor<f32> {tf.resource_name = "y"}) -> tensor<2xf32>
 func @main() -> tensor<2xf32> {
   // CHECK-NOT: "tf.VarHandleOp"
   // CHECK-NOT: "tf.ReadVariableOp"
@@ -65,7 +65,7 @@ func @main() -> tensor<2xf32> {
 // -----
 
 // One resource with read and write.
-// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.aliasing_output = 1 : i64}) -> (tensor<2xf32>, tensor<f32>)
+// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.aliasing_output = 1 : i64, tf.resource_name = "x"}) -> (tensor<2xf32>, tensor<f32>)
 func @main() -> tensor<2xf32> {
   // CHECK-NOT: "tf.AssignVariableOp"
   // CHECK: %[[ADD1:[0-9]*]] = "tf.AddV2"(%arg0, %{{[0-9]*}})
@@ -99,7 +99,7 @@ func @cond_true(%arg0: tensor<!tf.resource<tensor<f32>>>, %arg1: tensor<f32>) ->
   return %2 : tensor<f32>
 }
 
-// CHECK-LABEL: func @main(%arg0: tensor<f32>) -> tensor<2xf32>
+// CHECK-LABEL: func @main(%arg0: tensor<f32> {tf.resource_name = "x"}) -> tensor<2xf32>
 func @main() -> tensor<2xf32> attributes {tf.entry_function = {inputs = "", outputs = "result"}} {
   %0 = "tf.Const"() {value = dense<1.050000e+03> : tensor<f32>} : () -> tensor<f32>
   %1 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>

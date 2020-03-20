@@ -1,3 +1,8 @@
+load(
+    "//third_party/mlir:tblgen.bzl",
+    "gentbl",
+)
+
 package(
     default_visibility = [
         ":friends",
@@ -18,6 +23,8 @@ package_group(
 cc_library(
     name = "hlo_xla_quantization_passes",
     srcs = [
+        "cpu_kernel_fusion.cc",
+        "generated_cpu_kernel_fusion.inc",
         "materialize.cc",
         "op_quant_spec.inc",
         "propagate.cc",
@@ -36,6 +43,8 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -63,5 +72,22 @@ cc_library(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Transforms",
+    ],
+)
+
+gentbl(
+    name = "cpu_kernel_fusion_inc_gen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "generated_cpu_kernel_fusion.inc",
+        ),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "cpu_kernel_fusion.td",
+    td_srcs = [
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/xla:hlo_ops_td_files",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
 )

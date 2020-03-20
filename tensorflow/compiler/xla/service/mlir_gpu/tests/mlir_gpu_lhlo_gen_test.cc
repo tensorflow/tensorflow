@@ -175,6 +175,12 @@ TEST_F(LhloGenTest, Neg) {
                                               "neg.hlo"));
 }
 
+TEST_F(LhloGenTest, ReduceWindow) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "reduce_window.hlo"));
+}
+
 TEST_F(LhloGenTest, Rem) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",
@@ -185,6 +191,12 @@ TEST_F(LhloGenTest, Rsqrt) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",
                                               "rsqrt.hlo"));
+}
+
+TEST_F(LhloGenTest, SelectAndScatter) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "select_and_scatter.hlo"));
 }
 
 TEST_F(LhloGenTest, Sign) {

@@ -70,7 +70,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_uniform(
             shape=[1000], seed=seed_t, maxval=maxval, dtype=dtype)
-        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
+        y = sess.run(x, {seed_t: [0x12345678, 0xabcdef1]})
         self.assertTrue(np.all(y >= 0))
         self.assertTrue(np.all(y < maxval))
 

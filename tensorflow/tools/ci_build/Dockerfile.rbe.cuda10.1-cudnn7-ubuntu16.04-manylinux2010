@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 
 # Copy and run the install scripts.
-ENV CLANG_VERSION="r373795"
+ENV CLANG_VERSION="ra21beccea2020f950845cbb68db663d0737e174c"
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_bootstrap_deb_packages.sh

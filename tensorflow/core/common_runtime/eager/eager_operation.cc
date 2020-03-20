@@ -57,7 +57,9 @@ Status EagerOperation::Reset(
   cancellation_manager_ = nullptr;
   executor_ = executor ? executor : &ctx_.Executor();
   remote_func_params_ = remote_func_params;
+#ifdef TENSORFLOW_MEM_DEBUG
   op_name_ = op;
+#endif
   return SetDeviceName(raw_device_name, true);
 }
 

@@ -430,6 +430,14 @@ bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
   return ret == CUBLAS_STATUS_SUCCESS;
 }
 
+// cublas_func may be overloaded, so we need to figure out which one we really
+// need to call based on the args. One way to do it is to wrap it in lambda.
+#define AS_LAMBDA(func)                                                  \
+  [](auto &&... args) -> decltype(                                       \
+                          func(std::forward<decltype(args)>(args)...)) { \
+    return func(std::forward<decltype(args)>(args)...);                  \
+  }
+
 bool CUDABlas::DoBlasAsum(Stream *stream, uint64 elem_count,
                           const DeviceMemory<float> &x, int incx,
                           DeviceMemory<float> *result) {
@@ -1953,8 +1961,9 @@ bool CUDABlas::DoBlasGemmWithAlgorithmImpl(
   // essentially reinterpet_cast to __half, which is safe because Eigen::half
   // inherits from __half.
   bool result = DoBlasInternalFailureOK(
-      cublasGemmEx, stream, /* pointer_mode_host = */ !alpha.is_pointer(),
-      CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k,
+      AS_LAMBDA(cublasGemmEx), stream,
+      /* pointer_mode_host = */ !alpha.is_pointer(), CUDABlasTranspose(transa),
+      CUDABlasTranspose(transb), m, n, k,
       alpha.is_pointer() ? GpuMemory(alpha.pointer()) : &alpha.value(),
       GpuMemory(a), cuda_in_type, lda, GpuMemory(b), cuda_in_type, ldb,
       beta.is_pointer() ? GpuMemory(beta.pointer()) : &beta.value(),
@@ -2227,7 +2236,7 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
         reinterpret_cast<void **>(const_cast<CUDA_T **>(GpuMemory(c)));
     bool ok;
     ok = DoBlasInternalImpl(
-        cublasGemmBatchedEx, stream, true /* = pointer_mode_host */,
+        AS_LAMBDA(cublasGemmBatchedEx), stream, true /* = pointer_mode_host */,
         true /* = err_on_failure */, use_tensor_ops, CUDABlasTranspose(transa),
         CUDABlasTranspose(transb), m, n, k, &alpha, a_void_ptrs, data_type, lda,
         b_void_ptrs, data_type, ldb, &beta, c_void_ptrs, data_type, ldc,
@@ -2375,12 +2384,12 @@ bool CUDABlas::DoBlasGemmStridedBatched(
       cublasGemmAlgo_t algo =
           (use_tensor_ops ? CUBLAS_GEMM_DFALT_TENSOR_OP : CUBLAS_GEMM_DFALT);
       bool ok = DoBlasInternalImpl(
-          cublasGemmStridedBatchedEx, stream, true /* = pointer_mode_host */,
-          true /* = err_on_failure */, use_tensor_ops,
-          CUDABlasTranspose(transa), CUDABlasTranspose(transb), m, n, k, &alpha,
-          GpuMemory(a), CUDA_R_16F, lda, stride_a, GpuMemory(b), CUDA_R_16F,
-          ldb, stride_b, &beta, GpuMemoryMutable(c), CUDA_R_16F, ldc, stride_c,
-          batch_count, CUDA_R_32F, algo);
+          AS_LAMBDA(cublasGemmStridedBatchedEx), stream,
+          true /* = pointer_mode_host */, true /* = err_on_failure */,
+          use_tensor_ops, CUDABlasTranspose(transa), CUDABlasTranspose(transb),
+          m, n, k, &alpha, GpuMemory(a), CUDA_R_16F, lda, stride_a,
+          GpuMemory(b), CUDA_R_16F, ldb, stride_b, &beta, GpuMemoryMutable(c),
+          CUDA_R_16F, ldc, stride_c, batch_count, CUDA_R_32F, algo);
       if (ok) {
         return true;
       }

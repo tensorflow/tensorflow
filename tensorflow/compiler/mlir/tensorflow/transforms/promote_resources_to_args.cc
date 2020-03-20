@@ -16,9 +16,17 @@ limitations under the License.
 // This pass promotes resource reads in the main function to input arguments
 // of the function. It also promotes resource writes in the main function to
 // outputs of the main function. If a resource may be updated by the main
-// function, the corresponding input and output arguments are alias. This
-// aliasing information is recorded as a named attribute tf.aliasing_output of
-// the input arguments.
+// function, the corresponding input and output arguments are alias.
+//
+// The information of variable identification and input-output alising is
+// recorded as named attributes of the input arguments:
+//
+//  . 'tf.resource_name' matches 'shared_name' of VarHandleOp, which represents
+//    the identifier of the resource corresponding to the input argument.
+//
+//  . 'tf.aliasing_output' is the index of the function output that is an alias
+//    of the input argument. This attribute is not added if there is no output
+//    alias for the input argument.
 //
 // Assumption of this pass:
 //  . Compound resource operations have already been decomposed.
@@ -217,6 +225,14 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
 
   // Update function argument and result types with new resource subtypes.
   function.setType(builder.getFunctionType(argument_types, result_types));
+
+  // Add resource_name attribute to the input argument for the resources.
+  for (auto& resource : resource_map) {
+    if (auto attr = resource.getFirst().dyn_cast<Attribute>()) {
+      function.setArgAttr(resource.getSecond().input_index, "tf.resource_name",
+                          attr);
+    }
+  }
 
   // Add aliasing_output attribute to the input argument for the resources that
   // are updated by the function.

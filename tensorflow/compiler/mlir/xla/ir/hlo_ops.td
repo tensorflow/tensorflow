@@ -793,15 +793,11 @@ def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
     shaped original, but is being phased as a separate op in order to support
     compatibility with lowerings and translations that precede dynamic
     shapes.
-
-    Note that the `broadcast_dimensions` attribute is optional and if omitted,
-    it is assumed to be an ordered, right-aligned mapping from input to
-    output dimensions.
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+    BroadcastDimAttr:$broadcast_dimensions
   );
 
   let results = (outs HLO_Tensor);
