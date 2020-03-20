@@ -33,7 +33,7 @@ limitations under the License.
 // to your function, your callers will automatically convert bools, integers,
 // and floating point values to strings for you.
 //
-// NOTE: Use of AlphaNum outside of the "strings" package is unsupported except
+// NOTE: Use of AlphaNum outside of the //strings package is unsupported except
 // for the specific case of function parameters of type "AlphaNum" or "const
 // AlphaNum &". In particular, instantiating AlphaNum directly as a stack
 // variable is not supported.

@@ -93,7 +93,7 @@ class Resize : public NodeShader {
       st.xy = max(icoord_floor, ivec2(0, 0));
       st.zw = min(icoord_floor + ivec2(1, 1), borders);
 
-      vec2 t = coord - coord_floor; // interpolating factors
+      vec2 t = coord - coord_floor; //interpolating factors
 
       vec4 tex11 = $input_data_0[st.x, st.y, gid.z]$;
       vec4 tex21 = $input_data_0[st.z, st.y, gid.z]$;
