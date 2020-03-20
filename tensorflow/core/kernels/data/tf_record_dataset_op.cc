@@ -119,8 +119,10 @@ class TFRecordDatasetOp::Dataset : public DatasetBase {
           Status s =
               reader_->ReadRecord(&out_tensors->back().scalar<tstring>()());
           if (s.ok()) {
-            metrics::RecordTFDataBytesRead(
-                kDatasetType, out_tensors->back().scalar<tstring>()().size());
+            static monitoring::CounterCell* bytes_counter =
+                metrics::GetTFDataBytesReadCounter(kDatasetType);
+            bytes_counter->IncrementBy(
+                out_tensors->back().scalar<tstring>()().size());
             *end_of_sequence = false;
             return Status::OK();
           }

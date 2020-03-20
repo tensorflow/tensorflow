@@ -105,12 +105,13 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
 
           if (s.ok()) {
             // Produce the line as output.
-            metrics::RecordTFDataBytesRead(
-                name_utils::OpName(TextLineDatasetOp::kDatasetType),
-                line_contents.size());
+            static monitoring::CounterCell* bytes_counter =
+                metrics::GetTFDataBytesReadCounter(
+                    name_utils::OpName(TextLineDatasetOp::kDatasetType));
+            bytes_counter->IncrementBy(line_contents.size());
             out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                       TensorShape({}));
-            out_tensors->back().scalar<tstring>()() = std::move(line_contents);
+            out_tensors->back().scalar<tstring>()() = line_contents;
             *end_of_sequence = false;
             return Status::OK();
           } else if (!errors::IsOutOfRange(s)) {
