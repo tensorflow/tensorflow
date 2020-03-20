@@ -1319,6 +1319,42 @@ module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:loc
   }
 }
 
+
+// -----
+
+// Tests that inputs are inputs with maximal and replicate sharding are set properly
+// for replicated model parallelism.
+
+module attributes {tf.versions = {producer = 888 : i32}, tf.devices = ["/job:localhost/replica:0/task:0/device:CPU:0", "/job:localhost/replica:0/task:0/device:TPU:0", "/job:localhost/replica:0/task:0/device:TPU:1", "/job:localhost/replica:0/task:0/device:TPU_SYSTEM:0", "/job:localhost/replica:0/task:1/device:CPU:0", "/job:localhost/replica:0/task:1/device:TPU:0", "/job:localhost/replica:0/task:1/device:TPU:1", "/job:localhost/replica:0/task:1/device:TPU_SYSTEM:0"]} {
+  // CHECK-LABEL: func @parallel_execute_with_input_with_sharding_configurations
+  // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<8xi32>, %[[ARG_1:[a-z0-9]*]]: tensor<8xi32>, %[[ARG_2:[a-z0-9]*]]: tensor<*xi1>, %[[ARG_3:[a-z0-9]*]]: tensor<*xi1>, %[[ARG_4:[a-z0-9]*]]: tensor<*xi32>, %[[ARG_5:[a-z0-9]*]]: tensor<*xi32>)
+  func @parallel_execute_with_input_with_sharding_configurations(%arg0: tensor<8xi32>, %arg1: tensor<8xi32>, %arg2: tensor<*xi1>, %arg3: tensor<*xi1>, %arg4: tensor<*xi32>, %arg5: tensor<*xi32>) -> (tensor<8xi32>, tensor<8xi32>) {
+    // CHECK: tf_device.replicate
+    // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]*]]: tensor<8xi32>
+    // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]*]]: tensor<*xi1>
+    // CHECK-SAME: [%[[ARG_4]], %[[ARG_5]]] as %[[RI_2:[a-z0-9]*]]: tensor<*xi32>
+    %0:2 = tf_device.replicate([%arg0, %arg1] as %ri: tensor<8xi32>, [%arg2, %arg3] as %ri2: tensor<*xi1>, [%arg4, %arg5] as %ri3: tensor<*xi32>) {n = 2 : i32} {
+      // CHECK:      %[[COMPILE:[a-z0-9]+]]:3 = "tf_device.launch"
+      // CHECK:      "tf._TPUCompileMlir"
+      // CHECK:      %[[PARALLEL_EXECUTE_OUTPUT:[0-9]*]] = "tf_device.parallel_execute"
+      // CHECK-NEXT:   %[[LAUNCH_0_OUTPUT:[0-9]*]] = "tf_device.launch"
+      // CHECK-NEXT:     %[[EXECUTE_OUTPUT:[0-9]*]] = "tf.TPUExecute"(%[[RI_0]], %[[RI_1]], %[[RI_2]], %[[COMPILE]]#1)
+      // CHECK-NEXT:     tf_device.return %[[EXECUTE_OUTPUT]]
+      // CHECK-NEXT:   device = "TPU_REPLICATED_CORE_0"
+      // CHECK:        "tf_device.launch"
+      // CHECK-NEXT:     "tf.TPUExecute"(%[[RI_1]], %[[RI_2]], %[[COMPILE]]#2)
+      // CHECK:        device = "TPU_REPLICATED_CORE_1"
+      %1 = "tf_device.launch_func"(%ri, %ri2, %ri3) {_tpu_replicate = "cluster0", device = "", func = @tpu0_func, num_cores_per_replica = 2, step_marker_location = "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP", padding_map = [""], topology = "\0A\04\01\02\01\02\10\02\18\02\22\10\00\00\00\00\00\00\00\01\00\01\00\00\00\01\00\01", device_assignment = [0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0], input_sharding_configuration = ["\08\01\1A\01\01\22\01\00", "", ""], output_sharding_configuration = ["\08\01\1A\01\01\22\01\00"]} : (tensor<8xi32>, tensor<*xi1>, tensor<*xi32>) -> tensor<8xi32>
+      tf_device.return %1 : tensor<8xi32>
+    }
+    return %0#0, %0#1 : tensor<8xi32>, tensor<8xi32>
+  }
+  func @tpu0_func(%arg0: tensor<8xi32>, %arg1: tensor<*xi1>, %arg2: tensor<*xi32>) -> tensor<8xi32> {
+    %1 = "tf.A"(%arg0, %arg1, %arg2) : (tensor<8xi32>, tensor<*xi1>, tensor<*xi32>) -> (tensor<8xi32>)
+    return %1 : tensor<8xi32>
+  }
+}
+
 // -----
 
 // Tests devices are set properly for replicated model parallelism with
