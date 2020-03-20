@@ -193,6 +193,12 @@ TEST_F(LhloGenTest, Rsqrt) {
                                               "rsqrt.hlo"));
 }
 
+TEST_F(LhloGenTest, SelectAndScatter) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "select_and_scatter.hlo"));
+}
+
 TEST_F(LhloGenTest, Sign) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",

@@ -51,6 +51,7 @@ tf_cc_test(
         "rem.hlo",
         "rsqrt.hlo",
         "select.hlo",
+        "select_and_scatter.hlo",
         "sign.hlo",
         "sqrt.hlo",
         "tanh.hlo",

@@ -150,6 +150,7 @@ Status SpliceHloComputation(OpBuilder builder, mlir::Location loc,
                             const HloComputation& hlo_computation,
                             xla::mlir_gpu::EmissionContext* emission_context) {
   auto block = builder.getInsertionBlock();
+  builder.setInsertionPoint(block->getTerminator());
   llvm::SmallVector<Value, 4> arg_values;
   // First map parameters to memrefs on the operation.
   for (auto param : hlo_computation.parameter_instructions()) {
@@ -242,7 +243,7 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 }
 
 Status LhloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
-  mlir::DenseIntElementsAttr broadcast_dim =
+  DenseIntElementsAttr broadcast_dim =
       CreateDenseIntElementsAttrFromVector(broadcast->dimensions(), builder_);
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*broadcast));
@@ -341,6 +342,51 @@ Status LhloDialectEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   reduce_window_op.ensureTerminator(reduce_window_op.body(), builder, loc);
   return SpliceHloComputation(OpBuilder{&reduce_window_op.body()}, loc,
                               *reduce_window->to_apply(), emission_context_);
+}
+
+Status LhloDialectEmitter::HandleSelectAndScatter(HloInstruction* hlo) {
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*hlo));
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
+  OpBuilder builder(function.getBody());
+  auto loc = getLocation(hlo);
+
+  // Collect attribute values.
+  llvm::SmallVector<int64, 2> window_dimensions, window_strides, padding;
+  int64 rank = hlo->window().dimensions_size();
+  window_dimensions.reserve(rank);
+  window_strides.reserve(rank);
+  padding.reserve(2 * rank);
+  for (const auto& window : hlo->window().dimensions()) {
+    window_dimensions.push_back(window.size());
+    window_strides.push_back(window.stride());
+    padding.push_back(window.padding_low());
+    padding.push_back(window.padding_high());
+  }
+
+  auto select_scatter_op = builder.create<lhlo::SelectAndScatterOp>(
+      loc, /*operand=*/arg_values[0], /*source=*/arg_values[1],
+      /*init_value=*/arg_values[2],
+      /*out=*/arg_values[3],
+      CreateDenseIntElementsAttrFromVector(window_dimensions, builder),
+      CreateDenseIntElementsAttrFromVector(window_strides, builder),
+      CreateDenseIntElementsAttrFromVector(padding, builder, {rank, 2}));
+
+  // Convert `select` computation.
+  builder.createBlock(&select_scatter_op.select());
+  OpBuilder select_builder{&select_scatter_op.select()};
+  select_builder.create<lhlo::TerminatorOp>(loc);
+  TF_RETURN_IF_ERROR(SpliceHloComputation(select_builder, loc, *hlo->select(),
+                                          emission_context_));
+
+  // Convert `scatter` computation.
+  builder.createBlock(&select_scatter_op.scatter());
+  OpBuilder scatter_builder{&select_scatter_op.scatter()};
+  scatter_builder.create<lhlo::TerminatorOp>(loc);
+  TF_RETURN_IF_ERROR(SpliceHloComputation(scatter_builder, loc, *hlo->scatter(),
+                                          emission_context_));
+
+  return Status::OK();
 }
 
 Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {

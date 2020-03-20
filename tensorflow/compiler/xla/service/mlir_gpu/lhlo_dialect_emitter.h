@@ -62,6 +62,7 @@ class LhloDialectEmitter : public DfsHloVisitorWithDefault,
   Status HandleParameter(HloInstruction* parameter) override;
   Status HandleReduce(HloInstruction* reduce) override;
   Status HandleReduceWindow(HloInstruction* reduce_window) override;
+  Status HandleSelectAndScatter(HloInstruction* hlo) override;
   Status HandleTuple(HloInstruction* tuple) override;
 
   Status FinishVisit(HloInstruction* root) override;
