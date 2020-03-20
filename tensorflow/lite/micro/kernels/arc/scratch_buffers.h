@@ -27,6 +27,7 @@ namespace micro {
 void free_arc_scratch_buffers(void);
 void *get_arc_scratch_buffer(int size);// Function to assign fast memory from one of 3 scratch buffers.
 
+void get_arc_scratch_buffer_max_size(int *size);
 void get_arc_scratch_buffer_two_max_sizes(int *size1, int *size2);
 
 static inline bool inside_arc_dccm(void* p) {

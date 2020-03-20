@@ -210,7 +210,7 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     const bool in_is_local = in_local.data == mli_in.data;
     const bool out_is_local = out_local.data == mli_out.data;
 
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, &inSliceHeight, &outSliceHeight));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &inSliceHeight, &outSliceHeight));
 
     /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
        because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
