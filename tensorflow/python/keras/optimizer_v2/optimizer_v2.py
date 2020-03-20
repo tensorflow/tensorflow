@@ -343,15 +343,16 @@ class OptimizerV2(trackable.Trackable):
         raise ValueError("Gradient clipping in the optimizer "
                          "(by setting clipnorm or clipvalue) is currently "
                          "unsupported when using a distribution strategy.")
-      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+      grads = [None if g is None else clip_ops.clip_by_norm(g, self.clipnorm)
+               for g in grads]
     if self.clipvalue is not None:
       if distribute_ctx.has_strategy():
         raise ValueError("Gradient clipping in the optimizer "
                          "(by setting clipnorm or clipvalue) is currently "
                          "unsupported when using a distribution strategy.")
+      v = self.clipvalue
       grads = [
-          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-          for g in grads
+          None if g is None else clip_ops.clip_by_value(g, -v, v) for g in grads
       ]
     return grads
 
@@ -511,6 +512,7 @@ class OptimizerV2(trackable.Trackable):
       A list of all-reduced gradients.
     """
     grads_and_vars = list(grads_and_vars)
+    filtered_grads_and_vars = _filter_grads(grads_and_vars)
     def all_reduce_fn(distribution, grads_and_vars):
       return distribution.extended.batch_reduce_to(
           ds_reduce_util.ReduceOp.SUM, grads_and_vars)
@@ -519,9 +521,22 @@ class OptimizerV2(trackable.Trackable):
     # replica context.
     # TODO(b/150507409): Do not switch to a cross-replica context once the bug
     # is fixed.
-    if grads_and_vars:
-      return distribute_ctx.get_replica_context().merge_call(
-          all_reduce_fn, args=(grads_and_vars,))
+    if filtered_grads_and_vars:
+      reduced = distribute_ctx.get_replica_context().merge_call(
+          all_reduce_fn, args=(filtered_grads_and_vars,))
+    else:
+      reduced = []
+    # Copy 'reduced' but add None gradients back in
+    reduced_with_nones = []
+    reduced_pos = 0
+    for g, _ in grads_and_vars:
+      if g is None:
+        reduced_with_nones.append(None)
+      else:
+        reduced_with_nones.append(reduced[reduced_pos])
+        reduced_pos += 1
+    assert reduced_pos == len(reduced), "Failed to add all gradients"
+    return reduced_with_nones
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
