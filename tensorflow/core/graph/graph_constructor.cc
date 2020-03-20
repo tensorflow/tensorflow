@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -457,6 +458,33 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   std::vector<bool> is_consumed_;
 };
 
+bool ForwardCompatibilityWindowPassed(const VersionDef& versions) {
+  // TF_GRAPH_DEF_VERSION is incremented daily.
+  // TF has a 3 week forward compatibility guarantee.
+  return (versions.producer() - TF_GRAPH_DEF_VERSION) > 21;
+}
+
+Status MaybeAppendVersionWarning(const VersionDef* versions,
+                                 const Status& import_status) {
+  if (versions && ForwardCompatibilityWindowPassed(*versions)) {
+    return Status(
+        import_status.code(),
+        absl::StrCat(
+            "Converting GraphDef to Graph has failed. The binary trying to "
+            "import the GraphDef was built when GraphDef version was ",
+            TF_GRAPH_DEF_VERSION,
+            ". The GraphDef was produced by a binary built when GraphDef "
+            "version was ",
+            versions->producer(),
+            ". The difference between these versions is larger than "
+            "TensorFlow's forward compatibility guarantee. The following error "
+            "might be due to the binary trying to import the GraphDef being "
+            "too old: ",
+            import_status.error_message()));
+  }
+  return import_status;
+}
+
 /* static */ Status GraphConstructor::Construct(
     const Options& opts, NodeDefSlice node_defs, const VersionDef* versions,
     const FunctionDefLibrary* library, Graph* g, ShapeRefiner* refiner,
@@ -471,8 +499,11 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   NodeDefCopyingGraphConstructor c(opts, node_defs, versions, library, g,
                                    refiner, return_tensors, return_nodes,
                                    missing_unused_input_map_keys);
-  const Status s = c.TryImport();
-  if (!s.ok()) c.Undo();
+  Status s = c.TryImport();
+  if (!s.ok()) {
+    c.Undo();
+    s = MaybeAppendVersionWarning(versions, s);
+  }
   return s;
 }
 
@@ -484,11 +515,15 @@ class NodeDefMovingGraphConstructor : public GraphConstructor {
   TF_RETURN_IF_ERROR(CheckVersions(graph_def.versions(), TF_GRAPH_DEF_VERSION,
                                    TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
                                    "GraphDef", "graph"));
+  VersionDef version_def = graph_def.versions();
   NodeDefMovingGraphConstructor c(opts, std::move(graph_def), g, refiner,
                                   return_tensors, return_nodes,
                                   missing_unused_input_map_keys);
-  const Status s = c.TryImport();
-  if (!s.ok()) c.Undo();
+  Status s = c.TryImport();
+  if (!s.ok()) {
+    c.Undo();
+    s = MaybeAppendVersionWarning(&version_def, s);
+  }
   return s;
 }
 

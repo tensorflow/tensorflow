@@ -2520,6 +2520,7 @@ tf_cuda_library(
         "//third_party/eigen3",
     ] + if_static([
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ]),
 )
 
