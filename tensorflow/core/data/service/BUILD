@@ -78,6 +78,29 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "credentials_factory",
+    srcs = ["credentials_factory.cc"],
+    hdrs = ["credentials_factory.h"],
+    deps = [
+        "//tensorflow:grpc++",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "credentials_factory_test",
+    srcs = ["credentials_factory_test.cc"],
+    deps = [
+        ":credentials_factory",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_grpc_library(
     name = "master_cc_grpc_proto",
     srcs = [":master_proto"],
