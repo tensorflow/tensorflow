@@ -58,11 +58,12 @@ using ::mlir::xla_lhlo::FusionOp;
 // Following are some small transformations that are required to clean up code
 // after lowering from linalg to loops.
 
-// A simple pass that applies lowering of HLO to LHLO only within Fusion
-// operations. This is needed, as FusionOp is not closed from above and hence
-// nested pass managers can not be applied.
-struct FusionToLhloConverter
-    : public mlir::FunctionPass<FusionToLhloConverter> {
+// A simple pass that applies lowering of HLO to LHLO only within LHLO ops that
+// contain regions with HLO ops, e.g. FusionOp, ReduceOp, SelectAndScatterOp.
+// This is needed, as these ops are not closed from above and hence nested pass
+// managers can not be applied.
+struct NestedHloRegionsConverter
+    : public mlir::FunctionPass<NestedHloRegionsConverter> {
   void runOnFunction() override {
     auto& ctx = getContext();
     mlir::OwningRewritePatternList patterns;
@@ -270,8 +271,8 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   EnableIRPrinting(&pm);
 
-  // First, lower bodies of fusion operations from hlo to lhlo.
-  pm.addPass(absl::make_unique<FusionToLhloConverter>());
+  // First, lower bodies of lhlo operations that contain hlo ops.
+  pm.addPass(absl::make_unique<NestedHloRegionsConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary Lhlo copies.
