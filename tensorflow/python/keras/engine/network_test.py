@@ -131,8 +131,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
   def test_get_layer(self):
     # create a simple network
     x = input_layer_lib.Input(shape=(32,))
-    dense_a = keras.layers.Dense(4, name='dense_a')
-    dense_b = keras.layers.Dense(2, name='dense_b')
+    dense_a = layers.Dense(4, name='dense_a')
+    dense_b = layers.Dense(2, name='dense_b')
     y = dense_b(dense_a(x))
     network = network_lib.Network(x, y, name='dense_network')
 
