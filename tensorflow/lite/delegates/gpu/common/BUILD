@@ -92,6 +92,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
