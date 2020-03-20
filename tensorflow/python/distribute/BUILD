@@ -938,7 +938,7 @@ distribute_py_test(
     srcs = ["values_test.py"],
     main = "values_test.py",
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu",  # b/151865826
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
@@ -1206,7 +1206,7 @@ cuda_py_test(
     srcs = ["mirrored_strategy_test.py"],
     shard_count = 5,
     tags = [
-        "multi_and_single_gpu",
+        # "multi_and_single_gpu",  # b/151862653
         "no_windows_gpu",  # TODO(b/130551176)
     ],
     deps = [
