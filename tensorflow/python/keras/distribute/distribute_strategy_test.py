@@ -796,6 +796,33 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
           atol=1e-4,
           rtol=1e-4)
 
+  @combinations.generate(all_strategy_combinations_plus_run_distributed())
+  def test_gradients_are_none(self, distribution):
+
+    if not context.executing_eagerly():
+      self.skipTest('None gradients are not supported in graph mode')
+
+    class DenseWithExtraWeight(keras.layers.Dense):
+
+      def build(self, input_shape):
+        # Gradients w.r.t. extra_weights are None
+        self.extra_weight_1 = self.add_weight('extra_weight_1', shape=(),
+                                              initializer='ones')
+        super(DenseWithExtraWeight, self).build(input_shape)
+        self.extra_weight_2 = self.add_weight('extra_weight_2', shape=(),
+                                              initializer='ones')
+
+    with distribution.scope():
+      model = keras.Sequential([DenseWithExtraWeight(4, input_shape=(4,))])
+      model.compile('adam', 'mse')
+
+    inputs = np.random.normal(size=(64, 4))
+    targets = np.random.normal(size=(64, 4))
+    old_kernel = model.get_weights()[1]
+    model.fit(inputs, targets)
+    new_kernel = model.get_weights()[1]
+    self.assertNotAllEqual(old_kernel, new_kernel)
+
 
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
