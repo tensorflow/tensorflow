@@ -5659,7 +5659,7 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
   Example:
 
   >>> random_normal_tensor = tf.keras.backend.random_normal(shape=(2,3),
-  mean=0.0, stddev=1.0)
+  ... mean=0.0, stddev=1.0)
   >>> random_normal_tensor
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
