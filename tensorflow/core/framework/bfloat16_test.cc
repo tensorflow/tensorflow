@@ -36,14 +36,14 @@ TEST(Bfloat16Test, FlushDenormalsToZero) {
        denorm < std::numeric_limits<float>::denorm_min();
        denorm = std::nextafterf(denorm, 1.0f)) {
     bfloat16 bf_trunc = bfloat16::truncate_to_bfloat16(denorm);
-    ASSERT_EQ(float{bf_trunc}, 0.0f);
+    ASSERT_EQ(static_cast<float>(bf_trunc), 0.0f);
     if (std::signbit(denorm)) {
       ASSERT_EQ(bf_trunc.value, 0x8000) << denorm;
     } else {
       ASSERT_EQ(bf_trunc.value, 0x0000) << denorm;
     }
     bfloat16 bf_round = bfloat16::round_to_bfloat16(denorm);
-    ASSERT_EQ(float{bf_round}, 0.0f);
+    ASSERT_EQ(static_cast<float>(bf_round), 0.0f);
     if (std::signbit(denorm)) {
       ASSERT_EQ(bf_round.value, 0x8000) << denorm;
     } else {
