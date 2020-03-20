@@ -38,6 +38,7 @@ cc_library(
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "//tensorflow/c/experimental/filesystem:modular_filesystem",
     ],
+    alwayslink = 1,
 )
 
 # Library implementing helper functionality, so that the above only contains
