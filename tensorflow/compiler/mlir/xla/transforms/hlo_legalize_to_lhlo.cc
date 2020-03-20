@@ -164,14 +164,10 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
       xla_hlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto broadcast_dimensions = op.broadcast_dimensions();
-    if (!broadcast_dimensions.hasValue()) {
-      return failure();
-    }
     Value resultBuffer = InsertDynamicAllocAndDealloc(
         loc, op.getResult(), op.output_dimensions(), &rewriter);
-    rewriter.create<xla_lhlo::BroadcastInDimOp>(
-        loc, operands[0], resultBuffer, broadcast_dimensions.getValue());
+    rewriter.create<xla_lhlo::BroadcastInDimOp>(loc, operands[0], resultBuffer,
+                                                op.broadcast_dimensions());
 
     rewriter.replaceOp(op, {resultBuffer});
 
