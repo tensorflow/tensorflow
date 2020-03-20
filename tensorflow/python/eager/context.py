@@ -139,7 +139,8 @@ class FunctionCallOptions(object):
   @config_proto_serialized.setter
   def config_proto_serialized(self, config):
     if isinstance(config, config_pb2.ConfigProto):
-      self._config_proto_serialized = config.SerializeToString()
+      self._config_proto_serialized = config.SerializeToString(
+          deterministic=True)
     elif isinstance(config, str):
       self._config_proto_serialized = config
     elif config is None:
