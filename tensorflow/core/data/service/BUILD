@@ -46,6 +46,30 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "grpc_util",
+    srcs = ["grpc_util.cc"],
+    hdrs = [
+        "grpc_util.h",
+    ],
+    deps = [
+        "//tensorflow:grpc++",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "grpc_util_test",
+    srcs = ["grpc_util_test.cc"],
+    deps = [
+        ":grpc_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
     name = "compression_utils",
     srcs = ["compression_utils.cc"],
     hdrs = [
