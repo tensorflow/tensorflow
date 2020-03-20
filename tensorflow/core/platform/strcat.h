@@ -168,30 +168,30 @@ class AlphaNum {
 // ----------------------------------------------------------------------
 
 // For performance reasons, we have specializations for <= 4 args.
-string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b,
-              const AlphaNum &c) TF_MUST_USE_RESULT;
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b,
+                   const AlphaNum &c) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d) TF_MUST_USE_RESULT;
 
 namespace internal {
 
 // Do not call directly - this is not part of the public API.
-string CatPieces(std::initializer_list<StringPiece> pieces);
-void AppendPieces(string *dest, std::initializer_list<StringPiece> pieces);
+std::string CatPieces(std::initializer_list<StringPiece> pieces);
+void AppendPieces(std::string *dest, std::initializer_list<StringPiece> pieces);
 
 }  // namespace internal
 
 // Support 5 or more arguments
 template <typename... AV>
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d, const AlphaNum &e,
-              const AV &... args) TF_MUST_USE_RESULT;
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d, const AlphaNum &e,
+                   const AV &... args) TF_MUST_USE_RESULT;
 
 template <typename... AV>
-string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
-              const AlphaNum &d, const AlphaNum &e, const AV &... args) {
+std::string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
+                   const AlphaNum &d, const AlphaNum &e, const AV &... args) {
   return internal::CatPieces({a.Piece(), b.Piece(), c.Piece(), d.Piece(),
                               e.Piece(),
                               static_cast<const AlphaNum &>(args).Piece()...});
@@ -218,16 +218,16 @@ string StrCat(const AlphaNum &a, const AlphaNum &b, const AlphaNum &c,
 //    worked around as consecutive calls to StrAppend are quite efficient.
 // ----------------------------------------------------------------------
 
-void StrAppend(string *dest, const AlphaNum &a);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+void StrAppend(std::string *dest, const AlphaNum &a);
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b);
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c);
-void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                const AlphaNum &c, const AlphaNum &d);
 
 // Support 5 or more arguments
 template <typename... AV>
-inline void StrAppend(string *dest, const AlphaNum &a, const AlphaNum &b,
+inline void StrAppend(std::string *dest, const AlphaNum &a, const AlphaNum &b,
                       const AlphaNum &c, const AlphaNum &d, const AlphaNum &e,
                       const AV &... args) {
   internal::AppendPieces(dest,

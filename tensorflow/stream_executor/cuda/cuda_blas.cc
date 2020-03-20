@@ -74,7 +74,7 @@ namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuBlasPlugin);
 
-static string ToString(cublasStatus_t status) {
+static std::string ToString(cublasStatus_t status) {
   switch (status) {
     case CUBLAS_STATUS_SUCCESS:
       return "CUBLAS_STATUS_SUCCESS";
@@ -2803,7 +2803,7 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
 }
 
-port::Status CUDABlas::GetVersion(string *version) {
+port::Status CUDABlas::GetVersion(std::string *version) {
   absl::MutexLock lock(&mu_);
 
   int v;
