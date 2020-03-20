@@ -508,10 +508,9 @@ class OptimizerV2(trackable.Trackable):
       grads_and_vars: List of (gradient, variable) pairs.
 
     Returns:
-      A list of all-reduced gradients. Any gradients which were None are
-      removed.
+      A list of all-reduced gradients.
     """
-    grads_and_vars = _filter_grads(grads_and_vars)
+    grads_and_vars = list(grads_and_vars)
     def all_reduce_fn(distribution, grads_and_vars):
       return distribution.extended.batch_reduce_to(
           ds_reduce_util.ReduceOp.SUM, grads_and_vars)
@@ -521,7 +520,6 @@ class OptimizerV2(trackable.Trackable):
     # TODO(b/150507409): Do not switch to a cross-replica context once the bug
     # is fixed.
     if grads_and_vars:
-      # TODO(reedwm): Should we return the None gradients as well?
       return distribute_ctx.get_replica_context().merge_call(
           all_reduce_fn, args=(grads_and_vars,))
 
