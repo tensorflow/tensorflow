@@ -12,22 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_REGISTRATION_H_
-#define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_REGISTRATION_H_
 
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
-#include "tensorflow/core/platform/status.h"
+#include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
+#include "tensorflow/c/experimental/filesystem/plugins/posix/posix_filesystem.h"
 
 namespace tensorflow {
-namespace filesystem_registration {
 
-// Implementation for filesystem registration
-//
-// Don't call this directly. Instead call `RegisterFilesystemPlugin`.
-// Exposed only for static registration of local filesystems.
-Status RegisterFilesystemPluginImpl(const TF_FilesystemPluginInfo* info);
+// Register the POSIX filesystems statically.
+// Return value will be unused
+bool StaticallyRegisterLocalFilesystems() {
+  TF_FilesystemPluginInfo info;
+  TF_InitPlugin(&info);
+  Status status = filesystem_registration::RegisterFilesystemPluginImpl(&info);
+  if (!status.ok()) {
+    VLOG(0) << "Static POSIX filesystem could not be registered: " << status;
+    return false;
+  }
+  return true;
+}
 
-}  // namespace filesystem_registration
+// Perform the actual registration
+static bool unused = StaticallyRegisterLocalFilesystems();
+
 }  // namespace tensorflow
-
-#endif  // TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_REGISTRATION_H_
