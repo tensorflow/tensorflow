@@ -22,53 +22,89 @@ namespace tflite {
 namespace ops {
 namespace micro {
 
-TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int slice_size, int padding_pre, int padding_post, int overlap)
+TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int slice_size, int padding_pre, int padding_post, int overlap, bool interleave_mode)
   : full_tensor_(full_tensor)
   , sliceDim_(slice_dim)
   , pad_pre_(padding_pre)
   , pad_post_(padding_post)
   , overlap_(overlap)
-  , subtsr_cfg_{ {0, 0}, static_cast<uint8_t>(slice_dim + 1), static_cast<uint8_t>(slice_size) }
+  , sub_cfg_{0}
   , sub_tensor_{0}
   , done_(false){
+
+  /* In the interleave mode, the slicing happens from the deepest dimension up to the slice_dim
+  for example in an HWC layout this can mode can be used to slice in the C dimenstion.
+  in this mode the data is not contiguous in memory anymore */
+  if (interleave_mode) {
+    for (int i = 0; i< full_tensor->rank; i++){
+      if (i > slice_dim) {
+        sub_cfg_.size[i] = 1;
+      } else if (i == slice_dim) {
+        sub_cfg_.size[i] = slice_size;
+      } else {
+        sub_cfg_.size[i] = full_tensor->shape[i];
+      }
+    }
+    sub_cfg_.sub_tensor_rank = full_tensor->rank;
+
+  } else {
+    /* In the not interlevaed mode, the slicing happens from the outer most dimension up to the slice_dim
+    for example in an HWC layout this mode can be used to slice in the H dimension.
+    in this mode the data of the slice is still contiguous in memory (if that was the case in the input tensor */
+    for (int i = 0; i< full_tensor->rank; i++){
+      if (i < slice_dim) {
+        sub_cfg_.size[i] = 1;
+      } else if (i == slice_dim) {
+        sub_cfg_.size[i] = slice_size;
+      }else {
+        sub_cfg_.size[i] = full_tensor->shape[i];
+      }
+    }
+    sub_cfg_.sub_tensor_rank = full_tensor->rank - slice_dim;
+  }
 
   ComputeSubTensor();
 }
 
 void TensorSlicer::ComputeSubTensor(void) {
-  // subtsr_cfg_ is used to keep track of the itteration.
+
+  // subtsr_cfg_ is used to keep track of the iteration.
   // A copy is created to update it with the correct clipping and padding for the current slice
-  mli_point_to_subtsr_cfg cfg_new = subtsr_cfg_;
-  // add clipping of first_out_dim_size to not exceed total size in that dimensions
-  // add padding logic
+  mli_sub_tensor_cfg cfg_new = sub_cfg_;
 
   // begin and end spans the complete input region including padding areas.
-  const int begin = (int)subtsr_cfg_.start_coord[1] - pad_pre_;
+  const int begin = (int)sub_cfg_.offset[sliceDim_] - pad_pre_;
   // end is clipped to the end of the full input region. this is needed for cases where the last slice is smaller than the rest.
-  const int end = MIN(begin + subtsr_cfg_.first_out_dim_size + overlap_, full_tensor_->shape[sliceDim_] + pad_post_);
+  const int end = MIN(begin + sub_cfg_.size[sliceDim_] + overlap_, full_tensor_->shape[sliceDim_] + pad_post_);
   // The start coordinate of the subtensor is clipped to zero
-  cfg_new.start_coord[sliceDim_] = MAX(begin, 0);
+  cfg_new.offset[sliceDim_] = MAX(begin, 0);
   // and the stop coordinate is clipped to the size of the full tensor
   const int stop_coord = MIN(end, full_tensor_->shape[sliceDim_]);
   // compute the size of the subtensor
-  cfg_new.first_out_dim_size = stop_coord - cfg_new.start_coord[sliceDim_];
+  cfg_new.size[sliceDim_] = stop_coord - cfg_new.offset[sliceDim_];
 
   // compute the padding configuration for the current slice.
-  actual_padding_pre = cfg_new.start_coord[sliceDim_] - begin;
+  actual_padding_pre = cfg_new.offset[sliceDim_] - begin;
   actual_padding_post = end - stop_coord;
 
-  mli_hlp_point_to_subtensor(full_tensor_, &cfg_new, &sub_tensor_);
+  mli_hlp_create_subtensor(full_tensor_, &cfg_new, &sub_tensor_);
 }
+
 void TensorSlicer::Next(void){
-  // TODO make generic for any number of dimensions.
-  subtsr_cfg_.start_coord[1]+= subtsr_cfg_.first_out_dim_size;
-  if (subtsr_cfg_.start_coord[1] >= full_tensor_->shape[1]) {
-    subtsr_cfg_.start_coord[1] = 0;
-    subtsr_cfg_.start_coord[0]++;
-    if (subtsr_cfg_.start_coord[0] >= full_tensor_->shape[0]) {
-      done_ = true;
+  for (int i = full_tensor_->rank - 1; i >= 0; i--) {
+    sub_cfg_.offset[i] += sub_cfg_.size[i];
+    if (sub_cfg_.offset[i] >= full_tensor_->shape[i]){
+      // wrap
+      sub_cfg_.offset[i] = 0;
+      // and continue to the next dimension, if no next dimension we are done.
+      if (i == 0) done_ = true;
+      continue;
+    } else {
+      // carry is false, so break from the loop
+      break;
     }
   }
+
   if (!done_) ComputeSubTensor();
 }
 

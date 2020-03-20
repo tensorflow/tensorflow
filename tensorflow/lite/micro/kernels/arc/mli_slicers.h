@@ -24,7 +24,7 @@ namespace micro {
 class TensorSlicer {
 public:
 
-  TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int slice_size, int padding_pre = 0, int padding_post = 0, int overlap = 0);
+  TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int slice_size, int padding_pre = 0, int padding_post = 0, int overlap = 0, bool interleave_mode = false);
   ~TensorSlicer() = default;
 
   void Next();
@@ -41,7 +41,7 @@ public:
 private:
   const mli_tensor* full_tensor_;
   mli_tensor sub_tensor_;
-  mli_point_to_subtsr_cfg subtsr_cfg_;
+  mli_sub_tensor_cfg sub_cfg_;
   bool done_;
   int sliceDim_;
   int pad_pre_, pad_post_, overlap_;

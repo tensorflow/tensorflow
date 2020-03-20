@@ -64,9 +64,15 @@ TfLiteStatus arc_scratch_buffer_calc_slice_size_io(
     const mli_tensor *out,
     const int kernelHeight,
     const int strideHeight,
+    const int padding_top,
+    const int padding_bot,
     int *inSliceHeight,
     int *outSliceHeight);
 
+TfLiteStatus arc_scratch_buffer_calc_slice_size_weights(
+    const mli_tensor *weights,
+    const mli_tensor *bias,
+    int *sliceChannels);
 
 }  // namespace micro
 }  // namespace ops
