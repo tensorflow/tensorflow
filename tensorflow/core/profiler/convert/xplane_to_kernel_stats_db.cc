@@ -66,12 +66,12 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
           kernel.set_op_name(tf_op.name.data(), tf_op.name.size());
           bool tensor_core_eligible = IsEinsumTensorCoreEligible(equation) ||
                                       IsOpTensorCoreEligible(kernel.op_name());
-#if defined(LOG_IF)
-          LOG_IF(INFO,
-                 !tensor_core_eligible && kernel.is_kernel_using_tensor_core())
+#if defined(VLOG_IF)
+          VLOG_IF(1,
+                  !tensor_core_eligible && kernel.is_kernel_using_tensor_core())
               << "Detected new Op using TensorCores: " << kernel.op_name()
               << std::endl;
-#endif  // defined(LOG_IF)
+#endif  // defined(VLOG_IF)
           tensor_core_eligible |= kernel.is_kernel_using_tensor_core();
           kernel.set_is_op_tensor_core_eligible(tensor_core_eligible);
         }
