@@ -402,7 +402,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   mutable mutex mu_;
 
-  int next_handle_ GUARDED_BY(mu_);
+  int next_handle_ TF_GUARDED_BY(mu_);
 
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
@@ -414,7 +414,6 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
     string executor_type;
-    Executor::RendezvousFactory rendezvous_factory = nullptr;
 
     ~Item() {
       delete this->func_graph;
@@ -423,7 +422,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
     }
   };
   std::unique_ptr<std::unordered_map<Handle, std::unique_ptr<Item>>> items_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
@@ -532,6 +531,7 @@ class CallOp : public AsyncOpKernel {
     opts.step_container = ctx->step_container();
     opts.stats_collector = ctx->stats_collector();
     opts.runner = ctx->runner();
+    opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
@@ -811,11 +811,6 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
         item->overlay_flr =
             new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
-      item->rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                    Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      };
       local_handle = next_handle_++;
       items_->emplace(local_handle, std::unique_ptr<Item>(item));
     }
@@ -971,7 +966,6 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
-  params.rendezvous_factory = (*item)->rendezvous_factory;
   params.session_metadata = session_metadata_;
   std::unique_ptr<Executor> exec;
   TF_RETURN_IF_ERROR(NewExecutor(executor_type, params, *g, &exec));
@@ -1021,6 +1015,7 @@ void FunctionLibraryRuntimeImpl::ExecutorArgsFromOptions(
   }
   exec_args->collective_executor = run_opts.collective_executor;
   exec_args->call_frame = frame;
+  exec_args->run_all_kernels_inline = run_opts.run_all_kernels_inline;
 }
 
 void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,

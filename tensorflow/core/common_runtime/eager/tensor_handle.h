@@ -210,13 +210,19 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
-  void SetResourceHandleDtypeAndShape(
-      std::vector<DtypeAndPartialTensorShape>&& dtypes_and_shapes);
+  struct ResourceHandleInfo {
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+    std::vector<string> allowed_devices;
+  };
+
+  void SetResourceHandleInfo(ResourceHandleInfo&& resource_handle_info);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types and shapes of the underlying resource.
+  // return data types, shapes and allowed devices of the underlying resource.
+  Status GetResourceHandleInfo(ResourceHandleInfo* result);
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
+  Status GetResourceAllowedDevices(std::vector<string>* result);
 
  private:
   // The TensorHandleData can either represent a local or remote tensor handle.
@@ -224,6 +230,8 @@ class TensorHandle : public core::RefCounted {
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
   bool IsReady() const;
+
+  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
 
   VariantDevice const device_;
 
@@ -241,17 +249,17 @@ class TensorHandle : public core::RefCounted {
 
   // Map of local mirrors. This can include both ready and non-ready mirrors.
   std::unordered_map<const tensorflow::Device*, LocalTensorHandleData>
-      local_mirrors_ GUARDED_BY(mu_);
+      local_mirrors_ TF_GUARDED_BY(mu_);
 #if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
   std::unordered_map<string, RemoteTensorHandleData> resource_shape_mirrors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
   std::unordered_map<string, RemoteTensorHandleData> remote_mirrors_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 #endif
 
   // `ctx` is only guaranteed to be set if the handle is not "ready". This is
@@ -268,9 +276,9 @@ class TensorHandle : public core::RefCounted {
   bool implicit_mirroring_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types and shapes for
-  // the underlying resource.
-  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
+  // refers to a remote resource handle, we store data types, shapes and allowed
+  // devices for the underlying resource.
+  ResourceHandleInfo resource_handle_info_;
 
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, data_ is immutable.

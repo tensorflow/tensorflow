@@ -49,15 +49,17 @@ static llvm::cl::opt<bool> splitInputFile(
     llvm::cl::init(false));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> import_saved_model(
-    "savedmodel-to-mlir",
-    llvm::cl::desc("Import a saved model to its MLIR representation"),
+static llvm::cl::opt<bool> import_saved_model_object_graph(
+    "savedmodel-objectgraph-to-mlir",
+    llvm::cl::desc(
+        "Import a saved model's object graph to its MLIR representation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> import_saved_model_v1(
-    "savedmodel-v1-to-mlir",
-    llvm::cl::desc("Import a saved model V1 to its MLIR representation"),
+static llvm::cl::opt<bool> import_saved_model_signature_defs(
+    "savedmodel-signaturedefs-to-mlir",
+    llvm::cl::desc(
+        "Import a saved model's SignatureDefs to to their MLIR representation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
@@ -83,11 +85,12 @@ int main(int argc, char** argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF MLIR translation driver\n");
 
-  if (!import_saved_model && !import_saved_model_v1 && !requested_translation) {
+  if (!import_saved_model_object_graph && !import_saved_model_signature_defs &&
+      !requested_translation) {
     llvm::errs() << "error: need to specify one translation to perform\n";
     return 1;
-  } else if (import_saved_model && import_saved_model_v1 &&
-             requested_translation) {
+  } else if (import_saved_model_object_graph &&
+             import_saved_model_signature_defs && requested_translation) {
     llvm::errs()
         << "error: cannot specify more than one translation to perform\n";
     return 1;
@@ -100,26 +103,26 @@ int main(int argc, char** argv) {
     return 1;
   }
 
-  if (import_saved_model) {
+  if (import_saved_model_object_graph) {
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
     std::vector<std::string> exported_names =
         absl::StrSplit(saved_model_exported_names, ',', absl::SkipEmpty());
     mlir::MLIRContext context;
 
-    auto module = tensorflow::SavedModelToMlirImport(
+    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, absl::Span<std::string>(exported_names),
         &context);
     if (!module) return 1;
 
     module->print(output->os());
-  } else if (import_saved_model_v1) {
+  } else if (import_saved_model_signature_defs) {
     std::unordered_set<std::string> tags =
         absl::StrSplit(saved_model_tags, ',');
     mlir::MLIRContext context;
 
-    auto module =
-        tensorflow::SavedModelV1ToMlirImport(input_filename, tags, &context);
+    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, &context);
     if (!module) return 1;
 
     module->print(output->os());

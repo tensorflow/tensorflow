@@ -41,7 +41,7 @@ class ClientSession::Impl {
   std::shared_ptr<Graph> graph_;
 
   mutable mutex mu_;
-  mutable int last_num_graph_nodes_ GUARDED_BY(mu_) = 0;
+  mutable int last_num_graph_nodes_ TF_GUARDED_BY(mu_) = 0;
 };
 
 ClientSession::ClientSession(const Scope& scope, const string& target)

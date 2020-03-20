@@ -44,7 +44,11 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+#if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
+#else
+const std::pair<int, int> kMinGPUArch = {0, 0};
+#endif
 
 const char kSuffix[] = "AutoMixedPrecision";
 const char kCastToFp16[] = "CastToFp16";

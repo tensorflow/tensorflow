@@ -274,7 +274,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_step_number GUARDED_BY(mu) =
+static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64, int64>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
@@ -285,7 +285,7 @@ static auto& module_id_to_step_number GUARDED_BY(mu) =
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_timestamp GUARDED_BY(mu) =
+static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64, uint64>();
 
 int64 StepNumberForModule(const HloModule& module) {
@@ -432,7 +432,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   int64 execution_count;
   uint64 timestamp;
   {
-    static auto& module_id_to_execution_count GUARDED_BY(mu) =
+    static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64, int64>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
@@ -469,7 +469,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   // have to use its name.
   int64 execution_count;
   {
-    static auto& module_name_to_execution_count GUARDED_BY(mu) =
+    static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<string, int64>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_name_to_execution_count[name]++;

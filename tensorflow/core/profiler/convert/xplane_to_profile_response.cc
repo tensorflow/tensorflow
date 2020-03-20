@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/trace_events_to_json.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -57,24 +59,30 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
 
 // Returns the tool name with extension.
 string ToolName(absl::string_view tool) {
-  if (tool == kTraceViewer) return "trace";
+  if (tool == kTraceViewer) return "trace.json.gz";
   return absl::StrCat(tool, ".pb");
 }
 
 }  // namespace
 
-void ConvertXSpaceToProfileResponse(const XSpace& xspace,
-                                    const ProfileRequest& req,
-                                    ProfileResponse* response) {
+Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
+                                      const ProfileRequest& req,
+                                      ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
-  if (tools.empty()) return;
+  if (tools.empty()) return Status::OK();
   if (tools.contains(kTraceViewer)) {
     Trace trace;
     ConvertXSpaceToTraceEvents(xspace, &trace);
-    AddToolData(ToolName(kTraceViewer), trace, response);
+    if (trace.trace_events().empty()) {
+      response->set_empty_trace(true);
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(SaveGzippedToolDataToTensorboardProfile(
+        req.repository_root(), req.session_id(), req.host_name(),
+        ToolName(kTraceViewer), TraceEventsToJson(trace)));
     // Trace viewer is the only tool, skip OpStats conversion.
-    if (tools.size() == 1) return;
+    if (tools.size() == 1) return Status::OK();
   }
   OpStats op_stats = ConvertXSpaceToOpStats(xspace);
   HardwareType hw_type =
@@ -99,6 +107,7 @@ void ConvertXSpaceToProfileResponse(const XSpace& xspace,
   if (tools.contains(kKernelStats)) {
     AddToolData(ToolName(kKernelStats), op_stats.kernel_stats_db(), response);
   }
+  return Status::OK();
 }
 
 }  // namespace profiler

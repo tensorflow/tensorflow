@@ -99,56 +99,53 @@ inline void LstmStepWithAuxInput(
   if (!use_cifg) {
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         input_to_input_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-        input_gate_scratch, /*result_stride=*/1);
+        input_gate_scratch);
   }
 
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_to_forget_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      forget_gate_scratch, /*result_stride=*/1);
-  tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      input_to_cell_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      cell_scratch, /*result_stride=*/1);
+      forget_gate_scratch);
+  tensor_utils::MatrixBatchVectorMultiplyAccumulate(input_to_cell_weights_ptr,
+                                                    n_cell, n_input, input_ptr,
+                                                    n_batch, cell_scratch);
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       input_to_output_weights_ptr, n_cell, n_input, input_ptr, n_batch,
-      output_gate_scratch, /*result_stride=*/1);
+      output_gate_scratch);
 
   // If auxiliary input is available then compute aux_input_weight * aux_input
   if (aux_input_ptr != nullptr) {
     if (!use_cifg) {
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           aux_input_to_input_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
-          n_batch, input_gate_scratch,
-          /*result_stride=*/1);
+          n_batch, input_gate_scratch);
     }
 
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_forget_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
-        n_batch, forget_gate_scratch, /*result_stride=*/1);
+        n_batch, forget_gate_scratch);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_cell_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
-        n_batch, cell_scratch, /*result_stride=*/1);
+        n_batch, cell_scratch);
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         aux_input_to_output_weights_ptr, n_cell, n_aux_input, aux_input_ptr,
-        n_batch, output_gate_scratch, /*result_stride=*/1);
+        n_batch, output_gate_scratch);
   }
 
   // For each batch and cell: compute recurrent_weight * output_state.
   if (!use_cifg) {
     tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         recurrent_to_input_weights_ptr, n_cell, n_output, output_state_ptr,
-        n_batch, input_gate_scratch, /*result_stride=*/1);
+        n_batch, input_gate_scratch);
   }
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       recurrent_to_forget_weights_ptr, n_cell, n_output, output_state_ptr,
-      n_batch, forget_gate_scratch,
-      /*result_stride=*/1);
+      n_batch, forget_gate_scratch);
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       recurrent_to_cell_weights_ptr, n_cell, n_output, output_state_ptr,
-      n_batch, cell_scratch, /*result_stride=*/1);
+      n_batch, cell_scratch);
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       recurrent_to_output_weights_ptr, n_cell, n_output, output_state_ptr,
-      n_batch, output_gate_scratch,
-      /*result_stride=*/1);
+      n_batch, output_gate_scratch);
 
   // For each batch and cell: update input gate.
   if (!use_cifg) {
@@ -270,8 +267,7 @@ inline void LstmStepWithAuxInput(
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           projection_weights_ptr, n_output, n_cell,
           output_gate_scratch + k * n_cell,
-          /*n_batch=*/1, output_ptr + k * output_batch_leading_dim,
-          /*result_stride=*/1);
+          /*n_batch=*/1, output_ptr + k * output_batch_leading_dim);
       if (params->proj_clip > 0.0) {
         tensor_utils::ClipVector(output_ptr + k * output_batch_leading_dim,
                                  n_output, params->proj_clip,

@@ -244,8 +244,7 @@ void TPUDynamicLayoutPass::runOnFunction() {
     if (!compile || !compile->getResult(1).hasOneUse()) return;
     auto compile_launch = llvm::dyn_cast<tf_device::LaunchOp>(compile);
     if (!compile_launch || !compile_launch.WrapsSingleOp() ||
-        compile_launch.GetBody().front().getName().getStringRef() !=
-            "tf._TPUCompileMlir")
+        !llvm::isa<TF::_TPUCompileMlirOp>(compile_launch.GetBody().front()))
       return;
     executes_and_compiles.emplace_back(execute, compile_launch);
   });

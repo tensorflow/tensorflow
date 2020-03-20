@@ -71,12 +71,6 @@ class ExecutorTest : public ::testing::Test {
       DeleteNonCachedKernel(kernel);
     };
     rendez_ = NewLocalRendezvous();
-    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
-                                       Rendezvous** r) {
-      *r = rendez_;
-      rendez_->Ref();
-      return Status::OK();
-    };
     delete exec_;
     TF_CHECK_OK(NewLocalExecutor(params, *graph, &exec_));
     runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };

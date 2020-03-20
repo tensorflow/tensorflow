@@ -20,7 +20,6 @@ limitations under the License.
 #include <set>
 
 #include "llvm/ADT/DenseMap.h"
-#include "mlir/Analysis/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
@@ -29,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/IR/SymbolTable.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project

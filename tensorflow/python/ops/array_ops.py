@@ -1282,7 +1282,7 @@ def parallel_stack(values, name="parallel_stack"):
 @dispatch.add_dispatch_support
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
-  
+
   See also `tf.concat`, `tf.tile`, `tf.repeat`.
 
   Packs the list of tensors in `values` into a tensor with rank one higher than
@@ -1515,7 +1515,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
 @dispatch.add_dispatch_support
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
-  
+
   See also `tf.tile`, `tf.stack`, `tf.repeat`.
 
   Concatenates the list of tensors `values` along dimension `axis`.  If
@@ -1888,7 +1888,7 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor `value` into a list of sub tensors.
-  
+
   See also `tf.unstack`.
 
   If `num_or_size_splits` is an integer, then `value` is split along the
@@ -2739,7 +2739,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 @dispatch.add_dispatch_support
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
-  
+
   See also `tf.zeros`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
@@ -2781,7 +2781,7 @@ def zeros_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor with all elements set to zero.
-  
+
   See also `tf.zeros`.
 
   Given a single tensor or array-like object (`input`), this operation returns
@@ -2854,7 +2854,7 @@ def zeros_like_impl(tensor, dtype, name, optimize=True):
 @dispatch.add_dispatch_support
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
-  
+
   See also `tf.ones`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the same
@@ -2890,7 +2890,7 @@ def ones_like_v2(
     dtype=None,
     name=None):
   """Creates a tensor of all ones that has the same shape as the input.
-  
+
   See also `tf.ones`.
 
   Given a single tensor (`tensor`), this operation returns a tensor of the
@@ -2934,7 +2934,7 @@ def ones_like_impl(tensor, dtype, name, optimize=True):
 @tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to one (1).
-  
+
   See also `tf.ones_like`.
 
   This operation returns a tensor of type `dtype` with shape `shape` and

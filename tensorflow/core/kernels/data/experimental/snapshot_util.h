@@ -24,12 +24,30 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
+
+class GraphDef;
+
 namespace data {
+
 namespace experimental {
 
+class SnapshotMetadataRecord;
 class SnapshotTensorMetadata;
 
-class SnapshotWriter {
+}  // namespace experimental
+
+namespace snapshot_util {
+
+constexpr char kMetadataFilename[] = "snapshot.metadata";
+
+constexpr char kModeAuto[] = "auto";
+constexpr char kModeWrite[] = "write";
+constexpr char kModeRead[] = "read";
+constexpr char kModePassthrough[] = "passthrough";
+
+enum Mode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
+
+class Writer {
  public:
   static constexpr const size_t kHeaderSize = sizeof(uint64);
 
@@ -38,8 +56,8 @@ class SnapshotWriter {
   static constexpr const char* const kWriteCord = "WriteCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit SnapshotWriter(WritableFile* dest, const string& compression_type,
-                          int version, const DataTypeVector& dtypes);
+  explicit Writer(WritableFile* dest, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
 
   Status WriteTensors(const std::vector<Tensor>& tensors);
 
@@ -47,7 +65,7 @@ class SnapshotWriter {
 
   Status Close();
 
-  ~SnapshotWriter();
+  ~Writer();
 
  private:
   Status WriteRecord(const StringPiece& data);
@@ -65,7 +83,7 @@ class SnapshotWriter {
   int num_complex_ = 0;
 };
 
-class SnapshotReader {
+class Reader {
  public:
   // The reader input buffer size is deliberately large because the input reader
   // will throw an error if the compressed block length cannot fit in the input
@@ -82,9 +100,8 @@ class SnapshotReader {
   static constexpr const char* const kReadCord = "ReadCord";
   static constexpr const char* const kSeparator = "::";
 
-  explicit SnapshotReader(RandomAccessFile* file,
-                          const string& compression_type, int version,
-                          const DataTypeVector& dtypes);
+  explicit Reader(RandomAccessFile* file, const string& compression_type,
+                  int version, const DataTypeVector& dtypes);
 
   Status ReadTensors(std::vector<Tensor>* read_tensors);
 
@@ -92,7 +109,7 @@ class SnapshotReader {
   Status ReadTensorsV0(std::vector<Tensor>* read_tensors);
 
   Status SnappyUncompress(
-      const SnapshotTensorMetadata* metadata,
+      const experimental::SnapshotTensorMetadata* metadata,
       std::vector<Tensor>* simple_tensors,
       std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
           tensor_proto_strs);
@@ -113,7 +130,22 @@ class SnapshotReader {
   std::vector<bool> simple_tensor_mask_;  // true for simple, false for complex.
 };
 
-}  // namespace experimental
+Status WriteMetadataFile(const string& hash_dir,
+                         const experimental::SnapshotMetadataRecord* metadata);
+
+Status ReadMetadataFile(const string& hash_dir,
+                        experimental::SnapshotMetadataRecord* metadata);
+
+Status DumpDatasetGraph(const std::string& path, uint64 hash,
+                        const GraphDef* graph);
+
+Status DetermineOpState(const std::string& mode_string,
+                        const Status& file_status,
+                        const experimental::SnapshotMetadataRecord* metadata,
+                        const uint64 pending_snapshot_expiry_seconds,
+                        Mode* mode);
+
+}  // namespace snapshot_util
 }  // namespace data
 }  // namespace tensorflow
 

@@ -44,7 +44,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
   Using this strategy will place any variables created in its scope on the
   specified device. Input distributed through this strategy will be
   prefetched to the specified device. Moreover, any functions called via
-  `strategy.experimental_run_v2` will also be placed on the specified device
+  `strategy.run` will also be placed on the specified device
   as well.
 
   Typical usage of this strategy could be testing your code with the
@@ -64,7 +64,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
 
   result = 0
   for i in range(10):
-    result += strategy.experimental_run_v2(step_fn, args=(i,))
+    result += strategy.run(step_fn, args=(i,))
   print(result)  # 90
   ```
   """
@@ -127,7 +127,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
 
     for batch in inputs:
-      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
+      replica_results = strategy.run(replica_fn, args=(batch,))
     ```
 
     IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
@@ -154,7 +154,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     value, so the result is just the value in a tuple.
 
     Args:
-      value: A value returned by `experimental_run()`, `experimental_run_v2()`,
+      value: A value returned by `experimental_run()`, `run()`,
         `extended.call_for_each_replica()`, or a variable created in `scope`.
 
     Returns:
@@ -163,7 +163,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     """
     return super(OneDeviceStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
+  def run(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `OneDeviceStrategy`, `fn` is simply called within a device scope for the
@@ -179,8 +179,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     Returns:
       Return value from running `fn`.
     """
-    return super(OneDeviceStrategy,
-                 self).experimental_run_v2(fn, args, kwargs, options)
+    return super(OneDeviceStrategy, self).run(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.
@@ -203,7 +202,7 @@ class OneDeviceStrategy(distribute_lib.Strategy):
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+      value: A "per replica" value, e.g. returned by `run` to
         be combined into a single tensor.
       axis: Specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
@@ -306,6 +305,12 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers,
         [distribute_lib.InputContext()],
         self._container_strategy())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): This should return a PerReplica value but other
+    # methods like run in OneDeviceStrategy need to be modified
+    # to do the same.
+    return value_fn(distribute_lib.ValueContext())
 
   # TODO(priyag): Deal with OutOfRange errors  once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,

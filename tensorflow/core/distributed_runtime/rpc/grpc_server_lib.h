@@ -149,30 +149,30 @@ class GrpcServer : public ServerInterface {
   //    \________________________/
   //            Stop(), Join()
   enum State { NEW, STARTED, STOPPED };
-  State state_ GUARDED_BY(mu_);
+  State state_ TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow master, and RPC polling thread.
   MasterEnv master_env_;
   std::unique_ptr<Master> master_impl_;
   AsyncServiceInterface* master_service_ = nullptr;
-  std::unique_ptr<Thread> master_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> master_thread_ TF_GUARDED_BY(mu_);
 
   // Implementation of a TensorFlow worker, and RPC polling thread.
   WorkerEnv worker_env_;
   std::unique_ptr<GrpcWorker> worker_impl_;
   AsyncServiceInterface* worker_service_ = nullptr;
-  std::unique_ptr<Thread> worker_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> worker_thread_ TF_GUARDED_BY(mu_);
   std::unique_ptr<GrpcWorkerEnv> grpc_worker_env_;
 
   // TensorFlow Eager implementation, and RPC polling thread.
   AsyncServiceInterface* eager_service_ = nullptr;
-  std::unique_ptr<Thread> eager_thread_ GUARDED_BY(mu_);
+  std::unique_ptr<Thread> eager_thread_ TF_GUARDED_BY(mu_);
   std::shared_ptr<WorkerSession> worker_session_;
 
   // The overall server configuration.
-  ServerDef server_def_ GUARDED_BY(mu_);
+  ServerDef server_def_ TF_GUARDED_BY(mu_);
 
-  std::unique_ptr<::grpc::Server> server_ GUARDED_BY(mu_);
+  std::unique_ptr<::grpc::Server> server_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

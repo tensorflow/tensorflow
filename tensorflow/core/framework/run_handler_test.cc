@@ -78,6 +78,41 @@ TEST(RunHandlerUtilTest, TestBasicScheduling) {
   counter.Wait();
 }
 
+TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
+  int num_threads = 2;
+  std::unique_ptr<RunHandlerPool> pool(
+      new RunHandlerPool(num_threads, num_threads));
+
+  RunOptions::Experimental::RunHandlerPoolOptions options =
+      RunOptions::Experimental::RunHandlerPoolOptions();
+  options.set_priority(2);
+  auto handler1 = pool->Get(/*step_id=*/1, /*timeout_in_ms=*/0, options);
+  options.set_priority(1);
+  auto handler2 = pool->Get(/*step_id=*/2, /*timeout_in_ms=*/0, options);
+  options.set_priority(3);
+  auto handler3 = pool->Get(/*step_id=*/3, /*timeout_in_ms=*/0, options);
+
+  // The active requests should be ordered by priorites.
+  std::vector<int64> sorted_active_list =
+      pool->GetActiveHandlerPrioritiesForTesting();
+  EXPECT_EQ(sorted_active_list.size(), 3);
+  EXPECT_EQ(sorted_active_list[0], 3);
+  EXPECT_EQ(sorted_active_list[1], 2);
+  EXPECT_EQ(sorted_active_list[2], 1);
+
+  handler1.reset();
+  options.set_priority(5);
+  auto handler4 = pool->Get(/*step_id=*/4, /*timeout_in_ms=*/0, options);
+  options.set_priority(4);
+  auto handler5 = pool->Get(/*step_id=*/5, /*timeout_in_ms=*/0, options);
+  sorted_active_list = pool->GetActiveHandlerPrioritiesForTesting();
+  EXPECT_EQ(sorted_active_list.size(), 4);
+  EXPECT_EQ(sorted_active_list[0], 5);
+  EXPECT_EQ(sorted_active_list[1], 4);
+  EXPECT_EQ(sorted_active_list[2], 3);
+  EXPECT_EQ(sorted_active_list[3], 1);
+}
+
 SessionOptions DefaultSessionOptions() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
@@ -185,6 +220,75 @@ TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPool) {
   std::vector<string> output_names = {y_ + ":0"};
   auto fn = [&session, output_names, run_options]() {
     for (int i = 0; i < 1000; ++i) {
+      std::vector<std::pair<string, Tensor>> inputs;
+      std::vector<Tensor> outputs;
+      // Run the graph
+      Status s = session->Run(run_options, inputs, output_names, {}, &outputs,
+                              nullptr);
+      EXPECT_EQ(::tensorflow::Status::OK(), s);
+      ASSERT_EQ(1, outputs.size());
+      auto mat = outputs[0].matrix<float>();
+      EXPECT_FLOAT_EQ(3.0, mat(0, 0));
+    }
+  };
+
+  for (int i = 0; i < 4; ++i) {
+    tp->Schedule(fn);
+  }
+
+  // Wait for the functions to finish.
+  delete tp;
+}
+
+TEST_F(RunHandlerTest, UseRunHandlerPoolEnableSubPoolWithPriority) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+
+  // Prepares RunOptions and RunMetadata
+  RunOptions run_options;
+  run_options.mutable_experimental()->set_use_run_handler_pool(true);
+  run_options.mutable_experimental()
+      ->mutable_run_handler_pool_options()
+      ->set_priority(1);
+
+  Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                          &outputs, nullptr);
+  EXPECT_EQ(::tensorflow::Status::OK(), s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+}
+
+TEST_F(RunHandlerTest, TestConcurrencyUseRunHandlerPoolWithPriority) {
+  Initialize({1, 2, 3, 4});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  EXPECT_EQ(::tensorflow::Status::OK(), session->Create(def_));
+
+  // Fill in the input and ask for the output
+  thread::ThreadPool* tp = new thread::ThreadPool(Env::Default(), "test", 4);
+
+  // Run the graph 1000 times in 4 different threads concurrently.
+  std::vector<string> output_names = {y_ + ":0"};
+  auto fn = [&session, output_names]() {
+    for (int i = 0; i < 1000; ++i) {
+      RunOptions run_options;
+      run_options.mutable_experimental()->set_use_run_handler_pool(true);
+      run_options.mutable_experimental()
+          ->mutable_run_handler_pool_options()
+          ->set_priority(i % 4);
       std::vector<std::pair<string, Tensor>> inputs;
       std::vector<Tensor> outputs;
       // Run the graph

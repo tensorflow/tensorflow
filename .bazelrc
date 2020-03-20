@@ -46,7 +46,6 @@
 #     sycl_asan:
 #     sycl_trisycl:
 #     mkl:          Enable full mkl support.
-#     mkl_open_source_only: Enable MKL support only using open source MKL libraries.
 #     tensorrt:     Enable Tensorrt support.
 #     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
@@ -139,13 +138,6 @@ build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
-
-# This config option is used to enable MKL-DNN open source library only,
-# without depending on MKL binary version.
-build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
-build:mkl_open_source_only --define=build_with_mkl_dnn_v1_only=true
-build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
-build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
 
 # This config refers to building with CUDA available. It does not necessarily
 # mean that we build CUDA op kernels.
@@ -248,6 +240,7 @@ build:windows --copt=/w
 # Tensorflow uses M_* math constants that only get defined by MSVC headers if
 # _USE_MATH_DEFINES is defined.
 build:windows --copt=/D_USE_MATH_DEFINES
+build:windows --host_copt=/D_USE_MATH_DEFINES
 
 # Default paths for TF_SYSTEM_LIBS
 build:linux --define=PREFIX=/usr

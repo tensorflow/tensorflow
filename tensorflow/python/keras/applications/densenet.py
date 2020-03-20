@@ -137,6 +137,10 @@ def DenseNet(
 ):
   """Instantiates the DenseNet architecture.
 
+  Reference paper:
+  - [Densely Connected Convolutional Networks]
+    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
@@ -393,6 +397,10 @@ preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
+
+  Reference paper:
+  - [Densely Connected Convolutional Networks]
+    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

@@ -209,7 +209,9 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
                                    bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
+  tf2xla.addPass(mlir::tf_executor::CreateTFExecutorGraphPruningPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addPass(mlir::TF::CreateTensorListOpsDecompositionPass());
   tf2xla.addPass(mlir::TF::CreateStackOpsDecompositionPass());
   tf2xla.addPass(mlir::TFDevice::CreateDecomposeResourceOpsPass());
   tf2xla.addPass(mlir::TF::CreatePromoteResourcesToArgsPass());
@@ -227,8 +229,13 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   tf2xla.addNestedPass<mlir::FuncOp>(
       mlir::xla_hlo::createLegalizeTFPass(false));
 
-  if (VLOG_IS_ON(1))
-    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>());
+  if (VLOG_IS_ON(1)) {
+    // Print the whole module after each pass which requires disabling
+    // multi-threading as well.
+    tf2xla.disableMultithreading();
+    tf2xla.enableIRPrinting(std::make_unique<tensorflow::BridgeLoggerConfig>(
+        /*print_module_scope=*/true));
+  }
 
   // Make sure we catch any error reported by MLIR and forward it to the TF
   // error reporting system. Report a generic error if pass manager failed

@@ -29,6 +29,11 @@ struct OpVariant {
   bool use_layer_norm = false;
   bool use_projection = false;
   bool use_peephole = false;
+  // An attribute to indicate if quantization is supported for this Op.
+  // This attribute is equivalent to the "quantizable" attribute in
+  // "OperatorProperty". It added here since OpVariants peeks inside the Op and
+  // determines its quantization related properties.
+  bool is_quantizable = true;
 };
 
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
@@ -38,6 +43,11 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
   op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
   if (op_variant.op_code == BuiltinOperator_LSTM) {
+    if (op->inputs.size() == 5) {
+      // The 5 input ("basic") LSTM is not supported in this tooling (yet).
+      op_variant.is_quantizable = false;
+      return op_variant;
+    }
     const int cell_to_output_weight_index = 11;
     const int forget_layer_norm_coefficients_index = 21;
     const int projection_weights_index = 16;
@@ -192,6 +202,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       break;
     }
     case BuiltinOperator_LSTM: {
+      if (!op_variant.is_quantizable) {
+        // Early exist for 5 input LSTM.
+        // It is not supported in this tooling yet.
+        property.quantizable = false;
+        break;
+      }
       // TODO(jianlijianli): extend LSTM op spec to inlucde input, bias etc.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc

@@ -209,6 +209,10 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
+  XEventMetadata* GetOrCreateEventMetadata(string&& name);
+  inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
+    return GetOrCreateEventMetadata(absl::string_view(name));
+  }
 
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
   XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);

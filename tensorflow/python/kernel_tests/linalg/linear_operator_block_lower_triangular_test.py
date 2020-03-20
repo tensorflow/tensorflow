@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -67,6 +68,10 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     self._rtol[dtypes.float32] = 1e-5
     self._rtol[dtypes.complex64] = 1e-5
     super(SquareLinearOperatorBlockLowerTriangularTest, self).setUp()
+
+  @staticmethod
+  def use_blockwise_arg():
+    return True
 
   @staticmethod
   def skip_these_tests():
@@ -266,6 +271,23 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     ]
     with self.assertRaisesRegexp(ValueError, "must be equal"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
+
+  def test_incompatible_input_blocks_raises(self):
+    matrix_1 = array_ops.placeholder_with_default(rng.rand(4, 4), shape=None)
+    matrix_2 = array_ops.placeholder_with_default(rng.rand(3, 4), shape=None)
+    matrix_3 = array_ops.placeholder_with_default(rng.rand(3, 3), shape=None)
+    operators = [
+        [linalg.LinearOperatorFullMatrix(matrix_1, is_square=True)],
+        [linalg.LinearOperatorFullMatrix(matrix_2),
+         linalg.LinearOperatorFullMatrix(matrix_3, is_square=True)]
+    ]
+    operator = block_lower_triangular.LinearOperatorBlockLowerTriangular(
+        operators)
+    x = np.random.rand(2, 4, 5).tolist()
+    msg = ("dimension does not match" if context.executing_eagerly()
+           else "input structure is ambiguous")
+    with self.assertRaisesRegexp(ValueError, msg):
+      operator.matmul(x)
 
 
 if __name__ == "__main__":

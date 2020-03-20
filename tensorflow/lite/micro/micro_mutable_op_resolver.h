@@ -29,6 +29,8 @@ namespace tflite {
 // Op versions discussed in this file are enumerated here:
 // tensorflow/lite/tools/versioning/op_version.cc
 
+inline int MicroOpResolverAnyVersion() { return 0; }
+
 template <unsigned int tOpCount = TFLITE_REGISTRATIONS_MAX>
 class MicroOpResolver : public OpResolver {
  public:
@@ -37,7 +39,8 @@ class MicroOpResolver : public OpResolver {
     for (unsigned int i = 0; i < registrations_len_; ++i) {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == op) &&
-          (registration.version == version)) {
+          (registration.version == MicroOpResolverAnyVersion() ||
+           registration.version == version)) {
         return &registration;
       }
     }
@@ -49,7 +52,8 @@ class MicroOpResolver : public OpResolver {
       const TfLiteRegistration& registration = registrations_[i];
       if ((registration.builtin_code == BuiltinOperator_CUSTOM) &&
           (strcmp(registration.custom_name, op) == 0) &&
-          (registration.version == version)) {
+          (registration.version == MicroOpResolverAnyVersion() ||
+           registration.version == version)) {
         return &registration;
       }
     }

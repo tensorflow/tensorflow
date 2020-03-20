@@ -188,7 +188,7 @@ class AutoTuneMap {
     int32 count;
   };
   std::unordered_map<Parameters, ValueType, Hasher> params_config_map_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
   string name_;
   int32 min_score_threshold_;
   int32 max_autotune_count_;

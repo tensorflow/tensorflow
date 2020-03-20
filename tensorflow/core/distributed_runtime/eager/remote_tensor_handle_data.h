@@ -54,9 +54,9 @@ class RemoteTensorHandleData {
   Status WaitReady(const char* caller) const;
 
   mutable mutex mu_;
-  bool is_ready_ GUARDED_BY(mu_);
-  Status is_poisoned_ GUARDED_BY(mu_);
-  TensorShape shape_ GUARDED_BY(mu_);
+  bool is_ready_ TF_GUARDED_BY(mu_);
+  Status is_poisoned_ TF_GUARDED_BY(mu_);
+  TensorShape shape_ TF_GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
   const int64 op_id_;

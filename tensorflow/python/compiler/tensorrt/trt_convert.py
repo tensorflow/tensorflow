@@ -64,9 +64,9 @@ gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
-wrap_py_utils = LazyLoader(
-    "wrap_py_utils", globals(),
-    "tensorflow.compiler.tf2tensorrt.wrap_py_utils")
+_pywrap_py_utils = LazyLoader(
+    "_pywrap_py_utils", globals(),
+    "tensorflow.compiler.tf2tensorrt._pywrap_py_utils")
 
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
@@ -255,8 +255,8 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  linked_version = wrap_py_utils.get_linked_tensorrt_version()
-  loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
+  linked_version = _pywrap_py_utils.get_linked_tensorrt_version()
+  loaded_version = _pywrap_py_utils.get_loaded_tensorrt_version()
   assert isinstance(linked_version, tuple)
   assert isinstance(loaded_version, tuple)
   assert len(linked_version) == 3

@@ -54,6 +54,16 @@ XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(
   return metadata;
 }
 
+XEventMetadata* XPlaneBuilder::GetOrCreateEventMetadata(string&& name) {
+  XEventMetadata*& metadata = event_metadata_by_name_[name];
+  if (metadata == nullptr) {
+    metadata =
+        XPlaneBuilder::GetOrCreateEventMetadata(++last_event_metadata_id_);
+    metadata->set_name(std::move(name));
+  }
+  return metadata;
+}
+
 XStatMetadata* XPlaneBuilder::GetOrCreateStatMetadata(int64 metadata_id) {
   XStatMetadata& metadata = (*plane_->mutable_stat_metadata())[metadata_id];
   metadata.set_id(metadata_id);

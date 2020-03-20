@@ -85,8 +85,7 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
       dist_predict_dataset = distribution.experimental_distribute_dataset(
           predict_dataset)
       per_replica_predict_data = next(iter(dist_predict_dataset))
-      result = distribution.experimental_run_v2(
-          model, args=(per_replica_predict_data,))
+      result = distribution.run(model, args=(per_replica_predict_data,))
       # Convert the per_replica value to a list, then concatenate them
       reduced = distribution.experimental_local_results(result)
       concat = array_ops.concat(reduced, 0)

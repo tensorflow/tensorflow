@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 from tensorflow.python.distribute import distribute_coordinator as dc
+from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
@@ -59,6 +62,10 @@ def enable_multi_worker(method):
 
   def _method_wrapper(self, *args, **kwargs):
     if not self._in_multi_worker_mode():  # pylint: disable=protected-access
+      return method(self, *args, **kwargs)
+
+    # Running inside `run_distribute_coordinator` already.
+    if dc_context.get_current_worker_context():
       return method(self, *args, **kwargs)
 
     return dc.run_distribute_coordinator(
@@ -493,7 +500,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def train_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.train_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -743,14 +750,15 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           model=self)
 
       # Container that configures and calls `tf.keras.Callback`s.
-      callbacks = callbacks_module.CallbackList(
-          callbacks,
-          add_history=True,
-          add_progbar=True,
-          model=self,
-          verbose=verbose,
-          epochs=epochs,
-          steps=data_handler._steps)  # pylint: disable=protected-access
+      if not isinstance(callbacks, callbacks_module.CallbackList):
+        callbacks = callbacks_module.CallbackList(
+            callbacks,
+            add_history=True,
+            add_progbar=verbose != 0,
+            model=self,
+            verbose=verbose,
+            epochs=epochs,
+            steps=data_handler.inferred_steps)
 
       self.stop_training = False
       train_function = self.make_train_function()
@@ -773,12 +781,14 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 batch_size=batch_size):
               callbacks.on_train_batch_begin(step)
               tmp_logs = train_function(iterator)
-              # Catch possible OutOfRangeError here.
-              # TODO(b/150292341): Allow multiple async steps.
-              context.async_wait()
-              logs = tmp_logs
+              # Catch OutOfRangeError for Datasets of unknown size.
+              # This blocks until the batch has finished executing.
+              # TODO(b/150292341): Allow multiple async steps here.
+              if not data_handler.inferred_steps:
+                context.async_wait()
+              logs = tmp_logs  # No error, now safe to assign to logs.
               callbacks.on_train_batch_end(step, logs)
-        epoch_logs = {m.name: m.result() for m in self.metrics}
+        epoch_logs = copy.copy(logs)
 
         # Run validation.
         if validation_data and self._should_eval(epoch, validation_freq):
@@ -863,7 +873,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def test_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.test_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
@@ -986,11 +996,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
         callbacks = callbacks_module.CallbackList(
             callbacks,
             add_history=True,
-            add_progbar=True,
+            add_progbar=verbose != 0,
             model=self,
             verbose=verbose,
             epochs=1,
-            steps=data_handler._steps)  # pylint: disable=protected-access
+            steps=data_handler.inferred_steps)
 
       test_function = self.make_test_function()
       callbacks.on_test_begin()
@@ -1004,8 +1014,12 @@ class Model(network.Network, version_utils.ModelVersionSelector):
                 step_num=step):
               callbacks.on_test_batch_begin(step)
               tmp_logs = test_function(iterator)
-              context.async_wait()  # Possible OutOfRangeError here.
-              logs = tmp_logs
+              # Catch OutOfRangeError for Datasets of unknown size.
+              # This blocks until the batch has finished executing.
+              # TODO(b/150292341): Allow multiple async steps here.
+              if not data_handler.inferred_steps:
+                context.async_wait()
+              logs = tmp_logs  # No error, now safe to assign to logs.
               callbacks.on_test_batch_end(step, logs)
       callbacks.on_test_end()
 
@@ -1065,7 +1079,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     def predict_function(iterator):
       data = next(iterator)
-      outputs = self.distribute_strategy.experimental_run_v2(
+      outputs = self.distribute_strategy.run(
           self.predict_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='concat')
@@ -1170,14 +1184,15 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           model=self)
 
       # Container that configures and calls `tf.keras.Callback`s.
-      callbacks = callbacks_module.CallbackList(
-          callbacks,
-          add_history=True,
-          add_progbar=True,
-          model=self,
-          verbose=verbose,
-          epochs=1,
-          steps=data_handler._steps)  # pylint: disable=protected-access
+      if not isinstance(callbacks, callbacks_module.CallbackList):
+        callbacks = callbacks_module.CallbackList(
+            callbacks,
+            add_history=True,
+            add_progbar=verbose != 0,
+            model=self,
+            verbose=verbose,
+            epochs=1,
+            steps=data_handler.inferred_steps)
 
       predict_function = self.make_predict_function()
       callbacks.on_predict_begin()
@@ -1186,8 +1201,12 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           for step in data_handler.steps():
             callbacks.on_predict_batch_begin(step)
             tmp_batch_outputs = predict_function(iterator)
-            context.async_wait()  # Possible OutOfRangeError here.
-            batch_outputs = tmp_batch_outputs
+            # Catch OutOfRangeError for Datasets of unknown size.
+            # This blocks until the batch has finished executing.
+            # TODO(b/150292341): Allow multiple async steps here.
+            if not data_handler.inferred_steps:
+              context.async_wait()
+            batch_outputs = tmp_batch_outputs  # No error, now safe to assign.
             if outputs is None:
               outputs = nest.map_structure(lambda batch_output: [batch_output],
                                            batch_outputs)

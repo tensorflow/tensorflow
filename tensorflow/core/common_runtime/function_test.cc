@@ -99,11 +99,6 @@ class FunctionTest : public ::testing::Test {
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
-    params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                   Rendezvous** r) {
-      *r = new IntraProcessRendezvous(device_mgr);
-      return Status::OK();
-    };
     Executor* exec;
     TF_CHECK_OK(NewLocalExecutor(params, *g, &exec));
     exec_.reset(exec);
@@ -166,7 +161,13 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
         device_mgr_.get(), Env::Default(), &options.config,
-        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts));
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
+        /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+        /*session_metadata=*/nullptr,
+        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+          *r = new IntraProcessRendezvous(device_mgr);
+          return Status::OK();
+        }));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");
@@ -1870,6 +1871,67 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                               TensorShape({})));
+}
+
+class AreAllKernelsInlineOp : public OpKernel {
+ public:
+  using OpKernel::OpKernel;
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, {}, &output));
+    output->scalar<bool>()() = ctx->run_all_kernels_inline();
+  }
+};
+
+REGISTER_OP("AreAllKernelsInline").Output("result : bool").SetIsStateful();
+REGISTER_KERNEL_BUILDER(Name("AreAllKernelsInline").Device(DEVICE_CPU),
+                        AreAllKernelsInlineOp);
+
+TEST_F(FunctionLibraryRuntimeTest, RunAllKernelsInline) {
+  // Create a function "F" that includes an AreAllKernelsInline op, and a
+  // function "G" that calls "F".
+  auto f = FDH::Create(
+      // Name
+      "F",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = AreAllKernelsInline()
+       {{"y"}, "AreAllKernelsInline", {}, {}}},
+      {{"ret", "y:result:0"}});
+
+  auto g = FDH::Create(
+      // Name
+      "G",
+      // Args
+      {},
+      // Return values
+      {"ret: bool"},
+      // Attrs
+      {},
+      // Nodes
+      {// y = F()
+       {{"y"}, "F", {}, {}}},
+      {{"ret", "y:ret:0"}});
+
+  Init({f, g});
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "G", {}, &handle));
+
+  // Test that the `run_all_kernels_inline` flag is inherited by the kernel
+  // running inside the called function.
+  for (bool inline_option : {false, true}) {
+    FunctionLibraryRuntime::Options opts;
+    opts.run_all_kernels_inline = inline_option;
+    Tensor result;
+    TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&result}, true));
+    EXPECT_EQ(result.scalar<bool>()(), inline_option);
+  }
 }
 
 namespace {

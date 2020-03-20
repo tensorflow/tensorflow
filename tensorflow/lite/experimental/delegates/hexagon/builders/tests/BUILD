@@ -28,6 +28,7 @@ hexagon_op_tests(
         "arg_min_max_test.cc",
         "concat_test.cc",
         "conv_test.cc",
+        "mul_test.cc",
         "neg_test.cc",
         "pad_test.cc",
         "pool_test.cc",

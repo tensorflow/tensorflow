@@ -31,7 +31,7 @@ import warnings
 import numpy as np
 import six
 
-from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
+from tensorflow.compiler.tf2tensorrt._pywrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
@@ -293,8 +293,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
   def ShouldRunTest(self, run_params):
     """Whether to run the test."""
     # Ensure use_calibration=True in case of INT8 precision
-    return (run_params.use_calibration or
-            not IsQuantizationMode(run_params.precision_mode))
+    return (run_params.use_calibration or not IsQuantizationMode(
+        run_params.precision_mode)), "test either calibration or non-INT8"
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build, implemented by subclass."""
@@ -765,8 +765,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return self._MakeSavedModelV1(run_params)
 
   def RunTest(self, run_params):
-    if not self.ShouldRunTest(run_params):
-      return
+    should_run, reason_for_skipping = self.ShouldRunTest(run_params)
+    if not should_run:
+      return self.skipTest(reason_for_skipping)
 
     saved_model_dir = self._MakeSavedModel(run_params)
 

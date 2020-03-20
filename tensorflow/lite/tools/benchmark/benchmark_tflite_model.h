@@ -89,10 +89,13 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::unique_ptr<tflite::Interpreter> interpreter_;
 
  private:
+  // Implement type erasure with unique_ptr with custom deleter.
+  using VoidUniquePtr = std::unique_ptr<void, void (*)(void*)>;
+
   struct InputTensorData {
     InputTensorData() : data(nullptr, nullptr) {}
 
-    std::unique_ptr<void, void (*)(void*)> data;
+    VoidUniquePtr data;
     size_t bytes;
   };
 
@@ -105,11 +108,8 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     std::generate_n(raw, num_elements, [&]() {
       return static_cast<T>(distribution(random_engine_));
     });
-    // Now initialize the type-erased unique_ptr (with custom deleter) from
-    // 'raw'.
-    tmp.data = std::unique_ptr<void, void (*)(void*)>(
-        static_cast<void*>(raw),
-        [](void* ptr) { delete[] static_cast<T*>(ptr); });
+    tmp.data = VoidUniquePtr(static_cast<void*>(raw),
+                             [](void* ptr) { delete[] static_cast<T*>(ptr); });
     return tmp;
   }
 

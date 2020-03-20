@@ -108,14 +108,15 @@ class TraceMeRecorder {
   Events StopRecording();
 
   // Gathers events from all active threads, and clears their buffers.
-  Events Clear() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  Events Clear() TF_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   mutex mutex_;
   // Map of the static container instances (thread_local storage) for each
   // thread. While active, a ThreadLocalRecorder stores trace events.
-  absl::flat_hash_map<uint32, ThreadLocalRecorder*> threads_ GUARDED_BY(mutex_);
+  absl::flat_hash_map<uint32, ThreadLocalRecorder*> threads_
+      TF_GUARDED_BY(mutex_);
   // Events from threads that died during recording.
-  TraceMeRecorder::Events orphaned_events_ GUARDED_BY(mutex_);
+  TraceMeRecorder::Events orphaned_events_ TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace profiler

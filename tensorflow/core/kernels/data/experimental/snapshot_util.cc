@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/snapshot_util.h"
 
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -26,16 +27,20 @@ limitations under the License.
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
 #include "tensorflow/core/platform/coding.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/protobuf/data/experimental/snapshot.pb.h"
 
 namespace tensorflow {
 namespace data {
-namespace experimental {
+namespace snapshot_util {
 
-SnapshotWriter::SnapshotWriter(WritableFile* dest,
-                               const string& compression_type, int version,
-                               const DataTypeVector& dtypes)
+/* static */ constexpr const int64 Reader::kSnappyReaderInputBufferSizeBytes;
+/* static */ constexpr const int64 Reader::kSnappyReaderOutputBufferSizeBytes;
+
+Writer::Writer(WritableFile* dest, const string& compression_type, int version,
+               const DataTypeVector& dtypes)
     : dest_(dest), compression_type_(compression_type), version_(version) {
 #if defined(IS_SLIM_BUILD)
   if (compression_type != io::compression::kNone) {
@@ -67,7 +72,7 @@ SnapshotWriter::SnapshotWriter(WritableFile* dest,
   }
 }
 
-Status SnapshotWriter::WriteTensors(const std::vector<Tensor>& tensors) {
+Status Writer::WriteTensors(const std::vector<Tensor>& tensors) {
   if (compression_type_ != io::compression::kSnappy) {
     experimental::SnapshotRecord record;
     for (const auto& tensor : tensors) {
@@ -93,11 +98,12 @@ Status SnapshotWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   tensor_buffers.reserve(num_simple_);
   std::vector<TensorProto> tensor_protos;
   tensor_protos.reserve(num_complex_);
-  SnapshotTensorMetadata metadata;
+  experimental::SnapshotTensorMetadata metadata;
   int64 total_size = 0;
   for (int i = 0; i < tensors.size(); ++i) {
     const Tensor& tensor = tensors[i];
-    TensorMetadata* tensor_metadata = metadata.add_tensor_metadata();
+    experimental::TensorMetadata* tensor_metadata =
+        metadata.add_tensor_metadata();
     tensor.shape().AsProto(tensor_metadata->mutable_tensor_shape());
     int64 size = 0;
     if (simple_tensor_mask_[i]) {
@@ -147,9 +153,9 @@ Status SnapshotWriter::WriteTensors(const std::vector<Tensor>& tensors) {
   return Status::OK();
 }
 
-Status SnapshotWriter::Sync() { return dest_->Sync(); }
+Status Writer::Sync() { return dest_->Sync(); }
 
-Status SnapshotWriter::Close() {
+Status Writer::Close() {
   if (dest_is_owned_) {
     Status s = dest_->Close();
     delete dest_;
@@ -159,7 +165,7 @@ Status SnapshotWriter::Close() {
   return Status::OK();
 }
 
-SnapshotWriter::~SnapshotWriter() {
+Writer::~Writer() {
   if (dest_ != nullptr) {
     Status s = Close();
     if (!s.ok()) {
@@ -168,7 +174,7 @@ SnapshotWriter::~SnapshotWriter() {
   }
 }
 
-Status SnapshotWriter::WriteRecord(const StringPiece& data) {
+Status Writer::WriteRecord(const StringPiece& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -176,7 +182,7 @@ Status SnapshotWriter::WriteRecord(const StringPiece& data) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status SnapshotWriter::WriteRecord(const absl::Cord& data) {
+Status Writer::WriteRecord(const absl::Cord& data) {
   char header[kHeaderSize];
   core::EncodeFixed64(header, data.size());
   TF_RETURN_IF_ERROR(dest_->Append(StringPiece(header, sizeof(header))));
@@ -184,9 +190,8 @@ Status SnapshotWriter::WriteRecord(const absl::Cord& data) {
 }
 #endif  // PLATFORM_GOOGLE
 
-SnapshotReader::SnapshotReader(RandomAccessFile* file,
-                               const string& compression_type, int version,
-                               const DataTypeVector& dtypes)
+Reader::Reader(RandomAccessFile* file, const string& compression_type,
+               int version, const DataTypeVector& dtypes)
     : file_(file),
       input_stream_(new io::RandomAccessInputStream(file)),
       compression_type_(compression_type),
@@ -228,7 +233,7 @@ SnapshotReader::SnapshotReader(RandomAccessFile* file,
   }
 }
 
-Status SnapshotReader::ReadTensors(std::vector<Tensor>* read_tensors) {
+Status Reader::ReadTensors(std::vector<Tensor>* read_tensors) {
   profiler::TraceMe activity(
       [&]() { return absl::StrCat(kClassName, kSeparator, "ReadTensors"); },
       profiler::TraceMeLevel::kInfo);
@@ -242,7 +247,7 @@ Status SnapshotReader::ReadTensors(std::vector<Tensor>* read_tensors) {
     return errors::InvalidArgument("Version 1 only supports snappy.");
   }
 
-  SnapshotTensorMetadata metadata;
+  experimental::SnapshotTensorMetadata metadata;
   tstring metadata_str;
   TF_RETURN_IF_ERROR(ReadRecord(&metadata_str));
   if (!metadata.ParseFromArray(metadata_str.data(), metadata_str.size())) {
@@ -293,7 +298,7 @@ Status SnapshotReader::ReadTensors(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status SnapshotReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
+Status Reader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   experimental::SnapshotRecord record;
 #if defined(PLATFORM_GOOGLE)
   absl::Cord c;
@@ -314,8 +319,9 @@ Status SnapshotReader::ReadTensorsV0(std::vector<Tensor>* read_tensors) {
   return Status::OK();
 }
 
-Status SnapshotReader::SnappyUncompress(
-    const SnapshotTensorMetadata* metadata, std::vector<Tensor>* simple_tensors,
+Status Reader::SnappyUncompress(
+    const experimental::SnapshotTensorMetadata* metadata,
+    std::vector<Tensor>* simple_tensors,
     std::vector<std::pair<std::unique_ptr<char[]>, size_t>>*
         tensor_proto_strs) {
   tstring compressed;
@@ -362,7 +368,7 @@ Status SnapshotReader::SnappyUncompress(
   return Status::OK();
 }
 
-Status SnapshotReader::ReadRecord(tstring* record) {
+Status Reader::ReadRecord(tstring* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -370,7 +376,7 @@ Status SnapshotReader::ReadRecord(tstring* record) {
 }
 
 #if defined(PLATFORM_GOOGLE)
-Status SnapshotReader::ReadRecord(absl::Cord* record) {
+Status Reader::ReadRecord(absl::Cord* record) {
   tstring header;
   TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(kHeaderSize, &header));
   uint64 length = core::DecodeFixed64(header.data());
@@ -389,6 +395,90 @@ Status SnapshotReader::ReadRecord(absl::Cord* record) {
 }
 #endif
 
-}  // namespace experimental
+Status WriteMetadataFile(const string& hash_dir,
+                         const experimental::SnapshotMetadataRecord* metadata) {
+  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
+  std::string tmp_filename =
+      absl::StrCat(metadata_filename, "-tmp-", random::New64());
+  TF_RETURN_IF_ERROR(WriteBinaryProto(Env::Default(), tmp_filename, *metadata));
+  return Env::Default()->RenameFile(tmp_filename, metadata_filename);
+}
+
+Status ReadMetadataFile(const string& hash_dir,
+                        experimental::SnapshotMetadataRecord* metadata) {
+  string metadata_filename = io::JoinPath(hash_dir, kMetadataFilename);
+  TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
+  return ReadBinaryProto(Env::Default(), metadata_filename, metadata);
+}
+
+Status DumpDatasetGraph(const std::string& path, uint64 hash,
+                        const GraphDef* graph) {
+  std::string hash_hex =
+      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string graph_file =
+      io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
+
+  LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
+  return WriteTextProto(Env::Default(), graph_file, *graph);
+}
+
+Status DetermineOpState(const std::string& mode_string,
+                        const Status& file_status,
+                        const experimental::SnapshotMetadataRecord* metadata,
+                        const uint64 pending_snapshot_expiry_seconds,
+                        Mode* mode) {
+  if (mode_string == kModeRead) {
+    // In read mode, we should expect a metadata file is written.
+    if (errors::IsNotFound(file_status)) {
+      return file_status;
+    }
+    LOG(INFO) << "Overriding mode to reader.";
+    *mode = READER;
+    return Status::OK();
+  }
+
+  if (mode_string == kModeWrite) {
+    LOG(INFO) << "Overriding mode to writer.";
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (mode_string == kModePassthrough) {
+    LOG(INFO) << "Overriding mode to passthrough.";
+    *mode = PASSTHROUGH;
+    return Status::OK();
+  }
+
+  if (errors::IsNotFound(file_status)) {
+    *mode = WRITER;
+    return Status::OK();
+  }
+
+  if (!file_status.ok()) {
+    return file_status;
+  }
+
+  if (metadata->finalized()) {
+    // File found, snapshot has been finalized.
+    *mode = READER;
+    return Status::OK();
+  }
+
+  if (metadata->creation_timestamp() >=
+      (static_cast<int64>(EnvTime::NowMicros()) -
+       pending_snapshot_expiry_seconds * 1000000)) {
+    // Someone else is already writing and time has not expired.
+    *mode = PASSTHROUGH;
+    return Status::OK();
+  } else {
+    // Time has expired, we write regardless.
+    *mode = WRITER;
+    return Status::OK();
+  }
+}
+
+}  // namespace snapshot_util
 }  // namespace data
 }  // namespace tensorflow
