@@ -42,6 +42,7 @@ namespace {
 using ::mlir::ArrayRef;
 using ::mlir::Attribute;
 using ::mlir::Builder;
+using ::mlir::DenseIntElementsAttr;
 using ::mlir::FuncOp;
 using ::mlir::Identifier;
 using ::mlir::Location;
@@ -141,6 +142,37 @@ StatusOr<llvm::SmallVector<Type, 4>> GetInstructionArgTypes(
                                              instruction.shape(), builder));
   arg_types.push_back(operand_type);
   return arg_types;
+}
+
+// Converts HloComputation into a block with HLO dialect ops. The block gets
+// memref arguments corresponding to HloComputation arguments and results.
+Status SpliceHloComputation(OpBuilder builder, mlir::Location loc,
+                            const HloComputation& hlo_computation,
+                            xla::mlir_gpu::EmissionContext* emission_context) {
+  auto block = builder.getInsertionBlock();
+  llvm::SmallVector<Value, 4> arg_values;
+  // First map parameters to memrefs on the operation.
+  for (auto param : hlo_computation.parameter_instructions()) {
+    TF_ASSIGN_OR_RETURN(
+        auto arg_type, ConvertShapeToType<MemRefType>(param->shape(), builder));
+    auto block_arg = block->addArgument(arg_type);
+    arg_values.push_back(builder.create<::mlir::TensorLoadOp>(loc, block_arg));
+  }
+  HloDialectEmitter hlo_emitter(emission_context, builder, arg_values);
+
+  TF_ASSIGN_OR_RETURN(auto result,
+                      hlo_emitter.EmitComputation(hlo_computation));
+
+  // Now add a block arg and store for the result.
+  builder.setInsertionPoint(block->getTerminator());
+  TF_ASSIGN_OR_RETURN(
+      auto result_type,
+      ConvertShapeToType<MemRefType>(
+          hlo_computation.root_instruction()->shape(), builder));
+  auto block_arg = block->addArgument(result_type);
+  builder.create<::mlir::TensorStoreOp>(loc, result, block_arg);
+
+  return Status::OK();
 }
 
 }  // namespace
@@ -268,33 +300,47 @@ Status LhloDialectEmitter::HandleReduce(HloInstruction* reduce) {
   auto reduce_op = builder.create<lhlo::ReduceOp>(loc, inputs, init_values,
                                                   results, dimensions_attr);
   reduce_op.ensureTerminator(reduce_op.body(), builder, getLocation(reduce));
+  return SpliceHloComputation(OpBuilder{&reduce_op.body()}, loc,
+                              *reduce->to_apply(), emission_context_);
+}
 
-  OpBuilder body_builder(reduce_op.body());
-  auto block = body_builder.getInsertionBlock();
-  auto to_apply = reduce->to_apply();
-  llvm::SmallVector<Value, 4> reduce_arg_values;
-  // First map parameters to memrefs on the operation.
-  for (auto param : to_apply->parameter_instructions()) {
-    TF_ASSIGN_OR_RETURN(auto arg_type, ConvertShapeToType<MemRefType>(
-                                           param->shape(), builder_));
-    auto block_arg = block->addArgument(arg_type);
-    reduce_arg_values.push_back(
-        body_builder.create<::mlir::TensorLoadOp>(loc, block_arg));
+Status LhloDialectEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*reduce_window));
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
+  OpBuilder builder(function.getBody());
+  auto loc = getLocation(reduce_window);
+
+  // Collect attribute values.
+  llvm::SmallVector<int64, 2> window_dimensions, window_strides, base_dilations,
+      window_dilations;
+  llvm::SmallVector<int64, 4> padding;
+  int64 rank = reduce_window->window().dimensions_size();
+  window_dimensions.reserve(rank);
+  window_strides.reserve(rank);
+  base_dilations.reserve(rank);
+  window_dilations.reserve(rank);
+  padding.reserve(2 * rank);
+  for (const auto& window : reduce_window->window().dimensions()) {
+    window_dimensions.push_back(window.size());
+    window_strides.push_back(window.stride());
+    base_dilations.push_back(window.base_dilation());
+    window_dilations.push_back(window.window_dilation());
+    padding.push_back(window.padding_low());
+    padding.push_back(window.padding_high());
   }
-  HloDialectEmitter hlo_emitter(emission_context_, body_builder,
-                                reduce_arg_values);
 
-  TF_ASSIGN_OR_RETURN(auto result, hlo_emitter.EmitComputation(*to_apply));
-
-  // Now add a block arg and store for the result.
-  body_builder.setInsertionPoint(block->getTerminator());
-  TF_ASSIGN_OR_RETURN(auto result_type,
-                      ConvertShapeToType<MemRefType>(
-                          to_apply->root_instruction()->shape(), builder));
-  auto block_arg = block->addArgument(result_type);
-  body_builder.create<::mlir::TensorStoreOp>(loc, result, block_arg);
-
-  return Status::OK();
+  auto reduce_window_op = builder.create<lhlo::ReduceWindowOp>(
+      loc, /*operand=*/arg_values[0], /*init_value=*/arg_values[1],
+      /*out=*/arg_values[2],
+      CreateDenseIntElementsAttrFromVector(window_dimensions, builder),
+      CreateDenseIntElementsAttrFromVector(window_strides, builder),
+      CreateDenseIntElementsAttrFromVector(base_dilations, builder),
+      CreateDenseIntElementsAttrFromVector(window_dilations, builder),
+      CreateDenseIntElementsAttrFromVector(padding, builder, {rank, 2}));
+  reduce_window_op.ensureTerminator(reduce_window_op.body(), builder, loc);
+  return SpliceHloComputation(OpBuilder{&reduce_window_op.body()}, loc,
+                              *reduce_window->to_apply(), emission_context_);
 }
 
 Status LhloDialectEmitter::HandleCustomCall(HloInstruction* custom_call) {

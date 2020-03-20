@@ -47,6 +47,7 @@ tf_cc_test(
         "iota_add_multiply.hlo",
         "log.hlo",
         "neg.hlo",
+        "reduce_window.hlo",
         "rem.hlo",
         "rsqrt.hlo",
         "select.hlo",

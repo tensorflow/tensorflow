@@ -70,12 +70,10 @@ struct FusionToLhloConverter
     target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
     ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
 
-    getFunction().walk([&](FusionOp op) {
-      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
-        signalPassFailure();
+    getFunction().walk([&](mlir::Operation* op) {
+      if (op->getNumRegions() == 0) {
+        return;
       }
-    });
-    getFunction().walk([&](mlir::xla_lhlo::ReduceOp op) {
       if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
         signalPassFailure();
       }

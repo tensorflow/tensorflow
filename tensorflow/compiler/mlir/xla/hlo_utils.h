@@ -30,8 +30,11 @@ namespace xla {
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
     const LiteralBase& literal, mlir::Builder builder);
 
+// Creates an DenseIntElementsAttr using the elements of the vector and the
+// optional shape.
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
-    const llvm::ArrayRef<int64> vector, mlir::Builder builder);
+    const llvm::ArrayRef<int64> vector, mlir::Builder builder,
+    llvm::ArrayRef<int64_t> shape = {});
 
 StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
                                                     mlir::Builder builder);
