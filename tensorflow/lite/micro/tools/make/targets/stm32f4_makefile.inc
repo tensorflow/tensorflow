@@ -16,7 +16,6 @@ ifeq ($(TARGET), stm32f4)
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \

@@ -40,7 +40,6 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fno-builtin \
     -ffunction-sections \
     -fdata-sections \
     -funsigned-char \
