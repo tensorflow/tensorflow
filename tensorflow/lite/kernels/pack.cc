@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -115,6 +115,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt8: {
       return PackImpl<int8_t>(context, node, output, data->values_count,
                               data->axis);
+    }
+    case kTfLiteInt16: {
+      return PackImpl<int16_t>(context, node, output, data->values_count,
+                               data->axis);
     }
     case kTfLiteInt32: {
       return PackImpl<int32_t>(context, node, output, data->values_count,

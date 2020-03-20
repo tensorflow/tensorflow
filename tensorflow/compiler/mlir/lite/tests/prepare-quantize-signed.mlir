@@ -1,4 +1,5 @@
 // RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-signed -tfl-disable-per-channel | FileCheck --check-prefix=PerTensor %s
 
 // CHECK-LABEL: uint8_to_int8
 func @uint8_to_int8(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
@@ -80,6 +81,11 @@ func @prepareConv2DSplat(%arg0: tensor<1x5x5x3xf32>) -> tensor<1x5x5x3xf32> {
 // CHECK-SAME:  {1.000000e+00,1.000000e+00,1.000000e+00}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
+
+// PerTensor: %[[cst:.*]] = constant dense<1.270000e+02> : tensor<3x3x3x3xf32>
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
+// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// PerTensor: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
 }
 
 // CHECK-LABEL: prepareConv2D
@@ -94,6 +100,11 @@ func @prepareConv2D(%arg0: tensor<1x5x5x1xf32>) -> tensor<1x5x5x3xf32> {
 // CHECK-SAME: {0.0078740157480314959,1.000000e+00,1.000000e+00}>>}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
+
+// PerTensor: %[[cst:.*]] = constant dense<[{{\[\[\[}}0.000000e+00]]], [{{\[\[}}1.270000e+02]]], [{{\[\[}}-1.270000e+02]]]]>
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<3x1x1x1x!quant.uniform<i8<-127:127>:f32,
+// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// PerTensor: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
 }
 
 // CHECK-LABEL: prepareDepthwiseConv2D
@@ -108,4 +119,27 @@ func @prepareDepthwiseConv2D(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112
 // CHECK-SAME:  {1.000000e+00,1.000000e+00,1.000000e+00}
 // CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK: %[[conv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[dq]]
+
+// PerTensor: %[[cst:.*]] = constant dense<1.270000e+02> : tensor<32x3x3x3xf32>
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<32x3x3x3x!quant.uniform<i8<-127:127>:f32,
+// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// PerTensor: %[[conv:.*]] = "tfl.depthwise_conv_2d"(%arg0, %[[dq]]
+}
+
+// CHECK-LABEL: QuantizeFullyConnected
+func @QuantizeFullyConnected(%arg0: tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
+  %w = constant dense<127.0> : tensor<32x12xf32>
+  %b = constant dense<0.0> : tensor<32xf32>
+  %fc = "tfl.fully_connected"(%arg0, %w, %b) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "DEFAULT"} : (tensor<1x224x224x3xf32>, tensor<32x12xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
+  return %fc : tensor<1x112x112x32xf32>
+
+// CHECK: %[[cst:.*]] = constant dense<1.270000e+02> : tensor<32x12xf32>
+// CHECK: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>} : (tensor<32x12xf32>) -> tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<32x12xf32>
+// CHECK: "tfl.fully_connected"(%arg0, %[[dq]]
+
+// PerTensor: %[[cst:.*]] = constant dense<1.270000e+02> : tensor<32x12xf32>
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%cst) {qtype = tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>} : (tensor<32x12xf32>) -> tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>
+// PerTensor: %[[dq:.*]] = "tfl.dequantize"(%0) : (tensor<32x12x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>) -> tensor<32x12xf32>
+// PerTensor: "tfl.fully_connected"(%arg0, %[[dq]]
 }

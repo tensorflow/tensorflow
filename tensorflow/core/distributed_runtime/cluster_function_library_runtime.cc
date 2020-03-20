@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -185,8 +186,9 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   auto target = options.target;
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
-  WorkerInterface* wi =
-      worker_session_->worker_cache()->GetOrCreateWorker(target);
+  std::shared_ptr<WorkerCacheInterface> worker_cache =
+      worker_session_->GetSharedWorkerCache();
+  WorkerInterface* wi = worker_cache->GetOrCreateWorker(target);
 
   if (wi == nullptr) {
     std::vector<string> workers;
@@ -223,6 +225,8 @@ void ClusterFunctionLibraryRuntime::Instantiate(
   req->set_session_handle(worker_session_->session_name());
   req->set_create_worker_session_called(create_worker_session_called_);
   *req->mutable_graph_def() = std::move(gdef);
+  StripDefaultAttributes(*OpRegistry::Global(),
+                         req->mutable_graph_def()->mutable_node());
   req->mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
@@ -230,13 +234,14 @@ void ClusterFunctionLibraryRuntime::Instantiate(
 
   wi->RegisterGraphAsync(
       req, resp,
-      [this, handle, req, resp, wi, function_name, target, send_keys, recv_keys,
-       done](const Status& status) {
+      [this, handle, req, resp, worker_cache, wi, function_name, target,
+       send_keys, recv_keys, done](const Status& status) {
         if (status.ok()) {
           mutex_lock l(mu_);
           *handle = function_data_.size();
           function_data_.push_back(FunctionData(resp->graph_handle(), target,
-                                                wi, *send_keys, *recv_keys));
+                                                worker_cache, wi, *send_keys,
+                                                *recv_keys));
           VLOG(1) << "CFLR::Instantiate: [Success] " << function_name << " on "
                   << target << " (this: " << this << ")"
                   << " with handle: " << *handle;

@@ -16,9 +16,10 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_CONVERT_OP_FOLDER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_CONVERT_OP_FOLDER_H_
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 
+namespace mlir {
 namespace xla {
 
 // Converts the given elements attr to the specified elements type.
@@ -27,5 +28,6 @@ namespace xla {
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
                                        mlir::Type new_type);
 }  // namespace xla
+}  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_XLA_CONVERT_OP_FOLDER_H_

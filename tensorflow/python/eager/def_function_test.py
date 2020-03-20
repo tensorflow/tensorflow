@@ -137,6 +137,19 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(1.0)), 2.0)
 
+  def testFunctionMultipleVariableInitializer(self):
+
+    state = []
+
+    @def_function.function
+    def fn(x):
+      if not state:
+        state.append(variables.Variable(lambda: 2.0))
+        state.append(variables.Variable(lambda: 5.0))
+      return state[0] * x, state[1] * x
+
+    self.assertAllEqual(fn(constant_op.constant(1.0)), [2.0, 5.0])
+
   def testFunctionInitializationFunction(self):
 
     state = []
@@ -148,7 +161,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
       return state[0] * x
 
     init_fn = fn.get_initialization_function(constant_op.constant(1.0))
-    self.assertEqual(len(state), 1)
+    self.assertLen(state, 1)
     self.assertFalse(
         resource_variable_ops.var_is_initialized_op(state[0].handle))
     init_fn()
@@ -604,7 +617,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     v_holder[1].assign(11.)
     self.assertAllClose([14., 15.], wrapper(constant_op.constant(2.)))
 
-  # TODO(b/137148281): reenable
   @test_util.run_gpu_only
   def testDeviceAnnotationRespected(self):
     a = []
@@ -621,8 +633,28 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       return a[0].read_value()
 
-    created_variable_read = create_variable()
+    create_variable()
     self.assertRegexpMatches(a[0].device, 'CPU')
+
+  @test_util.run_gpu_only
+  def testDeviceAnnotationForInitializerRespected(self):
+    a = []
+    initial_value = []
+
+    def initial_value_fn():
+      initial_value.append(random_ops.random_uniform((2, 3)))
+      return initial_value[0]
+
+    @def_function.function()
+    def create_variable():
+      with ops.init_scope():
+        if not a:
+          a.append(variables.Variable(initial_value_fn))
+
+    with ops.device('CPU:0'):
+      create_variable()
+    self.assertRegexpMatches(a[0].device, 'CPU')
+    self.assertRegexpMatches(initial_value[0].device, 'CPU')
 
   def testDecorate(self):
     func = def_function.function(lambda: 1)
@@ -668,7 +700,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(autograph, cloned._autograph)
     self.assertEqual(implements, cloned._implements)
     self.assertEqual(autograph_options, cloned._experimental_autograph_options)
-    self.assertEqual(relax_shapes, cloned.experimental_relax_shapes)
+    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
     self.assertEqual(compile_, cloned._experimental_compile)
 
     # This test does not run with XLA JIT support linked in so we can only check
@@ -702,6 +734,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
+  def testGetConcreteFunctionGraphLifetime(self):
+
+    @def_function.function
+    def func():
+      pass
+
+    graph = func.get_concrete_function().graph
+    del func
+
+    # If the graph is deleted, then an exception is raised on reading `captures`
+    self.assertEmpty(graph.captures)
 
 
 if __name__ == '__main__':

@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from absl.testing import parameterized
 import numpy as np
 from six.moves import range

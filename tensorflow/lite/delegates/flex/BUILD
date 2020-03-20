@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_opts_nortti_if_lite_protos")
 
 #
 # This is a TF Lite delegate that is powered by TensorFlow's Eager.
@@ -15,9 +15,10 @@ cc_library(
     name = "buffer_map",
     srcs = ["buffer_map.cc"],
     hdrs = ["buffer_map.h"],
+    copts = tf_opts_nortti_if_lite_protos(),
     deps = [
         ":util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
     ] + select({
@@ -69,7 +70,7 @@ cc_library(
         ],
         "//conditions:default": [
             "//tensorflow/core:tensorflow",
-            "//tensorflow/lite/c:c_api_internal",
+            "//tensorflow/lite/c:common",
         ],
     }),
     alwayslink = 1,
@@ -92,7 +93,7 @@ cc_library(
         ":kernel",
         ":util",
         "@com_google_absl//absl/strings:strings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
@@ -154,7 +155,7 @@ tf_cc_test(
         ":delegate_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -169,7 +170,7 @@ cc_library(
         ":util",
         "@flatbuffers",
         "//tensorflow/lite/core/api",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:string",
         "//tensorflow/lite/kernels:kernel_util",
@@ -236,7 +237,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
     ] + select({
         "//tensorflow:android": [

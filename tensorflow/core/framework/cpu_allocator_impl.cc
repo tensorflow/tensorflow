@@ -80,7 +80,7 @@ class CPUAllocator : public Allocator {
       ++single_allocation_warning_count_;
       LOG(WARNING) << "Allocation of " << num_bytes << " exceeds "
                    << 100 * kLargeAllocationWarningThreshold
-                   << "% of system memory.";
+                   << "% of free system memory.";
     }
 
     void* p = port::AlignedMalloc(num_bytes, alignment);
@@ -99,7 +99,7 @@ class CPUAllocator : public Allocator {
         ++total_allocation_warning_count_;
         LOG(WARNING) << "Total allocated memory " << stats_.bytes_in_use
                      << "exceeds " << 100 * kTotalAllocationWarningThreshold
-                     << "% of system memory";
+                     << "% of free system memory";
       }
     }
     return p;
@@ -133,12 +133,12 @@ class CPUAllocator : public Allocator {
 
  private:
   mutex mu_;
-  AllocatorStats stats_ GUARDED_BY(mu_);
+  AllocatorStats stats_ TF_GUARDED_BY(mu_);
 
   // Use <atomic> for single allocations to avoid mutex contention when
   // statistics are disabled.
   std::atomic<int> single_allocation_warning_count_;
-  int total_allocation_warning_count_ GUARDED_BY(mu_);
+  int total_allocation_warning_count_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };

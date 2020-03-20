@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -40,7 +40,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32 &&
       input->type != kTfLiteUInt8 && input->type != kTfLiteInt16 &&
-      input->type != kTfLiteInt64) {
+      input->type != kTfLiteInt64 && input->type != kTfLiteBool) {
     context->ReportError(context, "Type '%s' is not supported by reverse.",
                          TfLiteTypeGetName(input->type));
     return kTfLiteError;
@@ -68,8 +68,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
   int axis = GetTensorData<int32_t>(axis_tensor)[0];
+  const int rank = NumDimensions(input);
+  if (axis < 0) {
+    axis += rank;
+  }
 
-  TF_LITE_ENSURE(context, axis >= 0 && axis < NumDimensions(input));
+  TF_LITE_ENSURE(context, axis >= 0 && axis < rank);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (output->type) {
@@ -101,6 +105,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       reference_ops::Reverse<int64_t>(
           axis, GetTensorShape(input), GetTensorData<int64_t>(input),
           GetTensorShape(output), GetTensorData<int64_t>(output));
+      break;
+    }
+    case kTfLiteBool: {
+      reference_ops::Reverse<bool>(
+          axis, GetTensorShape(input), GetTensorData<bool>(input),
+          GetTensorShape(output), GetTensorData<bool>(output));
       break;
     }
     default: {

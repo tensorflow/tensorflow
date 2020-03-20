@@ -66,6 +66,7 @@ CallContext GetInstructionCallContext(HloOpcode opcode) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return CallContext::kParallel;
     default:
       return CallContext::kNone;
@@ -93,6 +94,8 @@ const CallSite* CallGraphNode::GetCallSite(
   }
   return &callsites_[it->second];
 }
+
+std::string CallGraphNode::ToString() const { return computation_->name(); }
 
 void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   caller_callsites_.push_back(caller_callsite);

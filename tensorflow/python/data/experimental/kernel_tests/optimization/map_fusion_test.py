@@ -17,17 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _map_fusion_test_cases():
-  """Generates test cases for the MapFusion optimization."""
+def _test_combinations():
+  cases = []
 
   identity = lambda x: x
   increment = lambda x: x + 1
@@ -37,38 +42,35 @@ def _map_fusion_test_cases():
     return y * y
 
   functions = [identity, increment, increment_and_square]
-  tests = []
-  for i, fun1 in enumerate(functions):
-    for j, fun2 in enumerate(functions):
-      tests.append((
-          "Test{}{}".format(i, j),
-          [fun1, fun2],
-      ))
-      for k, fun3 in enumerate(functions):
-        tests.append((
-            "Test{}{}{}".format(i, j, k),
-            [fun1, fun2, fun3],
-        ))
 
-  swap = lambda x, n: (n, x)
-  tests.append((
-      "Swap1",
-      [lambda x: (x, 42), swap],
-  ))
-  tests.append((
-      "Swap2",
-      [lambda x: (x, 42), swap, swap],
-  ))
-  return tuple(tests)
+  for i, x in enumerate(functions):
+    for j, y in enumerate(functions):
+      cases.append(("Scalar{}{}".format(i, j), [x, y]))
+      for k, z in enumerate(functions):
+        cases.append(("Scalar{}{}{}".format(i, j, k), [x, y, z]))
+
+  with_42 = lambda x: (x, 42)
+  swap = lambda x, y: (y, x)
+
+  cases.append(("Tuple1", [with_42, swap]))
+  cases.append(("Tuple2", [with_42, swap, swap]))
+
+  def reduce_fn(x, y):
+    name, functions = y
+    return x + combinations.combine(
+        functions=combinations.NamedObject(name, functions))
+
+  return functools.reduce(reduce_fn, cases, [])
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(*_map_fusion_test_cases())
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _test_combinations()))
   def testMapFusion(self, functions):
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["Map", "MemoryCacheImpl"]))
+        testing.assert_next(["Map", "MemoryCacheImpl"]))
     for function in functions:
       dataset = dataset.map(function)
 
@@ -87,6 +89,22 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
           r = function(r)
       expected_output.append(r)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testCapturedInputs(self):
+    a = constant_op.constant(3, dtype=dtypes.int64)
+    b = constant_op.constant(4, dtype=dtypes.int64)
+    some_tensor = math_ops.mul(a, b)
+
+    # We currently do not support functions with captured inputs.
+    dataset = dataset_ops.Dataset.range(1).apply(
+        testing.assert_next(["Map", "Map"
+                            ])).map(lambda x: some_tensor).map(lambda x: x)
+    options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.map_fusion = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, expected_output=[some_tensor])
 
 
 if __name__ == "__main__":

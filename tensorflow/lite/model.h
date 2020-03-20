@@ -20,7 +20,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_MODEL_H_
 
 #include <memory>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
@@ -109,7 +110,7 @@ class FlatBufferModel {
   /// and must ensure its lifetime is longer than the FlatBufferModel instance.
   /// Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> VerifyAndBuildFromBuffer(
-      const char* buffer, size_t buffer_size,
+      const char* caller_owned_buffer, size_t buffer_size,
       TfLiteVerifier* extra_verifier = nullptr,
       ErrorReporter* error_reporter = DefaultErrorReporter());
 
@@ -173,6 +174,8 @@ class FlatBufferModel {
   std::unique_ptr<Allocation> allocation_;
 };
 
+namespace impl {
+
 /// Build an interpreter capable of interpreting `model`.
 ///
 /// model: A model whose lifetime must be at least as long as any
@@ -222,6 +225,8 @@ class InterpreterBuilder {
   TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
                                  TfLiteQuantization* quantization,
                                  const std::vector<int>& dims);
+  TfLiteStatus ParseSparsity(const SparsityParameters* src_sparsity,
+                             TfLiteSparsity** sparsity);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;
@@ -234,6 +239,10 @@ class InterpreterBuilder {
 
   bool has_flex_op_ = false;
 };
+
+}  // namespace impl
+
+using InterpreterBuilder = impl::InterpreterBuilder;
 
 }  // namespace tflite
 

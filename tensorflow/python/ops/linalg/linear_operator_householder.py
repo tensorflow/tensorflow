@@ -253,6 +253,10 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
         [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
     return eigvals
 
+  def _cond(self):
+    # Householder matrices are rotations which have condition number 1.
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
+
   @property
   def reflection_axis(self):
     return self._reflection_axis

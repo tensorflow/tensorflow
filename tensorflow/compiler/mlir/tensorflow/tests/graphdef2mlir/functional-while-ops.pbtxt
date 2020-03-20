@@ -1,11 +1,11 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=iter,val -tf-input-data-types=DT_INT32,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulWhile:1,StatelessWhile:1 -o - | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -tf-input-arrays=iter,val -tf-input-data-types=DT_INT32,DT_FLOAT -tf-input-shapes=':' -tf-output-arrays=StatefulWhile:1,StatelessWhile:1 -o - -mlir-print-debuginfo | FileCheck %s
 
 # Verify that TensorFlow While and StatelessWhile ops are mapped to the
 # composite While op in MLIR with is_stateless attribute set accordingly to
 # distinguish between them.
 
-# CHECK-DAG: "tf.While"{{.*}} is_stateless = false, name = "StatefulWhile"
-# CHECK-DAG: "tf.While"{{.*}} is_stateless = true, name = "StatelessWhile"
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = false{{.*}} loc("StatefulWhile")
+# CHECK-DAG: "tf.While"{{.*}} is_stateless = true{{.*}} loc("StatelessWhile")
 
 node {
   name: "StatefulWhile"

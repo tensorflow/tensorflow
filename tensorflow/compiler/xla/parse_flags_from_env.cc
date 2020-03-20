@@ -17,9 +17,12 @@ limitations under the License.
 // modules to parse flags from an environtment variable, or a file named by the
 // environment variable.
 
+#include "tensorflow/compiler/xla/parse_flags_from_env.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -28,7 +31,6 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/parse_flags_from_env.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -218,9 +220,9 @@ bool ParseFlagsFromEnvAndDieIfUnknown(
           alternate_envvar);
     }
 
-    LOG(FATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
-               << " in " << envvar << ": " << absl::StrJoin(unknown_flags, " ")
-               << did_you_mean;
+    LOG(QFATAL) << "Unknown flag" << (unknown_flags.size() > 1 ? "s" : "")
+                << " in " << envvar << ": " << absl::StrJoin(unknown_flags, " ")
+                << did_you_mean;
     return false;
   }
   return result;

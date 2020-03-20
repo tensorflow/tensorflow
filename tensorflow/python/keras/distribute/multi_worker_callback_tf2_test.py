@@ -24,7 +24,6 @@ from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_process_runner_util
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
@@ -74,6 +73,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
     def proc_model_checkpoint_saves_on_chief_but_not_otherwise(
         test_obj, file_format):
+
       model, saving_filepath, train_ds, steps = _model_setup(
           test_obj, file_format)
       num_epoch = 2
@@ -94,6 +94,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           x=train_ds,
           epochs=num_epoch,
           steps_per_epoch=steps,
+          validation_data=train_ds,
+          validation_steps=steps,
           callbacks=[
               callbacks.ModelCheckpoint(
                   filepath=saving_filepath, save_weights_only=save_weights_only)
@@ -104,12 +106,36 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           training_state.checkpoint_exists(saving_filepath),
           test_base.is_chief())
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_model_checkpoint_saves_on_chief_but_not_otherwise,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self, file_format))
+    multi_process_runner.run(
+        proc_model_checkpoint_saves_on_chief_but_not_otherwise,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self, file_format))
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_model_checkpoint_works_with_same_file_path(self, mode):
+
+    def proc_model_checkpoint_works_with_same_file_path(
+        test_obj, saving_filepath):
+      model, _, train_ds, steps = _model_setup(test_obj, file_format='')
+      num_epoch = 2
+
+      # The saving_filepath shouldn't exist at the beginning (as it's unique).
+      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+
+      model.fit(
+          x=train_ds,
+          epochs=num_epoch,
+          steps_per_epoch=steps,
+          callbacks=[callbacks.ModelCheckpoint(filepath=saving_filepath)])
+
+      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+
+    saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint')
+
+    multi_process_runner.run(
+        proc_model_checkpoint_works_with_same_file_path,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self, saving_filepath))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_saves_on_chief_but_not_otherwise(self, mode):
@@ -142,12 +168,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       test_obj.assertEqual(
           bool(file_io.list_directory(saving_filepath)), test_base.is_chief())
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_tensorboard_saves_on_chief_but_not_otherwise,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self,))
+    multi_process_runner.run(
+        proc_tensorboard_saves_on_chief_but_not_otherwise,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
 
   @combinations.generate(combinations.combine(mode=['eager']))
   def test_tensorboard_can_still_save_to_temp_even_if_it_exists(self, mode):
@@ -173,13 +197,69 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=steps,
           callbacks=[callbacks.TensorBoard(log_dir=saving_filepath)])
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          proc_tensorboard_can_still_save_to_temp_even_if_it_exists,
-          cluster_spec=test_base.create_cluster_spec(num_workers=2),
-          args=(self,))
+    multi_process_runner.run(
+        proc_tensorboard_can_still_save_to_temp_even_if_it_exists,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_tensorboard_works_with_same_file_path(self, mode):
+
+    def proc_tensorboard_works_with_same_file_path(test_obj, saving_filepath):
+      model, _, train_ds, steps = _model_setup(test_obj, file_format='')
+      num_epoch = 2
+
+      # The saving_filepath shouldn't exist at the beginning (as it's unique).
+      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+
+      multi_process_runner.barrier().wait()
+
+      model.fit(
+          x=train_ds,
+          epochs=num_epoch,
+          steps_per_epoch=steps,
+          callbacks=[callbacks.TensorBoard(log_dir=saving_filepath)])
+
+      multi_process_runner.barrier().wait()
+
+      test_obj.assertTrue(file_io.list_directory(saving_filepath))
+
+    saving_filepath = os.path.join(self.get_temp_dir(), 'logfile')
+
+    multi_process_runner.run(
+        proc_tensorboard_works_with_same_file_path,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self, saving_filepath))
+
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def test_early_stopping(self, mode):
+
+    def proc_early_stopping(test_obj):
+
+      class EpochCounterCallback(callbacks.Callback):
+
+        def on_epoch_begin(self, epoch, logs):
+          self.last_epoch = epoch
+
+      model, _, train_ds, steps = _model_setup(test_obj, file_format='')
+      epoch_counter_cbk = EpochCounterCallback()
+      cbks = [
+          callbacks.EarlyStopping(
+              monitor='loss', min_delta=0.05, patience=1, verbose=1),
+          epoch_counter_cbk
+      ]
+
+      # Empirically, it is expected that `model.fit()` terminates around the
+      # 22th epoch. Asserting that it should have been stopped before the 50th
+      # epoch to avoid flakiness and be more predictable.
+      model.fit(x=train_ds, epochs=100, steps_per_epoch=steps, callbacks=cbks)
+      test_obj.assertLess(epoch_counter_cbk.last_epoch, 50)
+
+    multi_process_runner.run(
+        proc_early_stopping,
+        cluster_spec=test_base.create_cluster_spec(num_workers=2),
+        args=(self,))
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main()
+  multi_process_runner.test_main(barrier_parties=2)

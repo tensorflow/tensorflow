@@ -15,8 +15,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_EVENT_ID_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_EVENT_ID_H_
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>
@@ -32,8 +31,8 @@ namespace tpu_driver {
 // This class provides a typed interface for these values as well as support for
 // hashing and ostreams (for logging).
 struct EventId {
-  int64_t client_id;
-  int64_t operation_id;
+  uint64_t client_id;
+  uint64_t operation_id;
 
   template <typename H>
   friend H AbslHashValue(H h, const EventId& c) {
@@ -52,9 +51,9 @@ struct EventId {
     return absl::StrCat(client_id, ":", operation_id);
   }
 
-  int64_t AsInt() const { return client_id << 44 | operation_id; }
+  uint64_t AsInt() const { return client_id << 44 | operation_id; }
 
-  static EventId FromInt(int64_t value) {
+  static EventId FromInt(uint64_t value) {
     return EventId{value >> 44, value & 0xfffffffffff};
   }
 };

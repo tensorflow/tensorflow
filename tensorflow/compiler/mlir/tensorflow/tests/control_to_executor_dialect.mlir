@@ -11,9 +11,9 @@ func @islands_with_control(tensor<*xf32>) -> tensor<*xf32> {
 }
 
 // CHECK-NEXT: %[[GRAPH:[0-9]*]] = tf_executor.graph {
-// CHECK-NEXT:   %[[IDENTITY:[0-9]*]]:2 = tf_executor.island wraps "tf.Identity"(%[[ARG0]]) : (tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT:   %[[ADD:[0-9]*]]:2 = tf_executor.island(%[[IDENTITY]]#1) wraps "tf.Add"(%[[ARG0]], %[[ARG0]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
-// CHECK-NEXT:   tf_executor.fetch %[[ADD]]#0 : tensor<*xf32>
+// CHECK-NEXT:   %[[IDENTITY:.*]], %[[IDENTITY_control:.*]] = tf_executor.island wraps "tf.Identity"(%[[ARG0]]) : (tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   %[[ADD:.*]], %[[ADD_control:.*]] = tf_executor.island(%[[IDENTITY_control]]) wraps "tf.Add"(%[[ARG0]], %[[ARG0]]) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   tf_executor.fetch %[[ADD]] : tensor<*xf32>
 // CHECK-NEXT: }
 // CHECK-NEXT: return %[[GRAPH]] : tensor<*xf32>
 
@@ -39,21 +39,21 @@ func @LoopTest() {
 }
 
 // CHECK-NEXT:   tf_executor.graph {
-// CHECK-NEXT:     %[[CONST:[0-9]*]]:2 = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
-// CHECK-NEXT:     %[[ENTER:[0-9]*]]:2 = tf_executor.Enter %[[CONST]]#0 frame "while/while_context" : (tensor<i32>) -> (tensor<*xi32>, !tf_executor.control) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Enter"}
-// CHECK-NEXT:     %[[NOOP:[0-9]*]] = tf_executor.island wraps "tf.NoOp"() {device = "", name = "cluster/pivot"} : () -> ()
-// CHECK-NEXT:     %[[NEXTIT_SRC:[0-9]*]]:3 = tf_executor.NextIteration.Source : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", id =  0 : i64, name =  "while/NextIteration"}
-// CHECK-NEXT:     %[[MERGE:[0-9]*]]:3 = tf_executor.Merge %[[NEXTIT_SRC]]#0, %[[ENTER]]#0 : tensor<*xi32> {N = 2 : i64, T =  "tfdtype$DT_INT32", device =  "", name =  "while/Merge"}
-// CHECK-NEXT:     %[[CONST_LESS:[0-9]*]]:2 = tf_executor.island(%[[MERGE]]#2) wraps "tf.Const"() {device =  "", dtype =  "tfdtype$DT_INT32", name =  "while/Less/y", value =  dense<2> : tensor<i32>} : () -> tensor<i32>
-// CHECK-NEXT:     %[[LESS:[0-9]*]]:2 = tf_executor.island  wraps "tf.Less"(%[[MERGE]]#0, %[[CONST_LESS]]#0) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Less"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
-// CHECK-NEXT:     %[[COND:[0-9]*]]:2 = tf_executor.LoopCond %[[LESS:[0-9]*]]#0 : (tensor<*xi1>) -> (tensor<i1>, !tf_executor.control) {device =  "", name =  "while/LoopCond"}
-// CHECK-NEXT:     %[[SWITCH:[0-9]*]]:3 = tf_executor.Switch %[[MERGE]]#0, %[[COND]]#0 : tensor<*xi32> {T =  "tfdtype$DT_INT32", _class =  ["loc = @while/Merge"], device =  "", name =  "while/Switch"}
-// CHECK-NEXT:     %[[EXIT:[0-9]*]]:2 = tf_executor.Exit %[[SWITCH]]#0 : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Exit"}
-// CHECK-NEXT:     %[[IDENTITY:[0-9]*]]:2 = tf_executor.island wraps "tf.Identity"(%[[SWITCH]]#1) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Identity"} : (tensor<*xi32>) -> tensor<*xi32>
-// CHECK-NEXT:     %[[CONST_ADD:[0-9]*]]:2 = tf_executor.island(%[[IDENTITY]]#1) wraps "tf.Const"() {device =  "", dtype =  "tfdtype$DT_INT32", name =  "while/Add/y", value = dense<3> : tensor<i32>} : () -> tensor<i32>
-// CHECK-NEXT:     %[[ADD:[0-9]*]]:2 = tf_executor.island wraps "tf.Add"(%[[IDENTITY]]#0, %[[CONST_ADD]]#0) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Add"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-// CHECK-NEXT:     %[[CT:[0-9]*]] = tf_executor.ControlTrigger %[[NOOP]], %[[ADD]]#1, %[[EXIT]]#1 {_tpu_replicate = "cluster", device = "", name = "gradients/while/mul_2_Da30D05wlPU_grad/SymbolicGradient/b_sync"}
-// CHECK-NEXT:     tf_executor.NextIteration.Sink [%[[NEXTIT_SRC]]#1] %[[ADD]]#0, %[[CT]] : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", id = 0 : i64, name =  "while/NextIteration"}
+// CHECK-NEXT:     %[[CONST:.*]], %[[CONST_control:.*]] = tf_executor.island wraps "tf.Const"() {device = "", dtype = "tfdtype$DT_INT32", name = "Const", value = dense<1> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT:     %[[ENTER:.*]], %[[ENTER_control:.*]] = tf_executor.Enter %[[CONST]] frame "while/while_context" : (tensor<i32>) -> (tensor<*xi32>, !tf_executor.control) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Enter"}
+// CHECK-NEXT:     %[[NOOP:[a-z_0-9 ]*]] = tf_executor.island wraps "tf.NoOp"() {device = "", name = "cluster/pivot"} : () -> ()
+// CHECK-NEXT:     %[[NEXTIT_SRC:.*]], %[[NEXTIT_SRC_token:.*]], %{{.*}} = tf_executor.NextIteration.Source : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", id =  0 : i64, name =  "while/NextIteration"}
+// CHECK-NEXT:     %[[MERGE:.*]], %[[MERGE_index:.*]], %[[MERGE_control:.*]] = tf_executor.Merge %[[NEXTIT_SRC]], %[[ENTER]] : tensor<*xi32> {N = 2 : i64, T =  "tfdtype$DT_INT32", device =  "", name =  "while/Merge"}
+// CHECK-NEXT:     %[[CONST_LESS:.*]], %[[CONST_LESS_control:.*]] = tf_executor.island(%[[MERGE_control]]) wraps "tf.Const"() {device =  "", dtype =  "tfdtype$DT_INT32", name =  "while/Less/y", value =  dense<2> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT:     %[[LESS:.*]], %[[LESS_control:.*]] = tf_executor.island  wraps "tf.Less"(%[[MERGE]], %[[CONST_LESS]]) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Less"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+// CHECK-NEXT:     %[[COND:.*]], %[[COND_control:.*]] = tf_executor.LoopCond %[[LESS]] : (tensor<*xi1>) -> (tensor<i1>, !tf_executor.control) {device =  "", name =  "while/LoopCond"}
+// CHECK-NEXT:     %[[SWITCH_false:.*]], %[[SWITCH_true:.*]], %[[SWITCH_control:.*]] = tf_executor.Switch %[[MERGE]], %[[COND]] : tensor<*xi32> {T =  "tfdtype$DT_INT32", _class =  ["loc = @while/Merge"], device =  "", name =  "while/Switch"}
+// CHECK-NEXT:     %[[EXIT:.*]], %[[EXIT_control:.*]] = tf_executor.Exit %[[SWITCH_false]] : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Exit"}
+// CHECK-NEXT:     %[[IDENTITY:.*]], %[[IDENTITY_control:.*]] = tf_executor.island wraps "tf.Identity"(%[[SWITCH_true]]) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Identity"} : (tensor<*xi32>) -> tensor<*xi32>
+// CHECK-NEXT:     %[[CONST_ADD:.*]], %[[CONST_ADD_control:.*]] = tf_executor.island(%[[IDENTITY_control]]) wraps "tf.Const"() {device =  "", dtype =  "tfdtype$DT_INT32", name =  "while/Add/y", value = dense<3> : tensor<i32>} : () -> tensor<i32>
+// CHECK-NEXT:     %[[ADD:.*]], %[[ADD_control:.*]] = tf_executor.island wraps "tf.Add"(%[[IDENTITY]], %[[CONST_ADD]]) {T =  "tfdtype$DT_INT32", device =  "", name =  "while/Add"} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
+// CHECK-NEXT:     %[[CT:[0-9]*]] = tf_executor.ControlTrigger %[[NOOP]], %[[ADD_control]], %[[EXIT_control]] {_tpu_replicate = "cluster", device = "", name = "gradients/while/mul_2_Da30D05wlPU_grad/SymbolicGradient/b_sync"}
+// CHECK-NEXT:     tf_executor.NextIteration.Sink [%[[NEXTIT_SRC_token]]] %[[ADD]], %[[CT]] : tensor<*xi32> {T =  "tfdtype$DT_INT32", device =  "", id = 0 : i64, name =  "while/NextIteration"}
 // CHECK-NEXT:     tf_executor.fetch
 // CHECK-NEXT:   }
 // CHECK-NEXT:   return

@@ -47,12 +47,21 @@ class Adagrad(optimizer_v2.OptimizerV2):
   $$accum_{g_t} := accum_{g_{t-1}} + g^2$$
   $$\theta_t := \theta_{t-1} - lr * g / (\sqrt{accum_{g_t}} + \epsilon)$$
 
+  @compatibility(eager)
+  When eager execution is enabled, `learning_rate` can be a callable that
+  takes no arguments and returns the actual value to use. This can be useful
+  for changing these values across different invocations of optimizer
+  functions.
+  @end_compatibility
+
   References:
 
   * [Paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
   * [Introduction]
     (https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
+
+  _HAS_ALL_REDUCE_SUM_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -63,7 +72,8 @@ class Adagrad(optimizer_v2.OptimizerV2):
     """Construct a new Adagrad optimizer.
 
     Args:
-      learning_rate: A `Tensor` or a floating point value.  The learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       initial_accumulator_value: A floating point value.
         Starting value for the accumulators, must be non-negative.
       epsilon: A small floating point value to avoid zero denominator.
@@ -77,13 +87,6 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
     Raises:
       ValueError: If the `initial_accumulator_value` or `epsilon` is invalid.
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate` can be a callable that
-    takes no arguments and returns the actual value to use. This can be useful
-    for changing these values across different invocations of optimizer
-    functions.
-    @end_compatibility
     """
     if initial_accumulator_value < 0.0:
       raise ValueError('initial_accumulator_value must be non-negative: %s' %
@@ -105,11 +108,11 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
   def _prepare_local(self, var_device, var_dtype, apply_state):
     super(Adagrad, self)._prepare_local(var_device, var_dtype, apply_state)
-    apply_state[(var_device, var_dtype)].update(dict(
-        epsilon=ops.convert_to_tensor(self.epsilon, var_dtype),
-        neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
-        zero=array_ops.zeros((), dtype=dtypes.int64)
-    ))
+    apply_state[(var_device, var_dtype)].update(
+        dict(
+            epsilon=ops.convert_to_tensor_v2(self.epsilon, var_dtype),
+            neg_lr_t=-apply_state[(var_device, var_dtype)]['lr_t'],
+            zero=array_ops.zeros((), dtype=dtypes.int64)))
 
   def set_weights(self, weights):
     params = self.weights

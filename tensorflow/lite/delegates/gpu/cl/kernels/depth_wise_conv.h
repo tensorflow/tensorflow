@@ -54,8 +54,9 @@ class DepthWiseConvolution : public GPUOperation {
       const CreationContext& creation_context, const OperationDef& definition,
       const DepthwiseConvolution2DAttributes& attr,
       DepthWiseConvolution* result);
-  explicit DepthWiseConvolution(const OperationDef& definition,
-                                const DepthwiseConvolution2DAttributes& attr);
+  DepthWiseConvolution(const OperationDef& definition,
+                       const DepthwiseConvolution2DAttributes& attr,
+                       bool weights_are_buffer);
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
@@ -67,6 +68,7 @@ class DepthWiseConvolution : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
+  bool weights_are_buffer_;
   Texture2D weights_tex2d_;
   Buffer weights_buf_;
   cl_mem weights_;
@@ -93,16 +95,13 @@ Status DepthWiseConvolution::UploadWeights(
 
   const int elements_count = kernel_x * kernel_y * dst_depth;
 
-  bool is_buffer_storage =
-      definition_.GetPrimaryStorageType() == TensorStorageType::BUFFER;
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float4_size = fp32_weights ? 16 : 8;
 
-  const int float4_size =
-      definition_.precision == CalculationsPrecision::F32 ? 16 : 8;
-
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (fp32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
@@ -114,7 +113,7 @@ Status DepthWiseConvolution::UploadWeights(
   } else {
     std::vector<half4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
@@ -125,7 +124,7 @@ Status DepthWiseConvolution::UploadWeights(
     }
   }
 
-  if (is_buffer_storage) {
+  if (weights_are_buffer_) {
     weights_ = weights_buf_.GetMemoryPtr();
   } else {
     weights_ = weights_tex2d_.GetMemoryPtr();

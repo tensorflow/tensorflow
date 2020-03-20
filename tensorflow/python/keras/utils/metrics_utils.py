@@ -39,6 +39,7 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -71,6 +72,19 @@ def update_state_wrapper(update_state_fn):
 
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
+    strategy = distribution_strategy_context.get_strategy()
+    # TODO(b/142574744): Remove this check if a better solution is found for
+    # declaring keras Metric outside of TPUStrategy and then updating it per
+    # replica.
+
+    for weight in metric_obj.weights:
+      if (tpu.is_tpu_strategy(strategy) and
+          not strategy.extended.variable_created_in_scope(weight)
+          and not distribution_strategy_context.in_cross_replica_context()):
+        raise ValueError(
+            'Trying to run metric.update_state in replica context when '
+            'the metric was not created in TPUStrategy scope. '
+            'Make sure the keras Metric is created in TPUstrategy scope. ')
 
     with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
       update_op = update_state_fn(*args, **kwargs)
@@ -300,7 +314,6 @@ def update_confusion_matrix_variables(variables_to_update,
                                                                sample_weight)
     num_thresholds = len(to_list(thresholds))
     one_thresh = math_ops.cast(True, dtype=dtypes.bool)
-  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if not any(
       key for key in variables_to_update if key in list(ConfusionMatrix)):
@@ -335,6 +348,7 @@ def update_confusion_matrix_variables(variables_to_update,
       y_pred, y_true, sample_weight = (
           tf_losses_utils.squeeze_or_expand_dimensions(
               y_pred, y_true, sample_weight=sample_weight))
+  y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)
@@ -457,7 +471,7 @@ def _filter_top_k(x, k):
   """
   _, top_k_idx = nn_ops.top_k(x, k, sorted=False)
   top_k_mask = math_ops.reduce_sum(
-      array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
+      array_ops.one_hot(top_k_idx, array_ops.shape(x)[-1], axis=-1), axis=-2)
   return x * top_k_mask + NEG_INF * (1 - top_k_mask)
 
 
@@ -493,7 +507,7 @@ def ragged_assert_compatible_and_get_flat_values(values, mask=None):
       values = [values]
       to_be_stripped = True
 
-    # NOTE: we leave the flat_values compatiblity to
+    # NOTE: we leave the flat_values compatibility to
     # tf.TensorShape `assert_is_compatible_with`
     # check if both dynamic dimensions are equal and then use the flat_values.
     nested_row_split_list = [rt.nested_row_splits for rt in values]

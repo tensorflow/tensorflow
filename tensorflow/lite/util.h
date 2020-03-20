@@ -21,9 +21,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_UTIL_H_
 #define TENSORFLOW_LITE_UTIL_H_
 
+#include <string>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -73,6 +74,8 @@ TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name);
 // Checks whether the provided op is an unresolved custom op.
 bool IsUnresolvedCustomOp(const TfLiteRegistration& registration);
 
+// Returns a descriptive name with the given op TfLiteRegistration.
+std::string GetOpNameByRegistration(const TfLiteRegistration& registration);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_UTIL_H_

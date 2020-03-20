@@ -1,4 +1,3 @@
-load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
@@ -18,14 +17,15 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:executable_build_options",
-        "//tensorflow/compiler/xla/python:device_state",
         "//tensorflow/compiler/xla/python:local_client",
         "//tensorflow/compiler/xla/python:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
+        "//tensorflow/compiler/xla/python/tpu_driver:direct_tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:grpc_tpu_driver",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto",
+        "//tensorflow/compiler/xla/python/tpu_driver:recording_tpu_driver",
+        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:allocator",
@@ -52,15 +52,14 @@ pybind_extension(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client",
-        "@pybind11",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-    ] + xla_python_default_plugins(),
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
 )
 
 py_library(
@@ -76,4 +75,18 @@ py_library(
         "//tensorflow/compiler/xla/python:xla_extension",
         "//third_party/py/numpy",
     ],
+)
+
+filegroup(
+    name = "header_and_client",
+    srcs = glob([
+        "c_api*",
+        "libtpu*",
+    ]),
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "libtpu",
+    hdrs = ["libtpu.h"],
 )

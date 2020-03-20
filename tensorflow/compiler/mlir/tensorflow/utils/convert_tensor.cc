@@ -17,16 +17,17 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/Builders.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Types.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -34,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -51,27 +53,6 @@ using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
-
-void ConvertToMlirShape(const TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dims());
-  for (const auto& d : input_shape) {
-    shape->push_back(d.size);
-  }
-}
-
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dim_size());
-  auto& dims = input_shape.dim();
-  for (auto& d : dims) {
-    if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return InvalidArgument("Shape element overflows");
-    }
-    shape->push_back(d.size());
-  }
-  return Status::OK();
-}
 
 static TensorProto ConvertToProto(const Tensor& input_tensor,
                                   bool use_tensor_content = true) {
@@ -96,10 +77,22 @@ static std::string MangleTensor(const Tensor& tensor) {
 // Converts a TensorFlow tensor into an MLIR elements attribute.
 template <typename T>
 StatusOr<ElementsAttr> ConvertFlatTensor(const Tensor& input_tensor,
-                                         ShapedType type, Builder* builder) {
+                                         ShapedType type) {
   auto arr = input_tensor.flat<T>();
   return mlir::DenseElementsAttr::get(
       type, llvm::makeArrayRef(arr.data(), arr.size()));
+}
+
+StatusOr<ElementsAttr> ConvertBF16Tensor(const Tensor& input_tensor,
+                                         ShapedType type) {
+  auto flat = input_tensor.flat<bfloat16>();
+
+  llvm::SmallVector<double, 4> flat_double;
+  flat_double.reserve(flat.size());
+  for (bfloat16 v : llvm::makeArrayRef(flat.data(), flat.size())) {
+    flat_double.push_back(static_cast<double>(v));
+  }
+  return mlir::DenseElementsAttr::get(type, llvm::makeArrayRef(flat_double));
 }
 
 StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
@@ -114,7 +107,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
 
 #define CONVERT_FLAT(DTYPE, CTYPE) \
   case DTYPE:                      \
-    return ConvertFlatTensor<CTYPE>(input_tensor, type, builder);
+    return ConvertFlatTensor<CTYPE>(input_tensor, type);
 
   // TODO(fengliuai): customize the conversions for more types.
   switch (input_dtype) {
@@ -123,6 +116,12 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     CONVERT_FLAT(DT_DOUBLE, double)
     CONVERT_FLAT(DT_INT32, int32)
     CONVERT_FLAT(DT_INT64, int64)
+
+    // BFLOAT16 is a special case that it needs to be cast to double type to
+    // match its storage type.
+    case DT_BFLOAT16:
+      return ConvertBF16Tensor(input_tensor, type);
+
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
@@ -240,6 +239,28 @@ Status ConvertIntElementsAttr(const mlir::ElementsAttr attr,
   return ConvertOpaqueElementsAttr(attr, output_tensor);
 }
 
+Status ConvertBfloat16ElementsAttr(const mlir::ElementsAttr attr,
+                                   TensorProto* output_tensor) {
+  auto elts = attr.dyn_cast<DenseFPElementsAttr>();
+  if (!elts) {
+    return ConvertOpaqueElementsAttr(attr, output_tensor);
+  }
+
+  // Bfloat16 is internally represented as `double` in MLIR.
+  if (elts.isSplat()) {
+    double v = elts.getSplatValue<double>();
+    bfloat16 bf16_val = static_cast<bfloat16>(v);
+    output_tensor->add_half_val(absl::bit_cast<int16>(bf16_val));
+  } else {
+    for (auto v : elts.getValues<double>()) {
+      bfloat16 bf16_val = static_cast<bfloat16>(v);
+      output_tensor->add_half_val(absl::bit_cast<int16>(bf16_val));
+    }
+  }
+
+  return Status::OK();
+}
+
 // Converts an MLIR elements attribute to a TensorFlow tensor proto
 // with the int64_val field updated.
 Status ConvertInt64ElementsAttr(const mlir::ElementsAttr attr,
@@ -297,6 +318,8 @@ Status ConvertToTensorProto(const ElementsAttr attr,
       return ConvertInt64ElementsAttr(attr, output_tensor);
     case DT_BOOL:
       return ConvertBoolElementsAttr(attr, output_tensor);
+    case DT_BFLOAT16:
+      return ConvertBfloat16ElementsAttr(attr, output_tensor);
     default:
       return ConvertOpaqueElementsAttr(attr.cast<OpaqueElementsAttr>(),
                                        output_tensor);

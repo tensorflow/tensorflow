@@ -25,18 +25,18 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.profiler.internal._pywrap_scoped_annotation import PythonScopedAnnotation
+from tensorflow.python.profiler.internal import _pywrap_scoped_annotation
 
 
 class ScopedAnnotation(object):
   """Context manager that generates an annotation for the profiler."""
 
   def __init__(self, name, **kwargs):
-    if PythonScopedAnnotation.IsEnabled():
+    if _pywrap_scoped_annotation.ScopedAnnotation.IsEnabled():
       if kwargs:
         name += '#' + ','.join(key + '=' + str(value)
                                for key, value in six.iteritems(kwargs)) + '#'
-      self._scoped_annotation = PythonScopedAnnotation(name)
+      self._scoped_annotation = _pywrap_scoped_annotation.ScopedAnnotation(name)
     else:
       self._scoped_annotation = None
 

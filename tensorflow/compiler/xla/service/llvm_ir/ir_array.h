@@ -108,6 +108,11 @@ class IrArray {
     bool ShapeIsCompatible(const Shape& a) const {
       Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
       *own_shape.mutable_layout() = layout_;
+      // The shape 'a' could have dynamic dimensions set. Before we check for
+      // equality, we need to copy the information which dimensions are dynamic.
+      for (int64 i = 0; i < a.rank(); ++i) {
+        own_shape.set_dynamic_dimension(i, a.is_dynamic_dimension(i));
+      }
       return ShapeUtil::Equal(own_shape, a);
     }
 
@@ -130,9 +135,9 @@ class IrArray {
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        absl::Span<const int64> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.

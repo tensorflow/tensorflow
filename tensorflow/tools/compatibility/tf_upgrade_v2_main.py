@@ -35,6 +35,9 @@ _DEFAULT_MODE = "DEFAULT"
 # Convert to use compat.v1.
 _SAFETY_MODE = "SAFETY"
 
+# Whether to rename to compat.v2
+_IMPORT_RENAME_DEFAULT = False
+
 
 def process_file(in_filename, out_filename, upgrader):
   """Process a file of type `.py` or `.ipynb`."""
@@ -96,9 +99,9 @@ Simple usage:
             "input files."),
       action="store_true")
   parser.add_argument(
-      "--import_rename",
-      dest="import_rename",
-      help=("Whether to rename import to compact.v2 explicitly."),
+      "--no_import_rename",
+      dest="no_import_rename",
+      help=("Not to rename import to compact.v2 explicitly."),
       action="store_true")
   parser.add_argument(
       "--reportfile",
@@ -128,7 +131,11 @@ Simple usage:
   if args.mode == _SAFETY_MODE:
     change_spec = tf_upgrade_v2_safety.TFAPIChangeSpec()
   else:
-    change_spec = tf_upgrade_v2.TFAPIChangeSpec(args.import_rename)
+    if args.no_import_rename:
+      change_spec = tf_upgrade_v2.TFAPIChangeSpec(import_rename=False)
+    else:
+      change_spec = tf_upgrade_v2.TFAPIChangeSpec(
+          import_rename=_IMPORT_RENAME_DEFAULT)
   upgrade = ast_edits.ASTCodeUpgrader(change_spec)
 
   report_text = None

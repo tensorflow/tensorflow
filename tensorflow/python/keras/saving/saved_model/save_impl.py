@@ -39,7 +39,6 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -54,6 +53,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 base_layer = LazyLoader(
     "base_layer", globals(),
     "tensorflow.python.keras.engine.base_layer")
+metrics = LazyLoader("metrics", globals(),
+                     "tensorflow.python.keras.metrics")
 input_layer = LazyLoader(
     "input_layer", globals(),
     "tensorflow.python.keras.engine.input_layer")
@@ -68,28 +69,13 @@ sequential_lib = LazyLoader(
 
 def should_skip_serialization(layer):
   """Skip serializing extra objects and functions if layer inputs aren't set."""
-  if isinstance(layer, training_lib.Model):
-    try:
-      # pylint:disable=pointless-statement
-      layer.inputs
-      layer.input_names
-      # pylint:enable=pointless-statement
-    except AttributeError:
-      # If the model does not have inputs set, because it was not called or its
-      # input shapes were not recorded, we won't have a signature so can't trace
-      # a function. But the user may still save an object with this Model
-      # attached; we won't fail the whole tf.saved_model.save.
-      logging.warning('Skipping full serialization of Keras model {}, because '
-                      'its inputs are not defined.'.format(layer))
-      return True
-    else:
-      return False
-  else:
-    if not layer.built:
-      logging.warning('Skipping full serialization of Keras layer {}, because '
-                      'it is not built.'.format(layer))
-      return True
-    return False
+  saved_model_input_spec_set = (isinstance(layer, training_lib.Model) and
+                                layer._saved_model_inputs_spec is not None)  # pylint: disable=protected-access
+  if not layer.built and not saved_model_input_spec_set:
+    logging.warning('Skipping full serialization of Keras layer {}, because '
+                    'it is not built.'.format(layer))
+    return True
+  return False
 
 
 def wrap_layer_objects(layer, serialization_cache):
@@ -109,7 +95,7 @@ def wrap_layer_objects(layer, serialization_cache):
   # First, generate list of all regularization losses in this layer and
   # sublayers.
   all_losses = layer._callable_losses[:]  # pylint: disable=protected-access
-  for child_layer in _list_all_layers(layer):
+  for child_layer in utils.list_all_layers(layer):
     all_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
   # Next, wrap all loss functions as tf.functions. Use the serialization cache
   # to store already-wrapped functions.
@@ -124,18 +110,23 @@ def wrap_layer_objects(layer, serialization_cache):
       wrapped_loss_functions.append(wrapped_loss)
   wrapped_layer_losses = [keras_loss_cache[fn]
                           for fn in layer._callable_losses[:]]  # pylint: disable=protected-access
+
+  layer_metrics = data_structures._DictWrapper(  # pylint: disable=protected-access
+      {m.name: m for m in layer._metrics})  # pylint: disable=protected-access
   return dict(
       variables=data_structures.ListWrapper(layer.variables),
       trainable_variables=data_structures.ListWrapper(
           layer.trainable_variables),
       non_trainable_variables=data_structures.ListWrapper(
           layer.non_trainable_variables),
-      layers=data_structures.ListWrapper(_list_all_layers(layer)),
+      layers=data_structures.ListWrapper(utils.list_all_layers(layer)),
       metrics=data_structures.ListWrapper(layer.metrics),
       regularization_losses=data_structures.ListWrapper(
           wrapped_loss_functions),
       layer_regularization_losses=data_structures.ListWrapper(
-          wrapped_layer_losses))
+          wrapped_layer_losses),
+      layer_metrics=layer_metrics)
+  # pylint: disable=protected-access
 
 
 def wrap_layer_functions(layer, serialization_cache):
@@ -177,7 +168,7 @@ def wrap_layer_functions(layer, serialization_cache):
   fns = {'call_and_return_conditional_losses': call_fn_with_losses,
          '__call__': call_fn}
 
-  if layer.activity_regularizer is not None:
+  if layer._activity_regularizer is not None:  # pylint: disable=protected-access
     fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
     fns['call_and_return_all_conditional_losses'] = (
         call_collection.add_function(
@@ -214,14 +205,6 @@ def default_save_signature(layer):
   return fn
 
 
-def _list_all_layers(obj):
-  if isinstance(obj, training_lib.Model):
-    return obj.layers
-  else:
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
-
-
 def _replace_child_layer_functions(layer, serialization_cache):
   """Replaces functions in the children layers with wrapped tf.functions.
 
@@ -242,24 +225,55 @@ def _replace_child_layer_functions(layer, serialization_cache):
       { Child layer 1: {
           'losses': Original losses,
           'call': Original call function
-          'activity_regularizer': Original activity regularizer},
+          '_activity_regularizer': Original activity regularizer},
         Child layer 2: ...
       }
   """
   # pylint: disable=protected-access
   original_fns = {}
-  for child_layer in _list_all_layers(layer):
+
+  def replace_layer_functions(child_layer, serialized_fns):
+    """Replaces layer call and activity regularizer with wrapped functions."""
+    original_fns[child_layer] = {
+        'call': child_layer.call,
+        '_activity_regularizer': child_layer._activity_regularizer
+    }
+    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+      try:
+        child_layer._activity_regularizer = serialized_fns.get(
+            'activity_regularizer_fn')
+      except AttributeError:
+        # Some layers have an unsettable activity regularizer.
+        pass
+      child_layer.call = utils.use_wrapped_call(
+          child_layer,
+          serialized_fns['call_and_return_conditional_losses'],
+          default_training_value=False)
+
+  def replace_metric_functions(child_layer, serialized_fns):
+    """Replaces metric functions with wrapped functions."""
+    original_fns[child_layer] = {
+        '__call__': child_layer.__call__,
+        'result': child_layer.result,
+        'update_state': child_layer.update_state
+    }
+    with trackable.no_automatic_dependency_tracking_scope(child_layer):
+      child_layer.__call__ = serialized_fns['__call__']
+      child_layer.result = serialized_fns['result']
+      child_layer.update_state = serialized_fns['update_state']
+
+  for child_layer in utils.list_all_layers(layer):
     if isinstance(child_layer, input_layer.InputLayer):
       continue
 
     if child_layer not in serialization_cache[constants.KERAS_CACHE_KEY]:
-      layer_fns = (
+      serialized_functions = (
           child_layer._trackable_saved_model_saver._get_serialized_attributes(
               serialization_cache).functions)
     else:
-      layer_fns = (
+      serialized_functions = (
           serialization_cache[constants.KERAS_CACHE_KEY][child_layer].functions)
-    if not layer_fns:
+    if not serialized_functions:
       # This indicates either:
       #   - circular dependency, which means the current layer's functions
       #     should be wrapped first.
@@ -267,20 +281,12 @@ def _replace_child_layer_functions(layer, serialization_cache):
       #     wrapped. In this case, no replacement is necessary so move on to the
       #     next child.
       continue
-    original_fns[child_layer] = {
-        'call': child_layer.call,
-        'activity_regularizer': child_layer.activity_regularizer
-    }
-    with trackable.no_automatic_dependency_tracking_scope(child_layer):
-      try:
-        child_layer.activity_regularizer = layer_fns.get(
-            'activity_regularizer_fn')
-      except AttributeError:
-        # Some layers have an unsettable activity regularizer.
-        pass
-      child_layer.call = utils.use_wrapped_call(
-          child_layer, layer_fns['call_and_return_conditional_losses'],
-          default_training_value=False)
+
+    if isinstance(child_layer, metrics.Metric):
+      replace_metric_functions(child_layer, serialized_functions)
+    else:
+      replace_layer_functions(child_layer, serialized_functions)
+
   return original_fns
   # pylint: enable=protected-access
 
@@ -289,18 +295,19 @@ def _restore_child_layer_functions(original_fns):
   """Restores attributes replaced with `_replace_child_layer_functions`."""
   for child_layer, fns in original_fns.items():
     with trackable.no_automatic_dependency_tracking_scope(child_layer):
-      child_layer.call = fns['call']
-      try:
-        child_layer.activity_regularizer = fns['activity_regularizer']
-      except AttributeError:
-        pass
+      for fn_name, fn in fns.items():
+        try:
+          setattr(child_layer, fn_name, fn)  # pylint: disable=protected-access
+        except AttributeError:
+          pass  # In the case of _activity_regularizer, setting the attribute
+          # may be disallowed.
 
 
 # pylint: disable=protected-access
 def _reset_layer_losses(parent_layer):
   """Resets losses of layer and its sublayers, and returns original losses."""
   losses_dict = {}
-  for layer in _list_all_layers(parent_layer) + [parent_layer]:
+  for layer in utils.list_all_layers_and_sublayers(parent_layer):
     losses_dict[layer] = {'losses': layer._losses[:],
                           'eager_losses': layer._eager_losses[:]}
     with trackable.no_automatic_dependency_tracking_scope(layer):
@@ -317,23 +324,6 @@ def _restore_layer_losses(losses_dict):
 # pylint: enable=protected-access
 
 
-def layer_uses_training_bool(layer):
-  """Returns whether this layer or any of its children uses the training arg."""
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    return True
-  visited = {layer}
-  to_visit = _list_all_layers(layer)
-  while to_visit:
-    layer = to_visit.pop()
-    if layer in visited:
-      continue
-    if layer._expects_training_arg:  # pylint: disable=protected-access
-      return True
-    visited.add(layer)
-    to_visit.extend(_list_all_layers(layer))
-  return False
-
-
 class LayerCallCollection(object):
   """Groups wrapped layer call functions.
 
@@ -348,7 +338,7 @@ class LayerCallCollection(object):
     self.layer = layer
 
     self.layer_call_method = _get_layer_call_method(layer)
-    self._expects_training_arg = layer_uses_training_bool(layer)
+    self._expects_training_arg = utils.layer_uses_training_bool(layer)
     self._training_arg_index = utils.get_training_arg_index(
         self.layer_call_method)
 
@@ -391,7 +381,7 @@ class LayerCallCollection(object):
       elif layer.input_spec is not None:
 
         def to_tensor_spec_or_none(x):
-          spec = input_spec.to_tensor_spec(x, layer.dtype)
+          spec = input_spec.to_tensor_spec(x, layer._compute_dtype)  # pylint: disable=protected-access
           # If the shape is too general (e.g. multiple dimensions are allowed),
           # return None so that separate functions can be generated for each
           # inferred input signature.
@@ -608,7 +598,7 @@ def _create_call_fn_decorator(layer, wrapped_call):
 
 
 def _wrap_unconditional_loss(loss_fn, index):
-  """Wraps callable/unconditonal loss, returning a serializable function."""
+  """Wraps callable/unconditional loss, returning a serializable function."""
   # Extract original loss function from partial function
   fn = loss_fn.args[0] if isinstance(loss_fn, functools.partial) else loss_fn
   if isinstance(fn, def_function.Function):
@@ -620,12 +610,14 @@ def _wrap_unconditional_loss(loss_fn, index):
 
 def _wrap_activity_regularizer(layer):
   """Wraps the activity regularizer."""
-  if isinstance(layer.activity_regularizer, def_function.Function):
-    return layer.activity_regularizer
+  # pylint: disable=protected-access
+  if isinstance(layer._activity_regularizer, def_function.Function):
+    return layer._activity_regularizer
   return def_function.Function(
-      layer.activity_regularizer,
+      layer._activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
       input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+  # pylint: enable=protected-access
 
 
 def _get_layer_call_method(layer):

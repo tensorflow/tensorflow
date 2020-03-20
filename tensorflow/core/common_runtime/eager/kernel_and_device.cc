@@ -35,8 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/annotated_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -75,7 +74,7 @@ std::function<void(std::function<void()>)>* KernelAndDevice::get_runner()
   } else {
     static auto* default_runner =
         new std::function<void(std::function<void()>)>(
-            [](std::function<void()> f) { f(); });
+            [](const std::function<void()>& f) { f(); });
     return default_runner;
   }
 }
@@ -99,19 +98,27 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
         "A valid FunctionLibraryRuntime must be provided when running ops "
         "based on OpKernel.");
   }
-  if (compile_with_xla_) {
-#if defined(IS_MOBILE_PLATFORM) || defined(PLATFORM_WINDOWS)
-    return errors::Unimplemented(
-        "Compile with XLA is not available on mobile devices and windows.");
-#else   // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
-    std::unique_ptr<OpKernel> kernel;
-    TF_RETURN_IF_ERROR(CreateXlaKernel(flr_, ndef, &kernel));
-    k = kernel.release();
-#endif  // !IS_MOBILE_PLATFORM && !PLATFORM_WINDOWS
-  } else {
-    TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
-  }
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      ndef, flr_->GetFunctionLibraryDefinition(), &props));
+  TF_RETURN_IF_ERROR(flr_->CreateKernel(props, &k));
   kernel_.reset(k);
+
+  input_alloc_attrs_.resize(kernel_->num_inputs());
+  input_devices_.resize(kernel_->num_inputs(), device_);
+  for (size_t i = 0; i < input_alloc_attrs_.size(); ++i) {
+    bool host = kernel_->input_memory_types()[i] == tensorflow::HOST_MEMORY;
+    input_alloc_attrs_[i].set_on_host(host);
+    if (host) {
+      input_devices_[i] = host_cpu_device_;
+    }
+  }
+  output_alloc_attrs_.resize(kernel_->num_outputs());
+  for (size_t i = 0; i < output_alloc_attrs_.size(); ++i) {
+    output_alloc_attrs_[i].set_on_host(kernel_->output_memory_types()[i] ==
+                                       tensorflow::HOST_MEMORY);
+  }
+
   return Status::OK();
 }
 
@@ -133,7 +140,7 @@ Status KernelAndDeviceFunc::InstantiateFunc(const NodeDef& ndef,
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
-    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op().c_str(), &op_def));
+    TF_RETURN_IF_ERROR(OpDefForOp(ndef.op(), &op_def));
   }
   TF_RETURN_IF_ERROR(
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
@@ -207,25 +214,20 @@ Status KernelAndDeviceOp::Run(
     const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  ScopedStepContainer step_container(0, [this](const string& name) {
-    device_->resource_manager()->Cleanup(name).IgnoreError();
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   remote_func_params);
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 Status KernelAndDeviceFunc::Run(
     const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
-  ScopedStepContainer step_container(0, [&devices](const string& name) {
-    for (Device* device : devices) {
-      device->resource_manager()->Cleanup(name).IgnoreError();
-    }
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   remote_func_params);
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 namespace {
@@ -243,17 +245,6 @@ Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
     std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
-  for (size_t i = 0; i < in_attrs.size(); ++i) {
-    in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
-                            tensorflow::HOST_MEMORY);
-  }
-  std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
-  for (size_t i = 0; i < out_attrs.size(); ++i) {
-    out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
-                             tensorflow::HOST_MEMORY);
-  }
-
   OpKernelContext::Params params;
   params.is_eager = true;
   params.device = device_;
@@ -261,29 +252,30 @@ Status KernelAndDeviceOp::Run(
   params.inputs = inputs.GetTensorValues();
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
-  params.input_alloc_attrs = &in_attrs;
-  params.output_attr_array = out_attrs.data();
+  params.input_alloc_attrs = &input_alloc_attrs_;
+  params.output_attr_array = output_alloc_attrs_.data();
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
-  params.rendezvous = rendez_;
+  params.rendezvous = rendezvous_;
   OpExecutionState* op_execution_state = nullptr;
+
+  CancellationManager default_cancellation_manager;
   if (cancellation_manager) {
     params.cancellation_manager = cancellation_manager;
-  } else {
+  } else if (kernel_->is_deferred()) {
     op_execution_state = new OpExecutionState;
     params.cancellation_manager = &op_execution_state->cancellation_manager;
-  }
-  params.log_memory = log_memory_;
-  params.inc_num_deferred_ops_function = [op_execution_state]() {
-    if (op_execution_state != nullptr) {
+    params.inc_num_deferred_ops_function = [op_execution_state]() {
       op_execution_state->Ref();
-    }
-  };
-  params.dec_num_deferred_ops_function = [op_execution_state]() {
-    if (op_execution_state != nullptr) {
+    };
+    params.dec_num_deferred_ops_function = [op_execution_state]() {
       op_execution_state->Unref();
-    }
-  };
+    };
+  } else {
+    params.cancellation_manager = &default_cancellation_manager;
+  }
+
+  params.log_memory = log_memory_;
 
   params.runner = get_runner();
 
@@ -293,23 +285,12 @@ Status KernelAndDeviceOp::Run(
 
   OpKernelContext context(&params);
 
-  if (kernel_->def().op() == "_Recv") {
-    // TODO(apassos) do not special-case _Recv. Currently the GPU device fails
-    // if trying to run _Recv->Compute(), specifically checking for _Recv. To go
-    // around this we call _Recv->ComputeAsync, to mimic graph mode behavior.
-    AsyncOpKernel* async = kernel_->AsAsync();
-    Notification done;
-    device_->ComputeAsync(async, &context, [&done]() { done.Notify(); });
-    done.WaitForNotification();
-  } else {
-    const string& op_name = kernel_->name();
-    // 'ScopedActivity' will trace the OpKernel scheduling time on host.
-    profiler::TraceMe activity(
-        [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
+  {
+    // 'AnnotatedTraceMe' will trace both scheduling time on host and execution
+    // time on device of the OpKernel.
+    profiler::AnnotatedTraceMe activity(
+        [&] { return kernel_->TraceString(&context, /*verbose=*/false); },
         profiler::TraceMeLevel::kInfo);
-    // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    tracing::ScopedAnnotation annotation(
-        [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
     device_->Compute(kernel_.get(), &context);
   }
 
@@ -349,7 +330,7 @@ Status KernelAndDeviceFunc::Run(
   } else {
     opts = absl::make_unique<FunctionLibraryRuntime::Options>();
     if (get_op_id_ && is_cross_process_) {
-      // If the function is a cross-process function and the remote excution
+      // If the function is a cross-process function and the remote execution
       // goes through eager service, create an eager op id for the function.
       opts->op_id = get_op_id_();
     }
@@ -427,19 +408,8 @@ tensorflow::Device* KernelAndDeviceFunc::OutputResourceDevice(int idx) const {
   return nullptr;
 }
 
-DataType KernelAndDeviceOp::input_type(int i) const {
-  return kernel_->input_type(i);
-}
-
-DataType KernelAndDeviceFunc::input_type(int i) const {
-  return input_dtypes_[i];
-}
-
 Device* KernelAndDeviceOp::InputDevice(int i) const {
-  if (kernel_->input_memory_types()[i] == HOST_MEMORY) {
-    return host_cpu_device_;
-  }
-  return device_;
+  return input_devices_[i];
 }
 
 Device* KernelAndDeviceFunc::InputDevice(int i) const {

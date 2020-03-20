@@ -6,7 +6,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 
 // Backend configs for XLA:GPU.
 //
-// These are metadata that the GPU backend attaches to HloInstrucitons and later
+// These are metadata that the GPU backend attaches to HloInstructions and later
 // uses during e.g. codegen.
 //
 // Remember that proto3 doesn't give clients a way to tell the difference

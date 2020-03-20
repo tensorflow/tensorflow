@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/node_matchers.h"
 
 #include <utility>
+
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 
 namespace tensorflow {
 namespace testing {

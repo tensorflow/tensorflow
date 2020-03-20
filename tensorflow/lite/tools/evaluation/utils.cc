@@ -28,6 +28,14 @@ limitations under the License.
 namespace tflite {
 namespace evaluation {
 
+namespace {
+
+TfLiteDelegatePtr CreateNullDelegate() {
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+}  // namespace
+
 std::string StripTrailingSlashes(const std::string& path) {
   int end = path.size();
   while (end > 0 && path[end - 1] == '/') {
@@ -86,50 +94,100 @@ TfLiteStatus GetSortedFileNames(
 #endif
 
 // TODO(b/138448769): Migrate delegate helper APIs to lite/testing.
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate() {
+TfLiteDelegatePtr CreateNNAPIDelegate() {
 #if defined(__ANDROID__)
-  return Interpreter::TfLiteDelegatePtr(
+  return TfLiteDelegatePtr(
       NnApiDelegate(),
       // NnApiDelegate() returns a singleton, so provide a no-op deleter.
       [](TfLiteDelegate*) {});
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 #endif  // defined(__ANDROID__)
 }
 
-Interpreter::TfLiteDelegatePtr CreateNNAPIDelegate(
-    StatefulNnApiDelegate::Options options) {
+TfLiteDelegatePtr CreateNNAPIDelegate(StatefulNnApiDelegate::Options options) {
 #if defined(__ANDROID__)
-  return Interpreter::TfLiteDelegatePtr(
+  return TfLiteDelegatePtr(
       new StatefulNnApiDelegate(options), [](TfLiteDelegate* delegate) {
         delete reinterpret_cast<StatefulNnApiDelegate*>(delegate);
       });
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
 #if defined(__ANDROID__)
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model, TfLiteGpuDelegateOptionsV2* options) {
-  return Interpreter::TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
-                                        &TfLiteGpuDelegateV2Delete);
+TfLiteDelegatePtr CreateGPUDelegate(TfLiteGpuDelegateOptionsV2* options) {
+  return TfLiteDelegatePtr(TfLiteGpuDelegateV2Create(options),
+                           &TfLiteGpuDelegateV2Delete);
 }
 #endif  // defined(__ANDROID__)
 
-Interpreter::TfLiteDelegatePtr CreateGPUDelegate(
-    tflite::FlatBufferModel* model) {
+TfLiteDelegatePtr CreateGPUDelegate() {
 #if defined(__ANDROID__)
   TfLiteGpuDelegateOptionsV2 options = TfLiteGpuDelegateOptionsV2Default();
-  options.is_precision_loss_allowed = 1;
+  options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
   options.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
 
-  return CreateGPUDelegate(model, &options);
+  return CreateGPUDelegate(&options);
 #else
-  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+  return CreateNullDelegate();
 #endif  // defined(__ANDROID__)
 }
 
+TfLiteDelegatePtr CreateHexagonDelegate(
+    const std::string& library_directory_path, bool profiling) {
+#if defined(__ANDROID__) && (defined(__arm__) || defined(__aarch64__))
+  if (library_directory_path.empty()) {
+    TfLiteHexagonInit();
+  } else {
+    TfLiteHexagonInitWithPath(library_directory_path.c_str());
+  }
+
+  const TfLiteHexagonDelegateOptions options = {
+      /*debug_level=*/0, /*powersave_level=*/0, profiling,
+      /*print_graph_debug=*/false};
+  TfLiteDelegate* delegate = TfLiteHexagonDelegateCreate(&options);
+  if (!delegate) {
+    TfLiteHexagonTearDown();
+    return CreateNullDelegate();
+  }
+  return TfLiteDelegatePtr(delegate, [](TfLiteDelegate* delegate) {
+    TfLiteHexagonDelegateDelete(delegate);
+    TfLiteHexagonTearDown();
+  });
+#else
+  return CreateNullDelegate();
+#endif  // defined(__ANDROID__)
+}
+
+// TODO(b/149248802): include XNNPACK delegate when the issue is resolved.
+#if defined(__Fuchsia__) || defined(TFLITE_WITHOUT_XNNPACK)
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+  return CreateNullDelegate();
+}
+#else
+TfLiteDelegatePtr CreateXNNPACKDelegate() {
+  TfLiteXNNPackDelegateOptions xnnpack_options =
+      TfLiteXNNPackDelegateOptionsDefault();
+  return CreateXNNPACKDelegate(&xnnpack_options);
+}
+
+TfLiteDelegatePtr CreateXNNPACKDelegate(
+    const TfLiteXNNPackDelegateOptions* xnnpack_options) {
+  auto xnnpack_delegate = TfLiteXNNPackDelegateCreate(xnnpack_options);
+  return TfLiteDelegatePtr(xnnpack_delegate, [](TfLiteDelegate* delegate) {
+    TfLiteXNNPackDelegateDelete(delegate);
+  });
+}
+
+TfLiteDelegatePtr CreateXNNPACKDelegate(int num_threads) {
+  auto opts = TfLiteXNNPackDelegateOptionsDefault();
+  // Note that we don't want to use the thread pool for num_threads == 1.
+  opts.num_threads = num_threads > 1 ? num_threads : 0;
+  return CreateXNNPACKDelegate(&opts);
+}
+#endif
 }  // namespace evaluation
 }  // namespace tflite

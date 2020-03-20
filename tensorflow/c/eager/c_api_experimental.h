@@ -22,38 +22,17 @@ limitations under the License.
 extern "C" {
 #endif
 
-TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Context* ctx,
+// Resets `op_to_reset` with `op_or_function_name` and `raw_device_name`. This
+// is for performance optimization by reusing an exiting unused op rather than
+// creating a new op every time. If `raw_device_name` is `NULL` or empty, it
+// does not set the device name. If it's not `NULL`, then it attempts to parse
+// and set the device name. It's effectively `TFE_OpSetDevice`, but it is faster
+// than separately calling it because if the existing op has the same
+// `raw_device_name`, it skips parsing and just leave as it is.
+TF_CAPI_EXPORT extern void TFE_OpReset(TFE_Op* op_to_reset,
                                        const char* op_or_function_name,
-                                       TF_Status* status, TFE_Op* op_to_reset);
-
-TF_CAPI_EXPORT extern void TFE_OpConsumeInput(TFE_Op* op, TFE_TensorHandle* h,
-                                              TF_Status* status);
-
-// A profiler which will start profiling when creating the object and will stop
-// when the object is destroyed. It will profile all operations run under the
-// given TFE_Context. Multiple instance of it can be created, but at most one
-// of them will profile for each TFE_Context.
-// Thread-safety: TFE_Profiler is thread-safe.
-typedef struct TFE_Profiler TFE_Profiler;
-
-TF_CAPI_EXPORT extern TFE_Profiler* TFE_NewProfiler();
-TF_CAPI_EXPORT extern bool TFE_ProfilerIsOk(TFE_Profiler* profiler);
-TF_CAPI_EXPORT extern void TFE_DeleteProfiler(TFE_Profiler* profiler);
-
-// The output string is a binary string of tensorflow.tpu.Trace. User can write
-// the string to file for offline analysis by tensorboard.
-TF_CAPI_EXPORT extern void TFE_ProfilerSerializeToString(TFE_Profiler* profiler,
-                                                         TF_Buffer* buf,
-                                                         TF_Status* status);
-
-// Start a profiler grpc server which listens to specified port. It will start
-// the server on its own thread. It can be shutdown by terminating tensorflow.
-// It can be used in both Eager mode and graph mode. Creating multiple profiler
-// server is allowed. The service defined in
-// tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture trace file
-// following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_StartProfilerServer(int port);
+                                       const char* raw_device_name,
+                                       TF_Status* status);
 
 // Enables only graph collection in RunMetadata on the functions executed from
 // this context.
@@ -62,29 +41,6 @@ TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
 // Disables only graph collection in RunMetadata on the functions executed from
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// profiling and save the result into logdir which can be visualized by
-// TensorBoard. worker_list is the list of worker TPUs separated by ','. Set
-// include_dataset_opts to false to profile longer traces. It will block the
-// caller thread until receives tracing result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
-    const char* service_addr, const char* logdir, const char* worker_list,
-    bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
-    TF_Status* status);
-
-// Send a grpc request to profiler server (service_addr) to perform on-demand
-// monitoring and return the result in a string. It will block the
-// caller thread until receiving the monitoring result.
-// This API is designed for TensorBoard, for end user, please use
-// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
-// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
-TF_CAPI_EXPORT extern void TFE_ProfilerClientMonitor(
-    const char* service_addr, int duration_ms, int monitoring_level,
-    bool display_timestamp, TF_Buffer* result, TF_Status* status);
 
 // TODO(fishx): Move these monitoring APIs into a separate file.
 // -----------------------------------------------------------------------------
@@ -425,6 +381,150 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
 TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
                                                  const char* worker_name,
                                                  TF_Status* status);
+
+// Sync pending nodes in local executors (including the context default executor
+// and thread executors) and streaming requests to remote executors, and get the
+// combined status.
+TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
+                                                TF_Status* status);
+
+// If the TensorHandle is copied to another device as part of an op execution,
+// the copy is destroyed after the op has executed. Enabling implicit mirroring
+// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
+TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
+    TFE_TensorHandle*, TF_Status*);
+
+// This function will block till the operation that produces `h` has
+// completed. This is only valid on local TFE_TensorHandles. The pointer
+// returned will be on the device in which the TFE_TensorHandle resides (so e.g.
+// for a GPU tensor this will return a pointer to GPU memory). The pointer is
+// only guaranteed to be valid until TFE_DeleteTensorHandle is called on this
+// TensorHandle. Only supports POD data types.
+TF_CAPI_EXPORT extern void* TFE_TensorHandleDevicePointer(TFE_TensorHandle*,
+                                                          TF_Status*);
+
+// This function will block till the operation that produces `h` has
+// completed. This is only valid on local TFE_TensorHandles. Returns the size in
+// bytes of the memory pointed to by the device pointer returned above.
+TF_CAPI_EXPORT extern size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle*,
+                                                              TF_Status*);
+
+// Creates a new TensorHandle from memory residing in device_name. Takes
+// ownership of the memory, and will call deleter to release it after TF
+// no longer needs it or in case of error.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
+    TFE_Context* ctx, const char* device_name, TF_DataType, const int64_t* dims,
+    int num_dims, void* data, size_t len,
+    void (*deallocator)(void* data, size_t len, void* arg),
+    void* deallocator_arg, TF_Status* status);
+
+// Retrieves the address space (i.e. job, replia, task) of the local host and
+// saves it in the buffer.
+TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
+                                                TF_Buffer* buf);
+
+// APIs for generically dealing with op attributes (e.g. when forwarding them
+// through custom device implementations).
+//
+// TODO(allenl): Currently these are black boxes, but we should have some way to
+// inspect values. This would let people e.g. copy over most attributes and then
+// modify some based on their values.
+
+// A reference to an op's name -> attribute mapping
+typedef struct TFE_OpAttrs TFE_OpAttrs;
+
+// Fetch a struct with a reference to information about attributes of `op`.
+//
+// The `attrs` struct does not own any memory, and `op` must outlive it.
+TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
+
+// Add attributes in `attrs` to `op`.
+//
+// Does not overwrite or update existing attributes, but adds new ones.
+TF_CAPI_EXPORT extern void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs);
+
+// Serialize `attrs` as a tensorflow::NameAttrList protocol buffer (into `buf`),
+// containing the op name and a map of its attributes.
+TF_CAPI_EXPORT extern void TFE_OpAttrsSerialize(const TFE_OpAttrs* attrs,
+                                                TF_Buffer* buf,
+                                                TF_Status* status);
+
+// Set an op's attribute from a serialized AttrValue protocol buffer.
+//
+// Analogous to TF_SetAttrValueProto for building graph operations.
+TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
+                                                   const char* attr_name,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
+
+#define TFE_CUSTOM_DEVICE_VERSION 2
+
+// Struct to be filled in
+typedef struct TFE_CustomDevice {
+  int version = TFE_CUSTOM_DEVICE_VERSION;
+  // Method to copy a tensor to the custom device.
+  TFE_TensorHandle* (*copy_tensor_to_device)(TFE_Context* context,
+                                             TFE_TensorHandle* tensor,
+                                             TF_Status* status,
+                                             void* device_info) = nullptr;
+
+  // Method to copy a tensor from the custom device to a target device.
+  TFE_TensorHandle* (*copy_tensor_from_device)(TFE_Context* context,
+                                               TFE_TensorHandle* tensor,
+                                               const char* target_device_name,
+                                               TF_Status* status,
+                                               void* device_info);
+
+  // Method to execute an operation.
+  void (*execute)(TFE_Context* context, int num_inputs,
+                  TFE_TensorHandle** inputs, const char* operation_name,
+                  const TFE_OpAttrs* attributes, int* num_outputs,
+                  TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
+
+  // Method to delete a device.
+  void (*delete_device)(void* device_info);
+} TFE_CustomDevice;
+
+// Registers a custom device for use with eager execution.
+//
+// Eager operations may be placed on this device, e.g.  `with
+// tf.device("CUSTOM"):` from Python if `device_name` for this call is
+// "/job:localhost/replica:0/task:0/device:CUSTOM:0".
+//
+// The custom device defines copy operations for moving TensorHandles on and
+// off, and an an execution operation for named operations. Often execution will
+// simply wrap op execution on one or more physical devices.
+//
+// device_info is an opaque caller-defined type stored with the custom device
+// which is passed to the functions referenced in the TFE_CustomDevice struct
+// `device` (execute, delete_device, etc.). It can for example contain the
+// names of wrapped devices.
+//
+// There are currently no graph semantics implemented for registered custom
+// devices, so executing tf.functions which contain operations placed on custom
+// devices will fail.
+//
+// `device_name` must not name an existing physical or custom device. It must
+// follow the format:
+//
+//    /job:<name>/replica:<replica>/task:<task>/device:<type>:<device_num>
+//
+// If the device is successfully registered, `status` is set to TF_OK. Otherwise
+// the device is not usable. In case of a bad status, `device.delete_device` is
+// still called on `device_info` (i.e. the caller does not retain ownership).
+//
+// This API is highly experimental, and in particular is expected to change when
+// it starts supporting operations with attributes and when tf.function support
+// is added.
+void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
+                              const char* device_name, void* device_info,
+                              TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
+                                                     const char* function_name,
+                                                     TF_Buffer* buf,
+                                                     TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/stages/object_detection_stage.h"
@@ -36,8 +38,6 @@ constexpr char kGroundTruthProtoFileFlag[] = "ground_truth_proto";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDebugModeFlag[] = "debug_mode";
 constexpr char kDelegateFlag[] = "delegate";
-constexpr char kNnapiDelegate[] = "nnapi";
-constexpr char kGpuDelegate[] = "gpu";
 
 std::string GetNameFromPath(const std::string& str) {
   int pos = str.find_last_of("/\\");
@@ -58,10 +58,11 @@ bool EvaluateModel(const std::string& model_file_path,
   auto* inference_params = detection_params->mutable_inference_params();
   inference_params->set_model_file_path(model_file_path);
   inference_params->set_num_threads(num_interpreter_threads);
-  if (delegate == kNnapiDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::NNAPI);
-  } else if (delegate == kGpuDelegate) {
-    inference_params->set_delegate(TfliteInferenceParams::GPU);
+  inference_params->set_delegate(ParseStringToDelegateType(delegate));
+  if (!delegate.empty() &&
+      inference_params->delegate() == TfliteInferenceParams::NONE) {
+    LOG(WARNING) << "Unsupported TFLite delegate: " << delegate;
+    return false;
   }
 
   // Get ground truth data.
@@ -164,17 +165,17 @@ int Main(int argc, char* argv[]) {
   std::vector<std::string> model_labels;
   if (!ReadFileLines(model_output_labels_path, &model_labels)) {
     LOG(ERROR) << "Could not read model output labels file";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (!EvaluateModel(model_file_path, model_labels, image_paths,
                      ground_truth_proto_file, delegate, output_file_path,
                      num_interpreter_threads, debug_mode)) {
     LOG(ERROR) << "Could not evaluate model";
-    return 0;
+    return EXIT_FAILURE;
   }
 
-  return 0;
+  return EXIT_SUCCESS;
 }
 
 }  // namespace evaluation

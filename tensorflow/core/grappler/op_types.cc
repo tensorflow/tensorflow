@@ -695,7 +695,7 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
   // Some nodes do in-place updates on regular tensor inputs.
-  string op_name = node.op();
+  const string& op_name = node.op();
 
   // Ops that modify resource variables effectively modify one of their inputs.
   if (op_name == "AssignVariableOp" || op_name == "AssignAddVariableOp" ||
@@ -706,8 +706,10 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
     return false;
   }
 
-  std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (absl::StrContains(op_name, "inplace")) {
+  string lower_op_name = op_name;
+  std::transform(lower_op_name.begin(), lower_op_name.end(),
+                 lower_op_name.begin(), ::tolower);
+  if (absl::StrContains(lower_op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -862,20 +864,25 @@ bool NeverForwardsInputs(const NodeDef& node) {
       (new gtl::FlatSet<string>{"ArgMax",
                                 "ArgMin",
                                 "AudioSpectrogram",
+                                "AvgPool",
                                 "BatchMatMul",
                                 "BatchMatMulV2",
+                                "BatchNormWithGlobalNormalization",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
                                 "BroadcastArgs",
                                 "BroadcastGradientArgs",
+                                "Bucketize",
                                 "CTCBeamSearchDecoder",
                                 "CTCGreedyDecoder",
                                 "CTCLoss",
+                                "CompareAndBitpack",
                                 "ComplexAbs",
                                 "Concat",
                                 "ConcatOffset",
                                 "ConcatV2",
+                                "Conv2D",
                                 "Copy",
                                 "CopyHost",
                                 "Cross",
@@ -890,8 +897,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "CudnnRNNParamsToCanonicalV2",
                                 "CudnnRNNV2",
                                 "CudnnRNNV3",
-                                "CumSum",
                                 "CumProd",
+                                "CumSum",
                                 "DebugNanCount",
                                 "DebugNumericSummary",
                                 "DecodeProtoV2",
@@ -920,15 +927,25 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "LowerBound",
                                 "MatMul",
                                 "MatrixDiag",
-                                "MatrixDiagV2",
                                 "MatrixDiagPart",
                                 "MatrixDiagPartV2",
+                                "MatrixDiagV2",
                                 "Mfcc",
+                                "Multinomial",
                                 "OneHot",
                                 "Pack",
+                                "ParameterizedTruncatedNormal",
                                 "PopulationCount",
+                                "RandomGamma",
+                                "RandomPoisson",
+                                "RandomPoissonV2",
+                                "RandomStandardNormal",
+                                "RandomUniform",
+                                "RandomUniformInt",
                                 "Range",
                                 "Rank",
+                                "RequantizationRange",
+                                "Requantize",
                                 "ReverseSequence",
                                 "Shape",
                                 "ShapeN",
@@ -939,6 +956,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "SparseMatMul",
                                 "Split",
                                 "SplitV",
+                                "TruncatedNormal",
                                 "Unique",
                                 "UniqueV2",
                                 "UniqueWithCounts",
@@ -946,25 +964,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "Unpack",
                                 "UnravelIndex",
                                 "UpperBound",
-                                "Where",
-                                "CompareAndBitpack",
-                                "Requantize",
-                                "RequantizationRange",
-                                "Bucketize",
-                                "AvgPool",
-                                "BatchNormWithGlobalNormalization",
-                                "FusedBatchNorm",
-                                "FusedBatchNormV2",
-                                "Conv2D",
-                                "RandomUniform",
-                                "RandomUniformInt",
-                                "RandomStandardNormal",
-                                "ParameterizedTruncatedNormal",
-                                "TruncatedNormal",
-                                "Multinomial",
-                                "RandomGamma",
-                                "RandomPoisson",
-                                "RandomPoissonV2"}));
+                                "Where"}));
   const string& op_name = node.op();
   return kNonForwardingOps->count(op_name) > 0 ||
          absl::StrContains(op_name, "Segment") ||

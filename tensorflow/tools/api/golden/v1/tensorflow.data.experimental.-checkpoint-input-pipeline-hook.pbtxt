@@ -5,7 +5,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'estimator\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'estimator\', \'external_state_policy\'], varargs=None, keywords=None, defaults=[\'fail\'], "
   }
   member_method {
     name: "after_create_session"

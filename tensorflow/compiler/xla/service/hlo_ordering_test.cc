@@ -506,7 +506,7 @@ TEST_F(HloOrderingTest, InterferenceWithOuterRoot) {
   absl::string_view hlo_string = R"(
 HloModule InterferenceWithOuterRoot, is_scheduled=true
 
-Emmbedded (embedded_param: f32[4096,4096]) -> f32[4096,4096] {
+Embedded (embedded_param: f32[4096,4096]) -> f32[4096,4096] {
   embedded_param = f32[4096,4096]{1,0} parameter(0)
   multiply = f32[4096,4096]{1,0} multiply(embedded_param, embedded_param)
   ROOT log = f32[4096,4096]{1,0} log(multiply)
@@ -515,7 +515,7 @@ Emmbedded (embedded_param: f32[4096,4096]) -> f32[4096,4096] {
 ENTRY InterferenceWithOuterRoot {
   param = f32[4096,4096]{1,0} parameter(0)
   ROOT add = f32[4096,4096]{1,0} add(param, param)
-  call = f32[4096,4096]{1,0} call(param), to_apply=Emmbedded
+  call = f32[4096,4096]{1,0} call(param), to_apply=Embedded
 }
 
 )";

@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -66,7 +66,12 @@ void set_destroy_callback(int (*callback)(const char* s)) {
 void tflite_plugin_destroy_delegate(TfLiteDelegate* delegate) {
   num_delegates_destroyed++;
   delete delegate;
-  if (destruction_callback) destruction_callback("test_delegate");
+  if (destruction_callback) {
+    destruction_callback("test_delegate");
+    // destruction_callback is a global variable,
+    // so it should be set to nullptr here to avoid crashes
+    destruction_callback = nullptr;
+  }
 }
 
 void initialize_counters() {

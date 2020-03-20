@@ -34,62 +34,6 @@ class TransformerTest(test.TestCase):
         source_code=None, source_file=None, future_features=(), namespace=None)
     return transformer.Context(entity_info)
 
-  def test_entity_scope_tracking(self):
-
-    class TestTransformer(transformer.Base):
-
-      # The choice of note to assign to is arbitrary. Using Assign because it's
-      # easy to find in the tree.
-      def visit_Assign(self, node):
-        anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
-        return self.generic_visit(node)
-
-      # This will show up in the lambda function.
-      def visit_BinOp(self, node):
-        anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
-        return self.generic_visit(node)
-
-    tr = TestTransformer(self._simple_context())
-
-    def test_function():
-      a = 0
-
-      class TestClass(object):
-
-        def test_method(self):
-          b = 0
-          def inner_function(x):
-            c = 0
-            d = lambda y: (x + y)
-            return c, d
-          return b, inner_function
-      return a, TestClass
-
-    node, _ = parser.parse_entity(test_function, future_features=())
-    node = tr.visit(node)
-
-    test_function_node = node
-    test_class = test_function_node.body[1]
-    test_method = test_class.body[0]
-    inner_function = test_method.body[1]
-    lambda_node = inner_function.body[1].value
-
-    a = test_function_node.body[0]
-    b = test_method.body[0]
-    c = inner_function.body[0]
-    lambda_expr = lambda_node.body
-
-    self.assertEqual(
-        (test_function_node,), anno.getanno(a, 'enclosing_entities'))
-    self.assertEqual((test_function_node, test_class, test_method),
-                     anno.getanno(b, 'enclosing_entities'))
-    self.assertEqual(
-        (test_function_node, test_class, test_method, inner_function),
-        anno.getanno(c, 'enclosing_entities'))
-    self.assertEqual((test_function_node, test_class, test_method,
-                      inner_function, lambda_node),
-                     anno.getanno(lambda_expr, 'enclosing_entities'))
-
   def assertSameAnno(self, first, second, key):
     self.assertIs(anno.getanno(first, key), anno.getanno(second, key))
 
@@ -167,85 +111,41 @@ class TransformerTest(test.TestCase):
     self.assertDifferentAnno(first_inner_while_body[0],
                              second_inner_while_body[0], 'loop_state')
 
-  def test_local_scope_info_stack(self):
+  def test_state_tracking_context_manager(self):
+
+    class CondState(object):
+      pass
 
     class TestTransformer(transformer.Base):
 
-      # Extract all string constants from the block.
-      def visit_Str(self, node):
-        self.set_local('string', self.get_local('string', default='') + node.s)
-        return self.generic_visit(node)
+      def visit(self, node):
+        anno.setanno(node, 'cond_state', self.state[CondState].value)
+        return super(TestTransformer, self).visit(node)
 
-      def _annotate_result(self, node):
-        self.enter_local_scope()
-        node = self.generic_visit(node)
-        anno.setanno(node, 'test', self.get_local('string'))
-        self.exit_local_scope()
-        return node
-
-      def visit_While(self, node):
-        return self._annotate_result(node)
-
-      def visit_For(self, node):
-        return self._annotate_result(node)
+      def visit_If(self, node):
+        with self.state[CondState]:
+          return self.generic_visit(node)
 
     tr = TestTransformer(self._simple_context())
 
     def test_function(a):
-      """Docstring."""
-      assert a == 'This should not be counted'
-      for i in range(3):
-        _ = 'a'
-        if i > 2:
-          return 'b'
-        else:
+      a = 1
+      if a > 2:
+        _ = 'b'
+        if a < 5:
           _ = 'c'
-          while True:
-            raise '1'
-      return 'nor this'
+        _ = 'd'
 
     node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
-    for_node = node.body[2]
-    while_node = for_node.body[1].orelse[1]
+    fn_body = node.body
+    outer_if_body = fn_body[1].body
+    self.assertDifferentAnno(fn_body[0], outer_if_body[0], 'cond_state')
+    self.assertSameAnno(outer_if_body[0], outer_if_body[2], 'cond_state')
 
-    self.assertFalse(anno.hasanno(for_node, 'string'))
-    self.assertEqual('abc', anno.getanno(for_node, 'test'))
-    self.assertFalse(anno.hasanno(while_node, 'string'))
-    self.assertEqual('1', anno.getanno(while_node, 'test'))
-
-  def test_local_scope_info_stack_checks_integrity(self):
-
-    class TestTransformer(transformer.Base):
-
-      def visit_If(self, node):
-        self.enter_local_scope()
-        return self.generic_visit(node)
-
-      def visit_For(self, node):
-        node = self.generic_visit(node)
-        self.exit_local_scope()
-        return node
-
-    tr = TestTransformer(self._simple_context())
-
-    def no_exit(a):
-      if a > 0:
-        print(a)
-      return None
-
-    node, _ = parser.parse_entity(no_exit, future_features=())
-    with self.assertRaises(AssertionError):
-      tr.visit(node)
-
-    def no_entry(a):
-      for _ in a:
-        print(a)
-
-    node, _ = parser.parse_entity(no_entry, future_features=())
-    with self.assertRaises(AssertionError):
-      tr.visit(node)
+    inner_if_body = outer_if_body[1].body
+    self.assertDifferentAnno(inner_if_body[0], outer_if_body[0], 'cond_state')
 
   def test_visit_block_postprocessing(self):
 
@@ -253,7 +153,10 @@ class TransformerTest(test.TestCase):
 
       def _process_body_item(self, node):
         if isinstance(node, gast.Assign) and (node.value.id == 'y'):
-          if_node = gast.If(gast.Name('x', gast.Load(), None), [node], [])
+          if_node = gast.If(
+              gast.Name(
+                  'x', ctx=gast.Load(), annotation=None, type_comment=None),
+              [node], [])
           return if_node, if_node.body
         return node, None
 

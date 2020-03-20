@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
 
+#include <algorithm>
 #include <limits>
+#include <vector>
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -23,6 +25,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
+
+XlaOp DynamicStridedSlice(XlaOp input, absl::Span<const XlaOp> base_indices,
+                          absl::Span<const int64> window_sizes,
+                          absl::Span<const int64> strides) {
+  XlaOp sliced_input = DynamicSlice(input, base_indices, window_sizes);
+  if (std::any_of(strides.begin(), strides.end(),
+                  [](int64 stride) { return stride != 1; })) {
+    sliced_input = Slice(sliced_input, std::vector<int64>(window_sizes.size()),
+                         window_sizes, strides);
+  }
+  return sliced_input;
+}
 
 XlaOp SliceInMinorDims(XlaOp x, absl::Span<const int64> start,
                        absl::Span<const int64> end) {
@@ -154,29 +168,29 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim, bool sparse) {
       return TorchIndexSelect(input, index, 0);
     }
     if (!sparse) {
-      std::vector<int64> index_broacast_dims;
-      std::vector<int64> input_broacast_dims;
+      std::vector<int64> index_broadcast_dims;
+      std::vector<int64> input_broadcast_dims;
       std::vector<int64> sizes;
       for (int64 i = 0; i < index_shape.rank(); ++i) {
         if (i < dim) {
-          input_broacast_dims.push_back(i);
-          index_broacast_dims.push_back(i);
+          input_broadcast_dims.push_back(i);
+          index_broadcast_dims.push_back(i);
         } else if (i == dim) {
           sizes.push_back(input_shape.dimensions(i));
-          input_broacast_dims.push_back(i);
-          index_broacast_dims.push_back(i + 1);
+          input_broadcast_dims.push_back(i);
+          index_broadcast_dims.push_back(i + 1);
         } else {
-          input_broacast_dims.push_back(i + 1);
-          index_broacast_dims.push_back(i + 1);
+          input_broadcast_dims.push_back(i + 1);
+          index_broadcast_dims.push_back(i + 1);
         }
         sizes.push_back(index_shape.dimensions(i));
       }
       auto mask = Eq(
-          BroadcastInDim(index, sizes, index_broacast_dims),
+          BroadcastInDim(index, sizes, index_broadcast_dims),
           Iota(builder, ShapeUtil::MakeShape(index_shape.element_type(), sizes),
                dim));
       auto masked_input = Select(
-          mask, BroadcastInDim(input, sizes, input_broacast_dims),
+          mask, BroadcastInDim(input, sizes, input_broadcast_dims),
           Zeros(builder,
                 ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
       return Reduce(masked_input, Zero(builder, input_shape.element_type()),
@@ -214,25 +228,25 @@ XlaOp TorchScatterDense(XlaOp input, XlaOp index, XlaOp src, int64 dim,
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
     TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
-    std::vector<int64> index_broacast_dims;
+    std::vector<int64> index_broadcast_dims;
     std::vector<int64> sizes;
     for (int64 i = 0; i < index_shape.rank(); ++i) {
       if (i < dim) {
-        index_broacast_dims.push_back(i);
+        index_broadcast_dims.push_back(i);
       } else {
         if (i == dim) {
           sizes.push_back(input_shape.dimensions(i));
         }
-        index_broacast_dims.push_back(i + 1);
+        index_broadcast_dims.push_back(i + 1);
       }
       sizes.push_back(index_shape.dimensions(i));
     }
     auto mask =
-        Eq(BroadcastInDim(index, sizes, index_broacast_dims),
+        Eq(BroadcastInDim(index, sizes, index_broadcast_dims),
            Iota(builder,
                 ShapeUtil::MakeShape(index_shape.element_type(), sizes), dim));
     auto masked_src =
-        Select(mask, BroadcastInDim(src, sizes, index_broacast_dims),
+        Select(mask, BroadcastInDim(src, sizes, index_broadcast_dims),
                Zeros(builder,
                      ShapeUtil::MakeShape(input_shape.element_type(), sizes)));
 

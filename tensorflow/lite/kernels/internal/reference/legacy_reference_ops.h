@@ -1085,7 +1085,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
   inline void name(const T* input1_data, const Dims<4>& input1_dims,          \
                    const T* input2_data, const Dims<4>& input2_dims,          \
                    bool* output_data, const Dims<4>& output_dims) {           \
-    gemmlowp::ScopedProfilingLabel label(#name);                              \
+    ruy::profiler::ScopeLabel label(#name);                                   \
     Comparison<T, name##Fn>(input1_data, input1_dims, input2_data,            \
                             input2_dims, output_data, output_dims);           \
   }                                                                           \
@@ -1096,7 +1096,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label(#name "/8bit");                      \
+    ruy::profiler::ScopeLabel label(#name "/8bit");                           \
     Comparison<T, name##Fn>(left_shift, input1_data, input1_dims,             \
                             input1_offset, input1_multiplier, input1_shift,   \
                             input2_data, input2_dims, input2_offset,          \
@@ -1108,7 +1108,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input1_data, const Dims<4>& input1_dims, const T* input2_data, \
       const Dims<4>& input2_dims, bool* output_data,                          \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name);                  \
+    ruy::profiler::ScopeLabel label("Broadcast" #name);                       \
     BroadcastComparison<T, name##Fn>(input1_data, input1_dims, input2_data,   \
                                      input2_dims, output_data, output_dims);  \
   }                                                                           \
@@ -1119,7 +1119,7 @@ inline void BroadcastComparison(int left_shift, const T* input1_data,
       const T* input2_data, const Dims<4>& input2_dims, int32 input2_offset,  \
       int32 input2_multiplier, int input2_shift, bool* output_data,           \
       const Dims<4>& output_dims) {                                           \
-    gemmlowp::ScopedProfilingLabel label("Broadcast" #name "/8bit");          \
+    ruy::profiler::ScopeLabel label("Broadcast" #name "/8bit");               \
     BroadcastComparison<T, name##Fn>(left_shift, input1_data, input1_dims,    \
                                      input1_offset, input1_multiplier,        \
                                      input1_shift, input2_data, input2_dims,  \
@@ -1325,7 +1325,7 @@ template <FusedActivationFunctionType Ac>
 void Add(const int32* input1_data, const Dims<4>& input1_dims,
          const int32* input2_data, const Dims<4>& input2_dims,
          int32* output_data, const Dims<4>& output_dims) {
-  gemmlowp::ScopedProfilingLabel label("Add/int32");
+  ruy::profiler::ScopeLabel label("Add/int32");
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
 
   tflite::ArithmeticParams op_params;
@@ -2012,6 +2012,7 @@ inline void ResizeBilinear(const T* input_data, const Dims<4>& input_dims,
                            const Dims<4>& output_dims, bool align_corners) {
   tflite::ResizeBilinearParams op_params;
   op_params.align_corners = align_corners;
+  op_params.half_pixel_centers = false;
   ResizeBilinear(op_params, DimsToShape(input_dims), input_data,
                  DimsToShape(output_size_dims), output_size_data,
                  DimsToShape(output_dims), output_data);

@@ -93,6 +93,14 @@ class ClientSession {
              const std::vector<Operation>& run_outputs,
              std::vector<Tensor>* outputs, RunMetadata* run_metadata) const;
 
+  /// Same as above. Additionally allows user to provide custom threadpool
+  /// implementation via ThreadPoolOptions.
+  Status Run(const RunOptions& run_options, const FeedType& inputs,
+             const std::vector<Output>& fetch_outputs,
+             const std::vector<Operation>& run_outputs,
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata,
+             const thread::ThreadPoolOptions& threadpool_options) const;
+
   /// \brief A handle to a subgraph, created with
   /// `ClientSession::MakeCallable()`.
   typedef int64 CallableHandle;

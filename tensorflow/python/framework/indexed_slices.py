@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 import warnings
+
 import numpy as np
 
 from tensorflow.python import tf2

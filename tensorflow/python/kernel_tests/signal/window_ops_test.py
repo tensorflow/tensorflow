@@ -38,6 +38,7 @@ _TF_DTYPE_TOLERANCE = [(dtypes.float16, 1e-2),
                        (dtypes.float32, 1e-6),
                        (dtypes.float64, 1e-9)]
 _WINDOW_LENGTHS = [1, 2, 3, 4, 5, 31, 64, 128]
+_MDCT_WINDOW_LENGTHS = [4, 16, 256]
 
 
 def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
@@ -69,6 +70,21 @@ def _scipy_raised_cosine(length, symmetric=True, a=0.5, b=0.5):
 @tf_test_util.run_all_in_graph_and_eager_modes
 class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
+  def _check_mdct_window(self, window, tol=1e-6):
+    """Check that an MDCT window satisfies necessary conditions."""
+    # We check that the length of the window is a multiple of 4 and
+    # for symmetry of the window and also Princen-Bradley condition which
+    # requires that  w[n]^2 + w[n + N//2]^2 = 1 for an N length window.
+    wlen = int(np.shape(window)[0])
+    assert wlen % 4 == 0
+    half_len = wlen // 2
+    squared_sums = window[:half_len]**2 + window[half_len:]**2
+    self.assertAllClose(squared_sums, np.ones((half_len,)),
+                        tol, tol)
+    sym_diff = window[:half_len] - window[-1:half_len-1:-1]
+    self.assertAllClose(sym_diff, np.zeros((half_len,)),
+                        tol, tol)
+
   def _compare_window_fns(self, np_window_fn, tf_window_fn, window_length,
                           periodic, tf_dtype_tol):
     tf_dtype, tol = tf_dtype_tol
@@ -78,6 +94,18 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
     actual = tf_window_fn(window_length, periodic=periodic,
                           dtype=tf_dtype)
     self.assertAllClose(expected, actual, tol, tol)
+
+  @parameterized.parameters(
+      itertools.product(
+          _WINDOW_LENGTHS,
+          (4., 8., 10., 12.),
+          _TF_DTYPE_TOLERANCE))
+  def test_kaiser_window(self, window_length, beta, tf_dtype_tol):
+    """Check that kaiser_window matches np.kaiser behavior."""
+    self.assertAllClose(
+        np.kaiser(window_length, beta),
+        window_ops.kaiser_window(window_length, beta, tf_dtype_tol[0]),
+        tf_dtype_tol[1], tf_dtype_tol[1])
 
   @parameterized.parameters(
       itertools.product(
@@ -109,7 +137,9 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(
       itertools.product(
-          (window_ops.hann_window, window_ops.hamming_window),
+          (window_ops.hann_window, window_ops.hamming_window,
+           window_ops.kaiser_window, window_ops.kaiser_bessel_derived_window,
+           window_ops.vorbis_window),
           (False, True),
           _TF_DTYPE_TOLERANCE))
   def test_constant_folding(self, window_fn, periodic, tf_dtype_tol):
@@ -118,7 +148,10 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
       return
     g = ops.Graph()
     with g.as_default():
-      window = window_fn(100, periodic=periodic, dtype=tf_dtype_tol[0])
+      try:
+        window = window_fn(100, periodic=periodic, dtype=tf_dtype_tol[0])
+      except TypeError:
+        window = window_fn(100, dtype=tf_dtype_tol[0])
       rewritten_graph = test_util.grappler_optimize(g, [window])
       self.assertLen(rewritten_graph.node, 1)
 
@@ -128,11 +161,15 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
       (window_ops.hann_window, 10, False, dtypes.float32, True),
       (window_ops.hann_window, 10, True, dtypes.float32, True),
       (window_ops.hamming_window, 10, False, dtypes.float32, True),
-      (window_ops.hamming_window, 10, True, dtypes.float32, True))
+      (window_ops.hamming_window, 10, True, dtypes.float32, True),
+      (window_ops.vorbis_window, 12, None, dtypes.float32, True))
   def test_tflite_convert(self, window_fn, window_length, periodic, dtype,
                           use_mlir):
     def fn(window_length):
-      return window_fn(window_length, periodic, dtype=dtype)
+      try:
+        return window_fn(window_length, periodic=periodic, dtype=dtype)
+      except TypeError:
+        return window_fn(window_length, dtype=dtype)
 
     tflite_model = test_util.tflite_convert(
         fn, [tensor_spec.TensorSpec(shape=[], dtype=dtypes.int32)], use_mlir)
@@ -141,8 +178,28 @@ class WindowOpsTest(test.TestCase, parameterized.TestCase):
         tflite_model, [window_length])
 
     expected_output = self.evaluate(fn(window_length))
-    self.assertAllClose(actual_output, expected_output, rtol=1e-7, atol=1e-7)
+    self.assertAllClose(actual_output, expected_output, rtol=1e-6, atol=1e-6)
 
+  @parameterized.parameters(
+      itertools.product(
+          _MDCT_WINDOW_LENGTHS,
+          _TF_DTYPE_TOLERANCE))
+  def test_vorbis_window(self, window_length, tf_dtype_tol):
+    """Check if vorbis windows satisfy MDCT window conditions."""
+    self._check_mdct_window(window_ops.vorbis_window(window_length,
+                                                     dtype=tf_dtype_tol[0]),
+                            tol=tf_dtype_tol[1])
+
+  @parameterized.parameters(
+      itertools.product(
+          _MDCT_WINDOW_LENGTHS,
+          (4., 8., 10., 12.),
+          _TF_DTYPE_TOLERANCE))
+  def test_kaiser_bessel_derived_window(self, window_length, beta,
+                                        tf_dtype_tol):
+    """Check if Kaiser-Bessel derived windows satisfy MDCT window conditions."""
+    self._check_mdct_window(window_ops.kaiser_bessel_derived_window(
+        window_length, beta=beta, dtype=tf_dtype_tol[0]), tol=tf_dtype_tol[1])
 
 if __name__ == '__main__':
   test.main()

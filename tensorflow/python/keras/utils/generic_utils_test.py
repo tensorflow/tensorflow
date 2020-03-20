@@ -129,6 +129,13 @@ class SerializeKerasObjectTest(test.TestCase):
     inst = OtherTestClass(val=5)
     class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[OtherTestClass]
     self.assertEqual(serialized_name, class_name)
+    fn_class_name = keras.utils.generic_utils.get_registered_name(
+        OtherTestClass)
+    self.assertEqual(fn_class_name, class_name)
+
+    cls = keras.utils.generic_utils.get_registered_object(fn_class_name)
+    self.assertEqual(OtherTestClass, cls)
+
     config = keras.utils.generic_utils.serialize_keras_object(inst)
     self.assertEqual(class_name, config['class_name'])
     new_inst = keras.utils.generic_utils.deserialize_keras_object(config)
@@ -145,10 +152,16 @@ class SerializeKerasObjectTest(test.TestCase):
     serialized_name = 'Custom>my_fn'
     class_name = keras.utils.generic_utils._GLOBAL_CUSTOM_NAMES[my_fn]
     self.assertEqual(serialized_name, class_name)
+    fn_class_name = keras.utils.generic_utils.get_registered_name(my_fn)
+    self.assertEqual(fn_class_name, class_name)
+
     config = keras.utils.generic_utils.serialize_keras_object(my_fn)
     self.assertEqual(class_name, config)
     fn = keras.utils.generic_utils.deserialize_keras_object(config)
     self.assertEqual(42, fn())
+
+    fn_2 = keras.utils.generic_utils.get_registered_object(fn_class_name)
+    self.assertEqual(42, fn_2())
 
   def test_serialize_custom_class_without_get_config_fails(self):
 

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -36,7 +37,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -44,7 +45,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::tracing::ScopedAnnotation;
+using tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 
@@ -121,8 +122,8 @@ Status GpuExecutable::CheckCompatibilityWithServiceExecutableRunOptions(
     main_stream->parent()->GetDeviceDescription().cuda_compute_capability(
         &stream_compute_compatibility.first,
         &stream_compute_compatibility.second);
-    GpuVersion nvdia_compute_compatibility = stream_compute_compatibility;
-    TF_RET_CHECK(nvdia_compute_compatibility == gpu_version_)
+    GpuVersion nvidia_compute_compatibility = stream_compute_compatibility;
+    TF_RET_CHECK(nvidia_compute_compatibility == gpu_version_)
         << "Compute capability mismatch; expected {"
         << absl::get<std::pair<int, int>>(gpu_version_).first << ", "
         << absl::get<std::pair<int, int>>(gpu_version_).second << "}, but was {"
@@ -160,6 +161,9 @@ Status GpuExecutable::ExecuteThunks(
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(sub_streams.back(),
                         run_options->BorrowStream(executor->device_ordinal()));
+    // Require substreams to wait for the main stream, otherwise substreams may
+    // execute before the program is scheduled to start on the main stream.
+    sub_streams.back()->ThenWaitFor(main_stream);
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
@@ -172,6 +176,7 @@ Status GpuExecutable::ExecuteThunks(
 
   std::map<const Thunk*, std::unique_ptr<se::Event>> thunk_to_finish_event;
   bool scoped_annotation_enabled = ScopedAnnotation::IsEnabled();
+  std::vector<std::function<void()>> deferred_host_callbacks;
   for (Thunk* thunk : thunk_schedule_->TotalOrder()) {
     // Annotate execution of this op if tracing was enabled when we started
     // running this module.  If tracing is enabled *while* we're running the
@@ -195,9 +200,21 @@ Status GpuExecutable::ExecuteThunks(
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
+    const GpuExecutableRunOptions* gpu_options =
+        run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
-        &buffer_allocations, stream, run_options->run_options().run_id(),
-        &profiler, run_options->run_options().device_assignment()};
+        &buffer_allocations,
+        stream,
+        run_options->run_options().run_id(),
+        &profiler,
+        run_options->run_options().device_assignment(),
+        &deferred_host_callbacks,
+        gpu_options && gpu_options->gpu_global_device_ids()
+            ? &*gpu_options->gpu_global_device_ids()
+            : nullptr,
+        gpu_options && gpu_options->nccl_unique_id_callback()
+            ? &gpu_options->nccl_unique_id_callback()
+            : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -208,6 +225,19 @@ Status GpuExecutable::ExecuteThunks(
   }
 
   main_stream->ThenWaitFor(&sub_streams);
+  if (!deferred_host_callbacks.empty()) {
+    auto fn = [deferred_host_callbacks{std::move(deferred_host_callbacks)}]() {
+      for (auto& callback : deferred_host_callbacks) {
+        callback();
+      }
+    };
+    if (run_options->run_options().then_execute_function()) {
+      (*run_options->run_options().then_execute_function())(main_stream,
+                                                            std::move(fn));
+    } else {
+      main_stream->ThenDoHostCallback(std::move(fn));
+    }
+  }
   // Make sure kernels are completed before deallocating temporary buffers or
   // the profiler state.
   // TODO(b/30100571): we could potentially postpone deallocating the temp
@@ -299,11 +329,16 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
   return &module_globals_.emplace(executor, std::move(globals)).first->second;
 }
 
-StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
+StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile, bool block_host_until_done) {
-  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
+    std::vector<ExecutionInput> arguments,
+    HloExecutionProfile* hlo_execution_profile) {
+  XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
+                                        module().name(), ")"));
+  se::DeviceMemoryAllocator* const memory_allocator = run_options->allocator();
+  // Force synchronous execution if the allocator requires it.
+  const bool block_host_until_done =
+      !memory_allocator->AllowsAsynchronousDeallocation();
 
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -334,7 +369,9 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
       if (allocation.is_entry_computation_parameter()) {
         auto param_no = allocation.parameter_number();
         se::DeviceMemoryBase buffer =
-            arguments[param_no]->buffer(allocation.param_shape_index());
+            arguments[param_no]
+                .Buffer(allocation.param_shape_index())
+                .AsDeviceMemoryBase();
 
         // All top-level buffers and sub-buffers must have an explicit, non-null
         // pointer, except for zero-sized buffers, which may be null.
@@ -412,7 +449,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
               slice.allocation()->parameter_number(),
               slice.allocation()->param_shape_index());
           CHECK(output_alias)
-              << "Ouput buffer is coming from parameter "
+              << "Output buffer is coming from parameter "
               << slice.allocation()->parameter_number() << " at index "
               << slice.allocation()->param_shape_index()
               << ", but no alias exists";
@@ -423,19 +460,16 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
       }));
   TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
-  return std::move(shaped_buffer);
-}
-
-StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // Force synchronous execution if the allocator requires it.
-  bool block_host_until_done =
-      !memory_allocator->AllowsAsynchronousDeallocation();
-  return Execute(run_options, arguments, hlo_execution_profile,
-                 block_host_until_done);
+  std::vector<se::OwningDeviceMemory> buffers_to_free;
+  for (auto& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      auto maybe_owning_buffer = index_buffer.second.Release();
+      if (maybe_owning_buffer) {
+        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
+      }
+    }
+  }
+  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free));
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {

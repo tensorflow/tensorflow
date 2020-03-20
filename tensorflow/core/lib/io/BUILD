@@ -1,11 +1,14 @@
+load(
+    "//tensorflow/core/platform:rules_cc.bzl",
+    "cc_library",
+)
+
 package(
     default_visibility = [
         "//tensorflow/c/experimental/filesystem:__pkg__",
         "//tensorflow/c/experimental/filesystem/plugins/posix:__pkg__",
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
-        # tensorflow/core/platform:env uses :path
-        "//tensorflow/core/platform:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -103,15 +106,9 @@ cc_library(
 
 cc_library(
     name = "path",
-    srcs = ["path.cc"],
     hdrs = ["path.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
-        "//tensorflow/core/platform:scanner",
-        "//tensorflow/core/platform:strcat",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:path",
     ],
     alwayslink = True,
 )
@@ -121,6 +118,7 @@ cc_library(
     hdrs = ["proto_encode_helper.h"],
     deps = [
         "//tensorflow/core/lib/core:coding",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:stringpiece",
     ],
@@ -211,6 +209,21 @@ cc_library(
 )
 
 cc_library(
+    name = "cache",
+    srcs = [
+        "cache.cc",
+    ],
+    hdrs = [
+        "cache.h",
+    ],
+    deps = [
+        "//tensorflow/core/platform:coding",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
     name = "table",
     srcs = [
         "table.cc",
@@ -222,6 +235,7 @@ cc_library(
     ],
     deps = [
         ":block",
+        ":cache",
         ":iterator",
         ":table_options",
         "//tensorflow/core/lib/core:coding",
@@ -242,7 +256,7 @@ cc_library(
     hdrs = ["zlib_compression_options.h"],
     deps = [
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
 )
@@ -260,7 +274,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
 )
@@ -277,9 +291,50 @@ cc_library(
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
     alwayslink = True,
+)
+
+# Export source files needed for mobile builds, which do not use granular targets.
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "block.cc",
+        "block.h",
+        "block_builder.cc",
+        "block_builder.h",
+        "buffered_inputstream.cc",
+        "buffered_inputstream.h",
+        "cache.cc",
+        "cache.h",
+        "compression.cc",
+        "compression.h",
+        "format.cc",
+        "format.h",
+        "inputbuffer.cc",
+        "inputbuffer.h",
+        "inputstream_interface.cc",
+        "inputstream_interface.h",
+        "iterator.cc",
+        "iterator.h",
+        "path.h",
+        "random_inputstream.cc",
+        "random_inputstream.h",
+        "record_reader.cc",
+        "record_reader.h",
+        "table.cc",
+        "table.h",
+        "table_builder.cc",
+        "table_builder.h",
+        "table_options.h",
+        "two_level_iterator.cc",
+        "two_level_iterator.h",
+        "zlib_compression_options.cc",
+        "zlib_compression_options.h",
+        "zlib_inputstream.cc",
+        "zlib_inputstream.h",
+    ],
 )
 
 filegroup(
@@ -312,36 +367,10 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_lib_io_all_srcs",
-    srcs = [
-        "block.cc",
-        "block_builder.cc",
-        "buffered_inputstream.cc",
-        "compression.cc",
-        "format.cc",
-        "inputbuffer.cc",
-        "inputstream_interface.cc",
-        "iterator.cc",
-        "path.cc",
-        "random_inputstream.cc",
-        "record_reader.cc",
-        "record_writer.cc",
-        "snappy/snappy_inputbuffer.cc",
-        "snappy/snappy_outputbuffer.cc",
-        "table.cc",
-        "table_builder.cc",
-        "two_level_iterator.cc",
-        "zlib_compression_options.cc",
-        "zlib_inputstream.cc",
-        "zlib_outputbuffer.cc",
-    ],
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_lib_io_all_tests",
     srcs = [
         "buffered_inputstream_test.cc",
+        "cache_test.cc",
         "inputbuffer_test.cc",
         "inputstream_interface_test.cc",
         "path_test.cc",
@@ -359,6 +388,7 @@ filegroup(
     name = "legacy_lib_io_headers",
     srcs = [
         "buffered_inputstream.h",
+        "cache.h",
         "compression.h",
         "inputstream_interface.h",
         "path.h",

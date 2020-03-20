@@ -39,8 +39,15 @@ from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph.impl.api")
+
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
@@ -86,7 +93,7 @@ class EagerFunc(object):
 
     Returns:
       A tensor of type `dtype`, or a zeros tensor if value is None and
-      this function is in fact a grdient function.
+      this function is in fact a gradient function.
 
     Raises:
       RuntimeError: if `value` is a variable.
@@ -101,7 +108,7 @@ class EagerFunc(object):
           "question: %s" % value)
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
-      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # both Tensors and Python Nones. Unfortunately this breaks the
       # OpKernel, so for now we replace None objects with zeros, which is
       # mathematically correct but will prevent short-circuiting gradient
       # computations.
@@ -275,6 +282,9 @@ def _internal_py_func(func,
     raise ValueError("Expected func to be callable, got func of type {}".format(
         type(func)))
 
+  original_func = func
+  func = autograph.do_not_convert(func)
+
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
     is_list_or_tuple = True
@@ -283,6 +293,20 @@ def _internal_py_func(func,
 
   if eager:
     func = EagerFunc(func, Tout, is_grad_func)
+
+  # Tying the registered function's lifetime with the current default graph is
+  # not reliable. For example, Estimator-based binaries may switch graphs in
+  # between model training end evaluation, via saved_model. Those binaries work
+  # because the original function is global, and break once the registered
+  # function is an anonymous lambda, like the one produced by do_not_convert.
+  # To avoid breaking those cases, we attach the wrapper to the original
+  # function so that their lifetime is connected.
+  # TODO(b/144286616): Remove this.
+  if tf_inspect.isfunction(original_func):
+    # Note: this check is needed because original_func may be a descriptor
+    # (https://docs.python.org/3/howto/descriptor.html)
+    # and we can't attach attributes to those.
+    original_func.ag_dnc_wrapper__ = func
 
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,
@@ -425,6 +449,11 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func, inp=inp, Tout=Tout, eager=True, name=name)
+
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
@@ -485,7 +514,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   if context.executing_eagerly():
-    result = func(*[x.numpy() for x in inp])
+    result = func(*[np.array(x) for x in inp])
     result = nest.flatten(result)
 
     result = [x if x is None else ops.convert_to_tensor(x) for x in result]
@@ -493,6 +522,16 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
       # Mimic the automatic unwrapping in graph-mode py_func
       result, = result
     return result
+
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          stateful=stateful,
+          eager=False,
+          name=name)
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
@@ -564,6 +603,8 @@ def numpy_function(func, inp, Tout, name=None):
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
 
+  * The resulting function is assumed stateful and will never be optimized.
+
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
       and returns a list of `numpy.ndarray` objects (or a single
@@ -579,10 +620,6 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
-    stateful (bool): If True, the function should be considered stateful. If
-      a function is stateless, when given the same input it will return the same
-      output and have no observable side effects. Optimizations such as common
-      subexpression elimination are only performed on stateless operations.
     name: (Optional) A name for the operation.
 
   Returns:

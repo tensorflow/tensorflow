@@ -17,10 +17,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 
-#include "mlir/IR/Attributes.h"  // TF:local_config_mlir
-#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
+#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 
+namespace mlir {
 namespace xla {
 
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
@@ -82,3 +83,4 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
 }
 
 }  // namespace xla
+}  // namespace mlir

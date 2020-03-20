@@ -19,7 +19,7 @@ namespace tensorflow {
 
 // This pass is required for some AOT backends and all JIT backends, so this
 // file exists as a separate lib and will be linked to both AOT and JIT.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 27,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 37,
                       FunctionalizeControlFlowForXlaPass);
 
 }  // namespace tensorflow

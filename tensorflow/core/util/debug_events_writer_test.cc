@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -67,18 +68,17 @@ class DebugEventsWriterTest : public ::testing::Test {
   }
 
   void SetUp() override {
-    dump_root_ = io::JoinPath(testing::TmpDir(),
-                              strings::Printf("%010lld", env()->NowMicros()));
+    dump_root_ = io::JoinPath(
+        testing::TmpDir(),
+        strings::Printf("%010lld", static_cast<long long>(env()->NowMicros())));
   }
 
   void TearDown() override {
     if (env()->IsDirectory(dump_root_).ok()) {
       int64 undeleted_files = 0;
       int64 undeleted_dirs = 0;
-      ASSERT_TRUE(
-          env()
-              ->DeleteRecursively(dump_root_, &undeleted_files, &undeleted_dirs)
-              .ok());
+      TF_ASSERT_OK(env()->DeleteRecursively(dump_root_, &undeleted_files,
+                                            &undeleted_dirs));
       ASSERT_EQ(0, undeleted_files);
       ASSERT_EQ(0, undeleted_dirs);
     }
@@ -593,6 +593,9 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
   // Before FlushExecutionFiles() is called, the file should be empty.
   ReadDebugEventProtos(writer, DebugEventFileType::EXECUTION, &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
@@ -687,6 +690,9 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   ReadDebugEventProtos(writer, DebugEventFileType::GRAPH_EXECUTION_TRACES,
                        &actuals);
   EXPECT_EQ(actuals.size(), 0);
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
@@ -756,7 +762,51 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   EXPECT_EQ(actuals.size(), 0);
 }
 
-TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
+TEST_F(DebugEventsWriterTest, RegisterDeviceAndGetIdTrace) {
+  DebugEventsWriter* writer =
+      DebugEventsWriter::GetDebugEventsWriter(dump_root_);
+  TF_ASSERT_OK(writer->Init());
+
+  // Register and get some device IDs in a concurrent fashion.
+  thread::ThreadPool* thread_pool =
+      new thread::ThreadPool(Env::Default(), "test_pool", 8);
+  int device_ids[8];
+  for (int i = 0; i < 8; ++i) {
+    thread_pool->Schedule([i, &writer, &device_ids]() {
+      const string device_name = strings::Printf(
+          "/job:localhost/replica:0/task:0/device:GPU:%d", i % 4);
+      device_ids[i] = writer->RegisterDeviceAndGetId(device_name);
+    });
+  }
+  delete thread_pool;
+  TF_ASSERT_OK(writer->FlushNonExecutionFiles());
+  TF_ASSERT_OK(writer->Close());
+
+  // There should be only 4 unique device IDs, because there are only 4 unique
+  // device names.
+  EXPECT_EQ(device_ids[0], device_ids[4]);
+  EXPECT_EQ(device_ids[1], device_ids[5]);
+  EXPECT_EQ(device_ids[2], device_ids[6]);
+  EXPECT_EQ(device_ids[3], device_ids[7]);
+  // Assert that the four device IDs are all unique.
+  EXPECT_EQ(absl::flat_hash_set<int>(device_ids, device_ids + 8).size(), 4);
+
+  std::vector<DebugEvent> actuals;
+  ReadDebugEventProtos(writer, DebugEventFileType::GRAPHS, &actuals);
+  // Due to the `% 4`, there are only 4 unique device names, even though there
+  // are 8 threads each calling `RegisterDeviceAndGetId`.
+  EXPECT_EQ(actuals.size(), 4);
+  for (const DebugEvent& actual : actuals) {
+    const string& device_name = actual.debugged_device().device_name();
+    int device_index = -1;
+    CHECK(absl::SimpleAtoi(device_name.substr(strlen(
+                               "/job:localhost/replica:0/task:0/device:GPU:")),
+                           &device_index));
+    EXPECT_EQ(actual.debugged_device().device_id(), device_ids[device_index]);
+  }
+}
+
+TEST_F(DebugEventsWriterTest, DisableCyclicBufferBehavior) {
   const size_t kCyclicBufferSize = 0;  // A value <= 0 disables cyclic behavior.
   DebugEventsWriter* writer =
       DebugEventsWriter::GetDebugEventsWriter(dump_root_, kCyclicBufferSize);
@@ -795,6 +845,9 @@ TEST_F(DebugEventsWriterTest, DisableCyclicBufferBeahavior) {
     EXPECT_EQ(actuals[i].graph_execution_trace().tfdbg_context_id(),
               strings::Printf("graph_%.2ld", i));
   }
+
+  // Close the writer so the files can be safely deleted.
+  TF_ASSERT_OK(writer->Close());
 }
 
 }  // namespace tfdbg

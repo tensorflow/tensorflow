@@ -7784,7 +7784,7 @@ library {
 }
 
 # CHECK: func @main(%arg0: tensor<1x3x3xf32>) -> tensor<1x3xf32>
-# CHECK-NEXT: attributes  {tf.entry_function = {inputs = "INPUT", outputs = "OUTPUT"}} {
+# CHECK: attributes  {tf.entry_function = {inputs = "INPUT", outputs = "OUTPUT"}} {
 # CHECK:  [[VAL_1:%.*]] = constant dense<{{\[\[}}-0.400154352, 0.739109992, 0.201825857], [0.678572893, 0.32076478, 0.949867963], [-0.807729483, -5.324750e-01, 0.148033619]]> : tensor<3x3xf32>
 # CHECK:  [[VAL_2:%.*]] = constant dense<{{\[\[}}0.886177539, -0.606141329, -0.451275587], [0.325554609, 0.691527605, -0.676239967], [0.219799042, 0.626042128, -0.597596407]]> : tensor<3x3xf32>
 # CHECK:  [[VAL_3:%.*]] = constant dense<{{\[\[}}-0.493826151, -0.391061306, -0.349843264], [-0.0213134289, 0.558384657, -0.51513052], [0.427886248, 0.618100405, -0.187585592]]> : tensor<3x3xf32>

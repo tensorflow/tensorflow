@@ -32,6 +32,7 @@ from __future__ import print_function
 
 import collections
 import functools
+
 import six
 
 from tensorflow.core.protobuf import struct_pb2
@@ -47,6 +48,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.ops.ragged import row_partition
 from tensorflow.python.util import compat
 from tensorflow.python.util.compat import collections_abc
 
@@ -217,7 +219,7 @@ class _NamedTupleCodec(object):
   """Codec for namedtuples.
 
   Encoding and decoding a namedtuple reconstructs a namedtuple with a different
-  actual Python type, but with same `typename` and `fields`.
+  actual Python type, but with the same `typename` and `fields`.
   """
 
   def can_encode(self, pyobj):
@@ -470,6 +472,8 @@ class _TypeSpecCodec(object):
           values.PerReplicaSpec,
       struct_pb2.TypeSpecProto.VARIABLE_SPEC:
           resource_variable_ops.VariableSpec,
+      struct_pb2.TypeSpecProto.ROW_PARTITION_SPEC:
+          row_partition.RowPartitionSpec,
   }
 
   # Mapping from type (TypeSpec subclass) to enum value.

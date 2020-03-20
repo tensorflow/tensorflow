@@ -103,7 +103,7 @@ class HloModuleGroupUtil {
       absl::Span<HloComputation* const> computations);
 
   // Updates the reachability of the given instruction, taking the global
-  // predeccessorss and successors into account.
+  // predecessors and successors into account.
   void UpdateReachabilityThroughInstruction(
       HloInstruction* instruction, HloReachabilityMap* reachability_map);
 

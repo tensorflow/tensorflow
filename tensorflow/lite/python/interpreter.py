@@ -37,7 +37,7 @@ if not __file__.endswith('tflite_runtime/interpreter.py'):
   _interpreter_wrapper = LazyLoader(
       "_interpreter_wrapper", globals(),
       "tensorflow.lite.python.interpreter_wrapper."
-      "tensorflow_wrap_interpreter_wrapper")
+      '_pywrap_tensorflow_interpreter_wrapper')
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
@@ -120,7 +120,7 @@ class Delegate(object):
       raise ValueError(capture.message)
 
   def __del__(self):
-    # __del__ can be called multiple times, so if the delegate is destroyed.
+    # __del__ can not be called multiple times, so if the delegate is destroyed.
     # don't try to destroy it twice.
     if self._library is not None:
       self._library.tflite_plugin_destroy_delegate.argtypes = [ctypes.c_void_p]
@@ -157,11 +157,6 @@ def load_delegate(library, options=None):
     ValueError: Delegate failed to load.
     RuntimeError: If delegate loading is used on unsupported platform.
   """
-
-  # TODO(b/137299813): Fix darwin support for delegates.
-  if sys.platform == 'darwin':
-    raise RuntimeError('Dynamic loading of delegates on Darwin not supported.')
-
   try:
     delegate = Delegate(library, options)
   except ValueError as e:
@@ -205,7 +200,7 @@ class Interpreter(object):
       self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+          _interpreter_wrapper.CreateWrapperFromFile(
               model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -215,9 +210,9 @@ class Interpreter(object):
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+          _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, self._custom_op_registerers))
-    elif not model_path and not model_path:
+    elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
@@ -306,7 +301,18 @@ class Interpreter(object):
       tensor_index: Tensor index of tensor to query.
 
     Returns:
-      a dictionary containing the name, index, shape and type of the tensor.
+      A dictionary containing the following fields of the tensor:
+        'name': The tensor name.
+        'index': The tensor index in the interpreter.
+        'shape': The shape of the tensor.
+        'quantization': Deprecated, use 'quantization_parameters'. This field
+            only works for per-tensor quantization, whereas
+            'quantization_parameters' works in all cases.
+        'quantization_parameters': The parameters used to quantize the tensor:
+          'scales': List of scales (one if per-tensor quantization)
+          'zero_points': List of zero_points (one if per-tensor quantization)
+          'quantized_dimension': Specifies the dimension of per-axis
+              quantization, in the case of multiple scales/zero_points.
 
     Raises:
       ValueError: If tensor_index is invalid.
@@ -314,8 +320,13 @@ class Interpreter(object):
     tensor_index = int(tensor_index)
     tensor_name = self._interpreter.TensorName(tensor_index)
     tensor_size = self._interpreter.TensorSize(tensor_index)
+    tensor_size_signature = self._interpreter.TensorSizeSignature(tensor_index)
     tensor_type = self._interpreter.TensorType(tensor_index)
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
+    tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
+        tensor_index)
+    tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -324,8 +335,15 @@ class Interpreter(object):
         'name': tensor_name,
         'index': tensor_index,
         'shape': tensor_size,
+        'shape_signature': tensor_size_signature,
         'dtype': tensor_type,
         'quantization': tensor_quantization,
+        'quantization_parameters': {
+            'scales': tensor_quantization_params[0],
+            'zero_points': tensor_quantization_params[1],
+            'quantized_dimension': tensor_quantization_params[2],
+        },
+        'sparsity_parameters': tensor_sparsity_params
     }
 
     return details
@@ -499,7 +517,7 @@ class Interpreter(object):
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
 
-  The interface provided by this class is experimenal and therefore not exposed
+  The interface provided by this class is experimental and therefore not exposed
   as part of the public API.
 
   Wraps the tf.lite.Interpreter class and adds the ability to load custom ops

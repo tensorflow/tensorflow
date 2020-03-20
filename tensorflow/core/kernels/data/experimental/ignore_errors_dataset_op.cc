@@ -81,20 +81,22 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           : DatasetIterator<Dataset>(params) {}
 
       Status Initialize(IteratorContext* ctx) override {
-        return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
+        return dataset()->input_->MakeIterator(ctx, this, prefix(),
+                                               &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        Status s;
         {
           tf_shared_lock l(mu_);
           if (!input_impl_) {
             *end_of_sequence = true;
             return Status::OK();
           }
-          Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-          while (!s.ok()) {
+          s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
+          while (!s.ok() && !errors::IsCancelled(s)) {
             out_tensors->clear();
             s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
           }
@@ -103,7 +105,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           input_impl_.reset();
         }
-        return Status::OK();
+        return s;
       }
 
      protected:
@@ -113,10 +115,11 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -135,7 +138,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

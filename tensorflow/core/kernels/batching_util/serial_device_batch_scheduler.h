@@ -148,28 +148,28 @@ class SerialDeviceBatchScheduler : public std::enable_shared_from_this<
 
   // Collection of batches added by AddBatch. Owned by scheduler until they are
   // released for processing.
-  std::vector<const internal::SDBSBatch<TaskType>*> batches_ GUARDED_BY(mu_);
+  std::vector<const internal::SDBSBatch<TaskType>*> batches_ TF_GUARDED_BY(mu_);
 
   // Unowned queues and callbacks added by AddQueue.
   std::unordered_map<const internal::SDBSQueue<TaskType>*, BatchProcessor>
-      queues_and_callbacks_ GUARDED_BY(mu_);
+      queues_and_callbacks_ TF_GUARDED_BY(mu_);
 
   // Responsible for running the batch processing callbacks.
   std::unique_ptr<thread::ThreadPool> batch_thread_pool_;
 
   // Limit on number of batches which can be concurrently processed.
-  int64 in_flight_batches_limit_ GUARDED_BY(mu_);
+  int64 in_flight_batches_limit_ TF_GUARDED_BY(mu_);
 
   // Number of batch processing threads.
-  int64 processing_threads_ GUARDED_BY(mu_) = 0;
+  int64 processing_threads_ TF_GUARDED_BY(mu_) = 0;
 
   // Number of batches processed since the last in_flight_batches_limit_
   // adjustment.
-  int64 batch_count_ GUARDED_BY(mu_) = 0;
+  int64 batch_count_ TF_GUARDED_BY(mu_) = 0;
 
   // Number of times since the last in_flight_batches_limit_ adjustment when a
   // processing thread was available but there were no batches to process.
-  int64 no_batch_count_ GUARDED_BY(mu_) = 0;
+  int64 no_batch_count_ TF_GUARDED_BY(mu_) = 0;
 
   // Sum of batches pending on the serial device since the last
   // in_flight_batches_limit_ adjustment.
@@ -229,9 +229,9 @@ class SDBSQueue : public BatchScheduler<TaskType> {
   std::shared_ptr<SerialDeviceBatchScheduler<TaskType>> scheduler_;
   const QueueOptions options_;
   // Owned by scheduler_.
-  SDBSBatch<TaskType>* current_batch_ GUARDED_BY(mu_) = nullptr;
-  int64 num_enqueued_batches_ GUARDED_BY(mu_) = 0;
-  int64 num_enqueued_tasks_ GUARDED_BY(mu_) = 0;
+  SDBSBatch<TaskType>* current_batch_ TF_GUARDED_BY(mu_) = nullptr;
+  int64 num_enqueued_batches_ TF_GUARDED_BY(mu_) = 0;
+  int64 num_enqueued_tasks_ TF_GUARDED_BY(mu_) = 0;
   mutable mutex mu_;
   TF_DISALLOW_COPY_AND_ASSIGN(SDBSQueue);
 };
@@ -432,7 +432,7 @@ void SerialDeviceBatchScheduler<TaskType>::ProcessBatches() {
         // the desired target pending.
         in_flight_batches_limit_ +=
             std::round(options_.target_pending - avg_pending);
-        in_flight_batches_limit_ = std::max(in_flight_batches_limit_, 1LL);
+        in_flight_batches_limit_ = std::max(in_flight_batches_limit_, int64{1});
         in_flight_batches_limit_ =
             std::min(in_flight_batches_limit_, options_.num_batch_threads);
         // Add extra processing threads if necessary.

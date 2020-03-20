@@ -19,11 +19,11 @@ limitations under the License.
 namespace stream_executor {
 
 KernelLoaderSpec::KernelLoaderSpec(absl::string_view kernelname)
-    : kernelname_(string(kernelname)) {}
+    : kernelname_(std::string(kernelname)) {}
 
 OnDiskKernelLoaderSpec::OnDiskKernelLoaderSpec(absl::string_view filename,
                                                absl::string_view kernelname)
-    : KernelLoaderSpec(kernelname), filename_(string(filename)) {}
+    : KernelLoaderSpec(kernelname), filename_(std::string(filename)) {}
 
 CudaPtxOnDisk::CudaPtxOnDisk(absl::string_view filename,
                              absl::string_view kernelname)
@@ -77,13 +77,13 @@ CudaPtxInMemory::CudaPtxInMemory(
   }
 }
 
-string CudaPtxInMemory::DecompressPtx(const char *ptx) {
+std::string CudaPtxInMemory::DecompressPtx(const char *ptx) {
   // Get the length of the PTX string from the beginning of the buffer.
   uint64 ptx_length = *reinterpret_cast<const uint64 *>(ptx);
   // Get the PTX string from the buffer with offset and length.
-  string compressed_ptx(ptx + sizeof(uint64),
-                        ptx + sizeof(uint64) + ptx_length);
-  string decompressed_ptx;
+  std::string compressed_ptx(ptx + sizeof(uint64),
+                             ptx + sizeof(uint64) + ptx_length);
+  std::string decompressed_ptx;
   // Decompress the PTX string with bzip2.
   LOG(FATAL) << "bzip2 decompression is not supported yet.";
   return decompressed_ptx;

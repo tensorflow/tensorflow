@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
+#include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/compiled_model.h"
 #include "tensorflow/lite/delegates/gpu/metal/inference_context.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
@@ -295,7 +296,17 @@ class Delegate {
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+      const auto gpu_type = GetGpuType();
+      const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
+                           gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
+      if (powervr) {
+        // PowerVR gpus support only round to zero for floating-point operations,
+        // to increase precision we will use F32 accumulator in this case
+        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
+      } else {
+        // Apple own gpus support round to nearest and have better precision
+        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+      }
     } else {
       storage_type_size = sizeof(float);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP32;

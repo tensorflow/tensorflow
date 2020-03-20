@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path
+
 import numpy as np
 
 from tensorflow.python.framework import errors
@@ -615,6 +616,9 @@ class FileIoTest(test.TestCase):
     with gfile.GFile(filename, "rb") as f:
       info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
+
+  def testHasAtomicMove(self):
+    self.assertTrue(file_io.has_atomic_move("/a/b/c"))
 
 
 if __name__ == "__main__":

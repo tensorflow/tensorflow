@@ -7,9 +7,15 @@ tf_class {
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.LayerVersionSelector\'>"
+  is_instance: "<class \'tensorflow.python.keras.utils.version_utils.ModelVersionSelector\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "distribute_strategy"
     mtype: "<type \'property\'>"
   }
   member {
@@ -93,10 +99,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "sample_weights"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "state_updates"
     mtype: "<type \'property\'>"
   }
@@ -166,11 +168,11 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'target_tensors\', \'distribute\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -190,7 +192,7 @@ tf_class {
   }
   member_method {
     name: "evaluate"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\', \'None\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'verbose\', \'sample_weight\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'1\', \'None\', \'None\', \'None\', \'10\', \'1\', \'False\', \'False\'], "
   }
   member_method {
     name: "evaluate_generator"
@@ -198,7 +200,7 @@ tf_class {
   }
   member_method {
     name: "fit"
-    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'epochs\', \'verbose\', \'callbacks\', \'validation_split\', \'validation_data\', \'shuffle\', \'class_weight\', \'sample_weight\', \'initial_epoch\', \'steps_per_epoch\', \'validation_steps\', \'validation_freq\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'1\', \'1\', \'None\', \'0.0\', \'None\', \'True\', \'None\', \'None\', \'0\', \'None\', \'None\', \'1\', \'10\', \'1\', \'False\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'batch_size\', \'epochs\', \'verbose\', \'callbacks\', \'validation_split\', \'validation_data\', \'shuffle\', \'class_weight\', \'sample_weight\', \'initial_epoch\', \'steps_per_epoch\', \'validation_steps\', \'validation_batch_size\', \'validation_freq\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'1\', \'1\', \'None\', \'0.0\', \'None\', \'True\', \'None\', \'None\', \'0\', \'None\', \'None\', \'None\', \'1\', \'10\', \'1\', \'False\'], "
   }
   member_method {
     name: "fit_generator"
@@ -257,6 +259,18 @@ tf_class {
     argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
   }
   member_method {
+    name: "make_predict_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_test_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_train_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "predict"
     argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\', \'steps\', \'callbacks\', \'max_queue_size\', \'workers\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \'None\', \'10\', \'1\', \'False\'], "
   }
@@ -267,6 +281,10 @@ tf_class {
   member_method {
     name: "predict_on_batch"
     argspec: "args=[\'self\', \'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "predict_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "reset_metrics"
@@ -294,7 +312,11 @@ tf_class {
   }
   member_method {
     name: "test_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "test_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "to_json"
@@ -306,7 +328,11 @@ tf_class {
   }
   member_method {
     name: "train_on_batch"
-    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+    argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "train_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

@@ -1055,9 +1055,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testEmptyContainersIgnored(self):
     checkpoint_directory = self.get_temp_dir()
-    save_root = trackable_utils.Checkpoint()
+    save_root = trackable_utils.Checkpoint(a=[])
     path = save_root.save(checkpoint_directory)
-    load_root = trackable_utils.Checkpoint()
+    load_root = trackable_utils.Checkpoint(b=[])
     load_root.dep = []
     load_root.dep.append([])
     status = load_root.restore(path)
@@ -1376,8 +1376,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_write_checkpoint_from_function(self):
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    save_checkpoint = trackable_utils.Checkpoint(
-        v=variables_lib.Variable(1.))
+    save_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(1.))
 
     @def_function.function
     def _write_checkpoint():
@@ -1386,15 +1385,36 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     self.evaluate([save_checkpoint.v.initializer])
     self.evaluate(_write_checkpoint())
-    load_checkpoint = trackable_utils.Checkpoint(
-        v=variables_lib.Variable(0.))
-    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    load_checkpoint = trackable_utils.Checkpoint(v=variables_lib.Variable(0.))
+    # Use read() instead of restore() which allows us to check that all
+    # existing objects were loaded.
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
     self.assertEqual(1., self.evaluate(load_checkpoint.v))
     self.evaluate(save_checkpoint.v.assign(3.))
     self.evaluate(_write_checkpoint())
     self.evaluate(save_checkpoint.v.assign(0.))
-    load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
+    status = load_checkpoint.read(checkpoint_prefix)
+    status.assert_existing_objects_matched()
+    status.assert_consumed()
+    status.run_restore_ops()
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
+
+  def test_inititialize_with_data_structures(self):
+    checkpoint = trackable_utils.Checkpoint(
+        a=[variables_lib.Variable(0.), variables_lib.Variable(1.)],
+        b={"a": variables_lib.Variable(2.), "b": variables_lib.Variable(3.)})
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+    load_checkpoint = trackable_utils.Checkpoint(
+        a=[variables_lib.Variable(4.), variables_lib.Variable(5.)],
+        b={"a": variables_lib.Variable(6.), "b": variables_lib.Variable(7.)})
+    load_checkpoint.restore(save_path)
+    self.assertAllClose(self.evaluate(load_checkpoint.a), [0, 1])
+    self.assertAllClose(self.evaluate(load_checkpoint.b), {"a": 2, "b": 3})
 
 
 class _ManualScope(tracking.AutoTrackable):
@@ -1563,7 +1583,8 @@ class CheckpointCompatibilityTests(test.TestCase):
         root = self._initialized_model()
         name_saver = saver_lib.Saver()
         return name_saver.save(
-            sess=session, save_path=checkpoint_prefix,
+            sess=session,
+            save_path=checkpoint_prefix,
             global_step=root.optimizer.iterations)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1637,6 +1658,29 @@ class CheckpointCompatibilityTests(test.TestCase):
         self._set_sentinels(root)
         root.restore(save_path).assert_consumed().run_restore_ops()
         self._check_sentinels(root)
+
+  def testIgnoreSaveCounter(self):
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    with self.cached_session() as session:
+      # Create and save a model using Saver() before using a Checkpoint. This
+      # generates a snapshot without the Checkpoint's `save_counter`.
+      model = sequential.Sequential()
+      model.add(core.Flatten(input_shape=(1,)))
+      model.add(core.Dense(1))
+      name_saver = saver_lib.Saver(model.trainable_variables)
+      save_path = name_saver.save(
+          sess=session, save_path=checkpoint_prefix, global_step=1)
+      # Checkpoint.restore must successfully load that checkpoint.
+      ckpt = trackable_utils.Checkpoint(model=model)
+      status = ckpt.restore(save_path)
+      status.assert_existing_objects_matched()
+      # It should, however, refuse to load a checkpoint where an unrelated
+      # `save_counter` variable is missing.
+      model.layers[1].var = variables_lib.Variable(0., name="save_counter")
+      status = ckpt.restore(save_path)
+      with self.assertRaises(AssertionError):
+        status.assert_existing_objects_matched()
 
 
 if __name__ == "__main__":

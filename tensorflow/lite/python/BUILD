@@ -1,6 +1,15 @@
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_py_library")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["tflite_convert.py"])
+
+flatbuffer_py_library(
+    name = "schema_py",
+    srcs = ["//tensorflow/lite/schema:schema.fbs"],
 )
 
 py_library(
@@ -11,7 +20,8 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
+        "//tensorflow/lite/python/interpreter_wrapper:_pywrap_tensorflow_interpreter_wrapper",
+        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )
@@ -20,6 +30,7 @@ py_test(
     name = "interpreter_test",
     srcs = ["interpreter_test.py"],
     data = [
+        "//tensorflow/lite:testdata/sparse_tensor.bin",
         "//tensorflow/lite/python/testdata:interpreter_test_data",
         "//tensorflow/lite/python/testdata:test_delegate.so",
     ],
@@ -29,10 +40,11 @@ py_test(
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
+        "notsan",  # TODO(b/149882556): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
-        "//tensorflow/lite/python/testdata:test_registerer_wrapper",
+        "//tensorflow/lite/python/testdata:_pywrap_test_registerer",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
@@ -80,13 +92,17 @@ py_library(
 py_test(
     name = "tflite_convert_test",
     srcs = ["tflite_convert_test.py"],
-    data = [":tflite_convert"],
+    data = [
+        ":tflite_convert.par",
+        "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
+    ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
         "no_windows",
+        "noasan",  # b/144707533
     ],
     deps = [
         ":tflite_convert",
@@ -141,6 +157,24 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        ":lite_v2_test_util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "lite_v2_test_util",
+    testonly = 1,
+    srcs = ["lite_v2_test_util.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",

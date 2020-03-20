@@ -46,6 +46,19 @@ typedef struct {
     struct {
       LSTMKernelType kernel_type;
     } lstm;
+    struct {
+      bool half_pixel_centers;
+    } resize_bilinear;
+    struct {
+      int32_t num_dims;
+    } strided_slice;
+    struct {
+      int32_t num_dims;
+    } space_batch;
+    struct {
+      int32_t num_dims;
+      bool need_broadcast;
+    } sub;
   } options;
 } OpSignature;
 

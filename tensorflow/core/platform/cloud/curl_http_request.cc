@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <algorithm>
-
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
+
+#include <algorithm>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/env_var.h"
 
 #define CHECK_CURL_OK(expr) CHECK_EQ(expr, CURLE_OK)
 
@@ -124,10 +126,16 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   curl_ = libcurl_->curl_easy_init();
   CHECK(curl_ != nullptr) << "Couldn't initialize a curl session.";
 
-  // NOTE: CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt is configured by
-  //       default in //third_party:curl.BUILD and can be customized via an
-  //       environment variable.
-
+  // NOTE: The cURL CA bundle path is, by default, set to
+  //   etc/ssl/certs/ca-certificates.crt in tensorflow/third_party/curl.BUILD.
+  //   It can be customized with the CURL_CA_BUNDLE environment variable.
+  //   See also: https://curl.haxx.se/libcurl/c/CURLOPT_CAINFO.html.
+  std::string value = "";
+  TF_CHECK_OK(ReadStringFromEnvVar("CURL_CA_BUNDLE", "", &value));
+  if (!value.empty()) {
+    CHECK_CURL_OK(
+        libcurl_->curl_easy_setopt(curl_, CURLOPT_CAINFO, value.c_str()));
+  }
   CHECK_CURL_OK(
       libcurl_->curl_easy_setopt(curl_, CURLOPT_VERBOSE, kVerboseOutput));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(
@@ -139,7 +147,8 @@ CurlHttpRequest::CurlHttpRequest(LibCurl* libcurl, Env* env)
   // TODO(b/74351157): Enable HTTP/2.
 
   // Set up the progress meter.
-  CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL));
+  CHECK_CURL_OK(
+      libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, uint64{0}));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this));
   CHECK_CURL_OK(libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
                                            &CurlHttpRequest::ProgressCallback));
@@ -638,6 +647,13 @@ Status CurlHttpRequest::CURLcodeToStatus(CURLcode code,
     }
     return errors::FailedPrecondition(
         strings::StrCat(error_message, overflow_message));
+  }
+  // Domain resolution errors and certificate problems aren't going to improve
+  // on retry, so we return a FailedPrecondition (as the caller must take action
+  // before this can succeed).
+  if (code == CURLE_COULDNT_RESOLVE_HOST || code == CURLE_SSL_CACERT_BADFILE) {
+    return errors::FailedPrecondition(
+        strings::StrCat(error_message, error_buffer));
   }
   // Return Unavailable to retry by default. There may be other permanent
   // failures that should be distinguished.

@@ -15,11 +15,14 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/depthwise_conv_op.h"
+
 #include <algorithm>
 #include <cmath>
 #include <type_traits>
 
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -28,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/conv_ops.h"
-#include "tensorflow/core/kernels/depthwise_conv_op.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -296,8 +297,15 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // For in_depth == 1 and grouped convolutions.
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
-    use_cudnn_grouped_conv_ = false;
     dtype_ = DataTypeToEnum<T>::value;
+    // Use CuDNN grouped conv only when input/output is NCHW and float16(half).
+    // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
+    // udnn-release-notes/rel_763.html#rel_763)
+#if CUDNN_VERSION >= 7603
+    use_cudnn_grouped_conv_ = dtype_ == DT_HALF && data_format_ == FORMAT_NCHW;
+#else
+    use_cudnn_grouped_conv_ = false;
+#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -327,7 +335,7 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
 
-    // The output depth is input depth x depth multipler
+    // The output depth is input depth x depth multiplier
     const int32 out_depth = in_depth * depth_multiplier;
 
     const int64 input_rows_raw = GetTensorDim(input, data_format_, 'H');
@@ -376,7 +384,13 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // TODO(csigg): Have autotune decide if native is faster than cuDNN.
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    bool use_cudnn =
+        use_cudnn_ && (in_depth == 1 ||
+                       (use_cudnn_grouped_conv_ &&
+                        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                                   /*filter_cols=*/filter_cols,
+                                                   /*in_depth=*/in_depth,
+                                                   /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNative: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols

@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import math
 
 import enum
@@ -55,7 +56,8 @@ def embedding_column_v2(categorical_column,
                         max_sequence_length=0,
                         learning_rate_fn=None,
                         embedding_lookup_device=None,
-                        tensor_core_shape=None):
+                        tensor_core_shape=None,
+                        use_safe_embedding_lookup=True):
   """TPU version of `tf.compat.v1.feature_column.embedding_column`.
 
   Note that the interface for `tf.tpu.experimental.embedding_column` is
@@ -105,7 +107,10 @@ def embedding_column_v2(categorical_column,
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of embedding_column, otherwise performence
+      may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core".
       If specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
@@ -121,6 +126,13 @@ def embedding_column_v2(categorical_column,
       the intended dense shape to run embedding lookup for this feature on
       TensorCore. The batch dimension can be left None or -1 to indicate
       a dynamic shape. Only rank 2 shapes currently supported.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A  `_TPUEmbeddingColumnV2`.
@@ -174,7 +186,8 @@ def embedding_column_v2(categorical_column,
         combiner=combiner,
         initializer=initializer,
         max_sequence_length=max_sequence_length,
-        learning_rate_fn=learning_rate_fn)
+        learning_rate_fn=learning_rate_fn,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
   else:
     return _TPUDeviceSpecificEmbeddingColumnV2(
         categorical_column=categorical_column,
@@ -184,7 +197,8 @@ def embedding_column_v2(categorical_column,
         max_sequence_length=max_sequence_length,
         learning_rate_fn=learning_rate_fn,
         embedding_lookup_device=embedding_lookup_device,
-        tensor_core_shape=tensor_core_shape)
+        tensor_core_shape=tensor_core_shape,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
 
 
 @tf_export(v1=['tpu.experimental.shared_embedding_columns'])
@@ -196,7 +210,8 @@ def shared_embedding_columns_v2(categorical_columns,
                                 max_sequence_lengths=None,
                                 learning_rate_fn=None,
                                 embedding_lookup_device=None,
-                                tensor_core_shape=None):
+                                tensor_core_shape=None,
+                                use_safe_embedding_lookup=True):
   """TPU version of `tf.compat.v1.feature_column.shared_embedding_columns`.
 
   Note that the interface for `tf.tpu.experimental.shared_embedding_columns` is
@@ -254,7 +269,10 @@ def shared_embedding_columns_v2(categorical_columns,
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of shared_embedding_columns, otherwise
+      performence may suffer.
     embedding_lookup_device: The device on which to run the embedding lookup.
       Valid options are "cpu", "tpu_tensor_core", and "tpu_embedding_core". If
       specifying "tpu_tensor_core", a tensor_core_shape must be supplied.
@@ -270,6 +288,13 @@ def shared_embedding_columns_v2(categorical_columns,
       intended dense shape to run embedding lookup for this feature on
       TensorCore. The batch dimension can be left None or -1 to indicate a
       dynamic shape. Only rank 2 shapes currently supported.
+    use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
+      instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
+      there are no empty rows and all weights and ids are positive at the
+      expense of extra compute cost. This only applies to rank 2 (NxM) shaped
+      input tensors. Defaults to true, consider turning off if the above checks
+      are not needed. Note that having empty rows will not trigger any error
+      though the output result might be 0 or omitted.
 
   Returns:
     A  list of `_TPUSharedEmbeddingColumnV2`.
@@ -363,7 +388,8 @@ def shared_embedding_columns_v2(categorical_columns,
           initializer=initializer,
           shared_embedding_collection_name=shared_embedding_collection_name,
           max_sequence_length=max_sequence_length,
-          learning_rate_fn=learning_rate_fn)
+          learning_rate_fn=learning_rate_fn,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
     else:
       column = _TPUSharedDeviceSpecificEmbeddingColumnV2(
           categorical_column=categorical_column,
@@ -374,7 +400,8 @@ def shared_embedding_columns_v2(categorical_columns,
           max_sequence_length=max_sequence_length,
           learning_rate_fn=learning_rate_fn,
           embedding_lookup_device=embedding_lookup_device,
-          tensor_core_shape=tensor_core_shape)
+          tensor_core_shape=tensor_core_shape,
+          use_safe_embedding_lookup=use_safe_embedding_lookup)
     tpu_columns.append(column)
 
   return tpu_columns
@@ -389,7 +416,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
               combiner='mean',
               initializer=None,
               max_sequence_length=0,
-              learning_rate_fn=None):
+              learning_rate_fn=None,
+              use_safe_embedding_lookup=True):
     return fc_lib.EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -399,7 +427,16 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
         ckpt_to_load_from=None,
         tensor_name_in_ckpt=None,
         max_norm=None,
-        trainable=True)
+        trainable=True,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.dimension, self.combiner,
+            self.initializer, self._max_sequence_length, self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
 
   def __init__(self,
                categorical_column,
@@ -407,7 +444,8 @@ class _TPUEmbeddingColumnV2(_TPUBaseEmbeddingColumn, fc_lib.EmbeddingColumn):
                combiner='mean',
                initializer=None,
                max_sequence_length=0,
-               learning_rate_fn=None):
+               learning_rate_fn=None,
+               use_safe_embedding_lookup=True):
     _TPUBaseEmbeddingColumn.__init__(
         self,
         categorical_column,
@@ -564,13 +602,25 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
               initializer=None,
               shared_embedding_collection_name=None,
               max_sequence_length=0,
-              learning_rate_fn=None):
+              learning_rate_fn=None,
+              use_safe_embedding_lookup=True):
     return fc_lib.SharedEmbeddingColumn.__new__(
         cls,
         categorical_column,
         combiner=combiner,
         shared_embedding_column_creator=shared_embedding_column_creator,
-        max_norm=None)
+        max_norm=None,
+        use_safe_embedding_lookup=use_safe_embedding_lookup)
+
+  def __getnewargs__(self):
+    return (self._tpu_categorical_column, self.shared_embedding_column_creator,
+            self.combiner, self._initializer,
+            self._shared_embedding_collection_name, self._max_sequence_length,
+            self._learning_rate_fn)
+
+  def __deepcopy__(self, memo):
+    return _TPUSharedEmbeddingColumnV2(
+        *(copy.deepcopy(a, memo) for a in self.__getnewargs__()))
 
   def __init__(self,
                categorical_column,
@@ -579,7 +629,8 @@ class _TPUSharedEmbeddingColumnV2(_TPUBaseEmbeddingColumn,
                initializer=None,
                shared_embedding_collection_name=None,
                max_sequence_length=0,
-               learning_rate_fn=None):
+               learning_rate_fn=None,
+               use_safe_embedding_lookup=True):
 
     _TPUBaseEmbeddingColumn.__init__(
         self,

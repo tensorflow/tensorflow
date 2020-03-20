@@ -26,8 +26,10 @@ from scipy.special import expit
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import layers
 from tensorflow.python.keras import metrics
+from tensorflow.python.keras import models
 from tensorflow.python.keras.utils import metrics_utils
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -35,19 +37,19 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FalsePositivesTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class FalsePositivesTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     fp_obj = metrics.FalsePositives(name='my_fp', thresholds=[0.4, 0.9])
     self.assertEqual(fp_obj.name, 'my_fp')
-    self.assertEqual(len(fp_obj.variables), 1)
+    self.assertLen(fp_obj.variables, 1)
     self.assertEqual(fp_obj.thresholds, [0.4, 0.9])
 
     # Check save and restore config
     fp_obj2 = metrics.FalsePositives.from_config(fp_obj.get_config())
     self.assertEqual(fp_obj2.name, 'my_fp')
-    self.assertEqual(len(fp_obj2.variables), 1)
+    self.assertLen(fp_obj2.variables, 1)
     self.assertEqual(fp_obj2.thresholds, [0.4, 0.9])
 
   def test_unweighted(self):
@@ -115,19 +117,19 @@ class FalsePositivesTest(test.TestCase):
       metrics.FalsePositives(thresholds=[None])
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class FalseNegativesTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class FalseNegativesTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     fn_obj = metrics.FalseNegatives(name='my_fn', thresholds=[0.4, 0.9])
     self.assertEqual(fn_obj.name, 'my_fn')
-    self.assertEqual(len(fn_obj.variables), 1)
+    self.assertLen(fn_obj.variables, 1)
     self.assertEqual(fn_obj.thresholds, [0.4, 0.9])
 
     # Check save and restore config
     fn_obj2 = metrics.FalseNegatives.from_config(fn_obj.get_config())
     self.assertEqual(fn_obj2.name, 'my_fn')
-    self.assertEqual(len(fn_obj2.variables), 1)
+    self.assertLen(fn_obj2.variables, 1)
     self.assertEqual(fn_obj2.thresholds, [0.4, 0.9])
 
   def test_unweighted(self):
@@ -183,19 +185,19 @@ class FalseNegativesTest(test.TestCase):
     self.assertAllClose([4., 16., 23.], self.evaluate(result))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TrueNegativesTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class TrueNegativesTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     tn_obj = metrics.TrueNegatives(name='my_tn', thresholds=[0.4, 0.9])
     self.assertEqual(tn_obj.name, 'my_tn')
-    self.assertEqual(len(tn_obj.variables), 1)
+    self.assertLen(tn_obj.variables, 1)
     self.assertEqual(tn_obj.thresholds, [0.4, 0.9])
 
     # Check save and restore config
     tn_obj2 = metrics.TrueNegatives.from_config(tn_obj.get_config())
     self.assertEqual(tn_obj2.name, 'my_tn')
-    self.assertEqual(len(tn_obj2.variables), 1)
+    self.assertLen(tn_obj2.variables, 1)
     self.assertEqual(tn_obj2.thresholds, [0.4, 0.9])
 
   def test_unweighted(self):
@@ -251,19 +253,19 @@ class TrueNegativesTest(test.TestCase):
     self.assertAllClose([5., 15., 23.], self.evaluate(result))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TruePositivesTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class TruePositivesTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     tp_obj = metrics.TruePositives(name='my_tp', thresholds=[0.4, 0.9])
     self.assertEqual(tp_obj.name, 'my_tp')
-    self.assertEqual(len(tp_obj.variables), 1)
+    self.assertLen(tp_obj.variables, 1)
     self.assertEqual(tp_obj.thresholds, [0.4, 0.9])
 
     # Check save and restore config
     tp_obj2 = metrics.TruePositives.from_config(tp_obj.get_config())
     self.assertEqual(tp_obj2.name, 'my_tp')
-    self.assertEqual(len(tp_obj2.variables), 1)
+    self.assertLen(tp_obj2.variables, 1)
     self.assertEqual(tp_obj2.thresholds, [0.4, 0.9])
 
   def test_unweighted(self):
@@ -318,14 +320,14 @@ class TruePositivesTest(test.TestCase):
     self.assertAllClose([222., 111., 37.], self.evaluate(result))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class PrecisionTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class PrecisionTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     p_obj = metrics.Precision(
         name='my_precision', thresholds=[0.4, 0.9], top_k=15, class_id=12)
     self.assertEqual(p_obj.name, 'my_precision')
-    self.assertEqual(len(p_obj.variables), 2)
+    self.assertLen(p_obj.variables, 2)
     self.assertEqual([v.name for v in p_obj.variables],
                      ['true_positives:0', 'false_positives:0'])
     self.assertEqual(p_obj.thresholds, [0.4, 0.9])
@@ -335,7 +337,7 @@ class PrecisionTest(test.TestCase):
     # Check save and restore config
     p_obj2 = metrics.Precision.from_config(p_obj.get_config())
     self.assertEqual(p_obj2.name, 'my_precision')
-    self.assertEqual(len(p_obj2.variables), 2)
+    self.assertLen(p_obj2.variables, 2)
     self.assertEqual(p_obj2.thresholds, [0.4, 0.9])
     self.assertEqual(p_obj2.top_k, 15)
     self.assertEqual(p_obj2.class_id, 12)
@@ -523,14 +525,14 @@ class PrecisionTest(test.TestCase):
     self.assertAlmostEqual(0, self.evaluate(p_obj.false_positives))
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class RecallTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class RecallTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
     r_obj = metrics.Recall(
         name='my_recall', thresholds=[0.4, 0.9], top_k=15, class_id=12)
     self.assertEqual(r_obj.name, 'my_recall')
-    self.assertEqual(len(r_obj.variables), 2)
+    self.assertLen(r_obj.variables, 2)
     self.assertEqual([v.name for v in r_obj.variables],
                      ['true_positives:0', 'false_negatives:0'])
     self.assertEqual(r_obj.thresholds, [0.4, 0.9])
@@ -540,7 +542,7 @@ class RecallTest(test.TestCase):
     # Check save and restore config
     r_obj2 = metrics.Recall.from_config(r_obj.get_config())
     self.assertEqual(r_obj2.name, 'my_recall')
-    self.assertEqual(len(r_obj2.variables), 2)
+    self.assertLen(r_obj2.variables, 2)
     self.assertEqual(r_obj2.thresholds, [0.4, 0.9])
     self.assertEqual(r_obj2.top_k, 15)
     self.assertEqual(r_obj2.class_id, 12)
@@ -727,7 +729,7 @@ class RecallTest(test.TestCase):
     self.assertAlmostEqual(3, self.evaluate(r_obj.false_negatives))
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
@@ -769,13 +771,14 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
                              1e-3)
 
   def test_unweighted_all_correct(self):
-    s_obj = metrics.SensitivityAtSpecificity(0.7)
-    inputs = np.random.randint(0, 2, size=(100, 1))
-    y_pred = constant_op.constant(inputs, dtype=dtypes.float32)
-    y_true = constant_op.constant(inputs)
-    self.evaluate(variables.variables_initializer(s_obj.variables))
-    result = s_obj(y_true, y_pred)
-    self.assertAlmostEqual(1, self.evaluate(result))
+    with self.test_session():
+      s_obj = metrics.SensitivityAtSpecificity(0.7)
+      inputs = np.random.randint(0, 2, size=(100, 1))
+      y_pred = constant_op.constant(inputs, dtype=dtypes.float32)
+      y_true = constant_op.constant(inputs)
+      self.evaluate(variables.variables_initializer(s_obj.variables))
+      result = s_obj(y_true, y_pred)
+      self.assertAlmostEqual(1, self.evaluate(result))
 
   def test_unweighted_high_specificity(self):
     s_obj = metrics.SensitivityAtSpecificity(0.8)
@@ -823,7 +826,7 @@ class SensitivityAtSpecificityTest(test.TestCase, parameterized.TestCase):
       metrics.SensitivityAtSpecificity(0.4, num_thresholds=-1)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
@@ -874,15 +877,15 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
     self.assertAlmostEqual(1, self.evaluate(result))
 
   def test_unweighted_high_sensitivity(self):
-    s_obj = metrics.SpecificityAtSensitivity(0.8)
-    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.45, 0.5, 0.8, 0.9]
+    s_obj = metrics.SpecificityAtSensitivity(1.0)
+    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    self.assertAlmostEqual(0.4, self.evaluate(result))
+    self.assertAlmostEqual(0.2, self.evaluate(result))
 
   def test_unweighted_low_sensitivity(self):
     s_obj = metrics.SpecificityAtSensitivity(0.4)
@@ -919,7 +922,7 @@ class SpecificityAtSensitivityTest(test.TestCase, parameterized.TestCase):
       metrics.SpecificityAtSensitivity(0.4, num_thresholds=-1)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
 
   def test_config(self):
@@ -955,9 +958,9 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
       self.evaluate(update_op)
 
     # Then verify idempotency.
-    initial_specificity = self.evaluate(s_obj.result())
+    initial_precision = self.evaluate(s_obj.result())
     for _ in range(10):
-      self.assertAlmostEqual(initial_specificity, self.evaluate(s_obj.result()),
+      self.assertAlmostEqual(initial_precision, self.evaluate(s_obj.result()),
                              1e-3)
 
   def test_unweighted_all_correct(self):
@@ -971,40 +974,42 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
 
   def test_unweighted_high_recall(self):
     s_obj = metrics.PrecisionAtRecall(0.8)
-    pred_values = [0.0, 0.1, 0.2, 0.3, 0.5, 0.4, 0.5, 0.6, 0.8, 0.9]
+    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
-    # For a score between 0.4 and 0.5, we expect 0.8 precision, 0.8 recall.
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    self.assertAlmostEqual(0.8, self.evaluate(result))
+    # For 0.5 < decision threshold < 0.6.
+    self.assertAlmostEqual(2.0/3, self.evaluate(result))
 
   def test_unweighted_low_recall(self):
-    s_obj = metrics.PrecisionAtRecall(0.4)
-    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.15, 0.25, 0.26, 0.26]
+    s_obj = metrics.PrecisionAtRecall(0.6)
+    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = constant_op.constant(label_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred)
-    self.assertAlmostEqual(0.5, self.evaluate(result))
+    # For 0.2 < decision threshold < 0.5.
+    self.assertAlmostEqual(0.75, self.evaluate(result))
 
   @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
   def test_weighted(self, label_dtype):
-    s_obj = metrics.PrecisionAtRecall(0.4)
-    pred_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
+    s_obj = metrics.PrecisionAtRecall(7.0/8)
+    pred_values = [0.0, 0.1, 0.2, 0.5, 0.6, 0.2, 0.5, 0.6, 0.8, 0.9]
     label_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
-    weight_values = [2, 2, 1, 1, 1, 1, 1, 2, 2, 2]
+    weight_values = [2, 1, 2, 1, 2, 1, 2, 2, 1, 2]
 
     y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
     y_true = math_ops.cast(label_values, dtype=label_dtype)
     weights = constant_op.constant(weight_values)
     self.evaluate(variables.variables_initializer(s_obj.variables))
     result = s_obj(y_true, y_pred, sample_weight=weights)
-    self.assertAlmostEqual(2./3., self.evaluate(result))
+    # For 0.0 < decision threshold < 0.2.
+    self.assertAlmostEqual(0.7, self.evaluate(result))
 
   def test_invalid_sensitivity(self):
     with self.assertRaisesRegexp(
@@ -1016,8 +1021,123 @@ class PrecisionAtRecallTest(test.TestCase, parameterized.TestCase):
       metrics.PrecisionAtRecall(0.4, num_thresholds=-1)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class AUCTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class RecallAtPrecisionTest(test.TestCase, parameterized.TestCase):
+
+  def test_config(self):
+    s_obj = metrics.RecallAtPrecision(
+        0.4, num_thresholds=100, name='recall_at_precision_1')
+    self.assertEqual(s_obj.name, 'recall_at_precision_1')
+    self.assertLen(s_obj.variables, 4)
+    self.assertEqual(s_obj.precision, 0.4)
+    self.assertEqual(s_obj.num_thresholds, 100)
+
+    # Check save and restore config
+    s_obj2 = metrics.RecallAtPrecision.from_config(s_obj.get_config())
+    self.assertEqual(s_obj2.name, 'recall_at_precision_1')
+    self.assertLen(s_obj2.variables, 4)
+    self.assertEqual(s_obj2.precision, 0.4)
+    self.assertEqual(s_obj2.num_thresholds, 100)
+
+  def test_value_is_idempotent(self):
+    s_obj = metrics.RecallAtPrecision(0.7)
+    y_pred = random_ops.random_uniform((10, 3),
+                                       maxval=1,
+                                       dtype=dtypes.float32,
+                                       seed=1)
+    y_true = random_ops.random_uniform((10, 3),
+                                       maxval=2,
+                                       dtype=dtypes.int64,
+                                       seed=1)
+    update_op = s_obj.update_state(y_true, y_pred)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+
+    # Run several updates.
+    for _ in range(10):
+      self.evaluate(update_op)
+
+    # Then verify idempotency.
+    initial_recall = self.evaluate(s_obj.result())
+    for _ in range(10):
+      self.assertAlmostEqual(initial_recall, self.evaluate(s_obj.result()),
+                             1e-3)
+
+  def test_unweighted_all_correct(self):
+    s_obj = metrics.RecallAtPrecision(0.7)
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    y_pred = constant_op.constant(inputs, dtype=dtypes.float32)
+    y_true = constant_op.constant(inputs)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    self.assertAlmostEqual(1, self.evaluate(result))
+
+  def test_unweighted_high_precision(self):
+    s_obj = metrics.RecallAtPrecision(0.75)
+    pred_values = [
+        0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
+    ]
+    label_values = [0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1]
+    # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
+    # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The precision 0.75 can be reached at thresholds 0.4<=t<0.45.
+    self.assertAlmostEqual(0.5, self.evaluate(result))
+
+  def test_unweighted_low_precision(self):
+    s_obj = metrics.RecallAtPrecision(2.0 / 3)
+    pred_values = [
+        0.05, 0.1, 0.2, 0.3, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.9, 0.95
+    ]
+    label_values = [0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1]
+    # precisions: [1/2, 6/11, 1/2, 5/9, 5/8, 5/7, 2/3, 3/5, 3/5, 2/3, 1/2, 1].
+    # recalls:    [1,   1,    5/6, 5/6, 5/6, 5/6, 2/3, 1/2, 1/2, 1/3, 1/6, 1/6].
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The precision 5/7 can be reached at thresholds 00.3<=t<0.35.
+    self.assertAlmostEqual(5. / 6, self.evaluate(result))
+
+  @parameterized.parameters([dtypes.bool, dtypes.int32, dtypes.float32])
+  def test_weighted(self, label_dtype):
+    s_obj = metrics.RecallAtPrecision(0.75)
+    pred_values = [0.1, 0.2, 0.3, 0.5, 0.6, 0.9, 0.9]
+    label_values = [0, 1, 0, 0, 0, 1, 1]
+    weight_values = [1, 2, 1, 2, 1, 2, 1]
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = math_ops.cast(label_values, dtype=label_dtype)
+    weights = constant_op.constant(weight_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred, sample_weight=weights)
+    self.assertAlmostEqual(0.6, self.evaluate(result))
+
+  def test_unachievable_precision(self):
+    s_obj = metrics.RecallAtPrecision(2.0 / 3)
+    pred_values = [0.1, 0.2, 0.3, 0.9]
+    label_values = [1, 1, 0, 0]
+    y_pred = constant_op.constant(pred_values, dtype=dtypes.float32)
+    y_true = constant_op.constant(label_values)
+    self.evaluate(variables.variables_initializer(s_obj.variables))
+    result = s_obj(y_true, y_pred)
+    # The highest possible precision is 1/2 which is below the required
+    # value, expect 0 recall.
+    self.assertAlmostEqual(0, self.evaluate(result))
+
+  def test_invalid_sensitivity(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 r'`precision` must be in the range \[0, 1\].'):
+      metrics.RecallAtPrecision(-1)
+
+  def test_invalid_num_thresholds(self):
+    with self.assertRaisesRegexp(ValueError, '`num_thresholds` must be > 0.'):
+      metrics.RecallAtPrecision(0.4, num_thresholds=-1)
+
+
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class AUCTest(test.TestCase, parameterized.TestCase):
 
   def setup(self):
     self.num_thresholds = 3
@@ -1055,7 +1175,7 @@ class AUCTest(test.TestCase):
         name='auc_1')
     auc_obj.update_state(self.y_true, self.y_pred)
     self.assertEqual(auc_obj.name, 'auc_1')
-    self.assertEqual(len(auc_obj.variables), 4)
+    self.assertLen(auc_obj.variables, 4)
     self.assertEqual(auc_obj.num_thresholds, 100)
     self.assertEqual(auc_obj.curve, metrics_utils.AUCCurve.PR)
     self.assertEqual(auc_obj.summation_method,
@@ -1067,7 +1187,7 @@ class AUCTest(test.TestCase):
     auc_obj2 = metrics.AUC.from_config(auc_obj.get_config())
     auc_obj2.update_state(self.y_true, self.y_pred)
     self.assertEqual(auc_obj2.name, 'auc_1')
-    self.assertEqual(len(auc_obj2.variables), 4)
+    self.assertLen(auc_obj2.variables, 4)
     self.assertEqual(auc_obj2.num_thresholds, 100)
     self.assertEqual(auc_obj2.curve, metrics_utils.AUCCurve.PR)
     self.assertEqual(auc_obj2.summation_method,
@@ -1086,7 +1206,7 @@ class AUCTest(test.TestCase):
         thresholds=[0.3, 0.5])
     auc_obj.update_state(self.y_true, self.y_pred)
     self.assertEqual(auc_obj.name, 'auc_1')
-    self.assertEqual(len(auc_obj.variables), 4)
+    self.assertLen(auc_obj.variables, 4)
     self.assertEqual(auc_obj.num_thresholds, 4)
     self.assertAllClose(auc_obj.thresholds, [0.0, 0.3, 0.5, 1.0])
     self.assertEqual(auc_obj.curve, metrics_utils.AUCCurve.PR)
@@ -1099,7 +1219,7 @@ class AUCTest(test.TestCase):
     auc_obj2 = metrics.AUC.from_config(auc_obj.get_config())
     auc_obj2.update_state(self.y_true, self.y_pred)
     self.assertEqual(auc_obj2.name, 'auc_1')
-    self.assertEqual(len(auc_obj2.variables), 4)
+    self.assertLen(auc_obj2.variables, 4)
     self.assertEqual(auc_obj2.num_thresholds, 4)
     self.assertEqual(auc_obj2.curve, metrics_utils.AUCCurve.PR)
     self.assertEqual(auc_obj2.summation_method,
@@ -1290,8 +1410,8 @@ class AUCTest(test.TestCase):
     self.assertEqual(self.evaluate(result), 0.5)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class MultiAUCTest(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class MultiAUCTest(test.TestCase, parameterized.TestCase):
 
   def setup(self):
     self.num_thresholds = 5
@@ -1340,26 +1460,28 @@ class MultiAUCTest(test.TestCase):
     # fpr = [[1, 0.67, 0,    0,    0], [1, 0, 0, 0, 0]]
 
   def test_value_is_idempotent(self):
-    self.setup()
-    auc_obj = metrics.AUC(num_thresholds=5, multi_label=True)
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=5, multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
 
-    # Run several updates.
-    update_op = auc_obj.update_state(self.y_true_good, self.y_pred)
-    for _ in range(10):
-      self.evaluate(update_op)
+      # Run several updates.
+      update_op = auc_obj.update_state(self.y_true_good, self.y_pred)
+      for _ in range(10):
+        self.evaluate(update_op)
 
-    # Then verify idempotency.
-    initial_auc = self.evaluate(auc_obj.result())
-    for _ in range(10):
-      self.assertAllClose(initial_auc, self.evaluate(auc_obj.result()), 1e-3)
+      # Then verify idempotency.
+      initial_auc = self.evaluate(auc_obj.result())
+      for _ in range(10):
+        self.assertAllClose(initial_auc, self.evaluate(auc_obj.result()), 1e-3)
 
   def test_unweighted_all_correct(self):
-    self.setup()
-    auc_obj = metrics.AUC(multi_label=True)
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(self.y_true_good, self.y_true_good)
-    self.assertEqual(self.evaluate(result), 1)
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_true_good)
+      self.assertEqual(self.evaluate(result), 1)
 
   def test_unweighted_all_correct_flat(self):
     self.setup()
@@ -1369,15 +1491,17 @@ class MultiAUCTest(test.TestCase):
     self.assertEqual(self.evaluate(result), 1)
 
   def test_unweighted(self):
-    self.setup()
-    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=True)
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(self.y_true_good, self.y_pred)
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
+                            multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_pred)
 
-    # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
-    # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
-    expected_result = (0.875 + 1.0) / 2.0
-    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+      # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
+      # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
+      expected_result = (0.875 + 1.0) / 2.0
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_sample_weight_flat(self):
     self.setup()
@@ -1404,18 +1528,19 @@ class MultiAUCTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_label_weights(self):
-    self.setup()
-    auc_obj = metrics.AUC(
-        num_thresholds=self.num_thresholds,
-        multi_label=True,
-        label_weights=[0.75, 0.25])
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(self.y_true_good, self.y_pred)
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(
+          num_thresholds=self.num_thresholds,
+          multi_label=True,
+          label_weights=[0.75, 0.25])
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_pred)
 
-    # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
-    # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
-    expected_result = (0.875 * 0.75 + 1.0 * 0.25) / (0.75 + 0.25)
-    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+      # tpr = [[1, 1, 0.5, 0.5, 0], [1, 1, 0, 0, 0]]
+      # fpr = [[1, 0.5, 0, 0, 0], [1, 0, 0, 0, 0]]
+      expected_result = (0.875 * 0.75 + 1.0 * 0.25) / (0.75 + 0.25)
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_label_weights_flat(self):
     self.setup()
@@ -1448,38 +1573,91 @@ class MultiAUCTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_manual_thresholds(self):
-    self.setup()
-    # Verify that when specified, thresholds are used instead of num_thresholds.
-    auc_obj = metrics.AUC(num_thresholds=2, thresholds=[0.5], multi_label=True)
-    self.assertEqual(auc_obj.num_thresholds, 3)
-    self.assertAllClose(auc_obj.thresholds, [0.0, 0.5, 1.0])
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(self.y_true_good, self.y_pred)
+    with self.test_session():
+      self.setup()
+      # Verify that when specified, thresholds are used instead of
+      # num_thresholds.
+      auc_obj = metrics.AUC(num_thresholds=2, thresholds=[0.5],
+                            multi_label=True)
+      self.assertEqual(auc_obj.num_thresholds, 3)
+      self.assertAllClose(auc_obj.thresholds, [0.0, 0.5, 1.0])
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(self.y_true_good, self.y_pred)
 
-    # tp = [[2, 1, 0], [2, 0, 0]]
-    # fp = [2, 0, 0], [2, 0, 0]]
-    # fn = [[0, 1, 2], [0, 2, 2]]
-    # tn = [[0, 2, 2], [0, 2, 2]]
+      # tp = [[2, 1, 0], [2, 0, 0]]
+      # fp = [2, 0, 0], [2, 0, 0]]
+      # fn = [[0, 1, 2], [0, 2, 2]]
+      # tn = [[0, 2, 2], [0, 2, 2]]
 
-    # tpr = [[1, 0.5, 0], [1, 0, 0]]
-    # fpr = [[1, 0, 0], [1, 0, 0]]
+      # tpr = [[1, 0.5, 0], [1, 0, 0]]
+      # fpr = [[1, 0, 0], [1, 0, 0]]
 
-    # auc by slice = [0.75, 0.5]
-    expected_result = (0.75 + 0.5) / 2.0
+      # auc by slice = [0.75, 0.5]
+      expected_result = (0.75 + 0.5) / 2.0
 
-    self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-3)
 
   def test_weighted_roc_interpolation(self):
-    self.setup()
-    auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, multi_label=True)
-    self.evaluate(variables.variables_initializer(auc_obj.variables))
-    result = auc_obj(
-        self.y_true_good, self.y_pred, sample_weight=self.sample_weight)
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
+                            multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      result = auc_obj(
+          self.y_true_good, self.y_pred, sample_weight=self.sample_weight)
 
-    # tpr = [[1, 1,    0.57, 0.57, 0], [1, 1, 0, 0, 0]]
-    # fpr = [[1, 0.67, 0,    0,    0], [1, 0, 0, 0, 0]]
-    expected_result = 1.0 - 0.5 * 0.43 * 0.67
-    self.assertAllClose(self.evaluate(result), expected_result, 1e-1)
+      # tpr = [[1, 1,    0.57, 0.57, 0], [1, 1, 0, 0, 0]]
+      # fpr = [[1, 0.67, 0,    0,    0], [1, 0, 0, 0, 0]]
+      expected_result = 1.0 - 0.5 * 0.43 * 0.67
+      self.assertAllClose(self.evaluate(result), expected_result, 1e-1)
+
+  def test_pr_interpolation_unweighted(self):
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                            multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      good_result = auc_obj(self.y_true_good, self.y_pred)
+      with self.subTest(name='good'):
+        # PR AUCs are 0.917 and 1.0 respectively
+        self.assertAllClose(self.evaluate(good_result), (0.91667 + 1.0) / 2.0,
+                            1e-1)
+      bad_result = auc_obj(self.y_true_bad, self.y_pred)
+      with self.subTest(name='bad'):
+        # PR AUCs are 0.917 and 0.5 respectively
+        self.assertAllClose(self.evaluate(bad_result), (0.91667 + 0.5) / 2.0,
+                            1e-1)
+
+  def test_pr_interpolation(self):
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=self.num_thresholds, curve='PR',
+                            multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      good_result = auc_obj(self.y_true_good, self.y_pred,
+                            sample_weight=self.sample_weight)
+      # PR AUCs are 0.939 and 1.0 respectively
+      self.assertAllClose(self.evaluate(good_result), (0.939 + 1.0) / 2.0,
+                          1e-1)
+
+  def test_keras_model_compiles(self):
+    inputs = layers.Input(shape=(10,))
+    output = layers.Dense(3, activation='sigmoid')(inputs)
+    model = models.Model(inputs=inputs, outputs=output)
+    model.compile(
+        loss='binary_crossentropy',
+        metrics=[metrics.AUC(multi_label=True)]
+    )
+
+  def test_reset_states(self):
+    with self.test_session():
+      self.setup()
+      auc_obj = metrics.AUC(num_thresholds=self.num_thresholds,
+                            multi_label=True)
+      self.evaluate(variables.variables_initializer(auc_obj.variables))
+      auc_obj(self.y_true_good, self.y_pred)
+      auc_obj.reset_states()
+      self.assertAllEqual(auc_obj.true_positives, np.zeros((5, 2)))
 
 
 if __name__ == '__main__':

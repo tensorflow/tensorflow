@@ -24,43 +24,32 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.named_parameters(
-      ("1", 20, 14, 7, 1),
-      ("2", 20, 17, 9, 1),
-      ("3", 20, 14, 14, 1),
-      ("4", 20, 10, 14, 1),
-      ("5", 20, 14, 19, 1),
-      ("6", 20, 4, 1, 2),
-      ("7", 20, 2, 1, 6),
-      ("8", 20, 4, 7, 2),
-      ("9", 20, 2, 7, 6),
-      ("10", 1, 10, 4, 1),
-      ("11", 0, 10, 4, 1),
-      ("12", 20, 14, 7, 1, False),
-      ("13", 20, 17, 9, 1, False),
-      ("14", 20, 14, 14, 1, False),
-      ("15", 20, 10, 14, 1, False),
-      ("16", 20, 14, 19, 1, False),
-      ("17", 20, 4, 1, 2, False),
-      ("18", 20, 2, 1, 6, False),
-      ("19", 20, 4, 7, 2, False),
-      ("20", 20, 2, 7, 6, False),
-      ("21", 1, 10, 4, 1, False),
-      ("22", 0, 10, 4, 1, False),
-  )
-  def testWindowDataset(self, count, size, shift, stride, drop_remainder=True):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              count=20,
+              size=[10, 14, 17],
+              shift=[7, 14],
+              stride=[1, 2, 6],
+              drop_remainder=[True, False]) + combinations.combine(
+                  count=[0, 1],
+                  size=10,
+                  shift=4,
+                  stride=1,
+                  drop_remainder=[True, False])))
+  def testWindowDataset(self, count, size, shift, stride, drop_remainder):
     """Tests a dataset that slides a window its input elements."""
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
@@ -111,11 +100,12 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  @parameterized.named_parameters(
-      ("1", 14, 0, 3, 1),
-      ("2", 14, 3, 0, 1),
-      ("3", 14, 3, 3, 0),
-  )
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(count=20, size=0, shift=3, stride=1) +
+          combinations.combine(count=20, size=3, shift=0, stride=1) +
+          combinations.combine(count=20, size=3, shift=3, stride=0)))
   def testWindowDatasetInvalid(self, count, size, shift, stride):
     with self.assertRaises(errors.InvalidArgumentError):
       ds = dataset_ops.Dataset.range(10).map(lambda x: x).repeat(count).window(
@@ -123,12 +113,14 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
           stride=stride).flat_map(lambda x: x.batch(batch_size=size))
       self.evaluate(ds._variant_tensor)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWindowDifferentNestedStructures(self):
     ds = dataset_ops.Dataset.from_tensor_slices(([1, 2], [3, 4])).window(2)
     self.getNext(ds)
     ds = dataset_ops.Dataset.from_tensor_slices({"a": [1, 2]}).window(2)
     self.getNext(ds)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWindowSparse(self):
 
     def _sparse(i):
@@ -148,6 +140,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWindowSparseWithDifferentDenseShapes(self):
 
     def _sparse(i):
@@ -177,6 +170,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
               dense_shape=[5, i * 3 + 5 - 1]))
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedWindowSparse(self):
 
     def _sparse(i):
@@ -205,6 +199,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
     ]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWindowShapeError(self):
 
     def generator():
@@ -222,6 +217,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
             r"Cannot batch tensors with different shapes in component 0. "
             r"First element had shape \[3\] and element 2 had shape \[4\]."))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWindowIgnoreErrors(self):
     input_values = np.float32([1., np.nan, 2., np.nan, 3.])
     dataset = dataset_ops.Dataset.from_tensor_slices(input_values).map(
@@ -232,6 +228,7 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset, expected_output=[np.float32([1., 2.]),
                                   np.float32([2., 3.])])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedOutput(self):
     if not context.executing_eagerly():
       self.skipTest("self.evaluate() does not work with a dataset")

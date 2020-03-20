@@ -2,12 +2,10 @@
 # TensorFlow is a computational framework, primarily for use in machine
 # learning applications.
 
-load("//tensorflow:tensorflow.bzl", "VERSION")
-load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
-load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
+load("@bazel_skylib//lib:selects.bzl", "selects")
+load("//tensorflow:tensorflow.bzl", "VERSION", "tf_cc_shared_object", "tf_custom_op_library_additional_deps_impl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
@@ -112,27 +110,6 @@ config_setting(
 )
 
 config_setting(
-    name = "chromiumos_x86_64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_arm64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_armv7",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "armeabi-v7a"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
@@ -211,11 +188,23 @@ config_setting(
 )
 
 config_setting(
+    name = "fuchsia",
+    values = {"cpu": "fuchsia"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios_x86_64",
     values = {
         "crosstool_top": "//tools/osx/crosstool:crosstool",
         "cpu": "ios_x86_64",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "chromiumos",
+    values = {"crosstool_top": "//external:android/chromiumos"},
     visibility = ["//visibility:public"],
 )
 
@@ -465,17 +454,66 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Specifies via a config setting if this is a mobile build or not, makes
+# it easier to combine settings later.
+selects.config_setting_group(
+    name = "mobile",
+    match_any = [
+        ":android",
+        ":chromiumos",
+        ":emscripten",
+        ":ios",
+    ],
+)
+
+config_setting(
+    name = "lite_protos_legacy",
+    values = {"define": "TENSORFLOW_PROTOS=lite"},
+    visibility = ["//visibility:private"],
+)
+
+config_setting(
+    name = "full_protos",
+    values = {"define": "TENSORFLOW_PROTOS=full"},
+    visibility = ["//visibility:public"],
+)
+
+selects.config_setting_group(
+    name = "lite_protos",
+    match_any = [":lite_protos_legacy"],
+)
+
+selects.config_setting_group(
+    name = "mobile_lite_protos",
+    match_all = [
+        ":lite_protos",
+        ":mobile",
+    ],
+)
+
+selects.config_setting_group(
+    name = "mobile_full_protos",
+    match_all = [
+        ":full_protos",
+        ":mobile",
+    ],
+)
+
 # DO NOT ADD ANY NEW EXCEPTIONS TO THIS LIST!
 # Instead, please use public APIs or public build rules TF provides.
 # If you need functionality that is not exposed, we will work with you to expand our public APIs.
 package_group(
     name = "internal",
     packages = [
+        # To pass open source testing in the pip Kokoros.
+        "//bazel_pip/tensorflow/...",
+        "//learning/brain/swift/x10/...",
         "//perftools/accelerators/xprof/api/...",
+        "//third_party/py/autograph/...",
+        "//third_party/swift/tensorflow/x10/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
-        "//third_party/py/autograph/...",
     ],
 )
 
@@ -494,7 +532,8 @@ bzl_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core/platform:build_config_root_bzl",
-        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//tensorflow/core/platform:rules_cc_bzl",
+        "//tensorflow/core/platform/default:cuda_build_defs_bzl",
         "//third_party/mkl:build_defs_bzl",
         "//third_party/mkl_dnn:build_defs_bzl",
         "//third_party/ngraph:build_defs_bzl",
@@ -508,8 +547,8 @@ cc_library(
     name = "grpc",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc_unsecure"],
-        "//conditions:default": ["@grpc"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc"],
     }),
 )
 
@@ -517,8 +556,8 @@ cc_library(
     name = "grpc++",
     visibility = ["//visibility:public"],
     deps = select({
-        ":linux_s390x": ["@grpc//:grpc++_unsecure"],
-        "//conditions:default": ["@grpc//:grpc++"],
+        ":linux_s390x": ["@com_github_grpc_grpc//:grpc++_unsecure"],
+        "//conditions:default": ["@com_github_grpc_grpc//:grpc++"],
     }),
 )
 
@@ -603,9 +642,22 @@ tf_cc_shared_object(
         "//tensorflow/core:gpu_runtime_impl",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry_impl",
         "//tensorflow/core:lib_internal_impl",
+        "//tensorflow/core/profiler:profiler_impl",
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
+)
+
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
 )
 
 # -------------------------------------------
@@ -864,7 +916,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
-    root_init_template = "api_template_v1.__init__.py",
+    root_init_template = "$(location api_template_v1.__init__.py)",
 )
 
 gen_api_init_files(
@@ -887,7 +939,7 @@ gen_api_init_files(
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
     root_file_name = "v2.py",
-    root_init_template = "api_template.__init__.py",
+    root_init_template = "$(location api_template.__init__.py)",
 )
 
 py_library(
@@ -910,7 +962,6 @@ py_library(
         "//conditions:default": [":tf_python_api_gen_v1"],
     }) + [
         ":root_init_gen",
-        ":virtual_root_init_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
         "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",

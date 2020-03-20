@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
 namespace tensorflow {
@@ -64,7 +64,7 @@ class ImagenetModelEvaluator {
     std::string blacklist_file_path;
 
     // Delegate used to perform inference (if available).
-    // Valid values: 'nnapi', 'gpu'.
+    // Valid values: 'nnapi', 'gpu', 'hexagon', 'xnnpack'
     std::string delegate;
 
     // The maximum number of images to calculate accuracy.
@@ -108,8 +108,10 @@ class ImagenetModelEvaluator {
       : params_(params), num_threads_(num_threads) {}
 
   // Factory method to create the evaluator by parsing command line arguments.
+  // Note argc and argv will be updated accordingly as matching arguments will
+  // be removed in argv.
   static TfLiteStatus Create(
-      int argc, char* argv[], int num_threads,
+      int* argc, char* argv[], int num_threads,
       std::unique_ptr<ImagenetModelEvaluator>* evaluator);
 
   // Adds an observer that can observe evaluation events..

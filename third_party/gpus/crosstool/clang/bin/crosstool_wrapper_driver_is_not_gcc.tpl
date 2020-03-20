@@ -196,7 +196,7 @@ def InvokeNvcc(argv, log=False):
     return 1
 
   opt = (' -O2' if (len(opt_option) > 0 and int(opt_option[0]) > 0)
-         else ' -g -G')
+         else ' -g')
 
   includes = (' -I ' + ' -I '.join(include_options)
               if len(include_options) > 0

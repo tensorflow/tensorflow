@@ -18,6 +18,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.python import keras
@@ -34,7 +35,7 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
-_NUM_SAMPLES = 64
+_NUM_SAMPLES = 66
 _BATCH_SIZE = 32
 _RANDOM_SEED = 1337
 _NUM_EPOCHS = 2
@@ -59,12 +60,16 @@ class MaybeStrategyScope(object):
       self._scope = None
 
 
-def get_model():
+def get_model(sync_batchnorm=False):
   model = keras.Sequential()
   model.add(keras.layers.Dense(10, activation='relu', input_shape=(1,)))
   model.add(keras.layers.Dense(
       10, activation='relu',
       kernel_regularizer=keras.regularizers.l2(1e-4)))
+  if sync_batchnorm:
+    model.add(keras.layers.SyncBatchNormalization())
+  else:
+    model.add(keras.layers.BatchNormalization())
   model.add(keras.layers.Dense(10, activation='relu'))
   model.add(keras.layers.Dense(1))
   return model
@@ -89,10 +94,13 @@ def compute_loss(labels, logits, reg_losses):
 
 
 def iteration_inside_func(initial_weights, dataset, optimizer_fn,
-                          iteration_type, strategy=None):
+                          iteration_type, strategy=None, sync_batchnorm=None):
   """Helper function to test iterating over data inside a tf.function."""
   with MaybeStrategyScope(strategy):
-    model = get_model()
+    if strategy and sync_batchnorm:
+      model = get_model(sync_batchnorm)
+    else:
+      model = get_model()
     model.set_weights(initial_weights)
     optimizer = optimizer_fn()
 
@@ -117,8 +125,7 @@ def iteration_inside_func(initial_weights, dataset, optimizer_fn,
       if iteration_type == 'dataset':
         for x in dist_input:
           if strategy:
-            per_replica_losses = strategy.experimental_run_v2(step_fn,
-                                                              args=(x,))
+            per_replica_losses = strategy.run(step_fn, args=(x,))
             total_loss += strategy.reduce(reduce_util.ReduceOp.SUM,
                                           per_replica_losses,
                                           axis=None)
@@ -129,8 +136,7 @@ def iteration_inside_func(initial_weights, dataset, optimizer_fn,
         iterator = iter(dist_input)
         for _ in range(_STEPS_PER_EPOCH):
           if strategy:
-            per_replica_losses = strategy.experimental_run_v2(
-                step_fn, args=(next(iterator),))
+            per_replica_losses = strategy.run(step_fn, args=(next(iterator),))
             total_loss += strategy.reduce(reduce_util.ReduceOp.SUM,
                                           per_replica_losses,
                                           axis=None)
@@ -152,10 +158,10 @@ def iteration_inside_func(initial_weights, dataset, optimizer_fn,
 
 
 def iteration_outside_func(initial_weights, dataset, optimizer_fn,
-                           iteration_type, strategy=None):
+                           iteration_type, strategy=None, sync_batchnorm=None):
   """Helper function to test iterating over data outside a tf.function."""
   with MaybeStrategyScope(strategy):
-    model = get_model()
+    model = get_model(sync_batchnorm=sync_batchnorm)
     model.set_weights(initial_weights)
     optimizer = optimizer_fn()
 
@@ -176,8 +182,7 @@ def iteration_outside_func(initial_weights, dataset, optimizer_fn,
         return loss
 
       if strategy:
-        per_replica_losses = strategy.experimental_run_v2(
-            step_fn, args=(dist_inputs,))
+        per_replica_losses = strategy.run(step_fn, args=(dist_inputs,))
         return strategy.reduce(reduce_util.ReduceOp.SUM,
                                per_replica_losses,
                                axis=None)
@@ -218,35 +223,25 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu,
+          distribution=strategy_combinations.all_strategies,
           optimizer_fn=strategy_combinations.optimizers_v1_and_v2,
           mode=['eager'],
           iteration_type=['iterator', 'dataset'],
-          inside_func=[False, True]
+          inside_func=[False, True],
+          sync_batchnorm=[True, False]
       ))
   def test_dnn_correctness_minus_tpus(self, distribution, optimizer_fn,
-                                      iteration_type, inside_func):
+                                      iteration_type, inside_func,
+                                      sync_batchnorm):
+    # TODO(anjs): Identify why this particular V1 optimizer needs a higher tol.
+    if 'FtrlV1' in optimizer_fn._name and 'TPU' in type(distribution).__name__:
+      self.skipTest('Reduced tolerance of the order of 1e-1 required.')
     self.dnn_correctness(distribution, optimizer_fn, iteration_type,
-                         inside_func)
-
-  # TODO(b/133325470): Enable this test for all optimizers once we understand
-  # the root cause of flakiness.
-  @combinations.generate(
-      combinations.combine(
-          distribution=[strategy_combinations.tpu_strategy_one_step],
-          optimizer_fn=[strategy_combinations.adagrad_optimizer_keras_v2_fn],
-          mode=['eager'],
-          iteration_type=['iterator', 'dataset'],
-          inside_func=[False, True]
-      ))
-  def test_dnn_correctness_tpus(self, distribution, optimizer_fn,
-                                iteration_type, inside_func):
-    self.dnn_correctness(distribution, optimizer_fn, iteration_type,
-                         inside_func)
+                         inside_func, sync_batchnorm)
 
   def dnn_correctness(self, distribution, optimizer_fn, iteration_type,
-                      inside_func):
-    model = get_model()
+                      inside_func, sync_batchnorm=None):
+    model = get_model(sync_batchnorm)
     initial_weights = model.get_weights()
     dataset = get_data()
     if inside_func:
@@ -255,13 +250,15 @@ class TestDistributionStrategyDnnCorrectness(test.TestCase,
       iteration_func = iteration_outside_func
     wts_with_ds, loss_with_ds, acc_with_ds = iteration_func(
         initial_weights, dataset, optimizer_fn, iteration_type,
-        strategy=distribution)
+        strategy=distribution, sync_batchnorm=sync_batchnorm)
     wts, loss, acc = iteration_func(initial_weights, dataset, optimizer_fn,
-                                    iteration_type)
+                                    iteration_type,
+                                    sync_batchnorm=sync_batchnorm)
 
     self.assertAllClose(wts, wts_with_ds, atol=1e-3, rtol=1e-3)
     self.assertAllClose(loss, loss_with_ds, atol=1e-3, rtol=1e-3)
     self.assertAllClose(acc, acc_with_ds, atol=1e-3, rtol=1e-3)
+
 
 if __name__ == '__main__':
   test.main()

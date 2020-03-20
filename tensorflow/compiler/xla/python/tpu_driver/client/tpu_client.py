@@ -41,19 +41,29 @@ class TpuBackend(xla_client.Backend):
     self.client = client
 
   @staticmethod
-  def create(worker=None):
+  def create(worker=None, force=False):
+    # `force` == True will skip caching any backends (if applicable) and will
+    # always try to create a new client.
     if worker is None:
       raise ValueError(
           'Failed to create TpuBackend. The `worker` parameter must not be '
           '`None`. Use `local` to connect to a local TPU or '
           '`grpc://host:port` to connect to a remote TPU.')
-    elif worker == 'local':
+
+    if worker == 'local' or 'local://' in worker:
+      # We usually want to cache for local backends to prevent double
+      # initialization, except where `force` == True.
+      if worker == 'local':
+        worker = 'local://'
+      if force:
+        return TpuBackend(_tpu_client.TpuClient.Get(worker))
       if TpuBackend._local_backend is None:
         logging.info('Starting the local TPU driver.')
         TpuBackend._local_backend = TpuBackend(
-            _tpu_client.TpuClient.Get('local://'))
+            _tpu_client.TpuClient.Get(worker))
       return TpuBackend._local_backend
     else:
+      # We do not cache for non-local backends.
       return TpuBackend(_tpu_client.TpuClient.Get(worker))
 
   def device_count(self):
@@ -71,17 +81,15 @@ class TpuBackend(xla_client.Backend):
   def host_id(self):
     return self.client.host_id()
 
-  def buffer_from_pyval(self, pyval, device=None):
+  def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     if device is None:
       device = self.client.local_devices()[0]
     return _tpu_client.PyTpuBuffer.from_python(pyval, self.client, device)
 
-  def make_tuple(self, c_buffers, device):
-    return _tpu_client.PyTpuBuffer.make_tuple(c_buffers, self.client, device)
-
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
+    options.num_partitions = compile_options.num_partitions
     if compile_options.result_layout:
       options.result_layout = compile_options.result_layout
     options.debug_options.xla_cpu_fast_math_honor_infs = True
@@ -93,6 +101,14 @@ class TpuBackend(xla_client.Backend):
                                              compile_options.argument_layouts,
                                              options, self.client,
                                              compile_options.device_assignment)
+
+  def get_default_device_assignment(self, num_replicas, num_partitions=None):
+    if num_partitions is not None:
+      return self.client.GetDefaultDeviceAssignment(num_replicas,
+                                                    num_partitions)
+    else:
+      # TODO(henrytan): delete this case after all callers can handle 2D output
+      return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)

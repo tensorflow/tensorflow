@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/cuda_driver.h"
-#endif  // GOOGLE_CUDA
-
 namespace stream_executor {
 
 #if TENSORFLOW_USE_ROCM || defined(PLATFORM_WINDOWS)
@@ -61,7 +57,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
 // Locks on entry.
 static void WarnIfBadPtxasVersion(const string& ptxas_path) {
   static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static std::unordered_set<string>* seen_ptxas_paths GUARDED_BY(mu) =
+  static std::unordered_set<string>* seen_ptxas_paths TF_GUARDED_BY(mu) =
       new std::unordered_set<string>();
 
   tensorflow::mutex_lock lock(mu);
@@ -131,7 +127,7 @@ port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
     int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
   using PtxCacheKey = std::tuple<int, std::string, GpuAsmOpts::PtxOptionsTuple>;
   static tensorflow::mutex ptx_cache_mutex(tensorflow::LINKER_INITIALIZED);
-  static auto& ptx_cache GUARDED_BY(ptx_cache_mutex) =
+  static auto& ptx_cache TF_GUARDED_BY(ptx_cache_mutex) =
       *new absl::flat_hash_map<PtxCacheKey, std::vector<uint8>>();
 
   tensorflow::mutex_lock lock(ptx_cache_mutex);
@@ -159,7 +155,12 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   int cc_minor;
   TF_RETURN_IF_ERROR(
       gpu::GpuDriver::GetComputeCapability(&cc_major, &cc_minor, handle));
+  return CompileGpuAsm(cc_major, cc_minor, ptx_contents, options);
+}
 
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options) {
   string ptxas_path;
   auto env = tensorflow::Env::Default();
   for (const string& cuda_root :
@@ -170,7 +171,10 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
       break;
     }
   }
-  TF_RETURN_IF_ERROR(env->FileExists(ptxas_path));
+  if (!env->FileExists(ptxas_path).ok()) {
+    // Rely on subprocess invocation to find the correct binary.
+    ptxas_path = "ptxas";
+  }
   VLOG(2) << "Using ptxas at " << ptxas_path;
 
   WarnIfBadPtxasVersion(ptxas_path);
@@ -180,13 +184,13 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   if (!env->LocalTempFilename(&ptx_path)) {
     return port::InternalError("couldn't get temp PTX file name");
   }
-  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
-    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
-  });
-
   TF_RETURN_IF_ERROR(
       tensorflow::WriteStringToFile(env, ptx_path, ptx_contents));
   VLOG(2) << "ptx written to: " << ptx_path;
+
+  auto ptx_cleaner = tensorflow::gtl::MakeCleanup([&ptx_path] {
+    TF_CHECK_OK(tensorflow::Env::Default()->DeleteFile(ptx_path));
+  });
 
   // Invoke ptxas and collect its output.
   string cubin_path;
@@ -208,6 +212,8 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
   if (options.disable_gpuasm_optimizations) {
     ptxas_args.push_back("-O0");
   }
+  ptxas_args.insert(ptxas_args.end(), options.extra_flags.begin(),
+                    options.extra_flags.end());
   ptxas_info_dumper.SetProgram(ptxas_path, ptxas_args);
   ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
                                      tensorflow::ACTION_PIPE);

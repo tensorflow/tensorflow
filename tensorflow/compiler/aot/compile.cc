@@ -20,7 +20,11 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/call_once.h"
+#include "llvm-c/Target.h"
+#include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/flags.h"
+#include "tensorflow/compiler/mlir/lite/quantization/xla/quantize.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -36,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -90,7 +95,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
 
 }  // namespace
 
-Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
+Status CompileGraph(GraphDef graph_def, const tf2xla::Config& config,
                     const MainFlags& flags, CompileResult* compile_result) {
   // Converts the graph into an XLA computation, and compiles the
   // computation.
@@ -101,8 +106,19 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
   xla::XlaComputation computation;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToXla(graph_def, config, client, &computation));
+  if (flags.mlir_components == "Bridge") {
+    TF_RETURN_IF_ERROR(ConvertGraphDefToXlaViaMlir(
+        graph_def, config, &computation, flags.debug_info,
+        flags.debug_info_path_begin_marker));
+  } else if (flags.mlir_components.empty() || flags.mlir_components == "None") {
+    TF_RETURN_IF_ERROR(ConvertGraphDefToXla(std::move(graph_def), config,
+                                            client, &computation));
+  } else {
+    return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
+  }
+  if (flags.quantize) {
+    TF_RETURN_IF_ERROR(mlir::xla_hlo::XlaQuantize(config, &computation));
+  }
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
@@ -122,6 +138,119 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       xla::cpu::CpuAotCompilationOptions::RelocationModel::BigPic);
 
   return CompileXla(client, computation, aot_opts, compile_result);
+}
+
+static Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
+  if (absl::EndsWith(fname, ".pbtxt")) {
+    return ReadTextProto(Env::Default(), fname, proto);
+  } else {
+    return ReadBinaryProto(Env::Default(), fname, proto);
+  }
+}
+
+static absl::once_flag targets_init;
+
+static void InitializeTargets() {
+  // Initialize all LLVM targets so we can cross compile.
+#if TF_LLVM_AARCH64_AVAILABLE
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
+#endif
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmPrinter();
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
+}
+
+// Replaces {{tag.type tag.name}} in the error message with tag_name.
+// TODO(bixia): We currently only handlge tag.type == "node".
+//
+// In the error message, a graph node is represented as {{tag.type, tag.name}},
+// to allow a Python debugger to insert source information about the graph node.
+// For example, a Python add expression may be represented as
+// {{node, x_y_sum}} = Add(x, y) in the error message. See routine interpolate
+// in tensorflow/python/framework/error_interpolation.py for more detail.
+static std::string InterpolateErrorMessage(std::string message) {
+  // See _NAME_REGEX in tensorflow/python/framework/error_interpolation.py
+  // Change "prefix {{node tag.name}} suffix" to "prefix tag.name suffix".
+  static LazyRE2 pattern{"(.*){{node (.*)}}(.*)"};
+  RE2::GlobalReplace(&message, *pattern, "\\1\\2\\3");
+
+  return message;
+}
+
+Status Main(const MainFlags& flags) {
+  absl::call_once(targets_init, &InitializeTargets);
+
+  // Process config.
+  tf2xla::Config config;
+  if (flags.config.empty()) {
+    return errors::InvalidArgument("Must specify --config");
+  }
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.config, &config));
+  TF_RETURN_IF_ERROR(ValidateConfig(config));
+  if (flags.dump_fetch_nodes) {
+    std::set<string> nodes;
+    for (const tf2xla::Fetch& fetch : config.fetch()) {
+      nodes.insert(fetch.id().node_name());
+    }
+    std::cout << absl::StrJoin(nodes, ",");
+    return Status::OK();
+  }
+
+  // Read and initialize the graph.
+  if (flags.graph.empty()) {
+    return errors::InvalidArgument("Must specify --graph");
+  }
+  GraphDef graph_def;
+  TF_RETURN_IF_ERROR(ReadProtoFile(flags.graph, &graph_def));
+  CompileResult compile_result;
+
+  Status status =
+      CompileGraph(std::move(graph_def), config, flags, &compile_result);
+  if (!status.ok()) {
+    return Status(status.code(),
+                  InterpolateErrorMessage(status.error_message()));
+  }
+
+  // Write output files.
+  Env* env = Env::Default();
+  const std::vector<char>& obj = compile_result.aot->object_file_data();
+  TF_RETURN_IF_ERROR(
+      WriteStringToFile(env, flags.out_function_object,
+                        absl::string_view(obj.data(), obj.size())));
+  CodegenOpts codegen_opts;
+  codegen_opts.gen_name_to_index = flags.gen_name_to_index;
+  codegen_opts.gen_program_shape = flags.gen_program_shape;
+  codegen_opts.target_triple = flags.target_triple;
+  if (flags.cpp_class.empty()) {
+    return errors::InvalidArgument("Must specify --cpp_class");
+  }
+  codegen_opts.gen_hlo_profile_printer_data =
+      xla::GetDebugOptionsFromFlags().xla_hlo_profile();
+  TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &codegen_opts.class_name,
+                                   &codegen_opts.namespaces));
+
+  MetadataResult metadata_result;
+  TF_RETURN_IF_ERROR(
+      GenerateMetadata(codegen_opts, compile_result, &metadata_result));
+  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_metadata_object,
+                                       metadata_result.object_file_data));
+  string header;
+  TF_RETURN_IF_ERROR(GenerateHeader(codegen_opts, config, compile_result,
+                                    metadata_result, &header));
+  TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_header, header));
+  return Status::OK();
 }
 
 }  // namespace tfcompile

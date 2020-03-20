@@ -20,6 +20,37 @@ cc_library(
 )
 
 cc_library(
+    name = "add_quant_adjustments",
+    srcs = ["add_quant_adjustments.cc"],
+    hdrs = ["add_quant_adjustments.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:any",
+    ],
+)
+
+cc_test(
+    name = "add_quant_adjustments_test",
+    srcs = ["add_quant_adjustments_test.cc"],
+    deps = [
+        ":add_quant_adjustments",
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:model_transformer",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "fuse_add_to_conv",
     srcs = ["fuse_add_to_conv.cc"],
     hdrs = ["fuse_add_to_conv.h"],

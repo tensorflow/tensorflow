@@ -38,7 +38,20 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import sort_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+
+
+# TODO(b/145618471): Remove this dependency.
+# Lazy import to work around circular dependencies
+input_lib = lazy_loader.LazyLoader(
+    'input_lib', globals(),
+    'tensorflow.python.distribute.input_lib')
+parallel_ops = lazy_loader.LazyLoader(
+    'parallel_ops', globals(),
+    'tensorflow.python.ops.parallel_for.control_flow_ops')
 
 
 UNSPECIFIED = object()
@@ -46,7 +59,7 @@ UNSPECIFIED = object()
 
 def overload_of(f):
   if f in SUPPORTED_BUILTINS:
-    return BUILTIN_FUINCTIONS_MAP[f.__name__]
+    return BUILTIN_FUNCTIONS_MAP[f.__name__]
   return f
 
 
@@ -151,11 +164,20 @@ def super_in_original_context(f, args, caller_fn_scope):
 def abs_(x):
   if tensor_util.is_tensor(x):
     return _tf_abs(x)
+  if isinstance(x, dataset_ops.DatasetV2):
+    return _tf_dataset_abs(x)
   return _py_abs(x)
 
 
 def _tf_abs(x):
   return math_ops.abs(x)
+
+
+def _tf_dataset_abs(x):
+  specs = nest.flatten(x.element_spec)
+  if len(specs) == 1:
+    return x.map(math_ops.abs)
+  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
 
 
 def _py_abs(x):
@@ -286,7 +308,7 @@ def _tf_py_func_print(objects, kwargs):
 
   def print_wrapper(*vals):
     vals = tuple(v.numpy() if tensor_util.is_tensor(v) else v for v in vals)
-    if six.PY3:
+    if not six.PY2:
       # TensorFlow doesn't seem to generate Unicode when passing strings to
       # py_func. This causes the print to add a "b'" wrapper to the output,
       # which is probably never what you want.
@@ -332,6 +354,10 @@ def _py_range(start_or_stop, stop, step):
 def enumerate_(s, start=0):
   if isinstance(s, dataset_ops.DatasetV2):
     return _tf_dataset_enumerate(s, start)
+  if isinstance(
+      s, (input_lib.DistributedIterator, input_lib.DistributedDataset)):
+    raise NotImplementedError(
+        'use a for loop over the dataset and keep a separate counter')
   return _py_enumerate(s, start)
 
 
@@ -414,13 +440,80 @@ def _py_any(iterable):
   return any(iterable)
 
 
+def all_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_all(iterable)
+  return _py_all(iterable)
+
+
+# all() operation is similar to any() and could be translated
+# to `filter(False)` then `take(1)`, and check if `False` exists.
+def _tf_dataset_all(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "all" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: math_ops.logical_not(x))
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(True, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_all(iterable):
+  return all(iterable)
+
+
+def sorted_(iterable, key=UNSPECIFIED, reverse=UNSPECIFIED):
+  if tensor_util.is_tensor(iterable):
+    return _tf_sorted(iterable, key, reverse)
+  return _py_sorted(iterable, key, reverse)
+
+
+def _tf_sorted(iterable, key, reverse):
+  """Overload of sorted_ for Tensor iterable."""
+  if reverse is UNSPECIFIED:
+    direction = 'ASCENDING'
+  else:
+    direction = 'DESCENDING'
+  if key is not UNSPECIFIED:
+    mapped = parallel_ops.vectorized_map(key, iterable)
+    if mapped.shape.rank is not None and mapped.shape.rank != 1:
+      raise ValueError('sort only supports only 1D tensors')
+    with ops.control_dependencies([
+        check_ops.assert_rank_v2(mapped, 1,
+                                 'sort only supports only 1D tensors')
+    ]):
+      order = sort_ops.argsort(mapped, direction=direction)
+      return array_ops.gather_v2(iterable, order)
+  if iterable.shape.rank is not None and iterable.shape.rank != 1:
+    raise ValueError('sort only supports only 1D tensors')
+  with ops.control_dependencies([
+      check_ops.assert_rank_v2(iterable, 1,
+                               'sort only supports only 1D tensors')
+  ]):
+    return sort_ops.sort(iterable, direction=direction)
+
+
+def _py_sorted(iterable, key, reverse):
+  if key is not UNSPECIFIED and reverse is UNSPECIFIED:
+    return sorted(iterable, key=key)
+  if key is UNSPECIFIED and reverse is not UNSPECIFIED:
+    return sorted(iterable, reverse=reverse)
+  if key is not UNSPECIFIED and reverse is not UNSPECIFIED:
+    return sorted(iterable, key=key, reverse=reverse)
+  return sorted(iterable)
+
+
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
-                      filter, any)
+                      filter, any, all, sorted)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
 
-BUILTIN_FUINCTIONS_MAP = {
+BUILTIN_FUNCTIONS_MAP = {
     'abs': abs_,
     'float': float_,
     'int': int_,
@@ -434,4 +527,6 @@ BUILTIN_FUINCTIONS_MAP = {
     'map': map_,
     'filter': filter_,
     'any': any_,
+    'all': all_,
+    'sorted': sorted_,
 }

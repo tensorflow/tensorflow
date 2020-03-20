@@ -315,7 +315,7 @@ class TTParameters(object):
       return {signature: idx for idx, signature in enumerate(tt_signatures)}
 
   def get_signature_to_agg_fn_map(self):
-    """Returns a map that contains the aggragate function for each signature."""
+    """Returns a map that contains the aggregate function for each signature."""
     return {TT_SUMMARY_NORM: linalg_ops.norm,
             TT_SUMMARY_MAX: math_ops.reduce_max,
             TT_SUMMARY_MIN: math_ops.reduce_min,
@@ -424,7 +424,7 @@ class TTParameters(object):
     found, flag_value = self.get_flag_value(flag_name)
     if not found or not flag_value:
       return re_list
-    list_of_values = flag_value.split()
+    list_of_values = flag_value.split(',')
     for v in list_of_values:
       r = re.compile(v)
       re_list.append(r)

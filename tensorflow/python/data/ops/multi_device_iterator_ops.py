@@ -51,7 +51,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _init_func():
       return multi_device_iterator_string_handle
 
-    init_func_concrete = _init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    init_func_concrete = _init_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(autograph=False)  # Pure graph code.
@@ -62,7 +62,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.string],
           f=init_func_concrete)
 
-    self._init_func = _remote_init_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._init_func = _remote_init_func.get_concrete_function()
     self._init_captured_args = self._init_func.captured_inputs
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
@@ -84,7 +84,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           output_types=structure.get_flat_tensor_types(self._element_spec),
           output_shapes=structure.get_flat_tensor_shapes(self._element_spec))
 
-    next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    next_func_concrete = _next_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun_with_attributes(
@@ -98,7 +98,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=structure.get_flat_tensor_types(self._element_spec),
           f=next_func_concrete)
 
-    self._next_func = _remote_next_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    self._next_func = _remote_next_func.get_concrete_function()
     self._next_captured_args = self._next_func.captured_inputs
 
     self._incarnation_id_index = -1
@@ -113,7 +113,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
     def _finalize_func(unused_string_handle):
       return array_ops.constant(0, dtypes.int64)
 
-    finalize_func_concrete = _finalize_func._get_concrete_function_internal()  # pylint: disable=protected-access
+    finalize_func_concrete = _finalize_func.get_concrete_function()
 
     # TODO(b/124254153): Enable autograph once the overhead is low enough.
     @function.defun(
@@ -126,8 +126,7 @@ class _PerDeviceGenerator(dataset_ops.DatasetV2):
           Tout=[dtypes.int64],
           f=finalize_func_concrete)
 
-    self._finalize_func = (
-        _remote_finalize_func._get_concrete_function_internal())  # pylint: disable=protected-access
+    self._finalize_func = _remote_finalize_func.get_concrete_function()
     self._finalize_captured_args = self._finalize_func.captured_inputs
 
     variant_tensor = gen_dataset_ops.generator_dataset(
@@ -491,8 +490,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       RuntimeError: If executed in graph mode or outside of function building
       mode.
     """
-    if (not context.executing_eagerly() and
-        not ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+    if not context.executing_eagerly() and not ops.inside_function():
       raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:

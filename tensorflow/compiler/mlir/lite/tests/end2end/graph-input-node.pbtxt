@@ -48,6 +48,6 @@ versions {
 }
 
 # CHECK:      func @main(%arg0: tensor<4xi32>) -> tensor<4xi32>
-# CHECK-NEXT: attributes {tf.entry_function = {inputs = "input", outputs = "output"}} {
+# CHECK:      attributes {tf.entry_function = {inputs = "input", outputs = "output"}} {
 # CHECK-NEXT:   return %arg0 : tensor<4xi32>
 # CHECK-NEXT: }

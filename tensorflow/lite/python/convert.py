@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import distutils.spawn
 import enum  # pylint: disable=g-bad-import-order
 import os as _os
 import platform as _platform
@@ -34,10 +35,21 @@ from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
+_quantized_inference_types = [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]
+
+
+# If the `inference_type` or the `inference_input_type` is the quantized type
+# and it is not post training quantization, the input quantization stats is
+# required.
+def _requires_input_stats(toco_flags):
+  return ((toco_flags.inference_type in _quantized_inference_types or
+           toco_flags.inference_input_type in _quantized_inference_types) and
+          not toco_flags.post_training_quantize)
 
 # Find the toco_from_protos binary using the resource loader if using from
 # bazel, otherwise we are in a pip where console_scripts already has
@@ -116,6 +128,7 @@ def toco_convert_protos(model_flags_str,
       information. (default None)
     enable_mlir_converter: Enables MLIR-based conversion instead of the default
       TOCO conversion. (default False)
+
   Returns:
     Converted model in serialized form (e.g. a TFLITE model is common).
   Raises:
@@ -136,11 +149,22 @@ def toco_convert_protos(model_flags_str,
     except Exception as e:
       raise ConverterError(str(e))
 
+  if distutils.spawn.find_executable(_toco_from_proto_bin) is None:
+    raise ConverterError("""Could not find toco_from_protos binary, make sure
+your virtualenv bin directory or pip local bin directory is in your path.
+In particular, if you have installed TensorFlow with --user, make sure you
+add the install directory to your path.
+
+For example:
+Linux: export PATH=$PATH:~/.local/bin/
+Mac: export PATH=$PATH:~/Library/Python/<version#>/bin
+
+Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.
-  toco_filename, model_filename, input_filename, output_filename = (
-      None, None, None, None)
+  toco_filename, model_filename, input_filename, output_filename = (None, None,
+                                                                    None, None)
   try:
     # Build all input files
     with _tempfile.NamedTemporaryFile(delete=False) as fp_toco, \
@@ -204,7 +228,8 @@ def toco_convert_protos(model_flags_str,
   finally:
     # Must manually cleanup files.
     for filename in [
-        toco_filename, input_filename, model_filename, output_filename]:
+        toco_filename, input_filename, model_filename, output_filename
+    ]:
       try:
         _os.unlink(filename)
       except (OSError, TypeError):
@@ -223,6 +248,7 @@ def build_toco_convert_protos(input_tensors,
                               drop_control_dependency=True,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
+                              custom_opdefs=None,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
                               quantize_to_float16=False,
@@ -242,19 +268,19 @@ def build_toco_convert_protos(input_tensors,
       `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
-      Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
-      Must be `{tf.float32, tf.uint8}`. (default `inference_type`)
+      Must be `{tf.float32, tf.uint8, tf.int8}`.  (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
-      for a different type for input arrays in the case of quantization.
+      for a different type for input arrays in the case of quantization. Must be
+      `{tf.float32, tf.uint8, tf.int8}`. (default `inference_type`)
     input_format: Type of data to read Currently must be
       `{TENSORFLOW_GRAPHDEF}`. (default TENSORFLOW_GRAPHDEF)
-    input_shapes: Input array shape. It needs to be a list of the same length
-      as `input_tensors`, or None. (default None)
+    input_shapes: Input array shape. It needs to be a list of the same length as
+      `input_tensors`, or None. (default None)
     output_format: Output file format. Currently must be `{TFLITE,
       GRAPHVIZ_DOT}`. (default TFLITE)
     quantized_input_stats: List of tuples of floats representing the mean and
       standard deviation. Each tuple maps to the corresponding input tensor.
-      Only need if `inference_input_type` is `QUANTIZED_UINT8`.
+      Only need if `inference_input_type` is `QUANTIZED_UINT8` or `INT8`.
       real_input_value = (quantized_input_value - mean_value) / std_dev_value.
       (default None)
     default_ranges_stats: Tuple of integers representing (min, max) range values
@@ -271,28 +297,29 @@ def build_toco_convert_protos(input_tensors,
     allow_custom_ops: Boolean indicating whether to allow custom operations.
       When false any unknown operation is an error. When true, custom ops are
       created for any op that is unknown. The developer will need to provide
-      these to the TensorFlow Lite runtime with a custom resolver.
-      (default False)
+      these to the TensorFlow Lite runtime with a custom resolver. (default
+      False)
+    custom_opdefs: List of strings representing custom ops OpDefs that are
+      included in the GraphDef. Required when using custom operations with the
+      MLIR-based converter. (default None)
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
     post_training_quantize: Boolean indicating whether to quantize the weights
       of the converted float model. Model size will be reduced and there will be
-      latency improvements (at the cost of accuracy).
-      (default False)
-    quantize_to_float16: Boolean indicating whether to convert float buffers
-        to float16. (default False)
+      latency improvements (at the cost of accuracy). (default False)
+    quantize_to_float16: Boolean indicating whether to convert float buffers to
+      float16. (default False)
     dump_graphviz_dir: Full filepath of folder to dump the graphs at various
       stages of processing GraphViz .dot files. Preferred over
       --output_format=GRAPHVIZ_DOT in order to keep the requirements of the
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
-    target_ops: Experimental flag, subject to change. Set of OpsSet
-      options indicating which converter to use.
-      (default set([OpsSet.TFLITE_BUILTINS]))
-    allow_nonexistent_arrays: Allow specifying array names that don't exist
-      or are unused in the final graph. (default False)
+    target_ops: Experimental flag, subject to change. Set of OpsSet options
+      indicating which converter to use. (default set([OpsSet.TFLITE_BUILTINS]))
+    allow_nonexistent_arrays: Allow specifying array names that don't exist or
+      are unused in the final graph. (default False)
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
     conversion_summary_dir: A string, the path to the generated conversion logs.
@@ -320,6 +347,8 @@ def build_toco_convert_protos(input_tensors,
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
+  if custom_opdefs:
+    toco.custom_opdefs.extend(custom_opdefs)
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -345,17 +374,23 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if toco.inference_input_type in \
-        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
-      if not quantized_input_stats:
-        raise ValueError("std_dev and mean must be defined when "
-                         "inference_input_type is QUANTIZED_UINT8.")
+    if _requires_input_stats(toco) and quantized_input_stats:
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
+
     if input_shapes is None:
       shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
-    input_array.shape.dims.extend(list(map(int, shape)))
+
+    # Create shapes with -1 for unknown dimensions.
+    dims = []
+    for dim in shape:
+      if (dim is None or
+          (isinstance(dim, tensor_shape.Dimension) and dim.value is None)):
+        dims.append(-1)
+      else:
+        dims.append(int(dim))
+    input_array.shape.dims.extend(dims)
 
   for output_tensor in output_tensors:
     model.output_arrays.append(util.get_tensor_name(output_tensor))
@@ -379,7 +414,7 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
     input_arrays_with_shape: Tuple of strings representing input tensor names
       and list of integers representing input shapes
       (e.g., [("foo" : [1, 16, 16, 3])]). Use only when graph cannot be loaded
-      into TensorFlow and when `input_tensors` is None. (default None)
+        into TensorFlow and when `input_tensors` is None. (default None)
     output_arrays: List of output tensors to freeze graph with. Use only when
       graph cannot be loaded into TensorFlow and when `output_tensors` is None.
       (default None)
@@ -400,11 +435,11 @@ def toco_convert_graph_def(input_data, input_arrays_with_shape, output_arrays,
 
   for idx, (name, shape) in enumerate(input_arrays_with_shape):
     input_array = model_flags.input_arrays.add()
-    if toco_flags.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+    if _requires_input_stats(toco_flags):
       if (("quantized_input_stats" not in kwargs) or
           (not kwargs["quantized_input_stats"])):
-        raise ValueError("std_dev and mean must be defined when "
-                         "inference_input_type is QUANTIZED_UINT8.")
+        raise ValueError("std_dev and mean must be defined when inference_type "
+                         "or inference_input_type is QUANTIZED_UINT8 or INT8.")
       input_array.mean_value, input_array.std_value = kwargs[
           "quantized_input_stats"][idx]
     input_array.name = name

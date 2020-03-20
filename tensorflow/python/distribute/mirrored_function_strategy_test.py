@@ -52,19 +52,19 @@ class MirroredFunctionStrategyTest(test.TestCase):
 
     one = constant_op.constant(1)
     self.assertLen(f_traces, 0)
-    result1 = self._strategy.experimental_run_v2(f, args=(one,))
+    result1 = self._strategy.run(f, args=(one,))
     self.assertLen(f_traces, 1)  # Function traced once, not for each replica.
     # Returns a per-replica value.
     self.assertIsInstance(result1, values.PerReplica)
-    self.assertAllEqual([1, 2], result1.values)
     self.assertAllEqual([1, 2],
                         self._strategy.experimental_local_results(result1))
 
     # Try passing a per-replica value as an argument.
-    result2 = self._strategy.experimental_run_v2(f, args=(result1,))
+    result2 = self._strategy.run(f, args=(result1,))
     self.assertLen(f_traces, 1)
     self.assertIsInstance(result2, values.PerReplica)
-    self.assertAllEqual([1, 3], result2.values)
+    self.assertAllEqual([1, 3],
+                        self._strategy.experimental_local_results(result2))
 
   def testMergeCall(self):
     f_traces = []
@@ -88,13 +88,14 @@ class MirroredFunctionStrategyTest(test.TestCase):
     one = constant_op.constant(1)
     self.assertLen(f_traces, 0)
     self.assertLen(g_traces, 0)
-    result = self._strategy.experimental_run_v2(f, args=(one,))
+    result = self._strategy.run(f, args=(one,))
     # Functions traced once, not for each replica.
     self.assertLen(f_traces, 1)
     self.assertLen(g_traces, 1)
     # Returns a per-replica value.
     self.assertIsInstance(result, values.PerReplica)
-    self.assertAllEqual([1, 1], result.values)
+    self.assertAllEqual([1, 1],
+                        self._strategy.experimental_local_results(result))
 
 
 if __name__ == "__main__":

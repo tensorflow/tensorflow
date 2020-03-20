@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
 #include <vector>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -46,12 +48,12 @@ struct BatchToSpaceNDContext {
   TfLiteTensor* output;
 };
 
-// Currently, only 4D NHWC input/output op_context are supported.
+// Currently, only 3D NHC or 4D NHWC input/output op_context are supported.
+// In case of 3D input,it will be converted to 4D by adding W=1 to be NH1C.
 // The 4D array need to have exactly 2 spatial dimensions.
 // TODO(ycling): Support arbitrary dimension in BatchToSpaceND.
-const int kInputDimensionNum = 4;
-const int kBlockSizeDimensionNum = 1;
-const int kSpatialDimensionNum = 2;
+const int kInputMinDimensionNum = 3;
+const int kInputMaxDimensionNum = 4;
 
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 BatchToSpaceNDContext* op_context) {
@@ -59,41 +61,34 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   const int* block_shape = GetTensorData<int32>(op_context->block_shape);
   const int* crops = GetTensorData<int32>(op_context->crops);
 
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->block_shape),
-                    kBlockSizeDimensionNum);
+  int spatial_dims_num = input_size->size - 2;
+  // Block_shape should be a 1D tensor with dimension [spatial_dims_num].
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->block_shape), 1);
   TF_LITE_ENSURE_EQ(context, op_context->block_shape->dims->data[0],
-                    kSpatialDimensionNum);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->crops),
-                    kSpatialDimensionNum);
+                    spatial_dims_num);
+  // Crops should be a 2D tensor with dimension [spatial_dims_num, 2].
+  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->crops), 2);
+  TF_LITE_ENSURE_EQ(context, op_context->crops->dims->data[0],
+                    spatial_dims_num);
+  TF_LITE_ENSURE_EQ(context, op_context->crops->dims->data[1], 2);
 
-  TF_LITE_ENSURE(context, crops[0] >= 0);
-  TF_LITE_ENSURE(context, crops[1] >= 0);
-  TF_LITE_ENSURE(context, crops[2] >= 0);
-  TF_LITE_ENSURE(context, crops[3] >= 0);
-
-  // Number of batch must be multiple of (block_shape[0] * block_shape[1]).
-  TF_LITE_ENSURE_EQ(context,
-                    input_size->data[0] % (block_shape[0] * block_shape[1]), 0);
-
-  const int output_batch_size =
-      input_size->data[0] / (block_shape[0] * block_shape[1]);
-
-  const int crops_top = crops[0];
-  const int crops_bottom = crops[1];
-  const int crops_left = crops[2];
-  const int crops_right = crops[3];
-  const int output_height =
-      input_size->data[1] * block_shape[0] - crops_top - crops_bottom;
-  const int output_width =
-      input_size->data[2] * block_shape[1] - crops_left - crops_right;
-
-  const int output_channel_size = input_size->data[3];
+  for (int i = 0; i < spatial_dims_num * 2; ++i) {
+    TF_LITE_ENSURE(context, crops[i] >= 0);
+  }
 
   TfLiteIntArray* output_size = TfLiteIntArrayCopy(input_size);
+  int output_batch_size = input_size->data[0];
+  for (int dim = 0; dim < spatial_dims_num; ++dim) {
+    // Number of batch must be multiple of (block_shape[dim]).
+    TF_LITE_ENSURE_EQ(context, output_batch_size % block_shape[dim], 0);
+    output_batch_size = output_batch_size / block_shape[dim];
+    output_size->data[dim + 1] = input_size->data[dim + 1] * block_shape[dim] -
+                                 crops[dim * 2] - crops[dim * 2 + 1];
+  }
+
   output_size->data[0] = output_batch_size;
-  output_size->data[1] = output_height;
-  output_size->data[2] = output_width;
-  output_size->data[3] = output_channel_size;
+  output_size->data[input_size->size - 1] =
+      input_size->data[input_size->size - 1];
 
   return context->ResizeTensor(context, op_context->output, output_size);
 }
@@ -103,8 +98,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   BatchToSpaceNDContext op_context(context, node);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(op_context.input),
-                    kInputDimensionNum);
+  TF_LITE_ENSURE(context,
+                 NumDimensions(op_context.input) >= kInputMinDimensionNum);
+  TF_LITE_ENSURE(context,
+                 NumDimensions(op_context.input) <= kInputMaxDimensionNum);
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
 
   if (!IsConstantTensor(op_context.block_shape) ||

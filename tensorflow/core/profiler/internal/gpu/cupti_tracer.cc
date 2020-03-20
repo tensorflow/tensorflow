@@ -20,10 +20,11 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -409,7 +410,6 @@ void AddGenericEventUponApiExit(CuptiTraceCollector *collector,
 }
 
 void AddKernelActivityEvent(CuptiTraceCollector *collector,
-                            AnnotationMap *annotation_map,
                             const CUpti_ActivityKernel4 *kernel) {
   CuptiTracerEvent event;
   event.type = CuptiTracerEventType::Kernel;
@@ -421,8 +421,8 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
   event.context_id = kernel->contextId;
   event.stream_id = kernel->streamId;
   event.correlation_id = kernel->correlationId;
-  event.annotation =
-      annotation_map->LookUp(event.device_id, event.correlation_id);
+  event.annotation = collector->annotation_map()->LookUp(event.device_id,
+                                                         event.correlation_id);
   event.kernel_info.registers_per_thread = kernel->registersPerThread;
   event.kernel_info.static_shared_memory_usage = kernel->staticSharedMemory;
   event.kernel_info.dynamic_shared_memory_usage = kernel->dynamicSharedMemory;
@@ -436,7 +436,6 @@ void AddKernelActivityEvent(CuptiTraceCollector *collector,
 }
 
 void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
-                            AnnotationMap *annotation_map,
                             const CUpti_ActivityMemcpy *memcpy) {
   CuptiTracerEvent event;
   switch (memcpy->copyKind) {
@@ -468,18 +467,19 @@ void AddMemcpyActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy->contextId;
   event.stream_id = memcpy->streamId;
   event.correlation_id = memcpy->correlationId;
-  event.annotation =
-      annotation_map->LookUp(event.device_id, event.correlation_id);
+  event.annotation = collector->annotation_map()->LookUp(event.device_id,
+                                                         event.correlation_id);
   event.memcpy_info.kind = memcpy->copyKind;
   event.memcpy_info.num_bytes = memcpy->bytes;
   event.memcpy_info.destination = memcpy->deviceId;
   event.memcpy_info.async = memcpy->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
+  event.memcpy_info.src_mem_kind = memcpy->srcKind;
+  event.memcpy_info.dst_mem_kind = memcpy->dstKind;
   collector->AddEvent(std::move(event));
 }
 
 // Invokes callback upon peer-2-peer memcpy between different GPU devices.
 void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
-                             AnnotationMap *annotation_map,
                              const CUpti_ActivityMemcpy2 *memcpy2) {
   CuptiTracerEvent event;
   event.type = CuptiTracerEventType::MemcpyP2P;
@@ -491,12 +491,14 @@ void AddMemcpy2ActivityEvent(CuptiTraceCollector *collector,
   event.context_id = memcpy2->contextId;
   event.stream_id = memcpy2->streamId;
   event.correlation_id = memcpy2->correlationId;
-  event.annotation =
-      annotation_map->LookUp(event.device_id, event.correlation_id);
+  event.annotation = collector->annotation_map()->LookUp(event.device_id,
+                                                         event.correlation_id);
   event.memcpy_info.kind = CUPTI_ACTIVITY_MEMCPY_KIND_PTOP;
   event.memcpy_info.num_bytes = memcpy2->bytes;
   event.memcpy_info.destination = memcpy2->dstDeviceId;
   event.memcpy_info.async = memcpy2->flags & CUPTI_ACTIVITY_FLAG_MEMCPY_ASYNC;
+  event.memcpy_info.src_mem_kind = memcpy2->srcKind;
+  event.memcpy_info.dst_mem_kind = memcpy2->dstKind;
   collector->AddEvent(std::move(event));
 }
 
@@ -523,7 +525,7 @@ void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
       break;
     case CUPTI_ACTIVITY_OBJECT_STREAM:
       event.stream_id = overhead->objectId.dcs.streamId;
-      ABSL_FALLTHROUGH_INTENDED;
+      TF_FALLTHROUGH_INTENDED;
     case CUPTI_ACTIVITY_OBJECT_DEVICE:
     case CUPTI_ACTIVITY_OBJECT_CONTEXT:
       event.device_id = overhead->objectId.dcs.deviceId;
@@ -586,12 +588,10 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
  public:
   CuptiDriverApiHookWithActivityApi(const CuptiTracerOptions &option,
                                     CuptiInterface *cupti_interface,
-                                    CuptiTraceCollector *collector,
-                                    AnnotationMap *annotation_map)
+                                    CuptiTraceCollector *collector)
       : option_(option),
         cupti_interface_(cupti_interface),
-        collector_(collector),
-        annotation_map_(annotation_map) {}
+        collector_(collector) {}
 
   Status OnDriverApiEnter(int device_id, CUpti_CallbackDomain domain,
                           CUpti_CallbackId cbid,
@@ -621,7 +621,6 @@ class CuptiDriverApiHookWithActivityApi : public CuptiDriverApiHook {
   const CuptiTracerOptions option_;
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;
-  AnnotationMap *annotation_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CuptiDriverApiHookWithActivityApi);
 };
@@ -645,6 +644,7 @@ struct MemcpyRecord {
   CUcontext context;
   CUstream stream;
   uint32 correlation_id;
+  bool async;
   CUevent start_event;
   CUevent stop_event;
   uint64 start_timestamp;
@@ -745,9 +745,10 @@ class CudaEventRecorder {
   // Registers the start of a copy operation. The returned index should be
   // passed to StopMemcpy() after the memcpy has completed.
   size_t StartMemcpy(CuptiTracerEventType type, size_t size_bytes,
-                     CUcontext context, CUstream stream,
-                     uint32 correlation_id) {
-    MemcpyRecord record = {type, size_bytes, context, stream, correlation_id};
+                     CUcontext context, CUstream stream, uint32 correlation_id,
+                     bool async) {
+    MemcpyRecord record = {type,   size_bytes,     context,
+                           stream, correlation_id, async};
     record.start_timestamp = CuptiTracer::GetTimestamp();
     LogIfError(CreateAndRecordEvent(&record.start_event, stream));
     absl::MutexLock lock(&mutex_);
@@ -785,7 +786,7 @@ class CudaEventRecorder {
     // Synchronize all contexts, record end events, synchronize again.
     // This scheme is an unreliable measure to associate a event with the wall
     // time. There are chances that other threads might enque kernels which
-    // delay the second synchornization.
+    // delay the second synchronization.
     TF_RETURN_IF_ERROR(Synchronize());
     for (auto &pair : context_infos_) {
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
@@ -954,16 +955,16 @@ class CudaEventRecorder {
     event.memcpy_info.num_bytes = record.size_bytes;
     // TODO: support MemcpyD2D where destination != source;
     event.memcpy_info.destination = ordinal_;
-    // TODO: support differentiate sync and async memcpy.
-    event.memcpy_info.async = false;
+    event.memcpy_info.async = record.async;
+    // TODO: set src_mem_kind and dst_mem_kind.
     collector_->AddEvent(std::move(event));
     return Status::OK();
   }
 
   absl::Mutex mutex_;
-  bool stopped_ GUARDED_BY(mutex_) = false;
-  std::vector<KernelRecord> kernel_records_ GUARDED_BY(mutex_);
-  std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(mutex_);
+  bool stopped_ TF_GUARDED_BY(mutex_) = false;
+  std::vector<KernelRecord> kernel_records_ TF_GUARDED_BY(mutex_);
+  std::vector<MemcpyRecord> memcpy_records_ TF_GUARDED_BY(mutex_);
 
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;
@@ -982,11 +983,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
  public:
   CuptiDriverApiHookWithCudaEvent(const CuptiTracerOptions &option,
                                   CuptiInterface *cupti_interface,
-                                  CuptiTraceCollector *collector,
-                                  AnnotationMap *annotation_map)
+                                  CuptiTraceCollector *collector)
       : option_(option),
         cupti_interface_(cupti_interface),
-        annotation_map_(annotation_map),
         collector_(collector) {
     int num_gpus = CuptiTracer::NumGpus();
     cuda_event_recorders_.reserve(num_gpus);
@@ -1030,7 +1029,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         std::vector<uint32> record_indices;
         record_indices.reserve(params->numDevices);
         *cbdata->correlationData = -1;  // Invalid value.
-        auto &annotation = tensorflow::Annotation::CurrentAnnotation();
+        const auto &annotation = AnnotationStack::Get();
         for (int i = 0; i < params->numDevices; ++i) {
           CUstream stream = params->launchParamsList[i].hStream;
           ScopedCudaContext scoped_cuda_context(stream);
@@ -1038,8 +1037,9 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
           auto context = scoped_cuda_context.GetContext();
           if (!dev_id) return errors::Internal("Invalid CUDA stream");
           // Because annotation are per device, therefore we need to populate
-          // annotation for each device invovled.
-          annotation_map_->Add(*dev_id, cbdata->correlationId, annotation);
+          // annotation for each device involved.
+          collector_->annotation_map()->Add(*dev_id, cbdata->correlationId,
+                                            annotation);
           record_indices.push_back(
               cuda_event_recorders_[*dev_id]->StartKernel<CUDA_LAUNCH_PARAMS>(
                   "CooperativeKernelMultiDevice", *context,
@@ -1161,7 +1161,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       TF_RETURN_IF_ERROR(recorder->Stop());
     }
     for (auto &recorder : cuda_event_recorders_) {
-      TF_RETURN_IF_ERROR(recorder->Flush(annotation_map_));
+      TF_RETURN_IF_ERROR(recorder->Flush(collector_->annotation_map()));
     }
     return Status::OK();
   }
@@ -1174,16 +1174,16 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
     auto params = static_cast<const T *>(cbdata->functionParams);
     *cbdata->correlationData =
         recorder->StartMemcpy(type, params->ByteCount, cbdata->context, nullptr,
-                              cbdata->correlationId);
+                              cbdata->correlationId, /*async*/ false);
   }
   template <typename T>
   static void StartMemcpyAsync(CuptiTracerEventType type,
                                const CUpti_CallbackData *cbdata,
                                CudaEventRecorder *recorder) {
     auto params = static_cast<const T *>(cbdata->functionParams);
-    *cbdata->correlationData =
-        recorder->StartMemcpy(type, params->ByteCount, cbdata->context,
-                              params->hStream, cbdata->correlationId);
+    *cbdata->correlationData = recorder->StartMemcpy(
+        type, params->ByteCount, cbdata->context, params->hStream,
+        cbdata->correlationId, /*async*/ true);
   }
 
   static CUmemorytype GetMemoryType(CUdeviceptr ptr) {
@@ -1229,7 +1229,6 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
 
   const CuptiTracerOptions option_;
   CuptiInterface *cupti_interface_;
-  AnnotationMap *annotation_map_;
   CuptiTraceCollector *collector_;
   std::set<CuptiApiCallbackContext *> callback_contexts_;
   std::vector<std::unique_ptr<CudaEventRecorder>> cuda_event_recorders_;
@@ -1371,15 +1370,13 @@ void CuptiTracer::Enable(const CuptiTracerOptions &option,
                          CuptiTraceCollector *collector) {
   option_ = option;
   collector_ = collector;
-  annotation_map_.emplace(option.max_annotation_strings, NumGpus());
-
   if (option_->enable_event_based_activity) {
     option_->enable_activity_api = false;
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithCudaEvent(
-        option, cupti_interface_, collector, &*annotation_map_));
+        option, cupti_interface_, collector));
   } else {
     cupti_driver_api_hook_.reset(new CuptiDriverApiHookWithActivityApi(
-        option, cupti_interface_, collector, &*annotation_map_));
+        option, cupti_interface_, collector));
   }
 
   EnableApiTracing().IgnoreError();
@@ -1400,7 +1397,6 @@ void CuptiTracer::Disable() {
   collector_ = nullptr;
   option_.reset();
   cupti_driver_api_hook_.reset();
-  annotation_map_.reset();
 }
 
 Status CuptiTracer::EnableApiTracing() {
@@ -1531,9 +1527,10 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
         device_id, domain, cbid, cbdata));
   } else if (cbdata->callbackSite == CUPTI_API_EXIT) {
     // Set up the map from correlation id to annotation string.
-    const std::string &annotation = tensorflow::Annotation::CurrentAnnotation();
+    const auto &annotation = AnnotationStack::Get();
     if (!annotation.empty()) {
-      annotation_map_->Add(device_id, cbdata->correlationId, annotation);
+      collector_->annotation_map()->Add(device_id, cbdata->correlationId,
+                                        annotation);
     }
 
     TF_RETURN_IF_ERROR(cupti_driver_api_hook_->OnDriverApiExit(
@@ -1592,18 +1589,15 @@ Status CuptiTracer::ProcessActivityBuffer(CUcontext context, uint32_t stream_id,
         case CUPTI_ACTIVITY_KIND_KERNEL:  // sequential
         case CUPTI_ACTIVITY_KIND_CONCURRENT_KERNEL:
           AddKernelActivityEvent(
-              collector_, &*annotation_map_,
-              reinterpret_cast<CUpti_ActivityKernel4 *>(record));
+              collector_, reinterpret_cast<CUpti_ActivityKernel4 *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY:
           AddMemcpyActivityEvent(
-              collector_, &*annotation_map_,
-              reinterpret_cast<CUpti_ActivityMemcpy *>(record));
+              collector_, reinterpret_cast<CUpti_ActivityMemcpy *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_MEMCPY2:
           AddMemcpy2ActivityEvent(
-              collector_, &*annotation_map_,
-              reinterpret_cast<CUpti_ActivityMemcpy2 *>(record));
+              collector_, reinterpret_cast<CUpti_ActivityMemcpy2 *>(record));
           break;
         case CUPTI_ACTIVITY_KIND_OVERHEAD:
           AddCuptiOverheadActivityEvent(

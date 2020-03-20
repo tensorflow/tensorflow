@@ -449,7 +449,12 @@ string AttrValueToPython(const string& type, const AttrValue& value,
       std::ostringstream s;
       s.imbue(std::locale::classic());
       s << std::setprecision(FLT_DIG) << value.f();
-      return s.str();
+      // If there is no I/O error for `std::ostringstream s` return s.str(),
+      // otherwise fallback to strings::StrCat(value.f()).
+      if (s.good()) {
+        return s.str();
+      }
+      return strings::StrCat(value.f());
     }
   } else if (type == "bool") {
     return value.b() ? "True" : "False";

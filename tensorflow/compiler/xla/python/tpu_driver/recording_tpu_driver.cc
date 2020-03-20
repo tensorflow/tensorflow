@@ -18,6 +18,7 @@
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
@@ -43,8 +44,8 @@ class RecordingTpuDriver;
 
 class RecordingEvent : public Event {
  public:
-  explicit RecordingEvent(std::unique_ptr<Event> event)
-      : shared_event_(event.release()), id_(id_counter++) {}
+  explicit RecordingEvent(std::shared_ptr<Event> event)
+      : shared_event_(std::move(event)), id_(id_counter++) {}
 
   explicit RecordingEvent(std::shared_ptr<Event> event, int64_t id)
       : shared_event_(event), id_(id) {}
@@ -77,6 +78,7 @@ class RecordingBufferHandle : public BufferHandle {
         event_(std::make_shared<RecordingEvent>(handle_->OnReady(), id_)) {}
   std::shared_ptr<Event> OnReady() override { return event_; }
   int64_t size_in_bytes() override { return handle_->size_in_bytes(); }
+  absl::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
 
  private:
   std::unique_ptr<BufferHandle> handle_;
@@ -234,7 +236,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_handle;
   }
 
-  std::unique_ptr<Event> Deallocate(
+  std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -244,7 +246,7 @@ class RecordingTpuDriver : public TpuDriver {
     int64_t recording_handle_id = recording_handle->id_;
     auto event = driver_->Deallocate(std::move(recording_handle->handle_),
                                      unwrapped_wait_for);
-    auto recording_event = std::make_unique<RecordingEvent>(std::move(event));
+    auto recording_event = std::make_shared<RecordingEvent>(std::move(event));
     int64_t event_id = recording_event->id_;
 
     {
@@ -256,106 +258,59 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferToDevice(
-      const void* src, int64_t num_bytes, BufferHandle* dst,
+  std::shared_ptr<Event> TransferToDevice(
+      const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
+    int64_t num_bytes = dst->size_in_bytes();
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
-    int64_t recording_handle_id = static_cast<RecordingBufferHandle*>(dst)->id_;
+    auto recording_handle = static_cast<RecordingBufferHandle*>(dst);
+    int64_t recording_handle_id = recording_handle->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferToDevice(
-            src, num_bytes,
-            static_cast<RecordingBufferHandle*>(dst)->handle_.get(),
+        std::make_shared<RecordingEvent>(driver_->TransferToDevice(
+            src, static_cast<RecordingBufferHandle*>(dst)->handle_.get(),
             unwrapped_wait_for));
     int64_t event_id = recording_event->id_;
 
     {
       StreamRequest::Entry r;
       r.mutable_transfer_to()->set_target_handle(recording_handle_id);
-      r.mutable_transfer_to()->mutable_data()->assign(
-          static_cast<const char*>(src), num_bytes);
+      if (num_bytes > 0) {
+        r.mutable_transfer_to()->mutable_data()->assign(
+            static_cast<const char*>(src), num_bytes);
+      } else {
+        *r.mutable_transfer_to()->mutable_data() = "";
+      }
       PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
     }
 
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, int64_t num_bytes,
+  std::shared_ptr<Event> TransferFromDevice(
+      const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
     auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDevice(
+        std::make_shared<RecordingEvent>(driver_->TransferFromDevice(
             static_cast<const RecordingBufferHandle*>(src)->handle_.get(), dst,
-            num_bytes, unwrapped_wait_for));
-    auto event_id = recording_event->id_;
-
-    {
-      StreamRequest::Entry r;
-      r.mutable_transfer_from()->set_source_handle(src_handle_id);
-      r.mutable_transfer_from()->set_length(num_bytes);
-      PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
-    }
-
-    return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferToDevice(
-      const void* src, BufferHandle* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
-
-    int64_t shape_num_bytes = ComputeBytesFromShape(shape);
-
-    auto thread_id = GetCurrentThreadId();
-    int64_t recording_handle_id = static_cast<RecordingBufferHandle*>(dst)->id_;
-    auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferToDevice(
-            src, static_cast<RecordingBufferHandle*>(dst)->handle_.get(), shape,
             unwrapped_wait_for));
-    int64_t handle_id = recording_event->id_;
-
-    {
-      StreamRequest::Entry r;
-      r.mutable_transfer_to()->set_target_handle(recording_handle_id);
-      *r.mutable_transfer_to()->mutable_linearize_shape() = shape;
-      r.mutable_transfer_to()->mutable_data()->assign(
-          static_cast<const char*>(src), shape_num_bytes);
-      PopulateAndSaveEntry(&r, wait_for, handle_id, thread_id);
-    }
-
-    return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
-
-    auto thread_id = GetCurrentThreadId();
-    auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
-    auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDevice(
-            static_cast<const RecordingBufferHandle*>(src)->handle_.get(), dst,
-            shape, unwrapped_wait_for));
     auto event_id = recording_event->id_;
 
     {
       StreamRequest::Entry r;
       r.mutable_transfer_from()->set_source_handle(src_handle_id);
-      r.mutable_transfer_from()->set_length(-1);
-      *r.mutable_transfer_from()->mutable_delinearize_shape() = shape;
       PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
     }
 
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -364,7 +319,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
     auto dst_handle_id = static_cast<const RecordingBufferHandle*>(dst)->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDeviceToDevice(
+        std::make_shared<RecordingEvent>(driver_->TransferFromDeviceToDevice(
             static_cast<const RecordingBufferHandle*>(src)->handle_.get(),
             static_cast<const RecordingBufferHandle*>(dst)->handle_.get(),
             unwrapped_wait_for));
@@ -378,20 +333,6 @@ class RecordingTpuDriver : public TpuDriver {
     }
 
     return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferToInfeed(const void* src, int64_t num_bytes,
-                                          absl::Span<Event* const> wait_for) {
-    // TODO(b/140198941): Add infeed/outfeed functionality.
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
-  }
-
-  std::unique_ptr<Event> TransferFromOutfeed(
-      void* dst, int64_t num_bytes, absl::Span<Event* const> wait_for) {
-    // TODO(b/140198941): Add infeed/outfeed functionality.
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
   }
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
@@ -439,7 +380,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_handle;
   }
 
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -448,7 +389,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto loaded_handle_id =
         static_cast<RecordingLoadedProgramHandle*>(handle.get())->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->UnloadProgram(
+        std::make_shared<RecordingEvent>(driver_->UnloadProgram(
             std::move(static_cast<RecordingLoadedProgramHandle*>(handle.get())
                           ->handle_),
             unwrapped_wait_for));
@@ -463,7 +404,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -495,7 +436,7 @@ class RecordingTpuDriver : public TpuDriver {
     }
 
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->ExecuteProgram(
+        std::make_shared<RecordingEvent>(driver_->ExecuteProgram(
             static_cast<RecordingLoadedProgramHandle*>(program)->handle_.get(),
             unwrapped_inputs, unwrapped_outputs, device_assignment,
             unwrapped_wait_for));
@@ -576,7 +517,7 @@ class RecordingTpuDriver : public TpuDriver {
 
 xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
     const TpuDriverConfig& config) {
-  std::vector<std::string> configs = absl::StrSplit(config.worker, '|');
+  std::vector<std::string> configs = absl::StrSplit(config.worker(), '|');
 
   std::string file;
   std::string worker;
@@ -593,7 +534,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
   }
 
   TpuDriverConfig worker_config;
-  worker_config.worker = worker;
+  worker_config.set_worker(worker);
 
   auto driver_status = TpuDriverRegistry::Open(worker_config);
   if (!driver_status.ok()) return driver_status.status();

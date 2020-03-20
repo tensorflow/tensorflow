@@ -66,10 +66,8 @@ class FlatMapTest(test_base.DatasetTestBase, parameterized.TestCase):
         expected_output.extend([i] * i)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  # Note: no eager mode coverage, session specific test.
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
-  def testSkipEagerSharedResourceNestedFlatMapDataset(self):
+  @combinations.generate(test_base.graph_only_combinations())
+  def testSharedResourceNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
     components = np.array(repeats, dtype=np.int64)
     iterator = (

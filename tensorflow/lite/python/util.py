@@ -226,7 +226,6 @@ def _convert_op_hints_if_present(sess, graph_def, output_tensors,
   graph_def = tf_graph_util.convert_variables_to_constants(
       sess, graph_def, output_arrays + hinted_outputs_nodes)
   graph_def = convert_op_hints_to_stubs(graph_def=graph_def)
-  graph_def = tf_graph_util.remove_training_nodes(graph_def)
   return graph_def
 
 
@@ -363,7 +362,7 @@ def get_debug_info(nodes_to_debug_info_func, converted_graph):
   Args:
     nodes_to_debug_info_func: The method to collect the op debug info for the
       nodes.
-    converted_graph: A `GraphDef` after optimization and transfermation.
+    converted_graph: A `GraphDef` after optimization and transformation.
 
   Returns:
     `GraphDebugInfo` for all the original nodes in `converted_graph`.

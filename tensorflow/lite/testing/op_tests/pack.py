@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -36,6 +36,7 @@ def make_pack_tests(options):
           "num_tensors": [1, 2, 3, 4, 5, 6],
           "axis": [0, 1, 2, 3],
           "additional_shape": [1, 2, 3],
+          "fully_quantize": [False],
       },
       {
           "dtype": [tf.int32],
@@ -43,6 +44,7 @@ def make_pack_tests(options):
           "num_tensors": [6],
           "axis": [0, 1, 2, 3],
           "additional_shape": [1, 2, 3],
+          "fully_quantize": [False],
       },
       {
           "dtype": [tf.int64],
@@ -50,7 +52,16 @@ def make_pack_tests(options):
           "num_tensors": [5],
           "axis": [0, 1, 2, 3],
           "additional_shape": [1, 2, 3],
-      }
+          "fully_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "base_shape": [[1, 4, 3], [3, 4], [5]],
+          "num_tensors": [2, 3, 4, 5, 6],  # 1 tensor would go to Reshape.
+          "axis": [0, 1, 2, 3],
+          "additional_shape": [1, 2, 3],
+          "fully_quantize": [True],
+      },
   ]
 
   def get_shape(parameters):
@@ -75,7 +86,8 @@ def make_pack_tests(options):
   def build_inputs(parameters, sess, inputs, outputs):
     all_values = []
     for _ in range(0, parameters["num_tensors"]):
-      input_values = create_tensor_data(np.float32, get_shape(parameters))
+      input_values = create_tensor_data(
+          np.float32, get_shape(parameters), min_value=-1, max_value=1)
       all_values.append(input_values)
     return all_values, sess.run(
         outputs, feed_dict=dict(zip(inputs, all_values)))
@@ -85,4 +97,4 @@ def make_pack_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=72)
+      expected_tf_failures=117)

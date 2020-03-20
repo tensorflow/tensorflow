@@ -49,7 +49,6 @@ class RemoteMgrTest : public ::testing::Test {
         DeviceFactory::NewDevice("CPU", {}, "/job:worker/replica:0/task:0"));
     remote_device_ = devices.back().get();
     auto device_mgr = absl::make_unique<StaticDeviceMgr>(std::move(devices));
-    context_id_ = random::New64();
     tensorflow::Rendezvous* rendezvous =
         new tensorflow::IntraProcessRendezvous(device_mgr.get());
     ctx_ = new tensorflow::EagerContext(
@@ -64,58 +63,20 @@ class RemoteMgrTest : public ::testing::Test {
 
   Device* local_device_;
   Device* remote_device_;
-  uint64 context_id_;
   EagerContext* ctx_;
 };
-
-TEST_F(RemoteMgrTest, LocalTensorHandle) {
-  TestRemoteMgr remote_mgr(true, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
-
-  TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateLocalHandle(t, &handle));
-  EXPECT_EQ(nullptr, handle->device());
-  EXPECT_EQ(local_device_, handle->DeviceOrHostCPU(ctx_));
-  const uint64 op_id = remote_mgr.OpId();
-  EXPECT_EQ(1, op_id);
-  RemoteTensorHandle remote_handle;
-  TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
-      handle, &remote_handle, handle->device(),
-      handle->DeviceOrHostCPU(ctx_)->name()));
-  EXPECT_EQ(2, remote_mgr.OpId());
-  EXPECT_EQ(op_id, remote_handle.op_id());
-  EXPECT_EQ(0, remote_handle.output_num());
-  EXPECT_EQ(local_device_->name(), remote_handle.device());
-
-  TensorHandle* deserialized_handle;
-  TF_ASSERT_OK(remote_mgr.DeserializeRemoteTensorHandle(remote_handle,
-                                                        &deserialized_handle));
-  tensorflow::TensorHandle* h;
-  TF_EXPECT_OK(remote_mgr.GetTensorHandle(
-      RemoteTensorHandleInternal(remote_handle), &h));
-  TF_ASSERT_OK(
-      remote_mgr.DeleteTensorHandle(RemoteTensorHandleInternal(remote_handle)));
-  EXPECT_FALSE(
-      remote_mgr.GetTensorHandle(RemoteTensorHandleInternal(remote_handle), &h)
-          .ok());
-
-  deserialized_handle->Unref();
-  handle->Unref();
-}
 
 TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
   RemoteMgr remote_mgr(false, ctx_);
   Tensor t(DT_FLOAT, TensorShape({0}));
 
   TensorHandle* handle;
-  TF_ASSERT_OK(
-      TensorHandle::CreateLocalHandle(t, local_device_, ctx_, &handle));
+  TF_ASSERT_OK(TensorHandle::CreateLocalHandle(std::move(t), local_device_,
+                                               local_device_, ctx_, &handle));
   const uint64 op_id = 2;
   const int output_num = 3;
-  auto tensor_handle_data = absl::make_unique<RemoteTensorHandleData>(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, ctx_);
-  TF_ASSERT_OK(
-      handle->AddRemoteMirror(std::move(tensor_handle_data), remote_device_));
+  TF_ASSERT_OK(handle->AddUnshapedRemoteMirror(remote_device_, op_id,
+                                               output_num, "", ctx_));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));
@@ -127,15 +88,13 @@ TEST_F(RemoteMgrTest, SerializeLocalTensorHandleWithRemoteMirror) {
 
 TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   RemoteMgr remote_mgr(false, ctx_);
-  Tensor t(DT_FLOAT, TensorShape({0}));
 
   const uint64 op_id = 3;
   const int output_num = 1;
   TensorHandle* handle;
-  TF_ASSERT_OK(TensorHandle::CreateRemoteHandle(
-      op_id, output_num, t.shape(), /*remote_task=*/"", context_id_, DT_FLOAT,
-      remote_device_,
-      /*resource_device=*/nullptr, ctx_, &handle));
+  TF_ASSERT_OK(TensorHandle::CreateUnshapedRemoteHandle(
+      op_id, output_num,
+      /*remote_task=*/"", DT_FLOAT, remote_device_, ctx_, &handle));
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, &remote_handle, remote_device_, remote_device_->name()));

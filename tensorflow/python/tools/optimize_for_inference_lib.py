@@ -51,6 +51,7 @@ from __future__ import print_function
 import collections
 import math
 import re
+
 import numpy as np
 
 from tensorflow.core.framework import attr_value_pb2
@@ -77,12 +78,15 @@ INPUT_ORDER = {
         "conv_op", "mean_op", "var_op", "beta_op", "gamma_op"
     ],
     # Order of inputs for FusedBatchNorm.
-    "FusedBatchNorm": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"]
+    "FusedBatchNorm": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"],
+    # Order of inputs for FusedBatchNormV3.
+    "FusedBatchNormV3": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"]
 }
 # Name of the attribute epsilon value is stored in.
 EPSILON_ATTR = {
     "BatchNormWithGlobalNormalization": "variance_epsilon",
-    "FusedBatchNorm": "epsilon"
+    "FusedBatchNorm": "epsilon",
+    "FusedBatchNormV3": "epsilon"
 }
 
 
@@ -210,10 +214,10 @@ def fold_batch_norms(input_graph_def):
   addition, rather than the more expensive multiple ops, and even bake the
   scaling into the convolution weights. This function identifies the typical
   pattern of batch normalization subgraphs, and performs the transformation to
-  fold the computations down into a simpler form. It currently only spots batch
-  normalization that's performed by the BatchNormWithGlobalNormalization and
-  FusedBatchNorm ops, and will need to be extended in the future to handle the
-  newer style.
+  fold the computations down into a simpler form. It currently only supports
+  batch normalization that's performed by the BatchNormWithGlobalNormalization
+  FusedBatchNorm and FusedBatchNormV3 ops, and will need to be extended in the
+  future to handle the newer style.
 
   Args:
     input_graph_def: A GraphDef containing a model.
@@ -234,12 +238,30 @@ def fold_batch_norms(input_graph_def):
   nodes_to_skip = {}
   new_ops = []
   for node in input_graph_def.node:
-    if node.op not in ("BatchNormWithGlobalNormalization", "FusedBatchNorm"):
+    if (node.op not in ("BatchNormWithGlobalNormalization", "FusedBatchNorm",
+                        "FusedBatchNormV3")):
       continue
 
+    bias = None
     conv_op = node_from_map(input_node_map,
                             node.input[INPUT_ORDER[node.op].index("conv_op")])
-    if conv_op.op != "Conv2D" and conv_op.op != "DepthwiseConv2dNative":
+    # There might be an Add/BiasAdd op between the conv and the batchnorm,
+    # which we can fold into the mean param of the batchnorm.
+    if conv_op.op in ["BiasAdd", "Add", "AddV2"]:
+      add_op = conv_op
+      # Follow the first input of the add to get to the conv.
+      conv_op = node_from_map(input_node_map, add_op.input[0])
+      bias = node_from_map(input_node_map, add_op.input[1])
+      if conv_op.op not in ["Conv2D", "DepthwiseConv2dNative"]:
+        # Follow the second input of the add to get to the conv.
+        conv_op = node_from_map(input_node_map, add_op.input[1])
+        bias = node_from_map(input_node_map, add_op.input[0])
+    if bias and bias.op != "Const":
+      tf_logging.warning("The bias %s after the conv %s was not a constant. "
+                         "Maybe because freeze_graph wasn't "
+                         "run first?" % (bias.name, conv_op.name))
+      continue
+    if conv_op.op not in ["Conv2D", "DepthwiseConv2dNative"]:
       tf_logging.warning("Didn't find expected Conv2D or DepthwiseConv2dNative"
                          " input to '%s'" % node.name)
       continue
@@ -264,6 +286,10 @@ def fold_batch_norms(input_graph_def):
                          " run first?" % (node.name, mean_op))
       continue
     mean_value = values_from_const(mean_op)
+    if bias is not None:
+      # Adjust the mean of the batchnorm based on the add op in-between the conv
+      # and the batchnorm.
+      mean_value = mean_value - values_from_const(bias)
     if mean_value.shape != (channel_count,):
       tf_logging.warning("Incorrect shape for mean, found %s, expected %s,"
                          " for node %s" % (str(mean_value.shape), str(
@@ -315,11 +341,9 @@ def fold_batch_norms(input_graph_def):
     variance_epsilon_value = node.attr[EPSILON_ATTR[node.op]].f
     nodes_to_skip[node.name] = True
     nodes_to_skip[weights_op.name] = True
-    nodes_to_skip[mean_op.name] = True
-    nodes_to_skip[var_op.name] = True
-    nodes_to_skip[beta_op.name] = True
-    nodes_to_skip[gamma_op.name] = True
     nodes_to_skip[conv_op.name] = True
+    if bias is not None:
+      nodes_to_skip[add_op.name] = True
 
     if scale_after_normalization(node):
       scale_value = (
@@ -346,11 +370,16 @@ def fold_batch_norms(input_graph_def):
         it.iternext()
     scaled_weights_op = node_def_pb2.NodeDef()
     scaled_weights_op.op = "Const"
-    scaled_weights_op.name = weights_op.name
+    scaled_weights_op.name = conv_op.name + "_weights"
     scaled_weights_op.attr["dtype"].CopyFrom(weights_op.attr["dtype"])
     scaled_weights_op.attr["value"].CopyFrom(
         attr_value_pb2.AttrValue(tensor=tensor_util.make_tensor_proto(
             scaled_weights, weights.dtype.type, weights.shape)))
+    # Replace the weights node with scaled weights node
+    for i, weights_node in enumerate(conv_op.input):
+      if weights_node == weights_op.name:
+        conv_op.input[i] = scaled_weights_op.name
+
     new_conv_op = node_def_pb2.NodeDef()
     new_conv_op.CopyFrom(conv_op)
     offset_op = node_def_pb2.NodeDef()
@@ -374,9 +403,16 @@ def fold_batch_norms(input_graph_def):
       continue
     new_node = node_def_pb2.NodeDef()
     new_node.CopyFrom(node)
+    retained_input = []
+    for input_node in new_node.input:
+      if not input_node.startswith("^") or input_node[1:] not in nodes_to_skip:
+        retained_input.append(input_node)
+    new_node.input[:] = retained_input
+
     result_graph_def.node.extend([new_node])
 
   result_graph_def.node.extend(new_ops)
+  result_graph_def.versions.CopyFrom(input_graph_def.versions)
   return result_graph_def
 
 

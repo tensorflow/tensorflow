@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_TF_DIALECT_OP_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:local_config_mlir
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 

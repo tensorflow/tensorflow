@@ -167,7 +167,7 @@ def _get_main_op_tensor(
 
   Args:
     meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
-    init_op_key: name of collection to check; should be one of MAIN_OP_KEY
+    init_op_key: name of the collection to check; should be one of MAIN_OP_KEY
       or the deprecated LEGACY_INIT_OP_KEY
 
   Returns:
