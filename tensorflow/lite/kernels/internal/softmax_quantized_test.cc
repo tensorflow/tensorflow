@@ -25,7 +25,6 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/string_type.h"

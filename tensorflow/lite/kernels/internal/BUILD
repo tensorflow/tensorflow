@@ -438,7 +438,6 @@ cc_library(
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
-        "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
         "reference/logistic.h",
