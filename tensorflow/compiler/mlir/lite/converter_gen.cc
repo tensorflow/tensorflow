@@ -461,7 +461,7 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
                              "operand");
     GenOperandResultVerifier(os, def->getValueAsDag("results")->getArgs(),
                              "result");
-    os << "  return mlir::success();\n}\n";
+    os << "  return top.verify();\n}\n";
   }
 
   return false;
