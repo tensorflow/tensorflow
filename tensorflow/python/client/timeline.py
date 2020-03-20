@@ -439,7 +439,8 @@ class Timeline(object):
     tid = nodestats.thread_id
     inputs = []
     if is_gputrace:
-      node_name, op = self._parse_kernel_label(nodestats.timeline_label, node_name)
+      node_name, op = self._parse_kernel_label(nodestats.timeline_label,
+                                               node_name)
     elif node_name == 'RecvTensor':
       # RPC tracing does not use the standard timeline_label format.
       op = 'RecvTensor'
@@ -623,11 +624,13 @@ class Timeline(object):
     Args:
     op_time: How the execution time of op is shown in timeline.
       Possible values are "schedule", "gpu" and "all".
-      "schedule" will show op from the time it is scheduled to the end of the scheduling.
+      "schedule" will show op from the time it is scheduled to the end of
+        the scheduling.
         Notice by the end of its scheduling its async kernels may not start yet.
         It is shown using the default value from step_stats.
       "gpu" will show op with the execution time of its kernels on GPU.
-      "all" will show op from the start of its scheduling to the end of its last kernel.
+      "all" will show op from the start of its scheduling to the end of
+        its last kernel.
     """
     if op_time == "schedule":
       self._step_stats = self._origin_step_stats
@@ -648,7 +651,8 @@ class Timeline(object):
     op_gpu_end = {}
     for stats in stream_all_stats:
       for kernel in stats.node_stats:
-        name, _ = self._parse_kernel_label(kernel.timeline_label, kernel.node_name)
+        name, _ = self._parse_kernel_label(kernel.timeline_label,
+                                           kernel.node_name)
         start = kernel.all_start_micros
         end = kernel.all_start_micros + kernel.all_end_rel_micros
         if name in op_gpu_start:
@@ -662,14 +666,18 @@ class Timeline(object):
     for stats in job_stats:
       for op in stats.node_stats:
         if op.node_name in op_gpu_start:
-          end = max(op_gpu_end[op.node_name], op.all_start_micros + op.all_end_rel_micros)
+          end = max(op_gpu_end[op.node_name],
+                    op.all_start_micros + op.all_end_rel_micros)
           if op_time == "gpu":
             op.all_start_micros = op_gpu_start[op.node_name]
           op.all_end_rel_micros = end - op.all_start_micros
 
-  def analyze_step_stats(self, show_dataflow=True, show_memory=True, op_time="schedule"):
-    """Analyze the step stats and format it into Chrome Trace Format
-    
+  def analyze_step_stats(self,
+                         show_dataflow=True,
+                         show_memory=True,
+                         op_time="schedule"):
+    """Analyze the step stats and format it into Chrome Trace Format.
+
     Args:
       show_dataflow: (Optional.) If True, add flow events to the trace
         connecting producers and consumers of tensors.
@@ -677,11 +685,13 @@ class Timeline(object):
         showing the sizes and lifetimes of tensors.
       op_time: (Optional.) How the execution time of op is shown in timeline.
         Possible values are "schedule", "gpu" and "all".
-        "schedule" will show op from the time it is scheduled to the end of the scheduling.
-          Notice by the end of its scheduling its async kernels may not start yet.
-          It is shown using the default value from step_stats.
+        "schedule" will show op from the time it is scheduled to the end of
+          the scheduling.
+          Notice by the end of its scheduling its async kernels may not start
+          yet. It is shown using the default value from step_stats.
         "gpu" will show op with the execution time of its kernels on GPU.
-        "all" will show op from the start of its scheduling to the end of its last kernel.
+        "all" will show op from the start of its scheduling to the end of
+          its last kernel.
 
     Returns:
       A 'StepStatsAnalysis' object.
@@ -697,7 +707,10 @@ class Timeline(object):
         chrome_trace=self._chrome_trace,
         allocator_maximums=self._allocator_maximums)
 
-  def generate_chrome_trace_format(self, show_dataflow=True, show_memory=False, op_time="schedule"):
+  def generate_chrome_trace_format(self,
+                                   show_dataflow=True,
+                                   show_memory=False,
+                                   op_time="schedule"):
     """Produces a trace in Chrome Trace Format.
 
     Args:
@@ -707,11 +720,13 @@ class Timeline(object):
         showing the sizes and lifetimes of tensors.
       op_time: (Optional.) How the execution time of op is shown in timeline.
         Possible values are "schedule", "gpu" and "all".
-        "schedule" will show op from the time it is scheduled to the end of the scheduling.
-          Notice by the end of its scheduling its async kernels may not start yet.
-          It is shown using the default value from step_stats.
+        "schedule" will show op from the time it is scheduled to the end of
+          the scheduling.
+          Notice by the end of its scheduling its async kernels may not start
+          yet. It is shown using the default value from step_stats.
         "gpu" will show op with the execution time of its kernels on GPU.
-        "all" will show op from the start of its scheduling to the end of its last kernel.
+        "all" will show op from the start of its scheduling to the end of
+          its last kernel.
 
     Returns:
       A JSON formatted string in Chrome Trace format.
