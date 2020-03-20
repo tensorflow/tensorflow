@@ -85,16 +85,16 @@ class MaxOp : public XlaReductionOp {
  public:
   explicit MaxOp(OpKernelConstruction* ctx)
       : XlaReductionOp(ctx, ctx->input_type(0)) {
-    OP_REQUIRES_OK(ctx, TypeCheck(xla_reduction_type_));
+    OP_REQUIRES_OK(ctx, PrimitiveTypeCheck(xla_reduction_type_));
   }
 
-  Status TypeCheck(xla::PrimitiveType xla_reduction_type_) {
-    if (xla_reduction_type_ == xla::C64 || xla_reduction_type_ == xla::C128 ||
-        xla_reduction_type_ == xla::TUPLE ||
-        xla_reduction_type_ == xla::OPAQUE_TYPE) {
+  static Status PrimitiveTypeCheck(xla::PrimitiveType xla_reduction_type) {
+    if (xla_reduction_type == xla::C64 || xla_reduction_type == xla::C128 ||
+        xla_reduction_type == xla::TUPLE ||
+        xla_reduction_type == xla::OPAQUE_TYPE) {
       return errors::InvalidArgument(
           "Unsupported PrimitiveType in MaxOp: '",
-          xla::PrimitiveType_Name(xla_reduction_type_), "'");
+          xla::PrimitiveType_Name(xla_reduction_type), "'");
     } else {
       return Status::OK();
     }
