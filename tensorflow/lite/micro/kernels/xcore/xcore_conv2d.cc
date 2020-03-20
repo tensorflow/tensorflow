@@ -413,10 +413,6 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   window_start_col = -op_data->options.padding.data.left;
   zero_point = op_data->options.padding.data.zero_point;
 
-    std::cout << "window_start_row=" << (int)window_start_row << std::endl;
-    std::cout << "window_start_col=" << (int)window_start_col << std::endl;
-    std::cout << "zero_point=" << (int)zero_point << std::endl;
-
   conv2d_depthwise_init(&op_data->plan, &op_data->job, &params_in, &params_out,
                         nullptr, // job_params
                         window_start_row, window_start_col,
@@ -437,29 +433,11 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
 
   auto *op_data = reinterpret_cast<OpData *>(node->user_data);
 
-    for (int i=0; i<1*1*4; i++) {
-        std::cout << "input i=" << i << "  " << (int)input->data.int8[i] << std::endl;     
-    }
-    // for (int i=0; i<9*4; i++) {
-    //     std::cout << "weight i=" << i << "  " << (int)weights->data.int8[i] << std::endl;     
-    // }
-    // for (int i=0; i<5*16; i++) {
-    //     std::cout << "bss i=" << i << "  " << (int)bss->data.i16[i] << std::endl;     
-    // }
-    memset(output->data.int8, 0xCC, 4);
-    for (int i=0; i<1*1*4; i++) {
-        std::cout << "output before i=" << i << "  " << (int)output->data.int8[i] << std::endl;     
-    }
-
   conv2d_depthwise(output->data.int8,               // Y
                    input->data.int8,                // X,
                    weights->data.int8,              // K
                    (nn_bss_block_t *)bss->data.i16, // BSS
                    &op_data->plan, &op_data->job);
-
-    for (int i=0; i<1*1*4; i++) {
-        std::cout << "output after i=" << i << "  " << (int)output->data.int8[i] << std::endl;     
-    }
 
   return kTfLiteOk;
 }
