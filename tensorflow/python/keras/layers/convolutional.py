@@ -147,6 +147,20 @@ class Conv(Layer):
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.bias_constraint = constraints.get(bias_constraint)
     self.input_spec = InputSpec(ndim=self.rank + 2)
+    
+    
+    
+  def checkProperKernel(self,kernel_size):
+        
+        if(isinstance(kernel_size,tuple)):
+    	    for i in kernel_size:
+    		    if(i==0):
+    			    raise ValueError("Kernel dimension cannot be zero")
+        else:
+    	    if(kernel_size==0):
+                
+                raise ValueError("Kernel size cannot be zero")
+        return 
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
@@ -449,17 +463,7 @@ class Conv1D(Conv):
         
     
         
-  def checkProperKernel(self,kernel_size):
-        
-        if(isinstance(kernel_size,tuple)):
-    	    for i in kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-                
-                raise ValueError("Kernel size cannot be zero")
-        return 
+  
 
 
         
@@ -625,16 +629,7 @@ class Conv2D(Conv):
     
     
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    	        
-    	        raise ValueError("Kernel size cannot be zero")
-        return 
+  
 
 
 @keras_export('keras.layers.Conv3D', 'keras.layers.Convolution3D')
@@ -785,16 +780,7 @@ class Conv3D(Conv):
         
     
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")
-    		    
-        return 
+  
 
         
 
@@ -962,15 +948,7 @@ class Conv2DTranspose(Conv2D):
             
     
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")
-        return 
+  
 
 
                            
@@ -1274,15 +1252,7 @@ class Conv3DTranspose(Conv3D):
             
     
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")
-        return 
+  
 
 
 
@@ -1550,16 +1520,7 @@ class SeparableConv(Conv):
     self.pointwise_constraint = constraints.get(pointwise_constraint)
     
     
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in self.kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")  
-        return 
-    
+  
   
 
   def build(self, input_shape):
@@ -1789,15 +1750,7 @@ class SeparableConv1D(SeparableConv):
         **kwargs)
         
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in self.kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")  
-        return 
+  
 
   def call(self, inputs):
     if self.padding == 'causal':
@@ -1986,15 +1939,7 @@ class SeparableConv2D(SeparableConv):
         **kwargs)
         
         
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in self.kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")  
-        return 
+  
 
   def call(self, inputs):
     # Apply the actual ops.
@@ -2139,15 +2084,7 @@ class DepthwiseConv2D(Conv2D):
     
     
     
-  def checkProperKernel(self,kernel_size):
-        if(isinstance(kernel_size,tuple)):
-    	    for i in self.kernel_size:
-    		    if(i==0):
-    			    raise ValueError("Kernel dimension cannot be zero")
-        else:
-    	    if(kernel_size==0):
-    		    raise ValueError("Kernel size cannot be zero")  
-        return 
+  
 
   def build(self, input_shape):
     if len(input_shape) < 4:
