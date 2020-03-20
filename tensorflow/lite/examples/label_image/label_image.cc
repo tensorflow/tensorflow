@@ -132,7 +132,7 @@ void PrintProfilingInfo(const profiling::ProfileEvent* e,
                         uint32_t subgraph_index, uint32_t op_index,
                         TfLiteRegistration registration) {
   // output something like
-  // time (ms) , Node xxx, OpCode xxx, symblic name
+  // time (ms) , Node xxx, OpCode xxx, symbolic name
   //      5.352, Node   5, OpCode   4, DEPTHWISE_CONV_2D
 
   LOG(INFO) << std::fixed << std::setw(10) << std::setprecision(3)
