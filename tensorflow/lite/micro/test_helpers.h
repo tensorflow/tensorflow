@@ -58,6 +58,9 @@ CreateFlatbufferBuffers();
 // Performs a simple string comparison without requiring standard C library.
 int TestStrcmp(const char* a, const char* b);
 
+// Wrapper to forward kernel errors to the interpreter's error reporter.
+void ReportOpError(struct TfLiteContext* context, const char* format, ...);
+
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      TfLiteContext* context);
 
