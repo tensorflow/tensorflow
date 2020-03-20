@@ -222,7 +222,7 @@ inline void Mean(const tflite::MeanParams& op_params,
     MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
              output_shape, output_data, 0, output_depth);
   } else {
-    // Instead parrallel for batch, we loop for the output_depth since batch
+    // Instead parallel for batch, we loop for the output_depth since batch
     // is typical 1.
     std::vector<MeanWorkerTask> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.

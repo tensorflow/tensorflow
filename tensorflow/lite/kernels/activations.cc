@@ -808,7 +808,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Tanh16bitPercision(
+        optimized_ops::Tanh16bitPrecision(
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
@@ -823,7 +823,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Tanh16bitPercision(
+        optimized_ops::Tanh16bitPrecision(
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
@@ -880,7 +880,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Logistic16bitPercision(
+        optimized_ops::Logistic16bitPrecision(
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
@@ -895,7 +895,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Logistic16bitPercision(
+        optimized_ops::Logistic16bitPrecision(
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
