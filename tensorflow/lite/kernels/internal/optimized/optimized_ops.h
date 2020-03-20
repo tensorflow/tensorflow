@@ -875,21 +875,6 @@ inline void ShuffledFullyConnected(
 
 #ifdef USE_NEON
 
-inline float32x4_t DivideSumForMeanImpl(
-    const float32x4_t sum, const float32x4_t num_elements_reverse,
-    const bool ordinary_mean, const float32x4_t scale_dup,
-    const float32x4_t zero_point_with_bias_dup) {
-  const float32x4_t val = vmulq_f32(sum, num_elements_reverse);
-  if (!ordinary_mean) {
-#ifdef ARM_FEATURE_FMA
-    return vfmaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#else
-    return vmlaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#endif  // ARM_FEATURE_FMA
-  }
-  return val;
-}
-
 inline int32x4_t RoundToNearest(const float32x4_t input) {
 #if defined(__aarch64__) || defined(__SSSE3__)
   // Note: vcvtnq_s32_f32 is not available in ARMv7
