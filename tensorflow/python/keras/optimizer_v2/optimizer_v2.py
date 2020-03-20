@@ -696,8 +696,10 @@ class OptimizerV2(trackable.Trackable):
   def _prepare(self, var_list):
     keys = set()
     for var in var_list:
-      var_devices = (getattr(var, "devices", None) or  # Distributed
-                     [var.device])                     # Regular
+      if isinstance(var, ds_values.DistributedValues):
+        var_devices = var._devices   # pylint: disable=protected-access
+      else:
+        var_devices = [var.device]
       var_dtype = var.dtype.base_dtype
       for var_device in var_devices:
         keys.add((var_device, var_dtype))
