@@ -301,7 +301,7 @@ cc_library(
         ":benchmark_model_lib",
         ":delegate_provider_hdr",
         ":logging",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/tools/evaluation:utils",
     ],
     alwayslink = 1,
 )

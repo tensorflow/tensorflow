@@ -64,7 +64,7 @@ class ImagenetModelEvaluator {
     std::string blacklist_file_path;
 
     // Delegate used to perform inference (if available).
-    // Valid values: 'nnapi', 'gpu'.
+    // Valid values: 'nnapi', 'gpu', 'hexagon', 'xnnpack'
     std::string delegate;
 
     // The maximum number of images to calculate accuracy.
