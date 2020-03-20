@@ -28,9 +28,7 @@ limitations under the License.
 // the configuration through the environment variable.
 //
 // Example:
-//   bazel test \
-//     --test_env=TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL=false \
-//     //path/to:test
+//   bazel test --test_env=TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL=false //test
 
 #if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
@@ -39,11 +37,7 @@ namespace internal {
 
 // TODO(ezhulenev): This is a temporary workaround for disabling custom kernels
 // at runtime in tests. We should always rely on compile time flags for that.
-//
-// Example:
-//   bazel test \
-//     --test_env=TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL=false \
-//     //path/to:test
+// Example: ... --test_env=TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL=false //test
 EIGEN_DEVICE_FUNC EIGEN_DONT_INLINE bool UseCustomContractionKernels() {
   static bool use_custom_contraction_kernel = true;
 
