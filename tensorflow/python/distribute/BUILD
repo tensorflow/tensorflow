@@ -935,8 +935,10 @@ py_library(
 
 distribute_py_test(
     name = "values_test",
+    size = "medium",
     srcs = ["values_test.py"],
     main = "values_test.py",
+    shard_count = 5,
     tags = [
         # "multi_and_single_gpu",  # b/151865826
     ],
