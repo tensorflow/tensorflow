@@ -3744,6 +3744,9 @@ xla_test(
         "cpu",
         "gpu",
     ],
+    tags = [
+        "no_windows",  # TODO(b/152037541)
+    ],
     deps = [
         ":hlo_parser",
         "//tensorflow/compiler/xla:execution_options_util",
