@@ -101,6 +101,36 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "test_util",
+    testonly = True,
+    srcs = ["test_util.cc"],
+    hdrs = [
+        "test_util.h",
+    ],
+    data = glob(["testdata/*.pbtxt"]),
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/framework:protos_all_cc",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "test_util_test",
+    srcs = ["test_util_test.cc"],
+    deps = [
+        ":test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/data:standalone",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+    ],
+)
+
 cc_grpc_library(
     name = "master_cc_grpc_proto",
     srcs = [":master_proto"],

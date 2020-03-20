@@ -15,6 +15,7 @@ cc_library(
     srcs = ["standalone.cc"],
     hdrs = ["standalone.h"],
     deps = [
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -28,7 +29,6 @@ tf_cc_test(
     srcs = ["standalone_test.cc"],
     deps = [
         ":standalone",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ] + tf_protos_all(),
