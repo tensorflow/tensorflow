@@ -53,17 +53,17 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
       def loop_fn(i):
         with g:
-          x1 = array_ops.gather(x, i)
-          y1 = op(x1)
-          outputs = [op(x), y1]
-          if y1.dtype == dtypes.float32:
-            loss = math_ops.reduce_sum(y1 * y1)
-          else:
-            loss = None
-        if loss is not None:
-          grad = g.gradient(loss, x1)
-          if grad is not None:
-            outputs.append(grad)
+          y = op(x)
+          x_i = array_ops.gather(x, i)
+          y_i = op(x_i)
+          outputs = [y_i]
+          # Build cross product of loop variant/invariant outputs and gradients.
+          for out in (y, y_i):
+            if out.dtype == dtypes.float32:
+              for output_gradients in (None, out * math_ops.cast(i, out.dtype)):
+                grad = g.gradient(out, x_i, output_gradients=output_gradients)
+                if grad is not None:
+                  outputs.append(grad)
         return outputs
 
       # pylint: enable=cell-var-from-loop
@@ -128,6 +128,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         nn.elu,
         nn.relu,
         nn.relu6,
+        lambda t: nn.leaky_relu(t, alpha=0.1),
         nn.selu,
         nn.softplus,
         nn.softsign,
