@@ -346,6 +346,68 @@ class ExecutorImpl : public Executor {
  private:
   friend class ExecutorState;
 
+  // Stores execution time information about the kernels in an executor's graph.
+  class KernelStats {
+   public:
+    KernelStats() = default;
+
+    void Initialize(const GraphView& gview) {
+      is_expensive_ = absl::make_unique<std::atomic<bool>[]>(gview.num_nodes());
+      cost_estimates_ =
+          absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
+      for (int32 i = 0; i < gview.num_nodes(); ++i) {
+        if (gview.node(i)) {
+          is_expensive_[i] = gview.node(i)->kernel->IsExpensive();
+          cost_estimates_[i] = kInitialCostEstimateCycles;
+        }
+      }
+    }
+
+    // Returns true iff the given node is considered "expensive". The
+    // executor uses this flag to optimize graph execution, for example
+    // by "inlining" inexpensive kernels.
+    bool IsExpensive(const NodeItem& node) const {
+      return is_expensive_[node.node_id] &&
+             (cost_estimates_[node.node_id].load(std::memory_order_relaxed) >
+              kOpIsExpensiveThresholdCycles);
+    }
+
+    // Updates the dynamic cost estimate, which is used to determine whether the
+    // given node is expensive. The new cost estimate is a weighted average of
+    // the old cost estimate and the latest cost.
+    //
+    // NOTE: We currently only expect updates to the cost estimate when
+    // `is_expensive_[node.node_id]` is true (or at least, it *was* true, when
+    // we started to execute the kernel. As a result, we expect that a kernel
+    // can only ever transition from "expensive" to "inexpensive", but not vice
+    // versa.
+    void UpdateCostEstimate(const NodeItem& node, uint64 elapsed_cycles) {
+      // N.B. Updates to `cost_estimate` are atomic but unlocked.  Simultaneous
+      // updates may result in one or more updates being ignored.  This does not
+      // affect correctness but may slow down the update frequency.
+      std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
+      uint64 new_estimate = (kCostDecay - 1) *
+                                cost_estimate.load(std::memory_order_relaxed) /
+                                kCostDecay +
+                            (elapsed_cycles / kCostDecay);
+      cost_estimate.store(new_estimate, std::memory_order_relaxed);
+      if (new_estimate < kOpIsExpensiveThresholdCycles) {
+        is_expensive_[node.node_id].store(false, std::memory_order_relaxed);
+      }
+    }
+
+   private:
+    // Initial time (in CPU cycles) we expect an operation to take.  Used to
+    // determine whether an operation should be place in a threadpool.
+    // Operations start out "expensive".
+    static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+    static const uint64 kOpIsExpensiveThresholdCycles = 5000;
+    static const uint64 kCostDecay = 10;
+
+    std::unique_ptr<std::atomic<bool>[]> is_expensive_;
+    std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
+  };
+
   struct ControlFlowInfo {
     gtl::FlatSet<string> unique_frame_names;
     std::vector<string> frame_names;
@@ -396,6 +458,7 @@ class ExecutorImpl : public Executor {
   // Owned.
   LocalExecutorParams params_;
   GraphView gview_;
+  mutable KernelStats kernel_stats_;
 
   // Root nodes (with no in edges) that should form the initial ready queue
   std::vector<const NodeItem*> root_nodes_;
@@ -732,7 +795,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
   // Initialize PendingCounts only after item->pending_id is initialized for
   // all nodes.
   InitializePending(&graph, cf_info);
-
+  kernel_stats_.Initialize(gview_);
   return gview_.SetAllocAttrs(&graph, params_.device);
 }
 
@@ -1713,8 +1776,8 @@ struct ExecutorState::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const NodeItem& item,
-                const tracing::EventCollector* event_collector) {
+bool MightTrace(const tracing::EventCollector* event_collector,
+                bool is_expensive) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
   // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
@@ -1728,8 +1791,7 @@ bool MightTrace(const NodeItem& item,
 
   if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMe::Active(
-      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
+  return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
 }
 
 Status ExecutorState::ProcessSync(const NodeItem& item,
@@ -1742,8 +1804,9 @@ Status ExecutorState::ProcessSync(const NodeItem& item,
 
   OpKernel* op_kernel = item.kernel;
   Device* device = impl_->params_.device;
+  const bool is_expensive = impl_->kernel_stats_.IsExpensive(item);
 
-  if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
+  if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
     tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                  op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
@@ -1751,16 +1814,16 @@ Status ExecutorState::ProcessSync(const NodeItem& item,
           return op_kernel->TraceString(
               &ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+        profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
     nodestats::SetOpEnd(stats);
     s = ProcessOutputs(item, &ctx, outputs, stats);
   } else {
     // In the common case, avoid creating any tracing objects.
-    if (op_kernel->IsExpensive()) {
+    if (is_expensive) {
       KernelTimer timer;
       device->Compute(op_kernel, &ctx);
-      op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+      impl_->kernel_stats_.UpdateCostEstimate(item, timer.ElapsedCycles());
     } else {
       device->Compute(op_kernel, &ctx);
     }
@@ -1821,7 +1884,7 @@ void ExecutorState::ProcessAsync(const NodeItem& item,
           return async_kernel->TraceString(
               &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(async_kernel->IsExpensive()));
+        profiler::GetTFTraceMeLevel(impl_->kernel_stats_.IsExpensive(item)));
     impl_->params_.device->ComputeAsync(async_kernel, &state->ctx,
                                         std::move(done));
   }
@@ -2443,7 +2506,7 @@ void ExecutorState::ScheduleReady(TaggedNodeSeq* ready,
     } else {
       for (auto& tagged_node : *ready) {
         const NodeItem& item = *tagged_node.node_item;
-        if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
+        if (tagged_node.is_dead || !impl_->kernel_stats_.IsExpensive(item)) {
           // Inline this inexpensive node.
           inline_ready->push_back(tagged_node);
         } else {

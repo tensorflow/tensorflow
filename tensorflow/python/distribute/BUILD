@@ -164,7 +164,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
@@ -414,6 +413,9 @@ cuda_py_test(
     name = "multi_worker_continuous_run_test",
     srcs = [
         "multi_worker_continuous_run_test.py",
+    ],
+    tags = [
+        "notsan",  # TODO(b/151841995)
     ],
     deps = [
         ":collective_all_reduce_strategy",

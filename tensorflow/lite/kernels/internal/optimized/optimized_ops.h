@@ -70,7 +70,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -874,21 +874,6 @@ inline void ShuffledFullyConnected(
 }
 
 #ifdef USE_NEON
-
-inline float32x4_t DivideSumForMeanImpl(
-    const float32x4_t sum, const float32x4_t num_elements_reverse,
-    const bool ordinary_mean, const float32x4_t scale_dup,
-    const float32x4_t zero_point_with_bias_dup) {
-  const float32x4_t val = vmulq_f32(sum, num_elements_reverse);
-  if (!ordinary_mean) {
-#ifdef ARM_FEATURE_FMA
-    return vfmaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#else
-    return vmlaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#endif  // ARM_FEATURE_FMA
-  }
-  return val;
-}
 
 inline int32x4_t RoundToNearest(const float32x4_t input) {
 #if defined(__aarch64__) || defined(__SSSE3__)
@@ -2959,8 +2944,8 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() - scalar;
   } else {
-    BroadcastSub4DSlow(params, input1_shape, input1_data, input2_shape,
-                       input2_data, output_shape, output_data);
+    BroadcastSubSlow(params, input1_shape, input1_data, input2_shape,
+                     input2_data, output_shape, output_data);
   }
 }
 

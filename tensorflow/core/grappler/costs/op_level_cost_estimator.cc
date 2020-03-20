@@ -1399,7 +1399,9 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   // Then, the operation to estimate is BatchMatMul([B,M,K],[B,K,N])
   const auto& op_info = op_context.op_info;
 
-  string equation = op_info.attr().at("equation").s();
+  auto it = op_info.attr().find("equation");
+  if (it == op_info.attr().end()) return Costs::ZeroCosts(/*inaccurate=*/true);
+  const string& equation = it->second.s();
   std::vector<string> equation_split = absl::StrSplit(equation, "->");
 
   if (equation_split.empty()) {

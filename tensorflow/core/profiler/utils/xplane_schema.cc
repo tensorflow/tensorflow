@@ -139,6 +139,7 @@ const StatTypeMap& GetStatTypeMap() {
       {"tf_op", kTfOp},
       {"hlo_op", kHloOp},
       {"hlo_module", kHloModule},
+      {"equation", kEquation},
       // Performance counter related.
       {"Raw Value", kRawValue},
       {"Scaled Value", kScaledValue},

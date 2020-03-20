@@ -78,7 +78,10 @@ tensorflow/third_party/gif_fix_strtok_r.patch
 tensorflow/third_party/git/BUILD
 tensorflow/third_party/git/BUILD.tpl
 tensorflow/third_party/git/git_configure.bzl
-tensorflow/third_party/googleapis.BUILD
+tensorflow/third_party/googleapis/BUILD
+tensorflow/third_party/googleapis/build_rules.bzl
+tensorflow/third_party/googleapis/googleapis.BUILD
+tensorflow/third_party/googleapis/repository_rules.bzl
 tensorflow/third_party/gpus/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD.rocm.tpl
@@ -174,7 +177,6 @@ tensorflow/third_party/systemlibs/gast.BUILD
 tensorflow/third_party/systemlibs/gif.BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.BUILD
 tensorflow/third_party/systemlibs/google_cloud_cpp.google.cloud.bigtable.BUILD
-tensorflow/third_party/systemlibs/googleapis.BUILD
 tensorflow/third_party/systemlibs/grpc.BUILD
 tensorflow/third_party/systemlibs/jsoncpp.BUILD
 tensorflow/third_party/systemlibs/lmdb.BUILD

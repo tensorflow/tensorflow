@@ -91,9 +91,9 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (pool_type == kAverage || pool_type == kMax) {
-      TF_LITE_ENSURE_EQ(context, input->params.scale, output->params.scale);
-      TF_LITE_ENSURE_EQ(context, input->params.zero_point,
-                        output->params.zero_point);
+      TFLITE_DCHECK_LE(std::abs(input->params.scale - output->params.scale),
+                       1.0e-6);
+      TFLITE_DCHECK_EQ(input->params.zero_point, output->params.zero_point);
     }
     if (pool_type == kL2) {
       // We currently don't have a quantized implementation of L2Pool

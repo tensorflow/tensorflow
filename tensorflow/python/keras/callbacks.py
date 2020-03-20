@@ -1562,28 +1562,42 @@ class RemoteMonitor(Callback):
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
 
-  Arguments:
+  At the beginning of every epoch, this callback gets the learning rate
+  value from `schedule` function provided at `__init__`, with the current epoch,
+  and applies that learning rate on the optimizer.
+
+  Example:
+
+  >>> # This function keeps the learning rate at 0.001 for the first ten epochs
+  >>> # and decreases it exponentially after that.
+  >>> def scheduler(epoch):
+  ...   if epoch < 10:
+  ...     return 0.001
+  ...   else:
+  ...     return 0.001 * tf.math.exp(0.1 * (10 - epoch))
+  >>>
+  >>> model = tf.keras.models.Sequential([tf.keras.layers.Dense(10)])
+  >>> model.compile(tf.keras.optimizers.SGD(), loss='mse')
+  >>> round(model.optimizer.lr.numpy(), 5)
+  0.01
+
+  >>> callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
+  >>> history = model.fit(np.arange(100).reshape(5, 20), np.zeros(5),
+  ...                     epochs=2, callbacks=[callback], verbose=0)
+  >>> round(model.optimizer.lr.numpy(), 5)
+  0.001
+
+  """
+
+  def __init__(self, schedule, verbose=0):
+    """Initialize a `keras.callbacks.LearningRateScheduler` callback.
+
+    Arguments:
       schedule: a function that takes an epoch index as input
           (integer, indexed from 0) and returns a new
           learning rate as output (float).
       verbose: int. 0: quiet, 1: update messages.
-
-  ```python
-  # This function keeps the learning rate at 0.001 for the first ten epochs
-  # and decreases it exponentially after that.
-  def scheduler(epoch):
-    if epoch < 10:
-      return 0.001
-    else:
-      return 0.001 * tf.math.exp(0.1 * (10 - epoch))
-
-  callback = tf.keras.callbacks.LearningRateScheduler(scheduler)
-  model.fit(data, labels, epochs=100, callbacks=[callback],
-            validation_data=(val_data, val_labels))
-  ```
-  """
-
-  def __init__(self, schedule, verbose=0):
+    """
     super(LearningRateScheduler, self).__init__()
     self.schedule = schedule
     self.verbose = verbose

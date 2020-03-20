@@ -243,6 +243,41 @@ Usage:
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AsStringOp : TF_Op<"AsString", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Converts each entry in the given tensor to strings.";
+
+  let description = [{
+Supports many numeric types and boolean.
+
+For Unicode, see the
+[https://www.tensorflow.org/tutorials/representation/unicode](Working with Unicode text)
+tutorial.
+
+Examples:
+
+>>> tf.strings.as_string([3, 2])
+<tf.Tensor: shape=(2,), dtype=string, numpy=array([b'3', b'2'], dtype=object)>
+>>> tf.strings.as_string([3.1415926, 2.71828], precision=2).numpy()
+array([b'3.14', b'2.72'], dtype=object)
+  }];
+
+  let arguments = (ins
+    TensorOf<[F32, F64, I1, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$input,
+
+    DefaultValuedAttr<I64Attr, "-1">:$precision,
+    DefaultValuedAttr<BoolAttr, "false">:$scientific,
+    DefaultValuedAttr<BoolAttr, "false">:$shortest,
+    DefaultValuedAttr<I64Attr, "-1">:$width,
+    StrAttr:$fill
+  );
+
+  let results = (outs
+    TF_StrTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_AssertOp : TF_Op<"Assert", []> {
   let summary = "Asserts that the given condition is true.";
 
@@ -1064,7 +1099,7 @@ horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
   }];
 }
 
-def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect]> {
+def TF_Conv2DBackpropFilterOp : TF_Op<"Conv2DBackpropFilter", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the filter.
   }];
@@ -1090,9 +1125,17 @@ Computes the gradients of convolution with respect to the filter.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0, 2}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
+  }];
 }
 
-def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect]> {
+def TF_Conv2DBackpropInputOp : TF_Op<"Conv2DBackpropInput", [NoSideEffect, TF_LayoutSensitiveInterface]> {
   let summary = [{
 Computes the gradients of convolution with respect to the input.
   }];
@@ -1121,6 +1164,14 @@ Computes the gradients of convolution with respect to the input.
 
   let verifier = [{
     return Verify(*this);
+  }];
+
+  let extraClassDeclaration = [{
+    // TF_LayoutSensitiveInterface:
+    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {2}; }
+    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {0}; }
+    StringRef GetOptimalLayout(const RuntimeDevices& devices);
+    LogicalResult UpdateDataFormat(StringRef data_format);
   }];
 }
 
@@ -4609,6 +4660,23 @@ gradients in some corner cases.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PrintV2Op : TF_Op<"PrintV2", []> {
+  let summary = "Prints a string scalar.";
+
+  let description = [{
+Prints a string scalar to the desired output_stream.
+  }];
+
+  let arguments = (ins
+    TF_StrTensor:$input,
+
+    DefaultValuedAttr<StrAttr, "stderr">:$output_stream,
+    DefaultValuedAttr<StrAttr, "\n">:$end
+  );
+
+  let results = (outs);
 }
 
 def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {

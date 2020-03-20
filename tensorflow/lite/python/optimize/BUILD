@@ -51,6 +51,7 @@ pybind_extension(
     module_name = "_pywrap_tensorflow_lite_calibration_wrapper",
     deps = [
         ":calibration_wrapper_lib",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",

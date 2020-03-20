@@ -28,7 +28,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
-#include "tensorflow/c/c_core_api.h"
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/c/tf_tensor_internal.h"
@@ -651,16 +651,9 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
         grpc_server->worker_env()->session_mgr->UpdateSession(
             session_name, server_def, base_request.cluster_device_attributes(),
             true));
-    TF_RETURN_IF_ERROR(
-        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
-            session_name, &worker_session));
-    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
-        tensorflow::eager::CreateClusterFLR(context_id, context,
-                                            worker_session.get());
     LOG_AND_RETURN_IF_ERROR(context->UpdateRemoteMaster(
         grpc_server->worker_env(), std::move(remote_eager_workers),
-        added_workers, removed_workers, context_id, r, device_mgr,
-        keep_alive_secs, cluster_flr));
+        added_workers, removed_workers, context_id, r));
   }
 #undef LOG_AND_RETURN_IF_ERROR
 

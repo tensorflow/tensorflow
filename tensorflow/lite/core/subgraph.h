@@ -31,6 +31,8 @@ limitations under the License.
 
 namespace tflite {
 
+namespace impl {
+
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;
 
@@ -674,6 +676,10 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 };
+
+}  // namespace impl
+
+using Subgraph = impl::Subgraph;
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

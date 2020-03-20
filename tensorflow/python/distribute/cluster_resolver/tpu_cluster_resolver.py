@@ -24,6 +24,7 @@ import re
 from tensorflow.python.distribute.cluster_resolver import cluster_resolver
 from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
@@ -218,6 +219,31 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
 
   def get_job_name(self):
     return self.task_type
+
+  def get_tpu_system_metadata(self):
+    """Returns the metadata of the TPU system.
+
+    Users can call this method to get some facts of the TPU system, like
+    total number of cores, number of TPU workers and the devices. E.g.
+    ```python
+
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tpu_system_medata = resolver.get_tpu_system_metadata()
+    num_hosts = tpu_system_medata.num_hosts
+    ```
+
+    Returns:
+      A `tf.tpu.experimental.TPUSystemMetadata` object.
+    """
+    cluster_spec = self.cluster_spec()
+    cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+    tpu_system_metadata = (
+        tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
+            self.master(),
+            cluster_def=cluster_def,
+            query_topology=False))
+
+    return tpu_system_metadata
 
   def cluster_spec(self):
     """Returns a ClusterSpec object based on the latest TPU information.

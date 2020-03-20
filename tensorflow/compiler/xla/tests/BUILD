@@ -807,6 +807,8 @@ xla_test(
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
         "no_pip",
+        # TODO(b/151340488): Timed out on 2020-03-18.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -971,11 +973,12 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -1098,10 +1101,6 @@ xla_test(
     name = "convolution_test",
     timeout = "long",
     srcs = ["convolution_test.cc"],
-    backend_tags = {
-        # TODO(b/151340488): Timed out on 2020-03-12.
-        "interpreter": ["nozapfhahn"],
-    },
     shard_count = 40,
     tags = [
         "no_rocm",
@@ -1142,8 +1141,6 @@ xla_test(
     shard_count = 25,
     tags = [
         "no_rocm",
-        # TODO(b/151340488): Timed out on 2020-03-12.
-        "nozapfhahn",
     ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
@@ -1499,10 +1496,6 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
-    backend_tags = {
-        # TODO(b/151340488): Timed out on 2020-03-12.
-        "interpreter": ["nozapfhahn"],
-    },
     tags = [
         "no_rocm",
         "optonly",

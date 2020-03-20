@@ -13,27 +13,31 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <memory>
+#include <string>
+
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/Debug.h"
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Block.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/UseDefLists.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/xla_sharding_util.h"
 #include "tensorflow/compiler/xla/client/sharding_builder.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace mlir {
 namespace TFTPU {
 namespace {
+
+constexpr char kShardingAttr[] = "xla_hlo.sharding";
 
 struct TPUShardingIdentificationPass
     : public ModulePass<TPUShardingIdentificationPass> {
@@ -71,9 +75,9 @@ void GetAdjacentToXlaShardingOp(
 //
 // TODO(hongjunchoi): Add logic to parse XlaSharding op inside a
 // Call op or if/while op.
-llvm::Optional<StringRef> ParseInputSharding(const FuncOp func,
-                                             const int arg_index,
-                                             const Value& arg) {
+llvm::Optional<llvm::StringRef> ParseInputSharding(const FuncOp func,
+                                                   const int arg_index,
+                                                   const Value& arg) {
   llvm::Optional<TF::XlaShardingOp> parsed_sharding_op;
   for (auto user : arg.getUsers()) {
     if (parsed_sharding_op) continue;
@@ -86,7 +90,7 @@ llvm::Optional<StringRef> ParseInputSharding(const FuncOp func,
         GetAdjacentToXlaShardingOp(read_variable_user, &parsed_sharding_op);
   }
 
-  if (!parsed_sharding_op) return llvm::Optional<StringRef>();
+  if (!parsed_sharding_op) return llvm::Optional<llvm::StringRef>();
   return tensorflow::ParseShardingAttribute(parsed_sharding_op->getOperation());
 }
 
@@ -103,20 +107,10 @@ llvm::Optional<StringRef> ParseReturnValueSharding(FuncOp func,
   return llvm::Optional<StringRef>();
 }
 
-// Add parsed sharding configuration to tf_device.LaunchFunc op attribute.
-void SetShardingConfigurationAsAttribute(
-    tf_device::LaunchFuncOp launch_func, const std::string& attr_name,
-    const llvm::SmallVector<std::string, 8>& sharding_config) {
-  auto input_sharding_array_ref = llvm::SmallVector<llvm::StringRef, 8>(
-      sharding_config.begin(), sharding_config.end());
-  launch_func.setAttr(attr_name,
-                      mlir::Builder(launch_func.getContext())
-                          .getStrArrayAttr(input_sharding_array_ref));
-}
-
 // If XlaSharding op is connected to input/output of the tf_device.LaunchFuncOp,
 // then add attributes to the op specifying the sharding configurations.
-void IdentifyXlaShardingForTPUComputation(tf_device::LaunchFuncOp launch_func) {
+void IdentifyXlaShardingForTPUComputation(Builder* builder,
+                                          tf_device::LaunchFuncOp launch_func) {
   // Look up function definition from module.
   FuncOp func = launch_func.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
       launch_func.func());
@@ -124,55 +118,68 @@ void IdentifyXlaShardingForTPUComputation(tf_device::LaunchFuncOp launch_func) {
 
   // By default inputs have maximal sharding and inputs are assigned to
   // logical core 0 if no sharding is defined.
-  llvm::SmallVector<std::string, 8> sharding_for_args(
-      func_entry_block.getNumArguments(),
-      xla::sharding_builder::AssignDevice(0).SerializeAsString());
+  const std::string logical_core_0_sharding =
+      xla::sharding_builder::AssignDevice(0).SerializeAsString();
+  auto logical_core_0_sharding_attr =
+      builder->getStringAttr(logical_core_0_sharding);
+
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_args(
+      func_entry_block.getNumArguments(), logical_core_0_sharding);
 
   // Iterate through input arguments to the entry block of tf_device.LaunchFunc.
-  // For input ops, look for following XlaSharding ops. XlaSharding ops can
-  // 1) Directly follow the input argument if input argument has non-resource
-  //    types.
-  // 2) Follow ReadVariableOp if the input type is of resource type.
-  // 3) Follow IdentityOp or CastOp after above cases (1), (2).
-  for (auto& arg_index_and_value :
-       llvm::enumerate(func_entry_block.getArguments())) {
-    const int arg_index = arg_index_and_value.index();
-    auto& arg = arg_index_and_value.value();
-    auto input_arg_sharding = ParseInputSharding(func, arg_index, arg);
+  // For input ops, look for following XlaSharding ops. XlaSharding ops can:
+  //   1) Directly follow the input argument if input argument has non-resource
+  //      types.
+  //   2) Follow ReadVariableOp if the input type is of resource type.
+  //   3) Follow IdentityOp or CastOp after above cases (1), (2).
+  //
+  // Sharding configurations are added to the tf_device.LaunchFunc as an
+  // attribute and the function as an argument attribute.
+  for (auto& arg : func_entry_block.getArguments()) {
+    const int index = arg.getArgNumber();
+    auto arg_sharding = ParseInputSharding(func, index, arg);
 
-    if (!input_arg_sharding.hasValue()) continue;
-    sharding_for_args[arg_index] = input_arg_sharding->str();
+    if (arg_sharding) {
+      sharding_for_args[index] = arg_sharding.getValue();
+      func.setArgAttr(index, kShardingAttr,
+                      builder->getStringAttr(arg_sharding.getValue()));
+    } else {
+      func.setArgAttr(index, kShardingAttr, logical_core_0_sharding_attr);
+    }
   }
-  SetShardingConfigurationAsAttribute(
-      launch_func, tensorflow::kInputShardingAttr, sharding_for_args);
+  launch_func.setAttr(tensorflow::kInputShardingAttr,
+                      builder->getStrArrayAttr(sharding_for_args));
 
   // By default return values from logical core 0 is used if no sharding
   // configuration is defined.
-  llvm::SmallVector<std::string, 8> sharding_for_return_values(
-      func_entry_block.getTerminator()->getNumOperands(),
-      xla::sharding_builder::AssignDevice(0).SerializeAsString());
+  Operation* terminator = func_entry_block.getTerminator();
+  llvm::SmallVector<llvm::StringRef, 8> sharding_for_rets(
+      terminator->getNumOperands(), logical_core_0_sharding);
 
-  // Iterate through operands of the terminator, if the preceding op is
-  // XlaShardingOp, then add provided sharding configuration to launch func
+  // Iterate through operands of the terminator. If the preceding op is
+  // XlaShardingOp, then the provided sharding configuration is added to the
+  // tf_device.LaunchFunc as an attribute and the function as a result
   // attribute.
-  for (auto& return_value_and_index :
-       llvm::enumerate(func_entry_block.getTerminator()->getOpOperands())) {
-    int return_value_index = return_value_and_index.index();
-    const auto& return_value = return_value_and_index.value();
-    auto return_val_sharding =
-        ParseReturnValueSharding(func, return_value_index, return_value);
+  for (auto& ret : terminator->getOpOperands()) {
+    const int index = ret.getOperandNumber();
+    auto ret_sharding = ParseReturnValueSharding(func, index, ret);
 
-    if (return_val_sharding)
-      sharding_for_return_values[return_value_index] =
-          return_val_sharding->str();
+    if (ret_sharding) {
+      sharding_for_rets[index] = ret_sharding.getValue();
+      func.setResultAttr(index, kShardingAttr,
+                         builder->getStringAttr(ret_sharding.getValue()));
+    } else {
+      func.setResultAttr(index, kShardingAttr, logical_core_0_sharding_attr);
+    }
   }
-  SetShardingConfigurationAsAttribute(
-      launch_func, tensorflow::kOutputShardingAttr, sharding_for_return_values);
+  launch_func.setAttr(tensorflow::kOutputShardingAttr,
+                      builder->getStrArrayAttr(sharding_for_rets));
 }
 
 void TPUShardingIdentificationPass::runOnModule() {
+  Builder builder(getModule().getContext());
   getModule().walk([&](tf_device::LaunchFuncOp launch_func) {
-    IdentifyXlaShardingForTPUComputation(launch_func);
+    IdentifyXlaShardingForTPUComputation(&builder, launch_func);
   });
 }
 

@@ -139,7 +139,8 @@ class FunctionCallOptions(object):
   @config_proto_serialized.setter
   def config_proto_serialized(self, config):
     if isinstance(config, config_pb2.ConfigProto):
-      self._config_proto_serialized = config.SerializeToString()
+      self._config_proto_serialized = config.SerializeToString(
+          deterministic=True)
     elif isinstance(config, str):
       self._config_proto_serialized = config
     elif config is None:
@@ -594,10 +595,6 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
-      # Current executor might have pending nodes that involves updated remote
-      # devices. Wait for them to finish before updating.
-      self.executor.wait()
-      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()

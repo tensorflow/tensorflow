@@ -406,6 +406,52 @@ cc_library(
     ],
 )
 
+gentbl(
+    name = "ShapeOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/Shape/IR/ShapeOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/Shape/IR/ShapeOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/Shape/IR/ShapeOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
+    td_srcs = [
+        ":StdOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "Shape",
+    srcs = glob(
+        [
+            "lib/Dialect/Shape/IR/*.cpp",
+        ],
+    ),
+    hdrs = glob([
+        "include/mlir/Dialect/Shape/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":CallOpInterfaces",
+        ":CommonFolders",
+        ":IR",
+        ":ShapeOpsIncGen",
+        ":SideEffects",
+        ":Support",
+        "@llvm-project//llvm:support",
+    ],
+)
+
 cc_library(
     name = "StandardOps",
     srcs = glob(
@@ -439,15 +485,15 @@ cc_library(
     name = "VectorOps",
     srcs = glob(
         [
-            "lib/Dialect/VectorOps/*.cpp",
-            "lib/Dialect/VectorOps/*.h",
-            "lib/Dialect/VectorOps/EDSC/*.cpp",
-            "lib/Dialect/VectorOps/EDSC/*.h",
+            "lib/Dialect/Vector/*.cpp",
+            "lib/Dialect/Vector/*.h",
+            "lib/Dialect/Vector/EDSC/*.cpp",
+            "lib/Dialect/Vector/EDSC/*.h",
         ],
     ),
     hdrs = glob([
-        "include/mlir/Dialect/VectorOps/*.h",
-        "include/mlir/Dialect/VectorOps/EDSC/*.h",
+        "include/mlir/Dialect/Vector/*.h",
+        "include/mlir/Dialect/Vector/EDSC/*.h",
     ]),
     includes = ["include"],
     deps = [
@@ -554,6 +600,18 @@ cc_library(
         "@llvm-project//llvm:asm_parser",
         "@llvm-project//llvm:core",
         "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
+    name = "LLVMIRTransforms",
+    srcs = glob(["lib/Dialect/LLVMIR/Transforms/*.cpp"]),
+    hdrs = glob(["include/mlir/Dialect/LLVMIR/Transforms/*.h"]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":LLVMDialect",
+        ":Pass",
     ],
 )
 
@@ -1087,23 +1145,6 @@ gentbl(
 )
 
 gentbl(
-    name = "StandardToSPIRVGen",
-    strip_include_prefix = "lib/Conversion/StandardToSPIRV",
-    tbl_outs = [
-        (
-            "-gen-rewriters",
-            "lib/Conversion/StandardToSPIRV/StandardToSPIRV.cpp.inc",
-        ),
-    ],
-    tblgen = ":mlir-tblgen",
-    td_file = "lib/Conversion/StandardToSPIRV/StandardToSPIRV.td",
-    td_srcs = [
-        ":SPIRVOpsTdFiles",
-        ":StdOpsTdFiles",
-    ],
-)
-
-gentbl(
     name = "SPIRVAvailabilityIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -1269,10 +1310,30 @@ cc_library(
         ":SPIRVDialect",
         ":SPIRVLowering",
         ":StandardOps",
-        ":StandardToSPIRVGen",
         ":Support",
         ":Transforms",
         "@llvm-project//llvm:support",
+    ],
+)
+
+cc_library(
+    name = "StandardToStandard",
+    srcs = glob([
+        "lib/Conversion/StandardToStandard/*.cpp",
+        "lib/Conversion/StandardToStandard/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Conversion/StandardToStandard/*.h",
+    ]),
+    includes = [
+        "include",
+        "lib/Conversion/StandardToStandard",
+    ],
+    deps = [
+        ":IR",
+        ":Pass",
+        ":StandardOps",
+        ":Transforms",
     ],
 )
 
@@ -1746,6 +1807,7 @@ cc_library(
         ":IR",
         ":LLVMConversionIncGen",
         ":LLVMDialect",
+        ":LLVMIRTransforms",
         ":OpenMPDialect",
         ":Support",
         "@llvm-project//llvm:core",
@@ -1902,6 +1964,7 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":StandardToSPIRVConversions",
+        ":StandardToStandard",
         ":Support",
         ":Transforms",
         ":VectorToLLVM",
@@ -1975,6 +2038,7 @@ cc_library(
         ":GPUTransforms",
         ":IR",
         ":LLVMDialect",
+        ":LLVMIRTransforms",
         ":LinalgOps",
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
@@ -1990,8 +2054,10 @@ cc_library(
         ":SDBM",
         ":SPIRVDialect",
         ":SPIRVLowering",
+        ":Shape",
         ":StandardOps",
         ":StandardToSPIRVConversions",
+        ":StandardToStandard",
         ":Transforms",
         ":VectorOps",
     ],
@@ -2242,8 +2308,8 @@ cc_library(
 filegroup(
     name = "QuantizationOpsTdFiles",
     srcs = [
-        "include/mlir/Dialect/QuantOps/QuantOps.td",
-        "include/mlir/Dialect/QuantOps/QuantOpsBase.td",
+        "include/mlir/Dialect/Quant/QuantOps.td",
+        "include/mlir/Dialect/Quant/QuantOpsBase.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
@@ -2256,15 +2322,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Dialect/QuantOps/QuantOps.h.inc",
+            "include/mlir/Dialect/Quant/QuantOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Dialect/QuantOps/QuantOps.cpp.inc",
+            "include/mlir/Dialect/Quant/QuantOps.cpp.inc",
         ),
         (
             "-gen-dialect-decls",
-            "include/mlir/Dialect/QuantOps/QuantOpsDialect.h.inc",
+            "include/mlir/Dialect/Quant/QuantOpsDialect.h.inc",
         ),
         (
             "-gen-op-doc",
@@ -2272,7 +2338,7 @@ gentbl(
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/QuantOps/QuantOps.td",
+    td_file = "include/mlir/Dialect/Quant/QuantOps.td",
     td_srcs = [
         ":QuantizationOpsTdFiles",
     ],
@@ -2281,23 +2347,23 @@ gentbl(
 cc_library(
     name = "QuantOps",
     srcs = [
-        "lib/Dialect/QuantOps/IR/QuantOps.cpp",
-        "lib/Dialect/QuantOps/IR/QuantTypes.cpp",
-        "lib/Dialect/QuantOps/IR/TypeDetail.h",
-        "lib/Dialect/QuantOps/IR/TypeParser.cpp",
-        "lib/Dialect/QuantOps/Transforms/ConvertConst.cpp",
-        "lib/Dialect/QuantOps/Transforms/ConvertSimQuant.cpp",
-        "lib/Dialect/QuantOps/Utils/FakeQuantSupport.cpp",
-        "lib/Dialect/QuantOps/Utils/QuantizeUtils.cpp",
-        "lib/Dialect/QuantOps/Utils/UniformSupport.cpp",
+        "lib/Dialect/Quant/IR/QuantOps.cpp",
+        "lib/Dialect/Quant/IR/QuantTypes.cpp",
+        "lib/Dialect/Quant/IR/TypeDetail.h",
+        "lib/Dialect/Quant/IR/TypeParser.cpp",
+        "lib/Dialect/Quant/Transforms/ConvertConst.cpp",
+        "lib/Dialect/Quant/Transforms/ConvertSimQuant.cpp",
+        "lib/Dialect/Quant/Utils/FakeQuantSupport.cpp",
+        "lib/Dialect/Quant/Utils/QuantizeUtils.cpp",
+        "lib/Dialect/Quant/Utils/UniformSupport.cpp",
     ],
     hdrs = [
-        "include/mlir/Dialect/QuantOps/FakeQuantSupport.h",
-        "include/mlir/Dialect/QuantOps/Passes.h",
-        "include/mlir/Dialect/QuantOps/QuantOps.h",
-        "include/mlir/Dialect/QuantOps/QuantTypes.h",
-        "include/mlir/Dialect/QuantOps/QuantizeUtils.h",
-        "include/mlir/Dialect/QuantOps/UniformSupport.h",
+        "include/mlir/Dialect/Quant/FakeQuantSupport.h",
+        "include/mlir/Dialect/Quant/Passes.h",
+        "include/mlir/Dialect/Quant/QuantOps.h",
+        "include/mlir/Dialect/Quant/QuantTypes.h",
+        "include/mlir/Dialect/Quant/QuantizeUtils.h",
+        "include/mlir/Dialect/Quant/UniformSupport.h",
     ],
     includes = ["include"],
     deps = [
@@ -2314,7 +2380,7 @@ filegroup(
     name = "FxpMathOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/FxpMathOps/FxpMathOps.td",
-        "include/mlir/Dialect/QuantOps/QuantOpsBase.td",
+        "include/mlir/Dialect/Quant/QuantOpsBase.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
     ],
@@ -2667,7 +2733,7 @@ cc_library(
 filegroup(
     name = "VectorOpsTdFiles",
     srcs = [
-        "include/mlir/Dialect/VectorOps/VectorOps.td",
+        "include/mlir/Dialect/Vector/VectorOps.td",
         ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
@@ -2679,15 +2745,15 @@ gentbl(
     tbl_outs = [
         (
             "-gen-op-decls",
-            "include/mlir/Dialect/VectorOps/VectorOps.h.inc",
+            "include/mlir/Dialect/Vector/VectorOps.h.inc",
         ),
         (
             "-gen-op-defs",
-            "include/mlir/Dialect/VectorOps/VectorOps.cpp.inc",
+            "include/mlir/Dialect/Vector/VectorOps.cpp.inc",
         ),
         (
             "-gen-dialect-decls -dialect=vector",
-            "include/mlir/Dialect/VectorOps/VectorOpsDialect.h.inc",
+            "include/mlir/Dialect/Vector/VectorOpsDialect.h.inc",
         ),
         (
             "-gen-op-doc",
@@ -2695,7 +2761,7 @@ gentbl(
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/VectorOps/VectorOps.td",
+    td_file = "include/mlir/Dialect/Vector/VectorOps.td",
     td_srcs = [
         ":VectorOpsTdFiles",
     ],
@@ -2704,7 +2770,7 @@ gentbl(
 filegroup(
     name = "VectorTransformPatternsTdFiles",
     srcs = [
-        "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
+        "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
         ":AffineOpsTdFiles",
         ":LinalgOpsTdFiles",
         ":LinalgStructuredOpsTdFiles",
@@ -2719,11 +2785,11 @@ gentbl(
     tbl_outs = [
         (
             "-gen-rewriters",
-            "include/mlir/Dialect/VectorOps/VectorTransformPatterns.h.inc",
+            "include/mlir/Dialect/Vector/VectorTransformPatterns.h.inc",
         ),
     ],
     tblgen = ":mlir-tblgen",
-    td_file = "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
+    td_file = "include/mlir/Dialect/Vector/VectorTransformPatterns.td",
     td_srcs = [
         ":VectorTransformPatternsTdFiles",
     ],

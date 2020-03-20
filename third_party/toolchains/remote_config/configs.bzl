@@ -35,6 +35,18 @@ def initialize_rbe_configs():
     )
 
     tensorflow_rbe_config(
+        name = "ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0",
+        compiler = "/clang_ra21beccea2020f950845cbb68db663d0737e174c/bin/clang",
+        cuda_version = "10.1",
+        cudnn_version = "7",
+        os = "ubuntu16.04-manylinux2010",
+        python_version = "3",
+        tensorrt_install_path = "/usr",
+        tensorrt_version = "6.0",
+        sysroot = "/dt7",
+    )
+
+    tensorflow_rbe_config(
         name = "ubuntu16.04-py3_opt-gcc5-rocm",
         compiler = "gcc",
         os = "ubuntu16.04",

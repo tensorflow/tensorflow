@@ -37,8 +37,9 @@ echo "Starting to run micro tests at `date`"
 echo "Running Arduino tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_arduino.sh
 
-echo "Running bluepill tests at `date`"
-tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
+# TODO(b/151695791): reenable once the root cause is fixed.
+#echo "Running bluepill tests at `date`"
+#tensorflow/lite/micro/tools/ci_build/test_bluepill.sh
 
 echo "Running mbed tests at `date`"
 tensorflow/lite/micro/tools/ci_build/test_mbed.sh PRESUBMIT

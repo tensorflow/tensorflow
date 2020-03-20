@@ -111,8 +111,6 @@ bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
       || absl::EndsWith(tf_op_name, "DepthwiseConv2dNative")
       || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropFilter")
       || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropInput")
-      // Using Contains because of numeric suffix and possible Xla prefix.
-      || absl::StrContains(tf_op_name, "Einsum")
       // Using Contains to match V2/V3 suffixes.
       || absl::StrContains(tf_op_name, "BatchMatMul")
       // MatMul requires exact matching.
@@ -126,6 +124,20 @@ bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
       // Special cases.
       || absl::EndsWith(tf_op_name, "XlaDot");
   // clang-format on
+}
+
+bool IsEinsumTensorCoreEligible(absl::string_view equation) {
+  if (equation.empty()) {
+    return false;
+  }
+  const std::vector<absl::string_view> input_output =
+      absl::StrSplit(equation, "->");
+  if (input_output.size() != 2) {
+    return false;
+  }
+  const std::vector<absl::string_view> lhs_rhs =
+      absl::StrSplit(input_output[0], ',');
+  return lhs_rhs.size() == 2;
 }
 
 bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,

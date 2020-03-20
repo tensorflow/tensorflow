@@ -285,7 +285,10 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
 
 class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
-      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
+      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>,
+       // All TFL ops are supported on CPU.
+       DeclareOpInterfaceMethods<TFL_CpuTargetOp>
+      ])> {
   // FlatBuffer generation specific information.
   // -------------------------------------------
   // When generating the FlatBuffer output some operations have
@@ -1083,7 +1086,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_DivOp : TFL_Op<"div", [ResultsBroadcastableShape, NoSideEffect]> {
+def TFL_DivOp : TFL_Op<"div", [
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Division operator";
 
   let description = [{

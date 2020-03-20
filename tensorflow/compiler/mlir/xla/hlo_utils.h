@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 StatusOr<mlir::DenseElementsAttr> CreateDenseElementsAttrFromLiteral(
-    const Literal& literal, mlir::Builder builder);
+    const LiteralBase& literal, mlir::Builder builder);
 
 mlir::DenseIntElementsAttr CreateDenseIntElementsAttrFromVector(
     const llvm::ArrayRef<int64> vector, mlir::Builder builder);

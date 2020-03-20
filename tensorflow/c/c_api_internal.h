@@ -16,13 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_C_C_API_INTERNAL_H_
 #define TENSORFLOW_C_C_API_INTERNAL_H_
 
+#include "tensorflow/c/c_api.h"
+
 #include <list>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
-
-#include "tensorflow/c/c_core_api.h"
 
 // clang-format off
 // Required for IS_MOBILE_PLATFORM
@@ -216,10 +216,6 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
     TF_LOCKS_EXCLUDED(session->graph->mu, session->mu);
 
 std::string getTF_OutputDebugString(TF_Output node);
-
-TF_Operation* ToOperation(Node* node);
-
-TensorId ToTensorId(const TF_Output& output);
 
 }  // end namespace tensorflow
 

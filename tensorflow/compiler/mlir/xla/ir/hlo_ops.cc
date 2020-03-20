@@ -545,19 +545,9 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   auto operandRank = operandType.getRank();
   auto resultRank = resultType.getRank();
 
-  if (!op.broadcast_dimensions()) {
-    if (operandRank == 0) {
-      return success();
-    }
-    return op.emitOpError(
-        llvm::formatv("broadcast_dimensions is absent, but required because "
-                      "operand has non-zero rank ({0})",
-                      operandRank));
-  }
-
   // Verify broadcast_dimensions.
-  auto bcastDimensions = *op.broadcast_dimensions();
-  auto bcastDimensionsType = op.broadcast_dimensions()->getType();
+  auto bcastDimensions = op.broadcast_dimensions();
+  auto bcastDimensionsType = op.broadcast_dimensions().getType();
   auto bcastDimensionsRank = bcastDimensionsType.getRank();
   // TODO(laurenzo): Update the BroadcastDimAttr to constrain its rank to 1.
   if (bcastDimensionsRank != 1) {

@@ -260,6 +260,32 @@ class CondV2Test(test.TestCase):
         self.assertRegexpMatches(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
+  @test_util.run_v2_only
+  def testInheritParentNameScope(self):
+
+    @def_function.function
+    def f():
+      with ops.name_scope("foo"):
+
+        def then_branch():
+          with ops.name_scope("then"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/cond/then"
+            self.assertEqual(actual_name_scope, expected_name_scope)
+          return 0.
+
+        def else_branch():
+          with ops.name_scope("else"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/cond/else"
+            self.assertEqual(actual_name_scope, expected_name_scope)
+          return 0.
+
+        return cond_v2.cond_v2(
+            constant_op.constant(True), then_branch, else_branch)
+
+    f()
+
   @test_util.run_v1_only("b/120545219")
   def testDefunInCond(self):
     x = constant_op.constant(1.0, name="x")

@@ -1854,8 +1854,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   }
 
   auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
-    llvm::Value* gather_dim_component_extended =
-        SExtOrTrunc(index_component, index_type);
+    auto index_component_type = index_component->getType();
+    auto extended_type = index_component_type->getScalarSizeInBits() >=
+                                 index_type->getScalarSizeInBits()
+                             ? index_component_type
+                             : index_type;
+    // Possibly extend the value at the beginning to ensure clamping logic stays
+    // in bounds.
+    auto maybe_extended_index =
+        index_component_type != extended_type
+            ? b_->CreateSExt(index_component, extended_type)
+            : index_component;
     int64 operand_dim = dim_numbers.start_index_map(dim);
     int64 output_dim = operand_to_output_dim[operand_dim];
     // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
@@ -1868,18 +1877,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     CHECK_GE(largest_valid_start_index, 0);
 
     // Clamp the gather index so that the gather region fits in the operand.
-    // gather_dim_component_extended_inbound =
+    // clamped_index =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
-    auto gather_dim_component_extended_inbound = EmitIntegralMin(
-        index.GetConstantWithIndexType(largest_valid_start_index),
-        EmitIntegralMax(index.GetConstantWithIndexType(0),
-                        gather_dim_component_extended, is_signed),
+    auto clamped_index = EmitIntegralMin(
+        llvm::ConstantInt::get(extended_type, largest_valid_start_index),
+        EmitIntegralMax(llvm::ConstantInt::get(extended_type, 0),
+                        maybe_extended_index, is_signed),
         is_signed);
+    // Truncate at the end to the optimized index size
+    auto maybe_truncated_clamped_index = extended_type != index_type
+                                             ? Trunc(clamped_index, index_type)
+                                             : clamped_index;
 
     operand_multi_index[operand_dim] =
-        Add(operand_multi_index[operand_dim],
-            gather_dim_component_extended_inbound);
+        Add(operand_multi_index[operand_dim], maybe_truncated_clamped_index);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
@@ -2364,7 +2376,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& target_index) {
         return operand_to_generator.at(hlo->operand(0))(
             target_index.SourceIndexOfTranspose(
-                hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(), b_));
+                hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions()));
       };
     case HloOpcode::kPad:
       return [this, hlo, &operand_to_generator](
