@@ -1777,6 +1777,7 @@ class SymbolicShapeRefiner {
       }
       if (!has_values_smaller_than_minus_1) {
         *tensors_as_shapes = ic->MakeShape(dims);
+        return true;
       }
     } else if (IsIntegerScalar(tensor)) {
       // Scalar constant.
