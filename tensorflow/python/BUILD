@@ -126,6 +126,7 @@ py_library(
         ":config",
         ":confusion_matrix",
         ":control_flow_ops",
+	":convex_ops",
         ":cudnn_rnn_ops_gen",
         ":errors",
         ":framework",
@@ -2852,6 +2853,14 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "convex_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
         # To pass open source testing in the pip Kokoros.
@@ -3521,6 +3530,7 @@ py_library(
         ":control_flow_grad",
         ":control_flow_ops",
         ":control_flow_util",
+   	":convex_ops",
         ":framework",
         ":framework_for_generated_wrappers",
         ":framework_ops",
@@ -3781,6 +3791,18 @@ py_library(
         ":dtypes",
         ":framework_ops",
         ":manip_ops_gen",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "convex_ops",
+    srcs = ["ops/convex_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":convex_ops_gen",
         "//third_party/py/numpy",
     ],
 )
@@ -4506,6 +4528,7 @@ py_library(
         ":clip_ops",
         ":confusion_matrix",
         ":control_flow_ops",
+	":convex_ops",
         ":critical_section_ops",
         ":cudnn_rnn_grad",
         ":data_flow_grad",

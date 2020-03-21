@@ -525,6 +525,7 @@ tf_gen_op_wrappers_cc(
         "audio_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
+        "convex_ops",
         "data_flow_ops",
         "image_ops",
         "io_ops",

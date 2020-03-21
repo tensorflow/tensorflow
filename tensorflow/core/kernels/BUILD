@@ -3908,6 +3908,44 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "convex",
+    deps = [
+        ":convex_hull_op",
+    ],
+)
+
+tf_kernel_library(
+    name = "convex_hull_op",
+    srcs = ["convex_hull_op.cc"],
+    hdrs = ["convex_hull_op.h"],
+    deps = [
+        ":bounds_check",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "convex_hull_op_test",
+    size = "small",
+    srcs = ["convex_hull_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":convex_hull_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 MATH_DEPS = [
     ":bounds_check",
     ":fill_functor",

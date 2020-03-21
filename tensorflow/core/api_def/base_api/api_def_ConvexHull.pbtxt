@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "ConvexHull"
+  in_arg {
+    name: "input"
+    description: <<END
+3-D with shape `[batch, numbers, dimensions]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+3-D with shape
+`[batch, numbers, dimensions]`.
+END
+  }
+  attr {
+    name: "clockwise"
+    description: <<END
+If true, loop through points clockwise. Defaults to false.
+END
+  }
+  summary: "Obtain the convex hull of given points."
+  description: <<END
+Input can be of different types but output is always float.
+END
+}

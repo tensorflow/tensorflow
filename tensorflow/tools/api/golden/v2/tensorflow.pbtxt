@@ -573,6 +573,10 @@ tf_module {
     argspec: "args=[\'value\', \'dtype\', \'dtype_hint\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "convex_hull"
+    argspec: "args=[\'input\', \'clockwise\', \'name\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "cos"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
