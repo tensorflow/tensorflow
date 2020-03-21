@@ -557,6 +557,11 @@ class Function(object):
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
 
+  def experimental_get_tracing_count(self):
+    """Return the tracing count produced by the recent calls.
+    """
+    self._call_counter.get_tracing_count()
+
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
