@@ -100,18 +100,17 @@ class TextLineDatasetOp::Dataset : public DatasetBase {
       do {
         // We are currently processing a file, so try to read the next line.
         if (buffered_input_stream_) {
-          string line_contents;
-          Status s = buffered_input_stream_->ReadLine(&line_contents);
+          Tensor line_contents(tstring{});
+          tstring& line_contents_str = line_contents.scalar<tstring>()();
+          Status s = buffered_input_stream_->ReadLine(&line_contents_str);
 
           if (s.ok()) {
             // Produce the line as output.
             static monitoring::CounterCell* bytes_counter =
                 metrics::GetTFDataBytesReadCounter(
                     name_utils::OpName(TextLineDatasetOp::kDatasetType));
-            bytes_counter->IncrementBy(line_contents.size());
-            out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
-                                      TensorShape({}));
-            out_tensors->back().scalar<tstring>()() = line_contents;
+            bytes_counter->IncrementBy(line_contents_str.size());
+            out_tensors->push_back(std::move(line_contents));
             *end_of_sequence = false;
             return Status::OK();
           } else if (!errors::IsOutOfRange(s)) {
