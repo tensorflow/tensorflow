@@ -141,7 +141,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
         An optimizer instance.
     """
     if 'initial_accumulator_value' not in config:
-      config['initial_accumulator_value'] = 0.
+      config['initial_accumulator_value'] = 0.1
     if 'lr' in config:
       config['learning_rate'] = config.pop('lr')
     return cls(**config)
