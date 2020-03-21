@@ -702,6 +702,7 @@ tf_cc_shared_object(
         "//tensorflow/c:exported_symbols.lds",
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
