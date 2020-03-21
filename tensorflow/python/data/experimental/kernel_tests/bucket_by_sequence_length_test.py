@@ -402,7 +402,8 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
     bucket_size = 10
 
     def _build_dataset():
-      input_data = [list(range(i+1)) for i in range(min_len, max_len)]
+      input_data = [list(range(i + 1)) for i in range(min_len, max_len)]
+
       def generator_fn():
         for record in input_data:
           yield _format_record(record, sparse=True)

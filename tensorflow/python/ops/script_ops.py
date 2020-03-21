@@ -80,8 +80,6 @@ class EagerFunc(object):
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
       use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
-        NOTE(lithuak): see the note for `_eager_py_func`.
-        This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
     self._out_dtypes = Tout
@@ -384,13 +382,24 @@ def _EagerPyFuncGrad(op, *dy):
 # `eager_py_func` and all the call sites should be reverted to
 # using `eager_py_func` without `use_tape_cache` argument of any value.
 def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  """Wraps a python function into a TensorFlow op that executes it eagerly."""
   if ops.executing_eagerly_outside_functions():
     with ops.device(context.context().host_address_space()):
-      return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
-                               name=name, use_tape_cache=use_tape_cache)
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          eager=True,
+          name=name,
+          use_tape_cache=use_tape_cache)
 
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
-                           name=name, use_tape_cache=use_tape_cache)
+  return _internal_py_func(
+      func=func,
+      inp=inp,
+      Tout=Tout,
+      eager=True,
+      name=name,
+      use_tape_cache=use_tape_cache)
 
 
 @tf_export("py_function")
@@ -473,8 +482,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  return _eager_py_func(func=func, inp=inp, Tout=Tout,
-                        name=name, use_tape_cache=True)
+  return _eager_py_func(
+      func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):

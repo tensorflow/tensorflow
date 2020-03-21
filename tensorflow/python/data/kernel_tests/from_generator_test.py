@@ -28,12 +28,12 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import sparse_ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -287,13 +287,9 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     self.assertEqual((1, 2), self.evaluate(get_next()))
     self.assertEqual((3, 4), self.evaluate(get_next()))
-    with self.assertRaisesOpError(
-        r"element of TypeSpec\(\(TensorShape\(None\), tf\.int64, None\), "
-        "\(TensorShape\(None\), tf\.int64, None\)\)"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
-    with self.assertRaisesOpError(
-        r"The expected structure was \(\(TensorShape\(None\), tf\.int64, None\)"
-        r", \(TensorShape\(None\), tf\.int64, None\)\)"):
+    with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
     self.assertEqual((9, 10), self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
@@ -414,9 +410,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     dummy = constant_op.constant(37)
 
     dataset = dataset_ops._GeneratorDataset(
-        dummy,
-        lambda x: x,
-        lambda x: x, finalize_fn,
+        dummy, lambda x: x, lambda x: x, finalize_fn,
         tensor_spec.TensorSpec((), dtypes.int32))
 
     dataset = dataset.take(2)
@@ -451,8 +445,8 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_generator(
         generator,
-        output_spec=ragged_tensor.RaggedTensorSpec(shape=(2, None),
-                                                   dtype=dtypes.int64))
+        output_signature=ragged_tensor.RaggedTensorSpec(
+            shape=(2, None), dtype=dtypes.int64))
     get_next = self.getNext(dataset)
 
     ret = get_next()
@@ -471,7 +465,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_generator(
         generator,
-        output_spec=sparse_tensor.SparseTensorSpec([3, 4], dtypes.int64))
+        output_signature=sparse_tensor.SparseTensorSpec([3, 4], dtypes.int64))
 
     get_next = self.getNext(dataset)
 
@@ -480,6 +474,7 @@ class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertIsInstance(ret, sparse_tensor.SparseTensor)
     self.assertAllEqual([[1, 0, 0, 0], [0, 0, 2, 0], [0, 0, 0, 0]],
                         sparse_ops.sparse_tensor_to_dense(ret))
+
 
 if __name__ == "__main__":
   test.main()
