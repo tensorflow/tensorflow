@@ -146,7 +146,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'features\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'features\', \'training\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_mask"

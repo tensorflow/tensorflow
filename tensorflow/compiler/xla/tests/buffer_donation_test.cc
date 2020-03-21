@@ -96,8 +96,8 @@ class BufferDonationTest : public HloTestBase {
                                                   memory_allocator.get());
         });
 
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> args;
-    args.emplace_back(std::move(owned_buffers));
+    std::vector<ExecutionInput> args;
+    args.emplace_back(ExecutionInput(std::move(owned_buffers)));
 
     TF_ASSERT_OK_AND_ASSIGN(
         ExecutionOutput output,

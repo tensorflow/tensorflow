@@ -438,6 +438,25 @@ Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   return result;
 }
 
+JNIEXPORT jintArray JNICALL Java_org_tensorflow_lite_Tensor_shapeSignature(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) return nullptr;
+
+  int num_dims = 0;
+  int const* data = nullptr;
+  if (tensor->dims_signature != nullptr && tensor->dims_signature->size != 0) {
+    num_dims = tensor->dims_signature->size;
+    data = tensor->dims_signature->data;
+  } else {
+    num_dims = tensor->dims->size;
+    data = tensor->dims->data;
+  }
+  jintArray result = env->NewIntArray(num_dims);
+  env->SetIntArrayRegion(result, 0, num_dims, data);
+  return result;
+}
+
 JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
                                                                 jclass clazz,
                                                                 jlong handle) {
@@ -461,6 +480,18 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
                                                              jclass clazz,
                                                              jlong handle) {
   return GetTensorIndexFromHandle(env, handle);
+}
+
+JNIEXPORT jfloat JNICALL Java_org_tensorflow_lite_Tensor_quantizationScale(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jfloat>(tensor ? tensor->params.scale : 0.f);
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_quantizationZeroPoint(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  return static_cast<jint>(tensor ? tensor->params.zero_point : 0);
 }
 
 #ifdef __cplusplus

@@ -208,6 +208,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         resource_variable_ops.assign_variable_op(
             handle, constant_op.constant([1.], dtype=dtypes.float32))
 
+  def testRepr(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+      text = "%r" % v
+      self.assertEqual(
+          "<tf.Variable 'Variable:0' shape=() dtype=int32, numpy=1>", text)
+
+  def testReprUnavailable(self):
+    with context.eager_mode():
+      v = resource_variable_ops.ResourceVariable(1)
+
+      # Monkey-patch this variable to not have an available value
+      def broken_read():
+        raise ValueError("This doesn't work")
+
+      v.read_value = broken_read
+      text = "%r" % v
+      self.assertEqual("<tf.Variable 'Variable:0' shape=() dtype=int32,"
+                       " numpy=<unavailable>>", text)
+
   def testUnprintableHandle(self):
     with context.eager_mode():
       handle = resource_variable_ops.var_handle_op(

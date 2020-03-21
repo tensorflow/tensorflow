@@ -16,7 +16,7 @@ limitations under the License.
 // This is the optimization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -199,6 +199,22 @@ def : Pat<
   (TFL_HardSwishOp $x),
   [(EqualOperands $x, $y)]>;
 
+// Matching HardSwish with extra FakeQuant. These FakeQuant ops were due to
+// incorrect placement in the quantization aware training.
+// TODO(b/149735743): We should make the placement automatically.
+def : Pat<
+  (TFL_MulOp (TFL_DequantizeOp (TFL_QuantizeOp
+    (TFL_MulOp
+     $x, (TFL_DequantizeOp (TFL_QuantizeOp (TFL_AddOp
+          $y,
+          (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "3.0f">),
+          TFL_AF_Relu6), $qattr2)),
+     TFL_AF_None), $qattr1)),
+    (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "0.166666666f">),
+     TFL_AF_None),
+  (TFL_HardSwishOp $x),
+  [(EqualOperands $x, $y)]>;
+
 // Constraint that the attribute value is less than 'n'
 class ConstDoubleValueLessThan<string n> : Constraint<
   CPred<"$0.isa<DenseElementsAttr>() && "
@@ -269,6 +285,10 @@ foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
 def AreBroadcastableTypes : Constraint<CPred<
   "TFL::IsBroadcastableElementsAttrAndType($0.getType(), $1.getType())">>;
 
+def OperandsBroadcastToOutputType : Constraint<CPred<
+  "TFL::OperandsBroadcastToOutputType($0.getType(), $1.getType(), "
+                                     "$2.getType())">>;
+
 def IsTailOfShape : Constraint<CPred<
   "TFL::IsTailOfShape($0.getType(), $1.getType())">>;
 
@@ -277,15 +297,15 @@ def HaveSameType : Constraint<CPred<"$0.getType(), $1.getType()">>;
 // Pattern for skipping Tile if it is mainly for broadcasting and the
 // Op is already supporting broadcasting.
 multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
-  def : Pat<(BinaryOp (TFL_TileOp $input, (ConstantOp $tile)),
+  def : Pat<(BinaryOp:$result (TFL_TileOp $input, (ConstantOp $tile)),
              $operand, $act_func),
   (BinaryOp $input, $operand, $act_func),
-  [(AreBroadcastableTypes $input, $operand)]>;
+  [(OperandsBroadcastToOutputType $input, $operand, $result)]>;
 
-  def : Pat<(BinaryOp $operand,
+  def : Pat<(BinaryOp:$result $operand,
              (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
   (BinaryOp $operand, $input, $act_func),
-  [(AreBroadcastableTypes $operand, $input)]>;
+  [(OperandsBroadcastToOutputType $operand, $input, $result)]>;
 }
 
 // Multi-pattern consisting of matching stand-alone op or op followed by relu.

@@ -26,8 +26,13 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
+
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+#include "tensorflow/lite/profiling/platform_profiler.h"
+#endif
 
 namespace tflite {
 
@@ -35,6 +40,56 @@ namespace {
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
   return e ? e : DefaultErrorReporter();
+}
+
+template <typename T>
+TfLiteStatus Copy(const T* data_ptr, TfLiteIntArray** arr) {
+  if (data_ptr->values() == nullptr) {
+    return kTfLiteError;
+  }
+
+  int size = data_ptr->values()->size();
+  *arr = TfLiteIntArrayCreate(size);
+  for (int i = 0; i < size; i++) {
+    (*arr)->data[i] = static_cast<int>(data_ptr->values()->Get(i));
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ParseSparseIndexVector(const DimensionMetadata* src,
+                                    TfLiteDimensionMetadata* tgt) {
+  if (src->array_segments() == nullptr || src->array_indices() == nullptr) {
+    return kTfLiteError;
+  }
+  TfLiteStatus status = kTfLiteOk;
+  switch (src->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      status = Copy(src->array_segments_as_Int32Vector(), &tgt->array_segments);
+      break;
+    case SparseIndexVector_Uint16Vector:
+      status =
+          Copy(src->array_segments_as_Uint16Vector(), &tgt->array_segments);
+      break;
+    case SparseIndexVector_Uint8Vector:
+      status = Copy(src->array_segments_as_Uint8Vector(), &tgt->array_segments);
+      break;
+    default:
+      status = kTfLiteError;
+      break;
+  }
+  if (status != kTfLiteOk) return status;
+
+  switch (src->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return Copy(src->array_indices_as_Int32Vector(), &tgt->array_indices);
+    case SparseIndexVector_Uint16Vector:
+      return Copy(src->array_indices_as_Uint16Vector(), &tgt->array_indices);
+    case SparseIndexVector_Uint8Vector:
+      return Copy(src->array_indices_as_Uint8Vector(), &tgt->array_indices);
+    default:
+      break;
+  }
+  return kTfLiteError;
 }
 }  // namespace
 
@@ -170,8 +225,20 @@ string FlatBufferModel::GetMinimumRuntime() const {
       auto buf = metadata->buffer();
       auto* buffer = (*model_->buffers())[buf];
       auto* array = buffer->data();
-      return string(reinterpret_cast<const char*>(array->data()),
-                    array->size());
+      // Get the real length of the runtime string, since there might be
+      // trailing
+      // '\0's in the buffer.
+      for (int len = 0; len < array->size(); ++len) {
+        if (array->data()[len] == '\0') {
+          return string(reinterpret_cast<const char*>(array->data()), len);
+        }
+      }
+      // If there is no '\0' in the buffer, this indicates that the flatbuffer
+      // is malformed.
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Min_runtime_version in model metadata is malformed");
+      break;
     }
   }
   return "";
@@ -202,6 +269,8 @@ FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
 }
 
 FlatBufferModel::~FlatBufferModel() {}
+
+namespace impl {
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
@@ -270,8 +339,8 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   if (flat_array == nullptr) {
     return {};
   }
-  std::vector<int> ret(flat_array->Length());
-  for (int i = 0; i < flat_array->Length(); i++) {
+  std::vector<int> ret(flat_array->size());
+  for (int i = 0; i < flat_array->size(); i++) {
     ret[i] = flat_array->Get(i);
   }
   return ret;
@@ -292,9 +361,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
-  subgraph->ReserveNodes(operators->Length());
+  subgraph->ReserveNodes(operators->size());
 
-  for (int i = 0; i < operators->Length(); ++i) {
+  for (int i = 0; i < operators->size(); ++i) {
     const auto* op = operators->Get(i);
     int index = op->opcode_index();
     if (index < 0 || index >= flatbuffer_op_index_to_registration_.size()) {
@@ -418,8 +487,6 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
   return kTfLiteOk;
 }
 
-// TODO(b/145614687): Add sparse tensor verification check in
-// lite/tools/verifier.cc.
 TfLiteStatus InterpreterBuilder::ParseSparsity(
     const SparsityParameters* src_sparsity, TfLiteSparsity** sparsity_ptr) {
   if (!src_sparsity) {
@@ -430,26 +497,6 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
       src_sparsity->dim_metadata() == nullptr) {
     error_reporter_->Report("Invalid sparsity parameter.");
     return kTfLiteError;
-  }
-
-  const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
-  // Validate sparsity params before allocating the TfLiteSparsity output.
-  for (int i = 0; i < dim_metadata_size; i++) {
-    const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
-    if (src_metadata->format() != DimensionType_DENSE &&
-        src_metadata->format() != DimensionType_SPARSE_CSR) {
-      error_reporter_->Report("The %dth dimension has unknown type: %d.", i,
-                              src_metadata->format());
-      return kTfLiteError;
-    }
-
-    if (src_metadata->format() == DimensionType_SPARSE_CSR &&
-        (src_metadata->array_indices() == nullptr ||
-         src_metadata->array_segments() == nullptr)) {
-      error_reporter_->Report(
-          "The %dth sparse dimension has invalid parameters.", i);
-      return kTfLiteError;
-    }
   }
 
   auto* sparsity =
@@ -472,6 +519,7 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     }
   }
 
+  const size_t dim_metadata_size = src_sparsity->dim_metadata()->size();
   sparsity->dim_metadata_size = dim_metadata_size;
   sparsity->dim_metadata = reinterpret_cast<TfLiteDimensionMetadata*>(
       malloc(dim_metadata_size * sizeof(TfLiteDimensionMetadata)));
@@ -480,6 +528,13 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
 
   for (int i = 0; i < dim_metadata_size; i++) {
     const auto* src_metadata = src_sparsity->dim_metadata()->Get(i);
+    if (src_metadata->format() != DimensionType_DENSE &&
+        src_metadata->format() != DimensionType_SPARSE_CSR) {
+      TF_LITE_REPORT_ERROR(error_reporter_,
+                           "The %dth dimension has unknown type: %d.", i,
+                           src_metadata->format());
+      return kTfLiteError;
+    }
     auto* tgt_metadata = &sparsity->dim_metadata[i];
 
     tgt_metadata->format =
@@ -488,17 +543,11 @@ TfLiteStatus InterpreterBuilder::ParseSparsity(
     if (tgt_metadata->format == kTfLiteDimDense) {
       tgt_metadata->dense_size = src_metadata->dense_size();
     } else {
-      const int array_segments_size = src_metadata->array_segments()->size();
-      tgt_metadata->array_segments = TfLiteIntArrayCreate(array_segments_size);
-      for (int j = 0; j < array_segments_size; j++) {
-        tgt_metadata->array_segments->data[j] =
-            src_metadata->array_segments()->Get(j);
-      }
-      const int array_indices_size = src_metadata->array_indices()->size();
-      tgt_metadata->array_indices = TfLiteIntArrayCreate(array_indices_size);
-      for (int j = 0; j < array_indices_size; j++) {
-        tgt_metadata->array_indices->data[j] =
-            src_metadata->array_indices()->Get(j);
+      if (ParseSparseIndexVector(src_metadata, tgt_metadata) != kTfLiteOk) {
+        TF_LITE_REPORT_ERROR(
+            error_reporter_,
+            "The %dth sparse dimension has invalid parameters.", i);
+        return kTfLiteError;
       }
     }
   }
@@ -520,7 +569,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     return kEmptyTensorName;
   };
 
-  for (int i = 0; i < tensors->Length(); ++i) {
+  for (int i = 0; i < tensors->size(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
@@ -568,7 +617,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     size_t dims_signature_rank = 0;
     const int* dims_signature_data = nullptr;
     if (tensor->shape_signature()) {
-      dims_signature_rank = tensor->shape_signature()->Length();
+      dims_signature_rank = tensor->shape_signature()->size();
       dims_signature_data = tensor->shape_signature()->data();
     }
 
@@ -683,11 +732,15 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   interpreter->reset(new Interpreter(error_reporter_));
   (*interpreter)->SetNumThreads(num_threads);
-  if (subgraphs->Length() > 1) {
-    (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
+  if (subgraphs->size() > 1) {
+    (*interpreter)->AddSubgraphs(subgraphs->size() - 1);
   }
 
-  for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
+  (*interpreter)->SetProfiler(tflite::profiling::CreatePlatformProfiler());
+#endif
+
+  for (int subgraph_index = 0; subgraph_index < subgraphs->size();
        ++subgraph_index) {
     const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
     tflite::Subgraph* modified_subgraph =
@@ -700,7 +753,7 @@ TfLiteStatus InterpreterBuilder::operator()(
           subgraph_index);
       return cleanup_and_error();
     }
-    if (modified_subgraph->AddTensors(tensors->Length()) != kTfLiteOk) {
+    if (modified_subgraph->AddTensors(tensors->size()) != kTfLiteOk) {
       return cleanup_and_error();
     }
     // Set num threads
@@ -731,5 +784,7 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   return kTfLiteOk;
 }
+
+}  // namespace impl
 
 }  // namespace tflite

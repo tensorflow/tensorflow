@@ -9,6 +9,17 @@ package(
 exports_files(["LICENSE"])
 
 tf_py_test(
+    name = "assert_cardinality_test",
+    srcs = ["assert_cardinality_test.py"],
+    deps = [
+        "//tensorflow/python/data/experimental/ops:cardinality",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "assert_next_test",
     size = "small",
     srcs = ["assert_next_test.py"],
@@ -466,6 +477,7 @@ tf_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "@six_archive//:six",
@@ -524,6 +536,20 @@ tf_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "random_dataset_test",
+    size = "small",
+    srcs = ["random_dataset_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:iterator_ops",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -727,7 +753,7 @@ tf_py_test(
 
 tf_py_test(
     name = "stats_dataset_ops_test",
-    size = "large",
+    size = "small",
     srcs = ["stats_dataset_ops_test.py"],
     tags = [
         "no_pip",

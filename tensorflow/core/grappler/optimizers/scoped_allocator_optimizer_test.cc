@@ -250,7 +250,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   }
 
   // Invokes ScopedAllocatorOptimizer on `graph_def`, then executes it and
-  // returns the outputs specifed by `output_names` in `outputs`.
+  // returns the outputs specified by `output_names` in `outputs`.
   void ExecuteGraph(const GraphDef& graph_def,
                     const std::vector<string>& output_names,
                     std::vector<Tensor>* outputs) {

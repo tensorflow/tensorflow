@@ -15,12 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_REGISTRATION_H_
 #define TENSORFLOW_C_EXPERIMENTAL_FILESYSTEM_MODULAR_FILESYSTEM_REGISTRATION_H_
 
+#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 namespace filesystem_registration {
 
-Status RegisterFilesystemPluginImpl(const std::string& dso_path);
+// Implementation for filesystem registration
+//
+// Don't call this directly. Instead call `RegisterFilesystemPlugin`.
+// Exposed only for static registration of local filesystems.
+Status RegisterFilesystemPluginImpl(const TF_FilesystemPluginInfo* info);
 
 }  // namespace filesystem_registration
 }  // namespace tensorflow

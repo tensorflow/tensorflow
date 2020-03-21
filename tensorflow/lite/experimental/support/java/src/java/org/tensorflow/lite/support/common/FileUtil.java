@@ -22,8 +22,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
 import org.checkerframework.checker.nullness.qual.NonNull;
@@ -46,10 +48,30 @@ public class FileUtil {
   @NonNull
   public static List<String> loadLabels(@NonNull Context context, @NonNull String filePath)
       throws IOException {
+    return loadLabels(context, filePath, Charset.defaultCharset());
+  }
+
+  /**
+   * Loads labels from the label file into a list of strings.
+   *
+   * <p>A legal label file is the plain text file whose contents are split into lines, and each line
+   * is an individual value. The empty lines will be ignored. The file should be in assets of the
+   * context.
+   *
+   * @param context The context holds assets.
+   * @param filePath The path of the label file, relative with assets directory.
+   * @param cs {@code Charset} to use when decoding content of label file.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadLabels(
+      @NonNull Context context, @NonNull String filePath, Charset cs) throws IOException {
     SupportPreconditions.checkNotNull(context, "Context cannot be null.");
     SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
-    InputStream inputStream = context.getAssets().open(filePath);
-    return loadLabels(inputStream);
+    try (InputStream inputStream = context.getAssets().open(filePath)) {
+      return loadLabels(inputStream, cs);
+    }
   }
 
   /**
@@ -62,14 +84,63 @@ public class FileUtil {
    */
   @NonNull
   public static List<String> loadLabels(@NonNull InputStream inputStream) throws IOException {
+    return loadLabels(inputStream, Charset.defaultCharset());
+  }
+
+  /**
+   * Loads labels from an input stream of an opened label file. See details for label files in
+   * {@link FileUtil#loadLabels(Context, String)}.
+   *
+   * @param inputStream the input stream of an opened label file.
+   * @param cs {@code Charset} to use when decoding content of label file.
+   * @return a list of labels.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadLabels(@NonNull InputStream inputStream, Charset cs)
+      throws IOException {
     List<String> labels = new ArrayList<>();
-    BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
-    String line;
-    while ((line = reader.readLine()) != null) {
-      labels.add(line);
+    try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream, cs))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        if (line.trim().length() > 0) {
+          labels.add(line);
+        }
+      }
+      return labels;
     }
-    reader.close();
-    return labels;
+  }
+
+  /**
+   * Loads a vocabulary file (a single-column text file) into a list of strings.
+   *
+   * <p>A vocabulary file is a single-column plain text file whose contents are split into lines,
+   * and each line is an individual value. The file should be in assets of the context.
+   *
+   * @param context The context holds assets.
+   * @param filePath The path of the vocabulary file, relative with assets directory.
+   * @return a list of vocabulary words.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadSingleColumnTextFile(
+      @NonNull Context context, @NonNull String filePath, Charset cs) throws IOException {
+    return loadLabels(context, filePath, cs);
+  }
+
+  /**
+   * Loads vocabulary from an input stream of an opened vocabulary file (which is a single-column
+   * text file). See details for vocabulary files in {@link FileUtil#loadVocabularyFile(Context,
+   * String)}.
+   *
+   * @param inputStream the input stream of an opened vocabulary file.
+   * @return a list of vocabulary words.
+   * @throws IOException if error occurs to open or read the file.
+   */
+  @NonNull
+  public static List<String> loadSingleColumnTextFile(@NonNull InputStream inputStream, Charset cs)
+      throws IOException {
+    return loadLabels(inputStream, cs);
   }
 
   /**
@@ -85,11 +156,29 @@ public class FileUtil {
       throws IOException {
     SupportPreconditions.checkNotNull(context, "Context should not be null.");
     SupportPreconditions.checkNotNull(filePath, "File path cannot be null.");
-    AssetFileDescriptor fileDescriptor = context.getAssets().openFd(filePath);
-    FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
-    FileChannel fileChannel = inputStream.getChannel();
-    long startOffset = fileDescriptor.getStartOffset();
-    long declaredLength = fileDescriptor.getDeclaredLength();
-    return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    try (AssetFileDescriptor fileDescriptor = context.getAssets().openFd(filePath);
+    FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor())) {
+      FileChannel fileChannel = inputStream.getChannel();
+      long startOffset = fileDescriptor.getStartOffset();
+      long declaredLength = fileDescriptor.getDeclaredLength();
+      return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    }
+  }
+
+  /**
+   * Loads a binary file from the asset folder.
+   *
+   * @param context Application context to access assets.
+   * @param filePath Asset path of the file.
+   * @return the byte array for the binary file.
+   * @throws IOException if an I/O error occurs when loading file.
+   */
+  @NonNull
+  public static byte[] loadByteFromFile(@NonNull Context context, @NonNull String filePath)
+      throws IOException {
+    ByteBuffer buffer = loadMappedFile(context, filePath);
+    byte[] byteArray = new byte[buffer.remaining()];
+    buffer.get(byteArray);
+    return byteArray;
   }
 }

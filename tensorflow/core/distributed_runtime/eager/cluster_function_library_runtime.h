@@ -83,7 +83,7 @@ class EagerClusterFunctionLibraryRuntime
   };
 
   mutable mutex mu_;
-  std::vector<FunctionData> function_data_ GUARDED_BY(mu_);
+  std::vector<FunctionData> function_data_ TF_GUARDED_BY(mu_);
 };
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

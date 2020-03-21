@@ -786,7 +786,7 @@ class CudaEventRecorder {
     // Synchronize all contexts, record end events, synchronize again.
     // This scheme is an unreliable measure to associate a event with the wall
     // time. There are chances that other threads might enque kernels which
-    // delay the second synchornization.
+    // delay the second synchronization.
     TF_RETURN_IF_ERROR(Synchronize());
     for (auto &pair : context_infos_) {
       TF_RETURN_IF_ERROR(ToStatus(cuCtxSetCurrent(pair.first)));
@@ -962,9 +962,9 @@ class CudaEventRecorder {
   }
 
   absl::Mutex mutex_;
-  bool stopped_ GUARDED_BY(mutex_) = false;
-  std::vector<KernelRecord> kernel_records_ GUARDED_BY(mutex_);
-  std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(mutex_);
+  bool stopped_ TF_GUARDED_BY(mutex_) = false;
+  std::vector<KernelRecord> kernel_records_ TF_GUARDED_BY(mutex_);
+  std::vector<MemcpyRecord> memcpy_records_ TF_GUARDED_BY(mutex_);
 
   CuptiInterface *cupti_interface_;
   CuptiTraceCollector *collector_;
@@ -1037,7 +1037,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
           auto context = scoped_cuda_context.GetContext();
           if (!dev_id) return errors::Internal("Invalid CUDA stream");
           // Because annotation are per device, therefore we need to populate
-          // annotation for each device invovled.
+          // annotation for each device involved.
           collector_->annotation_map()->Add(*dev_id, cbdata->correlationId,
                                             annotation);
           record_indices.push_back(

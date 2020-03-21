@@ -35,9 +35,10 @@ limitations under the License.
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op_def_util.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -91,35 +92,51 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
-OpKernel::OpKernel(OpKernelConstruction* context)
-    : OpKernel(context, MakeUnique<const NodeDef>(context->def())) {}
+OpKernel::OpKernel(OpKernelConstruction* context) : OpKernel(context, false) {}
 
 OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
-    : OpKernel(context, MakeUnique<const NodeDef>(context->def()),
-               is_deferred) {}
-
-OpKernel::OpKernel(OpKernelConstruction* context,
-                   std::unique_ptr<const NodeDef> node_def, bool is_deferred)
-    : def_(std::move(node_def)),
-      input_types_(context->input_types().begin(),
-                   context->input_types().end()),
+    : props_(context->props_),
       input_memory_types_(context->input_memory_types().begin(),
                           context->input_memory_types().end()),
-      output_types_(context->output_types().begin(),
-                    context->output_types().end()),
       output_memory_types_(context->output_memory_types().begin(),
                            context->output_memory_types().end()),
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()),
-      name_view_(def_->name()),
-      type_string_view_(def_->op()),
+      name_view_(props_->node_def.name()),
+      type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      is_deferred_(is_deferred) {
   OP_REQUIRES_OK(context,
-                 NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
-                                   &output_name_map_));
-  OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
+                 NameRangesForNode(props_->node_def, *props_->op_def,
+                                   &input_name_map_, &output_name_map_));
+  OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
+                                             context->graph_def_version()));
+
+  // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
+  // scheduler runs: we consider them as inexpensive.
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               context->device_type() != DeviceType(DEVICE_SYCL);
+}
+
+OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
+                   bool is_deferred)
+    : props_(std::make_shared<const NodeProperties>(
+          context->props_->op_def, std::move(custom_def),
+          context->props_->input_types, context->props_->output_types)),
+      input_memory_types_(context->input_memory_types().begin(),
+                          context->input_memory_types().end()),
+      output_memory_types_(context->output_memory_types().begin(),
+                           context->output_memory_types().end()),
+      input_name_map_(context->num_inputs()),
+      output_name_map_(context->num_outputs()),
+      name_view_(props_->node_def.name()),
+      type_string_view_(props_->node_def.op()),
+      graph_def_version_(context->graph_def_version()),
+      is_deferred_(is_deferred) {
+  OP_REQUIRES_OK(context,
+                 NameRangesForNode(props_->node_def, *props_->op_def,
+                                   &input_name_map_, &output_name_map_));
+  OP_REQUIRES_OK(context, CheckOpDeprecation(*props_->op_def,
                                              context->graph_def_version()));
 
   // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
@@ -129,15 +146,6 @@ OpKernel::OpKernel(OpKernelConstruction* context,
 }
 
 OpKernel::~OpKernel() {}
-
-const uint64 OpKernel::kInitialCostEstimateCycles;
-const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
-const uint64 OpKernel::kCostDecay;
-
-const string& OpKernel::name() const { return def_->name(); }
-const string& OpKernel::type_string() const { return def_->op(); }
-const string& OpKernel::requested_device() const { return def_->device(); }
-const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
@@ -208,7 +216,6 @@ Tensor* PersistentTensor::AccessTensor(OpKernelConstruction* context) {
 }
 
 Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
-  context->NotifyUseOfPersistentTensor(tensor_);
   return &tensor_;
 }
 
@@ -216,22 +223,18 @@ Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
 
 OpKernelConstruction::OpKernelConstruction(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
-    const NodeDef* node_def, const OpDef* op_def, FunctionLibraryRuntime* flib,
-    ResourceMgr* resource_mgr, const DataTypeSlice& input_types,
+    FunctionLibraryRuntime* flib, ResourceMgr* resource_mgr,
+    const std::shared_ptr<const NodeProperties>& props,
     const MemoryTypeSlice& input_memory_types,
-    const DataTypeSlice& output_types,
     const MemoryTypeSlice& output_memory_types, int graph_def_version,
     Status* status)
     : device_type_(std::move(device_type)),
       device_(device),
       allocator_(allocator),
-      def_(node_def),
-      op_def_(op_def),
       flib_(flib),
       resource_mgr_(resource_mgr),
-      input_types_(input_types),
+      props_(props),
       input_memory_types_(input_memory_types),
-      output_types_(output_types),
       output_memory_types_(output_memory_types),
       graph_def_version_(graph_def_version),
       status_(status) {}
@@ -246,8 +249,8 @@ void OpKernelConstruction::SetStatus(const Status& status) {
 
 Status OpKernelConstruction::MatchSignature(
     const DataTypeSlice expected_inputs, const DataTypeSlice expected_outputs) {
-  return MatchSignatureHelper(expected_inputs, expected_outputs, input_types_,
-                              output_types_);
+  return MatchSignatureHelper(expected_inputs, expected_outputs,
+                              props_->input_types, props_->output_types);
 }
 
 Status OpKernelConstruction::allocate_temp(DataType type,
@@ -263,7 +266,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   }
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation(
-        def_->name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
+        def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
   return Status::OK();
@@ -288,7 +291,7 @@ Status OpKernelConstruction::allocate_temp(DataType type,
   }
   if (LogMemory::IsEnabled()) {
     LogMemory::RecordTensorAllocation(
-        def_->name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
+        def().name(), LogMemory::OP_KERNEL_CONSTRUCTION_STEP_ID, new_temp);
   }
   *out_temp = new_temp;
   return Status::OK();
@@ -321,7 +324,7 @@ OpKernelContext::OpKernelContext(Params* params)
 
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params), outputs_(num_outputs) {
-  if (params_->record_tensor_accesses || params_->track_allocations) {
+  if (params_->track_allocations) {
     tracking_state_ = absl::make_unique<TrackingState>();
   }
 
@@ -383,13 +386,6 @@ void OpKernelContext::SetStatus(const Status& status) {
   status_.Update(status);
 }
 
-void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
-  DCHECK(tracking_state_);
-  mutex_lock l(tracking_state_->mu);
-  // Keep a reference to the underlying memory around.
-  tracking_state_->referenced_tensors.Add(tensor);
-}
-
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
@@ -404,7 +400,6 @@ Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
                                    "' when non-ref input was expected");
   }
   *tensor = (*params_->inputs)[start].tensor;
-  record_tensor_reference(**tensor);
   return Status::OK();
 }
 
@@ -439,7 +434,6 @@ const Tensor& OpKernelContext::input(int index) {
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
   const Tensor& tensor = *((*params_->inputs)[index].tensor);
-  record_tensor_reference(tensor);
   return tensor;
 }
 
@@ -450,12 +444,10 @@ Tensor OpKernelContext::mutable_input(int index, bool lock_held) {
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
     Tensor& tensor = *((*params_->inputs)[index].tensor);
-    record_tensor_reference(tensor);
     return tensor;
   } else {
     tf_shared_lock l(*input_ref_mutex(index));
     Tensor& tensor = *((*params_->inputs)[index].tensor);
-    record_tensor_reference(tensor);
     return tensor;
   }
 }
@@ -472,7 +464,6 @@ void OpKernelContext::replace_ref_input(int index, const Tensor& tensor,
     mutex_lock l(*input_ref_mutex(index));
     *(*params_->inputs)[index].tensor = tensor;
   }
-  record_tensor_reference(tensor);
 }
 
 void OpKernelContext::forward_ref_input_to_ref_output(int input_index,
@@ -648,7 +639,6 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
     tf_shared_lock l(*input_ref_mutex(start));
     *tensor = *(*params_->inputs)[start].tensor;
   }
-  record_tensor_reference(*tensor);
   return Status::OK();
 }
 
@@ -771,7 +761,6 @@ Status OpKernelContext::allocate_tensor(
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
                                       params_->step_id, new_tensor);
   }
-  record_tensor_reference(new_tensor);
   *out_tensor = std::move(new_tensor);
   return Status::OK();
 }
@@ -959,7 +948,6 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
   } else {
     // Input can be forwarded to output; incref on `tensor` and set output at
     // `index` to this tensor.
-    record_tensor_reference(tensor);
     outputs_[index] = TensorValue(new Tensor(tensor));
     if (track_allocations() && tensor.TotalBytes() > 0) {
       DCHECK(tracking_state_);
@@ -984,7 +972,6 @@ void OpKernelContext::set_output_ref(int index, mutex* mu,
   CHECK_GE(index, 0);
   CHECK_LT(index, outputs_.size());
   CHECK(IsRefType(params_->op_kernel->output_type(index)));
-  record_tensor_reference(*tensor_for_ref);
   outputs_[index] = TensorValue(mu, tensor_for_ref);
 }
 
@@ -1124,7 +1111,8 @@ struct KernelRegistration {
 // KernelDef.
 struct KernelRegistry {
   mutex mu;
-  std::unordered_multimap<string, KernelRegistration> registry GUARDED_BY(mu);
+  std::unordered_multimap<string, KernelRegistration> registry
+      TF_GUARDED_BY(mu);
 };
 
 #if defined(_WIN32)
@@ -1544,45 +1532,65 @@ string KernelsRegisteredForOp(StringPiece op_name) {
   return ret;
 }
 
+/* TODO(rmlarsen): This API is deprecated. Remove it if possible to avoid
+ * copying the NodeDef. */
 std::unique_ptr<OpKernel> CreateOpKernel(
     DeviceType device_type, DeviceBase* device, Allocator* allocator,
     const NodeDef& node_def, int graph_def_version, Status* status) {
+  // Look up the Op registered for this op name.
+  std::shared_ptr<const NodeProperties> props;
+  status->Update(NodeProperties::CreateFromNodeDef(
+      node_def, OpRegistry::Global(), &props));
+  if (!status->ok()) {
+    errors::AppendToMessage(status,
+                            " for node: ", FormatNodeDefForError(node_def));
+    return nullptr;
+  }
+  return CreateOpKernel(device_type, device, allocator, props,
+                        graph_def_version, status);
+}
+
+std::unique_ptr<OpKernel> CreateOpKernel(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const std::shared_ptr<const NodeProperties>& props, int graph_def_version,
+    Status* status) {
   OpKernel* kernel = nullptr;
-  *status = CreateOpKernel(std::move(device_type), device, allocator, nullptr,
-                           node_def, graph_def_version, &kernel);
+  *status = CreateOpKernel(std::move(device_type), device, allocator,
+                           /*flib=*/nullptr, props, graph_def_version, &kernel);
   return std::unique_ptr<OpKernel>(kernel);
 }
 
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      const NodeDef& node_def, int graph_def_version,
-                      OpKernel** kernel) {
+                      const std::shared_ptr<const NodeProperties>& props,
+                      int graph_def_version, OpKernel** kernel) {
   return CreateOpKernel(std::move(device_type), device, allocator, flib,
-                        /* resource_mgr= */ nullptr, node_def,
-                        graph_def_version, kernel);
+                        /* resource_mgr= */ nullptr, props, graph_def_version,
+                        kernel);
 }
 
 Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                       Allocator* allocator, FunctionLibraryRuntime* flib,
-                      ResourceMgr* resource_mgr, const NodeDef& node_def,
+                      ResourceMgr* resource_mgr,
+                      const std::shared_ptr<const NodeProperties>& props,
                       int graph_def_version, OpKernel** kernel) {
-  VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
-
-  // Look up the Op registered for this op name.
-  const OpDef* op_def = nullptr;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
-
-  // Validate node_def against OpDef.
-  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
-
-  // Look up kernel registration.
-  const KernelRegistration* registration;
+  const NodeDef& node_def = props->node_def;
   bool was_attr_mismatch;
-  Status s = FindKernelRegistration(device_type, node_def, &registration,
-                                    &was_attr_mismatch);
-  if (!s.ok()) {
-    errors::AppendToMessage(&s, " when instantiating ", node_def.op());
-    return s;
+  const KernelRegistration* registration = nullptr;
+  Status s;
+  if (props != nullptr) {
+    VLOG(1) << "Instantiating kernel for node: " << SummarizeNodeDef(node_def);
+
+    // Validate node_def against OpDef.
+    TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *props->op_def));
+
+    // Look up kernel registration.
+    s = FindKernelRegistration(device_type, node_def, &registration,
+                               &was_attr_mismatch);
+    if (!s.ok()) {
+      errors::AppendToMessage(&s, " when instantiating ", node_def.op());
+      return s;
+    }
   }
   if (registration == nullptr) {
     s.Update(errors::NotFound("No registered '", node_def.op(),
@@ -1599,15 +1607,6 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
     return s;
   }
 
-  // Get signature from the OpDef & NodeDef
-  DataTypeVector inputs;
-  DataTypeVector outputs;
-  s.Update(InOutTypesForNode(node_def, *op_def, &inputs, &outputs));
-  if (!s.ok()) {
-    errors::AppendToMessage(&s, " for node: ", FormatNodeDefForError(node_def));
-    return s;
-  }
-
   // We are creating a kernel for an op registered in
   // OpRegistry::Global(), we consult the kernel registry to decide
   // the kernel's input and output memory types.
@@ -1618,10 +1617,9 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
                                         &output_memory_types));
 
   // Everything needed for OpKernel construction.
-  OpKernelConstruction context(std::move(device_type), device, allocator,
-                               &node_def, op_def, flib, resource_mgr, inputs,
-                               input_memory_types, outputs, output_memory_types,
-                               graph_def_version, &s);
+  OpKernelConstruction context(std::move(device_type), device, allocator, flib,
+                               resource_mgr, props, input_memory_types,
+                               output_memory_types, graph_def_version, &s);
   *kernel = registration->factory->Create(&context);
   if (!s.ok()) {
     delete *kernel;
@@ -1736,7 +1734,7 @@ void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
 
 void CheckNotInComputeAsync(OpKernelContext* ctx,
                             const char* correct_macro_name) {
-  CHECK_EQ(nullptr, ctx->op_kernel().AsAsync())
+  CHECK_EQ(nullptr, ctx->params_->op_kernel->AsAsync())
       << "Use " << correct_macro_name << " in AsyncOpKernel implementations.";
 }
 

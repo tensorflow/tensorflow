@@ -88,8 +88,8 @@ func @atan2BroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<
 func @divBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xf32>) -> tensor<1x4xf32>
-  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.div %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
-  %0 = "xla_hlo.div"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.divide %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
+  %0 = "xla_hlo.divide"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
 
@@ -99,8 +99,8 @@ func @divBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x
 func @maxBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xf32>) -> tensor<1x4xf32>
-  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.max %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
-  %0 = "xla_hlo.max"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.maximum %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
+  %0 = "xla_hlo.maximum"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
 
@@ -110,8 +110,8 @@ func @maxBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x
 func @minBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xf32>) -> tensor<1x4xf32>
-  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.min %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
-  %0 = "xla_hlo.min"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.minimum %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
+  %0 = "xla_hlo.minimum"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
 
@@ -121,8 +121,8 @@ func @minBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x
 func @mulBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xf32>) -> tensor<1x4xf32>
-  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.mul %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
-  %0 = "xla_hlo.mul"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.multiply %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
+  %0 = "xla_hlo.multiply"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
 
@@ -187,8 +187,8 @@ func @shiftRightLogicalBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>
 func @subBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tensor<1x4xf32> {
   // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.broadcast_in_dim"(%arg0) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<1x4xf32>) -> tensor<1x4xf32>
   // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.broadcast_in_dim"(%arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xf32>) -> tensor<1x4xf32>
-  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.sub %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
-  %0 = "xla_hlo.sub"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
+  // CHECK-NEXT: %[[RESULT:.*]] = xla_hlo.subtract %[[BROADCAST0]], %[[BROADCAST1]] : tensor<1x4xf32>
+  %0 = "xla_hlo.subtract"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xf32>
   return %0 : tensor<1x4xf32>
 }
 
@@ -234,4 +234,40 @@ func @compareBroadcastRhs(%arg0: tensor<1x4xf32>, %arg1: tensor<4xf32>) -> tenso
   // CHECK-NEXT: %[[RESULT:.*]] = "xla_hlo.compare"(%[[BROADCAST0]], %[[BROADCAST1]]) {comparison_direction = "NE"} : (tensor<1x4xf32>, tensor<1x4xf32>) -> tensor<1x4xi1>
   %0 = "xla_hlo.compare"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>, comparison_direction = "NE"} : (tensor<1x4xf32>, tensor<4xf32>) -> tensor<1x4xi1>
   return %0 : tensor<1x4xi1>
+}
+
+// -----
+
+// CHECK-LABEL: @dynamicBroadcastAdd
+func @dynamicBroadcastAdd(%arg0: tensor<?x?xf32>, %arg1: tensor<?xf32>) -> tensor<?x?xf32> {
+  // CHECK-NEXT: %[[DIM0:.*]] = dim %arg0, 0 : tensor<?x?xf32>
+  // CHECK-NEXT: %[[DIM0C:.*]] = index_cast %[[DIM0]] : index to i32
+  // CHECK-NEXT: %c1 = constant 1 : index
+  // CHECK-NEXT: %[[DIM1_0:.*]] = dim %arg0, 1 : tensor<?x?xf32>
+  // CHECK-NEXT: %[[DIM1_1:.*]] = dim %arg1, 0 : tensor<?xf32>
+  // CHECK-NEXT: %[[CMPI:.*]] = cmpi "eq", %[[DIM1_0]], %c1 : index
+  // CHECK-NEXT: %[[SEL:.*]] = select %[[CMPI]], %[[DIM1_0]], %[[DIM1_1]] : index
+  // CHECK-NEXT: %[[DIM1C:.*]] = index_cast %[[SEL]] : index to i32
+  // CHECK-NEXT: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[DIM0C]], %[[DIM1C]]) : (i32, i32) -> tensor<2xi32>
+  // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %[[SHAPE]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[SHAPE]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // CHECK-NEXT: xla_hlo.add %[[BROADCAST0]], %[[BROADCAST1]] : tensor<?x?xf32>
+  %0 = "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?x?xf32>, tensor<?xf32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// CHECK-LABEL: @dynamicBroadcastAddScalar
+func @dynamicBroadcastAddScalar(%arg0: tensor<?x?xf32>, %arg1: tensor<f32>) -> tensor<?x?xf32> {
+  // CHECK-NEXT: %[[DIM0:.*]] = dim %arg0, 0 : tensor<?x?xf32>
+  // CHECK-NEXT: %[[DIM0C:.*]] = index_cast %[[DIM0]] : index to i32
+  // CHECK-NEXT: %[[DIM1:.*]] = dim %arg0, 1 : tensor<?x?xf32>
+  // CHECK-NEXT: %[[DIM1C:.*]] = index_cast %[[DIM1]] : index to i32
+  // CHECK-NEXT: %[[SHAPE:.*]] = "xla_hlo.scalars_to_dimension_tensor"(%[[DIM0C]], %[[DIM1C]]) : (i32, i32) -> tensor<2xi32>
+  // CHECK-NEXT: %[[BROADCAST0:.*]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg0, %[[SHAPE]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>} : (tensor<?x?xf32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // CHECK-NEXT: %[[BROADCAST1:.*]] = "xla_hlo.dynamic_broadcast_in_dim"(%arg1, %[[SHAPE]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>, tensor<2xi32>) -> tensor<?x?xf32>
+  // CHECK-NEXT: xla_hlo.add %[[BROADCAST0]], %[[BROADCAST1]] : tensor<?x?xf32>
+  %0 = "xla_hlo.add"(%arg0, %arg1) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<?x?xf32>, tensor<f32>) -> tensor<?x?xf32>
+  return %0 : tensor<?x?xf32>
 }

@@ -27,16 +27,16 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %cst = constant  {name = "constant.8"} dense<1.000000e+00> : tensor<f32>
   %constant.8 = f32[] constant(1)
 
-  // CHECK-NEXT: %5 = "xla_hlo.broadcast_in_dim"(%cst) {name = "broadcast.9"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  // CHECK-NEXT: %5 = "xla_hlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.9"} : (tensor<f32>) -> tensor<300x1x5xf32>
   %broadcast.9 = f32[300,1,5] broadcast(%constant.8), dimensions={}
 
-  // CHECK-NEXT: %6 = xla_hlo.mul %4, %5 {name = "multiply.31"} : tensor<300x1x5xf32>
+  // CHECK-NEXT: %6 = xla_hlo.multiply %4, %5 {name = "multiply.31"} : tensor<300x1x5xf32>
   %multiply.31 = f32[300,1,5] multiply(%broadcast.30, %broadcast.9)
 
   // CHECK-NEXT: %cst_0 = constant  {name = "constant.32"} dense<0.000000e+00> : tensor<f32>
   %constant.32 = f32[] constant(0)
 
-  // CHECK-NEXT: %7 = "xla_hlo.broadcast_in_dim"(%cst_0) {name = "broadcast.33"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  // CHECK-NEXT: %7 = "xla_hlo.broadcast_in_dim"(%cst_0) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.33"} : (tensor<f32>) -> tensor<300x1x5xf32>
   %broadcast.33 = f32[300,1,5] broadcast(%constant.32), dimensions={}
 
   // CHECK-NEXT: %8 = "xla_hlo.compare"(%6, %7) {comparison_direction = "GT", name = "compare.34"} : (tensor<300x1x5xf32>, tensor<300x1x5xf32>) -> tensor<300x1x5xi1>
@@ -45,13 +45,13 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %cst_1 = constant  {name = "constant.10"} dense<0.000000e+00> : tensor<f32>
   %constant.10 = f32[] constant(0)
 
-  // CHECK-NEXT: %9 = "xla_hlo.broadcast_in_dim"(%cst_1) {name = "broadcast.11"} : (tensor<f32>) -> tensor<300x1x5xf32>
+  // CHECK-NEXT: %9 = "xla_hlo.broadcast_in_dim"(%cst_1) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.11"} : (tensor<f32>) -> tensor<300x1x5xf32>
   %broadcast.11 = f32[300,1,5] broadcast(%constant.10), dimensions={}
 
   // CHECK-NEXT: %cst_2 = constant  {name = "constant.40"} dense<0.000000e+00> : tensor<f32>
   %constant.40 = f32[] constant(0)
 
-  // CHECK-NEXT: %10 = "xla_hlo.broadcast_in_dim"(%cst_2) {name = "broadcast.41"} : (tensor<f32>) -> tensor<300x5xf32>
+  // CHECK-NEXT: %10 = "xla_hlo.broadcast_in_dim"(%cst_2) {broadcast_dimensions = dense<[]> : tensor<0xi64>, name = "broadcast.41"} : (tensor<f32>) -> tensor<300x5xf32>
   %broadcast.41 = f32[300,5] broadcast(%constant.40), dimensions={}
 
   // CHECK-NEXT: %11 = "xla_hlo.copy"(%arg1) {name = "copy.1"} : (tensor<1x300x3x1xf32>) -> tensor<1x300x3x1xf32>
@@ -85,7 +85,7 @@ ENTRY %tfcompile.48 {
   // CHECK-NEXT: %18 = xla_hlo.add %16, %17 {name = "add.39"} : tensor<300x5xf32>
   %add.39 = f32[300,5] add(%dot.36, %broadcast.38)
 
-  // CHECK-NEXT: %19 = xla_hlo.max %10, %18 {name = "maximum.42"} : tensor<300x5xf32>
+  // CHECK-NEXT: %19 = xla_hlo.maximum %10, %18 {name = "maximum.42"} : tensor<300x5xf32>
   %maximum.42 = f32[300,5] maximum(%broadcast.41, %add.39)
 
   // CHECK-NEXT: %20 = "xla_hlo.reshape"(%19) {name = "reshape.44"} : (tensor<300x5xf32>) -> tensor<300x1x5xf32>

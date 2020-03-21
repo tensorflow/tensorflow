@@ -71,6 +71,7 @@ class BreakTransformer(converter.Base):
     return nodes, break_used
 
   def visit_While(self, node):
+    original_node = node
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
@@ -98,9 +99,13 @@ class BreakTransformer(converter.Base):
           body=node.body,
           orelse=guarded_orelse)
 
+      new_while_node = node[1]
+      anno.copyanno(original_node, new_while_node, anno.Basic.DIRECTIVES)
+
     return node
 
   def visit_For(self, node):
+    original_node = node
     scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
     break_var = self.ctx.namer.new_symbol('break_', scope.referenced)
 
@@ -137,7 +142,9 @@ class BreakTransformer(converter.Base):
           body=node.body,
           orelse=guarded_orelse)
 
-      anno.setanno(node[1], 'extra_test', extra_test)
+      new_for_node = node[1]
+      anno.setanno(new_for_node, anno.Basic.EXTRA_LOOP_TEST, extra_test)
+      anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
 
     return node
 

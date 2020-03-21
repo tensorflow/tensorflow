@@ -133,14 +133,15 @@ bool IsTraining(const OpInfo& op_info) {
   return false;
 }
 
-// TODO(dyoon): support non-4D tensors in the c ost functions of convolution
+// TODO(dyoon): support non-4D tensors in the cost functions of convolution
 // related ops (Conv, Pool, BatchNorm, and their backprops) and the related
 // helper functions.
 std::vector<int64> GetStrides(const OpInfo& op_info) {
   if (op_info.attr().find("strides") != op_info.attr().end()) {
     const auto strides = op_info.attr().at("strides").list().i();
-    CHECK(strides.size() == 4)
+    DCHECK(strides.size() == 4)
         << "Attr strides is not a length-4 vector: " << op_info.DebugString();
+    if (strides.size() != 4) return {1, 1, 1, 1};
     return {strides[0], strides[1], strides[2], strides[3]};
   }
   return {1, 1, 1, 1};
@@ -149,8 +150,9 @@ std::vector<int64> GetStrides(const OpInfo& op_info) {
 std::vector<int64> GetKernelSize(const OpInfo& op_info) {
   if (op_info.attr().find("ksize") != op_info.attr().end()) {
     const auto ksize = op_info.attr().at("ksize").list().i();
-    CHECK(ksize.size() == 4)
+    DCHECK(ksize.size() == 4)
         << "Attr ksize is not a length-4 vector: " << op_info.DebugString();
+    if (ksize.size() != 4) return {1, 1, 1, 1};
     return {ksize[0], ksize[1], ksize[2], ksize[3]};
   }
   // Note that FusedBatchNorm doesn't have ksize attr, but GetKernelSize returns
@@ -741,9 +743,12 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   // Only check equality when both sizes are known (in other words, when
   // neither is set to a minimum dimension size of 1).
   if (iz != 1 && kz != 1) {
-    CHECK_EQ(iz % kz, 0) << "Input channel " << iz
-                         << " is not a multiple of filter channel " << kz
-                         << ".";
+    DCHECK_EQ(iz % kz, 0) << "Input channel " << iz
+                          << " is not a multiple of filter channel " << kz
+                          << ".";
+    if (iz % kz) {
+      *found_unknown_shapes = true;
+    }
   } else {
     iz = kz = std::max<int64>(iz, kz);
   }
@@ -767,6 +772,11 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
     bool* found_unknown_shapes) {
   DCHECK(op_info.op() == kConv2d || op_info.op() == kDepthwiseConv2dNative)
       << "Invalid Operation: not Conv2D nor DepthwiseConv2dNative";
+
+  if (op_info.inputs_size() < 2) {  // Unexpect inputs.
+    *found_unknown_shapes = true;
+    return 0;
+  }
 
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_info.inputs(0).shape(), op_info.inputs(1).shape(), op_info,
@@ -858,7 +868,7 @@ int64 OpLevelCostEstimator::CountMatMulOperations(const OpInfo& op_info,
     LOG(ERROR) << "Incompatible Matrix dimensions";
     return ops;
   } else {
-    // One of k_dim and k_dim_b might be 1 (mininum dimension size).
+    // One of k_dim and k_dim_b might be 1 (minimum dimension size).
     k_dim = std::max(k_dim, k_dim_b);
   }
 
@@ -1389,7 +1399,9 @@ Costs OpLevelCostEstimator::PredictEinsum(const OpContext& op_context) const {
   // Then, the operation to estimate is BatchMatMul([B,M,K],[B,K,N])
   const auto& op_info = op_context.op_info;
 
-  string equation = op_info.attr().at("equation").s();
+  auto it = op_info.attr().find("equation");
+  if (it == op_info.attr().end()) return Costs::ZeroCosts(/*inaccurate=*/true);
+  const string& equation = it->second.s();
   std::vector<string> equation_split = absl::StrSplit(equation, "->");
 
   if (equation_split.empty()) {
@@ -1861,6 +1873,7 @@ Costs OpLevelCostEstimator::PredictMaxPoolGrad(
   // x: op_info.inputs(0)
   // y: op_info.inputs(1)
   // y_grad: op_info.inputs(2)
+  if (op_info.inputs_size() < 3) return Costs::ZeroCosts(/*inaccurate=*/true);
   ConvolutionDimensions dims = OpDimensionsFromInputs(
       op_info.inputs(0).shape(), op_info, &found_unknown_shapes);
 

@@ -133,9 +133,9 @@ class XEventVisitor : public XStatsOwner<XEvent> {
 
   const XEventMetadata* metadata() const { return metadata_; }
 
- private:
   Timespan GetTimespan() const { return Timespan(TimestampPs(), DurationPs()); }
 
+ private:
   const XPlaneVisitor* plane_;
   const XLine* line_;
   const XEvent* event_;

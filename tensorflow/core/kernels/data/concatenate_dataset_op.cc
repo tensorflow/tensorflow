@@ -146,11 +146,12 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kIndex), i_));
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplUninitialized), ""));
@@ -182,8 +183,8 @@ class ConcatenateDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   static PartialTensorShape MostSpecificCompatibleShape(

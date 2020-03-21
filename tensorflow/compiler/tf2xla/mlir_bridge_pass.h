@@ -16,28 +16,42 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_MLIR_BRIDGE_PASS_H_
 
-#include "tensorflow/core/common_runtime/function_optimization_registry.h"
-#include "tensorflow/core/common_runtime/optimization_registry.h"
+#include "llvm/ADT/StringRef.h"
+#include "tensorflow/compiler/mlir/mlir_graph_optimization_pass.h"
 
 namespace tensorflow {
 
 // This pass uses MLIR to implement all the conversion steps to target XLA from
 // a TensorFlow Function Graph. It is meant to expose a very limited set of
 // functionalities during the bring-up of MLIR-based bridge.
-class MlirBridgePass : public FunctionOptimizationPass {
+class MlirBridgePass : public MlirOptimizationPass {
  public:
-  Status Run(const DeviceSet& device_set, const ConfigProto& config_proto,
-             std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
-             std::vector<std::string>* control_ret_node_names,
-             bool* control_rets_updated) override;
+  llvm::StringRef name() const override { return "bridge"; }
+
+  bool IsEnabled(const ConfigProto& config_proto) const override {
+    return config_proto.experimental().enable_mlir_bridge();
+  }
+
+  // This should be used as a thin mapper around mlir::ModulePass::runOnModule
+  // API integrated with the Tensorflow runtime.
+  Status Run(const ConfigProto& config_proto, mlir::ModuleOp module) override;
 };
 
 // This pass uses MLIR to implement all the conversion steps to target XLA from
 // a TensorFlow V1 Graph. It is meant to expose a very limited set of
 // functionalities during the bring-up of MLIR-based bridge.
-class MlirBridgeV1CompatPass : public GraphOptimizationPass {
+class MlirBridgeV1CompatPass : public MlirV1CompatOptimizationPass {
  public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
+  llvm::StringRef name() const override { return "bridge"; }
+
+  bool IsEnabled(const ConfigProto& config_proto) const override {
+    return config_proto.experimental().enable_mlir_bridge();
+  }
+
+  // This should be used as a thin mapper around mlir::ModulePass::runOnModule
+  // API integrated with the Tensorflow runtime.
+  Status Run(const GraphOptimizationPassOptions& options,
+             mlir::ModuleOp module) override;
 };
 
 }  // namespace tensorflow

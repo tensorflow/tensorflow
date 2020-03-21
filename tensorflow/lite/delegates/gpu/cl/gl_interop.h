@@ -46,7 +46,7 @@ Status CreateEglSyncFromClEvent(cl_event event, EGLDisplay display,
 bool IsEglSyncFromClEventSupported();
 
 // Creates CL event from EGL sync.
-// Created event could only be comsumed by AcquiredGlObject::Acquire call as
+// Created event could only be consumed by AcquiredGlObject::Acquire call as
 // a 'wait_event'.
 Status CreateClEventFromEglSync(cl_context context, const EglSync& egl_sync,
                                 CLEvent* event);

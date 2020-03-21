@@ -26,11 +26,13 @@ package_group(
 filegroup(
     name = "tensorflow_lite_ops_td_files",
     srcs = [
+        "experimental/tfl_hardware_interfaces.td",
         "ir/tfl_op_interfaces.td",
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
-        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/SideEffects.td",
     ],
 )
 
@@ -203,11 +205,13 @@ cc_library(
 cc_library(
     name = "tensorflow_lite",
     srcs = [
+        "experimental/estimators/estimator.h",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
         "ir/tfl_ops_interface.cc.inc",
         "ir/tfl_ops_interface.h.inc",
+        "runtime_verifiers.inc",
         "utils/attribute_utils.cc",
     ],
     hdrs = [
@@ -220,19 +224,21 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
-        "@llvm-project//llvm:support",
-        "@llvm-project//mlir:Analysis",
-        "@llvm-project//mlir:Dialect",
-        "@llvm-project//mlir:IR",
-        "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
-        "@llvm-project//mlir:StandardOps",
-        "@llvm-project//mlir:Support",
-        # TODO(jpienaar): Move this out after splitting out LoopLikeOpInterface.
-        "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopLikeInterface",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:SideEffects",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
 )
@@ -303,15 +309,15 @@ cc_library(
         "transforms/optimize_functional_ops.cc",
         "transforms/prepare_composite_functions_tf.cc",
         "transforms/prepare_tf.cc",
+        "transforms/runtime_type_verify.cc",
         "transforms/split_merged_operands.cc",
         "transforms/trim_functions_tf.cc",
-        "transforms/unroll_batch_matmul.cc",
         "transforms/while_loop_outline.cc",
     ],
     hdrs = [
+        "ir/tfl_ops_interface.h.inc",
         "transforms/dilated_conv.h",
         "transforms/passes.h",
-        "transforms/unroll_batch_matmul.h",
     ],
     deps = [
         ":common",
@@ -325,6 +331,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
+        "//tensorflow/compiler/mlir/tensorflow:unroll_batch_matmul_pass",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:framework",
@@ -434,7 +441,8 @@ genrule(
     srcs = [
         "ir/tfl_ops.td",
         "ir/tfl_op_interfaces.td",
-        "@llvm-project//mlir:include/mlir/Transforms/LoopLikeInterface.td",
+        "experimental/tfl_hardware_interfaces.td",
+        "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
     ],
     outs = [
@@ -461,9 +469,9 @@ cc_library(
 )
 
 tf_native_cc_binary(
-    name = "operator-converter-gen",
+    name = "converter-gen",
     srcs = [
-        "operator_converter_gen.cc",
+        "converter_gen.cc",
     ],
     deps = [
         "@llvm-project//llvm:support",
@@ -473,14 +481,18 @@ tf_native_cc_binary(
 )
 
 gentbl(
-    name = "operator_converter_inc",
+    name = "converter_inc",
     tbl_outs = [
         (
-            "",  # This driver has no options.
+            "--gen-operator-converters",
             "operator_converters.inc",
         ),
+        (
+            "--gen-runtime-verifiers",
+            "runtime_verifiers.inc",
+        ),
     ],
-    tblgen = ":operator-converter-gen",
+    tblgen = ":converter-gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
         ":tensorflow_lite_ops_td_files",
@@ -510,6 +522,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "@llvm-project//llvm:support",
+        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:TransformUtils",
     ],
@@ -574,7 +587,7 @@ cc_library(
         "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/schema:schema_fbs",
-        "//tensorflow/lite/tools/versioning:op_version",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -582,7 +595,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@flatbuffers",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:StandardOps",
@@ -596,6 +608,7 @@ tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
         ":flatbuffer_translate_lib",
+        "@llvm-project//mlir:LoopOpsTransforms",
         "@llvm-project//mlir:MlirTranslateMain",
     ],
 )
@@ -645,12 +658,14 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],
 )
@@ -689,9 +704,9 @@ cc_library(
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_passes",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_passes",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
-        "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "@llvm-project//mlir:AllPassesAndDialects",
@@ -718,6 +733,7 @@ cc_library(
         ":tensorflow_lite_quantize",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:decode_constant_pass",
         "//tensorflow/compiler/mlir/tensorflow:error_util",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_lib",
         "//tensorflow/compiler/mlir/tensorflow:tf_dialect_passes",
@@ -728,11 +744,9 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:AllPassesAndDialects",
-        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
-        "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Transforms",
     ],

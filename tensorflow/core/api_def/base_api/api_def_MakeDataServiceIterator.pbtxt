@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "MakeDataServiceIterator"
+  visibility: HIDDEN
+  summary: "Creates an iterator for reading from the tf.data service."
+}

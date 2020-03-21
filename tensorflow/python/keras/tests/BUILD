@@ -4,7 +4,9 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -102,6 +104,7 @@ tf_py_test(
         ":model_subclassing_test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],

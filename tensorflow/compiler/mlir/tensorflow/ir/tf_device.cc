@@ -41,10 +41,65 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace tf_device {
+
+//===----------------------------------------------------------------------===//
+// TF Device Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct TFInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Defines the legality of inlining TF Device operations.
+  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+    // For now, enable inlining all operations.
+    return true;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Transformation Hooks
+  //===--------------------------------------------------------------------===//
+
+  // Attempts to materialize a conversion for a type mismatch between a call
+  // from this dialect, and a callable region. This method should generate an
+  // operation that takes 'input' as the only operand, and produces a single
+  // result of 'resultType'. If a conversion can not be generated, nullptr
+  // should be returned.
+  // This is just re-using the same logic as the TensorFlow dialect right now.
+  Operation* materializeCallConversion(OpBuilder& builder, Value input,
+                                       Type result_type,
+                                       Location conversion_loc) const final {
+    if (!result_type.isa<TensorType>() || !input.getType().isa<TensorType>())
+      return nullptr;
+    return builder.create<TF::CastOp>(conversion_loc, result_type, input,
+                                      /*truncate=*/builder.getBoolAttr(false));
+  }
+};
+
+// Checks if a block wraps a single operation and the single operation results
+// are perfectly forwarded to the block's terminator.
+bool BlockWrapsSingleOp(Block* block) {
+  auto body = block->without_terminator();
+  if (!has_single_element(body)) return false;
+
+  Operation& wrapped_op = *body.begin();
+  Operation* terminator = block->getTerminator();
+  return wrapped_op.getNumResults() == terminator->getNumOperands() &&
+         std::equal(wrapped_op.getResults().begin(),
+                    wrapped_op.getResults().end(),
+                    terminator->getOperands().begin());
+}
+}  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
     : Dialect(/*name=*/"tf_device", context) {
@@ -54,7 +109,17 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
       >();
 
   addOperations<ParallelExecuteOp>();
+
+  addInterfaces<TFInlinerInterface>();
 }
+
+//===----------------------------------------------------------------------===//
+// tf_device.launch
+//===----------------------------------------------------------------------===//
+
+// Checks if a tf_device.launch wraps a single operation and the single
+// operation results are perfectly forwarded to the launch return.
+bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
 
 //===----------------------------------------------------------------------===//
 // tf_device.return
@@ -149,28 +214,30 @@ void ParallelExecuteOp::build(Builder* builder, OperationState& state,
   state.addTypes(output_types);
 }
 
-std::vector<OpResult> ParallelExecuteOp::GetRegionOutputs(
-    unsigned region_index) {
-  int num_region_results =
-      GetRegionBlockWithIndex(region_index).getTerminator()->getNumResults();
-  std::vector<OpResult> results;
-  results.reserve(num_region_results);
-
-  int return_value_offset = 0;
-  for (int region_id = 0; region_id < region_index; ++region_id)
-    return_value_offset +=
-        GetRegionBlockWithIndex(region_id).getTerminator()->getNumResults();
-
-  for (int i = 0; i < num_region_results; ++i)
-    results.emplace_back(getOperation()->getOpResult(return_value_offset + i));
-
-  return results;
-}
-
 LogicalResult ParallelExecuteOp::verify() { return Verify(*this); }
 
 Block& ParallelExecuteOp::GetRegionBlockWithIndex(unsigned index) {
   return getOperation()->getRegion(index).front();
+}
+
+Operation::result_range ParallelExecuteOp::GetRegionOutputs(
+    unsigned region_index) {
+  int num_region_results =
+      GetRegionBlockWithIndex(region_index).getTerminator()->getNumOperands();
+
+  int return_value_offset = 0;
+  for (int region_id = 0; region_id < region_index; ++region_id)
+    return_value_offset +=
+        GetRegionBlockWithIndex(region_id).getTerminator()->getNumOperands();
+
+  Operation::result_range region_results(getOperation(),
+                                         /*startIndex=*/return_value_offset,
+                                         /*count=*/num_region_results);
+  return region_results;
+}
+
+bool ParallelExecuteOp::RegionWrapsSingleOp(unsigned index) {
+  return BlockWrapsSingleOp(&GetRegionBlockWithIndex(index));
 }
 
 //===----------------------------------------------------------------------===//
@@ -447,16 +514,16 @@ namespace {
 struct DropEmptyLaunch : public OpRewritePattern<LaunchOp> {
   using OpRewritePattern<LaunchOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(LaunchOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(LaunchOp op,
+                                PatternRewriter& rewriter) const override {
     Block& block = op.GetBody();
     // Check if launch only has a return.
-    if (&block.front() != &block.back()) return matchFailure();
+    if (&block.front() != &block.back()) return failure();
 
     // Map launch results to return operands.
     rewriter.replaceOp(op, block.front().getOperands());
 
-    return matchSuccess();
+    return success();
   }
 };
 }  // anonymous namespace

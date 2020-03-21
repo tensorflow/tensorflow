@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DistributedValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "HierarchicalCopyAllReduce"
     mtype: "<type \'type\'>"
   }
@@ -38,6 +42,10 @@ tf_module {
   }
   member {
     name: "ReplicaContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RunOptions"
     mtype: "<type \'type\'>"
   }
   member {

@@ -23,6 +23,10 @@ limitations under the License.
 
 namespace toco {
 
+// This function scans through the error message string, extracts the part about
+// missing ops and prunes away all other information in the error info.
+string SanitizeErrorMessage(const string& error_message);
+
 // Populates the TocoConversionLog proto after analyzing the model.
 void PopulateConversionLog(const Model& model, TocoConversionLog* log);
 

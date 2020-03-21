@@ -74,9 +74,14 @@ class ParallelExecuteOp
 
   static StringRef getOperationName() { return "tf_device.parallel_execute"; }
 
-  std::vector<OpResult> GetRegionOutputs(unsigned region_index);
   LogicalResult verify();
   Block& GetRegionBlockWithIndex(unsigned index);
+  Operation::result_range GetRegionOutputs(unsigned region_index);
+
+  // Checks if a tf_device.parallel_execute index'th region block wraps a single
+  // operation and the single operation results are perfectly forwarded to the
+  // region block's return.
+  bool RegionWrapsSingleOp(unsigned index);
 };
 
 }  // namespace tf_device

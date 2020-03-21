@@ -38,7 +38,7 @@ mlir::Type ConvertElementType(tflite::TensorType type, mlir::Builder builder) {
     case tflite::TensorType_INT32:
       return builder.getIntegerType(32);
     case tflite::TensorType_UINT8:
-      return mlir::TF::Uint8Type::get(builder.getContext());
+      return builder.getIntegerType(8, /*isSigned=*/false);
     case tflite::TensorType_INT64:
       return builder.getIntegerType(64);
     case tflite::TensorType_STRING:

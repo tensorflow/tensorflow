@@ -24,11 +24,24 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
 namespace tensorflow {
 namespace eager {
+namespace {
+void StripDefaultAttributesInRegisterFunctionOp(
+    RegisterFunctionOp* register_function) {
+  StripDefaultAttributes(
+      *OpRegistry::Global(),
+      register_function->mutable_function_def()->mutable_node_def());
+  for (auto& function :
+       *register_function->mutable_library()->mutable_function()) {
+    StripDefaultAttributes(*OpRegistry::Global(), function.mutable_node_def());
+  }
+}
+}  // namespace
 
 void EagerClusterFunctionLibraryRuntime::Instantiate(
     const string& function_name, const FunctionLibraryDefinition& lib_def,
@@ -85,6 +98,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   *register_function->mutable_library() =
       func_lib_def.ReachableDefinitions(register_function->function_def())
           .ToProto();
+  StripDefaultAttributesInRegisterFunctionOp(register_function);
 
   eager_client->EnqueueAsync(
       request, response,
@@ -106,7 +120,18 @@ void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
-  done(errors::Unimplemented("Not implemented"));
+  if (args.empty() && rets->empty()) {
+    FunctionLibraryRuntime::Options opts_copy = opts;
+    opts_copy.op_id = ctx_->RemoteMgr()->NextOpId();
+    Run(opts_copy, handle, /*args=*/nullptr, std::move(done));
+  } else {
+    // TODO(b/150963957): Support remote inputs and outputs which are passed as
+    // Tensors.
+    done(errors::Unimplemented(
+        "Not implemented. Users could set the input devices and output devices "
+        "in FunctionLibraryRuntime::Options to the default multi-device "
+        "function device as a workaround."));
+  }
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
@@ -144,11 +169,13 @@ void EagerClusterFunctionLibraryRuntime::Run(
   eager::EnqueueRequest* request = new eager::EnqueueRequest;
   request->set_context_id(context_id_);
   eager::Operation* remote_op = request->add_queue()->mutable_operation();
-  for (size_t i = 0; i < args->size(); ++i) {
-    remote_op->add_inputs()->Swap(&(*args)[i]);
+  if (args) {
+    for (size_t i = 0; i < args->size(); ++i) {
+      remote_op->add_inputs()->Swap(&(*args)[i]);
+    }
   }
   // The remote component function should use the same op_id as its parent
-  // multi-device function's in order to get the global unqiue op_id generated
+  // multi-device function's in order to get the global unique op_id generated
   // by the master context.
   remote_op->set_id(opts.op_id.value());
   remote_op->set_is_function(true);
@@ -162,7 +189,9 @@ void EagerClusterFunctionLibraryRuntime::Run(
     handle->Ref();
   }
 
-  // TODO(yujingzhang): Use RemoteExecuteNode once we enable async execution.
+  // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
+  // disabled, Run() returns when the remote function execution completes, which
+  // might be blocked by a non-enqueued function execution.
   EnqueueResponse* response = new EnqueueResponse;
   eager_client->EnqueueAsync(request, response,
                              [op, request, response, done](const Status& s) {
@@ -197,12 +226,15 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
   cleanup_function->set_step_id(step_id);
-  eager_client->StreamingEnqueueAsync(
-      request, response, [request, response, done](const Status& status) {
-        done(status);
-        delete request;
-        delete response;
-      });
+  // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
+  // CleanUp() needs to be non-blocking since it would be invoked inside the
+  // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
+  eager_client->EnqueueAsync(request, response,
+                             [request, response, done](const Status& status) {
+                               done(status);
+                               delete request;
+                               delete response;
+                             });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

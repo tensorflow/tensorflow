@@ -12,7 +12,6 @@ load(
     _tf_additional_env_hdrs = "tf_additional_env_hdrs",
     _tf_additional_lib_deps = "tf_additional_lib_deps",
     _tf_additional_lib_hdrs = "tf_additional_lib_hdrs",
-    _tf_additional_monitoring_hdrs = "tf_additional_monitoring_hdrs",
     _tf_additional_rpc_deps = "tf_additional_rpc_deps",
     _tf_additional_tensor_coding_deps = "tf_additional_tensor_coding_deps",
     _tf_additional_test_deps = "tf_additional_test_deps",
@@ -24,7 +23,6 @@ load(
     _tf_kernel_tests_linkstatic = "tf_kernel_tests_linkstatic",
     _tf_lib_proto_parsing_deps = "tf_lib_proto_parsing_deps",
     _tf_logging_deps = "tf_logging_deps",
-    _tf_monitoring_deps = "tf_monitoring_deps",
     _tf_platform_alias = "tf_platform_alias",
     _tf_platform_deps = "tf_platform_deps",
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
@@ -42,6 +40,7 @@ load(
     _tf_protos_profiler_impl = "tf_protos_profiler_impl",
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
+    _tf_resource_deps = "tf_resource_deps",
     _tf_windows_aware_platform_deps = "tf_windows_aware_platform_deps",
 )
 
@@ -55,7 +54,6 @@ tf_additional_device_tracer_srcs = _tf_additional_device_tracer_srcs
 tf_additional_env_hdrs = _tf_additional_env_hdrs
 tf_additional_lib_deps = _tf_additional_lib_deps
 tf_additional_lib_hdrs = _tf_additional_lib_hdrs
-tf_additional_monitoring_hdrs = _tf_additional_monitoring_hdrs
 tf_additional_rpc_deps = _tf_additional_rpc_deps
 tf_additional_tensor_coding_deps = _tf_additional_tensor_coding_deps
 tf_additional_test_deps = _tf_additional_test_deps
@@ -67,7 +65,6 @@ tf_jspb_proto_library = _tf_jspb_proto_library
 tf_kernel_tests_linkstatic = _tf_kernel_tests_linkstatic
 tf_lib_proto_parsing_deps = _tf_lib_proto_parsing_deps
 tf_logging_deps = _tf_logging_deps
-tf_monitoring_deps = _tf_monitoring_deps
 tf_platform_alias = _tf_platform_alias
 tf_platform_deps = _tf_platform_deps
 tf_portable_deps_no_runtime = _tf_portable_deps_no_runtime
@@ -85,4 +82,5 @@ tf_protos_grappler_impl = _tf_protos_grappler_impl
 tf_protos_profiler_impl = _tf_protos_profiler_impl
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
+tf_resource_deps = _tf_resource_deps
 tf_windows_aware_platform_deps = _tf_windows_aware_platform_deps

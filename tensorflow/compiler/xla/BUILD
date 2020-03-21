@@ -17,6 +17,7 @@ package_group(
         "//tensorflow/compiler/...",
         "//tensorflow/python/tpu/...",
         "//third_party/py/jax/...",
+        "//third_party/tf_runtime/tools/tf_kernel_gen/...",
     ],
 )
 
@@ -34,6 +35,25 @@ filegroup(
         "**/*.cc",
         "**/*.h",
     ]),
+)
+
+filegroup(
+    name = "cpu_runtime_srcs",
+    srcs = [
+        "cpu_function_runtime.cc",
+        "executable_run_options.cc",
+    ],
+    visibility = [":friends"],
+)
+
+filegroup(
+    name = "cpu_runtime_hdrs",
+    srcs = [
+        "cpu_function_runtime.h",
+        "executable_run_options.h",
+        "types.h",
+    ],
+    visibility = [":friends"],
 )
 
 tf_proto_library_cc(
@@ -142,7 +162,8 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core:framework_lite",
+        "//tensorflow/core/framework:numeric_types",
+        "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
 )
@@ -620,7 +641,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":types",
-        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -722,6 +742,7 @@ tf_cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -895,7 +916,10 @@ cc_library(
     srcs = ["cpu_function_runtime.cc"],
     hdrs = ["cpu_function_runtime.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:framework_lite"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 tf_cc_test(

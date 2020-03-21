@@ -58,12 +58,14 @@ static void UpdateFuncType(FuncOp func) {
 
 // TODO(jpienaar): Remove when recursive side-effect modeling is added.
 static bool IsSideEffectFree(FuncOp func) {
-  return func.getBody()
-      .walk([&](Operation* op) {
-        if (!op->hasNoSideEffect()) return WalkResult::interrupt();
-        return WalkResult::advance();
-      })
-      .wasInterrupted();
+  return !func.getBody()
+              .walk([&](Operation* op) {
+                if (!MemoryEffectOpInterface::hasNoEffect(op) &&
+                    !op->isKnownTerminator())
+                  return WalkResult::interrupt();
+                return WalkResult::advance();
+              })
+              .wasInterrupted();
 }
 
 // Folds TensorFlow If op with constant conditional operand by inlining the
@@ -73,14 +75,14 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
   explicit FoldIfOp(MLIRContext* context, FuncSet* inlined_funcs)
       : OpRewritePattern<TF::IfOp>(context), inlined_funcs_(inlined_funcs) {}
 
-  PatternMatchResult matchAndRewrite(TF::IfOp op,
-                                     PatternRewriter& rewriter) const override {
+  LogicalResult matchAndRewrite(TF::IfOp op,
+                                PatternRewriter& rewriter) const override {
     // This pattern is restricted to if ops in functions with exactly one block
     // and therefore one terminator op. So, that function return type can be
     // updated if operands' shapes change after inlining. Without this
     // restriction, it would require tensor cast ops.
     FuncOp parent_op = op.getParentOfType<FuncOp>();
-    if (parent_op.getBlocks().size() != 1) return matchFailure();
+    if (parent_op.getBlocks().size() != 1) return failure();
 
     // Find the then and else branch functions.
     SymbolTable table(op.getParentOfType<ModuleOp>());
@@ -96,18 +98,18 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
       inlined_funcs_->insert(then_branch);
       inlined_funcs_->insert(else_branch);
       rewriter.eraseOp(op.getOperation());
-      return matchSuccess();
+      return success();
     }
 
     // Extract the constant cond value.
     DenseElementsAttr cond;
-    if (!matchPattern(op.cond(), m_Constant(&cond))) return matchFailure();
+    if (!matchPattern(op.cond(), m_Constant(&cond))) return failure();
 
     // TODO(hinsu): Handle constants that are not scalar booleans.
     auto cond_type = cond.getType().dyn_cast<RankedTensorType>();
     if (!cond_type || !cond_type.getShape().equals({}) ||
         !cond_type.getElementType().isInteger(/*width=*/1))
-      return matchFailure();
+      return failure();
 
     // Identify the branch to inline.
     bool cond_value = (*cond.int_value_begin()).getSExtValue();
@@ -116,7 +118,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // Make sure that the function has exactly one block to simplify inlining.
     // TFLite doesn't use control flow with blocks so functions with more than
     // one blocks are not encountered in practice.
-    if (func.getBody().getBlocks().size() != 1) return matchFailure();
+    if (func.getBody().getBlocks().size() != 1) return failure();
 
     BlockAndValueMapping mapper;
     for (int i = 0, e = func.getNumArguments(); i != e; ++i)
@@ -147,7 +149,7 @@ class FoldIfOp : public OpRewritePattern<TF::IfOp> {
     // of the function.
     inlined_funcs_->insert(then_branch);
     inlined_funcs_->insert(else_branch);
-    return matchSuccess();
+    return success();
   }
 
  private:

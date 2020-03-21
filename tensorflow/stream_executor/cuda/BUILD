@@ -1,7 +1,7 @@
 # Description:
 #   CUDA-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_copts", "tf_cuda_cc_test")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
@@ -9,7 +9,6 @@ load(
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_deps",
 )
-load("//tensorflow:tensorflow.bzl", "tf_copts")
 load(
     "//tensorflow/core/platform/default:cuda_build_defs.bzl",
     "if_cuda_is_configured",
@@ -69,6 +68,7 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
+        "//tensorflow/core:lib",
     ],
     alwayslink = True,  # Registers itself with the MultiPlatformManager.
 )
@@ -89,7 +89,7 @@ cc_library(
 cc_library(
     name = "cuda_stub",
     srcs = if_cuda_is_configured(["cuda_stub.cc"]),
-    textual_hdrs = ["cuda_10_0.inc"],
+    textual_hdrs = glob(["cuda_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
@@ -249,6 +249,7 @@ cc_library(
         "@local_config_cuda//cuda:cublas_headers",
         # LINT.ThenChange(//tensorflow/copy.bara.sky:cublas_headers)
         "@local_config_cuda//cuda:cuda_headers",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
@@ -269,7 +270,7 @@ cc_library(
 cc_library(
     name = "cufft_stub",
     srcs = if_cuda_is_configured(["cufft_stub.cc"]),
-    textual_hdrs = ["cufft_10_0.inc"],
+    textual_hdrs = glob(["cufft_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",
@@ -414,6 +415,7 @@ cc_library(
     data = if_cuda_is_configured(["@local_config_cuda//cuda:cupti_dsos"]),
     textual_hdrs = ["cupti_10_0.inc"],
     deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cuda_headers",
         "@local_config_cuda//cuda:cupti_headers",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -423,7 +425,7 @@ cc_library(
 cc_library(
     name = "cusolver_stub",
     srcs = if_cuda_is_configured(["cusolver_stub.cc"]),
-    textual_hdrs = ["cusolver_dense_10_0.inc"],
+    textual_hdrs = glob(["cusolver_dense_*.inc"]),
     deps = if_cuda_is_configured([
         # LINT.IfChange
         "@local_config_cuda//cuda:cublas_headers",

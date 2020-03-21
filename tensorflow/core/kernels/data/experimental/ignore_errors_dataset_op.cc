@@ -115,10 +115,11 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         else
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("input_impls_empty"), ""));
@@ -137,7 +138,7 @@ class IgnoreErrorsDatasetOp : public UnaryDatasetOpKernel {
 
      private:
       mutex mu_;
-      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
     };
 
     const DatasetBase* const input_;

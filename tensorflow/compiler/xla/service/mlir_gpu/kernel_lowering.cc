@@ -31,7 +31,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
 #include "mlir/Dialect/Linalg/Passes.h"  // TF:llvm-project
 #include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -58,11 +58,12 @@ using ::mlir::xla_lhlo::FusionOp;
 // Following are some small transformations that are required to clean up code
 // after lowering from linalg to loops.
 
-// A simple pass that applies lowering of HLO to LHLO only within Fusion
-// operations. This is needed, as FusionOp is not closed from above and hence
-// nested pass managers can not be applied.
-struct FusionToLhloConverter
-    : public mlir::FunctionPass<FusionToLhloConverter> {
+// A simple pass that applies lowering of HLO to LHLO only within LHLO ops that
+// contain regions with HLO ops, e.g. FusionOp, ReduceOp, SelectAndScatterOp.
+// This is needed, as these ops are not closed from above and hence nested pass
+// managers can not be applied.
+struct NestedHloRegionsConverter
+    : public mlir::FunctionPass<NestedHloRegionsConverter> {
   void runOnFunction() override {
     auto& ctx = getContext();
     mlir::OwningRewritePatternList patterns;
@@ -70,12 +71,10 @@ struct FusionToLhloConverter
     target.addLegalDialect<::mlir::xla_lhlo::XlaLhloDialect>();
     ::mlir::xla_hlo::populateHLOToLHLOConversionPattern(&ctx, &patterns);
 
-    getFunction().walk([&](FusionOp op) {
-      if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
-        signalPassFailure();
+    getFunction().walk([&](mlir::Operation* op) {
+      if (op->getNumRegions() == 0) {
+        return;
       }
-    });
-    getFunction().walk([&](mlir::xla_lhlo::ReduceOp op) {
       if (failed(applyPartialConversion(op, target, patterns, nullptr))) {
         signalPassFailure();
       }
@@ -259,8 +258,8 @@ void EnableIRPrinting(mlir::PassManager* passManager) {
   auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
     return VLOG_IS_ON(1);
   };
-  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/{},
-                                /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+  passManager->enableIRPrinting(/*shouldPrintBeforePass=*/enable_if_vlog_is_on,
+                                /*shouldPrintAfterPass=*/{},
                                 /*printModuleScope=*/false,
                                 /*printAfterOnlyOnChange=*/true, llvm::dbgs());
   passManager->disableMultithreading();
@@ -272,12 +271,12 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   mlir::PassManager pm(module.getContext());
   EnableIRPrinting(&pm);
 
-  // First, lower bodies of fusion operations from hlo to lhlo.
-  pm.addPass(absl::make_unique<FusionToLhloConverter>());
+  // First, lower bodies of lhlo operations that contain hlo ops.
+  pm.addPass(absl::make_unique<NestedHloRegionsConverter>());
   // Next, we can strip the outer fusion operation.
   pm.addPass(absl::make_unique<FusionOpRemover>());
   // Remove unnecessary Lhlo copies.
-  pm.addPass(::mlir::xla_hlo::createLhloCopyRemovalPass());
+  pm.addPass(::mlir::xla_lhlo::createLhloCopyRemovalPass());
   // Transform lhlo operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeLhloToLinalgPass());
   // Fuse linalg operations. This will yield a single tiled loop nest where
@@ -327,7 +326,7 @@ class LowerToNVVMPass
     ::mlir::gpu::GPUModuleOp m = getOperation();
 
     ::mlir::OwningRewritePatternList patterns;
-    ::mlir::LinalgTypeConverter converter(m.getContext());
+    ::mlir::LLVMTypeConverter converter(m.getContext());
     ::mlir::populateStdToLLVMConversionPatterns(converter, patterns);
     // TODO(b/145824979) Remove linalg once sliceop is in std.
     ::mlir::populateLinalgToLLVMConversionPatterns(converter, patterns,

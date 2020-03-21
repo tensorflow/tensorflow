@@ -35,7 +35,8 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResetVariableTensors(
 // making the provided TfLiteRegistration instance static.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
     TfLiteInterpreterOptions* options, TfLiteBuiltinOperator op,
-    const TfLiteRegistration* registration, int min_version, int max_version);
+    const TfLiteRegistration* registration, int32_t min_version,
+    int32_t max_version);
 
 // Adds an op registration for a custom operator.
 //
@@ -45,7 +46,12 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
 // practice is making the provided TfLiteRegistration instance static.
 TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     TfLiteInterpreterOptions* options, const char* name,
-    const TfLiteRegistration* registration, int min_version, int max_version);
+    const TfLiteRegistration* registration, int32_t min_version,
+    int32_t max_version);
+
+// Enable or disable the NN API for the interpreter (true to enable).
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
+    TfLiteInterpreterOptions* options, bool enable);
 
 #ifdef __cplusplus
 }  // extern "C"

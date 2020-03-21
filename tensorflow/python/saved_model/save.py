@@ -274,7 +274,7 @@ class _SaveableView(object):
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif (ds_values.is_distributed_variable(obj) or
             resource_variable_ops.is_resource_variable(obj)):
-        obj_to_copy = obj.primary if ds_values.is_distributed_variable(
+        obj_to_copy = obj._primary if ds_values.is_distributed_variable(  # pylint: disable=protected-access
             obj) else obj
         new_variable = resource_variable_ops.copy_to_graph_uninitialized(
             obj_to_copy)
@@ -941,6 +941,57 @@ def save(obj, export_dir, signatures=None, options=None):
   May not be called from within a function body.
   @end_compatibility
   """
+  # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
+  # compatible (no sessions) and share it with this export API rather than
+  # making a SavedModel proto and writing it directly.
+  saved_model = saved_model_pb2.SavedModel()
+  meta_graph_def = saved_model.meta_graphs.add()
+
+  _, exported_graph, object_saver, asset_info = _build_meta_graph(
+      obj, export_dir, signatures, options, meta_graph_def)
+  saved_model.saved_model_schema_version = constants.SAVED_MODEL_SCHEMA_VERSION
+
+  # Write the checkpoint, copy assets into the assets directory, and write out
+  # the SavedModel proto itself.
+  utils_impl.get_or_create_variables_dir(export_dir)
+  object_saver.save(utils_impl.get_variables_path(export_dir))
+  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
+                                              export_dir)
+  # Note that this needs to be the last file operation when saving the
+  # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
+  # indication that the SavedModel is completely written.
+  if context.executing_eagerly():
+    context.async_wait()  # Ensure save operations have completed.
+  path = os.path.join(
+      compat.as_str(export_dir),
+      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+  file_io.atomic_write_string_to_file(
+      path, saved_model.SerializeToString(deterministic=True))
+
+  # Clean reference cycles so repeated export()s don't make work for the garbage
+  # collector. Before this point, we need to keep references to captured
+  # constants in the saved graph.
+  ops.dismantle_graph(exported_graph)
+
+
+def export_meta_graph(obj, filename, signatures=None, options=None):
+  """Exports the MetaGraph proto to a file."""
+  export_dir = os.path.dirname(filename)
+  meta_graph_def, exported_graph, _, _ = _build_meta_graph(
+      obj, export_dir, signatures, options)
+
+  file_io.atomic_write_string_to_file(
+      filename, meta_graph_def.SerializeToString(deterministic=True))
+
+  # Clean reference cycles so repeated export()s don't make work for the garbage
+  # collector. Before this point, we need to keep references to captured
+  # constants in the saved graph.
+  ops.dismantle_graph(exported_graph)
+
+
+def _build_meta_graph(obj, export_dir, signatures, options,
+                      meta_graph_def=None):
+  """Creates a MetaGraph containing the resources and functions of an object."""
   if ops.inside_function():
     raise AssertionError(
         "tf.saved_model.save is not supported inside a traced "
@@ -951,6 +1002,7 @@ def save(obj, export_dir, signatures=None, options=None):
     raise ValueError(
         "Expected a Trackable object for export, got {}.".format(obj))
   options = options or save_options.SaveOptions()
+  meta_graph_def = meta_graph_def or meta_graph_pb2.MetaGraphDef()
 
   checkpoint_graph_view = _AugmentedGraphView(obj)
   if signatures is None:
@@ -971,12 +1023,6 @@ def save(obj, export_dir, signatures=None, options=None):
   # there can be side effects of creating variables.
   _ = _SaveableView(checkpoint_graph_view)
   saveable_view = _SaveableView(checkpoint_graph_view, wrapped_functions)
-
-  # TODO(allenl): Factor out some subset of SavedModelBuilder which is 2.x
-  # compatible (no sessions) and share it with this export API rather than
-  # making a SavedModel proto and writing it directly.
-  saved_model = saved_model_pb2.SavedModel()
-  meta_graph_def = saved_model.meta_graphs.add()
   object_saver = util.TrackableSaver(checkpoint_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(meta_graph_def,
                                                     saveable_view, signatures,
@@ -988,18 +1034,7 @@ def save(obj, export_dir, signatures=None, options=None):
         function_aliases[fdef.name] = alias
       for fdef in func._stateless_fn._function_cache.all_values():  # pylint: disable=protected-access
         function_aliases[fdef.name] = alias
-  saved_model.saved_model_schema_version = (
-      constants.SAVED_MODEL_SCHEMA_VERSION)
-  # So far we've just been generating protocol buffers with no I/O. Now we write
-  # the checkpoint, copy assets into the assets directory, and write out the
-  # SavedModel proto itself.
-  utils_impl.get_or_create_variables_dir(export_dir)
-  object_saver.save(utils_impl.get_variables_path(export_dir))
-  builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
-                                              export_dir)
-  path = os.path.join(
-      compat.as_str(export_dir),
-      compat.as_str(constants.SAVED_MODEL_FILENAME_PB))
+
   object_graph_proto = _serialize_object_graph(saveable_view,
                                                asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
@@ -1013,13 +1048,4 @@ def save(obj, export_dir, signatures=None, options=None):
             constants.DEBUG_INFO_FILENAME_PB),
         graph_debug_info.SerializeToString(deterministic=True))
 
-  # Note that this needs to be the last file operation when saving the
-  # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
-  # indication that the SavedModel is completely written.
-  file_io.atomic_write_string_to_file(
-      path, saved_model.SerializeToString(deterministic=True))
-
-  # Clean reference cycles so repeated export()s don't make work for the garbage
-  # collector. Before this point, we need to keep references to captured
-  # constants in the saved graph.
-  ops.dismantle_graph(exported_graph)
+  return meta_graph_def, exported_graph, object_saver, asset_info

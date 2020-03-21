@@ -47,7 +47,7 @@ struct CLNode {
   // for every operation.
   std::vector<int2> ranges;
 
-  // Mostly for debug purposess.
+  // Mostly for debug purposes.
   std::string name;
 
   CLNode() = default;
@@ -116,6 +116,9 @@ class InferenceContext {
   // performance hacks
   bool need_flush_ = false;
 
+  bool flush_periodically_ = false;
+  int flush_period_ = 1;
+
   // In order to reduce memory leak on Mali a pipeline needs to be synchronized
   // with CPU to prevent growing internal global OpenCL kernel pool. One trick
   // is to enqueue an event from a previous run. Most of the time is should
@@ -126,8 +129,8 @@ class InferenceContext {
   CalculationsPrecision precision_;
   TensorStorageType storage_type_;
 
-  // Directly mapped nodes from graph, but some of them "inactiv" due
-  //  to fusion (inactiv = fused).
+  // Directly mapped nodes from graph, but some of them "inactive" due
+  //  to fusion (inactive = fused).
   // Memory is allocated only once, in ConvertOperations, and is not modified
   //  anywhere.
   std::vector<CLNode> nodes_;

@@ -82,6 +82,10 @@ void NormalizeTimeLine(XSpace* space, uint64 start_time_ns);
 // events offset timestamp correspondingly.
 void MergePlanes(const XPlane& src_plane, XPlane* dst_plane);
 
+// Plane's start timestamp is defined as the minimum of all lines' start
+// timestamps. If zero line exists, return 0;
+uint64 GetStartTimestampNs(const XPlane& plane);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

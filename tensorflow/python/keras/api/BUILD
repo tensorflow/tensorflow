@@ -6,7 +6,9 @@ load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "KERAS_API_IN
 load("//tensorflow/python/tools/api/generator:api_init_files_v1.bzl", "KERAS_API_INIT_FILES_V1")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow:tensorflow_py",
+    ],
     licenses = ["notice"],  # Apache 2.0 License
 )
 
@@ -57,6 +59,7 @@ keras_packages = [
     "tensorflow.python.keras.layers.noise",
     "tensorflow.python.keras.layers.normalization",
     "tensorflow.python.keras.layers.normalization_v2",
+    "tensorflow.python.keras.layers.preprocessing",
     "tensorflow.python.keras.layers.pooling",
     "tensorflow.python.keras.layers.recurrent",
     "tensorflow.python.keras.layers.recurrent_v2",

@@ -49,7 +49,9 @@ Status LoadProtoFromFile(absl::string_view input_filename,
   const auto file_or_err =
       llvm::MemoryBuffer::getFileOrSTDIN(StringViewToRef(input_filename));
   if (std::error_code error = file_or_err.getError()) {
-    return errors::InvalidArgument("Could not open input file");
+    return errors::InvalidArgument(
+        "Could not open input file ",
+        string(input_filename.data(), input_filename.size()).c_str());
   }
 
   const auto& input_file = *file_or_err;

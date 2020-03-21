@@ -65,6 +65,14 @@ class WorkerSession {
       DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
       std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
 
+  // In the eager runtime we allow WorkerSession to be updated, where the
+  // worker cache will be recreated. If WorkerSession upate is expected and a
+  // worker in the cache is used in RPCs, the caller should hold a shared
+  // pointer to avoid the workers getting deleted.
+  std::shared_ptr<WorkerCacheInterface> GetSharedWorkerCache() {
+    return worker_cache_;
+  }
+
   // Update an existing worker session with new set of remote workers and
   // devices. Added devices will be owned by the worker session, and removed
   // devices will be freed by their names.
@@ -89,7 +97,7 @@ class WorkerSession {
   const string worker_name_;
 
   // Object from which WorkerInterface instances can be obtained.
-  std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  std::shared_ptr<WorkerCacheInterface> worker_cache_;
 
   // graph_mgr keeps track of the registered graphs of this session.
   //

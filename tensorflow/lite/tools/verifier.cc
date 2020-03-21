@@ -113,6 +113,65 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
   return true;
 }
 
+int GetSizeOfSegments(const DimensionMetadata* dim_metadata) {
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return dim_metadata->array_segments_as_Int32Vector()->values()->size();
+    case SparseIndexVector_Uint16Vector:
+      return dim_metadata->array_segments_as_Uint16Vector()->values()->size();
+    case SparseIndexVector_Uint8Vector:
+      return dim_metadata->array_segments_as_Uint8Vector()->values()->size();
+    default:
+      return -1;
+  }
+}
+
+int GetValueOfSegmentsAt(const DimensionMetadata* dim_metadata, const int i) {
+  switch (dim_metadata->array_segments_type()) {
+    case SparseIndexVector_Int32Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Int32Vector()->values()->Get(i));
+    case SparseIndexVector_Uint16Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Uint16Vector()->values()->Get(i));
+    case SparseIndexVector_Uint8Vector:
+      return static_cast<int>(
+          dim_metadata->array_segments_as_Uint8Vector()->values()->Get(i));
+    default:
+      return -1;
+  }
+}
+
+int GetSizeOfIndices(const DimensionMetadata* dim_metadata) {
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return dim_metadata->array_indices_as_Int32Vector()->values()->size();
+    case SparseIndexVector_Uint16Vector:
+      return dim_metadata->array_indices_as_Uint16Vector()->values()->size();
+    case SparseIndexVector_Uint8Vector:
+      return dim_metadata->array_indices_as_Uint8Vector()->values()->size();
+    default:
+      return -1;
+  }
+}
+
+int GetValueOfIndicesAt(const DimensionMetadata* dim_metadata, const int i) {
+  switch (dim_metadata->array_indices_type()) {
+    case SparseIndexVector_Int32Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Int32Vector()->values()->Get(i));
+    case SparseIndexVector_Uint16Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Uint16Vector()->values()->Get(i));
+    case SparseIndexVector_Uint8Vector:
+      return static_cast<int>(
+          dim_metadata->array_indices_as_Uint8Vector()->values()->Get(i));
+    default:
+      return -1;
+  }
+  return -1;
+}
+
 // The sparsity parameter defines a tree structure to map each non-zero element
 // stored in the flattened buffer back to its index in the conceptual dense
 // tensor.
@@ -139,31 +198,36 @@ absl::optional<uint64_t> VerifyAndCountElements(
         return absl::nullopt;
       }
 
-      for (int j = 0; j < array_segments->size() - 1; j++) {
-        if (array_segments->Get(j) < 0 || array_segments->Get(j + 1) < 0 ||
-            array_segments->Get(j) > array_segments->Get(j + 1)) {
+      int array_segments_size = GetSizeOfSegments(dim_metadata);
+      int array_indices_size = GetSizeOfIndices(dim_metadata);
+
+      for (int j = 0; j < array_segments_size - 1; j++) {
+        if (GetValueOfSegmentsAt(dim_metadata, j) < 0 ||
+            GetValueOfSegmentsAt(dim_metadata, j + 1) < 0 ||
+            GetValueOfSegmentsAt(dim_metadata, j) >
+                GetValueOfSegmentsAt(dim_metadata, j + 1)) {
           return absl::nullopt;
         }
       }
 
-      if (num_elements != array_segments->size() - 1) {
+      if (num_elements != array_segments_size - 1) {
         return absl::nullopt;
       }
 
-      if (array_indices->size() !=
-          array_segments->Get(array_segments->size() - 1)) {
+      if (array_indices_size !=
+          GetValueOfSegmentsAt(dim_metadata, array_segments_size - 1)) {
         return absl::nullopt;
       }
 
-      for (int j = 0; j < array_indices->size(); j++) {
-        if (array_indices->Get(j) < 0 ||
-            array_indices->Get(j) >= dim_sizes[original_dim]) {
+      for (int j = 0; j < array_indices_size; j++) {
+        if (GetValueOfIndicesAt(dim_metadata, j) < 0 ||
+            GetValueOfIndicesAt(dim_metadata, j) >= dim_sizes[original_dim]) {
           return absl::nullopt;
         }
       }
 
       // Need to reset num_elements when seeing a sparse dimension.
-      num_elements = array_indices->size();
+      num_elements = array_indices_size;
     }
   }
 
@@ -364,7 +428,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   absl::flat_hash_set<int> subgraph_input_tensors, constant_tensors,
       variable_tensors, output_tensors;
   if (subgraph.tensors()) {
-    for (int i = 0; i < subgraph.tensors()->Length(); ++i) {
+    for (int i = 0; i < subgraph.tensors()->size(); ++i) {
       const auto* tensor = subgraph.tensors()->Get(i);
       if (IsConstantTensor(*tensor, model)) {
         constant_tensors.insert(i);
@@ -380,7 +444,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   }
 
   if (subgraph.operators()) {
-    for (int op_idx = 0; op_idx < subgraph.operators()->Length(); ++op_idx) {
+    for (int op_idx = 0; op_idx < subgraph.operators()->size(); ++op_idx) {
       const auto* op = subgraph.operators()->Get(op_idx);
       if (!model.operator_codes() ||
           (op->opcode_index() >= model.operator_codes()->size())) {

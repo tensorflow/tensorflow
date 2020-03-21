@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -74,10 +75,9 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
               const char* raw_device_name, TF_Status* status) {
   std::unique_ptr<TFE_Op> op = ReleaseThreadLocalOp(ctx);
   if (!op) {
-    op.reset(new TFE_Op{tensorflow::EagerOperation(ctx->context)});
+    op.reset(new TFE_Op{std::make_unique<tensorflow::OperationInterface>(ctx)});
   }
-  status->status =
-      op->operation.Reset(op_or_function_name, raw_device_name, false, nullptr);
+  status->status = op->operation->Reset(op_or_function_name, raw_device_name);
   if (!status->status.ok()) {
     op.reset();
   }
@@ -86,7 +86,7 @@ TFE_Op* GetOp(TFE_Context* ctx, const char* op_or_function_name,
 
 void ReturnOp(TFE_Context* ctx, TFE_Op* op) {
   if (op) {
-    op->operation.Clear();
+    op->operation->Clear();
     thread_local_eager_operation_map[ctx].reset(op);
   }
 }
@@ -795,7 +795,7 @@ PyObject* GetPythonObjectFromInt(int num) {
 
 // Python subclass of Exception that is created on not ok Status.
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
-PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
+PyObject* exception_class TF_GUARDED_BY(exception_class_mutex) = nullptr;
 
 // Python subclass of Exception that is created to signal fallback.
 PyObject* fallback_exception_class = nullptr;
@@ -1440,7 +1440,7 @@ class GradientTape
   bool watch_accessed_variables_;
   tensorflow::mutex watched_variables_mu_;
   std::set<IdAndVariable, CompareById> watched_variables_
-      GUARDED_BY(watched_variables_mu_);
+      TF_GUARDED_BY(watched_variables_mu_);
 };
 
 typedef tensorflow::eager::ForwardAccumulator<PyObject, PyBackwardFunction,
@@ -3393,7 +3393,7 @@ PyObject* TFE_Py_FastPathExecute_C(PyObject* args) {
     return nullptr;
   }
 
-  const tensorflow::OpDef* op_def = op->operation.OpDef();
+  const tensorflow::OpDef* op_def = op->operation->OpDef();
   if (op_def == nullptr) return nullptr;
 
   if (args_size < kFastPathExecuteInputStartIndex + op_def->input_arg_size()) {
@@ -3924,8 +3924,6 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
 // `include_tensor_ranks_only` allows caching on arguments excluding shape info,
 // so that a slow path using relaxed shape can rely on a cache key that excludes
 // shapes.
-//
-// TODO(nareshmodi): Add support for sparse tensors.
 PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
   const auto status =

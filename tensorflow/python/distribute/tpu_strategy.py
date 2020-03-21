@@ -34,6 +34,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
@@ -52,27 +53,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-def get_tpu_system_metadata(tpu_cluster_resolver):
-  """Retrieves TPU system metadata given a TPUClusterResolver."""
-  master = tpu_cluster_resolver.master()
-
-  # pylint: disable=protected-access
-  cluster_spec = tpu_cluster_resolver.cluster_spec()
-  cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
-  tpu_system_metadata = (
-      tpu_system_metadata_lib._query_tpu_system_metadata(
-          master,
-          cluster_def=cluster_def,
-          query_topology=False))
-
-  return tpu_system_metadata
 
 
 @contextlib.contextmanager
@@ -84,28 +68,28 @@ def maybe_init_scope():
       yield
 
 
-def validate_experimental_run_function(fn):
-  """Validate the function passed into strategy.experimental_run_v2."""
+def validate_run_function(fn):
+  """Validate the function passed into strategy.run."""
 
   # We allow three types of functions/objects passed into TPUStrategy
-  # experimental_run_v2 in eager mode:
+  # run in eager mode:
   #   1. a user annotated tf.function
   #   2. a ConcreteFunction, this is mostly what you get from loading a saved
   #      model.
   #   3. a callable object and the `__call__` method itself is a tf.function.
   #
   # Otherwise we return an error, because we don't support eagerly running
-  # experimental_run_v2 in TPUStrategy.
+  # run in TPUStrategy.
 
-  if context.executing_eagerly() and not isinstance(
-      fn, def_function.Function) and not isinstance(
-          fn, function.ConcreteFunction) and not (callable(fn) and isinstance(
-              fn.__call__, def_function.Function)):
+  if context.executing_eagerly() \
+      and not isinstance(fn, def_function.Function) \
+      and not isinstance(fn, function.ConcreteFunction) \
+      and not (callable(fn) and isinstance(fn.__call__, def_function.Function)):
     raise NotImplementedError(
-        "TPUStrategy.experimental_run_v2(fn, ...) does not support pure eager "
+        "TPUStrategy.run(fn, ...) does not support pure eager "
         "execution. please make sure the function passed into "
-        "`strategy.experimental_run_v2` is a `tf.function` or "
-        "`strategy.experimental_run_v2` is called inside a `tf.function` if "
+        "`strategy.run` is a `tf.function` or "
+        "`strategy.run` is called inside a `tf.function` if "
         "eager behavior is enabled.")
 
 
@@ -134,10 +118,10 @@ class TPUStrategy(distribute_lib.Strategy):
 
     To run TF2 programs on TPUs, you can either use `.compile` and
     `.fit` APIs in `tf.keras` with TPUStrategy, or write your own customized
-    training loop by calling `strategy.experimental_run_v2` directly. Note that
+    training loop by calling `strategy.run` directly. Note that
     TPUStrategy doesn't support pure eager execution, so please make sure the
-    function passed into `strategy.experimental_run_v2` is a `tf.function` or
-    `strategy.experimental_run_v2` is called inside a `tf.function` if eager
+    function passed into `strategy.run` is a `tf.function` or
+    `strategy.run` is called inside a `tf.function` if eager
     behavior is enabled.
 
     Args:
@@ -158,14 +142,15 @@ class TPUStrategy(distribute_lib.Strategy):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None):
+  def run(self, fn, args=(), kwargs=None, options=None):
     """See base class."""
-    validate_experimental_run_function(fn)
+    validate_run_function(fn)
 
     # Note: the target function is converted to graph even when in Eager mode,
     # so autograph is on by default here.
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
-    return self.extended.tpu_run(fn, args, kwargs)
+    options = options or distribute_lib.RunOptions()
+    return self.extended.tpu_run(fn, args, kwargs, options)
 
 
 @tf_export(v1=["distribute.experimental.TPUStrategy"])
@@ -206,12 +191,62 @@ class TPUStrategyV1(distribute_lib.StrategyV1):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run_v2(self, fn, args=(), kwargs=None):
-    """See base class."""
-    validate_experimental_run_function(fn)
+  def run(self, fn, args=(), kwargs=None, options=None):
+    """Run `fn` on each replica, with the given arguments.
+
+    Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
+    "per-replica" values, such as those produced by a "distributed `Dataset`",
+    when `fn` is executed on a particular replica, it will be executed with the
+    component of those "per-replica" values that correspond to that replica.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `all_reduce`.
+
+    All arguments in `args` or `kwargs` should either be nest of tensors or
+    per-replica objects containing tensors or composite tensors.
+
+    Users can pass strategy specific options to `options` argument. An example
+    to enable bucketizing dynamic shapes in `TPUStrategy.run`
+    is:
+    ```python
+
+    resolver = tf.distribute.cluster_resolver.TPUClusterResolver(tpu='')
+    tf.config.experimental_connect_to_cluster(resolver)
+    tf.tpu.experimental.initialize_tpu_system(resolver)
+    strategy = tf.distribute.experimental.TPUStrategy(tpu='')
+
+    options = tf.distribute.RunOptions()
+    options.experimental_bucketizing_dynamic_shape = True
+
+    iterator = iter(inputs)
+
+    @tf.function()
+    def step_fn(inputs):
+      output = tf.reduce_sum(inputs)
+      return output
+
+      strategy.run(step_fn, args=(next(iterator),),
+                                   options=options)
+    ```
+
+    Args:
+      fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
+      args: (Optional) Positional arguments to `fn`.
+      kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be "per-replica" `Tensor` objects or `Tensor`s
+      (for example, if running on a single replica).
+    """
+    validate_run_function(fn)
 
     fn = autograph.tf_convert(fn, autograph_ctx.control_status_ctx())
-    return self.extended.tpu_run(fn, args, kwargs)
+    options = options or distribute_lib.RunOptions()
+    return self.extended.tpu_run(fn, args, kwargs, options)
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -235,7 +270,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._tpu_function_cache = weakref.WeakKeyDictionary()
     self._tpu_cluster_resolver = tpu_cluster_resolver
-    self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._tpu_metadata = self._tpu_cluster_resolver.get_tpu_system_metadata()
     self._device_assignment = device_assignment
 
     tpu_devices_flat = [
@@ -288,7 +323,6 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self._retrace_functions_for_each_device = False
 
     self.experimental_enable_get_next_as_optional = True
-    self.experimental_enable_dynamic_batch_size = True
     self._prefetch_on_host = False
 
     self._logical_device_stack = [0]
@@ -379,6 +413,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers,
         input_contexts,
         self._container_strategy())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(
+          value_fn(distribute_lib.ValueContext(replica_id,
+                                               self._num_replicas_in_sync)))
+    return values.regroup(per_replica_values, always_wrap=True)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   # TODO(sourabhbajaj): Remove the initial_loop_values parameter when we have
@@ -493,7 +535,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._logical_device_stack.append(logical_device_id)
     try:
-      if values._enclosing_tpu_context() is None:  # pylint: disable=protected-access
+      if tpu_values.enclosing_tpu_context() is None:
         yield
       else:
         with ops.device(tpu.core(logical_device_id)):
@@ -571,7 +613,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       with ops.device(colocate_with.device):
         return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
     def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       initial_value = None
@@ -598,20 +640,20 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(**kwargs)
 
-          assert not isinstance(v, values.TPUMirroredVariable)
+          assert not isinstance(v, tpu_values.TPUMirroredVariable)
           value_list.append(v)
       return value_list
 
     return values.create_mirrored_variable(self._container_strategy(),
                                            _real_mirrored_creator,
-                                           values.TPUMirroredVariable,
-                                           values.TPUSyncOnReadVariable,
+                                           tpu_values.TPUMirroredVariable,
+                                           tpu_values.TPUSyncOnReadVariable,
                                            **kwargs)
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.DistributedValues) or
         tensor_util.is_tensor(value)
-       ) and values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+       ) and tpu_values.enclosing_tpu_context() is not None:
       if reduce_op == reduce_util.ReduceOp.MEAN:
         # TODO(jhseu):  Revisit once we support model-parallelism.
         value *= (1. / self._num_replicas_in_sync)
@@ -651,9 +693,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return output
 
   def _update(self, var, fn, args, kwargs, group):
-    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+    assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+    if tpu_values.enclosing_tpu_context() is not None:
       if group:
         return fn(var, *args, **kwargs)
       else:
@@ -674,7 +716,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     return values.update_regroup(self, updates, group)
 
   def read_var(self, var):
-    assert isinstance(var, values.TPUVariableMixin) or isinstance(
+    assert isinstance(var, tpu_values.TPUVariableMixin) or isinstance(
         var, resource_variable_ops.BaseResourceVariable)
     return var.read_value()
 
@@ -695,7 +737,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # since the `1` gets broadcast as an int32 but global_step is int64.
     if isinstance(tensor, (float, int)):
       return tensor
-    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+    if tpu_values.enclosing_tpu_context() is not None:
       broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
       result = tpu_ops.all_to_all(
           broadcast_tensor,
@@ -801,11 +843,11 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     """
     return True
 
-  def tpu_run(self, fn, args, kwargs):
-    func = self._tpu_function_creator(fn)
+  def tpu_run(self, fn, args, kwargs, options=None):
+    func = self._tpu_function_creator(fn, options)
     return func(args, kwargs)
 
-  def _tpu_function_creator(self, fn):
+  def _tpu_function_creator(self, fn, options):
     if fn in self._tpu_function_cache:
       return self._tpu_function_cache[fn]
 
@@ -844,7 +886,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
       # Construct and pass `maximum_shapes` so that we could support dynamic
       # shapes using dynamic padder.
-      if self.experimental_enable_dynamic_batch_size and replicate_inputs:
+      if options.experimental_enable_dynamic_batch_size and replicate_inputs:
         maximum_shapes = []
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
@@ -859,12 +901,18 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       else:
         maximum_shapes = None
 
+      if options.experimental_bucketizing_dynamic_shape:
+        padding_spec = tpu.PaddingSpec.POWER_OF_TWO
+      else:
+        padding_spec = None
+
       with strategy.scope():
         replicate_outputs = tpu.replicate(
             replicated_fn,
             replicate_inputs,
             device_assignment=self._device_assignment,
-            maximum_shapes=maximum_shapes)
+            maximum_shapes=maximum_shapes,
+            padding_spec=padding_spec)
 
       # Remove all no ops that may have been added during 'tpu.replicate()'
       if isinstance(result[0], list):

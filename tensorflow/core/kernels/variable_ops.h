@@ -38,8 +38,8 @@ class VariableOp : public OpKernel {
   TensorShape shape_;
 
   mutex init_mu_;
-  ContainerInfo cinfo_ GUARDED_BY(init_mu_);
-  bool initialized_ GUARDED_BY(init_mu_){false};
+  ContainerInfo cinfo_ TF_GUARDED_BY(init_mu_);
+  bool initialized_ TF_GUARDED_BY(init_mu_){false};
 
   TF_DISALLOW_COPY_AND_ASSIGN(VariableOp);
 };

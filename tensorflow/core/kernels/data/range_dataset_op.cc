@@ -107,7 +107,6 @@ class RangeDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
       out_tensors->reserve(1);
-      Tensor result(dataset()->output_dtypes()[0]);
       switch (dataset()->output_dtypes()[0]) {
 #define HANDLE_TYPE(type)                                \
   case DataTypeToEnum<type>::value: {                    \
@@ -133,7 +132,8 @@ class RangeDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNext), next_));
       return Status::OK();
@@ -148,7 +148,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 next_ GUARDED_BY(mu_);
+    int64 next_ TF_GUARDED_BY(mu_);
   };
 
   const int64 start_;

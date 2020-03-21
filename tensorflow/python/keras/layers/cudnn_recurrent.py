@@ -110,9 +110,10 @@ class _CuDNNRNN(RNN):
     output, states = self._process_batch(inputs, initial_state)
 
     if self.stateful:
-      updates = []
-      for i in range(len(states)):
-        updates.append(state_ops.assign(self.states[i], states[i]))
+      updates = [
+          state_ops.assign(self_state, state)
+          for self_state, state in zip(self.states, states)
+      ]
       self.add_update(updates)
 
     if self.return_state:

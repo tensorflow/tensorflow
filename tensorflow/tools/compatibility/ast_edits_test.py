@@ -608,6 +608,9 @@ def t():
     self.assertEqual(expected_text, new_text)
 
   def testUpgradeInplaceWithSymlink(self):
+    if os.name == "nt":
+      self.skipTest("os.symlink doesn't work uniformly on Windows.")
+
     upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
     os.mkdir(upgrade_dir)
     file_a = os.path.join(upgrade_dir, "a.py")
@@ -626,6 +629,9 @@ def t():
       self.assertEqual("import bar as f", f.read())
 
   def testUpgradeInPlaceWithSymlinkInDifferentDir(self):
+    if os.name == "nt":
+      self.skipTest("os.symlink doesn't work uniformly on Windows.")
+
     upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
     other_dir = os.path.join(self.get_temp_dir(), "bar")
     os.mkdir(upgrade_dir)
@@ -648,6 +654,9 @@ def t():
       self.assertEqual("import foo as f", f.read())
 
   def testUpgradeCopyWithSymlink(self):
+    if os.name == "nt":
+      self.skipTest("os.symlink doesn't work uniformly on Windows.")
+
     upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
     output_dir = os.path.join(self.get_temp_dir(), "bar")
     os.mkdir(upgrade_dir)
@@ -669,6 +678,9 @@ def t():
       self.assertEqual("import bar as f", f.read())
 
   def testUpgradeCopyWithSymlinkInDifferentDir(self):
+    if os.name == "nt":
+      self.skipTest("os.symlink doesn't work uniformly on Windows.")
+
     upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
     other_dir = os.path.join(self.get_temp_dir(), "bar")
     output_dir = os.path.join(self.get_temp_dir(), "baz")

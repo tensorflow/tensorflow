@@ -46,6 +46,7 @@ from tensorflow.lite.python.convert_saved_model import freeze_saved_model as _fr
 from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=unused-import
 from tensorflow.lite.python.interpreter import load_delegate  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
+from tensorflow.lite.python.op_hint import is_ophint_converted as _is_ophint_converted
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
@@ -78,7 +79,7 @@ from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
 # The default value of `experimental_new_converter`.
-_USE_EXPERIMENTAL_NEW_CONVERTER = False
+_USE_EXPERIMENTAL_NEW_CONVERTER = True
 
 
 @_tf_export("lite.Optimize")
@@ -164,6 +165,112 @@ class TargetSpec(object):
     self.supported_types = supported_types
 
 
+class QuantizationMode(object):
+  """QuantizationMode determines the quantized conversion from user options."""
+
+  def __init__(self, optimizations, target_spec, representative_dataset,
+               graph_def):
+    self._optimizations = optimizations
+    self._target_spec = target_spec
+    self._representative_dataset = representative_dataset
+    self._graph_def = graph_def
+
+    self._validate_int8_required()
+
+  def post_training_int8_no_float(self):
+    """Post training int8 quantize, disallow float fallback."""
+    return (self._is_int8_target_required() and
+            self._representative_dataset is not None)
+
+  def post_training_int8_allow_float(self):
+    """Post training int8 quantize, allow float fallback."""
+    return (self._any_optimization_enabled() and
+            self._representative_dataset is not None and
+            self._smallest_supported_type() == constants.INT8)
+
+  def training_time_int8_allow_float(self):
+    """Training-time int8 quantize, allow float fallback."""
+    return (self._any_optimization_enabled() and
+            self._contains_training_quant_op())
+
+  def post_training_dynamic_range_int8(self):
+    """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""
+    # Post-training dynamic range quantization is only enabled if post-training
+    # int8 quantization and training time quantization was not done.
+    return (self._any_optimization_enabled() and
+            self._representative_dataset is None and
+            not self._contains_training_quant_op() and
+            self._smallest_supported_type() == constants.INT8)
+
+  def post_training_fp16(self):
+    """Post training fp16 quantize."""
+    return (self._any_optimization_enabled() and
+            self._smallest_supported_type() == constants.FLOAT16)
+
+  def fp32_execution(self):
+    """If none of the above are true."""
+    return not (self.post_training_int8_no_float() or
+                self.post_training_int8_allow_float() or
+                self.training_time_int8_allow_float() or
+                self.post_training_dynamic_range_int8() or
+                self.post_training_fp16())
+
+  # Below are helpers for the above functions.
+
+  def _validate_int8_required(self):
+    """Int8 mode requires certain parameters to exist and be compatible."""
+    if not self._is_int8_target_required():
+      return
+
+    if self._target_spec.supported_types and (self._smallest_supported_type() !=
+                                              constants.INT8):
+      raise ValueError("TFLITE_BUILTINS_INT8 requires smallest supported "
+                       "type to be INT8.")
+
+    if self._representative_dataset:
+      if not isinstance(self._representative_dataset, RepresentativeDataset):
+        self._representative_dataset = RepresentativeDataset(
+            self._representative_dataset)
+      if self._representative_dataset.input_gen is None:
+        raise ValueError(
+            "Provide an input generator for representative_dataset")
+    else:
+      # TODO(b/150661651): Relax this check for QAT.
+      raise ValueError("representative_dataset is required when specifying "
+                       "TFLITE_BUILTINS_INT8 or INT8 supported types.")
+
+  def _is_int8_target_required(self):
+    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
+        self._target_spec.supported_ops) or
+            set(self._target_spec.supported_types) == set([constants.INT8]))
+
+  def _any_optimization_enabled(self):
+    return bool(
+        set(self._optimizations).intersection([
+            Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
+            Optimize.DEFAULT
+        ]))
+
+  def _smallest_supported_type(self):
+    if self._target_spec.supported_types:
+      return min(self._target_spec.supported_types, key=lambda x: x.size)
+    else:
+      # The default smallest supported type is INT8.
+      return constants.INT8
+
+  def _contains_training_quant_op(self):
+    """Checks if the graph contains any training-time quantization ops."""
+    training_quant_ops = frozenset({
+        "FakeQuantWithMinMaxVars", "FakeQuantWithMinMaxVarsPerChannel",
+        "QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3"
+    })
+
+    for node_def in self._graph_def.node:
+      if any([op in node_def.name for op in training_quant_ops]):
+        return True
+    return False
+
+
 class TFLiteConverterBase(object):
   """Converter subclass to share functionality between V1 and V2 converters."""
 
@@ -174,6 +281,7 @@ class TFLiteConverterBase(object):
     self.representative_dataset = None
     self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
     self.experimental_new_quantizer = False
+    self.experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
     self._debug_info = None
@@ -200,70 +308,22 @@ class TFLiteConverterBase(object):
       optimizers.append("layout")
     return _get_grappler_config(optimizers)
 
-  def _validate_representative_dataset(self):
-    if self.representative_dataset:
-      if not isinstance(self.representative_dataset, RepresentativeDataset):
-        self.representative_dataset = RepresentativeDataset(
-            self.representative_dataset)
-      if self.representative_dataset.input_gen is None:
-        raise ValueError(
-            "Provide an input generator for representative_dataset")
-    elif self._is_int8_target_required():
-      raise ValueError("representative_dataset is required when specifying "
-                       "TFLITE_BUILTINS_INT8 or INT8 supported types.")
-
-  def _validate_quantization(self):
-    if self._is_int8_target_required():
-      if self.target_spec.supported_types and (self._smallest_supported_type()
-                                               != constants.INT8):
-        raise ValueError("TFLITE_BUILTINS_INT8 requires smallest supported "
-                         "type to be INT8.")
-
-  def _is_int8_target_required(self):
-    return (set([OpsSet.TFLITE_BUILTINS_INT8]) == set(
-        self.target_spec.supported_ops) or
-            self._smallest_supported_type() == constants.INT8)
-
-  def _smallest_supported_type(self):
-    if self.target_spec.supported_types:
-      return min(self.target_spec.supported_types, key=lambda x: x.size)
-    else:
-      return None
-
-  def _any_optimization_enabled(self):
-    return bool(
-        set(self.optimizations).intersection([
-            Optimize.OPTIMIZE_FOR_LATENCY, Optimize.OPTIMIZE_FOR_SIZE,
-            Optimize.DEFAULT
-        ]))
-
-  def _is_post_training_optimize(self):
-    return self._is_int8_target_required() or self._any_optimization_enabled()
-
-  def _is_int8_weight_only_quantize(self):
-    return (self._is_post_training_optimize() and
-            (self.representative_dataset is None))
-
-  def _is_float16_quantize(self):
-    return self._any_optimization_enabled() and (
-        self._smallest_supported_type() == constants.FLOAT16)
-
-  def _is_calibration_quantize(self):
-    return (self._is_post_training_optimize() and
-            self.representative_dataset and
-            self._smallest_supported_type() != constants.FLOAT16)
-
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type, enable_mlir_quantizer):
-    allow_float = not self._is_int8_target_required()
+                                inference_output_type, allow_float):
+    if not isinstance(self.representative_dataset, RepresentativeDataset):
+      self.representative_dataset = RepresentativeDataset(
+          self.representative_dataset)
     calibrate_quantize = _calibrator.Calibrator(result)
-    return calibrate_quantize.calibrate_and_quantize(
-        self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float, enable_mlir_quantizer)
+    if self.experimental_calibrate_only:
+      return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
+    else:
+      return calibrate_quantize.calibrate_and_quantize(
+          self.representative_dataset.input_gen, inference_input_type,
+          inference_output_type, allow_float, self.experimental_new_quantizer)
 
-  def _is_unknown_shapes_allowed(self):
+  def _is_unknown_shapes_allowed(self, fp32_execution):
     # TODO(b/128319310): Investigate which quantization methods work.
-    if self._any_optimization_enabled():
+    if not fp32_execution:
       return False
 
     # Unknown dimensions are only allowed with the new converter.
@@ -277,13 +337,11 @@ class TFLiteConverterBase(object):
     Returns:
       {key str: val}
     """
-    float16_quantize = self._is_float16_quantize()
     args = {
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "allow_custom_ops": self.allow_custom_ops,
-        "post_training_quantize": (self._is_int8_weight_only_quantize() or
-                                   float16_quantize),
-        "quantize_to_float16": float16_quantize,
+        "post_training_quantize": False,
+        "quantize_to_float16": False,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
         "enable_mlir_converter": self.experimental_new_converter,
@@ -307,11 +365,16 @@ class TFLiteConverterV2(TFLiteConverterBase):
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations.
+      dataset to evaluate different optimizations. Note that this is an optional
+      attribute but it is necessary if INT8 is the only support builtin ops in
+      target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
     experimental_new_quantizer: Experimental flag, subject to change.
       Enables MLIR-based post-training quantization.
+    experimental_calibrate_only: Experimental flag, subject to change.
+      Calibrates the converted model with representative dataset, but not
+      quantize it.
   Example usage:
 
     ```python
@@ -365,7 +428,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
         message = "This function takes in a list of ConcreteFunction."
         if isinstance(func, _def_function.Function):
           message += (" To get the ConcreteFunction from a Function,"
-                      " call from_concrete_function.")
+                      " call get_concrete_function.")
         raise ValueError(message)
     return cls(funcs)
 
@@ -388,6 +451,21 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Raises:
       Invalid signature keys.
     """
+    # When run without eager enabled, this will return the legacy
+    # TFLiteConverter.
+    if not context.executing_eagerly():
+      signature_key = None
+      if signature_keys:
+        if len(signature_keys) != 1:
+          raise ValueError("Only support a single signature key.")
+        else:
+          signature_key = signature_keys[0]
+      logging.warning("Invoking the TF1 implementation of TFLiteConverter "
+                      "because eager is disabled. Consider enabling eager.")
+      return TFLiteConverter.from_saved_model(saved_model_dir,
+                                              signature_key=signature_key,
+                                              tag_set=tags)
+
     # Ensures any graphs created in Eager mode are able to run. This is required
     # in order to create a tf.estimator.Exporter that exports a TFLite model.
     with context.eager_mode():
@@ -452,6 +530,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
     frozen_func, graph_def = (
         _convert_to_constants.convert_variables_to_constants_v2_as_graph(
             self._funcs[0], lower_control_flow=False))
+    self._graph_def = graph_def
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
@@ -466,7 +545,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
         config=self._grappler_config(),
         graph=frozen_func.graph)
 
-    if not self._is_unknown_shapes_allowed():
+    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                  self.representative_dataset, graph_def)
+
+    if not self._is_unknown_shapes_allowed(quant_mode.fp32_execution()):
       # Checks dimensions in input tensor.
       for tensor in input_tensors:
         # Note that shape_list might be empty for scalar shapes.
@@ -482,8 +564,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
           shape[0] = 1
           tensor.set_shape(shape)
 
-    self._validate_quantization()
-    self._validate_representative_dataset()
     if self._trackable_obj is None:
       self._debug_info = _get_debug_info(
           _build_debug_info_func(self._funcs[0].graph), graph_def)
@@ -493,6 +573,22 @@ class TFLiteConverterV2(TFLiteConverterBase):
           graph_def)
 
     converter_kwargs = self._get_base_converter_args()
+
+    if quant_mode.training_time_int8_allow_float():
+      converter_kwargs.update({
+          "inference_type": constants.INT8,
+          "inference_input_type": constants.FLOAT,
+      })
+
+    if quant_mode.post_training_dynamic_range_int8():
+      converter_kwargs.update({
+          "post_training_quantize": True,
+      })
+    elif quant_mode.post_training_fp16():
+      converter_kwargs.update({
+          "post_training_quantize": True,
+          "quantize_to_float16": True,
+      })
 
     if not self.experimental_new_converter:
       logging.warning(
@@ -512,10 +608,12 @@ class TFLiteConverterV2(TFLiteConverterBase):
         output_tensors=output_tensors,
         **converter_kwargs)
 
-    if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(
-          result, constants.FLOAT, constants.FLOAT,
-          self.experimental_new_quantizer)
+    if quant_mode.post_training_int8_no_float():
+      result = self._calibrate_quantize_model(result, constants.FLOAT,
+                                              constants.FLOAT, False)
+    elif quant_mode.post_training_int8_allow_float():
+      result = self._calibrate_quantize_model(result, constants.FLOAT,
+                                              constants.FLOAT, True)
 
     return result
 
@@ -602,6 +700,9 @@ class TFLiteConverter(TFLiteConverterBase):
       Enables MLIR-based conversion instead of TOCO conversion.
     experimental_new_quantizer: Experimental flag, subject to change.
       Enables MLIR-based post-training quantization.
+    experimental_calibrate_only: Experimental flag, subject to change.
+      Calibrates the converted model with representative dataset, but not
+      quantize it.
   Example usage:
 
     ```python
@@ -941,6 +1042,21 @@ class TFLiteConverter(TFLiteConverterBase):
       return self.target_spec.supported_ops
     return object.__getattribute__(self, name)
 
+  def _validate_quantized_input_stats(self, converter_kwargs):
+    """Ensure quantized_input_stats provided if required."""
+
+    quantized_types = frozenset({constants.INT8, constants.QUANTIZED_UINT8})
+
+    requires_quantized_input_stats = (
+        (converter_kwargs["inference_type"] in quantized_types or
+         converter_kwargs["inference_input_type"] in quantized_types) and
+        not converter_kwargs["post_training_quantize"])
+
+    if (requires_quantized_input_stats and
+        not converter_kwargs["quantized_input_stats"]):
+      raise ValueError("std_dev and mean must be defined when inference_type "
+                       "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
 
@@ -953,8 +1069,12 @@ class TFLiteConverter(TFLiteConverterBase):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
+    quant_mode = QuantizationMode(self.optimizations, self.target_spec,
+                                  self.representative_dataset, self._graph_def)
+
     # Checks dimensions in input tensor.
-    if not self._is_unknown_shapes_allowed() and self._has_valid_tensors():
+    if (not self._is_unknown_shapes_allowed(quant_mode.fp32_execution()) and
+        self._has_valid_tensors()):
       for tensor in self._input_tensors:
         shape = tensor.shape
         if not shape:
@@ -987,13 +1107,14 @@ class TFLiteConverter(TFLiteConverterBase):
     else:
       quantized_stats = None
 
-    self._validate_quantization()
-    self._validate_representative_dataset()
-
     toco_inference_input_type = self.inference_input_type
     inference_input_type = self.inference_input_type
     inference_output_type = self.inference_output_type
-    post_training_optimize = self._is_post_training_optimize()
+    post_training_optimize = (
+        quant_mode.post_training_int8_no_float() or
+        quant_mode.post_training_int8_allow_float() or
+        quant_mode.post_training_dynamic_range_int8() or
+        quant_mode.post_training_fp16())
     if post_training_optimize:
       # Post training optimizations require that TOCO outputs a float model.
       if self.inference_type != constants.FLOAT:
@@ -1006,7 +1127,9 @@ class TFLiteConverter(TFLiteConverterBase):
       if inference_output_type is None:
         inference_output_type = constants.FLOAT
 
-    weight_only_quantize = self._is_int8_weight_only_quantize()
+    weight_only_quantize = (
+        quant_mode.post_training_dynamic_range_int8() or
+        quant_mode.post_training_fp16())
     if weight_only_quantize:
       # Currently, weight only quantization requires float inputs and outputs.
       if (inference_input_type != constants.FLOAT or
@@ -1028,10 +1151,16 @@ class TFLiteConverter(TFLiteConverterBase):
         (self.inference_type == constants.INT8 and
          (post_training_optimize or weight_only_quantize))):
       try:
+        # TODO(b/150163103): Merge `disabling lower using switch merge' calls.
+        # Grappler will also try to lower while loop into switch merge
+        # representation which is undesired for Ophints, so we simply remove
+        # those attributes to prevent Grappler from doing so.
+        graph_def = _convert_to_constants.disable_lower_using_switch_merge(
+            optimized_graph)
         # Run function inlining optimization to ensure any models generated
         # through the from_frozen_graph path have been inlined.
         optimized_graph = _run_graph_optimizations(
-            self._graph_def,
+            graph_def,
             self._input_tensors,
             self._output_tensors,
             config=self._grappler_config(["function"]))
@@ -1041,6 +1170,17 @@ class TFLiteConverter(TFLiteConverterBase):
     self._debug_info = _get_debug_info(self._debug_info_func, optimized_graph)
 
     converter_kwargs = self._get_base_converter_args()
+
+    if quant_mode.post_training_dynamic_range_int8():
+      converter_kwargs.update({
+          "post_training_quantize": True,
+      })
+    elif quant_mode.post_training_fp16():
+      converter_kwargs.update({
+          "post_training_quantize": True,
+          "quantize_to_float16": True,
+      })
+
     converter_kwargs.update({
         "inference_type": self.inference_type,
         "inference_input_type": toco_inference_input_type,
@@ -1067,6 +1207,8 @@ class TFLiteConverter(TFLiteConverterBase):
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
+    self._validate_quantized_input_stats(converter_kwargs)
+
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
@@ -1081,10 +1223,12 @@ class TFLiteConverter(TFLiteConverterBase):
           output_arrays=self._output_arrays,
           **converter_kwargs)
 
-    if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(
-          result, inference_input_type, inference_output_type,
-          self.experimental_new_quantizer)
+    if quant_mode.post_training_int8_no_float():
+      result = self._calibrate_quantize_model(result, inference_input_type,
+                                              inference_output_type, False)
+    elif quant_mode.post_training_int8_allow_float():
+      result = self._calibrate_quantize_model(result, inference_input_type,
+                                              inference_output_type, True)
 
     return result
 
@@ -1127,8 +1271,13 @@ class TFLiteConverter(TFLiteConverterBase):
         shape[0] = batch_size
         tensor.set_shape(shape)
 
-  def _is_unknown_shapes_allowed(self):
-    if not super(TFLiteConverter, self)._is_unknown_shapes_allowed():
+  def _is_unknown_shapes_allowed(self, fp32_execution):
+    # Ophint Converted nodes will need the shapes to be known.
+    if _is_ophint_converted(self._graph_def):
+      return False
+
+    if not super(TFLiteConverter,
+                 self)._is_unknown_shapes_allowed(fp32_execution):
       return False
 
     # `conversion_summary_dir` calls TOCO. Unknown shapes are only supported by

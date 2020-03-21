@@ -50,8 +50,7 @@ namespace {
 using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
-  std::unique_ptr<tflite::ModelT> copied_model =
-      absl::make_unique<tflite::ModelT>();
+  auto copied_model = absl::make_unique<tflite::ModelT>();
   model.UnPackTo(copied_model.get(), nullptr);
   return copied_model;
 }
@@ -199,6 +198,17 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   }
   memcpy(tensor->data.raw, PyArray_DATA(array), size);
   Py_RETURN_NONE;
+}
+
+PyObject* CalibrationWrapper::Calibrate() {
+  auto tflite_model = CreateMutableModel(*model_->GetModel());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
+  flatbuffers::FlatBufferBuilder builder;
+  auto loc = tflite::Model::Pack(builder, tflite_model.get());
+  tflite::FinishModelBuffer(builder, loc);
+  return python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
 }
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,

@@ -2827,6 +2827,100 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
+  // Tests a memory corruption bug where the allocated chunk overlaps with a
+  // pending chunk. To test this, we provide a new buffer interval compare where
+  // we prioritize the allocation of sine, cosine, and tanh to create the
+  // situation:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //      +------------+
+  //      |     b      |
+  //      +------------+
+  //  +-------+
+  //  |       |
+  //  |       |
+  //  |   a   |
+  //  |       |                 +------------+
+  //  |       |                 |     n      |
+  //  +-------+                 +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  //
+  // Then allocating for buffer d, we have these two prefetch buffers
+  // overlapping:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //      +------------+ +----------+
+  //      |     b      | | prefetch |
+  //      +------------+ | for o    |
+  //  +-------+     +---------+     |
+  //  |       |     |    |    |     |
+  //  |       |     |    |    |     |
+  //  |   a   |     |    +----|-----+
+  //  |       |     | prefetch| +------------+
+  //  |       |     | for m   | |     n      |
+  //  +-------+     +---------+ +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY %Entry {
+    %param0 = f32[8,3] parameter(0)
+    %param1 = f32[2,4] parameter(1)
+    %a = f32[8,3] sine(%param0)
+    %b = f32[2,4] cosine(%param1)
+    %d = f32[8,3] tanh(%a)
+    %c = f32[8,3] negate(%a)
+    %e = f32[2,4] negate(%b)
+    %f = f32[2,4] negate(%e)
+    %g = f32[2,4] negate(%f)
+    %h = f32[2,4] negate(%g)
+    %i = f32[2,4] negate(%h)
+    %j = f32[2,4] negate(%i)
+    %k = f32[2,4] negate(%j)
+    %l = f32[2,4] negate(%k)
+    %m = f32[8,3] negate(%d)
+    %n = f32[2,4] sine(%l)
+    %o = f32[8,3] negate(%d)
+    %p = f32[2,4] negate(%n)
+    %q = f32[8,3] negate(%m)
+    ROOT %tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(%p, %q, %o)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            case HloOpcode::kTanh:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker);
+}
+
 TEST_P(MemorySpaceAssignmentTest, Determinism) {
   // Run memory space assignment a few times to make sure every time it compiles
   // to the same thing.

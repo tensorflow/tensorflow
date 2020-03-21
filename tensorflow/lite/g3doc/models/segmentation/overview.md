@@ -8,9 +8,12 @@ _DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
 where the goal is to assign semantic labels (e.g. person, dog, cat) to every
 pixel in the input image.
 
-If you are new to TensorFlow Lite and are working with iOS, we
+If you are new to TensorFlow Lite and are working with Android or iOS, we
 recommend exploring the following example applications that can help you get
 started.
+
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/android">Android
+example</a>
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_segmentation/ios">iOS
 example</a>
