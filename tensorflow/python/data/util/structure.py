@@ -67,7 +67,7 @@ def _RaggedTensorStructure(dtype, shape, ragged_rank):
 
 # TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
 # it is a subclass of `CompositeTensor`.
-def normalize_element(element, dtypes=None):
+def normalize_element(element):
   """Normalizes a nested structure of element components.
 
   * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
@@ -78,10 +78,6 @@ def normalize_element(element, dtypes=None):
 
   Args:
     element: A nested structure of individual components.
-    dtypes: (Optional.) A nested structure of `tf.DType` objects corresponding
-      to each component of `element`. If specified, it will be used to set the
-      exact type of output tensor when converting input components which
-      are not tensors themselves (e.g. numpy arrays, native python types, etc.)
 
   Returns:
     A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
@@ -89,21 +85,17 @@ def normalize_element(element, dtypes=None):
   """
   components = nest.flatten(element)
   normalized_components = []
-  if dtypes is None:
-    flattened_dtypes = [None] * len(components)
-  else:
-    flattened_dtypes = nest.flatten(dtypes)
   with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
-    for i, (t, dtype) in enumerate(zip(components, flattened_dtypes)):
+    for i, t in enumerate(components):
       try:
         spec = type_spec_from_value(t, use_fallback=False)
       except TypeError:
         # TypeError indicates it was not possible to compute a `TypeSpec` for
         # the value. As a fallback try converting the value to a tensor.
         normalized_components.append(
-            ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
+            ops.convert_to_tensor(t, name="component_%d" % i))
       else:
         if isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
@@ -120,7 +112,7 @@ def normalize_element(element, dtypes=None):
           normalized_components.append(t)
         else:
           normalized_components.append(
-              ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
+              ops.convert_to_tensor(t, name="component_%d" % i))
   return nest.pack_sequence_as(element, normalized_components)
 
 
