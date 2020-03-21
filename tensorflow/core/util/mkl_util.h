@@ -1260,8 +1260,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   DCHECK_EQ(dim.size(), strides.size());
 #ifdef ENABLE_MKLDNN_V1
   const int kNumDims = dim.size();
-  mkldnn_dim_t input_dims[kNumDims];
-  mkldnn_dim_t input_strides[kNumDims];
+  mkldnn_dim_t* input_dims = new mkldnn_dim_t[kNumDims];
+  mkldnn_dim_t* input_strides = new mkldnn_dim_t[kNumDims];
   for (int i = 0; i < kNumDims; ++i) {
     input_dims[i] = dim[i];
     input_strides[i] = strides[i];
@@ -1270,7 +1270,11 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
     mkldnn_memory_desc_init_by_strides(blocked_md, kNumDims, input_dims,
                                        memory::convert_to_c(dtype),
                                        input_strides);
+    delete[] input_dims;
+    delete[] input_strides;
   } catch (mkldnn::error& e) {
+    delete[] input_dims;
+    delete[] input_strides;
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
                       "Failed to create blocked memory descriptor.",
