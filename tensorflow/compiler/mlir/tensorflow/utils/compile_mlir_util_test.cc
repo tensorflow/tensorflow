@@ -248,5 +248,42 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
               ::testing::HasSubstr(expected_signature));
 }
 
+constexpr llvm::StringRef kBroadcastGradientArgsModule = R"(
+module attributes {tf.versions = {producer = 179 : i32}} {
+  func @main() -> (tensor<0xi32>, tensor<0xi32>) {
+    %0 = "tf.Const"() {value = dense<[]> : tensor<0xi32>} : () -> tensor<0xi32>
+    %r0, %r1 = "tf.BroadcastGradientArgs"(%0, %0) {T = i32} : (tensor<0xi32>, tensor<0xi32>) -> (tensor<0xi32>, tensor<0xi32>)
+    return %r0, %r1 : tensor<0xi32>, tensor<0xi32>
+  }
+}
+)";
+
+TEST(CompileSerializedMlirToXlaHloTest, ConstantFoldHook) {
+  std::vector<TensorShape> arg_shapes(2, TensorShape());
+  XlaCompiler::CompilationResult compilation_result;
+
+  Status s = CompileSerializedMlirToXlaHlo(
+      kBroadcastGradientArgsModule, arg_shapes,
+      /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
+  ASSERT_TRUE(s.ok());
+
+  const xla::HloModuleConfig module_config(
+      compilation_result.computation->GetProgramShape().ValueOrDie());
+  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
+      compilation_result.computation->proto(), module_config);
+  ASSERT_TRUE(status_or_hlo_module.ok());
+  string expected_hlo_module_string = R"(HloModule main.4
+
+ENTRY %main.4 (arg_tuple.1: ()) -> (s32[0], s32[0]) {
+  %arg_tuple.1 = () parameter(0)
+  %constant.2 = s32[0]{0} constant({})
+  ROOT %tuple.3 = (s32[0]{0}, s32[0]{0}) tuple(s32[0]{0} %constant.2, s32[0]{0} %constant.2)
+}
+
+)";
+  EXPECT_EQ(expected_hlo_module_string,
+            status_or_hlo_module.ValueOrDie()->ToString());
+}
+
 }  // namespace
 }  // namespace tensorflow
