@@ -562,7 +562,7 @@ class Function(object):
     Return the tracing count in the recent calls for debugging.
     Feature request in issue: https://github.com/tensorflow/tensorflow/issues/37323
     """
-    self._call_counter.get_tracing_count()
+    return self._call_counter.get_tracing_count()
 
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
