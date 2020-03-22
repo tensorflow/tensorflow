@@ -1446,26 +1446,26 @@ class ConvolutionTest(test_lib.TestCase):
     v = array_ops.ones([0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
-        nn_ops.conv1d(t, v, [2, 8, 5], strides)
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+        nn_ops.conv1d(t, v, strides, 'SAME')
   
-  def test2D_zero_filter_size(self):
+  def test2D_filter_with_zero_dim(self):
     t = array_ops.ones([2, 4, 4, 3])
     v = array_ops.ones([2, 0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
-        nn_ops.conv2d(t, v, [2, 8, 8, 5], strides)
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+        nn_ops.conv2d(t, v strides, strides)
 
-  def test3D_zero_filter_size(self):
+  def test3D_filter_with_zero_dim(self):
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 0, 2, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
         nn_ops.conv3d(t, v, [2, 8, 8, 8, 5], strides)
 
   def testUnknownSize(self):
@@ -1489,27 +1489,27 @@ class ConvTransposeTest(test_lib.TestCase):
     v = array_ops.ones([0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
         nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
         
-  def test2D_zero_filter_size(self):
+  def test2D_filter_with_zero_dim(self):
     t = array_ops.ones([2, 4, 4, 3])
     v = array_ops.ones([2, 0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
-        nn_ops.conv2d_transpose(t, v, [2, 8, 8, 5], strides)
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+        nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
 
-  def test3D_zero_filter_size(self):
+  def test3D_filter_with_zero_dim(self):
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 0, 2, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
-        nn_ops.conv3d_transpose(t, v, [2, 8, 8, 8, 5], strides)
+    with self.assertRaises(
+        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+        nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
 
   def test1D(self):
     t = array_ops.ones([2, 4, 3])
