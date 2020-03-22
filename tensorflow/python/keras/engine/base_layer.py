@@ -1129,13 +1129,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
           continue
         for u in layer._updates:
           if callable(u):
-            try:
-              u = u()
-            except errors.InaccessibleTensorError:
-              base_layer_utils.check_graph_consistency(
-                  method='add_update', force_raise=True)
-              raise  # check_graph_consistency may not always raise.
-          base_layer_utils.check_graph_consistency(u, method='add_update')
+            u = u()
           collected_updates.append(u)
     return collected_updates
 
@@ -1268,7 +1262,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
         symbolic_losses.append(_tag_unconditional(loss))
-        base_layer_utils.check_graph_consistency(loss, method='add_loss')
       elif tensor_util.is_tensor(loss):
         eager_losses.append(_tag_unconditional(loss))
 
@@ -1363,8 +1356,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # If a metric was added in a Layer's `call` or `build`.
     if in_call_context or not getattr(self, '_is_graph_network', False):
       # TF Function path should take the eager path.
-      if is_symbolic and not base_layer_utils.is_in_tf_function():
-        base_layer_utils.check_graph_consistency(value, method='add_metric')
       self._add_metric(value, aggregation, name)
     else:
       if from_metric_obj:
@@ -2172,8 +2163,6 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
               array_ops.shape(output)[0], activity_loss.dtype)
           # Make activity regularization strength batch-agnostic.
           mean_activity_loss = activity_loss / batch_size
-          base_layer_utils.check_graph_consistency(
-              mean_activity_loss, method='activity_regularizer')
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):

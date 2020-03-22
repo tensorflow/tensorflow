@@ -320,6 +320,28 @@ def strategy_and_optimizer_combinations():
   return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 
 
+class BatchCountingCB(keras.callbacks.Callback):
+
+  def __init__(self):
+    super(BatchCountingCB, self).__init__()
+    self.train_begin_batches = []
+    self.train_end_batches = []
+    self.test_begin_batches = []
+    self.test_end_batches = []
+
+  def on_train_batch_begin(self, batch, logs=None):
+    self.train_begin_batches.append(batch)
+
+  def on_train_batch_end(self, batch, logs=None):
+    self.train_end_batches.append(batch)
+
+  def on_test_batch_begin(self, batch, logs=None):
+    self.test_begin_batches.append(batch)
+
+  def on_test_batch_end(self, batch, logs=None):
+    self.test_end_batches.append(batch)
+
+
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
@@ -1705,6 +1727,63 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
         with self.assertRaisesRegexp(ValueError,
                                      'distributed dataset, you must specify'):
           model.fit(ds, epochs=2)
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_host_training_loop(self, distribution):
+    with distribution.scope():
+      inputs = keras.Input((10, 10, 3))
+      x = keras.layers.Conv2D(3, kernel_size=3)(inputs)
+      x = keras.layers.Flatten()(x)
+      outputs = keras.layers.Dense(1)(x)
+      model = keras.Model(inputs, outputs)
+
+    model.compile('sgd', 'mse', experimental_steps_per_execution=10)
+
+    bc = BatchCountingCB()
+    x, y = np.ones((100, 10, 10, 3)), np.ones((100, 1))
+    model.fit(x, y, batch_size=2, epochs=1, callbacks=[bc])
+    self.assertEqual(bc.train_begin_batches, [0, 10, 20, 30, 40])
+    self.assertEqual(bc.train_end_batches, [9, 19, 29, 39, 49])
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_host_training_loop_last_partial_execution(self, distribution):
+    with distribution.scope():
+      inputs = keras.Input(10)
+      outputs = keras.layers.Dense(1)(inputs)
+      model = keras.Model(inputs, outputs)
+
+    model.compile('sgd', 'mse', experimental_steps_per_execution=20)
+
+    bc = BatchCountingCB()
+    x, y = np.ones((100, 10)), np.ones((100, 1))
+    model.fit(x, y, batch_size=2, epochs=1, callbacks=[bc])
+    self.assertEqual(bc.train_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.train_end_batches, [19, 39, 49])
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_host_training_loop_dataset_unknown_size(self, distribution):
+    with distribution.scope():
+      inputs = keras.Input(10)
+      outputs = keras.layers.Dense(1)(inputs)
+      model = keras.Model(inputs, outputs)
+
+    model.compile('sgd', 'mse', experimental_steps_per_execution=20)
+
+    x, y = np.ones((100, 10)), np.ones((100, 1))
+    ds = dataset_ops.DatasetV2.from_tensor_slices((x, y)).batch(2)
+    ds = ds.filter(lambda *args, **kwargs: True)  # Makes the size UNKNOWN.
+    bc = BatchCountingCB()
+
+    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+      model.fit(ds, epochs=2, callbacks=[bc])
+
+    ds = ds.repeat(2)
+    model.fit(ds, steps_per_epoch=50, epochs=2, callbacks=[bc])
+    self.assertEqual(bc.train_begin_batches, [0, 20, 40, 0, 20, 40])
+    self.assertEqual(bc.train_end_batches, [19, 39, 49, 19, 39, 49])
 
   @combinations.generate(
       combinations.times(

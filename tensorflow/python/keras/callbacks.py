@@ -920,14 +920,15 @@ class ProgbarLogger(Callback):
       print('Epoch %d/%d' % (epoch + 1, self.epochs))
 
   def on_train_batch_end(self, batch, logs=None):
-    self._batch_update_progbar(logs)
+    self._batch_update_progbar(batch, logs)
 
   def on_test_batch_end(self, batch, logs=None):
     if not self._called_in_fit:
-      self._batch_update_progbar(logs)
+      self._batch_update_progbar(batch, logs)
 
   def on_predict_batch_end(self, batch, logs=None):
-    self._batch_update_progbar(None)  # Don't pass prediction results.
+    # Don't pass prediction results.
+    self._batch_update_progbar(batch, None)
 
   def on_epoch_end(self, epoch, logs=None):
     self._finalize_progbar(logs)
@@ -943,7 +944,7 @@ class ProgbarLogger(Callback):
     self.seen = 0
     self.progbar = None
 
-  def _batch_update_progbar(self, logs=None):
+  def _batch_update_progbar(self, batch, logs=None):
     """Updates the progbar."""
     if self.stateful_metrics is None:
       if self.model:
@@ -962,8 +963,11 @@ class ProgbarLogger(Callback):
     batch_size = logs.pop('size', 0)
     num_steps = logs.pop('num_steps', 1)  # DistStrat can run >1 steps.
     logs.pop('batch', None)
-    add_seen = num_steps if self.use_steps else num_steps * batch_size
-    self.seen += add_seen
+    if self.use_steps:
+      self.seen = batch + 1  # One-indexed.
+    else:
+      add_seen = num_steps * batch_size
+      self.seen += add_seen
     self.progbar.update(self.seen, list(logs.items()), finalize=False)
 
   def _finalize_progbar(self, logs):
