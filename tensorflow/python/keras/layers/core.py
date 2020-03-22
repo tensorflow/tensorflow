@@ -164,7 +164,6 @@ class Dropout(Layer):
    [ 5.    6.25]
    [ 7.5   8.75]
    [10.    0.  ]], shape=(5, 2), dtype=float32)
- 
   Arguments:
     rate: Float between 0 and 1. Fraction of the input units to drop.
     noise_shape: 1D integer tensor representing the shape of the
