@@ -1374,7 +1374,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     Raises:
       InvalidArgumentError: if `num_shards` or `index` are illegal values.
-      
+
         Note: error checking is done on a best-effort basis, and errors aren't
         guaranteed to be caught upon dataset creation. (e.g. providing in a
         placeholder tensor bypasses the early checking, and will instead result
@@ -4269,7 +4269,7 @@ class ParallelInterleaveDataset(UnaryDataset):
           f=self._map_func.function,
           deterministic=deterministic_string,
           **self._flat_structure)
-    elif deterministic is not None or compat.forward_compatible(2020, 2, 20):
+    else:
       variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v3(
           input_dataset._variant_tensor,  # pylint: disable=protected-access
           self._map_func.function.captured_inputs,  # pylint: disable=protected-access
@@ -4278,15 +4278,6 @@ class ParallelInterleaveDataset(UnaryDataset):
           self._num_parallel_calls,
           f=self._map_func.function,
           deterministic=deterministic_string,
-          **self._flat_structure)
-    else:
-      variant_tensor = gen_dataset_ops.parallel_interleave_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._map_func.function.captured_inputs,  # pylint: disable=protected-access
-          self._cycle_length,
-          self._block_length,
-          self._num_parallel_calls,
-          f=self._map_func.function,
           **self._flat_structure)
     super(ParallelInterleaveDataset, self).__init__(input_dataset,
                                                     variant_tensor)
