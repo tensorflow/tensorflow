@@ -1446,8 +1446,7 @@ class ConvolutionTest(test_lib.TestCase):
     v = array_ops.ones([0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+    with self.assertRaises(ValueError):
         nn_ops.conv1d_v2(t, v, strides, 'SAME')
   
   def test2D_filter_with_zero_dim(self):
@@ -1455,8 +1454,7 @@ class ConvolutionTest(test_lib.TestCase):
     v = array_ops.ones([2, 0, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+    with self.assertRaises(ValueError):
         nn_ops.conv2d_v2(t, v, strides, 'SAME')
 
   def test3D_filter_with_zero_dim(self):
@@ -1464,8 +1462,7 @@ class ConvolutionTest(test_lib.TestCase):
     v = array_ops.ones([2, 0, 2, 5, 3])
     strides = 2
 
-    with self.assertRaisesRegex(
-        ValueError, "Argument filters cannot contain 0 dimension(s)."):
+    with self.assertRaises(ValueError):
         nn_ops.conv3d_v2(t, v, [2, 8, 8, 8, 5], strides)
 
   def testUnknownSize(self):
