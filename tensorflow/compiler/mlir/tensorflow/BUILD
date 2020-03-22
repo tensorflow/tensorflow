@@ -196,8 +196,8 @@ cc_library(
         "transforms/legalize_hlo.cc",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        ":lower_tf_lib",
+        ":tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
@@ -472,8 +472,13 @@ cc_library(
     srcs = ["transforms/graph_optimization_pass.cc"],
     hdrs = ["transforms/graph_optimization_pass.h"],
     deps = [
+        ":error_util",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -806,7 +811,8 @@ cc_library(
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
     ],

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_H_
-#define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
+#define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_
 
 #include <string>
 
@@ -40,4 +40,4 @@ bool MlirToFlatBufferTranslateFunction(
     tensorflow::OpOrArgNameMapper* op_or_arg_name_mapper);
 }  // namespace tflite
 
-#endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_TRANSLATE_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_EXPORT_H_

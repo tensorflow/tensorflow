@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/xplane_to_kernel_stats_db.h"
 
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/utils/event_span.h"
@@ -66,13 +67,13 @@ KernelStatsDb ConvertDeviceTraceXPlaneToKernelStatsDb(
           kernel.set_op_name(tf_op.name.data(), tf_op.name.size());
           bool tensor_core_eligible = IsEinsumTensorCoreEligible(equation) ||
                                       IsOpTensorCoreEligible(kernel.op_name());
-#if defined(VLOG_IF)
-          VLOG_IF(1,
-                  !tensor_core_eligible && kernel.is_kernel_using_tensor_core())
-              << "Detected new Op using TensorCores: " << kernel.op_name()
-              << std::endl;
-#endif  // defined(VLOG_IF)
-          tensor_core_eligible |= kernel.is_kernel_using_tensor_core();
+
+          if (!tensor_core_eligible && kernel.is_kernel_using_tensor_core()) {
+            VLOG(1) << "Detected new Op using TensorCores: " << kernel.op_name()
+                    << std::endl;
+            tensor_core_eligible = true;
+          }
+
           kernel.set_is_op_tensor_core_eligible(tensor_core_eligible);
         }
       }

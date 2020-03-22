@@ -79,10 +79,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
   // turing_fp16_s1688cudnn_fp16
   bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
                                 absl::StrContains(kernel_name, "1688");
-#if defined(VLOG_IF)
-  VLOG_IF(1, possible_tensor_kernel)
-      << "Possible tensor kernel: " << kernel_name << "\n";
-#endif  // defined(VLOG_IF)
+  if (possible_tensor_kernel) {
+    VLOG(1) << "Possible tensor kernel: " << kernel_name << "\n";
+  }
 
   return (absl::StartsWith(kernel_name, "volta_i884") ||
           absl::StartsWith(kernel_name, "volta_h884") ||
