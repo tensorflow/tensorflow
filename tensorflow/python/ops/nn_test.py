@@ -1440,6 +1440,33 @@ class MaxPoolTest(test_lib.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class ConvolutionTest(test_lib.TestCase):
+  
+  def test1D_filter_with_zero_dim(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([0, 5, 3])
+    strides = 2
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv1d(t, v, [2, 8, 5], strides)
+  
+  def test2D_zero_filter_size(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 0, 5, 3])
+    strides = 2
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv2d(t, v, [2, 8, 8, 5], strides)
+
+  def test3D_zero_filter_size(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 0, 2, 5, 3])
+    strides = 2
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv3d(t, v, [2, 8, 8, 8, 5], strides)
 
   def testUnknownSize(self):
     # explicitly use float32 for ROCm, as MIOpen does not yet support float64
@@ -1457,21 +1484,32 @@ class ConvolutionTest(test_lib.TestCase):
 
 class ConvTransposeTest(test_lib.TestCase):
 
-  def test1D_zero_filter_size(self):
-    # t = array_ops.ones([2, 4, 3])
-    # v = array_ops.ones([2, 5, 3])
-    # strides = 2
+  def test1D_filter_with_zero_dim(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([0, 5, 3])
+    strides = 2
 
-    # with self.assertRaisesRegex(
-    #     ValueError, "output_shape must be of length 3, 4 or 5 but was 2."):
-    #   nn_ops.conv_transpose(None, 2, [2, 3], "SAME")
-    pass
-  
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+        
   def test2D_zero_filter_size(self):
-    pass
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 0, 5, 3])
+    strides = 2
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv2d_transpose(t, v, [2, 8, 8, 5], strides)
 
   def test3D_zero_filter_size(self):
-    pass
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 0, 2, 5, 3])
+    strides = 2
+
+    with self.assertRaisesRegex(
+        ValueError, "Argument `filters` cannot contain 0 dimension(s)."):
+        nn_ops.conv3d_transpose(t, v, [2, 8, 8, 8, 5], strides)
 
   def test1D(self):
     t = array_ops.ones([2, 4, 3])
