@@ -27,7 +27,9 @@ cc_library(
         "-DJSON_USE_EXCEPTION=0",
         "-DJSON_HAS_INT64",
     ],
+    include_prefix = "jsoncpp",
     includes = ["include"],
+    strip_include_prefix = "include",
     visibility = ["//visibility:public"],
     deps = [":private"],
 )
