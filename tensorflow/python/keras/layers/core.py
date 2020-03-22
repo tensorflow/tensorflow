@@ -142,9 +142,10 @@ class Dropout(Layer):
   not have any variables/weights that can be frozen during training.)
   
    Usage Example:
-   model = tf.keras.models.Sequential()
-   model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
-   model.add(tf.keras.layers.Dense(1))
+   
+   >>> model = tf.keras.models.Sequential()
+   >>> model.add(tf.keras.layers.Dropout(0.2, input_shape=(16,)))
+   >>> model.add(tf.keras.layers.Dense(1))
 
   >>> tf.random.set_seed(0)
   >>> layer = tf.keras.layers.Dropout(.2, input_shape=(2,))
