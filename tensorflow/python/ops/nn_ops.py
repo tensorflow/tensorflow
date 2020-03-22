@@ -1647,6 +1647,11 @@ def conv1d(
       channel_index = 1
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+
+    if not all(filters.shape):
+      raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                        'Received: %s' % (filters.shape,))
+                       
     strides = [1] + _get_sequence(stride, 1, channel_index, "stride")
     dilations = [1] + _get_sequence(dilations, 1, channel_index, "dilations")
 
@@ -1793,6 +1798,10 @@ def conv1d_transpose(
       channel_index = 1
     else:
       raise ValueError("data_format must be \"NWC\" or \"NCW\".")
+
+    if not all(filters.shape):
+      raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                        'Received: %s' % (filters.shape,))
 
     # Reshape the input tensor to [batch, 1, in_width, in_channels]
     strides = [1] + _get_sequence(strides, 1, channel_index, "stride")
@@ -2000,6 +2009,10 @@ def conv2d(  # pylint: disable=redefined-builtin,dangerous-default-value
   if data_format is None:
     data_format = "NHWC"
   channel_index = 1 if data_format.startswith("NC") else 3
+
+  if not all(filters.shape):
+    raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                      'Received: %s' % (filters.shape,))
 
   strides = _get_sequence(strides, 2, channel_index, "strides")
   dilations = _get_sequence(dilations, 2, channel_index, "dilations")
@@ -2277,6 +2290,10 @@ def conv2d_transpose_v2(
       data_format = "NHWC"
     channel_index = 1 if data_format.startswith("NC") else 3
 
+    if not all(filters):
+      raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                        'Received: %s' % (filters.shape,))
+
     strides = _get_sequence(strides, 2, channel_index, "strides")
     dilations = _get_sequence(dilations, 2, channel_index, "dilations")
 
@@ -2459,6 +2476,11 @@ def conv3d_v2(input,  # pylint: disable=redefined-builtin,missing-docstring
               name=None):
   if dilations is None:
     dilations = [1, 1, 1, 1, 1]
+
+  if not all(filters.shape):
+    raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                      'Received: %s' % (filters.shape,))
+
   return gen_nn_ops.conv3d(input,
                            filters,
                            strides,
@@ -2616,6 +2638,10 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
     if data_format is None:
       data_format = "NDHWC"
     channel_index = 1 if data_format.startswith("NC") else 4
+
+    if not all(filters.shape):
+      raise ValueError('The argument `filters` cannot contain 0 dimension(s). '
+                        'Received: %s' % (filters.shape,))
 
     strides = _get_sequence(strides, 3, channel_index, "strides")
     dilations = _get_sequence(dilations, 3, channel_index, "dilations")

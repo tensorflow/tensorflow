@@ -1457,6 +1457,22 @@ class ConvolutionTest(test_lib.TestCase):
 
 class ConvTransposeTest(test_lib.TestCase):
 
+  def test1D_zero_filter_size(self):
+    # t = array_ops.ones([2, 4, 3])
+    # v = array_ops.ones([2, 5, 3])
+    # strides = 2
+
+    # with self.assertRaisesRegex(
+    #     ValueError, "output_shape must be of length 3, 4 or 5 but was 2."):
+    #   nn_ops.conv_transpose(None, 2, [2, 3], "SAME")
+    pass
+  
+  def test2D_zero_filter_size(self):
+    pass
+
+  def test3D_zero_filter_size(self):
+    pass
+
   def test1D(self):
     t = array_ops.ones([2, 4, 3])
     v = array_ops.ones([2, 5, 3])
