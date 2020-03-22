@@ -63,20 +63,16 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Translation.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
-#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -99,45 +95,6 @@ using xla::StatusOr;
 
 namespace errors = tensorflow::errors;
 namespace tfl = mlir::TFL;
-
-using llvm::cl::opt;
-
-// Commandline flag to enable the control of flatbuffer import.
-bool use_external_constant;
-
-// Commandline flag to enable graph pruning.
-bool experimental_prune_unreachable_nodes_unconditionally;
-
-// NOLINTNEXTLINE
-static opt<bool, true> use_external_constant_flag(
-    "use-external-constant",
-    llvm::cl::desc("Use external constant during flatbuffer import"),
-    llvm::cl::location(use_external_constant), llvm::cl::init(false));
-
-// TODO(b/147111261): After the importer supports generic custom ops, we should
-// change the flag to a more lightwise flag, e.g.
-// "import_custom_ops_as_side_effect_free_ops", and let the MLIR DCE to prune
-// the operations.
-// NOLINTNEXTLINE
-static opt<bool, true> experimental_prune_unreachable_nodes_unconditionally_flg(
-    "experimental-prune-unreachable-nodes-unconditionally",
-    llvm::cl::desc("Prune nodes that are not ancestors of the output nodes."),
-    llvm::cl::location(experimental_prune_unreachable_nodes_unconditionally),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-static opt<std::string> input_arrays_flag(
-    "input-arrays",
-    llvm::cl::desc(
-        "List of input tensors, if different from the default inputs"),
-    llvm::cl::init(""));
-
-// NOLINTNEXTLINE
-static opt<std::string> output_arrays_flag(
-    "output-arrays",
-    llvm::cl::desc(
-        "List of output tensors, if different from the default outputs"),
-    llvm::cl::init(""));
 
 namespace {
 bool IsScalar(const TensorT& tensor) {
@@ -1063,42 +1020,3 @@ OwningModuleRef tflite::FlatBufferToMlir(
 
   return OwningModuleRef(module);
 }
-
-static OwningModuleRef FlatBufferFileToMlirTrans(
-    llvm::SourceMgr* source_mgr, MLIRContext* context,
-    bool use_external_constant,
-    bool experimental_prune_unreachable_nodes_unconditionally) {
-  const llvm::MemoryBuffer* input =
-      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
-  std::string error;
-  auto loc =
-      mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
-
-  // Parses input/output names from command line options.
-  std::vector<std::string> inputs;
-  std::vector<std::string> outputs;
-  // Use output parser since we only have tensor names.
-  if (!tensorflow::ParseOutputArrayInfo(input_arrays_flag, &inputs).ok()) {
-    return emitError(loc, "parsing input array info failed ")
-               << input_arrays_flag,
-           nullptr;
-  }
-  if (!tensorflow::ParseOutputArrayInfo(output_arrays_flag, &outputs).ok()) {
-    return emitError(loc, "parsing output array info failed ")
-               << output_arrays_flag,
-           nullptr;
-  }
-
-  return tflite::FlatBufferToMlir(
-      absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, use_external_constant, inputs, outputs,
-      experimental_prune_unreachable_nodes_unconditionally);
-}
-
-static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir",
-    [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
-      return FlatBufferFileToMlirTrans(
-          &source_mgr, context, use_external_constant,
-          experimental_prune_unreachable_nodes_unconditionally);
-    });

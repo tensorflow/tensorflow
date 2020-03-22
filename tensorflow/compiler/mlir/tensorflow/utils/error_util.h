@@ -21,7 +21,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 // Error utilities for MLIR when interacting with code using Status returns.
 namespace mlir {
