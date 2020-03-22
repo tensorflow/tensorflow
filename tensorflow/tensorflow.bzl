@@ -87,6 +87,9 @@ def if_nvcc(a):
 def if_cuda_is_configured_compat(x):
     return if_cuda_is_configured(x)
 
+def if_rocm_is_configured_compat(x):
+    return if_rocm_is_configured(x)
+
 def if_xla_available(if_true, if_false = []):
     return select({
         clean_dep("//tensorflow:with_xla_support"): if_true,

@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "if_cuda_is_configured_compat",
+    "if_rocm_is_configured_compat",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -25,12 +26,13 @@ tf_cuda_library(
     name = "device_tracer",
     srcs = tf_additional_device_tracer_srcs(),
     copts = tf_copts(),
-    cuda_deps = [
+    cuda_deps = if_cuda_is_configured_compat([
         "//tensorflow/core/profiler/internal/gpu:cupti_tracer",
         "//tensorflow/core/profiler/internal/gpu:cupti_wrapper",
-    ],
+    ]) + if_rocm_is_configured_compat([
+        "//tensorflow/core/profiler/internal/gpu:rocm_tracer",
+    ]),
     deps = [
-        ":cupti_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
@@ -43,7 +45,12 @@ tf_cuda_library(
         "//tensorflow/core/profiler/utils:xplane_schema",
         "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
-    ],
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ] + if_cuda_is_configured_compat([
+        ":cupti_utils",
+    ]) + if_rocm_is_configured_compat([
+    ]),
     alwayslink = 1,
 )
 
@@ -120,6 +127,25 @@ tf_cuda_library(
         "@com_google_absl//absl/container:node_hash_set",
         "@com_google_absl//absl/types:optional",
     ],
+)
+
+tf_cuda_library(
+    name = "rocm_tracer",
+    srcs = if_rocm_is_configured_compat(["rocm_tracer.cc"]),
+    hdrs = if_rocm_is_configured_compat(["rocm_tracer.h"]),
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:annotation_stack",
+        "@com_google_absl//absl/container:fixed_array",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/types:optional",
+    ] + if_rocm_is_configured_compat([
+        "@local_config_rocm//rocm:roctracer",
+    ]),
 )
 
 tf_cuda_library(

@@ -44,21 +44,34 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 std::unique_ptr<ProfilerInterface> CreateGpuTracer(
     const ProfilerOptions& options);
-#else
+#else   // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // We don't have device tracer for non-cuda case.
 std::unique_ptr<ProfilerInterface> CreateGpuTracer(
     const ProfilerOptions& options) {
   return nullptr;
 }
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 
 std::unique_ptr<Session> CreateSession() {
   SessionOptions options;
+
+  // Disable common runtime constant folding.
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions::L0);
+
+  // Disable Grappler optimizations for tests.
+  tensorflow::RewriterConfig* cfg =
+      options.config.mutable_graph_options()->mutable_rewrite_options();
+  cfg->set_constant_folding(tensorflow::RewriterConfig::OFF);
+  cfg->set_layout_optimizer(tensorflow::RewriterConfig::OFF);
+  cfg->set_remapping(tensorflow::RewriterConfig::OFF);
+
   (*options.config.mutable_device_count())["CPU"] = 1;
   (*options.config.mutable_device_count())["GPU"] = 1;
   options.config.set_allow_soft_placement(true);
@@ -246,6 +259,9 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
+#if GOOGLE_CUDA
+// Skip this test on the ROCm platform until we add ROCm support
+// for exporting trace evetns to XSpace
 TEST_F(DeviceTracerTest, TraceToXSpace) {
   profiler::ProfilerOptions options;
   auto tracer = CreateGpuTracer(options);
@@ -295,6 +311,7 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
     });
   });
 }
+#endif  // GOOGLE_CUDA
 
 }  // namespace
 }  // namespace profiler
