@@ -7089,7 +7089,6 @@ py_library(
     deps = [
         ":control_flow_ops",
         ":smart_cond",
-        ":util",
         ":variables",
     ],
 )
