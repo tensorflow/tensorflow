@@ -1,0 +1,351 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<?fileVersion 4.0.0?><cproject storage_type_id="org.eclipse.cdt.core.XmlProjectDescriptionStorage">
+	<storageModule moduleId="org.eclipse.cdt.core.settings">
+		<cconfiguration id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377">
+			<storageModule buildSystemId="org.eclipse.cdt.managedbuilder.core.configurationDataProvider" id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377" moduleId="org.eclipse.cdt.core.settings" name="Debug">
+				<externalSettings/>
+				<extensions>
+					<extension id="org.eclipse.cdt.core.GNU_ELF" point="org.eclipse.cdt.core.BinaryParser"/>
+					<extension id="org.eclipse.cdt.core.GmakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.MakeErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.ceva.toolchain.core.errorparser.bintools" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="com.ceva.utility.optassistant.errorparser" point="org.eclipse.cdt.core.ErrorParser"/>
+					<extension id="org.eclipse.cdt.core.GCCErrorParser" point="org.eclipse.cdt.core.ErrorParser"/>
+				</extensions>
+			</storageModule>
+			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+				<configuration artifactExtension="elf" artifactName="${ProjName}" buildArtefactType="org.eclipse.cdt.build.core.buildArtefactType.exe" buildProperties="org.eclipse.cdt.build.core.buildArtefactType=org.eclipse.cdt.build.core.buildArtefactType.exe,org.eclipse.cdt.build.core.buildType=org.eclipse.cdt.build.core.buildType.debug" cleanCommand="rm -rf" description="Debug Configuration" id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377" name="Debug" parent="com.ceva.toolchain.elf.exe.configuration.debug">
+					<folderInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377." name="/" resourcePath="">
+						<toolChain id="com.ceva.toolchain.elf.exe.debug.791742188" name="CEVA-ELF Toolchain" superClass="com.ceva.toolchain.elf.exe.debug">
+							<option id="elf.general.core_config.target.1715426356" name="CEVA Target" superClass="elf.general.core_config.target" useByScannerDiscovery="false" value="BX1_HW" valueType="string"/>
+							<targetPlatform binaryParser="org.eclipse.cdt.core.GNU_ELF" id="com.ceva.toolchain.elf.target.1476099133" name="CEVA-ELF Platform" osList="other" superClass="com.ceva.toolchain.elf.target"/>
+							<builder buildPath="${workspace_loc:/MICRO_SPEECH_DEMO}/Debug" id="com.ceva.toolchain.elf.builder.1714986811" keepEnvironmentInBuildfile="false" managedBuildOn="true" name="CEVA-ELF Builder" parallelBuildOn="true" parallelizationNumber="optimal" superClass="com.ceva.toolchain.elf.builder"/>
+							<tool id="com.ceva.toolchain.elf.exe.compiler.c.debug.970849800" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.c.debug"/>
+							<tool id="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712" name="CEVA-ELF C/C++ Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.debug">
+								<option id="elf.compiler.general.-I.629122248" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+									<listOptionValue builtIn="false" value="../../../../../../"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../"/>
+									<listOptionValue builtIn="false" value="../../../../"/>
+									<listOptionValue builtIn="false" value="../../"/>
+									<listOptionValue builtIn="false" value="../"/>
+									<listOptionValue builtIn="false" value="../../../../../../../"/>
+									<listOptionValue builtIn="false" value="../../../../../../../tensorflow"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../third_party/kissfft"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../third_party/kissfft/tools"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow/lite/micro/examples/micro_speech"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow/lite/micro/header"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../third_party/flatbuffers/include/"/>
+									<listOptionValue builtIn="false" value="../../../../../../../../../third_party/gemmlowp/"/>
+									<listOptionValue builtIn="false" value="../../../../../"/>
+									<listOptionValue builtIn="false" value="../../../"/>
+								</option>
+								<option id="elf.compiler.preprocessor.definitions.-D.483493354" name="Defined symbols (-D)" superClass="elf.compiler.preprocessor.definitions.-D" useByScannerDiscovery="false" valueType="definedSymbols">
+									<listOptionValue builtIn="false" value="_LIBCPP_INLINE_VISIBILITY=&quot;&quot;"/>
+									<listOptionValue builtIn="false" value="CEVA_BX"/>
+									<listOptionValue builtIn="false" value="_LIBCPP_EXTERN_TEMPLATE_INLINE_VISIBILITY=&quot;&quot;"/>
+								</option>
+								<option id="elf.compiler.dialect.std.1126615482" name="Language standard" superClass="elf.compiler.dialect.std" useByScannerDiscovery="true" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
+								<option id="elf.compiler.general.advanced_options.435367334" name="Advanced options" superClass="elf.compiler.general.advanced_options" useByScannerDiscovery="false" value="-std=c++11 -fpermissive" valueType="string"/>
+								<option id="elf.compiler.general.-v.759484485" name="Use verbose output (-v)" superClass="elf.compiler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+								<option id="com.ceva.toolchain.elf.exe.compiler.cpp.option.cycle_count_optimization_level.debug.2075188975" name="Optimization level" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.option.cycle_count_optimization_level.debug" useByScannerDiscovery="false" value="elf.compiler.cycle_count_optimization_level.-O4" valueType="enumerated"/>
+								<option id="elf.compiler.general.-save-temps.1717643001" name="Save intermediate compilation results (-save-temps)" superClass="elf.compiler.general.-save-temps" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+								<inputType id="com.ceva.toolchain.elf.compiler.c.input.1852966001" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+								<inputType id="com.ceva.toolchain.elf.compiler.cpp.input.1258839868" superClass="com.ceva.toolchain.elf.compiler.cpp.input"/>
+							</tool>
+							<tool id="com.ceva.toolchain.elf.exe.assembler.debug.1496717289" name="CEVA-ELF Assembler" superClass="com.ceva.toolchain.elf.exe.assembler.debug">
+								<option id="elf.assembler.general.rstr_checker.1826116910" name="Restriction checker" superClass="elf.assembler.general.rstr_checker" useByScannerDiscovery="false" value="elf.assembler.general.rstr_checker.no-rstr-check" valueType="enumerated"/>
+								<option id="elf.assembler.general.-v.1350726383" name="Announce version (-Wa,-v)" superClass="elf.assembler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							</tool>
+							<tool id="com.ceva.toolchain.elf.exe.linker.debug.1906060343" name="CEVA-ELF Linker" superClass="com.ceva.toolchain.elf.exe.linker.debug">
+								<option id="elf.linker.includes.include_directories.334118375" name="Search path (-L)" superClass="elf.linker.includes.include_directories" useByScannerDiscovery="false" valueType="libPaths">
+									<listOptionValue builtIn="false" value="../../../../../../../../tensorflow/lite/micro/CEVA_BlueVox/libs"/>
+								</option>
+								<option id="elf.linker.libraries.libraries.1764244312" name="Libraries" superClass="elf.linker.libraries.libraries" useByScannerDiscovery="false" valueType="libs">
+									<listOptionValue builtIn="false" value="ceva_dsp_bx1_lib"/>
+								</option>
+								<option id="elf.linker.objects.objects.949054454" name="Additional objects" superClass="elf.linker.objects.objects" useByScannerDiscovery="false"/>
+								<option id="elf.linker.build_options.lnkfile.631870964" name="Linker memory mapping script:" superClass="elf.linker.build_options.lnkfile" useByScannerDiscovery="false" value="../BlueVox_18.0.3.ld" valueType="string"/>
+								<option id="elf.linker.objects.crt0Obj.363060515" name="Link with default crt0.o object" superClass="elf.linker.objects.crt0Obj" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+								<option id="elf.linker.objects.crtnObj.1612147150" name="Link with default crtn.o object" superClass="elf.linker.objects.crtnObj" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							</tool>
+							<tool id="com.ceva.toolchain.elf.libmanager.1731648095" name="CEVA Archiver" superClass="com.ceva.toolchain.elf.libmanager"/>
+						</toolChain>
+					</folderInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.1460442094" name="common.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/c/common.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.1444388349">
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.755021535" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.664438637" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.606018897" name="Resource Custom Build Step Output Type"/>
+						</tool>
+						<tool id="com.ceva.toolchain.elf.compiler.c.1444388349" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.1260505362" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1812253525" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.150410580" name="fft.cc" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/micro/examples/micro_speech/simple_features/CEVA_BlueVox/fft.cc" toolsToInvoke="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.1918767308">
+						<tool id="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.1918767308" name="CEVA-ELF C/C++ Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712">
+							<option id="elf.compiler.general.-v.1130195817" name="Use verbose output (-v)" superClass="elf.compiler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<option id="elf.compiler.general.-save-temps.1929070655" name="Save intermediate compilation results (-save-temps)" superClass="elf.compiler.general.-save-temps" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.777685822" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.cpp.input.475918662" superClass="com.ceva.toolchain.elf.compiler.cpp.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.220612075" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1595208822" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.799190588" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.10494563" name="greedy_memory_planner.cc" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/micro/memory_planner/greedy_memory_planner.cc" toolsToInvoke="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.1744225070">
+						<tool id="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.1744225070" name="CEVA-ELF C/C++ Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712">
+							<option id="elf.compiler.general.-I.2141891977" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../"/>
+								<listOptionValue builtIn="false" value="../../"/>
+								<listOptionValue builtIn="false" value="../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../tensorflow"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow/lite/micro/examples/micro_speech"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../../tensorflow/lite/micro/header"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/flatbuffers/include/"/>
+								<listOptionValue builtIn="false" value="../../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.618286958" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.cpp.input.486457865" superClass="com.ceva.toolchain.elf.compiler.cpp.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.144027245" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.2011395898" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1981170347" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.45069575" name="window.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/experimental/microfrontend/lib/window.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.75027165">
+						<tool id="com.ceva.toolchain.elf.compiler.c.75027165" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.275445562" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.755454457" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.908509353" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1822671771" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1705309498" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.580458494" name="filterbank_util.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/experimental/microfrontend/lib/filterbank_util.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.1531259882">
+						<tool id="com.ceva.toolchain.elf.compiler.c.1531259882" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.893452798" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+							</option>
+							<option id="elf.compiler.dialect.std.1293705560" name="Language standard" superClass="elf.compiler.dialect.std" useByScannerDiscovery="true" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
+							<option id="elf.compiler.general.-v.216963259" name="Use verbose output (-v)" superClass="elf.compiler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.6996952" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.5822396" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1713051290" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.969947537" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.631289088" name="pcan_gain_control_util.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.670959297">
+						<tool id="com.ceva.toolchain.elf.compiler.c.670959297" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.1651250549" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1650642905" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.1820763307" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.466360618" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1070839909" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.957889845" name="noise_reduction_util.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.81169769">
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.1667714880" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1401957036" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1811845419" name="Resource Custom Build Step Output Type"/>
+						</tool>
+						<tool id="com.ceva.toolchain.elf.compiler.c.81169769" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.1105589643" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../../tensorflow"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+							</option>
+							<option id="elf.compiler.dialect.std.401209324" name="Language standard" superClass="elf.compiler.dialect.std" useByScannerDiscovery="true" value="gnu.c.compiler.dialect.default" valueType="enumerated"/>
+							<option id="elf.compiler.general.-v.813576833" name="Use verbose output (-v)" superClass="elf.compiler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1996046864" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.704623908" name="window_util.c" rcbsApplicability="disable" resourcePath="src/tensorflow/lite/experimental/microfrontend/lib/window_util.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.1710897452">
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.332245467" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1772339597" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.441350865" name="Resource Custom Build Step Output Type"/>
+						</tool>
+						<tool id="com.ceva.toolchain.elf.compiler.c.1710897452" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.general.-I.657809695" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1434232394" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.984293856" name="kiss_fft.c" rcbsApplicability="disable" resourcePath="src/tensorflow/third_party/kissfft/src/kiss_fft.c" toolsToInvoke="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.720589041">
+						<tool id="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.720589041" name="CEVA-ELF C/C++ Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712">
+							<option id="elf.compiler.general.-I.294328459" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../"/>
+								<listOptionValue builtIn="false" value="../../"/>
+								<listOptionValue builtIn="false" value="../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../tensorflow"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/gemmlowp/"/>
+								<listOptionValue builtIn="false" value="../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1646886160" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.cpp.input.1251461460" superClass="com.ceva.toolchain.elf.compiler.cpp.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.722740739" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1640513949" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.750527706" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.103496469" name="kiss_fftr.c" rcbsApplicability="disable" resourcePath="src/tensorflow/third_party/kissfft/src/kiss_fftr.c" toolsToInvoke="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.134265114">
+						<tool id="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712.134265114" name="CEVA-ELF C/C++ Compiler" superClass="com.ceva.toolchain.elf.exe.compiler.cpp.debug.787731712">
+							<option id="elf.compiler.general.-I.400216601" name="Include directories (-I)" superClass="elf.compiler.general.-I" useByScannerDiscovery="false" valueType="includePath">
+								<listOptionValue builtIn="false" value="../../../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../../"/>
+								<listOptionValue builtIn="false" value="../../"/>
+								<listOptionValue builtIn="false" value="../"/>
+								<listOptionValue builtIn="false" value="../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../third_party/kissfft"/>
+								<listOptionValue builtIn="false" value="../../../../../../../../../third_party/kissfft/tools"/>
+								<listOptionValue builtIn="false" value="../../../../../"/>
+								<listOptionValue builtIn="false" value="../../../"/>
+							</option>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1698215336" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.cpp.input.152847333" superClass="com.ceva.toolchain.elf.compiler.cpp.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.1591758179" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1018062655" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1105365391" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.1800540551" name="main_functions.c" rcbsApplicability="disable" resourcePath="source/main_functions.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.462686155">
+						<tool id="com.ceva.toolchain.elf.compiler.c.462686155" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<option id="elf.compiler.preprocessor.definitions.-D.562691177" name="Defined symbols (-D)" superClass="elf.compiler.preprocessor.definitions.-D" useByScannerDiscovery="false" valueType="definedSymbols">
+								<listOptionValue builtIn="false" value="CEVA_BX"/>
+								<listOptionValue builtIn="false" value="PREP_4_BOOT"/>
+								<listOptionValue builtIn="false" value="_LIBCPP_INLINE_VISIBILITY=&quot;&quot;"/>
+								<listOptionValue builtIn="false" value="IIR"/>
+								<listOptionValue builtIn="false" value="_LIBCPP_EXTERN_TEMPLATE_INLINE_VISIBILITY=&quot;&quot;"/>
+							</option>
+							<option id="elf.compiler.dialect.std.582148740" name="Language standard" superClass="elf.compiler.dialect.std" useByScannerDiscovery="true" value="gnu.c.compiler.dialect.c99" valueType="enumerated"/>
+							<option id="elf.compiler.general.-v.391856577" name="Use verbose output (-v)" superClass="elf.compiler.general.-v" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<option id="elf.compiler.cycle_count_optimization_level.487747257" name="Optimization level" superClass="elf.compiler.cycle_count_optimization_level" useByScannerDiscovery="false" value="elf.compiler.cycle_count_optimization_level.-O0" valueType="enumerated"/>
+							<option id="elf.compiler.code_generation.disable_inline.1475638099" name="Disable inlining (-fno-inline)" superClass="elf.compiler.code_generation.disable_inline" useByScannerDiscovery="false" value="true" valueType="boolean"/>
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.2051117580" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+						<tool customBuildStep="true" id="org.eclipse.cdt.managedbuilder.ui.rcbs.927123132" name="Resource Custom Build Step">
+							<inputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.inputtype.1026863839" name="Resource Custom Build Step Input Type">
+								<additionalInput kind="additionalinputdependency" paths=""/>
+							</inputType>
+							<outputType id="org.eclipse.cdt.managedbuilder.ui.rcbs.outputtype.1154390250" name="Resource Custom Build Step Output Type"/>
+						</tool>
+					</fileInfo>
+					<fileInfo id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377.1796792495" name="main.c" rcbsApplicability="disable" resourcePath="source/main.c" toolsToInvoke="com.ceva.toolchain.elf.compiler.c.1271651117">
+						<tool id="com.ceva.toolchain.elf.compiler.c.1271651117" name="CEVA-ELF C Compiler" superClass="com.ceva.toolchain.elf.compiler.c">
+							<inputType id="com.ceva.toolchain.elf.compiler.c.input.1741070103" superClass="com.ceva.toolchain.elf.compiler.c.input"/>
+						</tool>
+					</fileInfo>
+					<sourceEntries>
+						<entry excluding="tensorflow/lite/micro/examples/micro_speech/main_functions.cc|tensorflow/lite/micro/examples/micro_speech/CEVA_BlueVox/main.c|tensorflow/lite/micro/examples/micro_speech/CEVA_BlueVox/main_functions.c|tensorflow/lite/micro/CEVA_BlueVox/source/prog_icache.asm|tensorflow/lite/micro/CEVA_BlueVox/source/IO_buffers.c|tensorflow/lite/micro/CEVA_BlueVox/source/init_system.c|tensorflow/lite/micro/CEVA_BlueVox/source/hpf_iir_form_II_transposed_2_coeff.c|tensorflow/lite/micro/CEVA_BlueVox/source/global_var.c|tensorflow/lite/micro/CEVA_BlueVox/source/decimator.c|tensorflow/lite/micro/CEVA_BlueVox/source/codec_AD1777.c|tensorflow/lite/micro/CEVA_BlueVox/source/crtn.s|tensorflow/lite/micro/CEVA_BlueVox/source/crt0.c|tensorflow/lite/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc|tensorflow/lite/micro/examples/micro_speech/micro_features/no_micro_features_data.cc|tensorflow/lite/micro/examples/micro_speech/yes_1000ms_sample_data.cc" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+					</sourceEntries>
+				</configuration>
+			</storageModule>
+			<storageModule moduleId="org.eclipse.cdt.core.externalSettings">
+				<externalSettings containerId="com.ceva.toolchain.elf.externalSettingsProvider" factoryId="org.eclipse.cdt.core.extension.container.factory">
+					<externalSetting/>
+				</externalSettings>
+			</storageModule>
+		</cconfiguration>
+	</storageModule>
+	<storageModule moduleId="cdtBuildSystem" version="4.0.0">
+		<project id="MICRO_SPEECH_DEMO.com.ceva.toolchain.elf.exe.1233783373" name="Executable" projectType="com.ceva.toolchain.elf.exe"/>
+	</storageModule>
+	<storageModule moduleId="scannerConfiguration">
+		<autodiscovery enabled="true" problemReportingEnabled="true" selectedProfileId=""/>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
+	<storageModule moduleId="org.eclipse.cdt.core.language.mapping">
+		<project-mappings>
+			<content-type-mapping configuration="" content-type="org.eclipse.cdt.core.cHeader" language="com.ceva.toolchain.elf.c"/>
+			<content-type-mapping configuration="" content-type="org.eclipse.cdt.core.cSource" language="com.ceva.toolchain.elf.c"/>
+			<content-type-mapping configuration="" content-type="org.eclipse.cdt.core.cxxHeader" language="com.ceva.toolchain.elf.cxx"/>
+			<content-type-mapping configuration="" content-type="org.eclipse.cdt.core.cxxSource" language="com.ceva.toolchain.elf.cxx"/>
+		</project-mappings>
+	</storageModule>
+	<storageModule moduleId="com.ceva.toolchain.core.sdtflags" revision="17.0.0"/>
+	<storageModule length="false" moduleId="com.ceva.toolchain.core.useoptfile"/>
+	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="Debug">
+			<resource resourceType="PROJECT" workspacePath="/MICRO_SPEECH_DEMO"/>
+		</configuration>
+		<configuration configurationName="Release">
+			<resource resourceType="PROJECT" workspacePath="/MICRO_SPEECH_DEMO"/>
+		</configuration>
+	</storageModule>
+	<storageModule moduleId="org.eclipse.cdt.make.core.buildtargets">
+		<buildTargets>
+			<target name="BX1_Target" path="" targetID="org.eclipse.cdt.build.MakeTargetBuilder">
+				<buildCommand>${CEVATOOLBOX}/common/make</buildCommand>
+				<buildArguments/>
+				<buildTarget>BX1_Target</buildTarget>
+				<stopOnError>true</stopOnError>
+				<useDefaultCommand>true</useDefaultCommand>
+				<runAllBuilders>true</runAllBuilders>
+			</target>
+			<target name="BX1" path="" targetID="org.eclipse.cdt.build.MakeTargetBuilder">
+				<buildCommand>${CEVATOOLBOX}/common/make</buildCommand>
+				<buildArguments/>
+				<buildTarget>BX1</buildTarget>
+				<stopOnError>true</stopOnError>
+				<useDefaultCommand>true</useDefaultCommand>
+				<runAllBuilders>true</runAllBuilders>
+			</target>
+		</buildTargets>
+	</storageModule>
+</cproject>

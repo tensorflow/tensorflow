@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project>
+	<configuration id="com.ceva.toolchain.elf.exe.configuration.debug.1617548377" name="Debug">
+		<extension point="org.eclipse.cdt.core.LanguageSettingsProvider">
+			<provider class="com.ceva.toolchain.elf.ELFLanguageSettingsProvider" console="false" env-hash="-728134096209376315" id="com.ceva.toolchain.elf.ELFSettingsProvider" keep-relative-paths="false" name="CEVA-ELF Settings Provider" parameter="${COMMAND} ${FLAGS} ${LANG_FLAG} -dM -E -v  ${INPUTS}" prefer-non-shared="true">
+				<language-scope id="org.eclipse.cdt.core.gcc"/>
+				<language-scope id="org.eclipse.cdt.core.g++"/>
+			</provider>
+			<provider-reference id="com.ceva.toolchain.core.VeccSettingsProvider" ref="shared-provider"/>
+			<provider copy-of="extension" id="org.eclipse.cdt.ui.UserLanguageSettingsProvider"/>
+			<provider-reference id="org.eclipse.cdt.core.ReferencedProjectsLanguageSettingsProvider" ref="shared-provider"/>
+			<provider-reference id="com.ceva.utility.xtend.codegen.XtendSettingProvider" ref="shared-provider"/>
+			<provider-reference id="org.eclipse.cdt.managedbuilder.core.MBSLanguageSettingsProvider" ref="shared-provider"/>
+		</extension>
+	</configuration>
+</project>

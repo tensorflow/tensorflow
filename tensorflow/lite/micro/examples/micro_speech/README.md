@@ -21,6 +21,7 @@ kilobytes of Flash.
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
+-   [Deploy to CEVA-BX1](#deploy-to-ceva-bx1)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Calculating the input to the neural network](#calculating-the-input-to-the-neural-network)
@@ -453,6 +454,30 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 15. A loopback path from microphone to headset jack is enabled. Headset jack is
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.
+
+## Deploy to CEVA-BX1
+The following instructions will help you build and deploy the sample to the 
+[CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
+
+1. Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2. Download and install CEVA-BX Toolbox v18.0.2
+3. Obtain CEVA-BX1 BlueVox development board
+4. Import the project located at /tensorflow/lite/micro/examples/micro_speech/CEVA
+5. Neccessary 3rd party software:
+	* Either get flatbuffers, gemmlowp and kiss fft using the tensorflow build system or get them from their repositories. 
+	  Place them in a 'third_party' directory adjacent to the tensorflow directory or change their location in CEVA-BX Toolbox project settings.
+		- Kissfft - we used https://github.com/berndporr/kiss-fft
+			Required files are kiss_fft.c, kiss_fftr.c to be placed in third_party/kissfft/src
+						   kiss_fft.h, _kiss_fft_guts.h to be placed in third_party/kissfft
+		- flatbuffers - https://github.com/google/flatbuffers
+			Required files are base.h, flatbuffers.h, stl_emulation.h, all to be placed in third_party/flatbuffers/include/flatbuffers
+		- gemmlowp - https://github.com/google/gemmlowp 
+			Required files are fixedpoint.h, fixedpoint_sse.h to be placed in third_party/gemmlowp/fixedpoint
+							   detect_platform.h to be placed in third_party/gemmlowp/internal
+							   
+						   
+6. Place libceva_dsp_bx1_lib.a (Supplied with CEVA Toolbox) in CEVA/lib (or change library location in ToolBox project settings).	
+7. Follow CEVA Toolbox instructions for creating a debug target and running the project.
 
 ## Run on macOS
 
