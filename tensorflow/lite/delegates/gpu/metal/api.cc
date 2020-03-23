@@ -122,13 +122,14 @@ std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
   return SpaceToDepth(id, input_id, output_id, attr);
 }
 
-Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
-                          const std::vector<ValueId>& inputs,
-                          const std::vector<ValueId>& outputs,
-                          const RuntimeOptions& options,
-                          std::vector<ComputeTaskDescriptorPtr>* tasks) {
+absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
+                                const std::vector<ValueId>& inputs,
+                                const std::vector<ValueId>& outputs,
+                                const RuntimeOptions& options,
+                                std::vector<ComputeTaskDescriptorPtr>* tasks) {
   if (!IsBatchMatchesForAllValues(graph)) {
-    return InvalidArgumentError("Only identical batch dimension is supported");
+    return absl::InvalidArgumentError(
+        "Only identical batch dimension is supported");
   }
   int node_id = static_cast<int>(node->id);
   auto op_type = OperationTypeFromString(node->operation.type);
@@ -199,7 +200,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node->operation.attributes);
       if (attr.appended.b != 0 || attr.prepended.b != 0) {
-        return UnimplementedError("Padding for BATCH is not supported.");
+        return absl::UnimplementedError("Padding for BATCH is not supported.");
       }
       *tasks = Padding(node_id, inputs[0], outputs[0], attr);
       break;
@@ -236,7 +237,8 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::SOFTMAX: {
       auto attr = absl::any_cast<SoftmaxAttributes>(node->operation.attributes);
       if (attr.axis != Axis::CHANNELS) {
-        return UnimplementedError("Softmax supports only CHANNELS dimension");
+        return absl::UnimplementedError(
+            "Softmax supports only CHANNELS dimension");
       }
       *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
       break;
@@ -278,15 +280,16 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
-      return UnimplementedError("Unsupported op: " + node->operation.type);
+      return absl::UnimplementedError("Unsupported op: " +
+                                      node->operation.type);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
 
-Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
-               CompiledModel* compiled_model) {
+absl::Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
+                     CompiledModel* compiled_model) {
   for (const auto& node : graph.nodes()) {
     std::vector<ValueId> inputs;
     for (auto& input : graph.FindInputs(node->id)) {
@@ -303,11 +306,11 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
       auto primary_status =
           RegisterPrimaryOps(graph, node, inputs, outputs, options, &tasks);
       if (!primary_status.ok()) {
-        return UnimplementedError(absl::Substitute(
-            "Unsupported op type: $0; custom registry error: "
-            "$1; primary registry error: $2;",
-            node->operation.type, custom_status.error_message(),
-            primary_status.error_message()));
+        return absl::UnimplementedError(
+            absl::Substitute("Unsupported op type: $0; custom registry error: "
+                             "$1; primary registry error: $2;",
+                             node->operation.type, custom_status.message(),
+                             primary_status.message()));
       }
     }
     for (auto task : tasks) {
@@ -315,7 +318,7 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace metal

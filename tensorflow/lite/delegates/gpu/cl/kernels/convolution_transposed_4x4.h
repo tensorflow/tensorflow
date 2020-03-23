@@ -37,8 +37,8 @@ namespace cl {
 class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ConvolutionTransposed4x4(ConvolutionTransposed4x4&& operation);
@@ -56,19 +56,19 @@ class ConvolutionTransposed4x4 : public GPUOperation {
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
                            const CLDevice& device);
-  friend Status CreateConvolutionTransposed4x4(
+  friend absl::Status CreateConvolutionTransposed4x4(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed4x4* result);
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   Buffer weights_;
@@ -80,7 +80,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 };
 
 template <DataType T>
-Status ConvolutionTransposed4x4::UploadWeights(
+absl::Status ConvolutionTransposed4x4::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
@@ -150,7 +150,7 @@ bool IsConvolutionTransposed4x4Supported(
     const CLDevice& device, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
-Status CreateConvolutionTransposed4x4(
+absl::Status CreateConvolutionTransposed4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed4x4* result);

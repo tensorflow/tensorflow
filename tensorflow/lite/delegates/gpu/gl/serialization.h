@@ -67,19 +67,19 @@ class DeserializationHandler {
  public:
   virtual ~DeserializationHandler() = default;
 
-  virtual Status OnShader(absl::Span<const char> shader_src) = 0;
+  virtual absl::Status OnShader(absl::Span<const char> shader_src) = 0;
 
-  virtual Status OnProgram(const std::vector<Variable>& parameters,
-                           const std::vector<Object>& objects,
-                           const uint3& workgroup_size,
-                           const uint3& num_workgroups,
-                           size_t shader_index) = 0;
+  virtual absl::Status OnProgram(const std::vector<Variable>& parameters,
+                                 const std::vector<Object>& objects,
+                                 const uint3& workgroup_size,
+                                 const uint3& num_workgroups,
+                                 size_t shader_index) = 0;
 
   virtual void OnOptions(const CompiledModelOptions& options) = 0;
 };
 
-Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
-                                DeserializationHandler* handler);
+absl::Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
+                                      DeserializationHandler* handler);
 
 }  // namespace gl
 }  // namespace gpu

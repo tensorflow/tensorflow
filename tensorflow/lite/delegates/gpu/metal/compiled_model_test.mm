@@ -183,7 +183,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1}, {2}, nodes, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 // Outputs: one missing, one unused.
@@ -195,8 +195,8 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 1",
                                             "Unused inputs 1", "Missing output buffers 1"};
   for (const std::string& message : errorMessages) {
-    bool doesContainMessage = status.error_message().find(message) != std::string::npos;
-    XCTAssertTrue(doesContainMessage, @"%s", status.error_message().c_str());
+    bool doesContainMessage = std::string(status.message()).find(message) != std::string::npos;
+    XCTAssertTrue(doesContainMessage, @"%s", std::string(status.message()).c_str());
   }
 }
 
@@ -205,7 +205,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   auto nodes = MulLinkable(1, 1, 2);
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1}, {2, 3}, nodes, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 // Unused input => empty graph, missing output.
@@ -216,8 +216,8 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   std::vector<std::string> errorMessages = {"Input operations count 1", "Unused operations 0",
                                             "Unused inputs 1", "Missing output buffers 1"};
   for (const std::string& message : errorMessages) {
-    bool doesContainMessage = status.error_message().find(message) != std::string::npos;
-    XCTAssertTrue(doesContainMessage, @"%s", status.error_message().c_str());
+    bool doesContainMessage = std::string(status.message()).find(message) != std::string::npos;
+    XCTAssertTrue(doesContainMessage, @"%s", std::string(status.message()).c_str());
   }
 }
 
@@ -228,7 +228,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1}, {3}, nodes, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 // Two sequential operations. Not fused.
@@ -238,14 +238,14 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   nodes.insert(nodes.end(), nodes2.begin(), nodes2.end());
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1}, {3}, nodes, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testAddOperationSuccess {
   auto nodes = Add2(1, 1, 2, 3);
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1, 2}, {3}, nodes, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testAddOperationFused {
@@ -254,7 +254,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   graph.insert(graph.end(), graph2.begin(), graph2.end());
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1, 2}, {4}, graph, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   XCTAssertTrue(model.size() == 1, @"Not fused, more than one task descriptor.");
 }
 
@@ -266,7 +266,7 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   graph.insert(graph.end(), graph3.begin(), graph3.end());
   std::vector<ComputeTaskDescriptorPtr> model;
   auto status = ValidateOptimizeModel({1, 2}, {5}, graph, &model);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

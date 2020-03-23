@@ -39,8 +39,8 @@ namespace cl {
 // returned sync and could be safely destroyed.
 //
 // Depends on EGL 1.5.
-Status CreateEglSyncFromClEvent(cl_event event, EGLDisplay display,
-                                EglSync* sync);
+absl::Status CreateEglSyncFromClEvent(cl_event event, EGLDisplay display,
+                                      EglSync* sync);
 
 // Returns true if 'CreateEglSyncFromClEvent' is supported.
 bool IsEglSyncFromClEventSupported();
@@ -48,20 +48,22 @@ bool IsEglSyncFromClEventSupported();
 // Creates CL event from EGL sync.
 // Created event could only be consumed by AcquiredGlObject::Acquire call as
 // a 'wait_event'.
-Status CreateClEventFromEglSync(cl_context context, const EglSync& egl_sync,
-                                CLEvent* event);
+absl::Status CreateClEventFromEglSync(cl_context context,
+                                      const EglSync& egl_sync, CLEvent* event);
 
 // Returns true if 'CreateClEventFromEglSync' is supported.
 bool IsClEventFromEglSyncSupported(const CLDevice& device);
 
 // Creates new CL memory object from OpenGL buffer.
-Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id, AccessType access_type,
-                                  CLContext* context, CLMemory* memory);
+absl::Status CreateClMemoryFromGlBuffer(GLuint gl_ssbo_id,
+                                        AccessType access_type,
+                                        CLContext* context, CLMemory* memory);
 
 // Creates new CL memory object from OpenGL texture.
-Status CreateClMemoryFromGlTexture(GLenum texture_target, GLuint texture_id,
-                                   AccessType access_type, CLContext* context,
-                                   CLMemory* memory);
+absl::Status CreateClMemoryFromGlTexture(GLenum texture_target,
+                                         GLuint texture_id,
+                                         AccessType access_type,
+                                         CLContext* context, CLMemory* memory);
 
 // Returns true if GL objects could be shared with OpenCL context.
 bool IsGlSharingSupported(const CLDevice& device);
@@ -81,16 +83,16 @@ class AcquiredGlObjects {
   // CreateClMemoryFromGlBuffer or CreateClMemoryFromGlTexture calls.
   // If 'acquire_event' is not nullptr, it will be signared once acquisition is
   // complete.
-  static Status Acquire(const std::vector<cl_mem>& memory,
-                        cl_command_queue queue,
-                        const std::vector<cl_event>& wait_events,
-                        CLEvent* acquire_event /* optional */,
-                        AcquiredGlObjects* objects);
+  static absl::Status Acquire(const std::vector<cl_mem>& memory,
+                              cl_command_queue queue,
+                              const std::vector<cl_event>& wait_events,
+                              CLEvent* acquire_event /* optional */,
+                              AcquiredGlObjects* objects);
 
   // Releases OpenCL memory back to OpenGL context. If 'release_event' is not
   // nullptr, it will be signalled once release is complete.
-  Status Release(const std::vector<cl_event>& wait_events,
-                 CLEvent* release_event /* optional */);
+  absl::Status Release(const std::vector<cl_event>& wait_events,
+                       CLEvent* release_event /* optional */);
 
  private:
   AcquiredGlObjects(const std::vector<cl_mem>& memory, cl_command_queue queue)
@@ -108,10 +110,10 @@ class GlInteropFabric {
 
   // Ensures proper GL->CL synchronization is in place before
   // GL objects that are mapped to CL objects are used.
-  Status Start();
+  absl::Status Start();
 
   // Puts appropriate CL->GL synchronization after all work is complete.
-  Status Finish();
+  absl::Status Finish();
 
   // Registers memory to be used from GL context. Such CL memory object must
   // be created with CreateClMemoryFromGlBuffer or CreateClMemoryFromGlTexture

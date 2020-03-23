@@ -37,8 +37,8 @@ namespace {
 
 class Convolution : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto attr = absl::any_cast<const Convolution2DAttributes&>(
         ctx.node->operation.attributes);
@@ -139,7 +139,7 @@ class Convolution : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 
@@ -160,24 +160,24 @@ int SelectMultiplier(int32_t input_width,
 
 class Convolution1x1 : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr = absl::any_cast<const Convolution2DAttributes&>(
         ctx.node->operation.attributes);
     if (attr.weights.shape.h != 1 || attr.weights.shape.w != 1) {
-      return UnimplementedError("Height and width should be 1.");
+      return absl::UnimplementedError("Height and width should be 1.");
     }
     if (attr.dilations.h != 1 || attr.dilations.w != 1) {
-      return UnimplementedError("Dilations are not supported.");
+      return absl::UnimplementedError("Dilations are not supported.");
     }
     if (attr.strides.h != 1 || attr.strides.w != 1) {
-      return UnimplementedError("Strides are not supported.");
+      return absl::UnimplementedError("Strides are not supported.");
     }
     if (attr.padding.appended.h != 0 || attr.padding.appended.w != 0 ||
         attr.padding.prepended.h != 0 || attr.padding.prepended.w != 0) {
-      return UnimplementedError("Padding is not supported.");
+      return absl::UnimplementedError("Padding is not supported.");
     }
 
     int multiplier = SelectMultiplier(input->tensor.shape.w, ctx);
@@ -280,7 +280,7 @@ class Convolution1x1 : public NodeShader {
         /*output=*/multiplier == 1 ? IOStructure::AUTO
                                    : IOStructure::ONLY_DEFINITIONS,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

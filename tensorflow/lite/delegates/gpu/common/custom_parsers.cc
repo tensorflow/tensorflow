@@ -25,10 +25,10 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 
-Status ParseCustomAttributes(absl::string_view op_name, const void* data,
-                             uint32_t data_size, absl::any* attr,
-                             BHWC* output_shape) {
-  return UnimplementedError(absl::StrCat(
+absl::Status ParseCustomAttributes(absl::string_view op_name, const void* data,
+                                   uint32_t data_size, absl::any* attr,
+                                   BHWC* output_shape) {
+  return absl::UnimplementedError(absl::StrCat(
       "Attributes parsing is not enabled for ", op_name, " operation"));
 }
 

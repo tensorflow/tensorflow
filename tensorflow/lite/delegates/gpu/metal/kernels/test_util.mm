@@ -65,7 +65,7 @@ SingleOpModel::SingleOpModel(Operation&& operation, const std::vector<TensorRef<
   }
 }
 
-Status SingleOpModel::Invoke() {
+absl::Status SingleOpModel::Invoke() {
   std::vector<ValueId> input_ids;
   input_ids.reserve(inputs_.size());
   for (const auto& input : inputs_) {
@@ -143,16 +143,16 @@ Status SingleOpModel::Invoke() {
     RETURN_IF_ERROR(ConvertFromPHWC4(absl::MakeConstSpan(output_pointer, elements_count),
                                      output.shape, absl::MakeSpan(output.data)));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CompareVectors(const std::vector<float>& reference, const std::vector<float>& output,
-                      float max_error) {
+absl::Status CompareVectors(const std::vector<float>& reference, const std::vector<float>& output,
+                            float max_error) {
   if (reference.size() != output.size()) {
     const std::string message = "CompareVectors: vectors size does not match for reference: " +
                                 std::to_string(reference.size()) +
                                 " vs. output: " + std::to_string(output.size());
-    return tflite::gpu::InternalError(message);
+    return absl::InternalError(message);
   }
   for (int i = 0; i < reference.size(); i++) {
     float error = std::abs(reference[i] - output[i]);
@@ -160,15 +160,15 @@ Status CompareVectors(const std::vector<float>& reference, const std::vector<flo
       const std::string message =
           "Reference: " + std::to_string(reference[i]) + ", output: " + std::to_string(output[i]) +
           ", error: " + std::to_string(error) + ", max allowed error: " + std::to_string(max_error);
-      return tflite::gpu::InternalError(message);
+      return absl::InternalError(message);
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice> device,
-                const std::map<ValueId, TensorFloat32>& inputs,
-                std::map<ValueId, TensorFloat32>* outputs) {
+absl::Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice> device,
+                      const std::map<ValueId, TensorFloat32>& inputs,
+                      std::map<ValueId, TensorFloat32>* outputs) {
   std::vector<ValueId> inputBufferIDs;
   inputBufferIDs.reserve(inputs.size());
   for (const auto& input : inputs) {
@@ -251,7 +251,7 @@ Status RunGraph(const std::vector<ComputeTaskDescriptorPtr>& nodes, id<MTLDevice
                                      absl::MakeSpan(dst.data)));
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace metal

@@ -103,7 +103,7 @@ Mean& Mean::operator=(Mean&& operation) {
   return *this;
 }
 
-Status Mean::Compile(const CreationContext& creation_context) {
+absl::Status Mean::Compile(const CreationContext& creation_context) {
   if (creation_context.device->IsAdreno3xx()) {
     work_group_size_ = int3(16, 8, 1);
   }
@@ -114,7 +114,7 @@ Status Mean::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Mean::BindArguments() {
+absl::Status Mean::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -124,7 +124,7 @@ Status Mean::BindArguments() {
   const double size_0 = work_group_size_.x * work_group_size_.y;
   const double size_1 = total_size / size_0;
   RETURN_IF_ERROR(kernel_.SetBytesAuto(float2(1.0 / size_1, 1.0 / size_0)));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Mean::GetGridSize() const {
@@ -134,7 +134,7 @@ int3 Mean::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Mean::AddToQueue(CLCommandQueue* queue) {
+absl::Status Mean::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

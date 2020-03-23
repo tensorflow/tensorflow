@@ -24,8 +24,8 @@ cc_library(
     srcs = ["custom_parsers.cc"],
     hdrs = ["custom_parsers.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:status",
+        ":shape",
+        ":status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:any",
         "@flatbuffers",
@@ -193,6 +193,7 @@ cc_test(
 cc_library(
     name = "status",
     hdrs = ["status.h"],
+    deps = ["@com_google_absl//absl/status"],
 )
 
 cc_library(
