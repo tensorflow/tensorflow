@@ -37,12 +37,13 @@ namespace gpu {
 namespace metal {
 namespace {
 
-std::string GetMaxUnpoolingCode() {
+std::string GetApplyMaskCode() {
   std::string shader_source = R"(
     #include <metal_stdlib>
     using namespace metal;
     struct uniforms {
-      int4 src_size;
+      int4 src_0_size;
+      int4 src_1_size;
       int4 dst_size;
     };
 
@@ -55,12 +56,12 @@ std::string GetMaxUnpoolingCode() {
       if (X >= params.dst_size.x || Y >= params.dst_size.y) {
         return;
       }
-      int src_0_index = (gid.z * params.src_size.y + static_cast<int>(gid.y)) *
-                        params.src_size.x + static_cast<int>(gid.x);
+      int src_0_index = (gid.z * params.src_0_size.y + static_cast<int>(gid.y)) *
+                        params.src_0_size.x + static_cast<int>(gid.x);
       int src_1_index = 0;
       if (params.dst_size.z == 1) {
         // [H, W, C] x [H, W, 0][0]
-        src_1_index = static_cast<int>(gid.y) * params.src_size.x +
+        src_1_index = static_cast<int>(gid.y) * params.src_1_size.x +
                       static_cast<int>(gid.x);
       } else if (params.src_0_size.y == params.src_1_size.y &&
                  params.src_0_size.x == params.src_1_size.x) {
@@ -68,11 +69,13 @@ std::string GetMaxUnpoolingCode() {
         src_1_index = src_0_index;
       } else {
         // [H, W, C] x [0, 0, C]
-        src_1_index = gid.z * params.src_size.y * params.src_size.x ;
+        src_1_index = gid.z * params.src_1_size.y * params.src_1_size.x ;
       }
-      FLT4 value = src_buffer_0[src_index] * src_buffer_1[src_1_index];
+      FLT4 value = src_buffer_0[src_0_index] * src_buffer_1[src_1_index];
+      int linear_index = (gid.z * params.dst_size.y + static_cast<int>(gid.y)) *
+      params.dst_size.x + static_cast<int>(gid.x);
       $2
-      output_buffer[linear_index] = value;
+      dst_buffer[linear_index] = value;
     }
   )";
   return shader_source;
@@ -86,7 +89,7 @@ std::vector<ComputeTaskDescriptorPtr> ApplyMask(int id, ValueId input_id_0,
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  desc->shader_source = GetMaxUnpoolingCode();
+  desc->shader_source = GetApplyMaskCode();
 
   desc->input_buffers = {
       {input_id_0, "device FLT4* const src_buffer_0"},  // data
@@ -94,7 +97,7 @@ std::vector<ComputeTaskDescriptorPtr> ApplyMask(int id, ValueId input_id_0,
   };
 
   desc->output_buffer = {
-      output_id, "device FLT4* output_buffer",
+      output_id, "device FLT4* dst_buffer",
       [input_id_0, input_id_1](const std::map<ValueId, BHWC>& buffers) {
         return buffers.find(input_id_0)->second;
       }};

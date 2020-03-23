@@ -62,7 +62,7 @@ std::string GetMeanCode() {
         for (int h = 0; h < params.src_size.y; h++) {
           const int buffer_index =
             (gid.z * params.src_size.y + h) * params.src_size.x + w;
-          sum += src_buffer[buffer_index];
+          sum += float4(src_buffer[buffer_index]);
         }
       }
       sum /= size;
