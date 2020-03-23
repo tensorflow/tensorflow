@@ -3,6 +3,7 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load("//tensorflow:tensorflow.bzl", "py_strict_library")
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "if_xla_available", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
@@ -18,6 +19,8 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+
+# TODO(mdan): Break into per-directory files.
 
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
@@ -1066,17 +1069,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "tf_export_test",
-    srcs = ["util/tf_export_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":platform",
-        ":util",
-    ],
-)
-
-tf_py_test(
     name = "deprecation_test",
     srcs = ["util/deprecation_test.py"],
     python_version = "PY3",
@@ -1820,19 +1812,6 @@ tf_py_test(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_tensor_value",
         "//third_party/py/numpy",
-    ],
-)
-
-# This target is maintained separately from :util to provide separate visibility
-# for legacy users who were granted visibility when the functions were private
-# members of ops.Graph.
-py_library(
-    name = "tf_stack",
-    srcs = ["util/tf_stack.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = [
-        ":_tf_stack",
     ],
 )
 
@@ -5398,6 +5377,63 @@ py_library(
     ],
 )
 
+# Leaf library: may not depend on anything else inside TensorFlow.
+py_strict_library(
+    name = "tf_export",
+    srcs = ["util/tf_export.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":tf_decorator",
+    ],
+)
+
+tf_py_test(
+    name = "tf_export_test",
+    srcs = ["util/tf_export_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":platform",
+        ":util",
+    ],
+)
+
+# Leaf library: may not depend on anything else inside TensorFlow.
+# TODO(mdan): Move this utility outside of TF.
+py_strict_library(
+    name = "tf_decorator",
+    srcs = [
+        "util/tf_contextlib.py",
+        "util/tf_decorator.py",
+        "util/tf_inspect.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = [
+        "//tensorflow:__subpackages__",
+        # TODO(mdan): Remove these dependencies.
+        "//third_party/py/tf_slim:__subpackages__",
+        "//learning/deepmind/research/language/translation/lm:__subpackages__",
+    ],
+    deps = [
+        ":tf_stack",
+        "@six_archive//:six",
+    ],
+)
+
+# Leaf library: may not depend on anything else inside TensorFlow.
+py_strict_library(
+    name = "tf_stack",
+    srcs = ["util/tf_stack.py"],
+    srcs_version = "PY2AND3",
+    # TODO(mdan): Remove public visibility.
+    visibility = ["//visibility:public"],
+    deps = [
+        ":_tf_stack",
+        "@six_archive//:six",
+    ],
+)
+
 pybind_extension(
     name = "_tf_stack",
     srcs = ["util/tf_stack.cc"],
@@ -5409,13 +5445,28 @@ pybind_extension(
     ],
 )
 
+tf_py_test(
+    name = "tf_stack_test",
+    srcs = ["util/tf_stack_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":client_testlib",
+        ":tf_export",
+        ":tf_stack",
+    ],
+)
+
 py_library(
     name = "util",
     srcs = glob(
         ["util/**/*.py"],
         exclude = [
             "util/example_parser*",
+            "util/tf_contextlib.py",
             "util/tf_should_use.py",
+            "util/tf_export.py",
+            "util/tf_stack.py",
+            "util/tf_decorator.py",
             "util/**/*_test.py",
         ],
     ),
@@ -5426,7 +5477,9 @@ py_library(
         "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
-        ":_tf_stack",
+        ":tf_decorator",
+        ":tf_export",
+        ":tf_stack",
         "@org_python_pypi_backports_weakref",
         "@com_google_protobuf//:protobuf_python",
         "//third_party/py/numpy",
@@ -5434,16 +5487,6 @@ py_library(
         "@wrapt",
         "//tensorflow/tools/compatibility:all_renames_v2",
     ] + if_mlir(["//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration"]),
-)
-
-tf_py_test(
-    name = "tf_stack_test",
-    srcs = ["util/tf_stack_test.py"],
-    python_version = "PY3",
-    deps = [
-        ":client_testlib",
-        ":util",
-    ],
 )
 
 tf_py_test(
