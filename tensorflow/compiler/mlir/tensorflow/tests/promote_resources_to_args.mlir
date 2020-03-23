@@ -297,8 +297,9 @@ func @main(%arg0: tensor<!tf.resource<tensor<f32>>>) -> tensor<i1> {
 // Tests VarHandleOp has users that are not removed.
 
 func @main() -> tensor<i1> {
-  // expected-error@+1 {{expects no uses}}
+  // expected-error@+1 {{expects no uses but used by operations: tf.UnknownOp, tf.VarIsInitializedOp}}
   %0 = "tf.VarHandleOp"() {container = "", shape = "tfshape$", shared_name = "x"} : () -> tensor<!tf.resource<tensor<f32>>>
   %1 = "tf.VarIsInitializedOp"(%0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
+  %2 = "tf.UnknownOp"(%0) : (tensor<!tf.resource<tensor<f32>>>) -> tensor<i1>
   return %1 : tensor<i1>
 }
