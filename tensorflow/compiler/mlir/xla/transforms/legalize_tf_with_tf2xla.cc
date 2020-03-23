@@ -81,10 +81,10 @@ static bool IsOpWhitelisted(Operation* op) {
          isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
 }
 
-static llvm::Optional<absl::string_view> GetJitDevice(
+static llvm::Optional<std::string> GetExecutionDevice(
     const std::string& device_type, const Location& loc) {
-  if (device_type == "XLA_CPU") return absl::string_view("XLA_CPU_JIT");
-  if (device_type == "TPU") return absl::string_view("XLA_TPU_JIT");
+  if (device_type == "XLA_CPU_JIT") return std::string("XLA_CPU");
+  if (device_type == "XLA_TPU_JIT") return std::string("TPU");
   // TODO(hinsu): Support GPU device along with a test for it.
 
   emitError(loc) << "unsupported device for legalization with tf2xla kernels: "
@@ -94,10 +94,10 @@ static llvm::Optional<absl::string_view> GetJitDevice(
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type, const Location& loc) {
-  auto jit_device_or = GetJitDevice(device_type, loc);
-  if (!jit_device_or) return nullptr;
+  auto device_or = GetExecutionDevice(device_type, loc);
+  if (!device_or) return nullptr;
 
-  auto* factory = tensorflow::DeviceFactory::GetFactory(device_type);
+  auto* factory = tensorflow::DeviceFactory::GetFactory(*device_or);
   if (!factory) {
     emitError(loc) << "failed to create DeviceFactory for device: "
                    << device_type;
@@ -113,7 +113,7 @@ static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
   }
 
   auto device = absl::make_unique<tensorflow::XlaCompilationDevice>(
-      tensorflow::SessionOptions(), tensorflow::DeviceType(*jit_device_or));
+      tensorflow::SessionOptions(), tensorflow::DeviceType(device_type));
   return absl::make_unique<tensorflow::StaticDeviceMgr>(std::move(device));
 }
 
@@ -376,7 +376,7 @@ class LegalizeTF : public FunctionPass<LegalizeTF> {
   Option<std::string> device_type_{
       *this, "device-type",
       llvm::cl::desc("XLA device type for execution of TensorFlow ops. "
-                     "Supports XLA_CPU and TPU for now.")};
+                     "Supports XLA_CPU_JIT and XLA_TPU_JIT for now.")};
 };
 
 static PassRegistration<LegalizeTF> pass(
