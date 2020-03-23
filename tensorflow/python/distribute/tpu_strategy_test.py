@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
@@ -307,6 +309,42 @@ class TPUStrategyTest(test.TestCase):
       return foo(x)
 
     bar(1)
+
+  def test_using_external_variable_inside_tf_function(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(10, output_type=dtypes.float32).batch(2)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    v = variables.Variable(2.0)
+
+    @def_function.function
+    def train_step(data):
+      def computation(inputs):
+        return inputs + v
+      return strategy.run(computation, args=(data,))
+
+    expected_result = [[x + 2.] for x in range(0, strategy.num_replicas_in_sync)
+                      ]
+    self.assertAllEqual(
+        expected_result,
+        strategy.experimental_local_results(train_step(next(input_iterator))))
+
+  def test_keras_metric_outside_strategy_scope_per_replica(self):
+    strategy = get_tpu_strategy()
+    metric = keras.metrics.Mean("test_metric", dtype=dtypes.float32)
+
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(i):
+      metric.update_state(i)
+
+    with self.assertRaisesRegex(ValueError, "Trying to run metric.update_state "
+                                            "in replica context"):
+      with strategy.scope():
+        for i in dataset:
+          strategy.run(step_fn, args=(i,))
 
 
 if __name__ == "__main__":
