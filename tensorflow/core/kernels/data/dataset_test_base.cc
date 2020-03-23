@@ -321,7 +321,10 @@ Status DatasetOpsTestBase::CreateDatasetContext(
     gtl::InlinedVector<TensorValue, 4>* const inputs,
     std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
     std::unique_ptr<OpKernelContext>* dataset_context) {
-  TF_RETURN_IF_ERROR(CheckOpKernelInput(*dateset_kernel, *inputs));
+  Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
+  if (!status.ok()) {
+    VLOG(0) << "WARNING: " << status.ToString();
+  }
   TF_RETURN_IF_ERROR(CreateOpKernelContext(
       dateset_kernel, inputs, dataset_context_params, dataset_context));
   return Status::OK();
@@ -529,10 +532,10 @@ Status DatasetOpsTestBase::CreateSerializationContext(
 
 Status DatasetOpsTestBase::CheckOpKernelInput(
     const OpKernel& kernel, const gtl::InlinedVector<TensorValue, 4>& inputs) {
-  if (kernel.input_types().size() != inputs.size()) {
-    return errors::Internal("The number of input elements should be ",
-                            kernel.input_types().size(),
-                            ", but got: ", inputs.size());
+  if (kernel.num_inputs() != inputs.size()) {
+    return errors::InvalidArgument("The number of input elements should be ",
+                                   kernel.num_inputs(),
+                                   ", but got: ", inputs.size());
   }
   return Status::OK();
 }
