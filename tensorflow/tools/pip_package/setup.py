@@ -60,7 +60,7 @@ REQUIRED_PACKAGES = [
     'keras_preprocessing >= 1.1.0',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'protobuf >= 3.8.0',
+    'protobuf >= 3.9.2',
     'tensorboard >= 2.1.0, < 2.2.0',
     'tensorflow_estimator >= 2.1.0, < 2.2.0',
     'termcolor >= 1.1.0',
@@ -246,6 +246,8 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/c')) +
+    list(find_files('*.h', 'tensorflow/cc')) +
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +
     list(find_files('*.h', 'tensorflow/python')) +
@@ -295,13 +297,12 @@ setup(
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: Apache Software License',
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
-        'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3 :: Only',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',

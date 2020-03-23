@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -26,11 +27,11 @@ namespace metrics {
 // The `name` argument identifies the Dataset type (e.g. "ParallelMap").
 void RecordTFDataAutotune(const string& name);
 
-// Records the number of bytes read from the filesystem by a tf.data.Dataset
-// source.
+// Returns a counter than can be used to record the number of bytes read from
+// the filesystem by a tf.data.Dataset source.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
-void RecordTFDataBytesRead(const string& name, int64 num_bytes);
+monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
 
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
@@ -53,7 +54,7 @@ void RecordTFDataFingerprint(const string& name);
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
-// The `name` argument identifies the optimization (e.g. "noop_eliminiation").
+// The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 // Records parsing of dense tensor features.

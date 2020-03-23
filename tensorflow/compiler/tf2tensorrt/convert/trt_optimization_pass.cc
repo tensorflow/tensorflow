@@ -44,6 +44,7 @@ Status TRTOptimizationPass::Init(
   if (config == nullptr) {
     return Status::OK();
   }
+  VLOG(1) << "config = " << config->DebugString();
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
     minimum_segment_size_ = params.at("minimum_segment_size").i();

@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/backend.h"
+#include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -214,7 +215,7 @@ class XRTTupleAllocation : public core::RefCounted {
                          const xla::ShapeIndex& source_index,
                          const xla::ShapeIndex& dest_index);
 
-  // Returns the device memory tree of this allocation. If the release_checker
+  // Returns the device memory tree of this allocation. If the alias_checker
   // function returns true for a given index, an owned device memory is returned
   // to the caller. But the tuple allocation cannot release the ownership in
   // full, as the execute operation might fail. So we rely on a call to
@@ -227,10 +228,9 @@ class XRTTupleAllocation : public core::RefCounted {
   // introduce a sharing concept (IOW shared_ptr model vs. unique_ptr).
   // We'd need something similar to XRTTupleAllocation instead of
   // ScopedShapedBuffer, which wants ownership and does not allow sharing.
-  xla::StatusOr<xla::ShapeTree<xla::MaybeOwningDeviceMemory>>
-  ToDeviceMemoryTree(
+  xla::StatusOr<xla::ExecutionInput> ToExecutionInput(
       const std::function<xla::StatusOr<bool>(const xla::ShapeIndex&)>&
-          release_checker);
+          alias_checker);
 
  private:
   // Creates a new handle with (tuple) shape.

@@ -133,12 +133,12 @@ class CPUAllocator : public Allocator {
 
  private:
   mutex mu_;
-  AllocatorStats stats_ GUARDED_BY(mu_);
+  AllocatorStats stats_ TF_GUARDED_BY(mu_);
 
   // Use <atomic> for single allocations to avoid mutex contention when
   // statistics are disabled.
   std::atomic<int> single_allocation_warning_count_;
-  int total_allocation_warning_count_ GUARDED_BY(mu_);
+  int total_allocation_warning_count_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CPUAllocator);
 };

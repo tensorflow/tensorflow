@@ -181,12 +181,14 @@ Status InferenceContext::InitFromGraph(const CreateInferenceInfo& create_info,
   ReserveGraphTensors(create_info, creation_context, graph);
   precision_ = create_info.precision;
   storage_type_ = create_info.storage_type;
-  auto vendor = env->device().vendor();
-  if (vendor == Vendor::MALI) {
+  if (env->device().IsMali()) {
     need_flush_ = true;
     need_manual_release_ = true;
+
+    flush_periodically_ = true;
+    flush_period_ = 24;
   }
-  if (vendor == Vendor::POWERVR) {
+  if (env->device().IsPowerVR()) {
     need_flush_ = true;
   }
   CopyInAndOutIds(graph);
@@ -400,6 +402,12 @@ void InferenceContext::Merge() {
 void InferenceContext::GetUsages(
     const std::function<bool(const TensorDescriptor&)>& functor,
     std::map<ValueId, int2>* usages) {
+  for (ValueId in_id : input_ids_) {
+    const auto& desc = tensor_reserver_.Get(in_id).descriptor;
+    if (functor(desc)) {
+      AddUsage(in_id, 0, usages);
+    }
+  }
   for (int op_index = 0; op_index < nodes_.size(); ++op_index) {
     auto tensors = GetCLNodeTensors(nodes_[op_index]);
     for (auto& tensor : tensors) {
@@ -408,7 +416,7 @@ void InferenceContext::GetUsages(
       }
     }
   }
-  for (auto& out_id : output_ids_) {
+  for (ValueId out_id : output_ids_) {
     const auto& desc = tensor_reserver_.Get(out_id).descriptor;
     if (functor(desc)) {
       AddUsage(out_id, nodes_.size(), usages);
@@ -552,8 +560,13 @@ Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
     }
     RETURN_IF_ERROR(queue->EnqueueEvent(&prev_enqueue_start_point_));
   }
+  int counter = 0;
   for (auto& node : nodes_) {
     RETURN_IF_ERROR(node.operations[0]->AddToQueue(queue));
+    counter++;
+    if (flush_periodically_ && counter % flush_period_ == 0) {
+      clFlush(queue->queue());
+    }
   }
   if (need_flush_) {
     clFlush(queue->queue());

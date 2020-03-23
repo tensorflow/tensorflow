@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/Dialect/Linalg/Utils/Utils.h"  // TF:llvm-project
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/FoldUtils.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 namespace mlir {
 namespace xla_lhlo {
@@ -62,8 +63,7 @@ class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
       SmallVector<int64_t, 2> tile_sizes(tile_sizes_.begin(),
                                          tile_sizes_.end());
       if (tile_sizes.empty()) {
-        tile_sizes =
-            SmallVector<int64_t, 2>(generic_op.getNumInputsAndOutputs(), 1);
+        tile_sizes = SmallVector<int64_t, 2>(generic_op.getNumLoops(), 1);
       }
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value result : op.getOutputBuffers()) {
@@ -123,8 +123,9 @@ class LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg() {
-  return absl::make_unique<LhloFuseLinalg>();
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg(
+    bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
+  return absl::make_unique<LhloFuseLinalg>(use_parallel_loops, tile_sizes);
 }
 
 static PassRegistration<LhloFuseLinalg> legalize_pass(

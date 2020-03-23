@@ -45,7 +45,7 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
     constexpr int tensors_size = inputs_size + outputs_size;
     tensors[0] = *input_tensor;
     tensors[1] = *output_tensor,
-    PopulateContext(tensors, tensors_size, &context);
+    PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
     node.inputs = IntArrayFromInitializer({1, 0});
     node.outputs = IntArrayFromInitializer({1, 1});
   } else {
@@ -55,7 +55,7 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
     tensors[0] = *input_tensor;
     tensors[1] = *shape_tensor;
     tensors[2] = *output_tensor;
-    PopulateContext(tensors, tensors_size, &context);
+    PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
     node.inputs = IntArrayFromInitializer({2, 0, 1});
     node.outputs = IntArrayFromInitializer({1, 2});
   }

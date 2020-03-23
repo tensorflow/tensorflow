@@ -317,8 +317,8 @@ class DecodeImageOp : public OpKernel {
                       } else {
                         status = errors::InvalidArgument(
                             "Got ", num_frames, " frames, but animated gifs ",
-                            "can only be decoded by tf.image.decode_gif or ",
-                            "tf.image.decode_image");
+                            "can only be decoded by tf.io.decode_gif or ",
+                            "tf.io.decode_image");
                       }
                       if (!status.ok()) {
                         VLOG(1) << status;

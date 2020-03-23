@@ -64,9 +64,10 @@ void DeviceOpMetricsDbBuilder::EnterOp(
   DCHECK_GE(time_ps, self_time_ps);
   OpMetrics* op_metrics = LookupOrInsertNewOpMetrics(program_id, name);
   if (op_metrics->category().empty())
-    op_metrics->set_category(std::string(category));
+    op_metrics->set_category(category == kUnknownOp ? "unknown"
+                                                    : string(category));
   if (op_metrics->provenance().empty())
-    op_metrics->set_provenance(std::string(provenance));
+    op_metrics->set_provenance(string(provenance));
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);

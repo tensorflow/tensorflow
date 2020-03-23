@@ -283,6 +283,14 @@ class ColocationGraph {
   Status ColocateResourceAndRefEdges(
       std::unordered_set<Node*>* inspection_required);
 
+  // Updates this ColocationGraph by making sure that all nodes having inputs of
+  // a DT_VARIANT data type with a host-only underlying types (e.g. strings) can
+  // be placed only on CPU device. We do that by reverse-DFS traversal from all
+  // nodes that take variant inputs to the node that produces that variant.
+  // TODO(ezhulenev): This function does not yet support "deep op" inspection,
+  // that we have for DT_RESOURCE edges.
+  Status AddHostOnlyDataTypesConstraints();
+
   Status AddInspectionConstraints(
       const std::unordered_set<Node*>& inspection_required);
 

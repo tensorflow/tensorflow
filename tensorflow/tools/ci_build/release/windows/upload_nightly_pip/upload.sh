@@ -21,11 +21,11 @@ source tensorflow/tools/ci_build/release/common.sh
 sudo pip install --upgrade twine
 
 # Copy and rename to tf_nightly
-for f in $(ls "${TF_FILE_DIR}"/tf_nightly_cpu*dev*cp3*-cp3*m-win_amd64.whl); do
+for f in $(ls "${TF_FILE_DIR}"/tf_nightly_cpu*dev*cp3*-cp3*-win_amd64.whl); do
   copy_to_new_project_name "${f}" tf_nightly
 done
 
 # Upload the built packages to pypi.
-for f in $(ls "${TF_FILE_DIR}"/tf_nightly*dev*cp3*-cp3*m-win_amd64.whl); do
+for f in $(ls "${TF_FILE_DIR}"/tf_nightly*dev*cp3*-cp3*-win_amd64.whl); do
   twine upload -r pypi-warehouse "$f" || echo
 done

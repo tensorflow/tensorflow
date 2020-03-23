@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/memory_space_assignment.h"
 
+#include "tensorflow/compiler/xla/debug_options_flags.h"
+
 namespace xla {
 
 namespace {
@@ -380,6 +382,13 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
+    if (!ConsumeFuel("memory_space_assignment", [&] {
+          return absl::StrCat("Ran out of fuel at buffer: ",
+                              colocated_intervals[0]->buffer->ToShortString());
+        })) {
+      continue;
+    }
+
     const HloComputation* defining_computation =
         colocated_intervals[0]->buffer->defining_instruction()->parent();
     MemorySpaceAssignment::Allocation* aliased_allocation = nullptr;
@@ -415,10 +424,13 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
                 aliased_allocation->chunk(), definition_time, definition_time));
       }
 
+      std::vector<int64> use_times(uses.size());
+      for (int i = 0; i < uses.size(); ++i) {
+        use_times[i] = instruction_schedule.at(uses[i].instruction);
+      }
       // Iterate over the uses.
       for (HloUse use : uses) {
         int64 use_time = instruction_schedule.at(use.instruction);
-        int64 last_use_time = instruction_schedule.at(uses.back().instruction);
         int64 latest_prefetch_time = use_time;
 
         if (use.instruction->parent() != defining_computation) {
@@ -448,7 +460,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
           AllocationRequest request;
           request.start_time = definition_time;
           request.end_time = use_time;
-          request.last_use_time = last_use_time;
+          request.use_times = &use_times;
           request.latest_prefetch_time = latest_prefetch_time;
           request.use = use;
           request.buffer = value;
@@ -458,8 +470,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
             // If the allocation finding failed (e.g., due to running out of
             // asynchronous copies), then fall back to allocating the buffer
             // entirely in the default memory.
-            pending_chunks_.clear();
-            pending_async_copies_.clear();
+            UncommitPendingChunks();
             allocation_sequence->clear();
             break;
           }
@@ -478,7 +489,8 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       }
     }
 
-    CommitPendingChunks();
+    pending_chunks_.clear();
+    pending_async_copies_.clear();
   }
 
   if (VLOG_IS_ON(3)) {
@@ -508,6 +520,12 @@ void AsynchronousCopyOrdering::AddCopy(const AsynchronousCopy& copy) {
   auto it_and_inserted = ranges_.insert(copy);
   CHECK(it_and_inserted.second ||
         it_and_inserted.first->start_time == copy.start_time);
+}
+
+void AsynchronousCopyOrdering::RemoveCopy(const AsynchronousCopy& copy) {
+  auto copy_it = ranges_.find(copy);
+  CHECK(copy_it != ranges_.end());
+  ranges_.erase(copy_it);
 }
 
 bool AsynchronousCopyOrdering::ViolatesOrdering(int64 start_time,
@@ -620,32 +638,31 @@ bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
   return false;
 }
 
-void AlternateMemoryBestFitHeap::CommitPendingChunks() {
+void AlternateMemoryBestFitHeap::UncommitPendingChunks() {
   for (auto interval_and_chunk : pending_chunks_) {
-    VLOG(3) << "Committing chunk: " << interval_and_chunk.first.start << "-"
-            << interval_and_chunk.first.end << " : ["
-            << interval_and_chunk.second.chunk.offset << ", "
-            << interval_and_chunk.second.chunk.size << "]";
-    CommitChunk(interval_and_chunk.first, interval_and_chunk.second);
+    const BufferInterval& interval = interval_and_chunk.first;
+    const Chunk& chunk = interval_and_chunk.second.chunk;
+    interval_tree_.Remove(interval.start, interval.end, chunk);
+  }
+  for (const auto& interval : pending_async_copies_) {
+    async_copy_interval_tree_.Remove(interval.start_time, interval.end_time,
+                                     kDummyChunk);
+    if (interval.destination == MemorySpace::kAlternate) {
+      async_copy_ordering_.RemoveCopy(interval);
+    }
   }
   pending_chunks_.clear();
-  // Also add the pending async copies to the interval tree.
-  for (const auto& interval : pending_async_copies_) {
-    if (options_.max_outstanding_async_copies >= 0) {
-      async_copy_interval_tree_.Add(interval.start_time, interval.end_time,
-                                    kDummyChunk);
-    }
-    if (interval.destination == MemorySpace::kAlternate) {
-      async_copy_ordering_.AddCopy(interval);
-    }
-  }
   pending_async_copies_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
     const BufferInterval& buffer_interval,
     const ChunkCandidate& chunk_candidate) {
+  VLOG(3) << "Committing chunk: " << buffer_interval.start << "-"
+          << buffer_interval.end << " : [" << chunk_candidate.chunk.offset
+          << ", " << chunk_candidate.chunk.size << "]";
   pending_chunks_.emplace_back(buffer_interval, chunk_candidate);
+  CommitChunk(buffer_interval, chunk_candidate);
 }
 
 bool AlternateMemoryBestFitHeap::RequiredInDefaultMemory(const HloValue* buffer,
@@ -678,7 +695,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   VLOG(2) << "Finding allocation for " << request.buffer->ToShortString()
           << " (" << request.start_time << ", " << request.end_time
           << ") latest prefetch = " << request.latest_prefetch_time
-          << " last use = " << request.last_use_time
+          << " last use = " << request.use_times->back()
           << " use = " << request.use.ToString() << ". Size = " << request.size
           << ", def pos = " << defining_position.ToString();
   CHECK_LE(request.start_time, request.end_time);
@@ -772,6 +789,10 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
   pending_async_copies_.push_back({start_time, end_time, memory_space});
+  async_copy_interval_tree_.Add(start_time, end_time, kDummyChunk);
+  if (memory_space == MemorySpaceAssignment::MemorySpace::kAlternate) {
+    async_copy_ordering_.AddCopy(pending_async_copies_.back());
+  }
 }
 
 bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
@@ -780,17 +801,11 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
     return false;
   }
 
-  // Count both the asynchronous copies in the interval tree as well as the
-  // pending asynchronous copies belonging to this buffer.
+  // Count the asynchronous copies in the interval tree for the given interval.
   int64 num_async_copies =
       async_copy_interval_tree_.ChunksOverlappingInTime(start_time, end_time)
           .size();
 
-  for (const auto& interval : pending_async_copies_) {
-    if (interval.start_time > start_time && interval.end_time < end_time) {
-      num_async_copies++;
-    }
-  }
   // Add one because we are checking if adding an additional asynchronous copy
   // would violate the limit.
   return num_async_copies + 1 > options_.max_outstanding_async_copies;
@@ -798,19 +813,7 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
 
 bool AlternateMemoryBestFitHeap::ViolatesAsyncCopyOrdering(
     int64 start_time, int64 end_time) const {
-  if (async_copy_ordering_.ViolatesOrdering(start_time, end_time)) {
-    return true;
-  }
-
-  // Also check pending async copies.
-  for (const auto& async_copy : pending_async_copies_) {
-    if (async_copy.destination == MemorySpace::kAlternate &&
-        async_copy.start_time <= end_time &&
-        start_time <= async_copy.end_time) {
-      return true;
-    }
-  }
-  return false;
+  return async_copy_ordering_.ViolatesOrdering(start_time, end_time);
 }
 
 bool AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
@@ -880,8 +883,8 @@ bool AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   // the last use time, we try to find an allocation that is available for the
   // entire Producer to Use2 range.
   absl::optional<ChunkCandidate> chunk_candidate =
-      FindBestNoCopyChunkCandidate(request.end_time, request.last_use_time,
-                                   preferred_offset, &alternate_mem_interval);
+      FindBestChunkCandidate(request.end_time, *request.use_times,
+                             preferred_offset, &alternate_mem_interval);
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
   if (chunk_candidate) {
@@ -1027,39 +1030,39 @@ bool AlternateMemoryBestFitHeap::Prefetch(
   BufferInterval alternate_mem_interval;
   alternate_mem_interval.buffer = request.buffer;
   alternate_mem_interval.size = request.size;
-  alternate_mem_interval.end = request.end_time;
   while (!options_.prefetch_interval_picker->Done()) {
     alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     VLOG(4) << "Trying alternate memory allocation ("
-            << alternate_mem_interval.start << ", "
-            << alternate_mem_interval.end << ")";
+            << alternate_mem_interval.start << ", " << request.end_time << ")";
     // If this additional asynchronous copy would violate the limit, try a
     // different interval.
     if (ViolatesMaximumOutstandingAsyncCopies(alternate_mem_interval.start,
-                                              alternate_mem_interval.end)) {
+                                              request.end_time)) {
       VLOG(4) << "This would violate the outstanding async copy limit.";
       continue;
     }
     if (ViolatesAsyncCopyOrdering(alternate_mem_interval.start,
-                                  alternate_mem_interval.end)) {
+                                  request.end_time)) {
       VLOG(4) << "This would violate asynchronous copy ordering.";
       continue;
     }
 
-    ChunkCandidate chunk_candidate = FindChunkCandidate(alternate_mem_interval);
-    // Check if the new heap size fits within limits.
-    if (chunk_candidate.heap_size < available_heap_size()) {
+    auto chunk_candidate = FindBestChunkCandidate(
+        request.end_time, *request.use_times,
+        /*preferred_offset=*/absl::nullopt, &alternate_mem_interval);
+    // Check if we could find a suitable chunk.
+    if (chunk_candidate) {
       VLOG(3) << "Move the buffer to alternate memory at "
               << alternate_mem_interval.start
-              << ". Offset = " << chunk_candidate.chunk.offset
-              << ", size = " << chunk_candidate.chunk.size
-              << ", heap_size = " << chunk_candidate.heap_size
+              << ". Offset = " << chunk_candidate->chunk.offset
+              << ", size = " << chunk_candidate->chunk.size
+              << ", heap_size = " << chunk_candidate->heap_size
               << ", prefetch picker = "
               << options_.prefetch_interval_picker->ToDebugString();
-      AddToPendingChunks(alternate_mem_interval, chunk_candidate);
+      AddToPendingChunks(alternate_mem_interval, *chunk_candidate);
 
       AddAsyncCopy(prev_allocation_in_default_mem, MemorySpace::kAlternate,
-                   chunk_candidate.chunk, alternate_mem_interval.start,
+                   chunk_candidate->chunk, alternate_mem_interval.start,
                    request.end_time, request.latest_prefetch_time,
                    request.allocations);
 
@@ -1071,14 +1074,16 @@ bool AlternateMemoryBestFitHeap::Prefetch(
 }
 
 absl::optional<AlternateMemoryBestFitHeap::ChunkCandidate>
-AlternateMemoryBestFitHeap::FindBestNoCopyChunkCandidate(
-    int64 end_time, int64 last_use_time, absl::optional<int64> preferred_offset,
+AlternateMemoryBestFitHeap::FindBestChunkCandidate(
+    int64 end_time, const std::vector<int64>& use_times,
+    absl::optional<int64> preferred_offset,
     BufferInterval* alternate_mem_interval) const {
   if (!preferred_offset) {
-    // Find a chunk that's as long living as possible.
-    for (alternate_mem_interval->end = last_use_time;
-         alternate_mem_interval->end >= end_time;
-         --alternate_mem_interval->end) {
+    // Find a chunk that's as long living as possible iterating in reverse over
+    // the use times.
+    for (auto use_time = use_times.rbegin();
+         use_time != use_times.rend() && *use_time >= end_time; ++use_time) {
+      alternate_mem_interval->end = *use_time;
       ChunkCandidate chunk_candidate =
           FindChunkCandidate(*alternate_mem_interval);
       if (chunk_candidate.heap_size <= available_heap_size()) {
@@ -1086,6 +1091,7 @@ AlternateMemoryBestFitHeap::FindBestNoCopyChunkCandidate(
         return chunk_candidate;
       }
     }
+    alternate_mem_interval->end = end_time;
     return absl::nullopt;
   }
   // If a preferred offset is given, try to find an allocation at that offset

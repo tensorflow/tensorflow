@@ -38,7 +38,7 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteDelegate* delegate,
 }
 
 // There is no easy way to pass a parameter into the TfLiteDelegate's
-// 'prepare' function, so we keep a global map for testing purpused.
+// 'prepare' function, so we keep a global map for testing purposed.
 // To avoid collisions use: GetPrepareFunction<__LINE__>().
 std::map<int, std::vector<int>>* GetGlobalOpLists() {
   static auto* op_list = new std::map<int, std::vector<int>>;

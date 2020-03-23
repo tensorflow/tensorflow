@@ -17,6 +17,7 @@ limitations under the License.
 #include <ostream>
 
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -155,7 +156,7 @@ Status TransposeShapeFn(InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithValue(perm_elems, rank, &perm_elems));
 
   // If we know the rank of the input and the value of perm, we can return
-  // all shape informantion, otherwise we can only return rank information,
+  // all shape information, otherwise we can only return rank information,
   // but no information for the dimensions.
   if (perm != nullptr) {
     std::vector<int64> data;
@@ -193,8 +194,7 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
     c->set_output(0, out);
     return Status::OK();
   }
-
-  if (c->RankKnown(out) && c->RankKnown(in)) {
+  if (c->RankKnown(in)) {
     // We don't know the number of output elements, but we can try to infer
     // the missing dimension.
     bool too_many_unknown = false;

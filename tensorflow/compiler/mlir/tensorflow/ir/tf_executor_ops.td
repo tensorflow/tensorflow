@@ -128,7 +128,7 @@ def TfExecutor_GraphOp : TfExecutor_Op<"graph",
 def TfExecutor_FetchOp : TfExecutor_Op<"fetch",
     [Terminator, ControlOperandsAfterAllData, HasParent<"GraphOp">]> {
   let summary = [{
-    The `tf_executor.fetch` operation terminates the graph and returns values";
+    The `tf_executor.fetch` operation terminates the graph and returns values;
   }];
 
   let description = [{

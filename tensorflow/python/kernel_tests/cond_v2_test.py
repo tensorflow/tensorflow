@@ -260,6 +260,32 @@ class CondV2Test(test.TestCase):
         self.assertRegexpMatches(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
+  @test_util.run_v2_only
+  def testInheritParentNameScope(self):
+
+    @def_function.function
+    def f():
+      with ops.name_scope("foo"):
+
+        def then_branch():
+          with ops.name_scope("then"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/cond/then"
+            self.assertEqual(actual_name_scope, expected_name_scope)
+          return 0.
+
+        def else_branch():
+          with ops.name_scope("else"):
+            actual_name_scope = ops.get_name_scope()
+            expected_name_scope = "foo/cond/else"
+            self.assertEqual(actual_name_scope, expected_name_scope)
+          return 0.
+
+        return cond_v2.cond_v2(
+            constant_op.constant(True), then_branch, else_branch)
+
+    f()
+
   @test_util.run_v1_only("b/120545219")
   def testDefunInCond(self):
     x = constant_op.constant(1.0, name="x")
@@ -780,21 +806,29 @@ class CondV2Test(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
 
+    def update_v1():
+      v1.assign(v1)
+      return v1
+
+    def update_v2():
+      v2.assign(v2)
+      return v2
+
     @def_function.function
     def fn_with_cond():
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v1,
+          update_v1,
           lambda: constant_op.constant(0.),
           name="cond_1")
       cond_2 = cond_v2.cond_v2(
           constant_op.constant(False),
           lambda: constant_op.constant(0.),
-          lambda: v1,
+          update_v1,
           name="cond_2")
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v2,
+          update_v2,
           lambda: constant_op.constant(0.),
           name="cond_3")
       cond_4 = cond_v2.cond_v2(
@@ -841,24 +875,34 @@ class CondV2Test(test.TestCase):
 
     @def_function.function
     def fn_with_cond():
+
+      def update_v1():
+        v1.assign(v1)
+        return v1
+
+      def update_v2():
+        v2.assign(v2)
+        return v2
+
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v1,
+          update_v1,
           lambda: constant_op.constant(0.),
           name="cond_1")
       cond_2 = cond_v2.cond_v2(
           constant_op.constant(False),
           lambda: constant_op.constant(0.),
-          lambda: v1,
+          update_v1,
           name="cond_2")
       cond_v2.cond_v2(
           constant_op.constant(True),
-          lambda: v2,
+          update_v2,
           lambda: constant_op.constant(0.),
           name="cond_3")
 
       @def_function.function
       def cond_4_false_branch():
+        v2.assign(v2)
         return v2
 
       cond_4 = cond_v2.cond_v2(

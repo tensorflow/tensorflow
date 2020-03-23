@@ -119,6 +119,12 @@ static void EmitOptionBuilders(const RecordKeeper &record_keeper,
         // conversion generation and so the simplicity was chosen over the
         // flexibility.
         StringRef arg_name = arg_values->getArgNameStr(i);
+        // Skip any "intermiadiateXXX" attribute as they are specially handled
+        // in the exporter. They are special because though they are attributes
+        // in the MLIR they are expressed as tensors in the flatbuffer instead
+        // of option.
+        if (op_name == "LSTMOp" && arg_name.take_back(12) == "intermediate")
+          continue;
         os << formatv(
             "  auto {0} = Convert{1}ForOptionWriter(op.{0}(), fbb);\n",
             arg_name, mlir::tblgen::Attribute(arg_def).getAttrDefName());
@@ -164,17 +170,24 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
   for (const auto *def : defs) {
     StringRef op_name = def->getName().drop_front(4);
 
+    const bool has_intermediates = op_name == "LSTMOp";
     // Signature
     os << "static flatbuffers::Offset<tflite::Operator> "
        << GetOperatorBuilderName(def->getName()) << "(mlir::TFL::" << op_name
        << " tflOp, uint32_t opcode_index, "
        << "const std::vector<int32_t>& operands,"
        << "const std::vector<int32_t>& results,"
+       << (has_intermediates ? "const std::vector<int32_t>& intermediate_index,"
+                             : "")
        << "flatbuffers::FlatBufferBuilder *fbb) {\n";
 
     // Inputs & outputs
     os << "  auto inputs = fbb->CreateVector(operands);\n"
           "  auto outputs = fbb->CreateVector(results);\n\n";
+    // Intermediates for LSTM.
+    if (has_intermediates) {
+      os << "  auto intermediates = fbb->CreateVector(intermediate_index);\n";
+    }
 
     // Build the FlatBuffer operator
     os << "  return tflite::CreateOperator(\n"
@@ -191,9 +204,9 @@ static void EmitOperatorBuilders(const std::vector<Record *> &defs,
     // Only builtin ops' builders are auto-generated. custom_options are only
     // used by custom or flex ops and those ops are handled manually.
     os << "      /*custom_options=*/0, "
-          "tflite::CustomOptionsFormat_FLEXBUFFERS,\n"
-          "      /*mutating_variable_inputs=*/0);\n"
-          "}\n\n";
+       << "tflite::CustomOptionsFormat_FLEXBUFFERS,\n"
+       << "      /*mutating_variable_inputs=*/0"
+       << (has_intermediates ? ", intermediates" : "") << ");\n}\n\n";
   }
 }
 
@@ -244,6 +257,7 @@ static void EmitGetBuiltinOpCode(const std::vector<Record *> &defs,
 //       uint32_t opcode_index,
 //       const std::vector<int32_t>& operands,
 //       const std::vector<int32_t>& results,
+//       const std::vector<int32_t>& intermediates,
 //       flatbuffers::FlatBufferBuilder *fbb);
 static void EmitBuildOperator(const std::vector<Record *> &defs,
                               raw_ostream *ostream) {
@@ -255,6 +269,7 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
         "uint32_t opcode_index, "
         "const std::vector<int32_t>& operands,"
         "const std::vector<int32_t>& results,"
+        "const std::vector<int32_t>& intermediates,"
         "flatbuffers::FlatBufferBuilder *fbb) {\n";
 
   for (const auto *def : defs) {
@@ -264,7 +279,8 @@ static void EmitBuildOperator(const std::vector<Record *> &defs,
     os << "  if (auto tflOp = llvm::dyn_cast<mlir::TFL::" << op_name
        << ">(op))\n"
        << "    return " << GetOperatorBuilderName(def->getName())
-       << "(tflOp, opcode_index, operands, results, fbb);\n";
+       << "(tflOp, opcode_index, operands, results, "
+       << (op_name == "LSTMOp" ? "intermediates, " : "") << "fbb);\n";
   }
 
   os << "  return llvm::None;\n"
@@ -307,6 +323,10 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
       if (!arg_def) continue;
       if (arg_def->getDef()->isSubClassOf(attr_type)) {
         StringRef arg_name = arg_values->getArgNameStr(i);
+        // Already handle this case in flatbuffer_import.cc.
+        if (option_name == "LSTMOptions" &&
+            arg_name.take_back(12) == "intermediate")
+          continue;
         StringRef attr_type = mlir::tblgen::Attribute(arg_def).getAttrDefName();
         os << formatv(
             "    attributes.emplace_back(builder.getNamedAttr(\"{0}\","
@@ -422,28 +442,26 @@ static bool RuntimeVerifierWriterMain(raw_ostream &os, RecordKeeper &records) {
     verify_ctx.withOp("top");
 
     for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-      for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-        auto &value = op.getOperand(i);
-        // Skip from from first variadic operands for now. Else getOperand index
-        // used below doesn't match.
-        if (value.isVariadic()) break;
-        if (!value.name.empty())
-          verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
-      }
-      for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-        auto &value = op.getResult(i);
-        // Skip from from first variadic results for now. Else getResult index
-        // used below doesn't match.
-        if (value.isVariadic()) break;
-        if (!value.name.empty())
-          verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
-      }
+      auto &value = op.getOperand(i);
+      // Skip from from first variadic operands for now. Else getOperand index
+      // used below doesn't match.
+      if (value.isVariadic()) break;
+      if (!value.name.empty())
+        verify_ctx.addSubst(value.name, formatv("op->getOperand({0})", i));
+    }
+    for (int i = 0, e = op.getNumResults(); i < e; ++i) {
+      auto &value = op.getResult(i);
+      // Skip from from first variadic results for now. Else getResult index
+      // used below doesn't match.
+      if (value.isVariadic()) break;
+      if (!value.name.empty())
+        verify_ctx.addSubst(value.name, formatv("op->getResult({0})", i));
     }
     GenOperandResultVerifier(os, def->getValueAsDag("arguments")->getArgs(),
                              "operand");
     GenOperandResultVerifier(os, def->getValueAsDag("results")->getArgs(),
                              "result");
-    os << "  return mlir::success();\n}\n";
+    os << "  return top.verify();\n}\n";
   }
 
   return false;

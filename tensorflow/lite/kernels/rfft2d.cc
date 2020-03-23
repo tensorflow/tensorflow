@@ -360,7 +360,7 @@ TfLiteStatus Rfft2dHelper(TfLiteContext* context, TfLiteNode* node) {
   double* fft_double_working_area_data = reinterpret_cast<double*>(
       GetTensorData<int64_t>(fft_double_working_area));
 
-  // Process evert slice in the input buffer
+  // Process every slice in the input buffer
   for (int i = 0; i < num_slices; ++i) {
     PrepareInputBuffer(input_data, input_height, input_width, fft_height,
                        fft_width, fft_input_output);

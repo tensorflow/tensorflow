@@ -321,7 +321,13 @@ bool OpIsDeclaration(Operation* op,
 
 // Returns if `op` is know to not have any side effect.
 bool OpIsKnownToHaveNoSideEffect(Operation* op) {
-  if (op->hasNoSideEffect()) return true;
+  // TODO(riverriddle) We shouldn't treat all terminator operations as having
+  // side effects, this should be relaxed.
+  // TODO(riverriddle) Properly handle region side effects.
+  if (MemoryEffectOpInterface::hasNoEffect(op) && op->isKnownNonTerminator() &&
+      op->getNumRegions() == 0) {
+    return true;
+  }
   if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
     return if_op.is_stateless();
   }

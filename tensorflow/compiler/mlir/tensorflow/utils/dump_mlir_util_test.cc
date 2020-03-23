@@ -69,5 +69,20 @@ TEST(DumpMlirModuleTest, Valid) {
   EXPECT_EQ(file_txt_module, expected_txt_module);
 }
 
+TEST(DumpRawStringToFileTest, Valid) {
+  llvm::StringRef example = "module {\n}";
+  setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);
+
+  std::string filepath = DumpRawStringToFile("example", example);
+  ASSERT_NE(filepath, "(TF_DUMP_GRAPH_PREFIX not specified)");
+  ASSERT_NE(filepath, "LOG(INFO)");
+  ASSERT_NE(filepath, "(unavailable)");
+
+  Env* env = Env::Default();
+  std::string file_txt_module;
+  TF_ASSERT_OK(ReadFileToString(env, filepath, &file_txt_module));
+  EXPECT_EQ(file_txt_module, example);
+}
+
 }  // namespace
 }  // namespace tensorflow

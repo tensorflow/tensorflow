@@ -136,7 +136,8 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
       return Status::OK();
@@ -151,7 +152,7 @@ class TensorSliceDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
     const int64 n_;
   };
 

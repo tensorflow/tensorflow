@@ -50,20 +50,32 @@ class ConvBuffer1x1 : public GPUOperation {
 
   Status Compile(const CreationContext& creation_context) override;
 
+  struct ConvParams {
+    int3 block_size = int3(1, 1, 1);
+    int element_size = 4;  // can be 4, 8 or 16
+
+    // By default in 2d convolution we have the same weights for WH dims, but in
+    // some cases we need separate weights for H dimension and convolution
+    // kernel requires very small modifications to support it.
+    bool different_weights_for_height = false;
+
+    int3 work_group_size = int3(2, 4, 1);
+  };
+
  private:
-  ConvBuffer1x1(const OperationDef& definition, int flt4_x_count,
-                int flt4_y_count, int flt8_x_count, int flt8_y_count);
+  ConvBuffer1x1(const OperationDef& definition, const ConvParams& conv_params);
   friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                     const OperationDef& definition,
                                     const Convolution2DAttributes& attr,
-                                    ConvBuffer1x1* result);
+                                    ConvBuffer1x1* result, const BHWC* shape);
   friend Status CreateConvBuffer1x1(const CreationContext& creation_context,
                                     const OperationDef& definition,
                                     const FullyConnectedAttributes& attr,
-                                    ConvBuffer1x1* result);
+                                    ConvBuffer1x1* result, const BHWC* shape);
   friend Status CreateConvBuffer1x1Wino4x4To6x6(
       const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvBuffer1x1* result);
+      const Convolution2DAttributes& attr, ConvBuffer1x1* result,
+      const BHWC* shape);
 
   template <DataType T>
   Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -81,25 +93,11 @@ class ConvBuffer1x1 : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
-  CLKernel* GetKernel(int width);
-
   Buffer weights_;
   LinearStorage biases_;
 
-  CLKernel kernel_flt4_;
-  int flt4_x_count_;
-  int flt4_y_count_;
-
-  CLKernel kernel_flt8_;
-  int flt8_x_count_;
-  int flt8_y_count_;
-
-  // By default in 2d convolution we have the same weights for WH dims, but in
-  // some cases we need separate weights for H dimension and convolution kernel
-  // requires very small modifications to support it.
-  bool different_weights_for_height_;
-
-  int3 work_group_size_;
+  ConvParams conv_params_;
+  CLKernel kernel_;
 };
 
 template <DataType T>
@@ -139,22 +137,22 @@ Status ConvBuffer1x1::UploadWeights(
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
-  const int float4_size = definition_.precision == CalculationsPrecision::F32
-                              ? sizeof(float4)
-                              : sizeof(half4);
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
+  const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
   const int elements_count =
-      weights.shape.h * weights.shape.w * src_depth * dst_depth * 4;
+      weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (f32_weights) {
     std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
                                      absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   } else {
     std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, /*out_group_size*/ 1,
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
                                      absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
@@ -167,17 +165,18 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
 Status CreateConvBuffer1x1(const CreationContext& creation_context,
                            const OperationDef& definition,
                            const Convolution2DAttributes& attr,
-                           ConvBuffer1x1* result);
+                           ConvBuffer1x1* result, const BHWC* shape = nullptr);
 
 Status CreateConvBuffer1x1(const CreationContext& creation_context,
                            const OperationDef& definition,
                            const FullyConnectedAttributes& attr,
-                           ConvBuffer1x1* result);
+                           ConvBuffer1x1* result, const BHWC* shape = nullptr);
 
 Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
                                        const OperationDef& definition,
                                        const Convolution2DAttributes& attr,
-                                       ConvBuffer1x1* result);
+                                       ConvBuffer1x1* result,
+                                       const BHWC* shape = nullptr);
 
 }  // namespace cl
 }  // namespace gpu

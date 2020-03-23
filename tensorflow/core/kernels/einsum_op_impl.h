@@ -610,13 +610,12 @@ template <typename Device, typename T>
 class EinsumOp : public OpKernel {
  public:
   explicit EinsumOp(OpKernelConstruction* c) : OpKernel(c) {
-    string equation;
-    OP_REQUIRES_OK(c, c->GetAttr("equation", &equation));
-    OP_REQUIRES_OK(c,
-                   EinsumHelper::ParseEquation(
-                       equation, &input_labels_, &output_labels_, &label_types_,
-                       &input_label_counts_, &output_label_counts_,
-                       &input_has_ellipsis_, &output_has_ellipsis_));
+    OP_REQUIRES_OK(c, c->GetAttr("equation", &equation_));
+    OP_REQUIRES_OK(
+        c, EinsumHelper::ParseEquation(
+               equation_, &input_labels_, &output_labels_, &label_types_,
+               &input_label_counts_, &output_label_counts_,
+               &input_has_ellipsis_, &output_has_ellipsis_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -735,7 +734,19 @@ class EinsumOp : public OpKernel {
     ctx->set_output(0, output);
   }
 
+  string TraceString(OpKernelContext* ctx, bool verbose) override {
+    if (!verbose) {
+      return strings::StrCat(name_view(), ":", type_string_view(),
+                             "#equation=(", equation_, ")#");
+    } else {
+      string trace_args = GetTraceArgument(ctx);
+      return strings::StrCat(name_view(), ":", type_string_view(),
+                             "#equation=(", equation_, "),", trace_args, "#");
+    }
+  }
+
  private:
+  string equation_;
   OperandLabels input_labels_;
   Labels output_labels_;
   std::vector<EinsumHelper::DimensionType> label_types_;

@@ -30,13 +30,16 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/Location.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Matchers.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
 #include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 #include "mlir/IR/Operation.h"  // TF:llvm-project
@@ -46,6 +49,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
 #include "mlir/IR/Types.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project
+#include "mlir/Support/LLVM.h"  // TF:llvm-project
 #include "mlir/Support/LogicalResult.h"  // TF:llvm-project
 #include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
@@ -434,8 +438,8 @@ static LogicalResult Verify(BroadcastInDimOp op) {
                       operandRank));
   }
 
-  auto dimensions = *op.broadcast_dimensions();
-  auto dimensionsType = op.broadcast_dimensions()->getType();
+  auto dimensions = op.broadcast_dimensions();
+  auto dimensionsType = op.broadcast_dimensions().getType();
   auto dimensionsRank = dimensionsType.getRank();
   if (dimensionsRank != 1) {
     return op.emitOpError(llvm::formatv(
@@ -480,6 +484,48 @@ static LogicalResult Verify(BroadcastInDimOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ScalarsToDimensionTensorOp
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+// Canonicalizes the pattern of the form
+//
+// %2 = "xla_hlo.scalars_to_dimension_tensor"(%0, %1)
+//          : (i32, i32) -> tensor<2xi32>
+// %3 = extract_element %2[%c0] : tensor<2xi32>
+//
+// to just %0.
+struct ExtractElementFromScalarsToDimensionTensor
+    : public OpRewritePattern<ExtractElementOp> {
+  using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ExtractElementOp extract,
+                                PatternRewriter& rewriter) const override {
+    if (extract.indices().size() != 1) return failure();
+
+    if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
+            extract.aggregate().getDefiningOp())) {
+      APInt index;
+      if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
+        return failure();
+      }
+      rewriter.replaceOp(extract,
+                         scalars_to_tensor.getOperand(index.getZExtValue()));
+      return success();
+    }
+    return failure();
+  }
+};
+
+}  // namespace
+
+void ScalarsToDimensionTensorOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<ExtractElementFromScalarsToDimensionTensor>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // DynamicBroadcastInDimOp
 //===----------------------------------------------------------------------===//
 
@@ -499,19 +545,9 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   auto operandRank = operandType.getRank();
   auto resultRank = resultType.getRank();
 
-  if (!op.broadcast_dimensions()) {
-    if (operandRank == 0) {
-      return success();
-    }
-    return op.emitOpError(
-        llvm::formatv("broadcast_dimensions is absent, but required because "
-                      "operand has non-zero rank ({0})",
-                      operandRank));
-  }
-
   // Verify broadcast_dimensions.
-  auto bcastDimensions = *op.broadcast_dimensions();
-  auto bcastDimensionsType = op.broadcast_dimensions()->getType();
+  auto bcastDimensions = op.broadcast_dimensions();
+  auto bcastDimensionsType = op.broadcast_dimensions().getType();
   auto bcastDimensionsRank = bcastDimensionsType.getRank();
   // TODO(laurenzo): Update the BroadcastDimAttr to constrain its rank to 1.
   if (bcastDimensionsRank != 1) {
@@ -834,6 +870,12 @@ static LogicalResult Verify(RecvOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CopyOp
+//===----------------------------------------------------------------------===//
+
+OpFoldResult CopyOp::fold(ArrayRef<Attribute> operands) { return getOperand(); }
+
+//===----------------------------------------------------------------------===//
 // ReshapeOp
 //===----------------------------------------------------------------------===//
 
@@ -923,6 +965,47 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
 static LogicalResult Verify(SelectOp op) {
   // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
   // corresponds to the client side HLO.
+  return success();
+}
+
+// Makes it such that a SelectOp that is a non-root operation in a DRR infers
+// the return type based on operand type.
+LogicalResult SelectOp::inferReturnTypes(
+    MLIRContext*, Optional<Location> location, ValueRange operands,
+    ArrayRef<NamedAttribute> attributes, RegionRange regions,
+    SmallVectorImpl<Type>& inferredReturnTypes) {
+  auto x_type = operands[1].getType();
+  auto y_type = operands[2].getType();
+  auto x_tensor = x_type.cast<TensorType>();
+  auto y_tensor = y_type.cast<TensorType>();
+
+  // Check for type compatibility in the select op. This requires that the two
+  // non-predicate operands:
+  //   (a) have the same element type
+  //   (b) have compatible shapes (i.e. the same shape and/or at least one
+  //       dynamic shape)
+  if (x_tensor.getElementType() != y_tensor.getElementType() ||
+      failed(mlir::verifyCompatibleShape(x_type, y_type))) {
+    return emitOptionalError(location, "incompatible operand types: ", x_type,
+                             " and ", y_type);
+  }
+
+  // TODO(lucyfox): Support output shape inference when operands have compatible
+  // shapes. (The output shape should be the most general of the operand shapes
+  // at each dimension.) For now, handle the straightforward cases and fail
+  // otherwise. When this is fully implemented, this logic should move into
+  // reusable functionality in MLIR Core.
+  Type output_type;
+  if (x_type == y_type || !x_tensor.hasRank()) {
+    output_type = x_type;
+  } else if (!y_tensor.hasRank()) {
+    output_type = y_type;
+  } else {
+    return emitOptionalError(location,
+                             "currently unsupported operand types: ", x_type,
+                             " and ", y_type);
+  }
+  inferredReturnTypes.assign({output_type});
   return success();
 }
 
@@ -1441,6 +1524,41 @@ void XlaHloDialect::printType(Type type, DialectAsmPrinter& os) const {
     return;
   }
   os << "<unknown xla_hlo type>";
+}
+
+//===----------------------------------------------------------------------===//
+// Shape inference
+//===----------------------------------------------------------------------===//
+
+LogicalResult deriveShapeFromFirstOperand(
+    OpBuilder* builder, Operation* op,
+    SmallVectorImpl<Value>* reifiedReturnShapes) {
+  Value operand = op->getOperand(0);
+  ShapedType operand_type = operand.getType().dyn_cast<ShapedType>();
+  if (!operand_type) {
+    op->emitOpError() << "first operand is not a shaped type";
+    return failure();
+  }
+  auto loc = op->getLoc();
+  SmallVector<Value, 4> shape_values;
+  shape_values.reserve(operand_type.getRank());
+  auto shape_scalar_type = builder->getIntegerType(64);
+  for (auto element : llvm::enumerate(operand_type.getShape())) {
+    if (element.value() == ShapedType::kDynamicSize) {
+      Value dim = builder->create<DimOp>(loc, operand, element.index());
+      shape_values.push_back(
+          builder->create<IndexCastOp>(loc, dim, shape_scalar_type));
+    } else {
+      shape_values.push_back(builder->create<ConstantOp>(
+          loc, builder->getI64IntegerAttr(element.value())));
+    }
+  }
+  *reifiedReturnShapes =
+      SmallVector<Value, 1>{builder->create<ScalarsToDimensionTensorOp>(
+          loc,
+          RankedTensorType::get({operand_type.getRank()}, shape_scalar_type),
+          shape_values)};
+  return success();
 }
 
 }  // namespace xla_hlo

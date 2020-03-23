@@ -113,7 +113,10 @@ struct OpData {
   int scale_multiplier = 0;
 };
 
-static OpData kStaticOpData;
+// This size will work for both the hotword (1) and ambient music (1):
+constexpr int kMaxOpDataSize = 2;
+static int kStaticOpDataCounter = 0;
+static OpData kStaticOpData[kMaxOpDataSize];
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   return nullptr;
@@ -126,7 +129,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData;
+  OpData* op_data = &kStaticOpData[kStaticOpDataCounter++];
   node->user_data = op_data;
 
   op_data->scale_multiplier =

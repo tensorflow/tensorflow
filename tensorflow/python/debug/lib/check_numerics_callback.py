@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.python.debug.lib import op_callbacks_common
 from tensorflow.python.debug.lib import source_utils
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -88,6 +89,10 @@ SAFE_OPS = (
 )
 
 _state = threading.local()
+
+_check_numerics_callback_create_counter = monitoring.Counter(
+    "/tensorflow/api/python/debugging/check_numerics_callback_create_counter",
+    "Counter for number of times the check_numerics op callback is created.")
 
 
 def limit_string_length(string, max_len=50):
@@ -419,6 +424,7 @@ def enable_check_numerics(stack_height_limit=30,
   logging.info(
       "Enabled check-numerics callback in thread %s",
       threading.current_thread().name)
+  _check_numerics_callback_create_counter.get_cell().increase_by(1)
 
 
 @tf_export("debugging.disable_check_numerics")

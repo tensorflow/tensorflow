@@ -35,8 +35,10 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
                                          const OpMetrics& hlo_op_metrics) {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
         /*hlo_module_id=*/0, tf_op_name);
-    if (tf_op_metrics->category().empty())
-      tf_op_metrics->set_category(tf_op_type.data(), tf_op_type.size());
+    if (tf_op_metrics->category().empty()) {
+      tf_op_metrics->set_category(
+          tf_op_type == kUnknownOp ? "Unknown" : string(tf_op_type));
+    }
     // The occurrences of a TF-op is the maximum among the occurrences of all
     // HLO-ops that it contains.
     tf_op_metrics->set_occurrences(

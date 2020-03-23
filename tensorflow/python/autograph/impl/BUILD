@@ -73,6 +73,7 @@ tf_py_test(
     deps = [
         ":impl",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/impl/testing:pybind_for_testing",
         "@gast_archive//:gast",
     ],
 )

@@ -44,8 +44,8 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -547,6 +547,7 @@ bool IsCustomOp(const std::string& op_name) {
 // TODO(krzysd) Handle function calls
 StatusOr<Operation*> ConvertOp(
     const tflite::OperatorT& op, const std::vector<Value>& vals_map,
+    const std::vector<mlir::TensorType>& intermediate_types,
     Value optional_arg_marker, const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::TensorT>>& tensors, Location loc,
@@ -608,6 +609,28 @@ StatusOr<Operation*> ConvertOp(
   if (op_name == "tfl.lstm") {
     // TODO(b/147587779): add the right region if region is empty.
     op_state.addRegion();
+    if (!op.intermediates.empty()) {
+      if (op.intermediates.size() != 5) {
+        auto err = errors::InvalidArgument(
+            "operator has intermediate tensors but the number of them is not "
+            "five.");
+        return emitError(loc, err.ToString()), err;
+      }
+      // Create intermediate value
+
+      const llvm::SmallVector<llvm::StringRef, 5> kIntermediateNames = {
+          "input_to_input_intermediate", "input_to_forget_intermediate",
+          "input_to_cell_intermediate", "input_to_output_intermediate",
+          "effective_hidden_scale_intermediate"};
+      for (auto type_and_name :
+           llvm::zip(intermediate_types, kIntermediateNames)) {
+        mlir::TypeAttr type_attr =
+            mlir::TypeAttr::get(std::get<0>(type_and_name));
+        auto named_attr =
+            builder.getNamedAttr(std::get<1>(type_and_name), type_attr);
+        op_state.addAttribute(named_attr.first, named_attr.second);
+      }
+    }
   }
 
   llvm::SmallVector<mlir::NamedAttribute, 2> attrs;
@@ -893,6 +916,18 @@ StatusOr<FuncOp> ConvertSubgraph(
       }
     }
 
+    // Intermediate tensors for tfl.lstm are used to carry quantization range
+    // in their types, so we only need and extract their types.
+    std::vector<mlir::TensorType> intermediate_types;
+    intermediate_types.reserve(5);
+    for (auto intermediate : op->intermediates) {
+      TF_ASSIGN_OR_RETURN(
+          auto type, GetTensorType(*subgraph.tensors[intermediate], builder,
+                                   /*shapeless_are_scalars=*/true,
+                                   /*is_constant=*/true));
+      intermediate_types.emplace_back(type);
+    }
+
     // The NameLoc corresponding to the name of the first output tensor
     auto op_loc =
         op->outputs.empty()
@@ -902,8 +937,8 @@ StatusOr<FuncOp> ConvertSubgraph(
     // to a valid Value
     TF_ASSIGN_OR_RETURN(
         auto* mlir_op,
-        ConvertOp(*op, vals_map, maybe_optional_arg_marker, op_names,
-                  func_names, subgraph.tensors, op_loc, op_builder));
+        ConvertOp(*op, vals_map, intermediate_types, maybe_optional_arg_marker,
+                  op_names, func_names, subgraph.tensors, op_loc, op_builder));
 
     // Add the results to the value maps. There are two cases: 1. the result
     // tensor does not have min/max values, the original op result is used

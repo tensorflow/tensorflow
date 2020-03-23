@@ -29,7 +29,7 @@ namespace {
 // vec mat mult) on 4 parts to create more threads
 // tid.y thread process every 4-th element in vec vec dot
 // Good results for ~1024 x 1024 sizes, for other can be written more
-// otimized shaders
+// optimized shaders
 
 std::string GetFullyConnectedKernelCode(
     const OperationDef& op_def, const LinearStorage& biases,
@@ -62,6 +62,8 @@ std::string GetFullyConnectedKernelCode(
   c += "    int2 depthes                  \n";
   c += ") {\n";
   c += "  int gid = get_global_id(0);\n";
+  c += "  bool inside = gid < depthes.y;\n";
+  c += "  gid = min(gid, depthes.y - 1);\n";
   c += "  int2 tid = (int2)(get_local_id(0), get_local_id(1));\n";
   c += "  ACCUM_FLT4 s = (ACCUM_FLT4)(0.0f);\n";
   c += "  for (uint c = tid.y; c < depthes.x; c += " + wg_y + ") {\n";
@@ -75,7 +77,7 @@ std::string GetFullyConnectedKernelCode(
   c += "  __local ACCUM_FLT4 temp[" + wg_x + "][" + wg_y + "];\n";
   c += "  temp[tid.x][tid.y] = s;\n";
   c += "  barrier(CLK_LOCAL_MEM_FENCE);\n";
-  c += "  if (tid.y == 0 && gid < depthes.y) {\n";
+  c += "  if (tid.y == 0 && inside) {\n";
   for (int i = 1; i < work_group_size.y; ++i) {
     c += "    s += temp[tid.x][" + std::to_string(i) + "];\n";
   }

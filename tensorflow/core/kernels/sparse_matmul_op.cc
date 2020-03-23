@@ -892,14 +892,14 @@ class LibxsmmSparseMatMul {
     // sure the same cache entry is not used from two threads at a time.
     std::multimap<std::tuple<int, int, int, int>,
                   std::unique_ptr<TensorInfoCacheEntry>>
-        entries GUARDED_BY(lock);
+        entries TF_GUARDED_BY(lock);
 
     TensorInfoCache() : lock(), entries() {}
     // Look up and remove first entry with these parameters, creating one if
     // there isn't one
     std::unique_ptr<TensorInfoCacheEntry> take_cache_entry(int M, int K, int N,
                                                            int max_threads)
-        LOCKS_EXCLUDED(lock) {
+        TF_LOCKS_EXCLUDED(lock) {
       tensorflow::mutex_lock ml(lock);
       auto key = std::make_tuple(M, K, N, max_threads);
       auto it = entries.find(key);
@@ -918,7 +918,7 @@ class LibxsmmSparseMatMul {
     }
     // Add a cache entry with certain parameters
     void return_cache_entry(std::unique_ptr<TensorInfoCacheEntry> e)
-        LOCKS_EXCLUDED(lock) {
+        TF_LOCKS_EXCLUDED(lock) {
       tensorflow::mutex_lock ml(lock);
       auto key = std::make_tuple(e->M, e->K, e->N, e->max_threads);
       entries.insert(std::make_pair(key, std::move(e)));

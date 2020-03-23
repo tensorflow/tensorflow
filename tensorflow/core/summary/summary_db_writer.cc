@@ -165,7 +165,7 @@ class IdAllocator {
     DCHECK(db_ != nullptr);
   }
 
-  Status CreateNewId(int64* id) LOCKS_EXCLUDED(mu_) {
+  Status CreateNewId(int64* id) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     Status s;
     SqliteStatement stmt;
@@ -199,7 +199,7 @@ class IdAllocator {
   }
 
  private:
-  int64 MakeRandomId() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  int64 MakeRandomId() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     int64 id = static_cast<int64>(random::New64() & kIdTiers[tier_]);
     if (id == kAbsent) ++id;
     return id;
@@ -208,7 +208,7 @@ class IdAllocator {
   mutex mu_;
   Env* const env_;
   Sqlite* const db_;
-  int tier_ GUARDED_BY(mu_) = 0;
+  int tier_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IdAllocator);
 };
@@ -396,14 +396,14 @@ class RunMetadata {
   const string& run_name() { return run_name_; }
   const string& user_name() { return user_name_; }
 
-  int64 run_id() LOCKS_EXCLUDED(mu_) {
+  int64 run_id() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     return run_id_;
   }
 
   Status SetGraph(Sqlite* db, uint64 now, double computed_time,
                   std::unique_ptr<GraphDef> g) SQLITE_TRANSACTIONS_EXCLUDED(*db)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     int64 run_id;
     {
       mutex_lock lock(mu_);
@@ -419,7 +419,7 @@ class RunMetadata {
 
   Status GetTagId(Sqlite* db, uint64 now, double computed_time,
                   const string& tag_name, int64* tag_id,
-                  const SummaryMetadata& metadata) LOCKS_EXCLUDED(mu_) {
+                  const SummaryMetadata& metadata) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     TF_RETURN_IF_ERROR(InitializeRun(db, now, computed_time));
     auto e = tag_ids_.find(tag_name);
@@ -463,7 +463,8 @@ class RunMetadata {
   }
 
  private:
-  Status InitializeUser(Sqlite* db, uint64 now) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status InitializeUser(Sqlite* db, uint64 now)
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (user_id_ != kAbsent || user_name_.empty()) return Status::OK();
     const char* get_sql = R"sql(
       SELECT user_id FROM Users WHERE user_name = ?
@@ -495,7 +496,7 @@ class RunMetadata {
   }
 
   Status InitializeExperiment(Sqlite* db, uint64 now, double computed_time)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (experiment_name_.empty()) return Status::OK();
     if (experiment_id_ == kAbsent) {
       TF_RETURN_IF_ERROR(InitializeUser(db, now));
@@ -562,7 +563,7 @@ class RunMetadata {
   }
 
   Status InitializeRun(Sqlite* db, uint64 now, double computed_time)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (run_name_.empty()) return Status::OK();
     TF_RETURN_IF_ERROR(InitializeExperiment(db, now, computed_time));
     if (run_id_ == kAbsent) {
@@ -610,12 +611,12 @@ class RunMetadata {
   const string experiment_name_;
   const string run_name_;
   const string user_name_;
-  int64 experiment_id_ GUARDED_BY(mu_) = kAbsent;
-  int64 run_id_ GUARDED_BY(mu_) = kAbsent;
-  int64 user_id_ GUARDED_BY(mu_) = kAbsent;
-  double experiment_started_time_ GUARDED_BY(mu_) = 0.0;
-  double run_started_time_ GUARDED_BY(mu_) = 0.0;
-  std::unordered_map<string, int64> tag_ids_ GUARDED_BY(mu_);
+  int64 experiment_id_ TF_GUARDED_BY(mu_) = kAbsent;
+  int64 run_id_ TF_GUARDED_BY(mu_) = kAbsent;
+  int64 user_id_ TF_GUARDED_BY(mu_) = kAbsent;
+  double experiment_started_time_ TF_GUARDED_BY(mu_) = 0.0;
+  double run_started_time_ TF_GUARDED_BY(mu_) = 0.0;
+  std::unordered_map<string, int64> tag_ids_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RunMetadata);
 };
@@ -631,7 +632,7 @@ class SeriesWriter {
 
   Status Append(Sqlite* db, int64 step, uint64 now, double computed_time,
                 const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     if (rowids_.empty()) {
       Status s = Reserve(db, t);
@@ -650,7 +651,7 @@ class SeriesWriter {
   }
 
   Status Finish(Sqlite* db) SQLITE_TRANSACTIONS_EXCLUDED(*db)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     // Delete unused pre-allocated Tensors.
     if (!rowids_.empty()) {
@@ -746,7 +747,7 @@ class SeriesWriter {
   }
 
   Status Reserve(Sqlite* db, const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     SqliteTransaction txn(*db);  // only for performance
     unflushed_bytes_ = 0;
     if (t.dtype() == DT_STRING) {
@@ -763,7 +764,7 @@ class SeriesWriter {
 
   Status ReserveData(Sqlite* db, SqliteTransaction* txn, size_t size)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     int64 space =
         static_cast<int64>(static_cast<double>(size) * kReserveMultiplier);
     if (space < kReserveMinBytes) space = kReserveMinBytes;
@@ -773,7 +774,7 @@ class SeriesWriter {
   Status ReserveTensors(Sqlite* db, SqliteTransaction* txn,
                         int64 reserved_bytes)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const char* sql = R"sql(
       INSERT INTO Tensors (
         series,
@@ -798,7 +799,7 @@ class SeriesWriter {
 
   Status MaybeFlush(Sqlite* db, SqliteTransaction* txn)
       SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (unflushed_bytes_ >= kFlushBytes) {
       TF_RETURN_WITH_CONTEXT_IF_ERROR(txn->Commit(), "flushing ",
                                       unflushed_bytes_, " bytes");
@@ -810,9 +811,9 @@ class SeriesWriter {
   mutex mu_;
   const int64 series_;
   RunMetadata* const meta_;
-  uint64 count_ GUARDED_BY(mu_) = 0;
-  std::deque<int64> rowids_ GUARDED_BY(mu_);
-  uint64 unflushed_bytes_ GUARDED_BY(mu_) = 0;
+  uint64 count_ TF_GUARDED_BY(mu_) = 0;
+  std::deque<int64> rowids_ TF_GUARDED_BY(mu_);
+  uint64 unflushed_bytes_ TF_GUARDED_BY(mu_) = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(SeriesWriter);
 };
@@ -830,13 +831,13 @@ class RunWriter {
 
   Status Append(Sqlite* db, int64 tag_id, int64 step, uint64 now,
                 double computed_time, const Tensor& t)
-      SQLITE_TRANSACTIONS_EXCLUDED(*db) LOCKS_EXCLUDED(mu_) {
+      SQLITE_TRANSACTIONS_EXCLUDED(*db) TF_LOCKS_EXCLUDED(mu_) {
     SeriesWriter* writer = GetSeriesWriter(tag_id);
     return writer->Append(db, step, now, computed_time, t);
   }
 
   Status Finish(Sqlite* db) SQLITE_TRANSACTIONS_EXCLUDED(*db)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock lock(mu_);
     if (series_writers_.empty()) return Status::OK();
     for (auto i = series_writers_.begin(); i != series_writers_.end(); ++i) {
@@ -849,7 +850,7 @@ class RunWriter {
   }
 
  private:
-  SeriesWriter* GetSeriesWriter(int64 tag_id) LOCKS_EXCLUDED(mu_) {
+  SeriesWriter* GetSeriesWriter(int64 tag_id) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock sl(mu_);
     auto spot = series_writers_.find(tag_id);
     if (spot == series_writers_.end()) {
@@ -864,7 +865,7 @@ class RunWriter {
   mutex mu_;
   RunMetadata* const meta_;
   std::unordered_map<int64, std::unique_ptr<SeriesWriter>> series_writers_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RunWriter);
 };

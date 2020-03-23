@@ -363,7 +363,7 @@ public abstract class TensorBuffer {
       return true;
     }
 
-    // This shape refers to a multidimentional array.
+    // This shape refers to a multidimensional array.
     for (int s : shape) {
       // All elements in shape should be non-negative.
       if (s < 0) {

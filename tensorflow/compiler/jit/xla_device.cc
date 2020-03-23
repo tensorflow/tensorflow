@@ -83,7 +83,7 @@ class XlaDeviceAllocatorState {
   std::unordered_map<std::pair<const xla::Backend*, int>,
                      std::unique_ptr<XlaDeviceAllocator>,
                      hash<std::pair<const xla::Backend*, int>>>
-      allocators_ GUARDED_BY(allocator_mutex_);
+      allocators_ TF_GUARDED_BY(allocator_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaDeviceAllocatorState);
 };

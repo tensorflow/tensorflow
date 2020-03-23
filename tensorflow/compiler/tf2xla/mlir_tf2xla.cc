@@ -20,6 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -28,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -84,11 +89,23 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
   return ParseOutputArrayInfo(array_names, &specs->outputs);
 }
 
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
 }  // namespace
 
-Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
-                                   const tf2xla::Config& config,
-                                   xla::XlaComputation* computation) {
+Status ConvertGraphDefToXlaViaMlir(
+    GraphDef graph_def, const tf2xla::Config& config,
+    xla::XlaComputation* computation, absl::string_view debug_info_filename,
+    absl::string_view debug_info_path_begin_marker) {
   // AddPlaceholdersForFeeds prepares for PruneGraphDefInto and serves two
   // purposes: (1) It creates a placeholder node for each feed, so that
   // PruneGraphDefInfo can prune away the node containing the feed. (2) It
@@ -115,6 +132,23 @@ Status ConvertGraphDefToXlaViaMlir(GraphDef graph_def,
   TF_RETURN_IF_ERROR(ConvertOutputInfo(config, &specs));
 
   GraphDebugInfo debug_info;
+  if (!debug_info_filename.empty()) {
+    TF_RETURN_IF_ERROR(LoadProtoFromFile(debug_info_filename, &debug_info));
+
+    if (!debug_info_path_begin_marker.empty()) {
+      for (size_t i = 0, e = debug_info.files_size(); i < e; ++i) {
+        std::string* file_name = debug_info.mutable_files(i);
+        size_t location =
+            file_name->rfind(std::string(debug_info_path_begin_marker));
+        if (location != -1) {
+          *file_name = file_name->substr(location +
+                                         debug_info_path_begin_marker.length());
+        }
+      }
+    }
+  }
+
+  RegisterDialects();
   mlir::MLIRContext context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,

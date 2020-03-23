@@ -1557,7 +1557,7 @@ string WrapDotInHtml(absl::string_view dot) {
 
 tensorflow::mutex url_renderer_mu(tensorflow::LINKER_INITIALIZED);
 std::function<StatusOr<string>(absl::string_view)>* url_renderer
-    GUARDED_BY(url_renderer_mu) = nullptr;
+    TF_GUARDED_BY(url_renderer_mu) = nullptr;
 
 // Precondition: url_renderer != nullptr.
 //
@@ -1567,7 +1567,7 @@ std::function<StatusOr<string>(absl::string_view)>* url_renderer
 // of producing dot for the graph.)
 StatusOr<string> WrapDotInFormat(absl::string_view dot,
                                  RenderedGraphFormat format)
-    EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
+    TF_EXCLUSIVE_LOCKS_REQUIRED(url_renderer_mu) {
   switch (format) {
     case RenderedGraphFormat::kUrl:
       CHECK(url_renderer != nullptr)

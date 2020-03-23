@@ -54,6 +54,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
@@ -1365,6 +1366,46 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmarkFunctionWithFiveHundredResourceInputs(self):
     self._benchmarkFunctionWithResourceInputs(500, 100)
+
+  def _benchmarkResourceReadsInCondInInnerFunc(self, var_count):
+    rvars = []
+    for _ in range(var_count):
+      rvars.append(resource_variable_ops.ResourceVariable(1.0))
+
+    # Note: We want to benchmark the graph building time so we intentionally
+    # add this outer function so that the tf.function gets retraced every time.
+    def benchmark_fn():
+
+      @def_function.function
+      def fn_with_many_reads():
+
+        @def_function.function
+        def fn_with_many_reads_inner():
+
+          def then_branch():
+            return math_ops.add_n(rvars)
+
+          def else_branch():
+            return 0.
+
+          return control_flow_ops.cond(
+              constant_op.constant(True), then_branch, else_branch)
+
+        return fn_with_many_reads_inner()
+
+      return fn_with_many_reads()
+
+    with context.device(CPU):
+      self._run(benchmark_fn, 10)
+
+  def benchmarkTenThousandResourceReadsInCondInInnerFunc(self):
+    self._benchmarkResourceReadsInCondInInnerFunc(10000)
+
+  def benchmarkHundredResourceReadsInCondInInnerFunc(self):
+    self._benchmarkResourceReadsInCondInInnerFunc(100)
+
+  def benchmarkTenResourceReadsInCondInInnerFunc(self):
+    self._benchmarkResourceReadsInCondInInnerFunc(10)
 
 
 if __name__ == "__main__":

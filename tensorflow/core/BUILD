@@ -175,6 +175,9 @@ exports_files([
 
 package_group(name = "experimental_access")
 
+# Authorized users go here.
+package_group(name = "friends")
+
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -469,6 +472,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:graph_to_functiondef.h",
         "//tensorflow/core/framework:kernel_def_builder.h",
         "//tensorflow/core/framework:kernel_def_util.h",
+        "//tensorflow/core/framework:kernel_shape_util.h",
         "//tensorflow/core/framework:log_memory.h",
         "//tensorflow/core/framework:logging.h",
         "//tensorflow/core/framework:lookup_interface.h",
@@ -719,6 +723,7 @@ tf_gen_op_libs(
         "tpu_configuration_ops",
         "tpu_cross_replica_ops",
         "tpu_embedding_ops",
+        "tpu_embedding_load_retrieve_ops",
         "tpu_functional_ops",
         "tpu_heartbeat_ops",
         "tpu_host_compute_ops",
@@ -731,6 +736,7 @@ tf_gen_op_libs(
         ":lib",
         ":lib_proto_parsing",
         ":protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
@@ -890,6 +896,7 @@ cc_library(
         ":tpu_configuration_ops_op_lib",
         ":tpu_cross_replica_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+        ":tpu_embedding_load_retrieve_ops_op_lib",
         ":tpu_functional_ops_op_lib",
         ":tpu_heartbeat_ops_op_lib",
         ":tpu_host_compute_ops_op_lib",
@@ -1020,10 +1027,10 @@ cc_library(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
-        "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
+        "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
@@ -1043,6 +1050,7 @@ cc_library(
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:pooling_ops",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
@@ -1066,10 +1074,6 @@ cc_library(
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:fact_op",
-        "//tensorflow/core/kernels:array_not_windows",
-        "//tensorflow/core/kernels:math_not_windows",
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_aggregate_ops",
@@ -1095,6 +1099,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_tmp_bf16_ops",
     ]) + if_cuda([
+        "//tensorflow/core/kernels:cudnn_rnn_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_kernels",
         "//tensorflow/core/grappler/optimizers:gpu_swapping_ops",
     ]) + if_nccl([
@@ -2252,7 +2257,6 @@ filegroup(
         "//tensorflow/core/framework:shared_ptr_variant.h",
         "//tensorflow/core/framework:tensor_reference.h",
         "//tensorflow/core/framework:tracking_allocator.h",  # only needed for tests
-        "//tensorflow/core/framework:unique_tensor_references.h",
         "//tensorflow/core/framework:variant.h",
         "//tensorflow/core/util:framework_internal_public_hdrs",
     ],
@@ -2351,6 +2355,7 @@ tf_cuda_library(
         "//tensorflow/core/framework:attr_value_util",
         "//tensorflow/core/framework:bfloat16",
         "//tensorflow/core/framework:common_shape_fns",
+        "//tensorflow/core/framework:kernel_shape_util",
         "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/framework:node_properties",
         "//tensorflow/core/framework:numeric_types",
@@ -2515,6 +2520,7 @@ tf_cuda_library(
         "//third_party/eigen3",
     ] + if_static([
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ]),
 )
 
@@ -2664,6 +2670,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -3213,6 +3220,49 @@ test_suite(
     ],
 )
 
+tf_cc_test(
+    name = "common_runtime_placer_test",
+    size = "small",
+    srcs = [
+        "common_runtime/placer_test.cc",
+    ],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_windows"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session_internal",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":lib_internal",
+        ":ops",
+        ":protos_all_cc",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/cc:sendrecv_ops",
+        "//tensorflow/cc:while_loop",
+        "//tensorflow/core/kernels:ops_util",
+        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/util:protos_test_cc",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_tests(
     name = "core_higher_level_tests",
     size = "small",
@@ -3232,7 +3282,6 @@ tf_cc_tests(
         "common_runtime/optimization_registry_test.cc",
         "common_runtime/pending_counts_test.cc",
         "common_runtime/placer_inspection_required_ops_utils_test.cc",
-        "common_runtime/placer_test.cc",
         "common_runtime/session_test.cc",
         "common_runtime/threadpool_device_test.cc",
         "//tensorflow/core/example:feature_util_test.cc",

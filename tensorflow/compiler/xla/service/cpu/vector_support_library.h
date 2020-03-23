@@ -273,7 +273,8 @@ class VectorSupportLibrary {
   llvm::Value* GetConstantFloat(llvm::Type* type, const llvm::APFloat& f) {
     llvm::Constant* scalar_value = llvm::ConstantFP::get(type->getContext(), f);
     if (llvm::isa<llvm::VectorType>(type)) {
-      return llvm::ConstantVector::getSplat(vector_size(), scalar_value);
+      return llvm::ConstantVector::getSplat(
+          llvm::ElementCount(vector_size(), /*Scalable=*/false), scalar_value);
     }
     return scalar_value;
   }

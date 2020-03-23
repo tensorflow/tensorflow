@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import optimizers
@@ -76,12 +77,15 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   updated via `LossScale.update()` whenever gradients are applied, either
   through `minimize()` or `apply_gradients()`. For example:
 
-  ```python
-  opt = tf.keras.optimizers.SGD(0.1)
-  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt, "dynamic")
-  # 'minimize' applies loss scaling to the loss and updates the loss sale.
-  opt.minimize(loss_fn)
-  ```
+  >>> opt = tf.keras.optimizers.SGD(0.25)
+  >>> opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(opt,
+  ...                                                                "dynamic")
+  >>> var = tf.Variable(1.)
+  >>> loss_fn = lambda: var ** 2
+  >>> # 'minimize' applies loss scaling to the loss and updates the loss sale.
+  >>> opt.minimize(loss_fn, var_list=var)
+  >>> var.numpy()
+  0.5
 
   If a `tf.GradientTape` is used to compute gradients instead of
   `LossScaleOptimizer.minimize` or `LossScaleOptimizer.get_gradients`, the loss
@@ -90,16 +94,14 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   `tf.GradientTape`, and `LossScaleOptimizer.get_unscaled_gradients` after
   computing the gradients with `tf.GradientTape`. For example:
 
-  ```python
-  opt = tf.keras.mixed_precision.experimental.LossScaleOptimizer(...)
-  vars = ...
-  with tf.GradientTape() as tape:
-    loss = ...
-    scaled_loss = opt.get_scaled_loss(loss)
-  scaled_grads = tape.gradient(scaled_loss, vars)
-  grads = opt.get_unscaled_gradients(scaled_grads)
-  opt.apply_gradients(zip(grads, vars))  # Loss scale will be updated here
-  ```
+  >>> with tf.GradientTape() as tape:
+  ...   loss = loss_fn()
+  ...   scaled_loss = opt.get_scaled_loss(loss)
+  >>> scaled_grad = tape.gradient(scaled_loss, var)
+  >>> (grad,) = opt.get_unscaled_gradients([scaled_grad])
+  >>> opt.apply_gradients([(grad, var)])  # Loss scale is updated here
+  >>> var.numpy()
+  0.25
   """
 
   def __init__(self, optimizer, loss_scale):
@@ -204,8 +206,10 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     """
     loss_scale = self._loss_scale()
     loss_scale_reciprocal = 1. / loss_scale
-    return [g * math_ops.cast(loss_scale_reciprocal, g.dtype) if g is not None
-            else None for g in grads]
+    return [
+        _multiply_gradient(g, loss_scale_reciprocal) if g is not None else None
+        for g in grads
+    ]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None):
     loss = self.get_scaled_loss(loss)
@@ -357,3 +361,15 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
+
+
+def _multiply_gradient(gradient, scale):
+  """Multiply a (possibly sparse) gradient by the given scale factor."""
+  scale = math_ops.cast(scale, gradient.dtype)
+  if isinstance(gradient, ops.IndexedSlices):
+    return ops.IndexedSlices(
+        gradient.values * scale,
+        gradient.indices,
+        dense_shape=gradient.dense_shape)
+  else:
+    return gradient * scale

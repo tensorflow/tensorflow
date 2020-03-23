@@ -33,6 +33,8 @@ from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import input_lib
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -222,6 +224,10 @@ class DataAdapter(object):
     if self.has_partial_batch():
       total_sample -= (self.batch_size() - self.partial_batch_size())
     return total_sample
+
+  def on_epoch_end(self):
+    """A hook called after each epoch."""
+    pass
 
 
 class TensorLikeDataAdapter(DataAdapter):
@@ -675,7 +681,8 @@ class DatasetAdapter(DataAdapter):
 
   @staticmethod
   def can_handle(x, y=None):
-    return isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2))
+    return (isinstance(x, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)) or
+            _is_distributed_dataset(x))
 
   def __init__(self,
                x,
@@ -709,6 +716,11 @@ class DatasetAdapter(DataAdapter):
     return None
 
   def should_recreate_iterator(self):
+    # Since DistributedDatasets have no cardinality, the user must provide
+    # all steps that need to be run, calling `.repeat()` as needed.
+    if _is_distributed_dataset(self._dataset):
+      return False
+
     # If user doesn't supply `steps`, or if they supply `steps` that
     # exactly equals the size of the `Dataset`, create a new iterator
     # each epoch.
@@ -725,10 +737,18 @@ class DatasetAdapter(DataAdapter):
       raise ValueError("`sample_weight` argument is not supported when using "
                        "dataset as input.")
 
-    size = cardinality.cardinality(self._dataset).numpy()
-    if size == cardinality.INFINITE and steps is None:
-      raise ValueError("When providing an infinite dataset, you must specify "
-                       "the number of steps to run.")
+    if steps is None:
+      if _is_distributed_dataset(self._dataset):
+        raise ValueError("When providing a distributed dataset, you must "
+                         "specify the number of steps to run.")
+
+      size = cardinality.cardinality(self._dataset).numpy()
+      if size == cardinality.INFINITE and steps is None:
+        raise ValueError(
+            "When providing an infinite dataset, you must specify "
+            "the number of steps to run (if you did not intend to ."
+            "create an infinite dataset, make sure to not call "
+            "`repeat()` on the dataset).")
 
 
 class GeneratorDataAdapter(DataAdapter):
@@ -772,7 +792,7 @@ class GeneratorDataAdapter(DataAdapter):
     # Need to build the Model on concrete input shapes.
     if model is not None and not model.built:
       concrete_x, _, _ = unpack_x_y_sample_weight(peek)
-      model.distribute_strategy.experimental_run_v2(
+      model.distribute_strategy.run(
           lambda x: model(x, training=False), args=(concrete_x,))
 
     self._first_batch_size = int(nest.flatten(peek)[0].shape[0])
@@ -810,7 +830,7 @@ class GeneratorDataAdapter(DataAdapter):
     x, y, sample_weight = unpack_x_y_sample_weight(data)
     data = pack_x_y_sample_weight(x, y, sample_weight)
 
-    data = nest._list_to_tuple(data)  # pylint: disable=protected-access
+    data = nest.list_to_tuple(data)
 
     def _convert_dtype(t):
       if (isinstance(t, np.ndarray) and issubclass(t.dtype.type, np.floating)):
@@ -891,6 +911,7 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
 
     self._size = len(x)
     self._shuffle_sequence = shuffle
+    self._keras_sequence = x
     super(KerasSequenceAdapter, self).__init__(
         x,
         shuffle=False,  # Shuffle is handed in the _make_callable override.
@@ -931,6 +952,9 @@ class KerasSequenceAdapter(GeneratorDataAdapter):
 
   def should_recreate_iterator(self):
     return True
+
+  def on_epoch_end(self):
+    self._keras_sequence.on_epoch_end()
 
 
 ALL_ADAPTER_CLS = [
@@ -999,7 +1023,7 @@ def _process_tensorlike(inputs):
     return x
 
   inputs = nest.map_structure(_convert_numpy_and_scipy, inputs)
-  return nest._list_to_tuple(inputs)  # pylint: disable=protected-access
+  return nest.list_to_tuple(inputs)
 
 
 def is_none_or_empty(inputs):
@@ -1078,14 +1102,25 @@ class DataHandler(object):
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False,
-               model=None):
+               model=None,
+               steps_per_execution=1):
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
     self._insufficient_data = False
+    self._model = model
+    self._steps_per_execution = steps_per_execution
 
-    train_adapter_cls = select_data_adapter(x, y)
-    self._train_adapter = train_adapter_cls(
+    # This `Variable` is assigned to by `DataHandler` to allow partial
+    # executions. Save its original value here to reset after a partial
+    # execution.
+    if isinstance(steps_per_execution, int):
+      self._steps_per_execution_value = steps_per_execution
+    else:
+      self._steps_per_execution_value = steps_per_execution.numpy().item()
+
+    adapter_cls = select_data_adapter(x, y)
+    self._adapter = adapter_cls(
         x,
         y,
         batch_size=batch_size,
@@ -1100,33 +1135,52 @@ class DataHandler(object):
         model=model)
 
     strategy = ds_context.get_strategy()
-    dataset = self._train_adapter.get_dataset()
+    dataset = self._adapter.get_dataset()
     if class_weight:
       dataset = dataset.map(_make_class_weight_map_fn(class_weight))
-    self._steps_per_epoch = self._infer_steps(steps_per_epoch, dataset)
-    self._train_dataset = strategy.experimental_distribute_dataset(dataset)
+    self._inferred_steps = self._infer_steps(steps_per_epoch, dataset)
+
+    if not _is_distributed_dataset(dataset):
+      dataset = strategy.experimental_distribute_dataset(dataset)
+    self._dataset = dataset
+
+    self._current_step = 0
+    self._step_increment = self._steps_per_execution_value - 1
+    self._insufficient_data = False
+
+    self._validate_data_handler()
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._train_dataset)
+    data_iterator = iter(self._dataset)
     for epoch in range(self._initial_epoch, self._epochs):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
-      if self._train_adapter.should_recreate_iterator():
-        data_iterator = iter(self._train_dataset)
+      if self._adapter.should_recreate_iterator():
+        if ds_context.has_strategy():
+          # TODO(b/138326910): remove this when MultiDeviceIterator is a
+          # CompositeTensor (unless this is more efficient)
+          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+        else:
+          data_iterator = iter(self._dataset)
       yield epoch, data_iterator
+      self._adapter.on_epoch_end()
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
     """Catches errors when an iterator runs out of data."""
     try:
       yield
+      context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      if (self._train_adapter.get_size() is None and
-          self._steps_per_epoch is None and self._current_step > 0):
+      context.async_clear_error()
+      if self._inferred_steps is None:
         # The input passed by the user ran out of batches.
         # Now we know the cardinality of the input(dataset or generator).
-        self._steps_per_epoch = self._current_step
+        if self._model is not None:
+          self._inferred_steps = self._model._train_counter.numpy().item()  # pylint: disable=protected-access
+        else:
+          self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch
@@ -1136,25 +1190,69 @@ class DataHandler(object):
             "least `steps_per_epoch * epochs` batches (in this case, "
             "{} batches). You may need to use the repeat() function "
             "when building your dataset.".format(total_epochs *
-                                                 self._steps_per_epoch))
+                                                 self._inferred_steps))
 
   def steps(self):
     """Yields steps for the current epoch."""
     self._current_step = 0
-    # `self._steps_per_epoch` can be changed by `catch_stop_iteration`.
-    while (self._steps_per_epoch is None or
-           self._current_step < self._steps_per_epoch):
+    # `self._inferred_steps` can be changed by `catch_stop_iteration`.
+    while (self._inferred_steps is None or
+           self._current_step < self._inferred_steps):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
-      yield self._current_step
-      self._current_step += 1
+
+      can_run_full_execution = (
+          self._steps_per_execution_value == 1 or
+          self._inferred_steps is None or
+          self._inferred_steps - self._current_step >=
+          self._steps_per_execution_value)
+
+      if can_run_full_execution:
+        self._step_increment = self._steps_per_execution_value - 1
+        yield self._current_step
+        self._current_step += self._steps_per_execution_value
+      else:
+        # Last partial execution.
+        steps_remaining = self._inferred_steps - self._current_step
+        self._steps_per_execution.assign(steps_remaining)
+        self._step_increment = steps_remaining - 1
+        yield self._current_step
+        self._current_step += steps_remaining
+        self._steps_per_execution.assign(self._steps_per_execution_value)
+
+  @property
+  def step_increment(self):
+    """The number to increment the step for `on_batch_end` methods."""
+    return self._step_increment
+
+  @property
+  def inferred_steps(self):
+    """The inferred steps per epoch of the created `Dataset`.
+
+    This will be `None` in the case where:
+
+    (1) A `Dataset` of unknown cardinality was passed to the `DataHandler`, and
+    (2) `steps_per_epoch` was not provided, and
+    (3) The first epoch of iteration has not yet completed.
+
+    Returns:
+      The inferred steps per epoch of the created `Dataset`.
+    """
+    return self._inferred_steps
+
+  @property
+  def should_sync(self):
+    # Catch OutOfRangeError for Datasets of unknown size.
+    # This blocks until the batch has finished executing.
+    # TODO(b/150292341): Allow multiple async steps here.
+    return self._inferred_steps is None
 
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
     if steps is not None:
       return steps
 
-    adapter_steps = self._train_adapter.get_size()
+    adapter_steps = self._adapter.get_size()
     if adapter_steps is not None:
       return adapter_steps
 
@@ -1163,23 +1261,32 @@ class DataHandler(object):
          distribute_options.AutoShardPolicy.OFF)):
       # If the dataset would be auto-sharded, we should not infer a local
       # steps_per_epoch due to the possible inbalanced sharding between workers.
-      return None
+      raise ValueError("When dataset is sharded across workers, please "
+                       "specify a reasonable `steps_per_epoch` such that all "
+                       "workers will train the same number of steps and each "
+                       "step can get data from dataset without EOF. This is "
+                       "required for allreduce to succeed. We will handle the "
+                       "last partial batch in the future.")
 
     size = cardinality.cardinality(dataset)
     if size == cardinality.INFINITE and steps is None:
       raise ValueError("When passing an infinitely repeating dataset, you "
                        "must specify how many steps to draw.")
     if size >= 0:
-      return size
+      return size.numpy().item()
     return None
 
   @property
   def _samples(self):
-    return self._train_adapter.get_samples()
+    return self._adapter.get_samples()
 
-  @property
-  def _steps(self):
-    return self._train_adapter.get_size()
+  def _validate_data_handler(self):
+    # TODO(b/152094471): Support this with DistIter.get_next_as_optional.
+    if self._steps_per_execution_value > 1 and self._inferred_steps is None:
+      raise ValueError(
+          "Could not infer the size of the data. With "
+          "`steps_per_execution > 1`, you must specify the number of steps "
+          "to run.")
 
 
 def _make_class_weight_map_fn(class_weight):
@@ -1242,7 +1349,8 @@ def expand_1d(data):
   """Expands 1-dimensional `Tensor`s into 2-dimensional `Tensor`s."""
 
   def _expand_single_1d_tensor(t):
-    if (hasattr(t, "shape") and
+    # Leaves `CompositeTensor`s as-is.
+    if (isinstance(t, ops.Tensor) and
         isinstance(t.shape, tensor_shape.TensorShape) and t.shape.rank == 1):
       return array_ops.expand_dims_v2(t, axis=-1)
     return t
@@ -1366,3 +1474,10 @@ def _scipy_sparse_to_sparse_tensor(t):
   indices = np.concatenate(
       (np.expand_dims(row, axis=1), np.expand_dims(col, axis=1)), axis=1)
   return sparse_tensor.SparseTensor(indices, data, shape)
+
+
+def _is_distributed_dataset(ds):
+  # TODO(b/151165986): Use public APIs.
+  return isinstance(
+      ds,
+      (input_lib.DistributedDataset, input_lib.DistributedDatasetsFromFunction))

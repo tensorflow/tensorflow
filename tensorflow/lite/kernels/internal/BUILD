@@ -229,7 +229,6 @@ cc_library(
         "optimized/integer_ops/mean.h",
         "optimized/integer_ops/mul.h",
         "optimized/integer_ops/pooling.h",
-        "optimized/integer_ops/softmax.h",
         "optimized/integer_ops/transpose_conv.h",
         "optimized/optimized_ops.h",
         "optimized/sparse_ops/fully_connected.h",
@@ -439,7 +438,6 @@ cc_library(
         "reference/integer_ops/mean.h",
         "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
-        "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
         "reference/integer_ops/transpose_conv.h",
         "reference/logistic.h",
@@ -459,6 +457,7 @@ cc_library(
         "reference/softmax.h",
         "reference/sparse_ops/fully_connected.h",
         "reference/strided_slice.h",
+        "reference/sub.h",
         "reference/svdf.h",
     ],
     copts = tflite_copts(),
@@ -524,6 +523,7 @@ cc_library(
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
+        "reference/sub.h",
     ],
     copts = tflite_copts(),
     deps = [
@@ -1023,6 +1023,17 @@ cc_test(
     srcs = ["non_max_suppression_test.cc"],
     deps = [
         ":reference_base",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "per_channel_dequantize_test",
+    srcs = ["per_channel_dequantize_test.cc"],
+    deps = [
+        ":reference_base",
+        ":types",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],

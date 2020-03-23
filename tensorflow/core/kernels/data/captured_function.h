@@ -47,17 +47,6 @@ Status MakeIteratorFromInputElement(
     const InstantiatedCapturedFunction& inst_captured_func, StringPiece prefix,
     std::unique_ptr<IteratorBase>* out_iterator);
 
-// Creates an iterator for a dataset which is created by applying the given
-// function to the given input element.
-//
-// TODO(jsimsa): Remove this overload once all callers are migrated to the API
-// that passes in the parent iterator pointer.
-ABSL_DEPRECATED("Use the overload that passes the parent iterator pointer.")
-Status MakeIteratorFromInputElement(
-    IteratorContext* ctx, const std::vector<Tensor>& input_element,
-    int64 thread_index, const InstantiatedCapturedFunction& inst_captured_func,
-    StringPiece prefix, std::unique_ptr<IteratorBase>* out_iterator);
-
 // Determines whether the given node is stateful.
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
                       const NodeDef& node);
@@ -113,7 +102,7 @@ class InstantiatedCapturedFunction {
       FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
       DataTypeVector ret_types,
       std::function<void(std::function<void()>)> runner,
-      CapturedFunction* captured_func);
+      CapturedFunction* captured_func, bool is_multi_device);
 
   // Determines whether a rendezvous object should be created when running the
   // instantiated function.
@@ -128,6 +117,7 @@ class InstantiatedCapturedFunction {
   // run the function without `IteratorContext` via `RunInstantiated`.
   std::function<void(std::function<void()>)> captured_runner_;
   CapturedFunction* const captured_func_;
+  bool const is_multi_device_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(InstantiatedCapturedFunction);
 };
@@ -141,7 +131,6 @@ struct ShortCircuitInfo {
 class FunctionMetadata {
  public:
   struct Params {
-    bool is_multi_device_function = false;
     bool use_inter_op_parallelism = true;
     bool use_default_device = true;
   };
@@ -161,9 +150,6 @@ class FunctionMetadata {
   // Returns the named list of function arguments.
   const NameAttrList& func() const { return func_; }
 
-  // Indicates whether the function is a multi-device function.
-  bool is_multi_device_function() const { return is_multi_device_function_; }
-
   // Returns a borrowed pointer to the function library that contains the
   // transitive closure of definitions used by the function.
   const FunctionLibraryDefinition* lib_def() const { return lib_def_.get(); }
@@ -181,21 +167,21 @@ class FunctionMetadata {
   // function.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
+  // Indicates whether the function should a multi-device function backend.
+  bool use_multi_device_function() const { return use_multi_device_function_; }
+
  private:
   FunctionMetadata(NameAttrList&& func, Params params)
       : func_(std::move(func)),
-        is_multi_device_function_(params.is_multi_device_function),
         use_default_device_(params.use_default_device),
         use_inter_op_parallelism_(params.use_inter_op_parallelism) {}
-
-  void ValidateMultiDevice();
 
   NameAttrList func_;
   std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
   ShortCircuitInfo short_circuit_info_;
-  bool is_multi_device_function_ = false;
   bool use_default_device_ = true;
   bool use_inter_op_parallelism_ = true;
+  bool use_multi_device_function_ = true;
 };
 
 // A `CapturedFunction` encapsulates a TensorFlow function, plus any "captured"
@@ -246,11 +232,6 @@ class CapturedFunction {
 
   // Returns the named list of function arguments.
   const NameAttrList& func() const { return metadata_->func(); }
-
-  // Indicates whether the function is multi-device.
-  bool is_multi_device_function() const {
-    return metadata_->is_multi_device_function();
-  }
 
   // Returns the transitive set of function definition required to instantiate
   // this function.

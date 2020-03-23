@@ -28,9 +28,12 @@ namespace xla {
 
 // Computes the broadcast dimensions attr for an elementwise binary operator
 // between two ranked tensors.
+// If `allow_empty` is true, then null can be returned to mean that the
+// broadcast is an "identity".
 mlir::DenseIntElementsAttr getBroadcastDimensionsAttr(mlir::Builder* b,
                                                       mlir::Value x,
-                                                      mlir::Value y);
+                                                      mlir::Value y,
+                                                      bool allow_empty = true);
 
 /// Get a constant splat for the given value type.
 template <typename T>

@@ -3,8 +3,8 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-FLATBUFFERS_URL := "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.11.0.tar.gz"
-FLATBUFFERS_MD5 := "02c64880acb89dbd57eebacfd67200d8"
+FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
+FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
@@ -20,8 +20,8 @@ LEON_BCC2_MD5 := "cdf78082be4882da2a92c9baa82fe765"
 TSIM_URL := "https://www.gaisler.com/anonftp/tsim/tsim-eval-2.0.63.tar.gz"
 TSIM_MD5 := "afa0095d3ed989a949e1467f94e41d2f"
 
-CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/c0c638a0604cbcd780df930ad39635878773e955.zip"
-CMSIS_MD5 := "ca6108528eb013a59f0f5f7704a071ea"
+CMSIS_URL := "https://github.com/ARM-software/CMSIS_5/archive/b2937134bd2047bd569c4408391ae20d7677d35c.zip"
+CMSIS_MD5 := "04cb3a2cb4834284767a01e8f1c6f834"
 
 AM_SDK_URL := "http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.2.0.zip"
 AM_SDK_MD5 := "7605fa2d4d97e6bb7a1190c92b66b597"

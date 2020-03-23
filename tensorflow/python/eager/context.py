@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import contextlib
 import copy
+import os
 import random
 import threading
 
@@ -138,7 +139,8 @@ class FunctionCallOptions(object):
   @config_proto_serialized.setter
   def config_proto_serialized(self, config):
     if isinstance(config, config_pb2.ConfigProto):
-      self._config_proto_serialized = config.SerializeToString()
+      self._config_proto_serialized = config.SerializeToString(
+          deterministic=True)
     elif isinstance(config, str):
       self._config_proto_serialized = config
     elif config is None:
@@ -429,6 +431,7 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
+    self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -592,10 +595,6 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
-      # Current executor might have pending nodes that involves updated remote
-      # devices. Wait for them to finish before updating.
-      self.executor.wait()
-      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()
@@ -668,13 +667,19 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    self._collective_ops_server_def = server_def
+
     # TODO(b/129298253): Allow creating datasets/tensors before enabling
     # collective ops.
     if self._context_handle is not None:
       logging.warning("Enabling collective ops after program startup may cause "
                       "error when accessing previously created tensors.")
-
-    self._collective_ops_server_def = server_def
+      with self._initialize_lock:
+        assert self._initialized
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tfe.TFE_EnableCollectiveOps(self._context_handle, server_def_str)
+        self._initialize_logical_devices()
+        self._clear_caches()
 
   def configure_collective_ops(
       self,
@@ -901,6 +906,9 @@ class Context(object):
 
     if self._enable_mlir_bridge is not None:
       config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    if self._enable_mlir_graph_optimization is not None:
+      config.experimental.enable_mlir_graph_optimization = (
+          self._enable_mlir_graph_optimization)
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1369,10 +1377,18 @@ class Context(object):
   def enable_mlir_bridge(self):
     return self._enable_mlir_bridge
 
+  @property
+  def enable_mlir_graph_optimization(self):
+    return self._enable_mlir_graph_optimization
+
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
     self._enable_mlir_bridge = enabled
+    self._thread_local_data.function_call_options = None
 
+  @enable_mlir_graph_optimization.setter
+  def enable_mlir_graph_optimization(self, enabled):
+    self._enable_mlir_graph_optimization = enabled
     self._thread_local_data.function_call_options = None
 
   @property
@@ -2142,6 +2158,54 @@ def check_alive(worker_name):
   return context().check_alive(worker_name)
 
 
+@tf_export("experimental.async_scope")
+@tf_contextlib.contextmanager
+def async_scope():
+  """Context manager for grouping async operations.
+
+  Ops/function calls inside the scope can return before finishing the actual
+  execution. When exiting the async scope, a synchronization barrier will be
+  automatically added to ensure the completion of all async op and function
+  execution, potentially raising exceptions if async execution results in
+  an error state.
+
+  Users may write the following code to asynchronuously invoke `train_step_fn`
+  and log the `loss` metric for every `num_steps` steps in a training loop.
+  `train_step_fn` internally consumes data using `iterator.get_next()`, and may
+  throw OutOfRangeError when running out of data. In the case:
+
+  ```
+  try:
+    with tf.experimental.async_scope():
+      for _ in range(num_steps):
+        # Step function updates the metric `loss` internally
+        train_step_fn()
+  except tf.errors.OutOfRangeError:
+    tf.experimental.async_clear_error()
+  logging.info('loss =', loss.numpy())
+  ```
+
+  Yields:
+    Context manager for grouping async operations.
+  """
+  # TODO(haoyuzhang): replace env var once we have a config method to turn on
+  # and off async streaming RPC
+  remote_async_env_var = "TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"
+  old_policy = os.environ.get(remote_async_env_var)
+  try:
+    os.environ[remote_async_env_var] = str(True)
+    yield
+    # Note: sync local and remote executors iff the async block does not raise
+    # an exception. Triggering sync after an exception may lead to derived
+    # runtime errors and unexpected exception types.
+    context().sync_executors()
+  finally:
+    if old_policy is None:
+      del os.environ[remote_async_env_var]
+    else:
+      os.environ[remote_async_env_var] = old_policy
+
+
 def async_wait():
   """Sync all async operations and raise any errors during execution.
 
@@ -2150,34 +2214,11 @@ def async_wait():
   all async op and function execution. It only returns when all pending nodes
   are finished, potentially raising exceptions if async execution results in
   an error state.
-
-  Users may write the following code to asynchronuously invoke `train_step_fn`
-  and log the `loss` metric for every `num_steps` steps in a training loop.
-  `train_step_fn` internally consumes data using `iterator.get_next()`, and may
-  throw OutOfRangeError when running out of data. In the case:
-    - If the exception is thrown during the loop of scheduling function steps,
-      the next call to function triggers an exception. In the except block,
-      we clear the error and break from the loop;
-    - If all `train_step_fn`s are scheduled before throwing an exception, we
-      block at the last iteration to wait for the scheduled functions to finish
-      excution and throw the OutOfRangeError.
-
-  ```
-  for i in range(num_steps):
-    try:
-      # Step function updates the metric `loss` internally
-      train_step_fn()
-      if i == num_steps - 1:
-        context.async_wait()
-    except tf.errors.OutOfRangeError:
-      context.async_clear_error()
-      break
-  logging.info('loss =', loss.numpy())
-  ```
   """
   context().sync_executors()
 
 
+@tf_export("experimental.async_clear_error")
 def async_clear_error():
   """Clear pending operations and error statuses in async execution.
 
@@ -2193,7 +2234,7 @@ def async_clear_error():
       # Step function updates the metric `loss` internally
       train_step_fn()
     except tf.errors.OutOfRangeError:
-      context.async_clear_error()
+      tf.experimental.async_clear_error()
       break
   logging.info('loss =', loss.numpy())
   ```
