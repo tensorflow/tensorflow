@@ -88,7 +88,7 @@ TEST_F(OpenCLOperationTest, Exp) {
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
-      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-2f;
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
@@ -499,7 +499,7 @@ TEST_F(OpenCLOperationTest, MaxiumumWithScalar) {
       TensorFloat32 dst_tensor;
       BroadcastSettings broadcast;
       ElementwiseTwoInput operation = CreateElementwiseTwoInput(
-          creation_context_, op_def, OperationType::MAXIMUM, broadcast, attr);
+          creation_context_, op_def, OperationType::MAXIMUM, broadcast, &attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -555,7 +555,7 @@ TEST_F(OpenCLOperationTest, MinimumWithScalar) {
       TensorFloat32 dst_tensor;
       BroadcastSettings broadcast;
       ElementwiseTwoInput operation = CreateElementwiseTwoInput(
-          creation_context_, op_def, OperationType::MINIMUM, broadcast, attr);
+          creation_context_, op_def, OperationType::MINIMUM, broadcast, &attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
