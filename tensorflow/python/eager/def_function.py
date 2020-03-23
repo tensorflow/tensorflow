@@ -552,23 +552,20 @@ class Function(object):
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
         self._python_function, self.input_signature)
 
-  def _get_tracing_count(self):
+  def experimental_get_tracing_count(self):
+    """
+    Return the tracing count in the recent calls.
+    """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0
     return result
-
-  def experimental_get_tracing_count(self):
-    """
-    Return the tracing count in the recent calls for debugging.
-    """
-    return self._call_counter.get_tracing_count()
 
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
 
-    tracing_count = self._get_tracing_count()
+    tracing_count = self.experimental_get_tracing_count()
     if self._experimental_compile and (
         not control_flow_util.GraphOrParentsInXlaContext(
             ops.get_default_graph())):
@@ -584,7 +581,7 @@ class Function(object):
     else:
       result = self._call(*args, **kwds)
 
-    if tracing_count == self._get_tracing_count():
+    if tracing_count == self.experimental_get_tracing_count():
       self._call_counter.called_without_tracing()
       return result
 
