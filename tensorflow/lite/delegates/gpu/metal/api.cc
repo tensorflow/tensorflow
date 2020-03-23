@@ -51,6 +51,25 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
+bool IsWidthBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
+         inputs[1]->tensor.shape.w == 1;
+}
+bool IsHeightBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
+         inputs[1]->tensor.shape.h == 1;
+}
+bool IsChannelsBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
+         inputs[1]->tensor.shape.c == 1;
+}
+
 std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     int id, ValueId input_id, ValueId output_id,
     const DepthwiseConvolution2DAttributes& attr,
@@ -134,11 +153,22 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   int node_id = static_cast<int>(node->id);
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {
-    case OperationType::ADD:
-      *tasks = Add(node_id, inputs, outputs[0],
-                   absl::any_cast<AddAttributes>(node->operation.attributes),
-                   options);
+    case OperationType::ADD: {
+      const auto srcs = graph.FindInputs(node_id);
+      ElementwiseBroadcastSettings broadcast;
+      broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+      broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+      broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+      if (broadcast.width || broadcast.height || broadcast.channels) {
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
+                                          broadcast);
+      } else {
+        *tasks = Add(node_id, inputs, outputs[0],
+                     absl::any_cast<AddAttributes>(node->operation.attributes),
+                     options);
+      }
       break;
+    }
     case OperationType::CONCAT: {
       std::vector<BHWC> input_shapes;
       for (auto& input : graph.FindInputs(node->id)) {
@@ -194,7 +224,18 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
             absl::any_cast<MultiplyAttributes>(node->operation.attributes),
             options);
       } else {
-        *tasks = ApplyMask(node_id, inputs[0], inputs[1], outputs[0], options);
+        if (inputs.size() == 2) {
+          const auto srcs = graph.FindInputs(node_id);
+          ElementwiseBroadcastSettings broadcast;
+          broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+          broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+          broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+          *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                            op_type, broadcast);
+        } else {
+          return absl::UnimplementedError(
+              "No support of multiply with more than 2 inputs");
+        }
       }
       break;
     case OperationType::PAD: {
@@ -269,8 +310,18 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::SUB: {
       const ElementwiseAttributes* attr =
           absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
-      *tasks =
-          ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type, attr);
+      if (attr) {
+        *tasks = ElementwiseWithOneInputAndConstantArguent(
+            node_id, inputs[0], outputs[0], options, op_type, *attr);
+      } else {
+        const auto srcs = graph.FindInputs(node_id);
+        ElementwiseBroadcastSettings broadcast;
+        broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+        broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+        broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
+                                          broadcast);
+      }
     } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
