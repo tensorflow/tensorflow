@@ -646,6 +646,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " delegate, and the model graph will be "
                        << delegate_status << " executed w/ the delegate.";
     }
+    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();
