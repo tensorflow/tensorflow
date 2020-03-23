@@ -1171,22 +1171,14 @@ def system_specific_test_config(environ_cp):
   test_only_filters = ['-oss_serial']
   if is_windows():
     test_and_build_filters.append('-no_windows')
-<<<<<<< HEAD
-    if (env.get('TF_NEED_CUDA', None) == '1') or (env.get('TF_NEED_ROCM', None) == '1'):
-=======
-    if environ_cp.get('TF_NEED_CUDA', None) == '1':
->>>>>>> google_upstream/master
+    if (environ_cp.get('TF_NEED_CUDA', None) == '1') or (environ_cp.get('TF_NEED_ROCM', None) == '1'):
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
     test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
-<<<<<<< HEAD
-    if (env.get('TF_NEED_CUDA', None) == '1') or (env.get('TF_NEED_ROCM', None) == '1'):
-=======
-    if environ_cp.get('TF_NEED_CUDA', None) == '1':
->>>>>>> google_upstream/master
+    if (environ_cp.get('TF_NEED_CUDA', None) == '1') or (environ_cp.get('TF_NEED_ROCM', None) == '1'):
       test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:

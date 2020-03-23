@@ -940,12 +940,8 @@ distribute_py_test(
     main = "values_test.py",
     shard_count = 5,
     tags = [
-<<<<<<< HEAD
-        "multi_and_single_gpu",
-        "no_rocm",
-=======
         # "multi_and_single_gpu",  # b/151865826
->>>>>>> google_upstream/master
+        "no_rocm",
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
