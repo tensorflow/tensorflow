@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import functools
 import itertools
+import pickle
 import re
 import weakref
 
@@ -67,6 +68,8 @@ class _ModelWithOptimizer(training.Model):
     self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     return {'loss': loss}
 
+def undecorated_function(x):
+  return x * 3.
 
 class _HasDecoratedMethod(object):
 
@@ -747,6 +750,41 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     # If the graph is deleted, then an exception is raised on reading `captures`
     self.assertEmpty(graph.captures)
 
+  @parameterized.parameters(*itertools.product(
+      (None, (tensor_spec.TensorSpec([]),)),  # input_signature
+      (True, False),                          # autograph
+      (None, converter.Feature.ALL),          # autograph_options
+      (None, 'foo.bar'),                      # implements
+      (None, True, False),                    # relax_shapes
+  ))
+  def test_pickle(self, input_signature, autograph, autograph_options, implements,
+                  relax_shapes):
+    """@function objects can be pickled and unpickled."""
+    # Can't pickle functions in __main__:
+    from tensorflow.python.eager.def_function_test import undecorated_function
+    original_py_function = undecorated_function
+
+    func = def_function.function(
+        func=original_py_function,
+        input_signature=input_signature,
+        autograph=autograph,
+        experimental_implements=implements,
+        experimental_autograph_options=autograph_options,
+        experimental_relax_shapes=relax_shapes,
+    )
+
+    cloned = pickle.loads(pickle.dumps(func))
+
+    self.assertEqual(func._name, cloned._name)
+    self.assertEqual(input_signature, cloned._input_signature)
+    self.assertEqual(autograph, cloned._autograph)
+    self.assertEqual(implements, cloned._implements)
+    self.assertEqual(autograph_options, cloned._experimental_autograph_options)
+    self.assertEqual(relax_shapes, cloned._experimental_relax_shapes)
+
+    x = array_ops.ones([])
+    self.assertEqual(self.evaluate(cloned(x)),
+                     self.evaluate(func(x)))
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
