@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/ir/hlo_client_ops.h"
 
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 
 namespace mlir {
 namespace xla_hlo_client {

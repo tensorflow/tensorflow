@@ -16,7 +16,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_EXPERIMENTAL_ESTIMATORS_ESTIMATOR_H_
 
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
 
 namespace hardware {

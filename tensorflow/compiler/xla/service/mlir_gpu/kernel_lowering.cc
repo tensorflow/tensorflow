@@ -18,32 +18,32 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // TF:llvm-project
-#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // TF:llvm-project
-#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // TF:llvm-project
-#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // TF:llvm-project
-#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // TF:llvm-project
-#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // TF:llvm-project
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/GPU/Passes.h"  // TF:llvm-project
-#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/Passes.h"  // TF:llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/OperationSupport.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/Region.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"  // from @llvm-project
+#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"  // from @llvm-project
+#include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"  // from @llvm-project
+#include "mlir/Conversion/LoopsToGPU/LoopsToGPUPass.h"  // from @llvm-project
+#include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"

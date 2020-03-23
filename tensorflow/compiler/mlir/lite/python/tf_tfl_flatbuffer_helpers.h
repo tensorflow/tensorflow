@@ -18,7 +18,7 @@ limitations under the License.
 #include <ostream>
 #include <utility>
 
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"

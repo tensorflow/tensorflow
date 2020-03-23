@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdint>
 #include <string>
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
 #include "tensorflow/lite/delegates/gpu/cl/compiled_program_cache_generated.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"

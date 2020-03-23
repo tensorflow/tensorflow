@@ -48,7 +48,7 @@ limitations under the License.
 #include "tensorflow/lite/minimal_logging.h"
 
 #ifndef TFLITE_GPU_BINARY_RELEASE
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/delegates/gpu/gl/metadata_generated.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #endif  // TFLITE_GPU_BINARY_RELEASE
