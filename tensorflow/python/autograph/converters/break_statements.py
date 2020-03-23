@@ -80,27 +80,7 @@ class BreakTransformer(converter.Base):
     # A break in the else clause applies to the containing scope.
     node.orelse = self.visit_block(node.orelse)
 
-    if break_used:
-      # Python's else clause only triggers if the loop exited cleanly (e.g.
-      # break did not trigger).
-      guarded_orelse = self._guard_if_present(node.orelse, break_var)
-
-      template = """
-        var_name = False
-        while ag__.and_(lambda: test, lambda: ag__.not_(var_name)):
-          body
-        orelse
-      """
-      node = templates.replace(
-          template,
-          var_name=break_var,
-          test=node.test,
-          body=node.body,
-          orelse=guarded_orelse)
-
-      new_while_node = node[1]
-      anno.copyanno(original_node, new_while_node, anno.Basic.DIRECTIVES)
-    else:
+    if not break_used:
       template = """
         while test:
           body
@@ -111,6 +91,31 @@ class BreakTransformer(converter.Base):
           test=node.test,
           body=node.body,
           orelse=node.orelse)
+
+      new_while_node = node[0]
+      anno.copyanno(original_node, new_while_node, anno.Basic.DIRECTIVES)
+
+      return node
+
+    # Python's else clause only triggers if the loop exited cleanly (e.g.
+    # break did not trigger).
+    guarded_orelse = self._guard_if_present(node.orelse, break_var)
+
+    template = """
+      var_name = False
+      while ag__.and_(lambda: test, lambda: ag__.not_(var_name)):
+        body
+      orelse
+    """
+    node = templates.replace(
+        template,
+        var_name=break_var,
+        test=node.test,
+        body=node.body,
+        orelse=guarded_orelse)
+
+    new_while_node = node[1]
+    anno.copyanno(original_node, new_while_node, anno.Basic.DIRECTIVES)
 
     return node
 
@@ -125,36 +130,7 @@ class BreakTransformer(converter.Base):
     # A break in the else clause applies to the containing scope.
     node.orelse = self.visit_block(node.orelse)
 
-    if break_used:
-      # Python's else clause only triggers if the loop exited cleanly (e.g.
-      # break did not trigger).
-      guarded_orelse = self._guard_if_present(node.orelse, break_var)
-      extra_test = templates.replace_as_expression(
-          'ag__.not_(var_name)', var_name=break_var)
-
-      # The extra test is hidden in the AST, which will confuse the static
-      # analysis. To mitigate that, we insert a no-op statement that ensures
-      # the control variable is marked as used.
-      # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
-      template = """
-        var_name = False
-        for target in iter_:
-          (var_name,)
-          body
-        orelse
-      """
-      node = templates.replace(
-          template,
-          var_name=break_var,
-          iter_=node.iter,
-          target=node.target,
-          body=node.body,
-          orelse=guarded_orelse)
-
-      new_for_node = node[1]
-      anno.setanno(new_for_node, 'extra_test', extra_test)
-      anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
-    else:
+    if not break_used:
       template = """
         for target in iter_:
           body
@@ -166,6 +142,41 @@ class BreakTransformer(converter.Base):
           target=node.target,
           body=node.body,
           orelse=node.orelse)
+
+      new_for_node = node[0]
+      anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
+
+      return node
+
+    # Python's else clause only triggers if the loop exited cleanly (e.g.
+    # break did not trigger).
+    guarded_orelse = self._guard_if_present(node.orelse, break_var)
+    extra_test = templates.replace_as_expression(
+        'ag__.not_(var_name)', var_name=break_var)
+
+    # The extra test is hidden in the AST, which will confuse the static
+    # analysis. To mitigate that, we insert a no-op statement that ensures
+    # the control variable is marked as used.
+    # TODO(mdan): Use a marker instead, e.g. ag__.condition_loop_on(var_name)
+    template = """
+      var_name = False
+      for target in iter_:
+        (var_name,)
+        body
+      orelse
+    """
+    node = templates.replace(
+        template,
+        var_name=break_var,
+        iter_=node.iter,
+        target=node.target,
+        body=node.body,
+        orelse=guarded_orelse)
+
+    new_for_node = node[1]
+    anno.setanno(new_for_node, 'extra_test', extra_test)
+    anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
+
     return node
 
 

@@ -35,38 +35,6 @@ class LoopIntegrationTest(converter_testing.TestCase):
                         {}, (constant_op.constant,)) as result:
       self.assertEqual(test_fn(*inputs), result.test_fn(*inputs))
 
-  def test_while_loop(self):
-
-    def test_fn(x):
-      v = []
-      while x > 0:
-        x -= 1
-        if x % 2 == 0:
-          break
-        v.append(x)
-      return v
-
-    self.assertTransformedEquivalent(test_fn, 0)
-    self.assertTransformedEquivalent(test_fn, 1)
-    self.assertTransformedEquivalent(test_fn, 4)
-
-  def test_for_loop(self):
-
-    def test_fn(a):
-      v = []
-      for x in a:
-        x -= 1
-        if x % 2 == 0:
-          break
-        v.append(x)
-      return v
-
-    with self.converted(test_fn, break_statements, {},
-                        (constant_op.constant,)) as result:
-      # The break is incompletely canonicalized. The loop will not interrupt,
-      # but the section following the break will be skipped.
-      self.assertEqual([3], result.test_fn([5, 4]))
-
   def test_while_loop_with_else(self):
     def test_fn(x):
       while x > 2:
