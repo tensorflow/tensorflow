@@ -243,14 +243,19 @@ struct DeadTempBufferRemoval : mlir::FunctionPass<DeadTempBufferRemoval> {
   }
 
   void runOnFunction() override {
+    llvm::SmallVector<mlir::Operation*, 8> opsToErase;
     getFunction().walk([&](mlir::AllocOp allocOp) {
       if (!operationConsideredDead(allocOp)) {
         return;
       }
 
-      // TODO(herhut): There should be a generic helper for this.
-      recursiveErase(allocOp);
+      opsToErase.push_back(allocOp);
     });
+
+    for (auto* op : opsToErase) {
+      // TODO(herhut): There should be a generic helper for this.
+      recursiveErase(op);
+    }
   }
 };
 
