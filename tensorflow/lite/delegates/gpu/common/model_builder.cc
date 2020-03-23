@@ -236,6 +236,12 @@ int GetNumberOfRuntimeInputsForNode(const TfLiteContext* context,
   return number_of_runtime_inputs;
 }
 
+int GetNumberOfConstInputsForNode(const TfLiteContext* context,
+                                  const TfLiteNode* tflite_node) {
+  return tflite_node->inputs->size -
+         GetNumberOfRuntimeInputsForNode(context, tflite_node);
+}
+
 int GetNumberOfRuntimeOutputsForNode(const TfLiteContext* context,
                                      const TfLiteNode* tflite_node) {
   int number_of_runtime_outputs = 0;
@@ -256,6 +262,42 @@ Status CheckTensorIsAvailable(const TfLiteContext* context,
                         idx, tflite_node->inputs->data[idx]));
   }
   return OkStatus();
+}
+
+Status CheckInputsOutputs(const TfLiteContext* context,
+                          const TfLiteNode* tflite_node, int runtime_inputs,
+                          int outputs) {
+  int runtime_inputs_from_model =
+      GetNumberOfRuntimeInputsForNode(context, tflite_node);
+  if (runtime_inputs_from_model != runtime_inputs) {
+    return InternalError(absl::StrFormat(
+        "Expected %d runtime input tensor(s), but node has %d runtime "
+        "input(s).",
+        runtime_inputs, runtime_inputs_from_model));
+  }
+  int runtime_outputs = GetNumberOfRuntimeOutputsForNode(context, tflite_node);
+  if (runtime_outputs != outputs) {
+    return InternalError(
+        absl::StrFormat("Expected %d output tensor(s), but node has %d "
+                        "output(s).",
+                        outputs, runtime_outputs));
+  }
+  return OkStatus();
+}
+
+Status CheckInputsConstsOutputs(const TfLiteContext* context,
+                                const TfLiteNode* tflite_node,
+                                int runtime_inputs, int const_inputs,
+                                int outputs) {
+  int const_inputs_from_model =
+      GetNumberOfConstInputsForNode(context, tflite_node);
+  if (const_inputs_from_model != const_inputs) {
+    return InternalError(absl::StrFormat(
+        "Expected %d const input tensor(s), but node has %d const "
+        "input(s).",
+        const_inputs, const_inputs_from_model));
+  }
+  return CheckInputsOutputs(context, tflite_node, runtime_inputs, outputs);
 }
 
 class ObjectReader {
@@ -367,65 +409,19 @@ class ObjectReader {
                : nullptr;
   }
 
+  Status VerifyInputsConstsOutputs(const TfLiteNode* tflite_node,
+                                   int runtime_inputs, int const_inputs,
+                                   int outputs) {
+    return CheckInputsConstsOutputs(context_, tflite_node, runtime_inputs,
+                                    const_inputs, outputs);
+  }
+
  private:
   GraphFloat32* graph_ = nullptr;
   const TfLiteContext* context_ = nullptr;
   const TfLiteNode* tflite_node_ = nullptr;
   std::vector<Value<TensorRef<BHWC>>*>* tensor_to_value_;
 };
-
-Status CheckInputsOutputs(const TfLiteContext* context,
-                          const TfLiteNode* tflite_node, int inputs,
-                          int outputs) {
-  int runtime_inputs = GetNumberOfRuntimeInputsForNode(context, tflite_node);
-  if (runtime_inputs != inputs) {
-    return InternalError(
-        absl::StrFormat("Expected %d input tensor(s), but node has %d runtime "
-                        "input(s).",
-                        inputs, runtime_inputs));
-  }
-  int runtime_outputs = GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
-    return InternalError(
-        absl::StrFormat("Expected %d output tensor(s), but node has %d runtime "
-                        "output(s).",
-                        outputs, runtime_outputs));
-  }
-  return OkStatus();
-}
-
-// The function checks input tensors including 1 constant tensor.
-Status CheckInputsOutputsAllowingOneConstInput(const TfLiteContext* context,
-                                               const TfLiteNode* tflite_node,
-                                               int inputs, int outputs) {
-  int number_of_const_inputs = 0;
-  int number_of_runtime_inputs = 0;
-  for (int i = 0; i < tflite_node->inputs->size; i++) {
-    if (IsConstantTensor(&context->tensors[tflite_node->inputs->data[i]])) {
-      number_of_const_inputs++;
-    } else {
-      number_of_runtime_inputs++;
-    }
-  }
-  if (tflite_node->inputs->size != inputs) {
-    return InternalError(absl::StrFormat(
-        "Expected %d input tensor(s), but node has %d input(s).", inputs,
-        tflite_node->inputs->size));
-  }
-  if (number_of_const_inputs > 1) {
-    return InternalError(absl::StrFormat(
-        "Expected 1 const input tensor, but node has %d const input(s).",
-        number_of_const_inputs));
-  }
-  int runtime_outputs = GetNumberOfRuntimeOutputsForNode(context, tflite_node);
-  if (runtime_outputs != outputs) {
-    return InternalError(
-        absl::StrFormat("Expected %d output tensor(s), but node has %d runtime "
-                        "output(s).",
-                        outputs, runtime_outputs));
-  }
-  return OkStatus();
-}
 
 // A parser responsible for parsing TFLite operation and adding it to a graph.
 class TFLiteOperationParser {
@@ -893,8 +889,8 @@ class Conv2DOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     TfLiteConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -977,8 +973,8 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     TfLiteDepthwiseConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -1095,16 +1091,20 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
     if (IsOneArgumentOperation()) {
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
-                                         /*outputs=*/1));
+      RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
+                                               /*runtime_inputs=*/1,
+                                               /*const_inputs=*/0,
+                                               /*outputs=*/1));
     } else if (IsTwoArgumentOperation()) {
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/2,
-                                         /*outputs=*/1));
+      RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
+                                               /*runtime_inputs=*/2,
+                                               /*const_inputs=*/0,
+                                               /*outputs=*/1));
     } else if (IsTwoArgumentOperationWithConst()) {
-      RETURN_IF_ERROR(CheckInputsOutputsAllowingOneConstInput(context,
-                                                              tflite_node,
-                                                              /*inputs=*/2,
-                                                              /*outputs=*/1));
+      RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
+                                               /*runtime_inputs=*/1,
+                                               /*const_inputs=*/1,
+                                               /*outputs=*/1));
     } else {
       return InvalidArgumentError("Op can only handle 1 or 2 operand(s).");
     }
@@ -1120,8 +1120,17 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     node->operation.type = ToString(operation_type_);
 
     if (IsOneArgumentOperation()) {
+      RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
+                                                        /*runtime_inputs=*/1,
+                                                        /*const_inputs=*/0,
+                                                        /*outputs=*/1));
+
       RETURN_IF_ERROR(reader->AddInput(node, 0));
     } else if (IsTwoArgumentOperation()) {
+      RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
+                                                        /*runtime_inputs=*/2,
+                                                        /*const_inputs=*/0,
+                                                        /*outputs=*/1));
       if (tflite_node->inputs->size != 2) {
         return InvalidArgumentError("Applies only two input tensors");
       }
@@ -1156,14 +1165,12 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
             MaybeFuseActivationToTheSingleOutput(activation, graph, node));
       }
     } else if (IsTwoArgumentOperationWithConst()) {
+      RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
+                                                        /*runtime_inputs=*/1,
+                                                        /*const_inputs=*/1,
+                                                        /*outputs=*/1));
       ElementwiseAttributes attr;
       RETURN_IF_ERROR(ParseInputsWithConstTensor(node, reader, &attr.param));
-      auto const_vector =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-              &attr.param);
-      if (const_vector) {
-        return InvalidArgumentError("Constant vector is not supported");
-      }
       node->operation.attributes = std::move(attr);
     } else {
       return InvalidArgumentError("Incorrect operation type passed");
@@ -1228,6 +1235,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
     switch (operation_type_) {
       case OperationType::MINIMUM:
       case OperationType::MAXIMUM:
+      case OperationType::SUB:
         return true;
       default:
         return false;
@@ -1311,7 +1319,7 @@ class HardSwishOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration*) final {
-    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
                               /*outputs=*/1);
   }
 
@@ -1350,7 +1358,8 @@ class LSTMOperationParser : public TFLiteOperationParser {
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckExactSupportedOpVersion(registration, 2));
     // TODO(eignasheva): Fix bad check.
-    // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/5,
+    // RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+    // /*runtime_inputs=*/5,
     //                                    /*outputs=*/4));
     TfLiteLSTMParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
@@ -1599,8 +1608,8 @@ class PadOperationParser : public TFLiteOperationParser {
       }
     }
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     RETURN_IF_ERROR(CheckTensorIsAvailable(context, tflite_node, 1));
     return OkStatus();
   }
@@ -1648,11 +1657,13 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
     TfLitePoolParams* tf_options = nullptr;
     auto status = RetrieveCustomInitialData(tflite_node, &tf_options);
     if (status.ok()) {  // custom case with indices as a second output
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                         /*runtime_inputs=*/1,
                                          /*outputs=*/2));
     } else {  // common pooling with 1 output
       RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
-      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+      RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                         /*runtime_inputs=*/1,
                                          /*outputs=*/1));
     }
     RETURN_IF_ERROR(CheckKernelsAndStrides(
@@ -1752,8 +1763,8 @@ class ReshapeOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     // TODO(eignasheva): add shape checking
     return OkStatus();
   }
@@ -1786,8 +1797,8 @@ class Resize2DOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 3));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
 
     RETURN_IF_ERROR(CheckOnlyUpsamplingIsSupported(context, tflite_node));
     bool align_corners;
@@ -1974,8 +1985,8 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     TfLiteSoftmaxParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->beta != 1) {
@@ -2018,8 +2029,8 @@ class SpaceToDepthOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     // TODO(impjdi): Dims check.
     TfLiteSpaceToDepthParams* s2d_params = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &s2d_params));
@@ -2280,8 +2291,8 @@ class TransposeOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 1));
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     return OkStatus();
   }
 
@@ -2317,8 +2328,8 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
     TfLitePoolParams* tf_options = nullptr;
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/2, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/2, /*outputs=*/1));
     RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckKernelsAndStrides(
         tf_options->filter_height, tf_options->filter_width,
@@ -2445,8 +2456,8 @@ class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/1, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
     return OkStatus();
   }
 
@@ -2478,8 +2489,8 @@ class TransformTensorOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/2, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/2, /*outputs=*/1));
     return OkStatus();
   }
 
@@ -2515,8 +2526,8 @@ class TransformLandmarksOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(
-        CheckInputsOutputs(context, tflite_node, /*inputs=*/2, /*outputs=*/1));
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/2, /*outputs=*/1));
     return OkStatus();
   }
 
@@ -2549,7 +2560,7 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
                               /*outputs=*/1);
   }
 
@@ -2581,7 +2592,7 @@ class MeanOperationParser : public TFLiteOperationParser {
   Status IsSupported(const TfLiteContext* context,
                      const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*inputs=*/1,
+    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
                               /*outputs=*/1);
   }
 
@@ -2970,7 +2981,6 @@ bool IsAllFloatTensors(const TfLiteContext* context,
   }
   return true;
 }
-
 }  // namespace
 
 Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,

@@ -693,7 +693,7 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
   let extraClassDeclaration = [{
-    // StatefulOpInterface:
+    // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 0; }
   }];
 }
@@ -718,7 +718,7 @@ def TFL_DepthwiseConv2DOp :
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
 
   let extraClassDeclaration = [{
-    // StatefulOpInterface:
+    // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 3; }
   }];
 }

@@ -440,7 +440,25 @@ Status ModularWritableFile::Tell(int64* position) {
 }
 
 Status RegisterFilesystemPlugin(const std::string& dso_path) {
-  return filesystem_registration::RegisterFilesystemPluginImpl(dso_path);
+  // Step 1: Load plugin
+  Env* env = Env::Default();
+  void* dso_handle;
+  TF_RETURN_IF_ERROR(env->LoadLibrary(dso_path.c_str(), &dso_handle));
+
+  // Step 2: Load symbol for `TF_InitPlugin`
+  void* dso_symbol;
+  TF_RETURN_IF_ERROR(
+      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
+
+  // Step 3: Call `TF_InitPlugin`
+  TF_FilesystemPluginInfo info;
+  memset(&info, 0, sizeof(info));
+  auto TF_InitPlugin =
+      reinterpret_cast<int (*)(TF_FilesystemPluginInfo*)>(dso_symbol);
+  TF_InitPlugin(&info);
+
+  // Step 4: Do the actual registration
+  return filesystem_registration::RegisterFilesystemPluginImpl(&info);
 }
 
 }  // namespace tensorflow

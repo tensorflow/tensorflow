@@ -1108,7 +1108,7 @@ inline void Mean(const tflite::MeanParams& op_params,
     MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
              output_shape, output_data, 0, output_depth);
   } else {
-    // Instead parrallel for batch, we loop for the output_depth since batch
+    // Instead parallel for batch, we loop for the output_depth since batch
     // is typical 1.
     std::vector<MeanWorkerTask> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.
@@ -5699,7 +5699,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   //          ....
   //
   // In order to minimize the reload of the multipliers & shifts, once we load
-  // the multipliers & shifts, we load & quantize the raw accumualtrs for every
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
   // row.
 #ifdef USE_NEON
   const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
@@ -6354,7 +6354,7 @@ inline void HardSwish(const HardSwishParams& params,
   // Unfortunately, the Intel arm_neon_sse.h implementation of vqshl* is
   // buggy in the case of zero shift amounts, see b/137199585. That is why
   // this NEON code path is restricted to true ARM NEON, excluding
-  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implemenation of saturating
+  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implementation of saturating
   // left shifts is slow scalar code, so there may not be much benefit in
   // running that over just plain reference code.
   //
@@ -7024,7 +7024,7 @@ inline void ClampWithRangeAndStore(int8_t* output_dst, int8x16_t input_val,
 
 #endif  // GEMMLOWP_NEON
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const uint8* input_data,
                                const RuntimeShape& output_shape,
@@ -7131,7 +7131,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const int8* input_data,
                                const RuntimeShape& output_shape,
@@ -7224,7 +7224,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const uint8* input_data,
                                    const RuntimeShape& output_shape,
@@ -7316,7 +7316,7 @@ inline void Logistic16bitPercision(const LogisticParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const int8* input_data,
                                    const RuntimeShape& output_shape,

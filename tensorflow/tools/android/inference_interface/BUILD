@@ -87,3 +87,8 @@ cc_binary(
         LINKER_SCRIPT,
     ],
 )
+
+cc_library(
+    name = "android_tensorflow_inference_native",
+    srcs = if_android([":libtensorflow_inference.so"]),
+)

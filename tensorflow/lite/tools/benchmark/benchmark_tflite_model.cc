@@ -488,7 +488,7 @@ BenchmarkTfLiteModel::CreateRandomTensorData(const TfLiteTensor& t,
 #else
       // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
       // compiler that supports __fp16 type. Note: when using Clang and *not*
-      // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
+      // linking with compiler-rt, a definition of __gnu_h2f_ieee and
       // __gnu_f2h_ieee must be supplied.
       TFLITE_LOG(FATAL) << "Populating the tensor " << t.name
                         << " of type FLOAT16 is disabled.";
@@ -615,6 +615,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
+  owned_delegates_.clear();
   for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
     auto delegate = delegate_provider->CreateTfLiteDelegate(params_);
     // It's possible that a delegate of certain type won't be created as
@@ -646,6 +647,7 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                        << " delegate, and the model graph will be "
                        << delegate_status << " executed w/ the delegate.";
     }
+    owned_delegates_.emplace_back(std::move(delegate));
   }
 
   auto interpreter_inputs = interpreter_->inputs();

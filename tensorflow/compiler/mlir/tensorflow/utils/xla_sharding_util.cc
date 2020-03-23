@@ -219,7 +219,7 @@ mlir::LogicalResult ExtractInputsForLogicalDevices(
         (*input_list)[assigned_logical_device].emplace_back(tiled_inputs[i]);
       }
     } else if (input_sharing_type == xla::OpSharding::REPLICATED) {
-      for (auto inputs : *input_list) inputs.emplace_back(input_value);
+      for (auto& inputs : *input_list) inputs.emplace_back(input_value);
     } else {
       assert(input_sharing_type == xla::OpSharding::MAXIMAL);
       const int logical_device_id = sharding.tile_assignment_devices(0);

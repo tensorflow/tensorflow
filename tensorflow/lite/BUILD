@@ -291,7 +291,6 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ] + tflite_experimental_runtime_linkopts(),
-    alwayslink = 1,
 )
 
 cc_library(

@@ -117,6 +117,9 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
 // Converts tensor list operations into operations on buffers and sizes. Needs
 // static shapes and known max element count.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass();
+
+// Create a pass that legalize HLO to TF dialect.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass();
 }  // namespace TF
 
 namespace TFControlFlow {

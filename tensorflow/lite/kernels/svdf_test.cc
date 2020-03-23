@@ -547,7 +547,7 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
 
   svdf.SetBias({-0.0976817, 0.15294972, 0.39635518, -0.02702999});
 
-  const std::vector<std::vector<float>> input_sequnces = {
+  const std::vector<std::vector<float>> input_sequences = {
       {0.49837467, 0.19278903, 0.26584083, 0.17660543, 0.52949083, -0.77931279},
       {0.12609188, -0.46347019, -0.89598465, 0.35867718, 0.36897406,
        0.73463392},
@@ -585,7 +585,7 @@ TEST_F(SVDFOpTest, BlackBoxTestInteger) {
   };
 
   for (int sequence_index = 0; sequence_index < 12; ++sequence_index) {
-    svdf.SetInput(input_sequnces[sequence_index]);
+    svdf.SetInput(input_sequences[sequence_index]);
     svdf.Invoke();
     const std::vector<int8_t> res = svdf.GetOutput();
     EXPECT_THAT(res, ElementsAreArray(expected_output[sequence_index]));

@@ -521,15 +521,15 @@ Status SymbolicGradientBuilder::AddGradients() {
     // gradient function to the src node/output to which it should be
     // backpropped. Maybe grad functions can return a vector of Output pairs to
     // make this association explicit.
-    size_t dx_index = 0;
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (dx_index == dx.size()) {
+      int dx_index = e->dst_input();
+      if (dx_index >= dx.size()) {
         return errors::Internal(
             "Invalid gradient output index: ", dx_index, " size: ", dx.size());
       }
       TF_RETURN_IF_ERROR(
-          BackpropAlongEdge(dx[dx_index++], {e->src(), e->src_output()}));
+          BackpropAlongEdge(dx[dx_index], {e->src(), e->src_output()}));
     }
   }
 

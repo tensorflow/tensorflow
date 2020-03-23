@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
@@ -210,8 +211,21 @@ LogicalResult PromoteResourcesToArguments(FuncOp function) {
   for (Operation& op : llvm::make_early_inc_range(function.front())) {
     auto var_handle_op = llvm::dyn_cast<TF::VarHandleOp>(op);
     if (!var_handle_op) continue;
-    if (!var_handle_op.use_empty())
-      return var_handle_op.emitOpError() << "expects no uses";
+    if (!var_handle_op.use_empty()) {
+      // SmallSet will use a vector when there is only one element and use
+      // std::set when there are more than one elements. This ensures that
+      // the operations in the error message are ordered.
+      llvm::SmallSet<std::string, 2> unique_operations;
+      llvm::for_each(
+          var_handle_op.getOperation()->getUsers(), [&](Operation* user) {
+            unique_operations.insert(user->getName().getStringRef().str());
+          });
+
+      return var_handle_op.emitOpError(
+                 "expects no uses but used by operations: ")
+             << llvm::join(unique_operations.begin(), unique_operations.end(),
+                           ", ");
+    }
 
     op.erase();
   }

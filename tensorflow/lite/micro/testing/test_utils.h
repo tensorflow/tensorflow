@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
 #include "tensorflow/lite/micro/micro_utils.h"
-#include "tensorflow/lite/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 
@@ -96,67 +95,7 @@ inline int32_t F2Q32(const float value, const float scale) {
   return static_cast<int>(quantized);
 }
 
-// A fake version of MemoryAllocator that allocates everything from the tail
-// without static memory planning or reusing.
-// TODO(b/150260678): Consider splitting this into its own file and inherit from
-// the same public interface as MicroAllocator.
-class FakeAllocator {
- public:
-  FakeAllocator(uint8_t* arena, size_t arena_size,
-                size_t max_scratch_buffers_count)
-      : arena_(arena),
-        arena_size_(arena_size),
-        max_scratch_buffers_count_(max_scratch_buffers_count) {
-    Reset();
-  }
-
-  TfLiteStatus AllocatePersistentBuffer(size_t bytes, void** ptr);
-  TfLiteStatus RequestScratchBufferInArena(int node_idx, size_t bytes,
-                                           int* buffer_idx);
-  void* GetScratchBuffer(int buffer_idx);
-
-  // Reset the allocator to the intial state.
-  void Reset();
-
- private:
-  uint8_t* arena_;
-  size_t arena_size_;
-  size_t max_scratch_buffers_count_;
-
-  SimpleMemoryAllocator* memory_allocator_;
-  // An array of buffer pointers.
-  uint8_t** scratch_buffers_;
-  size_t scratch_buffers_count_ = 0;
-  static constexpr size_t kBufferAlignment = 16;
-};
-
-// A fake implementation of ContextHelper. Instead of forwarding requests to
-// MicroAllocator, it calls into FakeAllocator.
-// PopulateContext will point context->impl_ to an instance of this class.
-// TODO(b/150260678): Consider moving this into the same file as FakeAllocator.
-class FakeContextHelper {
- public:
-  explicit FakeContextHelper(ErrorReporter* error_reporter,
-                             FakeAllocator* allocator)
-      : allocator_(allocator), error_reporter_(error_reporter) {}
-
-  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
-                                               void** ptr);
-
-  static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
-                                                  size_t bytes,
-                                                  int* buffer_idx);
-
-  static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-
-  static void ReportOpError(struct TfLiteContext* context, const char* format,
-                            ...);
-
- private:
-  FakeAllocator* allocator_;
-  ErrorReporter* error_reporter_;
-};
-
+// TODO(b/141330728): Move this method elsewhere as part clean up.
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      ErrorReporter* error_reporter, TfLiteContext* context);
 

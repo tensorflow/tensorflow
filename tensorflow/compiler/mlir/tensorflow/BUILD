@@ -17,6 +17,13 @@ package_group(
     ],
 )
 
+exports_files([
+    "ir/tf_generated_ops.td",
+    "ir/tf_op_base.td",
+    "ir/tf_op_interfaces.td",
+    "ir/tf_ops.td",
+])
+
 filegroup(
     name = "tensorflow_ops_td_files",
     srcs = [
@@ -189,8 +196,8 @@ cc_library(
         "transforms/legalize_hlo.cc",
     ],
     deps = [
-        "//tensorflow/compiler/mlir/tensorflow",
-        "//tensorflow/compiler/mlir/tensorflow:lower_tf_lib",
+        ":lower_tf_lib",
+        ":tensorflow",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:support",
@@ -465,8 +472,13 @@ cc_library(
     srcs = ["transforms/graph_optimization_pass.cc"],
     hdrs = ["transforms/graph_optimization_pass.h"],
     deps = [
+        ":error_util",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -1049,8 +1061,10 @@ cc_library(
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",
+        ":tensorflow",
         ":tensorflow_dialect_registration",
         ":tensorflow_passes",
+        ":tf_dialect_passes",
         ":translate_utils",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
@@ -1062,7 +1076,6 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

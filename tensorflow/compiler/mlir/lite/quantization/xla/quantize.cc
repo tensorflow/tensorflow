@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/mlir/lite/quantization/xla/quantize.h"
 
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
@@ -22,11 +23,21 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // TF:llvm-project
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
 namespace mlir {
 namespace xla_hlo {
+
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
 
 // Quantizes the model in the computation.
 tensorflow::Status XlaQuantize(const tensorflow::tf2xla::Config& config,
@@ -34,6 +45,7 @@ tensorflow::Status XlaQuantize(const tensorflow::tf2xla::Config& config,
   TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> snapshot,
                       computation->Snapshot());
 
+  RegisterDialects();
   MLIRContext context;
   OwningModuleRef module = ModuleOp::create(UnknownLoc::get(&context));
   auto status = xla::ConvertHloToMlirHlo(

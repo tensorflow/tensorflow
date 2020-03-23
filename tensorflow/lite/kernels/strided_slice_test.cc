@@ -87,7 +87,7 @@ TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
                "StridedSlice op only supports 1D-5D input arrays.");
 }
 
-TYPED_TEST(StridedSliceOpTest, UnssupportedArgs) {
+TYPED_TEST(StridedSliceOpTest, UnsupportedArgs) {
   EXPECT_DEATH(
       StridedSliceOpModel<TypeParam>({3, 2}, {2}, {2}, {2}, 0, 0, 1, 0, 0),
       "ellipsis_mask is not implemented yet.");
