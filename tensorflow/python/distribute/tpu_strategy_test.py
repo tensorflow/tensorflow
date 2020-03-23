@@ -18,13 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -213,6 +218,95 @@ class TPUStrategyTest(test.TestCase):
     self.assertLen(second_core_strategy.extended.worker_devices, 1)
     self.assertEndsWith(second_core_strategy.extended.worker_devices[0],
                         "device:TPU:1")
+
+  def test_tpu_tf_function_same_device(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    @function.defun_with_attributes(attributes={"_noinline": True})
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      with ops.device("/device:TPU:0"):
+        b = x + get_a_plus_one()
+      return b + 1
+
+    result = foo(a)
+    self.assertAllEqual(4, result)
+
+  def test_tpu_return_int32(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(0)
+
+    @def_function.function
+    def foo():
+      return a + 1
+
+    @def_function.function
+    def bar():
+      with ops.device("/device:TPU:1"):
+        return foo()
+
+    with ops.device("/device:CPU:0"):
+      result = bar() + 1
+      self.assertAllEqual(result, 2)
+
+  def test_control_output_in_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    with strategy.scope():
+      v = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.MEAN)
+
+    @def_function.function
+    def train_step():
+
+      def step_fn():
+        v.assign_add(1)
+
+      for _ in math_ops.range(2):
+        strategy.run(step_fn)
+
+    train_step()
+    self.assertEqual(2.0, v.numpy())
+
+  def test_cluster_in_graph_and_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step():
+
+      def step_fn(prev):
+        s = prev + 1
+        return s
+
+      def init_fn():
+        return array_ops.zeros(shape=())
+
+      prev = strategy.run(init_fn)
+      for _ in math_ops.range(10):
+        prev = strategy.run(step_fn, args=(prev,))
+      return strategy.reduce(reduce_util.ReduceOp.SUM, prev, axis=None)
+
+    sum_val = train_step().numpy().astype(float)
+    self.assertEqual(sum_val, strategy.num_replicas_in_sync * 10)
+
+  def test_two_clusters_with_same_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def foo(x):
+      return strategy.run(lambda x: x + 1, (x,))
+
+    @def_function.function
+    def bar(x):
+      foo(x)
+      return foo(x)
+
+    bar(1)
 
 
 if __name__ == "__main__":
