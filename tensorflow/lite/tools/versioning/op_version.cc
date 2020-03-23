@@ -378,7 +378,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       }
       return 1;
 
-    case BuiltinOperator_AVERAGE_POOL_2D:
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
     case BuiltinOperator_MAXIMUM:
