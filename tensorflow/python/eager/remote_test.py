@@ -98,7 +98,8 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
-  def testMultiDeviceFunctionAmbiguousDevice(self):
+  # TODO(b/148235520): Re-enable this test.
+  def DISABLED_testMultiDeviceFunctionAmbiguousDevice(self):
 
     @def_function.function
     def ambiguous_device(i):
@@ -452,8 +453,9 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  # TODO(b/152224115): Re-enable this test.
   @test_util.eager_lazy_remote_copy_on_and_off
-  def testSimpleParameterServerWithDeviceFilters(self):
+  def DISABLED_testSimpleParameterServerWithDeviceFilters(self):
     cluster_device_filters = server_lib.ClusterDeviceFilters()
     for i in range(2):
       cluster_device_filters.set_device_filters('my_worker', i, ['/job:my_ps'])
