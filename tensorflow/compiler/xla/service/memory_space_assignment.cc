@@ -315,14 +315,23 @@ bool AlternateMemoryBestFitHeap::IsIntervalAllowedInAlternateMemory(
 
   // Send and Recv HLOs return a request identifier. These should not be
   // allocated in the alternate memory.
-  const HloPosition& defining_position = interval.buffer->defining_position();
-  if ((defining_position.instruction->opcode() == HloOpcode::kSend ||
-       defining_position.instruction->opcode() == HloOpcode::kRecv) &&
-      defining_position.index == ShapeIndex({1})) {
-    VLOG(4)
-        << "Keeping value " << interval.buffer->ToShortString()
-        << " in default mem because it is a request identifier for send/recv.";
-    return false;
+  for (const HloPosition& position : interval.buffer->positions()) {
+    if ((position.instruction->opcode() == HloOpcode::kSend ||
+         position.instruction->opcode() == HloOpcode::kRecv)) {
+      // TODO(berkin): Send/recv buffers need a stable buffer allocation
+      // throughout sending/receiving. Disable memory space allocation for these
+      // for now.
+      if (position.index == ShapeIndex({0})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a send/recv buffer.";
+        return false;
+      } else if (position.index == ShapeIndex({1})) {
+        VLOG(4) << "Keeping value " << interval.buffer->ToShortString()
+                << " in default mem because it is a request identifier for "
+                   "send/recv.";
+        return false;
+      }
+    }
   }
 
   return true;
