@@ -89,8 +89,7 @@ class BreakTransformer(converter.Base):
         var_name = False
         while ag__.and_(lambda: test, lambda: ag__.not_(var_name)):
           body
-        else:
-          orelse
+        orelse
       """
       node = templates.replace(
           template,
@@ -101,6 +100,17 @@ class BreakTransformer(converter.Base):
 
       new_while_node = node[1]
       anno.copyanno(original_node, new_while_node, anno.Basic.DIRECTIVES)
+    else:
+      template = """
+        while test:
+          body
+        orelse
+      """
+      node = templates.replace(
+          template,
+          test=node.test,
+          body=node.body,
+          orelse=node.orelse)
 
     return node
 
@@ -131,8 +141,7 @@ class BreakTransformer(converter.Base):
         for target in iter_:
           (var_name,)
           body
-        else:
-          orelse
+        orelse
       """
       node = templates.replace(
           template,
@@ -145,7 +154,18 @@ class BreakTransformer(converter.Base):
       new_for_node = node[1]
       anno.setanno(new_for_node, 'extra_test', extra_test)
       anno.copyanno(original_node, new_for_node, anno.Basic.DIRECTIVES)
-
+    else:
+      template = """
+        for target in iter_:
+          body
+        orelse
+      """
+      node = templates.replace(
+          template,
+          iter_=node.iter,
+          target=node.target,
+          body=node.body,
+          orelse=node.orelse)
     return node
 
 
