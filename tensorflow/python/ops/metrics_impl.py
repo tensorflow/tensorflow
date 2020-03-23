@@ -980,18 +980,9 @@ def mean_cosine_distance(labels,
       radial_diffs, axis=[
           dim,
       ], keepdims=True)
-  mean_distance, update_op = mean(radial_diffs, weights, None, None, name or
-                                  'mean_cosine_distance')
-  mean_distance = math_ops.subtract(1.0, mean_distance)
-  update_op = math_ops.subtract(1.0, update_op)
-
-  if metrics_collections:
-    ops.add_to_collections(metrics_collections, mean_distance)
-
-  if updates_collections:
-    ops.add_to_collections(updates_collections, update_op)
-
-  return mean_distance, update_op
+  radial_diffs = math_ops.subtract(1.0, radial_diffs)
+  return mean(radial_diffs, weights, metrics_collections, updates_collections,
+              name or 'mean_cosine_distance')
 
 
 @tf_export(v1=['metrics.mean_per_class_accuracy'])
