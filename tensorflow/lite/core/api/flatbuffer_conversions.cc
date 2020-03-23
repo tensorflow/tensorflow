@@ -840,6 +840,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_SCATTER_ND:
     case BuiltinOperator_DENSIFY:
     case BuiltinOperator_SEGMENT_SUM:
+    case BuiltinOperator_BATCH_MATMUL:
       break;
   }
   return kTfLiteOk;

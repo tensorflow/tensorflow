@@ -57,6 +57,7 @@ string GetMinimumRuntimeVersionForModel(const Model& model) {
           {{OperatorType::kDiv, 1}, "1.6.0"},
           {{OperatorType::kBatchToSpaceND, 1}, "1.6.0"},
           {{OperatorType::kBatchToSpaceND, 2}, "1.14.0"},
+          {{OperatorType::kBatchMatMul, 1}, kPendingReleaseOpVersion},
           {{OperatorType::kCast, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 1}, "1.5.0"},
           {{OperatorType::kConcatenation, 2}, "1.14.0"},

@@ -213,6 +213,7 @@ cc_library(
     name = "optimized_base",
     srcs = [],
     hdrs = [
+        "optimized/batch_matmul.h",
         "optimized/depthwiseconv_3x3_filter_common.h",
         "optimized/depthwiseconv_float.h",
         "optimized/depthwiseconv_multithread.h",
@@ -416,6 +417,7 @@ cc_library(
     hdrs = [
         "reference/add.h",
         "reference/arg_min_max.h",
+        "reference/batch_matmul.h",
         "reference/binary_function.h",
         "reference/ceil.h",
         "reference/comparisons.h",
