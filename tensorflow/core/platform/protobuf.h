@@ -91,7 +91,8 @@ inline bool SerializeToTString(const protobuf::MessageLite& proto,
                                tstring* output) {
   size_t size = proto.ByteSizeLong();
   output->resize_uninitialized(size);
-  return proto.SerializeToArray(output->data(), static_cast<int>(size));
+  return proto.SerializeWithCachedSizesToArray(
+      reinterpret_cast<uint8*>(output->data()));
 }
 
 inline bool ParseFromTString(const tstring& input,
