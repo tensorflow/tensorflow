@@ -23,7 +23,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -161,7 +160,6 @@ def _is_keras_rnn_cell(rnn_cell):
   # Keras cells never had zero_state method, which was from the original
   # interface from TF RNN cell.
   return (not isinstance(rnn_cell, rnn_cell_impl.RNNCell) and
-          isinstance(rnn_cell, base_layer.Layer) and
           getattr(rnn_cell, "zero_state", None) is None)
 
 
