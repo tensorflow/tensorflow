@@ -7105,7 +7105,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":layers_base",
-        "//tensorflow/python/keras/engine:input_spec",
         "//tensorflow/python/keras/legacy_tf_layers:convolutional",
         "//tensorflow/python/keras/legacy_tf_layers:core",
         "//tensorflow/python/keras/legacy_tf_layers:normalization",
