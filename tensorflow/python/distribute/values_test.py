@@ -995,6 +995,39 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
+          ],
+          mode=["eager"]))
+  def testInitScope(self, distribution):
+
+    class C(object):
+      pass
+
+    obj = C()
+    obj.w = None
+    obj.v = None
+
+    @def_function.function
+    def assign():
+      with ops.init_scope():
+        if obj.w is None:
+          obj.w = variables_lib.Variable(
+              0, aggregation=variables_lib.VariableAggregation.MEAN)
+          obj.v = variables_lib.Variable(
+              obj.w.read_value(),
+              aggregation=variables_lib.VariableAggregation.MEAN)
+
+      return obj.v.assign_add(2)
+
+    per_replica_results = self.evaluate(
+        distribution.experimental_local_results(distribution.run(assign)))
+    self.assertAllEqual([2, 2], per_replica_results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
           ],
           mode=["graph", "eager"]))
   def testAssignAdd(self, distribution):
