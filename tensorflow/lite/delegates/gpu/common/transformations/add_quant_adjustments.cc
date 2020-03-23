@@ -76,7 +76,7 @@ class AddQuantAdjustments : public NodeTransformation {
           return {TransformStatus::INVALID,
                   absl::StrCat(
                       "Failed to associate quant-adjusted value for consumer: ",
-                      status.message())};
+                      status.error_message())};
         }
       }
 
@@ -86,7 +86,7 @@ class AddQuantAdjustments : public NodeTransformation {
         return {TransformStatus::INVALID,
                 absl::StrCat(
                     "Could not associate output to QuantizeAndDequantize: ",
-                    status.message())};
+                    status.error_message())};
       }
 
       // Remove quant params on output_value, to make the transformation
