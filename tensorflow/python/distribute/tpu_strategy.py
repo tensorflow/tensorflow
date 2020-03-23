@@ -553,7 +553,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
                        "logical device id {} but there are only total of {} "
                        "logical devices in replica.".format(
                            logical_device_id, num_logical_devices_per_replica))
-    return xla_sharding.assign_device(tensor, logical_device_id)
+    return xla_sharding.assign_device(
+        tensor, logical_device_id, use_sharding_op=True)
 
   def _experimental_split_to_logical_devices(self, tensor,
                                              partition_dimensions):
