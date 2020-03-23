@@ -67,9 +67,9 @@ uint64 IdleTimePs(const OpMetricsDb& metrics_db);
 // must have been set.
 void AddIdleOp(OpMetricsDb* db);
 
-// Converts from Hlo-op metrics to Tf-op metrics.
-OpMetricsDb CreateTfMetricsDbFromHloMetricsDb(const OpMetricsDb& hlo_metrics_db,
-                                              bool with_idle = true);
+// Converts from the device op metrics to Tf-op metrics.
+OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
+    const OpMetricsDb& device_op_metrics_db, bool with_idle = true);
 }  // namespace profiler
 }  // namespace tensorflow
 
