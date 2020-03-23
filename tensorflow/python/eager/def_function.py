@@ -560,7 +560,6 @@ class Function(object):
   def experimental_get_tracing_count(self):
     """
     Return the tracing count in the recent calls for debugging.
-    Feature request in issue: https://github.com/tensorflow/tensorflow/issues/37323
     """
     return self._call_counter.get_tracing_count()
 
