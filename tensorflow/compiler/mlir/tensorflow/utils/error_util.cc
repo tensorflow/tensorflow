@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
-#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace mlir {
 

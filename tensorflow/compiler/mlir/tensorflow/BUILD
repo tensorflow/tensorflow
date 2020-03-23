@@ -811,8 +811,7 @@ cc_library(
     srcs = ["utils/error_util.cc"],
     hdrs = ["utils/error_util.h"],
     deps = [
-        "//tensorflow/core/platform:errors",
-        "//tensorflow/core/platform:status",
+        "//tensorflow/core:lib",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
     ],
