@@ -276,7 +276,7 @@ def lift_to_graph(tensors,
       for inp in op_selector.graph_inputs(op):
         # Don't lift the TPUReplicateMetadata nodes out of the function, because
         # it has no registered kernels.
-        if inp.name == "TPUReplicateMetadata":
+        if inp.type == "TPUReplicateMetadata":
           continue
         unvisited_ops.add(inp)
         if (all(x in marked_ops for x in op_outputs[inp]) and
@@ -351,7 +351,7 @@ def lift_to_graph(tensors,
       for mutation in control_mutations:
         # Don't lift the TPUReplicateMetadata nodes out of the function, because
         # it has no registered kernels.
-        if mutation.old_graph_op.name == "TPUReplicateMetadata":
+        if mutation.old_graph_op.type == "TPUReplicateMetadata":
           continue
         mutation.copied_op._add_control_input(op_map[mutation.old_graph_op])
     # pylint: enable=protected-access

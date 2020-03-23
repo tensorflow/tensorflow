@@ -728,6 +728,7 @@ tf_gen_op_libs(
         "tpu_configuration_ops",
         "tpu_cross_replica_ops",
         "tpu_embedding_ops",
+        "tpu_embedding_load_retrieve_ops",
         "tpu_functional_ops",
         "tpu_heartbeat_ops",
         "tpu_host_compute_ops",
@@ -740,6 +741,7 @@ tf_gen_op_libs(
         ":lib",
         ":lib_proto_parsing",
         ":protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:optimization_parameters_proto_cc",
         "//tensorflow/core/protobuf/tpu:tpu_embedding_configuration_proto_cc",
         "//tensorflow/core/tpu:tpu_embedding_optimization_parameters_utils",
         "//tensorflow/core/tpu:tpu_embedding_output_layout_utils",
@@ -899,6 +901,7 @@ cc_library(
         ":tpu_configuration_ops_op_lib",
         ":tpu_cross_replica_ops_op_lib",
         ":tpu_embedding_ops_op_lib",
+        ":tpu_embedding_load_retrieve_ops_op_lib",
         ":tpu_functional_ops_op_lib",
         ":tpu_heartbeat_ops_op_lib",
         ":tpu_host_compute_ops_op_lib",
@@ -1032,6 +1035,7 @@ cc_library(
         "//tensorflow/core/kernels:data_flow",
         "//tensorflow/core/kernels:decode_proto_op",
         "//tensorflow/core/kernels:encode_proto_op",
+        "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
@@ -1051,6 +1055,7 @@ cc_library(
         "//tensorflow/core/kernels:parsing",
         "//tensorflow/core/kernels:partitioned_function_ops",
         "//tensorflow/core/kernels:pooling_ops",
+        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:ragged_ops",
         "//tensorflow/core/kernels:random_ops",
         "//tensorflow/core/kernels:stateful_random_ops",
@@ -1074,10 +1079,6 @@ cc_library(
         "//tensorflow/core/kernels:word2vec_kernels",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_not_windows([
-        "//tensorflow/core/kernels:fact_op",
-        "//tensorflow/core/kernels:array_not_windows",
-        "//tensorflow/core/kernels:math_not_windows",
-        "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_aggregate_ops",
@@ -2527,6 +2528,7 @@ tf_cuda_library(
         "//third_party/eigen3",
     ] + if_static([
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ]),
 )
 
@@ -2676,6 +2678,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",

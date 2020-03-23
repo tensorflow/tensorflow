@@ -5,7 +5,10 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

@@ -34,6 +34,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name);
 // Returns true if operation is eligible to use TensorCores.
 bool IsOpTensorCoreEligible(absl::string_view tf_op_name);
 
+// Returns true if Einsum equation is eligible to use TensorCores.
+bool IsEinsumTensorCoreEligible(absl::string_view equation);
+
 // Less than comparator for Kernel Reports.
 struct KernelReportLessThanComparator {
   bool operator()(const KernelReport& lhs, const KernelReport& rhs);

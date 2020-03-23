@@ -89,11 +89,23 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
       return this;
     }
 
+    /**
+     * Enable or disable the NNAPI CPU Device "nnapi-reference". If unset it will use the NNAPI
+     * default settings.
+     *
+     * <p>Only effective on Android 10 and above.
+     */
+    public Options setUseNnapiCpu(boolean enable) {
+      this.useNnapiCpu = !enable;
+      return this;
+    }
+
     private int executionPreference = EXECUTION_PREFERENCE_UNDEFINED;
     private String acceleratorName = null;
     private String cacheDir = null;
     private String modelToken = null;
     private Integer maxDelegatedPartitions = null;
+    private Boolean useNnapiCpu = null;
   }
 
   public NnApiDelegate(Options options) {
@@ -105,7 +117,11 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
             options.acceleratorName,
             options.cacheDir,
             options.modelToken,
-            options.maxDelegatedPartitions != null ? options.maxDelegatedPartitions : -1);
+            options.maxDelegatedPartitions != null ? options.maxDelegatedPartitions : -1,
+            /*overrideDisallowCpu=*/ options.useNnapiCpu != null,
+            /*disallowCpuValue=*/ options.useNnapiCpu != null
+                ? !options.useNnapiCpu.booleanValue()
+                : false);
   }
 
   public NnApiDelegate() {
@@ -130,13 +146,49 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
     }
   }
 
+  /**
+   * Returns the latest error code returned by an NNAPI call or zero if NO calls to NNAPI failed.
+   * The error code is reset when the delegate is associated with an {@link
+   * #org.tensorflow.lite.Interpreter interpreter}).
+   *
+   * <p>For details on NNAPI error codes see <a
+   * href="https://developer.android.com/ndk/reference/group/neural-networks#resultcode">the NNAPI
+   * documentation</a>.
+   *
+   * @throws IllegalStateException if the method is called after {@link #close() close}.
+   */
+  public int getNnapiErrno() {
+    checkNotClosed();
+    return getNnapiErrno(delegateHandle);
+  }
+
+  /**
+   * Returns true if any NNAPI call failed since this delegate was associated with an {@link
+   * #org.tensorflow.lite.Interpreter interpreter}).
+   *
+   * @throws IllegalStateException if the method is called after {@link #close() close}.
+   */
+  public boolean hasErrors() {
+    return getNnapiErrno(delegateHandle) != 0 /*ANEURALNETWORKS_NO_ERROR*/;
+  }
+
+  private void checkNotClosed() {
+    if (delegateHandle == INVALID_DELEGATE_HANDLE) {
+      throw new IllegalStateException("Should not access delegate after it has been closed.");
+    }
+  }
+
   //
   private static native long createDelegate(
       int preference,
       String deviceName,
       String cacheDir,
       String modelToken,
-      int maxDelegatedPartitions);
+      int maxDelegatedPartitions,
+      boolean overrideDisallowCpu,
+      boolean disallowCpuValue);
 
   private static native void deleteDelegate(long delegateHandle);
+
+  private static native int getNnapiErrno(long delegateHandle);
 }

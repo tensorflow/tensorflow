@@ -830,7 +830,7 @@ class GeneratorDataAdapter(DataAdapter):
     x, y, sample_weight = unpack_x_y_sample_weight(data)
     data = pack_x_y_sample_weight(x, y, sample_weight)
 
-    data = nest._list_to_tuple(data)  # pylint: disable=protected-access
+    data = nest.list_to_tuple(data)
 
     def _convert_dtype(t):
       if (isinstance(t, np.ndarray) and issubclass(t.dtype.type, np.floating)):
@@ -1023,7 +1023,7 @@ def _process_tensorlike(inputs):
     return x
 
   inputs = nest.map_structure(_convert_numpy_and_scipy, inputs)
-  return nest._list_to_tuple(inputs)  # pylint: disable=protected-access
+  return nest.list_to_tuple(inputs)
 
 
 def is_none_or_empty(inputs):
@@ -1102,11 +1102,22 @@ class DataHandler(object):
                max_queue_size=10,
                workers=1,
                use_multiprocessing=False,
-               model=None):
+               model=None,
+               steps_per_execution=1):
 
     self._initial_epoch = initial_epoch
     self._epochs = epochs
     self._insufficient_data = False
+    self._model = model
+    self._steps_per_execution = steps_per_execution
+
+    # This `Variable` is assigned to by `DataHandler` to allow partial
+    # executions. Save its original value here to reset after a partial
+    # execution.
+    if isinstance(steps_per_execution, int):
+      self._steps_per_execution_value = steps_per_execution
+    else:
+      self._steps_per_execution_value = steps_per_execution.numpy().item()
 
     adapter_cls = select_data_adapter(x, y)
     self._adapter = adapter_cls(
@@ -1133,6 +1144,12 @@ class DataHandler(object):
       dataset = strategy.experimental_distribute_dataset(dataset)
     self._dataset = dataset
 
+    self._current_step = 0
+    self._step_increment = self._steps_per_execution_value - 1
+    self._insufficient_data = False
+
+    self._validate_data_handler()
+
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
     data_iterator = iter(self._dataset)
@@ -1156,11 +1173,14 @@ class DataHandler(object):
       yield
       context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      if (self._adapter.get_size() is None and self._inferred_steps is None and
-          self._current_step > 0):
+      context.async_clear_error()
+      if self._inferred_steps is None:
         # The input passed by the user ran out of batches.
         # Now we know the cardinality of the input(dataset or generator).
-        self._inferred_steps = self._current_step
+        if self._model is not None:
+          self._inferred_steps = self._model._train_counter.numpy().item()  # pylint: disable=protected-access
+        else:
+          self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch
@@ -1180,8 +1200,30 @@ class DataHandler(object):
            self._current_step < self._inferred_steps):
       if self._insufficient_data:  # Set by `catch_stop_iteration`.
         break
-      yield self._current_step
-      self._current_step += 1
+
+      can_run_full_execution = (
+          self._steps_per_execution_value == 1 or
+          self._inferred_steps is None or
+          self._inferred_steps - self._current_step >=
+          self._steps_per_execution_value)
+
+      if can_run_full_execution:
+        self._step_increment = self._steps_per_execution_value - 1
+        yield self._current_step
+        self._current_step += self._steps_per_execution_value
+      else:
+        # Last partial execution.
+        steps_remaining = self._inferred_steps - self._current_step
+        self._steps_per_execution.assign(steps_remaining)
+        self._step_increment = steps_remaining - 1
+        yield self._current_step
+        self._current_step += steps_remaining
+        self._steps_per_execution.assign(self._steps_per_execution_value)
+
+  @property
+  def step_increment(self):
+    """The number to increment the step for `on_batch_end` methods."""
+    return self._step_increment
 
   @property
   def inferred_steps(self):
@@ -1197,6 +1239,13 @@ class DataHandler(object):
       The inferred steps per epoch of the created `Dataset`.
     """
     return self._inferred_steps
+
+  @property
+  def should_sync(self):
+    # Catch OutOfRangeError for Datasets of unknown size.
+    # This blocks until the batch has finished executing.
+    # TODO(b/150292341): Allow multiple async steps here.
+    return self._inferred_steps is None
 
   def _infer_steps(self, steps, dataset):
     """Infers steps_per_epoch needed to loop through a dataset."""
@@ -1230,6 +1279,14 @@ class DataHandler(object):
   @property
   def _samples(self):
     return self._adapter.get_samples()
+
+  def _validate_data_handler(self):
+    # TODO(b/152094471): Support this with DistIter.get_next_as_optional.
+    if self._steps_per_execution_value > 1 and self._inferred_steps is None:
+      raise ValueError(
+          "Could not infer the size of the data. With "
+          "`steps_per_execution > 1`, you must specify the number of steps "
+          "to run.")
 
 
 def _make_class_weight_map_fn(class_weight):

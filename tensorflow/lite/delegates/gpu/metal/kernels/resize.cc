@@ -54,7 +54,7 @@ std::string GetResizeBilinearCode(bool half_pixel_centers) {
       int4 st;
       st.xy = max(itex_coord_floor, int2(0, 0));
       st.zw = min(itex_coord_floor + int2(1, 1), borders);
-      const float2 t = tex_coord - tex_coord_floor; //interpolating factors
+      const float2 t = tex_coord - tex_coord_floor; // interpolating factors
       const int src_index0 = (gid.z * size.y + st.y) * size.x + st.x;
       const int src_index1 = (gid.z * size.y + st.y) * size.x + st.z;
       const int src_index2 = (gid.z * size.y + st.w) * size.x + st.x;

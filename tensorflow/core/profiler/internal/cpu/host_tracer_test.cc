@@ -36,7 +36,7 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-NodeExecStats MakeNodeStats(const string& name, int32 thread_id,
+NodeExecStats MakeNodeStats(const string& name, uint32 thread_id,
                             const string& label = "") {
   NodeExecStats ns;
   ns.set_node_name(name);
@@ -74,7 +74,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
-  int32 thread_id = Env::Default()->GetCurrentThreadId();
+  uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
   auto tracer = CreateHostTracer(ProfilerOptions());
 
@@ -106,7 +106,7 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  int32 thread_id;
+  uint32 thread_id;
   string thread_name = "MyThreadName";
   XSpace space;
 

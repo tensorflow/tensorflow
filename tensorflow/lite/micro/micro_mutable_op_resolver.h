@@ -61,37 +61,45 @@ class MicroOpResolver : public OpResolver {
   }
 
   void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration,
-                  int min_version = 1, int max_version = 1) {
-    for (int version = min_version; version <= max_version; ++version) {
-      if (registrations_len_ >= tOpCount) {
-        // TODO(b/147748244) - Add error reporting hooks so we can report this!
-        return;
-      }
-      TfLiteRegistration* new_registration =
-          &registrations_[registrations_len_];
-      registrations_len_ += 1;
+                  int version = 1) {
+    if (registrations_len_ >= tOpCount) {
+      // TODO(b/147748244) - Add error reporting hooks so we can report this!
+      return;
+    }
+    TfLiteRegistration* new_registration = &registrations_[registrations_len_];
+    registrations_len_ += 1;
 
-      *new_registration = *registration;
-      new_registration->builtin_code = op;
-      new_registration->version = version;
+    *new_registration = *registration;
+    new_registration->builtin_code = op;
+    new_registration->version = version;
+  }
+
+  void AddBuiltin(tflite::BuiltinOperator op, TfLiteRegistration* registration,
+                  int min_version, int max_version) {
+    for (int version = min_version; version <= max_version; ++version) {
+      AddBuiltin(op, registration, version);
     }
   }
 
   void AddCustom(const char* name, TfLiteRegistration* registration,
-                 int min_version = 1, int max_version = 1) {
-    for (int version = min_version; version <= max_version; ++version) {
-      if (registrations_len_ >= tOpCount) {
-        // TODO(b/147748244) - Add error reporting hooks so we can report this!
-        return;
-      }
-      TfLiteRegistration* new_registration =
-          &registrations_[registrations_len_];
-      registrations_len_ += 1;
+                 int version = 1) {
+    if (registrations_len_ >= tOpCount) {
+      // TODO(b/147748244) - Add error reporting hooks so we can report this!
+      return;
+    }
+    TfLiteRegistration* new_registration = &registrations_[registrations_len_];
+    registrations_len_ += 1;
 
-      *new_registration = *registration;
-      new_registration->builtin_code = BuiltinOperator_CUSTOM;
-      new_registration->custom_name = name;
-      new_registration->version = version;
+    *new_registration = *registration;
+    new_registration->builtin_code = BuiltinOperator_CUSTOM;
+    new_registration->custom_name = name;
+    new_registration->version = version;
+  }
+
+  void AddCustom(const char* name, TfLiteRegistration* registration,
+                 int min_version, int max_version) {
+    for (int version = min_version; version <= max_version; ++version) {
+      AddCustom(name, registration, version);
     }
   }
 

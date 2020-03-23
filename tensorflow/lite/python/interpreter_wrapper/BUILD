@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -66,11 +65,13 @@ pybind_extension(
     name = "_pywrap_tensorflow_interpreter_wrapper",
     srcs = [
         "interpreter_wrapper_pybind11.cc",
-    ] + tf_binary_additional_srcs(),
+    ],
     hdrs = ["interpreter_wrapper.h"],
+    link_in_framework = True,
     module_name = "_pywrap_tensorflow_interpreter_wrapper",
     deps = [
         ":interpreter_wrapper_lib",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",

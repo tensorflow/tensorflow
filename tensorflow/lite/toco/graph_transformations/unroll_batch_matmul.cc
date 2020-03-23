@@ -177,7 +177,7 @@ TransposeOperator* TransposeInput(const string& input, Model* model) {
 
   CHECK_EQ(input_array_a.shape().dims(dims_a - 1),
            input_array_b.shape().dims(dims_b - 2))
-      << "Input dimensions must be compatible for multipication. shape a = ["
+      << "Input dimensions must be compatible for multiplication. shape a = ["
       << absl::StrJoin(input_array_a.shape().dims(), ", ") << "], shape b = ["
       << absl::StrJoin(input_array_b.shape().dims(), ", ") << "]";
 

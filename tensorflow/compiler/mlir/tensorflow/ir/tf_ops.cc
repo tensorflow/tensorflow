@@ -580,16 +580,16 @@ namespace {
 struct AssertWithTrue : public OpRewritePattern<AssertOp> {
   using OpRewritePattern<AssertOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(AssertOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AssertOp op,
+                                PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
       if (cst.getValue<BoolAttr>({}).getValue()) {
         rewriter.eraseOp(op);
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace
@@ -1100,7 +1100,55 @@ StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
 }
 
 //===----------------------------------------------------------------------===//
-// Conv2dBackpropInputOp
+// Conv2dBackpropFilterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
+  StringRef src_data_format = this->data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  // Permute filter sizes operand.
+  OpBuilder builder(getOperation());
+  auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
+      getLoc(), filter_sizes(), StringAttr::get(src_data_format, getContext()),
+      StringAttr::get(data_format, getContext()));
+  setOperand(1, filter_sizes_permuted);
+
+  return success();
+}
+
+StringRef Conv2DBackpropFilterOp::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Input must be a tensor.
+  auto input_ty = input().getType().dyn_cast<TensorType>();
+  if (!input_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = input_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // Otherwise always use "NCHW".
+  return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DBackpropInputOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(Conv2DBackpropInputOp op) {
@@ -1118,7 +1166,84 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
   }
 
   return success();
-}  // namespace TF
+}
+
+LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
+  StringRef src_data_format = this->data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  // Permute input sizes operand.
+  OpBuilder builder(getOperation());
+  auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
+      getLoc(), input_sizes(), StringAttr::get(src_data_format, getContext()),
+      StringAttr::get(data_format, getContext()));
+  setOperand(0, input_sizes_permuted);
+
+  return success();
+}
+
+StringRef Conv2DBackpropInputOp::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Filter must be a tensor.
+  auto filter_ty = filter().getType().dyn_cast<TensorType>();
+  if (!filter_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = filter_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // Otherwise always use "NCHW".
+  return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
+// DataFormatVecPermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DataFormatVecPermuteOp op) {
+  auto input_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return success();
+
+  int rank = input_ty.getRank();
+  if (rank != 1 && rank != 2)
+    return op.emitOpError("requires input of rank 1 or 2");
+
+  if (rank == 1) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError("requires 1D input of size 4");
+  }
+
+  if (rank == 2) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError(
+          "requires first dimensions of 2D input to be of size 4");
+
+    int64_t dim1 = input_ty.getDimSize(1);
+    if (dim1 != ShapedType::kDynamicSize && dim1 != 2)
+      return op.emitOpError(
+          "requires second dimensions of 2D input to be of size 2");
+  }
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // DivOp
@@ -3085,15 +3210,15 @@ namespace {
 // function and can be removed.
 class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
   using OpRewritePattern<ToBoolOp>::OpRewritePattern;
-  PatternMatchResult matchAndRewrite(ToBoolOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ToBoolOp op,
+                                PatternRewriter &rewriter) const override {
     if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
       if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
         rewriter.replaceOp(op, op.getOperand());
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace

@@ -164,7 +164,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
@@ -414,6 +413,9 @@ cuda_py_test(
     name = "multi_worker_continuous_run_test",
     srcs = [
         "multi_worker_continuous_run_test.py",
+    ],
+    tags = [
+        "notsan",  # TODO(b/151841995)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -933,11 +935,17 @@ py_library(
 
 distribute_py_test(
     name = "values_test",
+    size = "medium",
     srcs = ["values_test.py"],
     main = "values_test.py",
+    shard_count = 5,
     tags = [
+<<<<<<< HEAD
         "multi_and_single_gpu",
         "no_rocm",
+=======
+        # "multi_and_single_gpu",  # b/151865826
+>>>>>>> google_upstream/master
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.

@@ -166,7 +166,7 @@ class PyTpuBuffer {
 
   // Supports nested tuple creation.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> MakeTuple(
-      const std::vector<PyTpuBuffer*> buffers,
+      absl::Span<PyTpuBuffer* const> buffers,
       std::shared_ptr<PyTpuClient> client, std::shared_ptr<Device> device);
 
   PyTpuBuffer() = delete;
@@ -308,15 +308,17 @@ class PyTpuExecutable {
   // TODO(power): Both Execute and ExecutePerOnLocalDevices block and wait
   // inside for computation to finish. Coordinate with JAX code change to see if
   // we can make both Execute and ExecutePerReplica non-blocking.
-  StatusOr<std::unique_ptr<PyTpuBuffer>> Execute(
-      absl::Span<PyTpuBuffer* const> argument_handles);
+  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> Execute(
+      absl::Span<PyTpuBuffer* const> argument_handles, bool tuple_arguments);
 
   // Execute on local devices. Takes a sequence of argument lists (one argument
   // list per local device) and returns a tuple of results (one result per local
   // device). The number of argument lists must be equal to the local device
   // count.
-  StatusOr<std::vector<std::unique_ptr<PyTpuBuffer>>> ExecuteOnLocalDevices(
-      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles);
+  StatusOr<std::vector<std::vector<std::unique_ptr<PyTpuBuffer>>>>
+  ExecuteOnLocalDevices(
+      absl::Span<const std::vector<PyTpuBuffer*>> argument_handles,
+      bool tuple_arguments);
 
   void Delete() { executables_.clear(); }
 

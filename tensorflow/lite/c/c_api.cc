@@ -123,6 +123,8 @@ TfLiteInterpreter* TfLiteInterpreterCreate(
   }
 
   if (optional_options) {
+    interpreter->UseNNAPI(optional_options->use_nnapi);
+
     if (optional_options->num_threads !=
         TfLiteInterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);

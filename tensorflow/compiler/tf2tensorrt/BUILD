@@ -560,6 +560,9 @@ pybind_extension(
     module_name = "_pywrap_py_utils",
     deps = [
         ":py_utils",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
         "@pybind11",
     ],
 )

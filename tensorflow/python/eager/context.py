@@ -139,7 +139,8 @@ class FunctionCallOptions(object):
   @config_proto_serialized.setter
   def config_proto_serialized(self, config):
     if isinstance(config, config_pb2.ConfigProto):
-      self._config_proto_serialized = config.SerializeToString()
+      self._config_proto_serialized = config.SerializeToString(
+          deterministic=True)
     elif isinstance(config, str):
       self._config_proto_serialized = config
     elif config is None:
@@ -430,6 +431,7 @@ class Context(object):
     self._soft_device_placement = None
     self._log_device_placement = None
     self._enable_mlir_bridge = None
+    self._enable_mlir_graph_optimization = None
     self._optimizer_experimental_options = {}
 
     _python_eager_context_create_counter.get_cell().increase_by(1)
@@ -593,10 +595,6 @@ class Context(object):
 
     if self._context_handle:
       server_def_str = server_def.SerializeToString()
-      # Current executor might have pending nodes that involves updated remote
-      # devices. Wait for them to finish before updating.
-      self.executor.wait()
-      self.executor.clear_error()
       pywrap_tfe.TFE_ContextUpdateServerDef(self._context_handle,
                                             keep_alive_secs, server_def_str)
       self._initialize_logical_devices()
@@ -669,13 +667,19 @@ class Context(object):
     if not server_def:
       raise ValueError("server_def is None.")
 
+    self._collective_ops_server_def = server_def
+
     # TODO(b/129298253): Allow creating datasets/tensors before enabling
     # collective ops.
     if self._context_handle is not None:
       logging.warning("Enabling collective ops after program startup may cause "
                       "error when accessing previously created tensors.")
-
-    self._collective_ops_server_def = server_def
+      with self._initialize_lock:
+        assert self._initialized
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tfe.TFE_EnableCollectiveOps(self._context_handle, server_def_str)
+        self._initialize_logical_devices()
+        self._clear_caches()
 
   def configure_collective_ops(
       self,
@@ -902,6 +906,9 @@ class Context(object):
 
     if self._enable_mlir_bridge is not None:
       config.experimental.enable_mlir_bridge = self._enable_mlir_bridge
+    if self._enable_mlir_graph_optimization is not None:
+      config.experimental.enable_mlir_graph_optimization = (
+          self._enable_mlir_graph_optimization)
 
     def rewriter_toggle(option):
       toggle = self._optimizer_experimental_options.get(option, None)
@@ -1370,10 +1377,18 @@ class Context(object):
   def enable_mlir_bridge(self):
     return self._enable_mlir_bridge
 
+  @property
+  def enable_mlir_graph_optimization(self):
+    return self._enable_mlir_graph_optimization
+
   @enable_mlir_bridge.setter
   def enable_mlir_bridge(self, enabled):
     self._enable_mlir_bridge = enabled
+    self._thread_local_data.function_call_options = None
 
+  @enable_mlir_graph_optimization.setter
+  def enable_mlir_graph_optimization(self, enabled):
+    self._enable_mlir_graph_optimization = enabled
     self._thread_local_data.function_call_options = None
 
   @property

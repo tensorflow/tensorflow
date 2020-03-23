@@ -149,13 +149,15 @@ bool IsScalarInputSupported(int builtin_code) {
     case kTfLiteBuiltinGreaterEqual:
     case kTfLiteBuiltinLess:
     case kTfLiteBuiltinLessEqual:
+    case kTfLiteBuiltinPow:
       return true;
     default:
       return false;
   }
 }
 
-// Check if the operation requires explict conversion from int8 to uint8 values.
+// Check if the operation requires explicit conversion from int8 to uint8
+// values.
 bool NeedInt8Conversion(const TfLiteContext* context, int builtin_code,
                         const TfLiteNode* node) {
   const int input_id = node->inputs->data[0];
@@ -1757,7 +1759,7 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinReluN1To1:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinLogistic: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
     } break;
     case kTfLiteBuiltinTanh: {

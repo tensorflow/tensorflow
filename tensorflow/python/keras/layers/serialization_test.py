@@ -22,7 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.layers import normalization as batchnorm_v1
 from tensorflow.python.keras.layers import normalization_v2 as batchnorm_v2
 from tensorflow.python.keras.layers import recurrent as rnn_v1
@@ -43,7 +43,7 @@ class SerializableInt(int):
     return cls(**config)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class LayerSerializationTest(parameterized.TestCase, test.TestCase):
 
   def test_serialize_deserialize(self):

@@ -288,16 +288,16 @@ def HLO_AddOp : HLO_BinaryElementwiseOp<"add",
 def HLO_Atan2Op : HLO_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
 
-def HLO_DivOp : HLO_BinaryElementwiseOp<"div",
+def HLO_DivOp : HLO_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
 
-def HLO_MaxOp : HLO_BinaryElementwiseOp<"max",
+def HLO_MaxOp : HLO_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp;
 
-def HLO_MinOp : HLO_BinaryElementwiseOp<"min",
+def HLO_MinOp : HLO_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp;
 
-def HLO_MulOp : HLO_BinaryElementwiseOp<"mul",
+def HLO_MulOp : HLO_BinaryElementwiseOp<"multiply",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
 def HLO_PowOp : HLO_BinaryElementwiseOp<"pow",
@@ -315,7 +315,7 @@ def HLO_ShiftRightArithmeticOp : HLO_BinaryElementwiseOp<"shift_right_arithmetic
 def HLO_ShiftRightLogicalOp : HLO_BinaryElementwiseOp<"shift_right_logical",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
 
-def HLO_SubOp : HLO_BinaryElementwiseOp<"sub",
+def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
 //===----------------------------------------------------------------------===//
@@ -793,15 +793,11 @@ def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
     shaped original, but is being phased as a separate op in order to support
     compatibility with lowerings and translations that precede dynamic
     shapes.
-
-    Note that the `broadcast_dimensions` attribute is optional and if omitted,
-    it is assumed to be an ordered, right-aligned mapping from input to
-    output dimensions.
   }];
   let arguments = (ins
     HLO_Tensor:$operand,
     HLO_DimensionTensor:$output_dimensions,
-    OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
+    BroadcastDimAttr:$broadcast_dimensions
   );
 
   let results = (outs HLO_Tensor);

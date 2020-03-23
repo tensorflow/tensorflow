@@ -18,7 +18,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_IR_TFL_OPS_H_
 
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
 #include "mlir/Dialect/Traits.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -26,10 +26,10 @@ limitations under the License.
 #include "mlir/IR/OpImplementation.h"  // TF:llvm-project
 #include "mlir/IR/StandardTypes.h"  // TF:llvm-project
 #include "mlir/Interfaces/DerivedAttributeOpInterface.h"  // TF:llvm-project
+#include "mlir/Interfaces/LoopLikeInterface.h"  // TF:llvm-project
 #include "mlir/Interfaces/SideEffects.h"  // TF:llvm-project
 #include "mlir/Support/Functional.h"  // TF:llvm-project
 #include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/LoopLikeInterface.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -49,6 +49,7 @@ class TensorFlowLiteDialect : public Dialect {
                                  Location loc) override;
 };
 
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/estimator.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"

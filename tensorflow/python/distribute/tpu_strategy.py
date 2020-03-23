@@ -53,27 +53,10 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.tpu import device_assignment as device_assignment_lib  # pylint: disable=unused-import
 from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
-
-
-def get_tpu_system_metadata(tpu_cluster_resolver):
-  """Retrieves TPU system metadata given a TPUClusterResolver."""
-  master = tpu_cluster_resolver.master()
-
-  # pylint: disable=protected-access
-  cluster_spec = tpu_cluster_resolver.cluster_spec()
-  cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
-  tpu_system_metadata = (
-      tpu_system_metadata_lib._query_tpu_system_metadata(
-          master,
-          cluster_def=cluster_def,
-          query_topology=False))
-
-  return tpu_system_metadata
 
 
 @contextlib.contextmanager
@@ -287,7 +270,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._tpu_function_cache = weakref.WeakKeyDictionary()
     self._tpu_cluster_resolver = tpu_cluster_resolver
-    self._tpu_metadata = get_tpu_system_metadata(self._tpu_cluster_resolver)
+    self._tpu_metadata = self._tpu_cluster_resolver.get_tpu_system_metadata()
     self._device_assignment = device_assignment
 
     tpu_devices_flat = [

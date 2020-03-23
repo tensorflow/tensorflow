@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_performance_options.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
+#include "tensorflow/lite/tools/benchmark/delegate_provider.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
 namespace {
@@ -70,28 +71,23 @@ BenchmarkParams CreateParams(int32_t num_runs, float min_secs, float max_secs,
                   BenchmarkParam::Create<std::string>(""));
   params.AddParam("input_layer_value_files",
                   BenchmarkParam::Create<std::string>(""));
-  params.AddParam("use_hexagon", BenchmarkParam::Create<bool>(false));
-  params.AddParam("use_xnnpack", BenchmarkParam::Create<bool>(false));
-  params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
   params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   params.AddParam("require_full_delegation",
                   BenchmarkParam::Create<bool>(false));
   params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   params.AddParam("use_legacy_nnapi", BenchmarkParam::Create<bool>(false));
-  params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
   params.AddParam("enable_op_profiling", BenchmarkParam::Create<bool>(false));
   params.AddParam("max_profiling_buffer_entries",
                   BenchmarkParam::Create<int32_t>(1024));
-  params.AddParam("nnapi_accelerator_name",
-                  BenchmarkParam::Create<std::string>(""));
-  params.AddParam("nnapi_execution_preference",
-                  BenchmarkParam::Create<std::string>(""));
-  params.AddParam("disable_nnapi_cpu", BenchmarkParam::Create<bool>(false));
   params.AddParam("max_delegated_partitions", BenchmarkParam::Create<int>(0));
   params.AddParam("profiling_output_csv_file",
                   BenchmarkParam::Create<std::string>(""));
   params.AddParam("enable_platform_tracing",
                   BenchmarkParam::Create<bool>(false));
+
+  for (const auto& delegate_provider : GetRegisteredDelegateProviders()) {
+    delegate_provider->AddParams(&params);
+  }
   return params;
 }
 
@@ -325,10 +321,10 @@ TEST(BenchmarkTest, DoesntCrashWithExplicitInputValueFilesStringModel) {
 
 class MaxDurationWorksTestListener : public BenchmarkListener {
   void OnBenchmarkEnd(const BenchmarkResults& results) override {
-    const int64_t num_actul_runs = results.inference_time_us().count();
-    TFLITE_LOG(INFO) << "number of actual runs: " << num_actul_runs;
-    EXPECT_GE(num_actul_runs, 1);
-    EXPECT_LT(num_actul_runs, 100000000);
+    const int64_t num_actual_runs = results.inference_time_us().count();
+    TFLITE_LOG(INFO) << "number of actual runs: " << num_actual_runs;
+    EXPECT_GE(num_actual_runs, 1);
+    EXPECT_LT(num_actual_runs, 100000000);
   }
 };
 

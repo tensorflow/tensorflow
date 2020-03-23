@@ -41,6 +41,7 @@ TEST(CApiExperimentalTest, Smoke) {
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
                                        GetDummyRegistration(), 1, 1);
+  TfLiteInterpreterOptionsSetUseNNAPI(options, true);
 
   TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);

@@ -70,7 +70,7 @@ using reference_ops::Broadcast4DSlowLessEqualWithScaling;
 using reference_ops::Broadcast4DSlowLessWithScaling;
 using reference_ops::BroadcastAdd4DSlow;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -875,21 +875,6 @@ inline void ShuffledFullyConnected(
 
 #ifdef USE_NEON
 
-inline float32x4_t DivideSumForMeanImpl(
-    const float32x4_t sum, const float32x4_t num_elements_reverse,
-    const bool ordinary_mean, const float32x4_t scale_dup,
-    const float32x4_t zero_point_with_bias_dup) {
-  const float32x4_t val = vmulq_f32(sum, num_elements_reverse);
-  if (!ordinary_mean) {
-#ifdef ARM_FEATURE_FMA
-    return vfmaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#else
-    return vmlaq_f32(zero_point_with_bias_dup, scale_dup, val);
-#endif  // ARM_FEATURE_FMA
-  }
-  return val;
-}
-
 inline int32x4_t RoundToNearest(const float32x4_t input) {
 #if defined(__aarch64__) || defined(__SSSE3__)
   // Note: vcvtnq_s32_f32 is not available in ARMv7
@@ -1123,7 +1108,7 @@ inline void Mean(const tflite::MeanParams& op_params,
     MeanImpl(op_params, input_shape, input_data, multiplier, shift, bias,
              output_shape, output_data, 0, output_depth);
   } else {
-    // Instead parrallel for batch, we loop for the output_depth since batch
+    // Instead parallel for batch, we loop for the output_depth since batch
     // is typical 1.
     std::vector<MeanWorkerTask> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.
@@ -2959,8 +2944,8 @@ void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
     auto scalar = input2_data[0];
     output_map.array() = input1_map.array() - scalar;
   } else {
-    BroadcastSub4DSlow(params, input1_shape, input1_data, input2_shape,
-                       input2_data, output_shape, output_data);
+    BroadcastSubSlow(params, input1_shape, input1_data, input2_shape,
+                     input2_data, output_shape, output_data);
   }
 }
 
@@ -5714,7 +5699,7 @@ inline void Quantize(const int32_t* multiplier, const int32_t* shift,
   //          ....
   //
   // In order to minimize the reload of the multipliers & shifts, once we load
-  // the multipliers & shifts, we load & quantize the raw accumualtrs for every
+  // the multipliers & shifts, we load & quantize the raw accumulators for every
   // row.
 #ifdef USE_NEON
   const int32x4_t output_offset_vec = vdupq_n_s32(output_zp);
@@ -6369,7 +6354,7 @@ inline void HardSwish(const HardSwishParams& params,
   // Unfortunately, the Intel arm_neon_sse.h implementation of vqshl* is
   // buggy in the case of zero shift amounts, see b/137199585. That is why
   // this NEON code path is restricted to true ARM NEON, excluding
-  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implemenation of saturating
+  // arm_neon_sse.h. Anyway, the arm_neon_sse.h implementation of saturating
   // left shifts is slow scalar code, so there may not be much benefit in
   // running that over just plain reference code.
   //
@@ -7039,7 +7024,7 @@ inline void ClampWithRangeAndStore(int8_t* output_dst, int8x16_t input_val,
 
 #endif  // GEMMLOWP_NEON
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const uint8* input_data,
                                const RuntimeShape& output_shape,
@@ -7146,7 +7131,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Tanh16bitPercision(const TanhParams& params,
+inline void Tanh16bitPrecision(const TanhParams& params,
                                const RuntimeShape& input_shape,
                                const int8* input_data,
                                const RuntimeShape& output_shape,
@@ -7239,7 +7224,7 @@ inline void Tanh16bitPercision(const TanhParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const uint8* input_data,
                                    const RuntimeShape& output_shape,
@@ -7331,7 +7316,7 @@ inline void Logistic16bitPercision(const LogisticParams& params,
   }
 }
 
-inline void Logistic16bitPercision(const LogisticParams& params,
+inline void Logistic16bitPrecision(const LogisticParams& params,
                                    const RuntimeShape& input_shape,
                                    const int8* input_data,
                                    const RuntimeShape& output_shape,

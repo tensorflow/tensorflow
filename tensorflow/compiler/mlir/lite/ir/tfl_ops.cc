@@ -804,10 +804,10 @@ struct RemoveAdjacentReshape : public RewritePattern {
   RemoveAdjacentReshape(MLIRContext *context)
       : RewritePattern(ReshapeOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     auto thisOp = cast<ReshapeOp>(op);
     auto prevOp = thisOp.getOperand(0).getDefiningOp();
-    return isa_and_nonnull<ReshapeOp>(prevOp) ? matchSuccess() : matchFailure();
+    return isa_and_nonnull<ReshapeOp>(prevOp) ? success() : failure();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -884,28 +884,27 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
   explicit RemoveRedundantUnpackPack(MLIRContext *context)
       : RewritePattern(PackOp::getOperationName(), 2, context) {}
 
-  PatternMatchResult matchAndRewrite(Operation *op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
     TFL::PackOp pack_op = cast<TFL::PackOp>(op);
     Operation *first_input = pack_op.getOperand(0).getDefiningOp();
-    if (!first_input) return matchFailure();
+    if (!first_input) return failure();
     auto input_unpack_op = dyn_cast_or_null<TFL::UnpackOp>(first_input);
-    if (!input_unpack_op) return matchFailure();
+    if (!input_unpack_op) return failure();
 
     // The unpack & pack should have the same axis & num inputs/outputs.
     if (pack_op.axis() != input_unpack_op.axis() ||
         pack_op.values_count() != input_unpack_op.num())
-      return matchFailure();
+      return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults())
-      return matchFailure();
+    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
       Value unpack_output = std::get<1>(input_output);
       // Make sure the ordering is the same for the pack op & unpack op.
-      if (pack_input != unpack_output) return matchFailure();
+      if (pack_input != unpack_output) return failure();
     }
 
     // Replace the pack's output to the unpack's input.
@@ -913,7 +912,7 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
     // At this point, we don't manually remove the redundant pack op & unpack op
     // (we cannot actually), but trust the PatterRewriter to garbage collect
     // these two ops.
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -1050,17 +1049,17 @@ struct DropFakeQuant : public RewritePattern {
   explicit DropFakeQuant(MLIRContext *context)
       : RewritePattern(FakeQuantOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Operation *op) const override {
+  LogicalResult match(Operation *op) const override {
     // We only match the op with valid "minmax" attribute.
-    if (!HasValidMinMaxAttribute(op)) return matchFailure();
+    if (!HasValidMinMaxAttribute(op)) return failure();
 
     // If all the users of this op have valid "minmax" attributes, it is matched
     // and can be removed.
     auto fakeQuantOp = cast<FakeQuantOp>(op);
     for (auto *operand : fakeQuantOp.getResult().getUsers())
-      if (!HasValidMinMaxAttribute(operand)) return matchFailure();
+      if (!HasValidMinMaxAttribute(operand)) return failure();
 
-    return matchSuccess();
+    return success();
   }
 
   void rewrite(Operation *op, PatternRewriter &rewriter) const override {
@@ -1789,8 +1788,8 @@ struct WhileResultOperandsMatchAndImplicitCapture
     : public OpRewritePattern<WhileOp> {
   using OpRewritePattern<WhileOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(WhileOp while_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(WhileOp while_op,
+                                PatternRewriter &rewriter) const override {
     // Replace values simply passed through the body with extern values. The
     // block arguments of body and while match and so the corresponding cond
     // argument can be easily found.
@@ -1843,7 +1842,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     }
 
     // Done if no values removed from blocks and operands & results match.
-    if (unchanged) return matchFailure();
+    if (unchanged) return failure();
 
     // Replace with new While with matching operands and results.
     Operation *op = while_op.getOperation();
@@ -1866,7 +1865,7 @@ struct WhileResultOperandsMatchAndImplicitCapture
     rewriter.replaceOpWithNewOp<YieldOp>(new_body_block.getTerminator(),
                                          new_body_yield);
 
-    return matchSuccess();
+    return success();
   }
 };
 

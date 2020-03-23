@@ -66,36 +66,6 @@ string SanitizeFunctionName(llvm::StringRef name) {
   return output;
 }
 
-StatusOr<DenseElementsAttr> CreateDenseAttrFromLiteral(ShapedType type,
-                                                       const Literal& literal) {
-#define DENSE_ELEMENT_ATTR_BUILDER(xla_type, cpp_type)                 \
-  case xla_type: {                                                     \
-    auto data_span = literal.data<cpp_type>();                         \
-    return DenseElementsAttr::get(                                     \
-        type, llvm::makeArrayRef(data_span.data(), data_span.size())); \
-  }
-
-  switch (literal.shape().element_type()) {
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::PRED, bool)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::F32, float)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::F64, double)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S8, int8)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S16, int16)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S32, int32)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::S64, int64)
-    // TODO(b/130356985): Update once MLIR supports unsigned integers.
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U8, uint8)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U16, uint16)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U32, uint32)
-    DENSE_ELEMENT_ATTR_BUILDER(PrimitiveType::U64, uint64)
-    default:
-      return tensorflow::errors::Internal(
-          absl::StrCat("Unsupported type: ",
-                       PrimitiveType_Name(literal.shape().element_type())));
-  }
-#undef DENSE_ELEMENT_ATTR_BUILDER
-}
-
 // Returns whether the instruction is a default dot operation.
 bool DotIsDefault(const HloInstruction* instruction) {
   auto dnums = instruction->dot_dimension_numbers();
@@ -209,8 +179,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       return nullptr;
     }
     case HloOpcode::kConstant: {
-      auto attr = CreateDenseAttrFromLiteral(
-          result_type.cast<mlir::TensorType>(), instruction->literal());
+      const Literal& literal = instruction->literal();
+      auto attr = CreateDenseElementsAttrFromLiteral(literal, *builder_);
       if (!attr.ok()) return attr.status();
       mlir::Operation* new_operation =
           func_builder->create<mlir::ConstantOp>(loc, attr.ValueOrDie());

@@ -365,7 +365,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations.
+      dataset to evaluate different optimizations. Note that this is an optional
+      attribute but it is necessary if INT8 is the only support builtin ops in
+      target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
     experimental_new_quantizer: Experimental flag, subject to change.
@@ -426,7 +428,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
         message = "This function takes in a list of ConcreteFunction."
         if isinstance(func, _def_function.Function):
           message += (" To get the ConcreteFunction from a Function,"
-                      " call from_concrete_function.")
+                      " call get_concrete_function.")
         raise ValueError(message)
     return cls(funcs)
 
@@ -449,6 +451,21 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Raises:
       Invalid signature keys.
     """
+    # When run without eager enabled, this will return the legacy
+    # TFLiteConverter.
+    if not context.executing_eagerly():
+      signature_key = None
+      if signature_keys:
+        if len(signature_keys) != 1:
+          raise ValueError("Only support a single signature key.")
+        else:
+          signature_key = signature_keys[0]
+      logging.warning("Invoking the TF1 implementation of TFLiteConverter "
+                      "because eager is disabled. Consider enabling eager.")
+      return TFLiteConverter.from_saved_model(saved_model_dir,
+                                              signature_key=signature_key,
+                                              tag_set=tags)
+
     # Ensures any graphs created in Eager mode are able to run. This is required
     # in order to create a tf.estimator.Exporter that exports a TFLite model.
     with context.eager_mode():

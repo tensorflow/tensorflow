@@ -18,6 +18,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
+#include "mlir/IR/Dialect.h"  // TF:llvm-project
 #include "mlir/IR/Function.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/OpDefinition.h"  // TF:llvm-project
@@ -26,6 +27,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Pass/PassManager.h"  // TF:llvm-project
 #include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
@@ -33,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -67,6 +71,7 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const xla::CustomShapeRepresentationFn shape_representation_fn,
     std::vector<xla::Shape>* xla_input_shapes) {
   xla_input_shapes->clear();
@@ -88,8 +93,12 @@ Status GetXlaInputShapes(
     TF_ASSIGN_OR_RETURN(xla_shape,
                         shape_representation_fn(arg_shapes[i], dtype));
   }
-  xla_input_shapes->push_back(
-      xla::ShapeUtil::MakeTupleShape(individual_arg_shapes));
+  if (use_tuple_args) {
+    xla_input_shapes->push_back(
+        xla::ShapeUtil::MakeTupleShape(individual_arg_shapes));
+  } else {
+    *xla_input_shapes = individual_arg_shapes;
+  }
   return Status::OK();
 }
 
@@ -203,7 +212,19 @@ Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
   return Status::OK();
 }
 
-}  //  namespace
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
+}  // namespace
+//  namespace
 
 Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
@@ -257,8 +278,10 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
+  RegisterDialects();
   mlir::MLIRContext mlir_context;
   mlir::OwningModuleRef mlir_module;
 
@@ -278,7 +301,7 @@ Status CompileSerializedMlirToXlaHlo(
   // Convert MLIR module to XLA HLO proto contained in XlaComputation.
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
-      module_op, compilation_result->computation.get(), /*use_tuple_args=*/true,
+      module_op, compilation_result->computation.get(), use_tuple_args,
       /*return_tuple=*/true));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
@@ -291,7 +314,7 @@ Status CompileSerializedMlirToXlaHlo(
       };
 
   // Compute all input shapes.
-  TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes,
+  TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes, use_tuple_args,
                                        shape_representation_fn_no_fast_memory,
                                        &compilation_result->xla_input_shapes));
 

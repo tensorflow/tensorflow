@@ -94,6 +94,5 @@ cc_library(
         ":device",
         ":include_hdrs",
         ":src_hdrs",
-        "@local_config_cuda//cuda:cudart_static",
     ],
 )

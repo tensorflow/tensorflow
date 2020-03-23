@@ -441,9 +441,14 @@ class BaseResourceVariable(variables.VariableV1):
 
   def __repr__(self):
     if context.executing_eagerly() and not self._in_graph_mode:
+      # If we cannot read the value for any reason, still produce a __repr__.
+      try:
+        value_text = ops.numpy_text(self.read_value(), is_repr=True)
+      except:  # pylint: disable=bare-except
+        value_text = "<unavailable>"
+
       return "<tf.Variable '%s' shape=%s dtype=%s, numpy=%s>" % (
-          self.name, self.get_shape(), self.dtype.name,
-          ops.numpy_text(self.read_value(), is_repr=True))
+          self.name, self.get_shape(), self.dtype.name, value_text)
     else:
       return "<tf.Variable '%s' shape=%s dtype=%s>" % (
           self.name, self.get_shape(), self.dtype.name)
@@ -1350,7 +1355,7 @@ class ResourceVariable(BaseResourceVariable):
         which is the initial value for the Variable. Can also be a
         callable with no argument that returns the initial value when called.
         (Note that initializer functions from init_ops.py must first be bound
-         to a shape before being used here.)
+        to a shape before being used here.)
       trainable: If `True`, the default, also adds the variable to the graph
         collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
         the default list of variables to use by the `Optimizer` classes.

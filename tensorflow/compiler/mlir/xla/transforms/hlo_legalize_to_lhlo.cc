@@ -123,7 +123,7 @@ class HloToLhloOpConverter : public ConversionPattern {
   explicit HloToLhloOpConverter(MLIRContext* context)
       : ConversionPattern(HloOpTy::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     const auto& original_results = op->getResults();
@@ -132,7 +132,7 @@ class HloToLhloOpConverter : public ConversionPattern {
       RankedTensorType resultType =
           result.value().getType().dyn_cast<RankedTensorType>();
       if (!resultType) {
-        return matchFailure();
+        return failure();
       }
       if (resultType.hasStaticShape()) {
         buffer_args.push_back(
@@ -140,10 +140,10 @@ class HloToLhloOpConverter : public ConversionPattern {
       } else {
         SmallVector<Value, 1> results_shape;
         auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
-        if (!shape_type_op) return matchFailure();
+        if (!shape_type_op) return failure();
         if (failed(
                 shape_type_op.reifyReturnTypeShapes(rewriter, results_shape)))
-          return matchFailure();
+          return failure();
         buffer_args.push_back(InsertDynamicAllocAndDealloc(
             op->getLoc(), result.value(), results_shape.front(), &rewriter));
       }
@@ -151,7 +151,7 @@ class HloToLhloOpConverter : public ConversionPattern {
     rewriter.create<xla_hlo::HloToLhloOp<HloOpTy>>(op->getLoc(), llvm::None,
                                                    buffer_args, op->getAttrs());
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -160,22 +160,18 @@ struct HloToLhloDynamicBroadcastInDimOpConverter
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_hlo::DynamicBroadcastInDimOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
-    auto broadcast_dimensions = op.broadcast_dimensions();
-    if (!broadcast_dimensions.hasValue()) {
-      return matchFailure();
-    }
     Value resultBuffer = InsertDynamicAllocAndDealloc(
         loc, op.getResult(), op.output_dimensions(), &rewriter);
-    rewriter.create<xla_lhlo::BroadcastInDimOp>(
-        loc, operands[0], resultBuffer, broadcast_dimensions.getValue());
+    rewriter.create<xla_lhlo::BroadcastInDimOp>(loc, operands[0], resultBuffer,
+                                                op.broadcast_dimensions());
 
     rewriter.replaceOp(op, {resultBuffer});
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -184,16 +180,16 @@ struct HloToLhloReduceOpConverter
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_hlo::ReduceOp op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = op.getLoc();
     // TODO(b/137624192) Implement variadic reduce.
-    if (op.getNumResults() != 1) return matchFailure();
+    if (op.getNumResults() != 1) return failure();
     if (op.getParentRegion()->getBlocks().size() != 1) {
       op.emitOpError() << "tensor to buffer conversion expects a single block "
                           "in the region containing the operation";
-      return matchFailure();
+      return failure();
     }
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
@@ -230,7 +226,7 @@ struct HloToLhloReduceOpConverter
 
     rewriter.replaceOp(op, ArrayRef<Value>(buffer_args).slice(operands.size()));
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -238,11 +234,11 @@ class HloToLhloTensorLoadOpConverter : public ConversionPattern {
  public:
   explicit HloToLhloTensorLoadOpConverter(MLIRContext* context)
       : ConversionPattern(TensorLoadOp::getOperationName(), 1, context) {}
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.replaceOp(op, operands);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -252,12 +248,12 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
   explicit HloToLhloTensorStoreOpConverter(MLIRContext* context)
       : ConversionPattern(TensorStoreOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       Operation* op, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     rewriter.replaceOpWithNewOp<xla_lhlo::CopyOp>(
         op, llvm::None, operands.front(), operands.back());
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -276,7 +272,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //     %2 = "xla_hlo.add"(%0, %1) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     %3 = tensor_load %arg0 : memref<2x2xf32>
-//     %4 = "xla_hlo.mul"(%2, %3) :
+//     %4 = "xla_hlo.multiply"(%2, %3) :
 //         (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
 //     tensor_store %4, %arg3 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
@@ -293,7 +289,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //     %0 = alloc() : memref<2x2xf32>
 //     "xla_lhlo.add"(%arg1, %arg2, %0) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
-//     "xla_lhlo.mul"(%0, %arg0, %arg3) :
+//     "xla_lhlo.multiply"(%0, %arg0, %arg3) :
 //         (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 //     dealloc %0 : memref<2x2xf32>
 //     "xla_lhlo.terminator"() : () -> ()
@@ -305,7 +301,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 // FuncOp signature conversion example:
 //
 // func @func_op(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
-//   %0 = "xla_hlo.max"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
+//   %0 = "xla_hlo.maximum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) ->
 //   tensor<4xf32> %1 = "xla_hlo.add"(%arg0, %0)  : (tensor<4xf32>,
 //   tensor<4xf32>) -> tensor<4xf32> return %1 : tensor<4xf32>
 // }
@@ -318,7 +314,7 @@ class HloToLhloTensorStoreOpConverter : public ConversionPattern {
 //               %arg2: memref<4xf32>) {
 //   %0 = alloc() : memref<4xf32>
 //   %1 = alloc() : memref<4xf32>
-//   "xla_lhlo.max"(%arg0, %arg1, %0) :
+//   "xla_lhlo.maximum"(%arg0, %arg1, %0) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
 //   "xla_lhlo.add"(%arg0, %0, %1) :
 //         (memref<4xf32>, memref<4xf32>, memref<4xf32>) -> ()
@@ -373,13 +369,13 @@ class HloToLhloFuncOpConverter : public OpConversionPattern<FuncOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       FuncOp funcOp, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     if (funcOp.getBody().getBlocks().size() > 1) {
       funcOp.emitOpError() << "tensor to buffer conversion expects a single "
                               "block in the region containing the operation";
-      return matchFailure();
+      return failure();
     }
 
     auto funcType = funcOp.getType();
@@ -396,7 +392,7 @@ class HloToLhloFuncOpConverter : public OpConversionPattern<FuncOp> {
           rewriter.getFunctionType(conversion.getConvertedTypes(), llvm::None));
       rewriter.applySignatureConversion(&funcOp.getBody(), conversion);
     });
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -406,7 +402,7 @@ class StdToLhloReturnOpConverter : public OpConversionPattern<mlir::ReturnOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       mlir::ReturnOp returnOp, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto numReturnValues = returnOp.getNumOperands();
@@ -426,7 +422,7 @@ class StdToLhloReturnOpConverter : public OpConversionPattern<mlir::ReturnOp> {
       if (dealloc == nullptr) {
         returnOp.emitOpError()
             << "Missing dealloc for operand " << operand.index();
-        return matchFailure();
+        return failure();
       }
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(dealloc);
@@ -434,7 +430,7 @@ class StdToLhloReturnOpConverter : public OpConversionPattern<mlir::ReturnOp> {
                                         funcOp.getArgument(returnArgNumber));
     }
     rewriter.replaceOpWithNewOp<xla_lhlo::TerminatorOp>(returnOp);
-    return matchSuccess();
+    return success();
   }
 };
 

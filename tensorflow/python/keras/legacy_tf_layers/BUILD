@@ -97,6 +97,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/keras/engine:base_layer",
         "//tensorflow/python/keras/engine:input_spec",
     ],
@@ -125,6 +126,7 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 

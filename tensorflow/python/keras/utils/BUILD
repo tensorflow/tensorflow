@@ -5,7 +5,11 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python/feature_column:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -244,6 +248,7 @@ tf_py_test(
         ":tf_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -370,6 +375,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",

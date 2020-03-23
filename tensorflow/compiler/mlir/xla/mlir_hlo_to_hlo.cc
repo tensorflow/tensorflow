@@ -987,7 +987,11 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
       // into the resulting HloModule.
       auto aliasing_output =
           f.getArgAttrOfType<mlir::IntegerAttr>(i, "tf.aliasing_output");
-      if (aliasing_output) {
+      if (!aliasing_output) continue;
+      if (use_tuple_args_) {
+        builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
+                           /*param_number=*/0, /*param_index=*/{i});
+      } else {
         builder.SetUpAlias(/*output_index=*/{aliasing_output.getInt()},
                            /*param_number=*/i, /*param_index=*/{});
       }

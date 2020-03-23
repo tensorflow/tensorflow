@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
-#include <atomic>
 #include <functional>
 #include <unordered_set>
 #include <utility>
@@ -136,49 +135,13 @@ class OpKernel {
   // Returns nullptr iff this op kernel is synchronous.
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
 
-  // Initial time (in CPU cycles) we expect an operation to take.  Used to
-  // determine whether an operation should be place in a threadpool.  Operations
-  // start out "expensive".
-  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
-  static const uint64 kCostDecay = 10;
-
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() {
-    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
-                          kOpIsExpensiveThresholdCycles);
-  }
+  virtual bool IsExpensive() { return expensive_; }
 
   // Returns a pointer to the tensor stored inside constant ops.
   virtual const Tensor* const_tensor() const { return nullptr; }
-
-  // Returns true if this kernel must produce its ith output.
-  // REQUIRES: 0 <= i < num_inputs().
-  bool output_required(int i) const { return outputs_required_[i]; }
-
-  // Hints whether or not the ith output must be produced when running the
-  // kernel. By default, all outputs are required. The kernel implementation
-  // may ignore the hint.
-  // REQUIRES: 0 <= i < num_inputs().
-  void set_output_required(int i, bool is_required) {
-    outputs_required_[i] = is_required;
-  }
-
-  // Updates the dynamic cost estimate, which is used to determine whether this
-  // op is expensive. The new cost estimate is a weighted average of the old
-  // cost estimate and the latest cost.
-  void UpdateCostEstimate(uint64 elapsed_cycles) {
-    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simultaneous
-    // updates may result in one or more updates being ignored.  This does not
-    // affect correctness but may slow down the update frequency.
-    cost_estimate_.store(
-        (kCostDecay - 1) * cost_estimate_.load(std::memory_order_relaxed) /
-                kCostDecay +
-            (elapsed_cycles / kCostDecay),
-        std::memory_order_relaxed);
-  }
 
   // Accessors.
   const NodeDef& def() const { return props_->node_def; }
@@ -232,8 +195,6 @@ class OpKernel {
   const int graph_def_version_;
   const bool is_deferred_;
   bool expensive_;
-  std::atomic_uint_fast64_t cost_estimate_;
-  std::vector<bool> outputs_required_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };

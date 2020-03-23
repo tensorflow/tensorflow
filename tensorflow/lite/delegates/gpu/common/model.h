@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/types/any.h"
+#include "absl/types/optional.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -39,6 +40,13 @@ using ValueId = uint32_t;
 
 using NodeId = uint32_t;
 
+// Used to emulate quantized behavior.
+struct QuantizationParams {
+  float min = 0;
+  float max = 0;
+  float scale = 0;
+};
+
 // Connects tensor's producer and operation that depends on this tensor.
 template <typename TensorT>
 struct Value {
@@ -47,6 +55,8 @@ struct Value {
   const ValueId id;
 
   TensorType tensor;
+
+  absl::optional<QuantizationParams> quant_params;
 };
 
 struct Operation {

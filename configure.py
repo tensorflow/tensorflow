@@ -1155,7 +1155,7 @@ def set_trisycl_include_dir(environ_cp):
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
-def system_specific_test_config(env):
+def system_specific_test_config(environ_cp):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
@@ -1171,14 +1171,22 @@ def system_specific_test_config(env):
   test_only_filters = ['-oss_serial']
   if is_windows():
     test_and_build_filters.append('-no_windows')
+<<<<<<< HEAD
     if (env.get('TF_NEED_CUDA', None) == '1') or (env.get('TF_NEED_ROCM', None) == '1'):
+=======
+    if environ_cp.get('TF_NEED_CUDA', None) == '1':
+>>>>>>> google_upstream/master
       test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
       test_and_build_filters.append('-gpu')
   elif is_macos():
     test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
+<<<<<<< HEAD
     if (env.get('TF_NEED_CUDA', None) == '1') or (env.get('TF_NEED_ROCM', None) == '1'):
+=======
+    if environ_cp.get('TF_NEED_CUDA', None) == '1':
+>>>>>>> google_upstream/master
       test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
@@ -1526,7 +1534,7 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  system_specific_test_config(os.environ)
+  system_specific_test_config(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_CONFIGURE_IOS', 'iOS', False)
   if environ_cp.get('TF_CONFIGURE_IOS') == '1':

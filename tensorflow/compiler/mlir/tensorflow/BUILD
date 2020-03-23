@@ -17,6 +17,13 @@ package_group(
     ],
 )
 
+exports_files([
+    "ir/tf_generated_ops.td",
+    "ir/tf_op_base.td",
+    "ir/tf_op_interfaces.td",
+    "ir/tf_ops.td",
+])
+
 filegroup(
     name = "tensorflow_ops_td_files",
     srcs = [
@@ -167,6 +174,44 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "hlo_legalize_tf_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "transforms/generated_legalize_hlo.inc"),
+    ],
+    tblgen = "@llvm-project//mlir:mlir-tblgen",
+    td_file = "transforms/legalize_hlo_patterns.td",
+    td_srcs = [
+        "//tensorflow/compiler/mlir/xla:hlo_ops_td_files",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:StdOpsTdFiles",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_ops_td_files",
+    ],
+)
+
+cc_library(
+    name = "tf_legalize_hlo",
+    srcs = [
+        "transforms/generated_legalize_hlo.inc",
+        "transforms/legalize_hlo.cc",
+    ],
+    deps = [
+        ":lower_tf_lib",
+        ":tensorflow",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/core:framework",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:Dialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+    ],
+    alwayslink = 1,
+)
+
 cc_library(
     name = "tensorflow_types",
     srcs = [
@@ -209,6 +254,7 @@ cc_library(
         "ir/tf_traits.h",
         "ir/tf_verifiers.h",
         "transforms/bridge.h",
+        "transforms/einsum.h",
         "transforms/passes.h",
         "transforms/unroll_batch_matmul.h",
         "@llvm-project//mlir:include/mlir/Interfaces/CallInterfaces.h",
@@ -310,6 +356,7 @@ cc_library(
         "transforms/cluster_outlining.cc",
         "transforms/collection_ops_util.cc",
         "transforms/decompose_resource_ops_pass.cc",
+        "transforms/einsum.cc",
         "transforms/executor_island_coarsening.cc",
         "transforms/executor_tpuv1_inline_tpu_island.cc",
         "transforms/executor_tpuv1_island_coarsening.cc",
@@ -357,6 +404,7 @@ cc_library(
         "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/collection_ops_util.h",
+        "transforms/einsum.h",
         "transforms/passes.h",
         "transforms/shape_inference.h",
     ],
@@ -424,8 +472,13 @@ cc_library(
     srcs = ["transforms/graph_optimization_pass.cc"],
     hdrs = ["transforms/graph_optimization_pass.h"],
     deps = [
+        ":error_util",
         ":tensorflow_passes",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
     ],
     alwayslink = 1,
 )
@@ -1007,6 +1060,7 @@ cc_library(
         ":convert_type",
         ":dump_mlir_util",
         ":error_util",
+        ":tensorflow",
         ":tensorflow_dialect_registration",
         ":tensorflow_passes",
         ":tf_dialect_passes",
@@ -1021,7 +1075,6 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",

@@ -261,9 +261,8 @@ class OpDefBuilderWrapper<true> {
     builder_.Doc(std::move(text));
     return *this;
   }
-  OpDefBuilderWrapper<true>& SetShapeFn(
-      Status (*fn)(shape_inference::InferenceContext*)) {
-    builder_.SetShapeFn(fn);
+  OpDefBuilderWrapper<true>& SetShapeFn(OpShapeInferenceFn fn) {
+    builder_.SetShapeFn(std::move(fn));
     return *this;
   }
   const ::tensorflow::OpDefBuilder& builder() const { return builder_; }

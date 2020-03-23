@@ -170,7 +170,9 @@ Status GenArgMethods(const tf2xla::Config& config,
                      const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
   size_t num_args = ps.parameters_size();
-  if (config.feed_size() + config.variable_size() != num_args) {
+  // feed_size() + variable_size() is the maximum number of args as an
+  // implementation may not create an argument for an unused variable.
+  if (config.feed_size() + config.variable_size() < num_args) {
     return errors::InvalidArgument(
         "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
         config.variable_size(), ") and num_args(", num_args, ")");
