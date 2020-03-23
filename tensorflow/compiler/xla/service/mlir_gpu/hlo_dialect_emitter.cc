@@ -122,58 +122,58 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleBroadcast(HloInstruction* broadcast) {
+Status HloDialectEmitter::HandleBroadcast(HloInstruction* instr) {
   mlir::DenseIntElementsAttr broadcast_dim =
-      CreateDenseIntElementsAttrFromVector(broadcast->dimensions(), builder_);
+      CreateDenseIntElementsAttrFromVector(instr->dimensions(), builder_);
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
-                                         broadcast->shape(), builder_));
+                                         instr->shape(), builder_));
 
-  instruction_to_values_[broadcast] = builder_.create<hlo::BroadcastInDimOp>(
-      getLocation(broadcast), llvm::makeArrayRef(res_type),
-      instruction_to_values_[broadcast->operand(0)], broadcast_dim);
+  instruction_to_values_[instr] = builder_.create<hlo::BroadcastInDimOp>(
+      getLocation(instr), llvm::makeArrayRef(res_type),
+      instruction_to_values_[instr->operand(0)], broadcast_dim);
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleParameter(HloInstruction* param) {
-  auto argValue = arguments_[param->parameter_number()];
-  instruction_to_values_[param] = argValue;
+Status HloDialectEmitter::HandleParameter(HloInstruction* instr) {
+  auto argValue = arguments_[instr->parameter_number()];
+  instruction_to_values_[instr] = argValue;
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleConstant(HloInstruction* constant) {
-  auto shape = constant->shape();
+Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
+  auto shape = instr->shape();
   if (!shape.IsArray() || shape.rank() != 0) {
     return Unimplemented("non-scalar constants are not supported yet");
   }
   TF_ASSIGN_OR_RETURN(auto type, ConvertTensorShapeToType<RankedTensorType>(
-                                     constant->shape(), builder_));
+                                     instr->shape(), builder_));
 
   TF_ASSIGN_OR_RETURN(auto value, CreateDenseElementsAttrFromLiteral(
-                                      constant->literal(), builder_));
+                                      instr->literal(), builder_));
 
   auto const_value =
-      builder_.create<hlo::ConstOp>(getLocation(constant), type, value);
-  instruction_to_values_[constant] = const_value;
+      builder_.create<hlo::ConstOp>(getLocation(instr), type, value);
+  instruction_to_values_[instr] = const_value;
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
+Status HloDialectEmitter::HandleReduce(HloInstruction* instr) {
   llvm::SmallVector<Value, 4> operands;
-  for (auto operand : reduce->operands()) {
+  for (auto operand : instr->operands()) {
     operands.push_back(instruction_to_values_.at(operand));
   }
   const unsigned num_inputs = operands.size() / 2;
   TF_ASSIGN_OR_RETURN(
       const auto return_type,
-      ConvertTensorShapeToType<RankedTensorType>(reduce->shape(), builder_));
+      ConvertTensorShapeToType<RankedTensorType>(instr->shape(), builder_));
   const auto dimensions_attr =
-      CreateDenseIntElementsAttrFromVector(reduce->dimensions(), builder_);
+      CreateDenseIntElementsAttrFromVector(instr->dimensions(), builder_);
   auto reduceOp = builder_.create<hlo::ReduceOp>(
-      getLocation(reduce), return_type,
+      getLocation(instr), return_type,
       llvm::makeArrayRef(operands).take_front(num_inputs),
       llvm::makeArrayRef(operands).take_back(num_inputs), dimensions_attr);
   {
-    auto computation = reduce->to_apply();
+    auto computation = instr->to_apply();
     auto block = new mlir::Block();
     llvm::SmallVector<Value, 4> arguments;
     arguments.reserve(computation->num_parameters());
@@ -188,38 +188,38 @@ Status HloDialectEmitter::HandleReduce(HloInstruction* reduce) {
     TF_ASSIGN_OR_RETURN(auto result, emitter.EmitComputation(*computation));
     OpBuilder body_builder(block);
     body_builder.setInsertionPointToEnd(block);
-    body_builder.create<hlo::ReturnOp>(getLocation(reduce),
+    body_builder.create<hlo::ReturnOp>(getLocation(instr),
                                        ArrayRef<Value>{result});
   }
   // TODO(b/137624192) Add support for multiple results.
-  instruction_to_values_[reduce] = reduceOp.getResult(0);
+  instruction_to_values_[instr] = reduceOp.getResult(0);
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleCompare(HloInstruction* compare) {
+Status HloDialectEmitter::HandleCompare(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
-                                         compare->shape(), builder_));
+                                         instr->shape(), builder_));
   auto comparison_direction_attr = builder_.getNamedAttr(
       "comparison_direction",
       builder_.getStringAttr(
-          ComparisonDirectionToString(compare->comparison_direction())));
+          ComparisonDirectionToString(instr->comparison_direction())));
   llvm::SmallVector<Value, 4> arguments;
-  for (auto operand : compare->operands()) {
+  for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
-  instruction_to_values_[compare] = builder_.create<hlo::CompareOp>(
-      getLocation(compare), llvm::makeArrayRef(res_type), arguments,
+  instruction_to_values_[instr] = builder_.create<hlo::CompareOp>(
+      getLocation(instr), llvm::makeArrayRef(res_type), arguments,
       comparison_direction_attr);
   return Status::OK();
 }
 
-Status HloDialectEmitter::HandleIota(HloInstruction* iota) {
+Status HloDialectEmitter::HandleIota(HloInstruction* instr) {
   mlir::IntegerAttr iota_dim = builder_.getI64IntegerAttr(
-      static_cast<HloIotaInstruction*>(iota)->iota_dimension());
+      static_cast<HloIotaInstruction*>(instr)->iota_dimension());
   TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
-                                         iota->shape(), builder_));
-  instruction_to_values_[iota] =
-      builder_.create<hlo::IotaOp>(getLocation(iota), res_type, iota_dim);
+                                         instr->shape(), builder_));
+  instruction_to_values_[instr] =
+      builder_.create<hlo::IotaOp>(getLocation(instr), res_type, iota_dim);
   return Status::OK();
 }
 

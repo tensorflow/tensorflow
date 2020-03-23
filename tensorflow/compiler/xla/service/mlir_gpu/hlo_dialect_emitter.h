@@ -52,12 +52,12 @@ class HloDialectEmitter : public DfsHloVisitorWithDefault {
   StatusOr<mlir::Value> EmitComputation(const HloComputation& computation);
 
   Status DefaultAction(HloInstruction* instr) override;
-  Status HandleBroadcast(HloInstruction* broadcast) override;
-  Status HandleCompare(HloInstruction* compare) override;
-  Status HandleConstant(HloInstruction* constant) override;
-  Status HandleIota(HloInstruction* iota) override;
-  Status HandleParameter(HloInstruction* param) override;
-  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleBroadcast(HloInstruction* instr) override;
+  Status HandleCompare(HloInstruction* instr) override;
+  Status HandleConstant(HloInstruction* instr) override;
+  Status HandleIota(HloInstruction* instr) override;
+  Status HandleParameter(HloInstruction* instr) override;
+  Status HandleReduce(HloInstruction* instr) override;
 
  private:
   mlir::Location getLocation(const HloInstruction* instr) const;
