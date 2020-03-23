@@ -655,7 +655,10 @@ class Model(network.Network, version_utils.ModelVersionSelector):
            `keras.utils.Sequence` instance.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
-            The model will not be trained on this data.
+            The model will not be trained on this data. Thus, note the fact
+            that the validation loss of data provided using `validation_split`
+            or `validation_data` is not affected by regularization layers like
+            noise and dropuout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
@@ -1179,7 +1182,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     directly using `__call__` is recommended for faster execution, e.g.,
     `model(x)`, or `model(x, training=False)` if you have layers such as
     `tf.keras.layers.BatchNormalization` that behaves differently during
-    inference.
+    inference. Also, note the fact that test loss is not affected by
+    regularization layers like noise and dropout.
 
     Arguments:
         x: Input samples. It could be:
