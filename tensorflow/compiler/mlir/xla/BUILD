@@ -221,7 +221,7 @@ cc_library(
         "//tensorflow/compiler/xla:status",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",

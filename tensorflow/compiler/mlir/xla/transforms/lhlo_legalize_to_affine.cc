@@ -16,7 +16,7 @@ limitations under the License.
 // This file implements logic for lowering LHLO dialect to Affine dialect.
 
 #include "absl/memory/memory.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
