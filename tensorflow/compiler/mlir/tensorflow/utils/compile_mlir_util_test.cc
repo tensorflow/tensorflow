@@ -66,13 +66,13 @@ TEST(CompileSerializedMlirToXlaHloTest, TupleArgs) {
   Status s = CompileSerializedMlirToXlaHlo(
       kBinaryAddModule, arg_shapes,
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   const xla::HloModuleConfig module_config(
       compilation_result.computation->GetProgramShape().ValueOrDie());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
+  TF_ASSERT_OK(status_or_hlo_module.status());
   string expected_hlo_module_string = R"(HloModule main.6
 
 ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
@@ -124,13 +124,13 @@ TEST(CompileSerializedMlirToXlaHloTest, IndividualArgs) {
   Status s = CompileSerializedMlirToXlaHlo(
       kBinaryAddModule, arg_shapes,
       /*use_tuple_args=*/false, TestShapeRepresentation, &compilation_result);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   const xla::HloModuleConfig module_config(
       compilation_result.computation->GetProgramShape().ValueOrDie());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
+  TF_ASSERT_OK(status_or_hlo_module.status());
   string expected_hlo_module_string = R"(HloModule main.5
 
 ENTRY %main.5 (Arg_0.1: f32[], Arg_1.2: f32[]) -> (f32[]) {
@@ -195,13 +195,13 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   Status s = CompileSerializedMlirToXlaHlo(
       mlir_module, arg_shapes,
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   const xla::HloModuleConfig module_config(
       compilation_result.computation->GetProgramShape().ValueOrDie());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
+  TF_ASSERT_OK(status_or_hlo_module.status());
   string expected_hlo_module_string = R"(HloModule main.6
 
 ENTRY %main.6 (arg_tuple.1: (f32[10,19], f32[19,10])) -> (f32[10,19]) {
@@ -240,7 +240,7 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
       compilation_result.computation->GetProgramShape().ValueOrDie());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
+  TF_ASSERT_OK(status_or_hlo_module.status());
 
   string expected_signature =
       R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]))";
@@ -265,13 +265,13 @@ TEST(CompileSerializedMlirToXlaHloTest, ConstantFoldHook) {
   Status s = CompileSerializedMlirToXlaHlo(
       kBroadcastGradientArgsModule, arg_shapes,
       /*use_tuple_args=*/true, TestShapeRepresentation, &compilation_result);
-  ASSERT_TRUE(s.ok());
+  TF_ASSERT_OK(s);
 
   const xla::HloModuleConfig module_config(
       compilation_result.computation->GetProgramShape().ValueOrDie());
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
-  ASSERT_TRUE(status_or_hlo_module.ok());
+  TF_ASSERT_OK(status_or_hlo_module.status());
   string expected_hlo_module_string = R"(HloModule main.4
 
 ENTRY %main.4 (arg_tuple.1: ()) -> (s32[0], s32[0]) {
