@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SOFTMAX_H_
 
+#include <limits>
+
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
@@ -59,9 +61,11 @@ inline void Softmax(const SoftmaxParams& params,
   }
 }
 
+// Quantized softmax with int8/uint8 input and int8/uint8/int16 output.
+template <typename InputT, typename OutputT>
 inline void Softmax(const SoftmaxParams& params,
-                    const RuntimeShape& input_shape, const uint8* input_data,
-                    const RuntimeShape& output_shape, uint8* output_data) {
+                    const RuntimeShape& input_shape, const InputT* input_data,
+                    const RuntimeShape& output_shape, OutputT* output_data) {
   const int32 input_beta_multiplier = params.input_multiplier;
   const int32 input_beta_left_shift = params.input_left_shift;
   const int diff_min = params.diff_min;
@@ -84,7 +88,7 @@ inline void Softmax(const SoftmaxParams& params,
       MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
 
   for (int i = 0; i < outer_size; ++i) {
-    uint8 max_in_row = 0;
+    InputT max_in_row = std::numeric_limits<InputT>::min();
     for (int c = 0; c < depth; ++c) {
       max_in_row = std::max(max_in_row, input_data[i * depth + c]);
     }
@@ -120,14 +124,19 @@ inline void Softmax(const SoftmaxParams& params,
 
         FixedPoint0 exp_in_0 = exp_on_negative_values(scaled_diff_f8);
         int32 unsat_output = gemmlowp::RoundingDivideByPOT(
-            (shifted_scale * exp_in_0).raw(), num_bits_over_unit + 31 - 8);
+            (shifted_scale * exp_in_0).raw(),
+            num_bits_over_unit + 31 - (sizeof(OutputT) * 8));
 
-        output_data[i * depth + c] = static_cast<uint8>(
-            std::max(std::min(unsat_output, static_cast<int32>(255)),
-                     static_cast<int32>(0)));
+        const int32 shifted_output =
+            unsat_output +
+            static_cast<int32>(std::numeric_limits<OutputT>::min());
 
+        output_data[i * depth + c] = static_cast<OutputT>(std::max(
+            std::min(shifted_output,
+                     static_cast<int32>(std::numeric_limits<OutputT>::max())),
+            static_cast<int32>(std::numeric_limits<OutputT>::min())));
       } else {
-        output_data[i * depth + c] = 0;
+        output_data[i * depth + c] = std::numeric_limits<OutputT>::min();
       }
     }
   }

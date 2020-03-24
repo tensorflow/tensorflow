@@ -18,13 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import tpu_strategy as tpu_lib
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import function
 from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -137,7 +144,7 @@ class TPUStrategyTest(test.TestCase):
       def computation():
         return random_ops.random_gamma([10], [0.5, 1.5])
 
-      return strategy.experimental_run_v2(computation)
+      return strategy.run(computation)
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "TPU compilation failed"):
@@ -149,7 +156,7 @@ class TPUStrategyTest(test.TestCase):
       def computation():
         return random_ops.random_normal([10])
 
-      return strategy.experimental_run_v2(computation)
+      return strategy.run(computation)
 
     good_run()
 
@@ -213,6 +220,133 @@ class TPUStrategyTest(test.TestCase):
     self.assertLen(second_core_strategy.extended.worker_devices, 1)
     self.assertEndsWith(second_core_strategy.extended.worker_devices[0],
                         "device:TPU:1")
+
+  def test_tpu_tf_function_same_device(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(1)
+
+    @function.defun_with_attributes(attributes={"_noinline": True})
+    def get_a_plus_one():
+      return a + 1
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
+    def foo(x):
+      with ops.device("/device:TPU:0"):
+        b = x + get_a_plus_one()
+      return b + 1
+
+    result = foo(a)
+    self.assertAllEqual(4, result)
+
+  def test_tpu_return_int32(self):
+    with ops.device("/device:TPU:0"):
+      a = variables.Variable(0)
+
+    @def_function.function
+    def foo():
+      return a + 1
+
+    @def_function.function
+    def bar():
+      with ops.device("/device:TPU:1"):
+        return foo()
+
+    with ops.device("/device:CPU:0"):
+      result = bar() + 1
+      self.assertAllEqual(result, 2)
+
+  def test_control_output_in_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    with strategy.scope():
+      v = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.MEAN)
+
+    @def_function.function
+    def train_step():
+
+      def step_fn():
+        v.assign_add(1)
+
+      for _ in math_ops.range(2):
+        strategy.run(step_fn)
+
+    train_step()
+    self.assertEqual(2.0, v.numpy())
+
+  def test_cluster_in_graph_and_while_body_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def train_step():
+
+      def step_fn(prev):
+        s = prev + 1
+        return s
+
+      def init_fn():
+        return array_ops.zeros(shape=())
+
+      prev = strategy.run(init_fn)
+      for _ in math_ops.range(10):
+        prev = strategy.run(step_fn, args=(prev,))
+      return strategy.reduce(reduce_util.ReduceOp.SUM, prev, axis=None)
+
+    sum_val = train_step().numpy().astype(float)
+    self.assertEqual(sum_val, strategy.num_replicas_in_sync * 10)
+
+  def test_two_clusters_with_same_fn(self):
+    strategy = get_tpu_strategy()
+
+    @def_function.function
+    def foo(x):
+      return strategy.run(lambda x: x + 1, (x,))
+
+    @def_function.function
+    def bar(x):
+      foo(x)
+      return foo(x)
+
+    bar(1)
+
+  # TODO(b/152251070): Re-enable once modified to work on Cloud TPU.
+  def disable_test_using_external_variable_inside_tf_function(self):
+    strategy = get_tpu_strategy()
+    dataset = dataset_ops.Dataset.range(10, output_type=dtypes.float32).batch(2)
+    input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
+
+    v = variables.Variable(2.0)
+
+    @def_function.function
+    def train_step(data):
+      def computation(inputs):
+        return inputs + v
+      return strategy.run(computation, args=(data,))
+
+    expected_result = [[x + 2.] for x in range(0, strategy.num_replicas_in_sync)
+                      ]
+    self.assertAllEqual(
+        expected_result,
+        strategy.experimental_local_results(train_step(next(input_iterator))))
+
+  # TODO(b/152251070): Re-enable once modified to work on Cloud TPU.
+  def disable_test_keras_metric_outside_strategy_scope_per_replica(self):
+    strategy = get_tpu_strategy()
+    metric = keras.metrics.Mean("test_metric", dtype=dtypes.float32)
+
+    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = strategy.experimental_distribute_dataset(dataset)
+
+    @def_function.function
+    def step_fn(i):
+      metric.update_state(i)
+
+    with self.assertRaisesRegex(ValueError, "Trying to run metric.update_state "
+                                            "in replica context"):
+      with strategy.scope():
+        for i in dataset:
+          strategy.run(step_fn, args=(i,))
 
 
 if __name__ == "__main__":

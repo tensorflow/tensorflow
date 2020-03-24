@@ -508,6 +508,10 @@ void DatasetOpKernel::Compute(OpKernelContext* ctx) {
   }
 }
 
+string DatasetOpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
+  return strings::StrCat(name_view(), ":", type_string_view());
+}
+
 // static
 bool DatasetOpKernel::IsDatasetOp(const OpDef* op_def) {
   if (DatasetOpRegistry::IsRegistered(op_def->name())) {

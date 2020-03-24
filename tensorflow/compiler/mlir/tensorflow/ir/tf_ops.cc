@@ -35,28 +35,28 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/DialectImplementation.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Parser.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/DialectImplementation.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Support/STLExtras.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/platform/logging.h"
@@ -580,16 +580,16 @@ namespace {
 struct AssertWithTrue : public OpRewritePattern<AssertOp> {
   using OpRewritePattern<AssertOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(AssertOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AssertOp op,
+                                PatternRewriter &rewriter) const override {
     ElementsAttr cst;
     if (matchPattern(op.condition(), m_Constant(&cst))) {
       if (cst.getValue<BoolAttr>({}).getValue()) {
         rewriter.eraseOp(op);
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace
@@ -1100,7 +1100,55 @@ StringRef Conv2DOp::GetOptimalLayout(const RuntimeDevices &devices) {
 }
 
 //===----------------------------------------------------------------------===//
-// Conv2dBackpropInputOp
+// Conv2dBackpropFilterOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult Conv2DBackpropFilterOp::UpdateDataFormat(StringRef data_format) {
+  StringRef src_data_format = this->data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  // Permute filter sizes operand.
+  OpBuilder builder(getOperation());
+  auto filter_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
+      getLoc(), filter_sizes(), StringAttr::get(src_data_format, getContext()),
+      StringAttr::get(data_format, getContext()));
+  setOperand(1, filter_sizes_permuted);
+
+  return success();
+}
+
+StringRef Conv2DBackpropFilterOp::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Input must be a tensor.
+  auto input_ty = input().getType().dyn_cast<TensorType>();
+  if (!input_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = input_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // Otherwise always use "NCHW".
+  return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
+// Conv2DBackpropInputOp
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(Conv2DBackpropInputOp op) {
@@ -1118,7 +1166,84 @@ static LogicalResult Verify(Conv2DBackpropInputOp op) {
   }
 
   return success();
-}  // namespace TF
+}
+
+LogicalResult Conv2DBackpropInputOp::UpdateDataFormat(StringRef data_format) {
+  StringRef src_data_format = this->data_format();
+
+  auto perm = GetDataFormatPermutation(src_data_format, data_format);
+  if (perm.empty()) return failure();
+
+  // Update data_format attribute and result types.
+  if (failed(::mlir::TF::UpdateDataFormat(data_format, this))) return failure();
+
+  // Update convolution attributes.
+  setAttr("dilations", ShuffleArrayAttr(dilations(), perm));
+  setAttr("strides", ShuffleArrayAttr(strides(), perm));
+  setAttr("explicit_paddings", ShuffleArrayAttr(explicit_paddings(), perm, 2));
+
+  // Permute input sizes operand.
+  OpBuilder builder(getOperation());
+  auto input_sizes_permuted = builder.create<TF::DataFormatVecPermuteOp>(
+      getLoc(), input_sizes(), StringAttr::get(src_data_format, getContext()),
+      StringAttr::get(data_format, getContext()));
+  setOperand(0, input_sizes_permuted);
+
+  return success();
+}
+
+StringRef Conv2DBackpropInputOp::GetOptimalLayout(
+    const RuntimeDevices &devices) {
+  // Keep current data format if no GPUs are available or if explicit placement
+  // does not allow to use GPU for this operation.
+  if (!CanUseGpuDevice(devices) || !CanUseGpuDevice(getOperation()))
+    return data_format();
+
+  // Filter must be a tensor.
+  auto filter_ty = filter().getType().dyn_cast<TensorType>();
+  if (!filter_ty) return data_format();
+
+  // For f16 data type on devices with Tensor Cores support NHWC data format
+  // is up to ~2x faster.
+  const bool is_f16 = filter_ty.getElementType().isF16();
+  if (is_f16 && CanUseTensorCores(devices)) return "NHWC";
+
+  // Otherwise always use "NCHW".
+  return "NCHW";
+}
+
+//===----------------------------------------------------------------------===//
+// DataFormatVecPermuteOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DataFormatVecPermuteOp op) {
+  auto input_ty = op.x().getType().dyn_cast<RankedTensorType>();
+  if (!input_ty) return success();
+
+  int rank = input_ty.getRank();
+  if (rank != 1 && rank != 2)
+    return op.emitOpError("requires input of rank 1 or 2");
+
+  if (rank == 1) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError("requires 1D input of size 4");
+  }
+
+  if (rank == 2) {
+    int64_t dim0 = input_ty.getDimSize(0);
+    if (dim0 != ShapedType::kDynamicSize && dim0 != 4)
+      return op.emitOpError(
+          "requires first dimensions of 2D input to be of size 4");
+
+    int64_t dim1 = input_ty.getDimSize(1);
+    if (dim1 != ShapedType::kDynamicSize && dim1 != 2)
+      return op.emitOpError(
+          "requires second dimensions of 2D input to be of size 2");
+  }
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // DivOp
@@ -3085,15 +3210,15 @@ namespace {
 // function and can be removed.
 class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
   using OpRewritePattern<ToBoolOp>::OpRewritePattern;
-  PatternMatchResult matchAndRewrite(ToBoolOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ToBoolOp op,
+                                PatternRewriter &rewriter) const override {
     if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
       if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
         rewriter.replaceOp(op, op.getOperand());
-        return matchSuccess();
+        return success();
       }
     }
-    return matchFailure();
+    return failure();
   }
 };
 }  // namespace

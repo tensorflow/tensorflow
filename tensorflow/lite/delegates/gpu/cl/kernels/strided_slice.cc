@@ -95,7 +95,7 @@ std::string GetStridedSliceCode(
   return c;
 }
 
-bool Is4Alighed(const SliceAttributes& attr) {
+bool Is4Aligned(const SliceAttributes& attr) {
   return attr.strides.c == 1 && attr.starts.c % 4 == 0;
 }
 
@@ -129,7 +129,7 @@ int4 GetOffset(const SliceAttributes& attr, int src_width, int src_height,
       offset.z = src_channels + attr.ends.c;
     }
   }
-  if (Is4Alighed(attr)) {
+  if (Is4Aligned(attr)) {
     offset.z /= 4;
   }
   if (attr.strides.b > 0) {
@@ -167,7 +167,7 @@ StridedSlice& StridedSlice::operator=(StridedSlice&& operation) {
 }
 
 Status StridedSlice::Compile(const CreationContext& creation_context) {
-  const auto code = GetStridedSliceCode(definition_, Is4Alighed(attributes_),
+  const auto code = GetStridedSliceCode(definition_, Is4Aligned(attributes_),
                                         linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

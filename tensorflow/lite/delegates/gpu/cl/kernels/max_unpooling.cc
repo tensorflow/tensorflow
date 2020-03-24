@@ -25,7 +25,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-std::string GetMaxUnoolingKernelCode(
+std::string GetMaxUnpoolingKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src("src_data",
@@ -102,7 +102,7 @@ std::string GetMaxUnoolingKernelCode(
   return c;
 }
 
-std::string GetMaxUnooling3DKernelCode(
+std::string GetMaxUnpooling3DKernelCode(
     const OperationDef& op_def, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src(
@@ -219,7 +219,7 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
 }
 
 Status MaxUnpooling::Compile(const CreationContext& creation_context) {
-  const auto code = GetMaxUnoolingKernelCode(
+  const auto code = GetMaxUnpoolingKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
@@ -292,7 +292,7 @@ MaxUnpooling3D& MaxUnpooling3D::operator=(MaxUnpooling3D&& kernel) {
 }
 
 Status MaxUnpooling3D::Compile(const CreationContext& creation_context) {
-  const auto code = GetMaxUnooling3DKernelCode(
+  const auto code = GetMaxUnpooling3DKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,

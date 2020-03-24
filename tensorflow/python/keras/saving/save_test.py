@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 import sys
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -28,6 +29,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving import model_config
 from tensorflow.python.keras.saving import save
@@ -43,7 +45,7 @@ except ImportError:
   h5py = None
 
 
-class TestSaveModel(test.TestCase):
+class TestSaveModel(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
     super(TestSaveModel, self).setUp()
@@ -99,7 +101,7 @@ class TestSaveModel(test.TestCase):
       save.save_model(self.model, path, save_format='tf')
       save.load_model(path)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_dense_features(self):
     cols = [
         feature_column_lib.numeric_column('a'),
@@ -128,13 +130,14 @@ class TestSaveModel(test.TestCase):
     inputs_a = np.arange(10).reshape(10, 1)
     inputs_b = np.arange(10).reshape(10, 1).astype('str')
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
+    with self.cached_session():
+      # Initialize tables for V1 lookup.
+      if not context.executing_eagerly():
+        self.evaluate(lookup_ops.tables_initializer())
 
-    self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
+      self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_with_sequence_features(self):
     cols = [
         feature_column_lib.sequence_numeric_column('a'),
@@ -182,17 +185,18 @@ class TestSaveModel(test.TestCase):
     inputs_b = sparse_tensor.SparseTensor(indices_b, values_b,
                                           (batch_size, timesteps, 1))
 
-    # Initialize tables for V1 lookup.
-    if not context.executing_eagerly():
-      self.evaluate(lookup_ops.tables_initializer())
+    with self.cached_session():
+      # Initialize tables for V1 lookup.
+      if not context.executing_eagerly():
+        self.evaluate(lookup_ops.tables_initializer())
 
-    self.assertLen(
-        loaded_model.predict({
-            'a': inputs_a,
-            'b': inputs_b
-        }, steps=1), batch_size)
+      self.assertLen(
+          loaded_model.predict({
+              'a': inputs_a,
+              'b': inputs_b
+          }, steps=1), batch_size)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_h5_for_rnn_layers(self):
     # See https://github.com/tensorflow/tensorflow/issues/35731 for details.
     inputs = keras.Input([10, 91], name='train_input')
@@ -213,7 +217,7 @@ class TestSaveModel(test.TestCase):
                         rnn_layers[1].kernel.name)
     self.assertIn('rnn_cell1', rnn_layers[1].kernel.name)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_saving_optimizer_weights(self):
 
     class MyModel(keras.Model):

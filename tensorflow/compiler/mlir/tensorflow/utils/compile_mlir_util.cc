@@ -17,22 +17,28 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Parser.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -208,7 +214,19 @@ Status RefineShapes(llvm::ArrayRef<TensorShape> arg_shapes,
   return Status::OK();
 }
 
-}  //  namespace
+static void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    mlir::registerDialect<mlir::StandardOpsDialect>();
+    mlir::registerDialect<mlir::xla_hlo::XlaHloDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
+
+}  // namespace
+//  namespace
 
 Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
@@ -260,18 +278,11 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
   return Status::OK();
 }
 
-Status CompileSerializedMlirToXlaHlo(
-    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+static Status CompileMlirToXlaHlo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorShape> arg_shapes,
     bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result) {
-  mlir::MLIRContext mlir_context;
-  mlir::OwningModuleRef mlir_module;
-
-  TF_RETURN_IF_ERROR(
-      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
-  auto module_op = mlir_module.get();
-
   if (VLOG_IS_ON(1))
     tensorflow::DumpMlirOpToFile("mlir_compile_before", module_op);
 
@@ -292,9 +303,14 @@ Status CompileSerializedMlirToXlaHlo(
   GetInputMappingForMlir(arg_shapes.size(), &compilation_result->input_mapping);
 
   auto shape_representation_fn_no_fast_memory =
-      [shape_representation_fn](const TensorShape& shape, DataType dtype) {
-        return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
-      };
+      [shape_representation_fn](const TensorShape& shape,
+                                DataType dtype) -> StatusOr<xla::Shape> {
+    if (shape_representation_fn)
+      return shape_representation_fn(shape, dtype, /*use_fast_memory=*/false);
+    xla::Shape xla_shape;
+    TF_RETURN_IF_ERROR(TensorShapeToXLAShape(dtype, shape, &xla_shape));
+    return xla_shape;
+  };
 
   // Compute all input shapes.
   TF_RETURN_IF_ERROR(GetXlaInputShapes(module_op, arg_shapes, use_tuple_args,
@@ -314,6 +330,40 @@ Status CompileSerializedMlirToXlaHlo(
     tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
 
   return Status::OK();
+}
+
+Status CompileSerializedMlirToXlaHlo(
+    llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
+    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    XlaCompiler::CompilationResult* compilation_result) {
+  RegisterDialects();
+  mlir::MLIRContext mlir_context;
+  mlir::OwningModuleRef mlir_module;
+
+  TF_RETURN_IF_ERROR(
+      ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
+  return CompileMlirToXlaHlo(mlir_module.get(), arg_shapes, use_tuple_args,
+                             shape_representation_fn, compilation_result);
+}
+
+Status CompileGraphToXlaHlo(
+    const Graph& graph, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
+    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    XlaCompiler::CompilationResult* compilation_result) {
+  RegisterDialects();
+  mlir::MLIRContext context;
+  GraphImportConfig config;
+  config.graph_as_function = true;
+  auto module_or =
+      ConvertGraphToMlir(graph, debug_info, flib_def, config, &context);
+  if (!module_or.ok()) return module_or.status();
+
+  return CompileMlirToXlaHlo(module_or.ValueOrDie().get(), arg_shapes,
+                             use_tuple_args, shape_representation_fn,
+                             compilation_result);
 }
 
 }  // namespace tensorflow

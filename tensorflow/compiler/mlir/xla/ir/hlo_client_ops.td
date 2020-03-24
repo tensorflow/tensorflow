@@ -83,16 +83,16 @@ def HLOClient_AddOp : HLOClient_BinaryElementwiseOp<"add",
 def HLOClient_Atan2Op : HLOClient_BinaryElementwiseOp<"atan2",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_Atan2Op;
 
-def HLOClient_DivOp : HLOClient_BinaryElementwiseOp<"div",
+def HLOClient_DivOp : HLOClient_BinaryElementwiseOp<"divide",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_DivOp;
 
-def HLOClient_MaxOp : HLOClient_BinaryElementwiseOp<"max",
+def HLOClient_MaxOp : HLOClient_BinaryElementwiseOp<"maximum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MaxOp;
 
-def HLOClient_MinOp : HLOClient_BinaryElementwiseOp<"min",
+def HLOClient_MinOp : HLOClient_BinaryElementwiseOp<"minimum",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MinOp;
 
-def HLOClient_MulOp : HLOClient_BinaryElementwiseOp<"mul",
+def HLOClient_MulOp : HLOClient_BinaryElementwiseOp<"multiply",
       [Commutative, NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_MulOp;
 
 def HLOClient_PowOp : HLOClient_BinaryElementwiseOp<"pow",
@@ -110,7 +110,7 @@ def HLOClient_ShiftRightArithmeticOp : HLOClient_BinaryElementwiseOp<"shift_righ
 def HLOClient_ShiftRightLogicalOp : HLOClient_BinaryElementwiseOp<"shift_right_logical",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ShiftRightLogicalOp;
 
-def HLOClient_SubOp : HLOClient_BinaryElementwiseOp<"sub",
+def HLOClient_SubOp : HLOClient_BinaryElementwiseOp<"subtract",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_SubOp;
 
 //===----------------------------------------------------------------------===//

@@ -17,6 +17,7 @@ cc_library(
     srcs = ["modify_model_interface.cc"],
     hdrs = ["modify_model_interface.h"],
     deps = [
+        ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",

@@ -17,12 +17,12 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 
 namespace mlir {
@@ -66,18 +66,18 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
  public:
   using OpConversionPattern<xla_lhlo::ReduceOp>::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       xla_lhlo::ReduceOp xla_reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/137624192) Implement variadic reduce.
-    if (xla_reduce_op.out().size() != 1) return matchFailure();
+    if (xla_reduce_op.out().size() != 1) return failure();
 
     loop::ReduceOp reduce_op =
         CreateParallelLoopsWithReduceOp(xla_reduce_op, args, &rewriter);
     ConvertReductionOperator(xla_reduce_op,
                              &reduce_op.reductionOperator().front(), &rewriter);
     rewriter.replaceOp(xla_reduce_op, llvm::None);
-    return matchSuccess();
+    return success();
   }
 
  private:

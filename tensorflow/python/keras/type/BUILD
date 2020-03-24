@@ -1,7 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_strict_library")
 
 package(
-    default_visibility = ["//tensorflow:__subpackages__"],
+    default_visibility = ["//tensorflow/python/keras:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
 )
 

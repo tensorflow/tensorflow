@@ -162,7 +162,6 @@ struct NodeItem {
   bool is_exit : 1;             // True iff IsExit(node)
   bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
   bool is_source : 1;           // True iff IsSource(node)
-  bool is_sink : 1;             // True iff IsSink(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
   bool is_transfer_node : 1;      // True iff IsTransferNode(node)
@@ -170,6 +169,11 @@ struct NodeItem {
   bool is_recv_or_switch : 1;     // True iff IsRecv(node) || IsSwitch(node)
   bool is_next_iteration : 1;     // True iff IsNextIteration(node)
   bool is_noop : 1;  // True iff item->kernel->type_string_view() == "NoOp")
+  bool
+      is_any_consumer_merge_or_control_trigger : 1;  // True iff the destination
+                                                     // of any output edge is a
+                                                     // merge or control trigger
+                                                     // node.
 
   // The kernel for this node.
   OpKernel* kernel = nullptr;
@@ -186,8 +190,6 @@ struct NodeItem {
   // for this node.
   int input_start = 0;
 
-  PendingCounts::Handle pending_id;
-
   // Number of output edges.
   size_t num_output_edges;
 
@@ -199,6 +201,11 @@ struct NodeItem {
 
   // ith output edge.
   const EdgeInfo& output_edge(int i) const {
+    DCHECK_GE(i, 0);
+    DCHECK_LT(i, num_output_edges);
+    return output_edge_base()[i];
+  }
+  EdgeInfo& output_edge(int i) {
     DCHECK_GE(i, 0);
     DCHECK_LT(i, num_output_edges);
     return output_edge_base()[i];
@@ -227,8 +234,6 @@ struct NodeItem {
     string ret = strings::StrCat("{name:'", kernel->name(), "' id:", node_id);
     if (is_source) {
       strings::StrAppend(&ret, " source}");
-    } else if (is_sink) {
-      strings::StrAppend(&ret, " sink}");
     } else {
       strings::StrAppend(&ret, " def:{", SummarizeNodeDef(kernel->def()), "}}");
     }
@@ -346,6 +351,69 @@ class ExecutorImpl : public Executor {
  private:
   friend class ExecutorState;
 
+  // Stores execution time information about the kernels in an executor's graph.
+  class KernelStats {
+   public:
+    KernelStats() = default;
+
+    void Initialize(const GraphView& gview) {
+      is_expensive_ = absl::make_unique<std::atomic<bool>[]>(gview.num_nodes());
+      cost_estimates_ =
+          absl::make_unique<std::atomic_uint_fast64_t[]>(gview.num_nodes());
+      for (int32 i = 0; i < gview.num_nodes(); ++i) {
+        if (gview.node(i)) {
+          is_expensive_[i] =
+              gview.node(i)->kernel && gview.node(i)->kernel->IsExpensive();
+          cost_estimates_[i] = kInitialCostEstimateCycles;
+        }
+      }
+    }
+
+    // Returns true iff the given node is considered "expensive". The
+    // executor uses this flag to optimize graph execution, for example
+    // by "inlining" inexpensive kernels.
+    bool IsExpensive(const NodeItem& node) const {
+      return is_expensive_[node.node_id] &&
+             (cost_estimates_[node.node_id].load(std::memory_order_relaxed) >
+              kOpIsExpensiveThresholdCycles);
+    }
+
+    // Updates the dynamic cost estimate, which is used to determine whether the
+    // given node is expensive. The new cost estimate is a weighted average of
+    // the old cost estimate and the latest cost.
+    //
+    // NOTE: We currently only expect updates to the cost estimate when
+    // `is_expensive_[node.node_id]` is true (or at least, it *was* true, when
+    // we started to execute the kernel. As a result, we expect that a kernel
+    // can only ever transition from "expensive" to "inexpensive", but not vice
+    // versa.
+    void UpdateCostEstimate(const NodeItem& node, uint64 elapsed_cycles) {
+      // N.B. Updates to `cost_estimate` are atomic but unlocked.  Simultaneous
+      // updates may result in one or more updates being ignored.  This does not
+      // affect correctness but may slow down the update frequency.
+      std::atomic_uint_fast64_t& cost_estimate = cost_estimates_[node.node_id];
+      uint64 new_estimate = (kCostDecay - 1) *
+                                cost_estimate.load(std::memory_order_relaxed) /
+                                kCostDecay +
+                            (elapsed_cycles / kCostDecay);
+      cost_estimate.store(new_estimate, std::memory_order_relaxed);
+      if (new_estimate < kOpIsExpensiveThresholdCycles) {
+        is_expensive_[node.node_id].store(false, std::memory_order_relaxed);
+      }
+    }
+
+   private:
+    // Initial time (in CPU cycles) we expect an operation to take.  Used to
+    // determine whether an operation should be place in a threadpool.
+    // Operations start out "expensive".
+    static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
+    static const uint64 kOpIsExpensiveThresholdCycles = 5000;
+    static const uint64 kCostDecay = 10;
+
+    std::unique_ptr<std::atomic<bool>[]> is_expensive_;
+    std::unique_ptr<std::atomic_uint_fast64_t[]> cost_estimates_;
+  };
+
   struct ControlFlowInfo {
     gtl::FlatSet<string> unique_frame_names;
     std::vector<string> frame_names;
@@ -396,6 +464,8 @@ class ExecutorImpl : public Executor {
   // Owned.
   LocalExecutorParams params_;
   GraphView gview_;
+  std::vector<PendingCounts::Handle> pending_ids_;
+  mutable KernelStats kernel_stats_;
 
   // Root nodes (with no in edges) that should form the initial ready queue
   std::vector<const NodeItem*> root_nodes_;
@@ -437,7 +507,10 @@ GraphView::~GraphView() {
 }
 
 size_t GraphView::NodeItemBytes(const Node* n) {
-  const size_t num_output_edges = n->out_edges().size();
+  size_t num_output_edges = n->out_edges().size();
+  for (auto e : n->out_edges()) {
+    if (IsSink(e->dst())) --num_output_edges;
+  }
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -488,7 +561,10 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   node_offsets_[id] = offset;
   ptr += bytes;
 
-  const size_t num_output_edges = n->out_edges().size();
+  size_t num_output_edges = n->out_edges().size();
+  for (auto e : n->out_edges()) {
+    if (IsSink(e->dst())) --num_output_edges;
+  }
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -505,6 +581,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   gtl::InlinedVector<EdgeInfo*, 4> last_indices(num_outputs, nullptr);
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
+    if (IsSink(e->dst())) continue;
     dst_edge->dst_id = e->dst()->id();
     CHECK_LE(e->src_output(), 0x3FFFFFFF);  // Must fit in 31 bits
     dst_edge->output_slot = e->src_output();
@@ -513,6 +590,8 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
     if (output_slot >= 0) {
       last_indices[output_slot] = dst_edge;
     }
+    // NOTE: The `input_slot` will be rewritten to the frame-wide offset later
+    // in `ExecutorImpl::Initialize()`.
     dst_edge->input_slot = e->dst_input();
     dst_edge++;
   }
@@ -634,9 +713,12 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     EnsureFrameInfo(it)->nodes = new std::vector<const NodeItem*>;
   }
 
+  pending_ids_.resize(gview_.num_nodes());
+
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node.
   for (const Node* n : graph.nodes()) {
+    if (IsSink(n)) continue;
     const int id = n->id();
     const string& frame_name = cf_info.frame_names[id];
     FrameInfo* frame_info = EnsureFrameInfo(frame_name);
@@ -656,6 +738,13 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     CHECK(item->kernel);
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
+    item->is_any_consumer_merge_or_control_trigger = false;
+    for (const Node* consumer : n->out_nodes()) {
+      if (IsMerge(consumer) || IsControlTrigger(consumer)) {
+        item->is_any_consumer_merge_or_control_trigger = true;
+        break;
+      }
+    }
     const Tensor* const_tensor = item->kernel->const_tensor();
     if (const_tensor) {
       // Hold onto a shallow copy of the constant tensor in `*this` so that the
@@ -677,7 +766,6 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     item->is_exit = IsExit(n);
     item->is_control_trigger = IsControlTrigger(n);
     item->is_source = IsSource(n);
-    item->is_sink = IsSink(n);
     item->is_enter_exit_or_next_iter =
         (IsEnter(n) || IsExit(n) || IsNextIteration(n));
     item->is_transfer_node = IsTransferNode(n);
@@ -691,7 +779,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     // space to store these maximal count values.
     size_t max_pending, max_dead;
     GetMaxPendingCounts(n, &max_pending, &max_dead);
-    item->pending_id =
+    pending_ids_[id] =
         frame_info->pending_counts_layout.CreateHandle(max_pending, max_dead);
 
     // See if this node is a root node, and if so, add item to root_nodes_.
@@ -712,6 +800,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
     size_t unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
+      if (IsSink(e->dst())) continue;
       if (e->src_output() >= 0) {
         if (!outputs_required[e->src_output()]) {
           --unused_outputs;
@@ -729,10 +818,26 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     }
   }
 
-  // Initialize PendingCounts only after item->pending_id is initialized for
-  // all nodes.
-  InitializePending(&graph, cf_info);
+  // Rewrite each `EdgeInfo::input_slot` member to refer directly to the input
+  // location.
+  for (const Node* n : graph.nodes()) {
+    if (IsSink(n)) continue;
+    const int id = n->id();
+    NodeItem* item = gview_.node(id);
 
+    for (size_t out_index = 0; out_index < item->num_output_edges;
+         out_index++) {
+      EdgeInfo& e = item->output_edge(out_index);
+      const int dst_id = e.dst_id;
+      NodeItem* dst_item = gview_.node(dst_id);
+      e.input_slot += dst_item->input_start;
+    }
+  }
+
+  // Initialize PendingCounts only after pending_ids_[node.id] is initialized
+  // for all nodes.
+  InitializePending(&graph, cf_info);
+  kernel_stats_.Initialize(gview_);
   return gview_.SetAllocAttrs(&graph, params_.device);
 }
 
@@ -762,7 +867,7 @@ void GraphView::SetScopedAllocatorAttrs(
     // Control edges out of the ScopedAllocator should be use instances, but may
     // include a few other nodes.
     for (const auto& e : sa->out_edges()) {
-      if (!e->IsControlEdge()) {
+      if (IsSink(e->dst()) || !e->IsControlEdge()) {
         continue;
       }
       Node* use_node = e->dst();
@@ -779,7 +884,7 @@ void GraphView::SetScopedAllocatorAttrs(
       // There can be more than one output using ScopedAllocation, but this
       // analysis assumes they use the same ScopedAllocator.
       for (const auto& e : use_node->out_edges()) {
-        if (!e->IsControlEdge()) {
+        if (IsSink(e->dst()) || !e->IsControlEdge()) {
           AllocatorAttributes attr;
           if (ExtractScopedAllocatorAttr(scoped_allocator_attrs,
                                          e->src_output(), &attr)) {
@@ -1073,10 +1178,9 @@ class ExecutorState {
     void increment_dead_count(PendingCounts::Handle h) {
       counts.increment_dead_count(h);
     }
-    void adjust_for_activation(PendingCounts::Handle h, bool increment_dead,
-                               int* pending_result, int* dead_result) {
-      counts.adjust_for_activation(h, increment_dead, pending_result,
-                                   dead_result);
+    PendingCounts::AdjustResult adjust_for_activation(PendingCounts::Handle h,
+                                                      bool increment_dead) {
+      return counts.adjust_for_activation(h, increment_dead);
     }
 
     ~IterationState() { delete[] input_tensors; }
@@ -1291,6 +1395,18 @@ class ExecutorState {
         iterations[i] = nullptr;
       }
     }
+
+   private:
+    // REQUIRES: `!item->is_any_consumer_merge_or_control_trigger`.
+    void ActivateNodesFastPath(const NodeItem* item, const bool is_dead,
+                               int64 iter, EntryVector* outputs,
+                               TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+    void ActivateNodesSlowPath(const NodeItem* item, const bool is_dead,
+                               int64 iter, EntryVector* outputs,
+                               TaggedNodeSeq* ready)
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
   };
 
   // A tagged node: <frame*, iter, node*>.
@@ -1470,7 +1586,7 @@ class ExecutorState {
 
   // For debugging/logging only.
   inline void MaybeMarkCompleted(FrameState* frame, int64 iter,
-                                 const NodeItem& item);
+                                 const int node_id);
 
   // Provide debugging output about an outstanding node in the executor.
   void DumpPendingNodeState(const int node_id, const Entry* input_vector,
@@ -1597,6 +1713,7 @@ Status ExecutorImpl::BuildControlFlowInfo(const Graph* g,
 
     for (const Edge* out_edge : curr_node->out_edges()) {
       Node* out = out_edge->dst();
+      if (IsSink(out)) continue;
       const int out_id = out->id();
 
       // Add to ready queue if not visited.
@@ -1625,13 +1742,13 @@ void ExecutorImpl::InitializePending(const Graph* graph,
     finfo->pending_counts = counts;
   }
   for (const Node* n : graph->nodes()) {
+    if (IsSink(n)) continue;
     const int id = n->id();
     const string& name = cf_info.frame_names[id];
     size_t max_pending, max_dead;
     GetMaxPendingCounts(n, &max_pending, &max_dead);
-    const NodeItem* item = gview_.node(id);
     PendingCounts* counts = EnsureFrameInfo(name)->pending_counts;
-    counts->set_initial_count(item->pending_id, max_pending);
+    counts->set_initial_count(pending_ids_[id], max_pending);
   }
 }
 
@@ -1713,8 +1830,8 @@ struct ExecutorState::AsyncState {
 
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
-bool MightTrace(const NodeItem& item,
-                const tracing::EventCollector* event_collector) {
+bool MightTrace(const tracing::EventCollector* event_collector,
+                bool is_expensive) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
   // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
@@ -1728,8 +1845,7 @@ bool MightTrace(const NodeItem& item,
 
   if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMe::Active(
-      profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
+  return profiler::TraceMe::Active(profiler::GetTFTraceMeLevel(is_expensive));
 }
 
 Status ExecutorState::ProcessSync(const NodeItem& item,
@@ -1742,8 +1858,9 @@ Status ExecutorState::ProcessSync(const NodeItem& item,
 
   OpKernel* op_kernel = item.kernel;
   Device* device = impl_->params_.device;
+  const bool is_expensive = impl_->kernel_stats_.IsExpensive(item);
 
-  if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
+  if (TF_PREDICT_FALSE(MightTrace(event_collector_, is_expensive))) {
     tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                  op_kernel->name_view());
     profiler::AnnotatedTraceMe activity(
@@ -1751,16 +1868,16 @@ Status ExecutorState::ProcessSync(const NodeItem& item,
           return op_kernel->TraceString(
               &ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
+        profiler::GetTFTraceMeLevel(is_expensive));
     device->Compute(op_kernel, &ctx);
     nodestats::SetOpEnd(stats);
     s = ProcessOutputs(item, &ctx, outputs, stats);
   } else {
     // In the common case, avoid creating any tracing objects.
-    if (op_kernel->IsExpensive()) {
+    if (is_expensive) {
       KernelTimer timer;
       device->Compute(op_kernel, &ctx);
-      op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+      impl_->kernel_stats_.UpdateCostEstimate(item, timer.ElapsedCycles());
     } else {
       device->Compute(op_kernel, &ctx);
     }
@@ -1804,7 +1921,7 @@ void ExecutorState::ProcessAsync(const NodeItem& item,
     }
     FrameState* input_frame = state->tagged_node.input_frame;
     const int64 input_iter = state->tagged_node.input_iter;
-    MaybeMarkCompleted(input_frame, input_iter, *state->item);
+    MaybeMarkCompleted(input_frame, input_iter, state->item->node_id);
     TaggedNodeSeq ready;
     if (s.ok()) {
       PropagateOutputs(state->tagged_node, state->item, &outputs, &ready);
@@ -1821,7 +1938,7 @@ void ExecutorState::ProcessAsync(const NodeItem& item,
           return async_kernel->TraceString(
               &state->ctx, /*verbose=*/profiler::TfOpDetailsEnabled());
         },
-        profiler::GetTFTraceMeLevel(async_kernel->IsExpensive()));
+        profiler::GetTFTraceMeLevel(impl_->kernel_stats_.IsExpensive(item)));
     impl_->params_.device->ComputeAsync(async_kernel, &state->ctx,
                                         std::move(done));
   }
@@ -1926,7 +2043,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
     // add better optional debugging support.
     if (vlog_ && VLOG_IS_ON(1)) {
       mutex_lock l(input_frame->mu);
-      input_frame->GetIteration(input_iter)->mark_started(item.pending_id);
+      input_frame->GetIteration(input_iter)
+          ->mark_started(impl_->pending_ids_[id]);
     }
 
     params.track_allocations = false;
@@ -1972,7 +2090,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         for (int i = 0; i < num_inputs; ++i) {
           (first_input + i)->ClearVal();
         }
-        MaybeMarkCompleted(input_frame, input_iter, item);
+        MaybeMarkCompleted(input_frame, input_iter, id);
         // Continue to process the nodes in 'inline_ready'.
         completed = NodeDone(s, &ready, stats, &inline_ready);
         continue;
@@ -2007,7 +2125,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
       for (int i = 0; i < num_inputs; ++i) {
         (first_input + i)->ClearVal();
       }
-      MaybeMarkCompleted(input_frame, input_iter, item);
+      MaybeMarkCompleted(input_frame, input_iter, id);
       // Propagates outputs.
       if (s.ok()) {
         PropagateOutputs(tagged_node, &item, &outputs, &ready);
@@ -2443,7 +2561,7 @@ void ExecutorState::ScheduleReady(TaggedNodeSeq* ready,
     } else {
       for (auto& tagged_node : *ready) {
         const NodeItem& item = *tagged_node.node_item;
-        if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
+        if (tagged_node.is_dead || !impl_->kernel_stats_.IsExpensive(item)) {
           // Inline this inexpensive node.
           inline_ready->push_back(tagged_node);
         } else {
@@ -2472,12 +2590,12 @@ void ExecutorState::ScheduleReady(TaggedNodeSeq* ready,
 }
 
 inline void ExecutorState::MaybeMarkCompleted(FrameState* frame, int64 iter,
-                                              const NodeItem& item) {
+                                              const int node_id) {
   // TODO(misard) Replace with a finer-grain enabling flag once we
   // add better optional debugging support.
   if (vlog_ && VLOG_IS_ON(1)) {
     mutex_lock l(frame->mu);
-    frame->GetIteration(iter)->mark_completed(item.pending_id);
+    frame->GetIteration(iter)->mark_completed(impl_->pending_ids_[node_id]);
   }
 }
 
@@ -2552,7 +2670,7 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
   const std::vector<const NodeItem*>* nodes = frame->nodes;
   // Dump any waiting nodes that are holding on to tensors.
   for (const NodeItem* node : *nodes) {
-    PendingCounts::Handle pending_id = node->pending_id;
+    PendingCounts::Handle pending_id = impl_->pending_ids_[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::PENDING_NOTREADY ||
         iteration->node_state(pending_id) == PendingCounts::PENDING_READY) {
       DumpPendingNodeState(node->node_id, iteration->input_tensors, false);
@@ -2560,7 +2678,7 @@ void ExecutorState::DumpIterationState(const FrameState* frame,
   }
   // Then the active nodes.
   for (const NodeItem* node : *nodes) {
-    PendingCounts::Handle pending_id = node->pending_id;
+    PendingCounts::Handle pending_id = impl_->pending_ids_[node->node_id];
     if (iteration->node_state(pending_id) == PendingCounts::STARTED) {
       DumpActiveNodeState(node->node_id, iteration->input_tensors);
     }
@@ -2782,11 +2900,7 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
         const EdgeInfo& e = item->output_edge(i);
 
         const NodeItem& dst_item = *impl_->gview_.node(e.dst_id);
-        const auto dst_pending_id = dst_item.pending_id;
-
-        // TODO(yuanbyu): We don't need this if we require the subgraph
-        // given to an executor not to contain a sink node.
-        if (dst_item.is_sink) continue;
+        const auto dst_pending_id = impl_->pending_ids_[e.dst_id];
 
         bool dst_dead = true;
         bool dst_ready = false;
@@ -2849,25 +2963,76 @@ void ExecutorState::CleanupFramesIterations(FrameState* frame, int64 iter,
   }
 }
 
-void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
-                                              const bool is_dead, int64 iter,
-                                              EntryVector* outputs,
-                                              TaggedNodeSeq* ready) {
+void ExecutorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
+                                                      const bool is_dead,
+                                                      int64 iter,
+                                                      EntryVector* outputs,
+                                                      TaggedNodeSeq* ready) {
+  // If we know that none of the item's edge destinations require special
+  // handling (i.e. none of the nodes is a merge or control trigger node), we
+  // can take a fast path that avoids accessing the destination NodeItem.
   const GraphView& gview = executor->gview_;
   IterationState* iter_state = GetIteration(iter);
   const size_t num_output_edges = item->num_output_edges;
   const EdgeInfo* edges = item->output_edge_list();
   Entry* input_tensors = iter_state->input_tensors;
+
+  for (size_t out_index = 0; out_index < num_output_edges; out_index++) {
+    const EdgeInfo& e = edges[out_index];
+    const int dst_id = e.dst_id;
+    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
+    const int src_slot = e.output_slot;
+
+    // True iff this input for dst is needed. We only set this input for
+    // dst if this flag is true. This is needed to make the thread safety
+    // analysis happy.
+    const bool is_control_edge = (src_slot == Graph::kControlSlot);
+    const bool dst_need_input = !is_control_edge;
+
+    const bool increment_dead =
+        (is_dead || (!is_control_edge &&
+                     (*outputs)[src_slot].state == Entry::State::NO_VALUE));
+    const PendingCounts::AdjustResult adjust_result =
+        iter_state->adjust_for_activation(dst_pending_id, increment_dead);
+
+    if (dst_need_input) {
+      const int dst_loc = e.input_slot;
+      if (e.is_last) {
+        input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
+      } else {
+        input_tensors[dst_loc] = (*outputs)[src_slot];
+      }
+    }
+
+    // Add dst to the ready queue if it's ready
+    if (!adjust_result.any_pending) {
+      const NodeItem* dst_item = gview.node(dst_id);
+      ready->emplace_back(dst_item, this, iter, adjust_result.any_dead);
+      iter_state->outstanding_ops++;
+    }
+  }
+}
+
+void ExecutorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
+                                                      const bool is_dead,
+                                                      int64 iter,
+                                                      EntryVector* outputs,
+                                                      TaggedNodeSeq* ready) {
+  // If any of the edge destinations is a merge or a control trigger node,
+  // we need to read each destination NodeItem to determine what action
+  // to take.
+  const GraphView& gview = executor->gview_;
+  IterationState* iter_state = GetIteration(iter);
+  const size_t num_output_edges = item->num_output_edges;
+  const EdgeInfo* edges = item->output_edge_list();
+  Entry* input_tensors = iter_state->input_tensors;
+
   for (size_t out_index = 0; out_index < num_output_edges; out_index++) {
     const EdgeInfo& e = edges[out_index];
     const int dst_id = e.dst_id;
     const NodeItem* dst_item = gview.node(dst_id);
-    const PendingCounts::Handle dst_pending_id = dst_item->pending_id;
+    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
     const int src_slot = e.output_slot;
-
-    // TODO(yuanbyu): We don't need this if we require the subgraph
-    // given to an executor not to contain a sink node.
-    if (dst_item->is_sink) continue;
 
     bool dst_dead = false;
     bool dst_ready = false;
@@ -2914,19 +3079,18 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
         }
       }
     } else {
+      // Handle all other (non-merge) nodes.
       const bool increment_dead =
           (is_dead || (!is_control_edge &&
                        (*outputs)[src_slot].state == Entry::State::NO_VALUE));
-      int pending, dead;
-      iter_state->adjust_for_activation(dst_pending_id, increment_dead,
-                                        &pending, &dead);
-      dst_dead = (dead > 0);
-      dst_ready = (pending == 0);
+      const PendingCounts::AdjustResult adjust_result =
+          iter_state->adjust_for_activation(dst_pending_id, increment_dead);
+      dst_dead = adjust_result.any_dead;
+      dst_ready = !adjust_result.any_pending;
     }
 
     if (dst_need_input) {
-      const int dst_slot = e.input_slot;
-      const int dst_loc = dst_item->input_start + dst_slot;
+      const int dst_loc = e.input_slot;
       if (e.is_last) {
         input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
       } else {
@@ -2940,6 +3104,17 @@ void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
       ready->emplace_back(dst_item, this, iter, dst_dead);
       iter_state->outstanding_ops++;
     }
+  }
+}
+
+void ExecutorState::FrameState::ActivateNodes(const NodeItem* item,
+                                              const bool is_dead, int64 iter,
+                                              EntryVector* outputs,
+                                              TaggedNodeSeq* ready) {
+  if (TF_PREDICT_FALSE(item->is_any_consumer_merge_or_control_trigger)) {
+    ActivateNodesSlowPath(item, is_dead, iter, outputs, ready);
+  } else {
+    ActivateNodesFastPath(item, is_dead, iter, outputs, ready);
   }
 }
 

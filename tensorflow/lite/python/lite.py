@@ -352,7 +352,7 @@ class TFLiteConverterBase(object):
     else:
       return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float, activations_type, enable_mlir_quantizer)
+        inference_output_type, allow_float, activations_type)
 
   def _is_unknown_shapes_allowed(self, fp32_execution):
     # TODO(b/128319310): Investigate which quantization methods work.
@@ -398,7 +398,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
       to apply when converting the model. E.g. `[Optimize.DEFAULT]`
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
-      dataset to evaluate different optimizations.
+      dataset to evaluate different optimizations. Note that this is an optional
+      attribute but it is necessary if INT8 is the only support builtin ops in
+      target ops.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
     experimental_new_quantizer: Experimental flag, subject to change.
@@ -459,7 +461,7 @@ class TFLiteConverterV2(TFLiteConverterBase):
         message = "This function takes in a list of ConcreteFunction."
         if isinstance(func, _def_function.Function):
           message += (" To get the ConcreteFunction from a Function,"
-                      " call from_concrete_function.")
+                      " call get_concrete_function.")
         raise ValueError(message)
     return cls(funcs)
 

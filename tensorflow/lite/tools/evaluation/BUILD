@@ -40,10 +40,8 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite:context",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",
@@ -57,7 +55,23 @@ cc_library(
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:fuchsia": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
     }),
+)
+
+cc_library(
+    name = "evaluation_delegate_provider",
+    srcs = ["evaluation_delegate_provider.cc"],
+    hdrs = ["evaluation_delegate_provider.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
 )
 
 cc_test(
@@ -72,6 +86,17 @@ cc_test(
     deps = [
         ":utils",
         "//tensorflow/lite:context",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "evaluation_delegate_provider_test",
+    srcs = ["evaluation_delegate_provider_test.cc"],
+    linkopts = tflite_linkopts(),
+    deps = [
+        ":evaluation_delegate_provider",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

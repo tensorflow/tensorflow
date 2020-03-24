@@ -25,16 +25,16 @@ limitations under the License.
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/Regex.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/OpImplementation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/OpImplementation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/Functional.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 
@@ -167,7 +167,7 @@ TF::ReshapeOp createReshapeOp(Value value, ArrayRef<int64_t> shape,
 
 }  // namespace
 
-PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
+LogicalResult ConvertTFEinsumOp::matchAndRewrite(
     TF::EinsumOp op, PatternRewriter& rewriter) const {
   Type output_type = op.getResult().getType();
   Value lhs = op.getOperand(0);
@@ -176,11 +176,11 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
 
   if (!lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
-    return matchFailure();
+    return failure();
   }
   if (!rhs.getType().isa<RankedTensorType>()) {
     // RHS must be a ranked tensor type
-    return matchFailure();
+    return failure();
   }
 
   auto lhs_type = lhs.getType().cast<RankedTensorType>();
@@ -190,14 +190,14 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
 
   // Currently only support static shapes.
   if (!(lhs_type.hasStaticShape() && rhs_type.hasStaticShape())) {
-    return matchFailure();
+    return failure();
   }
 
   // Currently support use cases of LHS, RHS dims = 3 or 4
   const int dims_lhs = lhs_shape.size();
   const int dims_rhs = rhs_shape.size();
   if (dims_rhs < 3 || dims_rhs > 4 || dims_lhs < 3 || dims_lhs > 4) {
-    return matchFailure();
+    return failure();
   }
 
   EinsumEquation einsum_eqn = tokenizeAndParse(op.equation());
@@ -207,7 +207,7 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
         loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
         rewriter.getBoolAttr(false));
     rewriter.replaceOp(op, bmm_op.getResult());
-    return matchSuccess();
+    return success();
   }
   if (einsum_eqn == EinsumEquation::ThreeDReshapeTail) {
     // Case "BFD,DNH->BFNH"
@@ -235,7 +235,7 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
         createReshapeOp(bmm_op, {lhs_dim0, lhs_dim1, rhs_dim1, rhs_dim2},
                         bmm_element_type, loc, &rewriter);
     rewriter.replaceOp(op, {final_reshape.getResult()});
-    return matchSuccess();
+    return success();
   }
   if (einsum_eqn == EinsumEquation::FourDMatrixDotProd) {
     // Case "BFND,NDH->BFH"
@@ -259,7 +259,7 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
         loc, ArrayRef<Type>{output_type}, reshaped_lhs, reshaped_rhs,
         rewriter.getBoolAttr(false), rewriter.getBoolAttr(false));
     rewriter.replaceOp(op, {bmm_op.getResult()});
-    return matchSuccess();
+    return success();
   }
   if (einsum_eqn == EinsumEquation::FourDBatchMatMul) {
     // Case "BFNH,BTNH->BNFT"
@@ -271,9 +271,9 @@ PatternMatchResult ConvertTFEinsumOp::matchAndRewrite(
         loc, ArrayRef<Type>{output_type}, lhs, rhs, rewriter.getBoolAttr(false),
         rewriter.getBoolAttr(false));
     rewriter.replaceOp(op, {bmm_op.getResult()});
-    return matchSuccess();
+    return success();
   }
-  return matchFailure();
+  return failure();
 }
 
 // Transform Einsum to other TF Ops for the supported variants.

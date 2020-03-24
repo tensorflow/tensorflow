@@ -126,7 +126,7 @@ std::vector<int> GetDivisorsForRange(int number, int range) {
 std::vector<int> GetPossibleSizes(int number,
                                   WorkGroupSizeAlignment z_alignment) {
   if (z_alignment == WorkGroupSizeAlignment::PRECISE) {
-    // we will use for potential sizes, sizes that cover grid preciselly
+    // we will use for potential sizes, sizes that cover grid precisely
     // work group size * k (k is integer) == grid_size
     return GetDivisors(number);
   } else {

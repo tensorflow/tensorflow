@@ -294,14 +294,16 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         return model::MakeUnknownRatioNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(dataset()->captured_key_func_->CheckExternalState());
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_reduce_func_->CheckExternalState());
-        TF_RETURN_IF_ERROR(
-            dataset()->captured_window_size_func_->CheckExternalState());
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_key_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_reduce_func_->CheckExternalState()));
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_window_size_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
 
         if (end_of_input_) {
           TF_RETURN_IF_ERROR(
@@ -342,7 +344,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
         }
 
         if (current_group_iterator_) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_group_iterator_));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_group_iterator_));
 
           // Saving current_key_
           TF_RETURN_IF_ERROR(

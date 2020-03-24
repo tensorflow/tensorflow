@@ -13128,7 +13128,7 @@ inline void DepthwiseConvDotProduct3x3Impl(
   // "next" data, of at least 16 bytes, even when at the end of the workspace.
   // It is relatively expensive to detect the end micro block. It is also very
   // difficult to test for (to trigger) erroneous reads (past end of array) in
-  // the depth multplication case.
+  // the depth multiplication case.
   int workspace_width_micro_repeats =
       (has_depth_multiplication
            ? kDepthwiseConvScratchWorkspaceSize - kWorkspaceExtension

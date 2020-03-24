@@ -393,7 +393,7 @@ class Network(base_layer.Layer):
 
     weight_layer_index = 0
 
-    dependencies = {}
+    dependencies = collections.OrderedDict()
     for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
@@ -416,7 +416,7 @@ class Network(base_layer.Layer):
   def _checkpoint_dependencies(self):
     dependencies = [
         trackable.TrackableReference(name=name, ref=layer)
-        for name, layer in sorted(self._layer_checkpoint_dependencies.items())]
+        for name, layer in self._layer_checkpoint_dependencies.items()]
     dependencies.extend(super(Network, self)._checkpoint_dependencies)
     return dependencies
 

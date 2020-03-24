@@ -23,6 +23,7 @@ message Operation {
   // future.
   int64 id = 1;
   string name = 2;
+  // TODO(b/150963957): Deprecate this.
   repeated RemoteTensorHandle inputs = 3;
 
   message Input {

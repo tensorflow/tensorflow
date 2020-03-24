@@ -71,6 +71,7 @@ pybind_extension(
     module_name = "_pywrap_tensorflow_interpreter_wrapper",
     deps = [
         ":interpreter_wrapper_lib",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/experimental/tflite_api_dispatcher",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",

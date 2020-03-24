@@ -531,12 +531,15 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
+    real_hardware_only = True,
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":constants",

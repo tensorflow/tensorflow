@@ -19,7 +19,6 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -214,8 +213,7 @@ PyObject* CalibrationWrapper::Calibrate() {
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
                                             bool allow_float,
-                                            int activations_py_type,
-                                            bool enable_mlir_quantizer) {
+                                            int activations_py_type) {
   if (NoOpModel(*model_)) {
     return python_utils::ConvertToPyString(model_str_->data(),
                                            model_str_->size());
@@ -235,16 +233,11 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
   auto status = kTfLiteOk;
-  if (enable_mlir_quantizer) {
-    status = mlir::lite::QuantizeModel(
-        *tflite_model, TfLiteTypeToSchemaType(input_type),
-        TfLiteTypeToSchemaType(output_type), {}, allow_float, &builder,
-        error_reporter_.get());
-  } else {
-    status = tflite::optimize::QuantizeModel(
-        &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-        TfLiteTypeToSchemaType(output_type), allow_float,
-        TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
+  
+  status = tflite::optimize::QuantizeModel(
+    &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+    TfLiteTypeToSchemaType(output_type), allow_float,
+    TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
   }
 
   if (status != kTfLiteOk) {

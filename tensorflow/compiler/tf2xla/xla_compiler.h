@@ -518,6 +518,12 @@ class XlaCompiler {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };
 
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_COMPILER_H_

@@ -984,13 +984,6 @@ ARRAY_DEPS = [
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
-cc_library(
-    name = "array_not_windows",
-    deps = [
-        ":immutable_constant_op",
-    ],
-)
-
 tf_kernel_library(
     name = "immutable_constant_op",
     prefix = "immutable_constant_op",
@@ -1036,6 +1029,7 @@ cc_library(
         ":host_constant_op",
         ":identity_n_op",
         ":identity_op",
+        ":immutable_constant_op",
         ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
@@ -3922,13 +3916,6 @@ MATH_DEPS = [
     "//third_party/eigen3",
 ]
 
-cc_library(
-    name = "math_not_windows",
-    deps = [
-        ":sparse_matmul_op",
-    ],
-)
-
 tf_kernel_library(
     name = "sparse_matmul_op",
     defines = select({
@@ -3967,6 +3954,7 @@ cc_library(
         ":scan_ops",
         ":segment_reduction_ops",
         ":sequence_ops",
+        ":sparse_matmul_op",
         "//tensorflow/core/kernels/special_math:special_math_op",
     ],
 )

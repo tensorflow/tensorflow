@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
@@ -65,6 +65,15 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
   int64 handle = reinterpret_cast<int64>(val.getAsOpaquePointer());
   handle_to_shape_[handle] = std::move(shape);
   return XlaOp(handle, this);
+}
+
+XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(mlir::DenseElementsAttr attr,
+                        CreateDenseElementsAttrFromLiteral(literal, builder_));
+    auto op = builder_.create<mlir::xla_hlo::ConstOp>(loc_, attr);
+    return MakeXlaOp(op);
+  });
 }
 
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,

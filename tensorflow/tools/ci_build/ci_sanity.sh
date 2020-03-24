@@ -397,9 +397,10 @@ do_external_licenses_check(){
     if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
       echo "Missing the licenses for the following external dependencies:"
       cat ${MISSING_LICENSES_FILE}
+      echo "Please add the license(s) to ${LICENSES_TARGET}."
     fi
     if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
-      echo "Please remove the licenses for the following external dependencies:"
+      echo "Please remove the licenses for the following external dependencies from target ${LICENSES_TARGET}."
       cat ${EXTRA_LICENSES_FILE}
     fi
     rm -rf ${EXTERNAL_DEPENDENCIES_FILE}

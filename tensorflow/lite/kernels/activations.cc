@@ -128,7 +128,6 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
 #if __aarch64__ && __clang__
 namespace {
 // Looks up each element of <indices> in <table>, returns them in a vector.
-// idx_offset must be a int8x16_t vector containing 64 in each lane.
 inline uint8x16_t aarch64_lookup_vector(const uint8x16x4_t table[4],
                                         uint8x16_t indices) {
   // Look up in 1st quarter of the table: top 2 bits of indices == 00
@@ -809,7 +808,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Tanh16bitPercision(
+        optimized_ops::Tanh16bitPrecision(
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
@@ -824,7 +823,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Tanh16bitPercision(
+        optimized_ops::Tanh16bitPrecision(
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {
@@ -881,7 +880,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Logistic16bitPercision(
+        optimized_ops::Logistic16bitPrecision(
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       } else {
@@ -896,7 +895,7 @@ TfLiteStatus SigmoidEval(TfLiteContext* context, TfLiteNode* node) {
         params.input_range_radius = data->input_range_radius;
         params.input_multiplier = data->input_multiplier;
         params.input_left_shift = data->input_left_shift;
-        optimized_ops::Logistic16bitPercision(
+        optimized_ops::Logistic16bitPrecision(
             params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<int8_t>(output));
       } else {

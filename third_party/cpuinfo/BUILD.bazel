@@ -42,7 +42,6 @@ ARM_SRCS = [
 # Platform-specific sources and headers
 LINUX_SRCS = [
     "src/linux/cpulist.c",
-    "src/linux/current.c",
     "src/linux/multiline.c",
     "src/linux/processors.c",
     "src/linux/smallfile.c",
@@ -101,8 +100,6 @@ MACH_ARM_SRCS = [
 cc_library(
     name = "cpuinfo_impl",
     srcs = select({
-        ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
-        ":linux_arm": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS,
         ":linux_x86_64": COMMON_SRCS + X86_SRCS + LINUX_SRCS + LINUX_X86_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
@@ -160,18 +157,6 @@ cc_library(
 )
 
 ############################# Build configurations #############################
-
-config_setting(
-    name = "linux_aarch64",
-    values = {"cpu": "aarch64"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "linux_arm",
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
 
 config_setting(
     name = "linux_x86_64",

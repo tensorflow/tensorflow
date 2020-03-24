@@ -142,8 +142,9 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        return SaveInput(writer, input_impl_);
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        return SaveInput(ctx, writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,

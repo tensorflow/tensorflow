@@ -111,6 +111,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardToStandard",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -152,16 +153,19 @@ cc_library(
     srcs = glob([
         "lib/Transforms/*.cpp",
     ]),
+    defines = ["MLIR_CUDA_CONVERSIONS_ENABLED"],
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
         ":TestLinalgTransformPatternsIncGen",
         ":TestVectorTransformPatternsIncGen",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToCUDATransforms",
+        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",
@@ -174,6 +178,24 @@ cc_library(
         "@llvm-project//mlir:VectorOps",
         "@llvm-project//mlir:VectorToLLVM",
         "@llvm-project//mlir:VectorToLoops",
+    ],
+)
+
+cc_library(
+    name = "TestAffine",
+    srcs = glob([
+        "lib/Dialect/Affine/*.cpp",
+    ]),
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineTransforms",
+        "@llvm-project//mlir:Analysis",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Transforms",
+        "@llvm-project//mlir:VectorOps",
     ],
 )
 

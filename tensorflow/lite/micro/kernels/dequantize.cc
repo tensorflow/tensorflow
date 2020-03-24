@@ -65,6 +65,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
             GetTensorShape(output), GetTensorData<float>(output));
         break;
+      case kTfLiteInt16:
+        reference_ops::Dequantize(
+            op_params, GetTensorShape(input), GetTensorData<int16_t>(input),
+            GetTensorShape(output), GetTensorData<float>(output));
+        break;
       default:
         TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
                            TfLiteTypeGetName(input->type),

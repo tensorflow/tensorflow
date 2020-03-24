@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/interpreter_builder.h"
 
 #include <fcntl.h>
 #include <stdint.h>
@@ -37,6 +37,7 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
 // Ensure that ErrorReporter is non-null.
 ErrorReporter* ValidateErrorReporter(ErrorReporter* e) {
   return e ? e : DefaultErrorReporter();
@@ -91,184 +92,33 @@ TfLiteStatus ParseSparseIndexVector(const DimensionMetadata* src,
   }
   return kTfLiteError;
 }
+
 }  // namespace
 
 const char* kEmptyTensorName = "";
 
-// Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
-// we avoid the absl dependency for binary size reasons.
-#ifdef __has_attribute
-#define TFLITE_HAS_ATTRIBUTE(x) __has_attribute(x)
-#else
-#define TFLITE_HAS_ATTRIBUTE(x) 0
-#endif
+#if TFLITE_HAS_ATTRIBUTE_WEAK
+// Using weak symbols to create a delegate allows automatic injection of the
+// delegate simply by adding it as a dependency.
 
-#if TFLITE_HAS_ATTRIBUTE(weak) || (defined(__GNUC__) && !defined(__clang__))
-// Using weak symbols for the flex delegate allows automatic injection of the
-// delegate simply by adding it as a dependency. See also the strong override in
+// For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
-__attribute__((weak)) Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+// For XNNPACK delegate, see also the strong override in
+// lite/enable_xnnpack_delegate.cc.
+TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireXNNPACKDelegate(
+    int num_threads) {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 #else
 Interpreter::TfLiteDelegatePtr (*AcquireFlexDelegate)() = nullptr;
+Interpreter::TfLiteDelegatePtr (*AcquireXNNPACKDelegate)(int) = nullptr;
 #endif
 
-#ifndef TFLITE_MCU
-// Loads a model from `filename`. If `mmap_file` is true then use mmap,
-// otherwise make a copy of the model in a buffer.
-std::unique_ptr<Allocation> GetAllocationFromFile(const char* filename,
-                                                  bool mmap_file,
-                                                  ErrorReporter* error_reporter,
-                                                  bool use_nnapi) {
-  std::unique_ptr<Allocation> allocation;
-  if (mmap_file && MMAPAllocation::IsSupported()) {
-    allocation.reset(new MMAPAllocation(filename, error_reporter));
-  } else {
-    allocation.reset(new FileCopyAllocation(filename, error_reporter));
-  }
-  return allocation;
-}
-
-std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
-    const char* filename, ErrorReporter* error_reporter) {
-  error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
-                                          error_reporter, /*use_nnapi=*/true);
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
-}
-
-std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
-    const char* filename, TfLiteVerifier* extra_verifier,
-    ErrorReporter* error_reporter) {
-  error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
-                                          error_reporter, /*use_nnapi=*/true);
-
-  flatbuffers::Verifier base_verifier(
-      reinterpret_cast<const uint8_t*>(allocation->base()),
-      allocation->bytes());
-  if (!VerifyModelBuffer(base_verifier)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The model is not a valid Flatbuffer file");
-    return nullptr;
-  }
-
-  if (extra_verifier &&
-      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
-                              allocation->bytes(), error_reporter)) {
-    return model;
-  }
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
-}
-#endif
-
-std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
-    const char* caller_owned_buffer, size_t buffer_size,
-    ErrorReporter* error_reporter) {
-  error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  std::unique_ptr<Allocation> allocation(
-      new MemoryAllocation(caller_owned_buffer, buffer_size, error_reporter));
-  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
-}
-
-std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
-    const char* caller_owned_buffer, size_t buffer_size,
-    TfLiteVerifier* extra_verifier, ErrorReporter* error_reporter) {
-  error_reporter = ValidateErrorReporter(error_reporter);
-
-  flatbuffers::Verifier base_verifier(
-      reinterpret_cast<const uint8_t*>(caller_owned_buffer), buffer_size);
-  if (!VerifyModelBuffer(base_verifier)) {
-    TF_LITE_REPORT_ERROR(error_reporter,
-                         "The model is not a valid Flatbuffer buffer");
-    return nullptr;
-  }
-
-  if (extra_verifier && !extra_verifier->Verify(caller_owned_buffer,
-                                                buffer_size, error_reporter)) {
-    return nullptr;
-  }
-
-  return BuildFromBuffer(caller_owned_buffer, buffer_size, error_reporter);
-}
-
-std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
-    const tflite::Model* caller_owned_model_spec,
-    ErrorReporter* error_reporter) {
-  error_reporter = ValidateErrorReporter(error_reporter);
-
-  std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(caller_owned_model_spec, error_reporter));
-  if (!model->initialized()) model.reset();
-  return model;
-}
-
-string FlatBufferModel::GetMinimumRuntime() const {
-  if (!model_ || !model_->metadata()) return "";
-
-  for (int i = 0; i < model_->metadata()->size(); ++i) {
-    auto metadata = model_->metadata()->Get(i);
-    if (metadata->name()->str() == "min_runtime_version") {
-      auto buf = metadata->buffer();
-      auto* buffer = (*model_->buffers())[buf];
-      auto* array = buffer->data();
-      // Get the real length of the runtime string, since there might be
-      // trailing
-      // '\0's in the buffer.
-      for (int len = 0; len < array->size(); ++len) {
-        if (array->data()[len] == '\0') {
-          return string(reinterpret_cast<const char*>(array->data()), len);
-        }
-      }
-      // If there is no '\0' in the buffer, this indicates that the flatbuffer
-      // is malformed.
-      TF_LITE_REPORT_ERROR(
-          error_reporter_,
-          "Min_runtime_version in model metadata is malformed");
-      break;
-    }
-  }
-  return "";
-}
-
-bool FlatBufferModel::CheckModelIdentifier() const {
-  if (!tflite::ModelBufferHasIdentifier(allocation_->base())) {
-    const char* ident = flatbuffers::GetBufferIdentifier(allocation_->base());
-    error_reporter_->Report(
-        "Model provided has model identifier '%c%c%c%c', should be '%s'\n",
-        ident[0], ident[1], ident[2], ident[3], tflite::ModelIdentifier());
-    return false;
-  }
-  return true;
-}
-
-FlatBufferModel::FlatBufferModel(const Model* model,
-                                 ErrorReporter* error_reporter)
-    : model_(model), error_reporter_(ValidateErrorReporter(error_reporter)) {}
-
-FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
-                                 ErrorReporter* error_reporter)
-    : error_reporter_(ValidateErrorReporter(error_reporter)),
-      allocation_(std::move(allocation)) {
-  if (!allocation_->valid() || !CheckModelIdentifier()) return;
-
-  model_ = ::tflite::GetModel(allocation_->base());
-}
-
-FlatBufferModel::~FlatBufferModel() {}
+namespace impl {
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
@@ -567,6 +417,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     return kEmptyTensorName;
   };
 
+  num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
@@ -576,6 +427,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         kTfLiteOk) {
       status = kTfLiteError;
       continue;
+    }
+    if (type == kTfLiteFloat32) {
+      ++num_fp32_tensors_;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {
@@ -659,12 +513,23 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
-TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
-  // Apply Flex delegate if applicable.
-  if (!has_flex_op_ || AcquireFlexDelegate == nullptr) {
-    return kTfLiteOk;
-  } else if (auto flex_delegate = AcquireFlexDelegate()) {
-    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
+                                                int num_threads) {
+  // First, apply XNNPACK delegate if applicable.
+  if (AcquireXNNPACKDelegate && num_fp32_tensors_ > 0) {
+    if (auto xnnpack_delegate = AcquireXNNPACKDelegate(num_threads)) {
+      // The execution will fall back to default implementation if the XNNPACK
+      // delegate fails to be applied. Therefore, we ignore the return status
+      // here and let it fall through the rest of the code.
+      interpreter->ModifyGraphWithDelegate(std::move(xnnpack_delegate));
+    }
+  }
+
+  // Secondly, apply Flex delegate if applicable.
+  if (has_flex_op_ && AcquireFlexDelegate) {
+    if (auto flex_delegate = AcquireFlexDelegate()) {
+      return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+    }
   }
 
   return kTfLiteOk;
@@ -777,10 +642,12 @@ TfLiteStatus InterpreterBuilder::operator()(
     modified_subgraph->SetVariables(std::move(variables));
   }
 
-  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
+  if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
     return cleanup_and_error();
 
   return kTfLiteOk;
 }
+
+}  // namespace impl
 
 }  // namespace tflite

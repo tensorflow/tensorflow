@@ -23,6 +23,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/function.h"
@@ -202,27 +203,10 @@ class ProcessFunctionLibraryRuntime {
   friend class FunctionLibraryRuntimeImpl;
 
   struct InternalArgs {
-    std::vector<Tensor> local_args;
+    std::vector<FunctionArg> args;
 #if !defined(IS_MOBILE_PLATFORM)
-    std::vector<eager::RemoteTensorHandle> remote_args;
-#endif  // IS_MOBILE_PLATFORM
-  };
-
-  struct InternalArgsView {
-   public:
-    explicit InternalArgsView(gtl::ArraySlice<Tensor> tensors)
-        : local_args(tensors) {}
-
-    explicit InternalArgsView(InternalArgs* args)
-        : local_args(args->local_args) {
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_args = &args->remote_args;
-#endif  // IS_MOBILE_PLATFORM
-    }
-
-    gtl::ArraySlice<Tensor> local_args;
-#if !defined(IS_MOBILE_PLATFORM)
-    std::vector<eager::RemoteTensorHandle>* remote_args = nullptr;
+    // Holds the RemoteTensorHandles referred by args.
+    std::vector<std::unique_ptr<eager::RemoteTensorHandle>> remote_args;
 #endif  // IS_MOBILE_PLATFORM
   };
 
@@ -290,7 +274,7 @@ class ProcessFunctionLibraryRuntime {
 
   virtual void RunRemoteDevice(const FunctionLibraryRuntime::Options& opts,
                                FunctionLibraryRuntime::Handle local_handle,
-                               const InternalArgsView& args,
+                               gtl::ArraySlice<FunctionArg> args,
                                std::vector<Tensor>* rets,
                                FunctionLibraryRuntime::DoneCallback done) const;
 
@@ -382,7 +366,7 @@ class ProcessFunctionLibraryRuntime {
 
   void RunInternal(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::Handle handle,
-                   const InternalArgsView& args, std::vector<Tensor>* rets,
+                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
                    std::vector<std::unique_ptr<CleanUpItem>>* cleanup_items,
                    FunctionLibraryRuntime::DoneCallback done) const;
 

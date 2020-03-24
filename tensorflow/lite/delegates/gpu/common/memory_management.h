@@ -82,7 +82,7 @@ enum class MemoryStrategy {
 Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
                   ObjectsAssignment<size_t>* assignment);
 
-// Calculates the assignement of shared objects to given tensors, including
+// Calculates the assignment of shared objects to given tensors, including
 // objects' sizes. Below there are specializations for different types, that
 // support more memory strategies.
 // If reallocation_graph is provided, assignment of shared objects support
@@ -130,7 +130,7 @@ Status AssignObjectsToTensors(
     MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
     const UsageGraph* reallocation_graph);
 
-// Calculates the assignement of tensors to offsets, considering those tensors
+// Calculates the assignment of tensors to offsets, considering those tensors
 // are going to be allocated in one continuous memory block.
 Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,

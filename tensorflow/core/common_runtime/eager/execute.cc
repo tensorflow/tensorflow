@@ -736,7 +736,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      auto* input_handle = remote_op->add_inputs();
+      auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
       TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
           input, input_handle, input_device, *input_device_name,
           serialize_resource_dtype_and_shape));

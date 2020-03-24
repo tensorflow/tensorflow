@@ -86,9 +86,6 @@ class TpuBackend(xla_client.Backend):
       device = self.client.local_devices()[0]
     return _tpu_client.PyTpuBuffer.from_python(pyval, self.client, device)
 
-  def make_tuple(self, c_buffers, device):
-    return _tpu_client.PyTpuBuffer.make_tuple(c_buffers, self.client, device)
-
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas

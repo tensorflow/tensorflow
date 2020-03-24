@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -95,7 +95,9 @@ void LayoutAssignmentPass::runOnFunction() {
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  ::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(), &devices);
+  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+                                            &devices)))
+    return signalPassFailure();
 
   // If there is no runtime device information and data format is not explicitly
   // forced, there is nothing to do.
@@ -418,8 +420,6 @@ void CreateLayoutOptimizationPipeline(
     OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
     const LayoutOptimizationPipelineOptions& options) {
   using Direction = MoveTransposesPass::Direction;
-
-  if (options.force_data_format.empty()) return;
 
   // Assign optimal layout for layout sensitive ops.
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));

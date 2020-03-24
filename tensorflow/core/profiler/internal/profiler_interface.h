@@ -38,6 +38,9 @@ struct ProfilerOptions {
 
   // Inexpensive ops are not traced by default.
   int host_tracer_level = 2;
+
+  // Whether to enable python function calls tracer.
+  bool enable_python_tracer = false;
 };
 
 // Interface for tensorflow profiler plugins.

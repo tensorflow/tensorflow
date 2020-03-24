@@ -832,6 +832,47 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            'filepath.*'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_ModelCheckpoint_nonblocking(self):
+    filepath = self.get_temp_dir()
+    # Should only cause a sync block when saving is actually performed.
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath, save_freq=100)
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=0)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+      cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      cb_list.on_predict_begin(logs)
+      cb_list.on_predict_batch_begin(logs)
+      cb_list.on_predict_batch_end(logs)
+      cb_list.on_predict_end(logs)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)
@@ -1916,6 +1957,43 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
       keras.callbacks.TensorBoard(wwrite_images=True)
 
+  def test_TensorBoard_non_blocking(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    tb = keras.callbacks.TensorBoard(self.logdir)
+    self.assertTrue(tb._supports_tf_logs)
+    cb_list = keras.callbacks.CallbackList([tb],
+                                           model=model,
+                                           epochs=1,
+                                           steps=100,
+                                           verbose=0)
+
+    tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, TensorBoard is causing a blocking '
+          'NumPy conversion.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+      cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      cb_list.on_predict_begin(logs)
+      cb_list.on_predict_batch_begin(logs)
+      cb_list.on_predict_batch_end(logs)
+      cb_list.on_predict_end(logs)
+
 
 # Note that this test specifies model_type explicitly.
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -2076,20 +2154,24 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
     model.compile(gradient_descent.SGD(1), 'mse')
 
+    logdir = os.path.join(self.get_temp_dir(), 'tb1')
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
-        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=1)],
+        batch_size=32,
+        callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=1)],
     )
-    # Verifies trace exists in the first train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    # Verifies trace exists in the first logdir.
+    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
+    logdir = os.path.join(self.get_temp_dir(), 'tb2')
     model.fit(
         np.zeros((64, 1)),
         np.zeros((64, 1)),
-        callbacks=[keras.callbacks.TensorBoard(self.logdir, profile_batch=2)],
+        batch_size=32,
+        callbacks=[keras.callbacks.TensorBoard(logdir, profile_batch=2)],
     )
-    # Verifies trace exists in the second train_dir.
-    self.assertIsNotNone(self._get_trace_file(logdir=self.train_dir))
+    # Verifies trace exists in the second logdir.
+    self.assertIsNotNone(self._get_trace_file(logdir=logdir))
 
   def test_TensorBoard_autoTrace_profileBatchRange(self):
     model = self._get_seq_model()

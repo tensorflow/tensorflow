@@ -47,7 +47,7 @@ struct CLNode {
   // for every operation.
   std::vector<int2> ranges;
 
-  // Mostly for debug purposess.
+  // Mostly for debug purposes.
   std::string name;
 
   CLNode() = default;
@@ -129,8 +129,8 @@ class InferenceContext {
   CalculationsPrecision precision_;
   TensorStorageType storage_type_;
 
-  // Directly mapped nodes from graph, but some of them "inactiv" due
-  //  to fusion (inactiv = fused).
+  // Directly mapped nodes from graph, but some of them "inactive" due
+  //  to fusion (inactive = fused).
   // Memory is allocated only once, in ConvertOperations, and is not modified
   //  anywhere.
   std::vector<CLNode> nodes_;

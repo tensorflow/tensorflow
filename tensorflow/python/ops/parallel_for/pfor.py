@@ -2733,8 +2733,16 @@ def _convert_cwise(pfor_input, op_type, op_func):
   # and hence don't need extra arguments passed to the cwise_op call below.
   for attr in pfor_input.op.node_def.attr.keys():
     assert attr in [u"T", u"Tout", u"_xla_compile_id"], (op_type, attr)
-  pfor_input.expanddim_inputs_for_broadcast()
+  if pfor_input.num_inputs > 1:
+    pfor_input.expanddim_inputs_for_broadcast()
   return wrap(op_func(*[x.t for x in pfor_input.inputs]), True)
+
+
+@RegisterPFor("LeakyRelu")
+def _convert_leaky_relu(pfor_input):
+  t = pfor_input.stacked_input(0)
+  alpha = pfor_input.get_attr("alpha")
+  return wrap(gen_nn_ops.leaky_relu(t, alpha=alpha), True)
 
 
 @RegisterPFor("Equal")
@@ -2831,16 +2839,17 @@ def _convert_biasaddgrad(pfor_input):
 # Some required ops are not exposed under the tf namespace. Hence relying on
 # _create_op to create them.
 @RegisterPForWithArgs("EluGrad")
+@RegisterPForWithArgs("LeakyReluGrad")
+@RegisterPForWithArgs("ReciprocalGrad")
 @RegisterPForWithArgs("Relu6Grad")
 @RegisterPForWithArgs("ReluGrad")
+@RegisterPForWithArgs("RsqrtGrad")
 @RegisterPForWithArgs("SeluGrad")
 @RegisterPForWithArgs("SigmoidGrad")
 @RegisterPForWithArgs("SoftplusGrad")
 @RegisterPForWithArgs("SoftsignGrad")
-@RegisterPForWithArgs("TanhGrad")
 @RegisterPForWithArgs("SqrtGrad")
-@RegisterPForWithArgs("RsqrtGrad")
-@RegisterPForWithArgs("ReciprocalGrad")
+@RegisterPForWithArgs("TanhGrad")
 def _convert_grads(pfor_input, op_type, *args, **kw_args):
   del args
   del kw_args

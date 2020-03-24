@@ -139,7 +139,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
@@ -164,10 +164,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_PRELU, Register_PRELU());
   AddBuiltin(BuiltinOperator_MAXIMUM, Register_MAXIMUM(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_MINIMUM, Register_MINIMUM(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_ARG_MAX, Register_ARG_MAX(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -234,14 +234,14 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 3);
   AddBuiltin(BuiltinOperator_ONE_HOT, Register_ONE_HOT());
   AddBuiltin(BuiltinOperator_LOGICAL_OR, Register_LOGICAL_OR());
   AddBuiltin(BuiltinOperator_LOGICAL_AND, Register_LOGICAL_AND());
   AddBuiltin(BuiltinOperator_LOGICAL_NOT, Register_LOGICAL_NOT());
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_FLOOR_DIV, Register_FLOOR_DIV(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -278,6 +278,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
+  AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

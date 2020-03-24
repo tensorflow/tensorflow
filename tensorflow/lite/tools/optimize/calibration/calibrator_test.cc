@@ -165,7 +165,7 @@ TEST(CalibratorTest, MultipleInvokes) {
     EXPECT_NEAR(stats.at(tensor_idx).max, expected_values[tensor_idx], eps);
   }
   // Set input[0][0] = 1.5 and input[0][1] = 0.5 this should change the values
-  // only for input[0] and tensor 4 and ouputs 5, 6.
+  // only for input[0] and tensor 4 and outputs 5, 6.
   TfLiteTensor* input0 = interpreter->tensor(0);
   input0->data.f[0] = 1.5f;
   input0->data.f[1] = 0.5f;

@@ -21,6 +21,7 @@ import re
 import time
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -1890,48 +1891,33 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
 
-class RepeatTest(test_util.TensorFlowTestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
-  def testRepeatScalar(self):
-    with self.test_session():
-      v_tf = array_ops.repeat(constant_op.constant(3), 4)
-      v_np = np.repeat(3, 4)
-      self.assertAllEqual(v_tf.eval(), v_np)
+  @parameterized.parameters(
+      (3, 4, None),
+      ([[1, 2], [3, 4]], 2, None),
+      ([[1, 2], [3, 4]], [1, 2], 0),
+      ([[1, 2], [3, 4]], [1, 2], 1),
+      ([[1, 2], [3, 4]], 3, 1),
+      ([[1, 2], [3, 4]], [1, 2, 3, 4], None),
+      (np.ones([0, 4]), 0, 1),
+      (np.ones([1, 2]), [2], None),
+  )
+  def testRepeat(self, array, repeats, axis):
+    array = np.array(array)
 
-  @test_util.run_deprecated_v1
-  def testRepeatMatrix(self):
-    with self.test_session():
-      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(constant_op.constant(x), 2)
-      v_np = np.repeat(x, 2)
-      self.assertAllEqual(v_tf.eval(), v_np)
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec(None, dtypes.int32)] * 2)
+    def repeat_fn(array, repeats):
+      return array_ops.repeat(array, repeats, axis)
 
-  @test_util.run_deprecated_v1
-  def testRepeatMatrixAxis0(self):
-    with self.test_session():
-      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(
-          constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
-      v_np = np.repeat(x, [1, 2], axis=0)
-      self.assertAllEqual(v_tf.eval(), v_np)
-
-  @test_util.run_deprecated_v1
-  def testRepeatMatrixAxis1(self):
-    with self.test_session():
-      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(
-          constant_op.constant(x), constant_op.constant(3), axis=1)
-      v_np = np.repeat(x, 3, axis=1)
-      self.assertAllEqual(v_tf.eval(), v_np)
-
-  @test_util.run_deprecated_v1
-  def testRepeatMatrixRepeatArray(self):
-    with self.test_session():
-      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(constant_op.constant(x), [1, 2, 3, 4])
-      v_np = np.repeat(x, [1, 2, 3, 4])
-      self.assertAllEqual(v_tf.eval(), v_np)
+    v_tf = array_ops.repeat(constant_op.constant(array), repeats, axis)
+    v_tf_fn = repeat_fn(
+        constant_op.constant(array, dtype=dtypes.int32), repeats)
+    v_np = np.repeat(array, repeats, axis)
+    self.assertAllEqual(v_tf, v_np)
+    self.assertAllEqual(v_tf_fn, v_np)
 
 
 if __name__ == "__main__":
