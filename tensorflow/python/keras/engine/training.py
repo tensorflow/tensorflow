@@ -542,8 +542,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       def run_step(data):
         outputs = model.train_step(data)
         # Ensure counter is updated only if `train_step` succeeds.
-        control_deps = [nest.flatten(outputs)[0]]
-        with ops.control_dependencies(control_deps):
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
           model._train_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
@@ -937,19 +936,36 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     if self.test_function is not None:
       return self.test_function
 
-    def test_function(iterator):
-      """Runs one call to `self.test_function`."""
+    def step_function(model, iterator):
+      """Runs a single evaluation step."""
 
       def run_step(data):
-        outputs = self.test_step(data)
-        self._test_counter.assign_add(1)
+        outputs = model.test_step(data)
+        # Ensure counter is updated only if `test_step` succeeds.
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
+          model._test_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
       data = next(iterator)
-      outputs = self.distribute_strategy.run(run_step, args=(data,))
+      outputs = model.distribute_strategy.run(run_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
+
+    if self._steps_per_execution.numpy().item() == 1:
+
+      def test_function(iterator):
+        """Runs an evaluation execution with one step."""
+        return step_function(self, iterator)
+
+    else:
+
+      def test_function(iterator):
+        """Runs an evaluation execution with multiple steps."""
+        outputs = step_function(self, iterator)
+        for _ in math_ops.range(self._steps_per_execution - 1):
+          outputs = step_function(self, iterator)
+        return outputs
 
     if not self.run_eagerly:
       test_function = def_function.function(
@@ -1061,7 +1077,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
-          model=self)
+          model=self,
+          steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -1087,7 +1104,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               if data_handler.should_sync:
                 context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
-              callbacks.on_test_batch_end(step, logs)
+              end_step = step + data_handler.step_increment
+              callbacks.on_test_batch_end(end_step, logs)
       callbacks.on_test_end()
 
       logs = tf_utils.to_numpy_or_python_type(logs)
@@ -1149,7 +1167,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
       def run_step(data):
         outputs = self.predict_step(data)
-        self._predict_counter.assign_add(1)
+        # Ensure counter is updated only if `predict_step` succeeds.
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
+          self._predict_counter.assign_add(1)
         return outputs
 
       data = next(iterator)
@@ -1820,3 +1840,15 @@ def write_scalar_summaries(logs, step):
   for name, value in logs.items():
     if _is_scalar(value):
       summary_ops_v2.scalar('batch_' + name, value, step=step)
+
+
+def _minimum_control_deps(outputs):
+  """Returns the minimum control dependencies to ensure step succeeded."""
+  if context.executing_eagerly():
+    return []  # Control dependencies not needed.
+  outputs = nest.flatten(outputs, expand_composites=True)
+  for out in outputs:
+    # Variables can't be control dependencies.
+    if not isinstance(out, variables.Variable):
+      return [out]  # Return first Tensor or Op from outputs.
+  return []  # No viable Tensor or Op to use for control deps.
