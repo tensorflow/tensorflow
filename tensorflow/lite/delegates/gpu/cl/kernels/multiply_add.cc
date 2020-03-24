@@ -108,8 +108,8 @@ absl::Status MultiplyAdd::BindArguments(CLKernel* kernel) {
 absl::Status MultiplyAdd::UploadMul(const MultiplyAttributes& attr,
                                     CalculationsPrecision scalar_precision,
                                     CLContext* context) {
-  auto mul = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-      &attr.param);
+  auto mul =
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   auto mul_scalar = absl::get_if<float>(&attr.param);
   if (mul) {
     RETURN_IF_ERROR(UploadMul(*mul, context));
@@ -122,8 +122,8 @@ absl::Status MultiplyAdd::UploadMul(const MultiplyAttributes& attr,
 absl::Status MultiplyAdd::UploadAdd(const AddAttributes& attr,
                                     CalculationsPrecision scalar_precision,
                                     CLContext* context) {
-  auto add = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-      &attr.param);
+  auto add =
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.param);
   auto add_scalar = absl::get_if<float>(&attr.param);
   if (add) {
     RETURN_IF_ERROR(UploadAdd(*add, context));

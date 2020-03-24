@@ -211,7 +211,7 @@ absl::Status SelectWinograd4x4To36(const CreationContext& creation_context,
 
 absl::Status SelectWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& op_def,
-    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     std::unique_ptr<GPUOperation>* ptr) {
   Winograd36To4x4 operation;
   RETURN_IF_ERROR(

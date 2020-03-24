@@ -54,8 +54,8 @@ class DepthWiseConv3x3 : public GPUOperation {
                             bool weights_are_buffer, bool local_mem_uploads);
   template <DataType T>
   absl::Status UploadWeightsAndBiases(
-      const ::tflite::gpu::Tensor<OHWI, T>& weights,
-      const ::tflite::gpu::Tensor<Linear, T>& biases, CLContext* context);
+      const tflite::gpu::Tensor<OHWI, T>& weights,
+      const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context);
 
   friend absl::Status CreateDepthWiseConv3x3(
       const CreationContext& creation_context, const OperationDef& definition,
@@ -63,8 +63,8 @@ class DepthWiseConv3x3 : public GPUOperation {
 
   template <DataType S, typename T>
   void RearrangeWeightsAndBiasesData(
-      const ::tflite::gpu::Tensor<OHWI, S>& weights,
-      const ::tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst);
+      const tflite::gpu::Tensor<OHWI, S>& weights,
+      const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst);
 
   absl::Status BindArguments();
   int3 GetGridSize() const;
@@ -81,8 +81,8 @@ class DepthWiseConv3x3 : public GPUOperation {
 
 template <DataType T>
 absl::Status DepthWiseConv3x3::UploadWeightsAndBiases(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights,
-    const ::tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   int texture_width = 10;  // 3x3 kernel + 1 bias
   int texture_height = src_depth;
@@ -127,8 +127,8 @@ absl::Status DepthWiseConv3x3::UploadWeightsAndBiases(
 
 template <DataType S, typename T>
 void DepthWiseConv3x3::RearrangeWeightsAndBiasesData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights,
-    const ::tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWI, S>& weights,
+    const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 
   int counter = 0;

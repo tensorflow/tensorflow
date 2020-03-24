@@ -111,7 +111,7 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     src_tensor.data[i] = sin(i);
   }
 
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  Tensor<Linear, DataType::FLOAT32> biases;
   biases.shape = Linear(1);
   biases.data.resize(biases.shape.DimensionsProduct());
   for (int i = 0; i < biases.data.size(); ++i) {

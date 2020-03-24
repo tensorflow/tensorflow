@@ -54,11 +54,11 @@ class FullyConnected : public GPUOperation {
       const FullyConnectedAttributes& attr, FullyConnected* result);
 
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
   template <DataType T, typename S>
-  void RearrangeWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
 
   Buffer weights_;
@@ -69,7 +69,7 @@ class FullyConnected : public GPUOperation {
 
 template <DataType T>
 absl::Status FullyConnected::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
 
@@ -93,7 +93,7 @@ absl::Status FullyConnected::UploadWeights(
 
 template <DataType T, typename S>
 void FullyConnected::RearrangeWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   int counter = 0;

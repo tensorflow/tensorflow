@@ -71,21 +71,21 @@ class ConvTexture : public GPUOperation {
               const Convolution2DAttributes& attr);
   explicit ConvTexture(const OperationDef& definition);
   template <DataType T>
-  absl::Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                          const ::tflite::gpu::Tensor<Linear, T>& biases,
+  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                          const tflite::gpu::Tensor<Linear, T>& biases,
                           CLContext* context);
 
   template <DataType T>
   absl::Status UploadDataForWinograd4x4To6x6(
-      const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+      const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
       CLContext* context);
 
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst_0, absl::Span<T> dst_1,
                             absl::Span<T> dst_2, absl::Span<T> dst_3);
 
@@ -116,8 +116,8 @@ class ConvTexture : public GPUOperation {
 
 template <DataType T>
 absl::Status ConvTexture::UploadData(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights,
-    const ::tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
@@ -129,9 +129,9 @@ absl::Status ConvTexture::UploadData(
 
 template <DataType T>
 absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+    const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
     CLContext* context) {
-  ::tflite::gpu::Tensor<OHWI, T> wino_weights;
+  tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
   RETURN_IF_ERROR(UploadWeights(wino_weights, context));
 
@@ -139,7 +139,7 @@ absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition_.GetDataType();
   create_info.aligned_size = 1;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
   bias.shape = Linear(1);
   bias.data = {0.0f};
   return CreateLinearStorage(create_info, bias, context, &biases_);
@@ -147,7 +147,7 @@ absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
 
 template <DataType T>
 absl::Status ConvTexture::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
@@ -204,7 +204,7 @@ absl::Status ConvTexture::UploadWeights(
 
 template <DataType S, typename T>
 void ConvTexture::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
     absl::Span<T> dst_1, absl::Span<T> dst_2, absl::Span<T> dst_3) {
   int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);

@@ -164,8 +164,7 @@ class ElementwiseTwoArguments : public NodeShader {
             "Couldn't read attributes for the scalar of const vector case.");
       }
       auto* tensor =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-              &attr->param);
+          absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr->param);
       auto* scalar = absl::get_if<float>(&attr->param);
       if (!tensor && !scalar) {
         return absl::InvalidArgumentError(

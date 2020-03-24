@@ -75,15 +75,15 @@ class Conv3D : public GPUOperation {
          const CLDevice& device);
 
   template <DataType T>
-  absl::Status UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                          const ::tflite::gpu::Tensor<Linear, T>& biases,
+  absl::Status UploadData(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                          const tflite::gpu::Tensor<Linear, T>& biases,
                           CLContext* context);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
   friend absl::Status CreateConv3D(const CreationContext& creation_context,
@@ -125,8 +125,8 @@ class Conv3D : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status Conv3D::UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                                const ::tflite::gpu::Tensor<Linear, T>& biases,
+absl::Status Conv3D::UploadData(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                                const tflite::gpu::Tensor<Linear, T>& biases,
                                 CLContext* context) {
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
@@ -143,8 +143,8 @@ absl::Status Conv3D::UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
 }
 
 template <DataType T>
-absl::Status Conv3D::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+absl::Status Conv3D::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                                   CLContext* context) {
   const int block_size = conv_params_.block_size.w;
   const int dst_slices =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size);
@@ -215,8 +215,8 @@ absl::Status Conv3D::UploadWeights(
 }
 
 template <DataType S, typename T>
-void Conv3D::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+void Conv3D::RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
+                                  absl::Span<T> dst) {
   const int block_size = conv_params_.block_size.w;
   const int dst_slices =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size);

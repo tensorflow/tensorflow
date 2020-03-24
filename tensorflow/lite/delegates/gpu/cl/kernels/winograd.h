@@ -89,7 +89,7 @@ class Winograd36To4x4 : public GPUOperation {
  private:
   friend absl::Status CreateWinograd36To4x4(
       const CreationContext& creation_context, const OperationDef& definition,
-      const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+      const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
       Winograd36To4x4* result);
 
   absl::Status UploadAt(CLContext* context);
@@ -109,7 +109,7 @@ class Winograd36To4x4 : public GPUOperation {
 
 absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,
-    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result);
 
 }  // namespace cl

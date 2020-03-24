@@ -48,11 +48,11 @@ class MultiplyAdd : public ElementwiseOperation {
                          CLContext* context);
 
   template <DataType T>
-  absl::Status UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,
+  absl::Status UploadMul(const tflite::gpu::Tensor<Linear, T>& mul,
                          CLContext* context);
 
   template <DataType T>
-  absl::Status UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
+  absl::Status UploadAdd(const tflite::gpu::Tensor<Linear, T>& add,
                          CLContext* context);
 
   void SetLinkIndex(int index) override;
@@ -107,7 +107,7 @@ absl::Status CreateMultiplyAdd(const CreationContext& creation_context,
                                MultiplyAdd* result);
 
 template <DataType T>
-absl::Status MultiplyAdd::UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,
+absl::Status MultiplyAdd::UploadMul(const tflite::gpu::Tensor<Linear, T>& mul,
                                     CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
@@ -119,7 +119,7 @@ absl::Status MultiplyAdd::UploadMul(const ::tflite::gpu::Tensor<Linear, T>& mul,
 }
 
 template <DataType T>
-absl::Status MultiplyAdd::UploadAdd(const ::tflite::gpu::Tensor<Linear, T>& add,
+absl::Status MultiplyAdd::UploadAdd(const tflite::gpu::Tensor<Linear, T>& add,
                                     CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =

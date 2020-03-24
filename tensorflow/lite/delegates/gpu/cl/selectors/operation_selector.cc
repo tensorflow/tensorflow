@@ -159,7 +159,7 @@ absl::Status GPUOperationFromNode(
       const auto attr =
           absl::any_cast<AddAttributes>(node.operation.attributes);
       const auto* adds =
-          absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
+          absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
               &attr.param);
       const auto* adds_scalar = absl::get_if<float>(&attr.param);
       if (adds || adds_scalar) {

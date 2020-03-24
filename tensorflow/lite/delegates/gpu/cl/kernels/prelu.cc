@@ -84,8 +84,8 @@ absl::Status PReLU::BindArguments(CLKernel* kernel) {
 absl::Status CreatePReLU(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const PReLUAttributes& attr, PReLU* result) {
-  auto alpha = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-      &attr.alpha);
+  auto alpha =
+      absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
   if (!alpha) {
     return absl::InvalidArgumentError("Alpha is missing");
   }

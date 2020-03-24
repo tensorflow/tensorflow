@@ -58,11 +58,11 @@ class ConvolutionTransposed3D : public GPUOperation {
                           const ConvolutionTransposed3DAttributes& attr,
                           const CLDevice& device);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
   absl::Status BindArguments();
@@ -89,7 +89,7 @@ class ConvolutionTransposed3D : public GPUOperation {
 
 template <DataType T>
 absl::Status ConvolutionTransposed3D::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
   const int dst_depth =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
@@ -160,7 +160,7 @@ absl::Status ConvolutionTransposed3D::UploadWeights(
 
 template <DataType S, typename T>
 void ConvolutionTransposed3D::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
   const int dst_depth =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.w);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);

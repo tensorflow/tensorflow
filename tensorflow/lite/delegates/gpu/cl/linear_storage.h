@@ -97,7 +97,7 @@ absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
 
 template <DataType T>
 absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
-                                 const ::tflite::gpu::Tensor<Linear, T>& tensor,
+                                 const tflite::gpu::Tensor<Linear, T>& tensor,
                                  CLContext* context, LinearStorage* result) {
   int size = creation_info.aligned_size != 0 ? creation_info.aligned_size
                                              : tensor.shape.v;

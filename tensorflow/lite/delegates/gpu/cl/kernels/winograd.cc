@@ -402,7 +402,7 @@ absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
   bt_aligned.shape = Linear(6 * 8);
   bt_aligned.data.resize(6 * 8);
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -515,7 +515,7 @@ absl::Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
 }
 
 absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
   at_aligned.shape = Linear(4 * 8);
   at_aligned.data.resize(4 * 8);
   auto at_mat = AtMatrixForWinograd4x4To6x6();
@@ -584,7 +584,7 @@ absl::Status Winograd36To4x4::AddToQueue(CLCommandQueue* queue) {
 
 absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,
-    const ::tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
   *result = Winograd36To4x4(definition);
   LinearStorageCreateInfo create_info;

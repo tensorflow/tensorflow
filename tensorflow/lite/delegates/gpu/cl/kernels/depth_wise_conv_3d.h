@@ -58,11 +58,11 @@ class DepthWiseConvolution3D : public GPUOperation {
                          const DepthwiseConvolution3DAttributes& attr,
                          const CLDevice& device);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
   absl::Status BindArguments();
@@ -86,7 +86,7 @@ class DepthWiseConvolution3D : public GPUOperation {
 
 template <DataType T>
 absl::Status DepthWiseConvolution3D::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -128,7 +128,7 @@ absl::Status DepthWiseConvolution3D::UploadWeights(
 
 template <DataType S, typename T>
 void DepthWiseConvolution3D::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;

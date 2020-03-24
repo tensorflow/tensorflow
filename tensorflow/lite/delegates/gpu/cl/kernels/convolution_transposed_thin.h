@@ -58,11 +58,11 @@ class ConvolutionTransposedThin : public GPUOperation {
   ConvolutionTransposedThin(const OperationDef& definition,
                             const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
   absl::Status BindArguments();
@@ -81,7 +81,7 @@ class ConvolutionTransposedThin : public GPUOperation {
 
 template <DataType T>
 absl::Status ConvolutionTransposedThin::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
   const int elements_count =
       kernel_size_.x * kernel_size_.y * src_depth * 4 * dst_channels_;
@@ -103,7 +103,7 @@ absl::Status ConvolutionTransposedThin::UploadWeights(
 
 template <DataType S, typename T>
 void ConvolutionTransposedThin::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
   const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;

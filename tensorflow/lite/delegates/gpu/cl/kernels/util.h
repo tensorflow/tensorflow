@@ -232,7 +232,7 @@ std::string GetXStrideCorrected(const std::string& src_x,
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
+    const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,
     absl::Span<T> dst) {
   const int dst_slices = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_slices = IntegralDivideRoundUp(weights.shape.i, 4);

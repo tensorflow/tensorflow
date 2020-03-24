@@ -71,7 +71,7 @@ class QuantizeAndDequantize : public ElementwiseOperation {
 
   template <DataType T>
   absl::Status UploadParameters(
-      const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
+      const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
 
   FLT min_;
   FLT max_;
@@ -84,7 +84,7 @@ absl::Status CreateQuantizeAndDequantize(
 
 template <DataType T>
 absl::Status QuantizeAndDequantize::UploadParameters(
-    const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
+    const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());

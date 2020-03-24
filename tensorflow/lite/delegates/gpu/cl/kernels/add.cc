@@ -40,7 +40,7 @@ std::string Add::GetElementWiseCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
   c += GetArgsDeclaration();
-  c += ::tflite::gpu::cl::GetArgsDeclaration(linked_operations);
+  c += cl::GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,\n";
   c += "    int4 dst_size\n";

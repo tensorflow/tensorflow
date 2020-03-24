@@ -56,7 +56,7 @@ class PReLU : public ElementwiseOperation {
 
   template <DataType T>
   absl::Status UploadParameters(
-      const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
+      const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
 
   FLT clip_;
   LinearStorage alpha_;
@@ -68,7 +68,7 @@ absl::Status CreatePReLU(const CreationContext& creation_context,
 
 template <DataType T>
 absl::Status PReLU::UploadParameters(
-    const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
+    const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());

@@ -88,16 +88,16 @@ class ConvPowerVR : public GPUOperation {
   explicit ConvPowerVR(const OperationDef& definition);
 
   template <DataType T>
-  absl::Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                          const ::tflite::gpu::Tensor<Linear, T>& biases,
+  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                          const tflite::gpu::Tensor<Linear, T>& biases,
                           CLContext* context);
   template <DataType T>
   absl::Status UploadDataForWinograd4x4To6x6(
-      const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+      const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
       CLContext* context);
 
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
   friend absl::Status CreateConvPowerVR(const CreationContext& creation_context,
@@ -156,8 +156,8 @@ class ConvPowerVR : public GPUOperation {
 
 template <DataType T>
 absl::Status ConvPowerVR::UploadData(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights,
-    const ::tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights,
+    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
@@ -169,16 +169,16 @@ absl::Status ConvPowerVR::UploadData(
 
 template <DataType T>
 absl::Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
+    const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
     CLContext* context) {
-  ::tflite::gpu::Tensor<OHWI, T> wino_weights;
+  tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
   RETURN_IF_ERROR(UploadWeights(wino_weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::BUFFER;
   create_info.data_type = conv_params_.weights_data_type;
   create_info.aligned_size = weights.shape.o;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
+  tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias;
   bias.shape = Linear(weights.shape.o);
   bias.data.resize(weights.shape.o, 0.0f);
   RETURN_IF_ERROR(CreateLinearStorage(create_info, bias, context, &biases_));
@@ -187,7 +187,7 @@ absl::Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
 
 template <DataType T>
 absl::Status ConvPowerVR::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
 

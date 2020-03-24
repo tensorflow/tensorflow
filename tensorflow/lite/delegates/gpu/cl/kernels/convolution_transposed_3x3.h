@@ -61,11 +61,11 @@ class ConvolutionTransposed3x3 : public GPUOperation {
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed3x3* result);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                              CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
   absl::Status BindArguments();
@@ -83,7 +83,7 @@ class ConvolutionTransposed3x3 : public GPUOperation {
 
 template <DataType T>
 absl::Status ConvolutionTransposed3x3::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
@@ -108,7 +108,7 @@ absl::Status ConvolutionTransposed3x3::UploadWeights(
 
 template <DataType S, typename T>
 void ConvolutionTransposed3x3::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;
