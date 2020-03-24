@@ -215,6 +215,7 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
+        "experimental/estimators/hardware.h",
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
