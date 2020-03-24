@@ -40,7 +40,7 @@ interpreter->Invoke()
 
 ...
 
-// IMPORTANT: release the interpreter before destroing the delegate
+// IMPORTANT: release the interpreter before destroying the delegate
 interpreter.reset();
 TfLiteXNNPackDelegateDelete(xnnpack_delegate);
 ```

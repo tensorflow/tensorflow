@@ -382,7 +382,7 @@ class createIotaOp<string dim>: NativeCodeCall<
 def createConvertOp: NativeCodeCall<
   "CreateConvertOp(&($_builder), $0.getOwner()->getLoc(), $1, $2)">;
 
-// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Psuedocode is
+// Performs a substitution of MatrixBandPartOp for XLA HLO ops. Pseudocode is
 // shown below, given a tensor `input` with k dimensions [I, J, K, ..., M, N]
 // and two integers, `num_lower` and `num_upper`:
 //
@@ -454,14 +454,14 @@ def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
 // TODO(hinsu): Make these patterns to TF to TF lowering. Relu6 lowering will
 // require HLO canonicalization of min and max on a tensor to ClampOp.
 
-// TODO(hinsu): Lower unsinged and quantized types after supporting
+// TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_ReluOp AnyRankedTensor:$input),
           (HLO_MaxOp (HLO_ConstOp:$zero (GetScalarOfType<0> $input)), $input,
                      (BinBroadcastDimensions $zero, $input)),
           [(TF_SintOrFpTensor $input)]>;
 
-// TODO(hinsu): Lower unsinged and quantized types after supporting
+// TODO(hinsu): Lower unsigned and quantized types after supporting
 // them in GetScalarOfType.
 def : Pat<(TF_Relu6Op AnyRankedTensor:$input),
           (HLO_ClampOp (HLO_ConstOp (GetScalarOfType<0> $input)), $input,

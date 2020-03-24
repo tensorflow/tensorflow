@@ -420,7 +420,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     ```
     mbed compile --target K66F --toolchain GCC_ARM --profile release
     ```
-8.  For some mbed compliers, you may get compile error in mbed_rtc_time.cpp.
+8.  For some mbed compilers, you may get compile error in mbed_rtc_time.cpp.
     Go to `mbed-os/platform/mbed_rtc_time.h` and comment line 32 and line 37:
 
     ```

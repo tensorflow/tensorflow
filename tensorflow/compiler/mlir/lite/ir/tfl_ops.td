@@ -3397,7 +3397,7 @@ def TFL_BidirectionalSequenceLSTMOp :
   let summary = "Bidirectional sequence lstm operator";
 
   let description = [{
-    Bidirectional lstm is essentiallay two lstms, one running forward & the
+    Bidirectional lstm is essentially two lstms, one running forward & the
     other running backward. And the output is the concatenation of the two
     lstms.
   }];
