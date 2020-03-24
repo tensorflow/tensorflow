@@ -59,6 +59,19 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
   return kTfLiteOk;
 }
 
+// We maintain an op-version whitelist here to ensure we don't accept unintended
+// ops.
+bool CheckOpVersion(const TfLiteRegistration* registration) {
+  switch (registration->builtin_code) {
+    case kTfLiteBuiltinAveragePool2d:
+    case kTfLiteBuiltinDepthwiseConv2d:
+    case kTfLiteBuiltinSoftmax:
+      return registration->version <= 2;
+    default:
+      return registration->version == 1;
+  }
+}
+
 bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
                               const TfLiteNode* node, TfLiteContext* context) {
   // Ensure all inputs & outputs have dim <= 4.
@@ -74,15 +87,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     if (tensor.dims->size > 4) return false;
   }
 
-  // Most hexagon kernels are not compatible with op versions > 1.
-  // We maintain a 'whitelist' here to ensure we don't accept unintended nodes.
-  if (registration->version > 1) {
-    if (registration->builtin_code == kTfLiteBuiltinDepthwiseConv2d &&
-        registration->version == 2) {
-      return true;
-    }
-    return false;
-  }
+  if (!CheckOpVersion(registration)) return false;
 
   switch (registration->builtin_code) {
     case kTfLiteBuiltinAdd: {
@@ -154,8 +159,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return pool_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinAveragePool2d: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8})) return false;
-      // AvgPool works fine for filter dim <=7.
+      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) &&
+          !InputsWithCorrectTypes(node, context, {kTfLiteInt8}))
+        return false;
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
       return (node->inputs->size == 1 &&
@@ -220,7 +226,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       return true;
     }
-    case kTfLiteBuiltinSoftmax:
+    case kTfLiteBuiltinSoftmax: {
+      return (InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) ||
+              InputsWithCorrectTypes(node, context, {kTfLiteInt8}));
+    }
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:
