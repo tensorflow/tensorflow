@@ -1619,6 +1619,18 @@ name=None))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
 
+    3) Use `tf.numpy_function`, which allows you to write arbitrary python
+    code. Note here that `tf.py_function` accepts `tf.Tensor` whereas
+    `tf.numpy_function` accepts numpy arrays. For example:
+
+    >>> d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
+    >>> def upper_case_fn(t: np.ndarray):
+    ...   return t.decode('utf-8').upper()
+    >>> d = d.map(lambda x: tf.numpy_function(func=upper_case_fn,
+    ...           inp=[x], Tout=tf.string))
+    >>> list(d.as_numpy_iterator())
+    [b'HELLO', b'WORLD']
+
     Performance can often be improved by setting `num_parallel_calls` so that
     `map` will use multiple threads to process elements. If deterministic order
     isn't required, it can also improve performance to set
