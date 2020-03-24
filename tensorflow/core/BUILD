@@ -785,13 +785,13 @@ cc_library(
     hdrs = [
         "//tensorflow/core/framework:training_op_helpers.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":framework",
         ":lib",
         "//tensorflow/core/kernels:dense_update_functor",
         "//tensorflow/core/kernels:variable_ops",
     ],
-    visibility = ["//visibility:public"],
     alwayslink = 1,
 )
 

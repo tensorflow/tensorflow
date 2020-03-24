@@ -91,8 +91,8 @@ exports_files(
         "op_segment_test.cc",
         "run_handler_test.cc",
         "run_handler_util_test.cc",
-        "variant_op_copy_test.cc",
         "training_op_helpers.cc",
+        "variant_op_copy_test.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
