@@ -61,7 +61,7 @@ class Nadam(optimizer_v2.OptimizerV2):
     See [Dozat, T., 2015](http://cs229.stanford.edu/proj2015/054_report.pdf).
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,

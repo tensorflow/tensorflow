@@ -45,7 +45,7 @@ class Adam(optimizer_v2.OptimizerV2):
   Reddi et al., 5-8](https://openreview.net/pdf?id=ryQu7f-RZ).
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
