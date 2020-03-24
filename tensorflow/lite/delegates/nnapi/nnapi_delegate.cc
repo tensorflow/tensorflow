@@ -2061,7 +2061,7 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinMaximum:
     case kTfLiteBuiltinMinimum: {
-      ExpectMaxOpVersion(version, 2, &val_ctx);
+      ExpectMaxOpVersion(version, 3, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto input_type = context->tensors[node->inputs->data[0]].type;
