@@ -205,15 +205,9 @@ TfLiteStatus BenchmarkModel::Run() {
   const auto overall_mem_usage =
       profiling::memory::GetMemoryUsage() - start_mem_usage;
 
-  const BenchmarkResults final_results(
-      model_size_mb, startup_latency_us, input_bytes, warmup_time_us,
-      inference_time_us, init_mem_usage, overall_mem_usage);
-  listeners_.OnBenchmarkEnd(final_results);
-
-  // We always TFLITE_LOG the benchmark result regardless whether a
-  // BenchmarkListener is registered or not.
-  BenchmarkLoggingListener log_output;
-  log_output.OnBenchmarkEnd(final_results);
+  listeners_.OnBenchmarkEnd({model_size_mb, startup_latency_us, input_bytes,
+                             warmup_time_us, inference_time_us, init_mem_usage,
+                             overall_mem_usage});
   return status;
 }
 

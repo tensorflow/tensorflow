@@ -284,7 +284,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
 
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
     : BenchmarkModel(std::move(params)),
-      random_engine_(std::random_device()()) {}
+      random_engine_(std::random_device()()) {
+  AddListener(&log_output_);
+}
 
 void BenchmarkTfLiteModel::CleanUp() {
   // Free up any pre-allocated tensor data during PrepareInputData.
