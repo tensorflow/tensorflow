@@ -777,6 +777,24 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "training_op_helpers",
+    srcs = [
+        "//tensorflow/core/framework:training_op_helpers.cc",
+    ],
+    hdrs = [
+        "//tensorflow/core/framework:training_op_helpers.h",
+    ],
+    deps = [
+        ":framework",
+        ":lib",
+        "//tensorflow/core/kernels:dense_update_functor",
+        "//tensorflow/core/kernels:variable_ops",
+    ],
+    visibility = ["//visibility:public"],
+    alwayslink = 1,
+)
+
 tf_gen_op_libs(
     op_lib_names = [
         "cudnn_rnn_ops",
@@ -2452,18 +2470,6 @@ alias(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "training_op_helpers",
-    srcs = ["framework/training_op_helpers.cc"],
-    hdrs = ["framework/training_op_helpers.h"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core/kernels:dense_update_functor",
-        "//tensorflow/core/kernels:variable_ops",
-        ":framework",
-        ":lib",
-    ],
-)
 
 tf_proto_library_cc(
     name = "replay_log_proto",
