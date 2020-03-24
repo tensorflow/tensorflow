@@ -1794,7 +1794,7 @@ def _minimize(tape, optimizer, loss, trainable_variables):
 
   gradients = tape.gradient(loss, trainable_variables)
 
-  if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
+  if optimizer._HAS_AGGREGATE_GRAD:  # pylint: disable=protected-access
     # We aggregate gradients before unscaling them, in case a subclass of
     # LossScaleOptimizer all-reduces in fp16. All-reducing in fp16 can only be
     # done on scaled gradients, not unscaled gradients, for numeric stability.
@@ -1804,9 +1804,10 @@ def _minimize(tape, optimizer, loss, trainable_variables):
     gradients = optimizer.get_unscaled_gradients(gradients)
   gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
   if trainable_variables:
-    if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
-      optimizer.apply_gradients(zip(gradients, trainable_variables),
-                                all_reduce_sum_gradients=False)
+    if optimizer._HAS_AGGREGATE_GRAD:  # pylint: disable=protected-access
+      optimizer.apply_gradients(
+          zip(gradients, trainable_variables),
+          experimental_aggregate_gradients=False)
     else:
       optimizer.apply_gradients(zip(gradients, trainable_variables))
 

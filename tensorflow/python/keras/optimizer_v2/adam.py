@@ -103,7 +103,7 @@ class Adam(optimizer_v2.OptimizerV2):
   9.9
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -354,7 +354,7 @@ class NonFusedAdam(optimizer_v2.OptimizerV2):
   9.9
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,

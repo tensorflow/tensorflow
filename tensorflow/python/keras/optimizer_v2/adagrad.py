@@ -61,7 +61,7 @@ class Adagrad(optimizer_v2.OptimizerV2):
     (https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
 
-  _HAS_ALL_REDUCE_SUM_GRAD = True
+  _HAS_AGGREGATE_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
