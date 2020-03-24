@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/framework/training_op_helpers.h"
 
 #include "tensorflow/core/util/ptr_util.h"
 

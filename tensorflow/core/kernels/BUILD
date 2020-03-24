@@ -171,11 +171,11 @@ tf_kernel_library(
         ":dense_update_functor",
         ":inplace_ops",
         ":ops_util",
-        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -716,22 +716,6 @@ cc_library(
     deps = [
         ":queue_base",
         "//tensorflow/core:framework",
-    ],
-)
-
-cc_library(
-    name = "training_op_helpers",
-    srcs = ["training_op_helpers.cc"],
-    hdrs = ["training_op_helpers.h"],
-    visibility = [
-        ":friends",
-        ":optimizer_helper_friends",
-    ],
-    deps = [
-        ":dense_update_functor",
-        ":variable_ops",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -2847,12 +2831,12 @@ tf_kernel_library(
         ":gather_functor",
         ":gather_nd_op",
         ":scatter_functor",
-        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2884,6 +2868,7 @@ tf_kernel_library(
         ":tensor_list",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -5221,13 +5206,13 @@ tf_kernel_library(
         ":resource_variable_ops",
         ":scatter_functor",
         ":state",
-        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:training_op_helpers",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5654,9 +5639,9 @@ tf_kernel_library(
     ],
     deps = STATE_DEPS + [
         ":dense_update_functor",
-        ":training_op_helpers",
         ":variable_ops",
         ":inplace_ops",
+        "//tensorflow/core:training_op_helpers",
     ],
 )
 
@@ -5967,10 +5952,10 @@ tf_kernel_library(
     prefix = "training_ops",
     deps = [
         ":bounds_check",
-        ":training_op_helpers",
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:training_op_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -6066,12 +6051,12 @@ tf_kernel_library(
         ":resource_variable_ops",
         ":stateful_random_ops",
         ":stateless_random_ops",
-        ":training_op_helpers",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:random_ops_op_lib",
+        "//tensorflow/core:training_op_helpers",
     ],
 )
 
@@ -6601,7 +6586,6 @@ filegroup(
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
         "topk_op.h",
-        "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
         "transpose_op.h",
@@ -6831,7 +6815,6 @@ filegroup(
         "tile_ops_cpu_impl_6.cc",
         "tile_ops_cpu_impl_7.cc",
         "topk_op.cc",
-        "training_op_helpers.cc",
         "training_ops.cc",
         "transpose_functor_cpu.cc",
         "transpose_op.cc",
