@@ -1084,7 +1084,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             with trace.Trace('TraceContext', graph_type='test', step_num=step):
               callbacks.on_test_batch_begin(step)
               tmp_logs = test_function(iterator)
-              if not data_handler.should_sync:
+              if data_handler.should_sync:
                 context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
               callbacks.on_test_batch_end(step, logs)
