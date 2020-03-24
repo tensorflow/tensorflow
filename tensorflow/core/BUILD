@@ -2674,6 +2674,7 @@ tf_cuda_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
         "//third_party/eigen3",
         "//tensorflow/core/public:version",
         "//tensorflow/core/grappler/utils:functions",
