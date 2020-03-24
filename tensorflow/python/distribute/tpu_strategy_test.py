@@ -310,10 +310,11 @@ class TPUStrategyTest(test.TestCase):
 
     bar(1)
 
-  # TODO(b/152251070): Re-enable once modified to work on Cloud TPU.
-  def disable_test_using_external_variable_inside_tf_function(self):
+  def test_using_external_variable_inside_tf_function(self):
     strategy = get_tpu_strategy()
-    dataset = dataset_ops.Dataset.range(10, output_type=dtypes.float32).batch(2)
+    dataset = dataset_ops.Dataset.range(
+        strategy.num_replicas_in_sync * 2,
+        output_type=dtypes.float32).batch(strategy.num_replicas_in_sync)
     input_iterator = iter(strategy.experimental_distribute_dataset(dataset))
 
     v = variables.Variable(2.0)
@@ -330,12 +331,12 @@ class TPUStrategyTest(test.TestCase):
         expected_result,
         strategy.experimental_local_results(train_step(next(input_iterator))))
 
-  # TODO(b/152251070): Re-enable once modified to work on Cloud TPU.
-  def disable_test_keras_metric_outside_strategy_scope_per_replica(self):
+  def test_keras_metric_outside_strategy_scope_per_replica(self):
     strategy = get_tpu_strategy()
     metric = keras.metrics.Mean("test_metric", dtype=dtypes.float32)
 
-    dataset = dataset_ops.Dataset.range(10).batch(2)
+    dataset = dataset_ops.Dataset.range(strategy.num_replicas_in_sync *
+                                        2).batch(2)
     dataset = strategy.experimental_distribute_dataset(dataset)
 
     @def_function.function
