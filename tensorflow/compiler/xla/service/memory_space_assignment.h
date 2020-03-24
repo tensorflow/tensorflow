@@ -23,9 +23,10 @@ namespace xla {
 
 // This class contains pre-set assignments determined by memory space
 // assignment. It contains two data structures: (1) a chunks vector that maps a
-// defining HloPosition to a Chunk (offset and size), and (2) a sizes vector
-// that maps the memory space to its size. If there is only one alternate memory
-// space like there is currently, there will be one entry in sizes.
+// defining HloPosition to a Chunk (offset and size), and (2) an assignment_info
+// vector that maps the memory space to information like its allocated size and
+// heap memory trace. If there is only one alternate memory space like there is
+// currently, there will be one entry in assignment_info.
 class PresetAssignments {
  public:
   // Contains per-memory-space information like the allocated size and heap

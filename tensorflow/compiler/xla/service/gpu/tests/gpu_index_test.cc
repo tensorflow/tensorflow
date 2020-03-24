@@ -149,5 +149,31 @@ TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithSizeOneDimensions) {
                      /*match_optimized_ir=*/false);
 }
 
+TEST_F(GpuIndexTest, CompatibleUseLinearIndexWithTranspose) {
+  HloModuleConfig config;
+  auto debug_options = HloTestBase::GetDebugOptionsForTest();
+  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  config.set_debug_options(debug_options);
+
+  auto module = ParseAndReturnVerifiedModule(R"(
+    HloModule  test_module
+
+    ENTRY CompatibleUseLinearIndexWithTranspose  {
+      x = f32[2,1024,3,256]{3,2,1,0} parameter(0)
+      y = f32[1024,2,256,3]{2,3,0,1} parameter(1)
+      transpose = f32[1024,2,256,3]{3,2,1,0} transpose(x), dimensions={1,0,3,2}
+      ROOT gte = pred[1024,2,256,3]{2,3,0,1} compare(transpose, y), direction=GE
+    })",
+                                             config)
+                    .ValueOrDie();
+  // Check the optimized IR contains no udiv and urem.
+  CompileAndVerifyIr(std::move(module),
+                     R"(
+; CHECK-NOT: udiv
+; CHECK-NOT: urem
+      )",
+                     /*match_optimized_ir=*/true);
+}
+
 }  // namespace gpu
 }  // namespace xla

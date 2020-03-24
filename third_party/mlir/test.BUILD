@@ -59,6 +59,10 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-dialect-decls",
+            "lib/TestDialect/TestOpsDialect.h.inc",
+        ),
+        (
             "-gen-enum-decls",
             "lib/TestDialect/TestOpEnums.h.inc",
         ),
@@ -107,6 +111,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:SideEffects",
         "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:StandardToStandard",
         "@llvm-project//mlir:TransformUtils",
         "@llvm-project//mlir:Transforms",
     ],
@@ -158,6 +163,7 @@ cc_library(
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:EDSC",
         "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUTransforms",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LinalgOps",
         "@llvm-project//mlir:LinalgTransforms",

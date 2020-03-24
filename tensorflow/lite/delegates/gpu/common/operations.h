@@ -57,6 +57,8 @@ enum class OperationType {
   POOLING_2D,
   POW,
   PRELU,
+  // Used to accurately run inference on quantized models.
+  QUANTIZE_AND_DEQUANTIZE,
   RELU,
   RESHAPE,
   RESIZE,
@@ -476,6 +478,14 @@ BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
 
 struct SpaceToDepthAttributes {
   int block_size;
+};
+
+// These help perform a combination of Quantize & Dequantize to adjust float
+// values like quantized inference would.
+struct QuantizeAndDequantizeAttributes {
+  float min = 0;
+  float max = 0;
+  float scale = 0;
 };
 
 }  // namespace gpu

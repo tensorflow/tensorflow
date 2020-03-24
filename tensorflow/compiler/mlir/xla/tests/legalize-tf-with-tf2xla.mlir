@@ -79,6 +79,17 @@ func @convert(%arg0: tensor<2xi32>) -> tensor<2xf32> {
   return %0 : tensor<2xf32>
 }
 
+// CHECK-LABEL: func @constant
+func @constant(%arg0: tensor<2xf32>) -> tensor<2xf32> {
+  // CHECK: %[[SCALAR_ONE:.*]] = xla_hlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: %[[ONE:.*]] = "xla_hlo.broadcast_in_dim"(%[[SCALAR_ONE]]) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>) -> tensor<2xf32>
+  // CHECK: %[[RESULT:.*]] = xla_hlo.divide %[[ONE]], %arg0 : tensor<2xf32>
+  // CHECK: return %[[RESULT]]
+
+  %0 = "tf.Inv"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
 // TODO(hinsu): Add a test with variant type once one of the ops supporting
 // the type is whitelisted. It should be rejected with unsupported type remark.
 

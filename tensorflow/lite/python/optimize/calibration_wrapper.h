@@ -26,6 +26,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "tensorflow/lite/interpreter.h"
+
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 namespace ops {
@@ -35,7 +37,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 class PythonErrorReporter;

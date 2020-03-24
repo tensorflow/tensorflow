@@ -1062,8 +1062,7 @@ Status EagerContext::UpdateRemoteMaster(
     std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
     const std::vector<string>& add_remote_contexts,
     const std::vector<string>& remove_remote_contexts, uint64 context_id,
-    Rendezvous* r, DeviceMgr* local_device_mgr, int keep_alive_secs,
-    DistributedFunctionLibraryRuntime* cluster_flr) {
+    Rendezvous* r) {
   {
     tf_shared_lock l(remote_state_mu_);
     if (context_id != context_id_) {
@@ -1103,7 +1102,6 @@ Status EagerContext::UpdateRemoteMaster(
     if (rendezvous_ != nullptr) rendezvous_->Unref();
     rendezvous_ = r;
     remote_eager_workers_ = std::move(remote_eager_workers);
-    ResetClusterFLR(cluster_flr);
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
@@ -1113,10 +1111,6 @@ Status EagerContext::UpdateRemoteMaster(
         entry.second->ClearError();
       }
     }
-    const auto* config = pflr_->config();
-    ResetPFLR(local_device_manager_.Get(), env_, config, TF_GRAPH_DEF_VERSION,
-              &func_lib_def_, config->graph_options().optimizer_options(),
-              thread_pool_.get(), cluster_flr_.Get(), custom_kernel_creator_);
   }
 
   // Register existing functions to the newly added remote workers. Note that

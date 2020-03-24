@@ -40,10 +40,8 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
-        "manual",
         "no_oss",
         "no_pip",
-        "notap",  # TODO(b/151447210)
     ],
     deps = [
         ":rnn",
@@ -113,7 +111,6 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
-        "notap",  # b/141373014
     ],
     deps = [
         ":rnn",

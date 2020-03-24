@@ -25,6 +25,7 @@ from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util as tf_test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.utils import np_utils
@@ -224,7 +225,7 @@ class GRULayerTest(keras_parameterized.TestCase):
     self.assertEqual(state[0].shape, initial_state.shape)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class GRULayerGenericTest(test.TestCase):
 
   def test_constraints_GRU(self):

@@ -41,7 +41,8 @@ limitations under the License.
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "llvm/Support/raw_ostream.h"
+#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
@@ -527,8 +528,8 @@ class Translator {
   const Dialect* tfl_dialect_;
 
   // The failed ops during legalization.
-  std::vector<std::string> failed_flex_ops_;
-  std::vector<std::string> failed_custom_ops_;
+  std::set<std::string> failed_flex_ops_;
+  std::set<std::string> failed_custom_ops_;
 };
 
 std::string Translator::UniqueName(mlir::Value val) {
@@ -1083,11 +1084,39 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
         return llvm::None;
       }
     } else {
+      // Create description of operation that could not be converted.
+      const int kLargeElementsAttr = 16;
+      std::string op_str;
+      llvm::raw_string_ostream os(op_str);
+      inst->getName().print(os);
+      // Print out attributes except for large elementsattributes (which should
+      // rarely be the cause why the legalization didn't happen).
+      if (!inst->getAttrList().getAttrs().empty()) {
+        os << " {";
+        bool first = true;
+        for (auto& named_attr : inst->getAttrList().getDictionary()) {
+          os << (!first ? ", " : "");
+          first = false;
+          named_attr.first.print(os);
+          os << " = ";
+          if (auto element_attr = named_attr.second.dyn_cast<ElementsAttr>()) {
+            if (element_attr.getNumElements() <= kLargeElementsAttr) {
+              element_attr.print(os);
+            } else {
+              os << "<large>";
+            }
+          } else {
+            named_attr.second.print(os);
+          }
+        }
+        os << "}";
+      }
+
       // Insert failed op to `flex_ops` or `custom_ops`.
       if (IsWhitelistedFlexOp(node_def->op())) {
-        failed_flex_ops_.push_back(node_def->op());
+        failed_flex_ops_.insert(os.str());
       } else {
-        failed_custom_ops_.push_back(node_def->op());
+        failed_custom_ops_.insert(os.str());
       }
       return inst->emitOpError("is neither a custom op nor a flex op"),
              llvm::None;
@@ -1385,18 +1414,19 @@ Optional<std::string> Translator::TranslateInternal() {
   }
 
   if (first_failed_func != -1) {
-    std::string failed_flex_ops_list = absl::StrJoin(failed_flex_ops_, ",");
-    std::string failed_custom_ops_list = absl::StrJoin(failed_custom_ops_, ",");
+    std::string failed_flex_ops_list = absl::StrJoin(failed_flex_ops_, "\n\t");
+    std::string failed_custom_ops_list =
+        absl::StrJoin(failed_custom_ops_, "\n\t");
     std::string err;
     if (!failed_flex_ops_list.empty())
       err +=
           "Ops that can be supported by the flex runtime (enabled via setting "
-          "the -emit-select-tf-ops flag): " +
-          failed_flex_ops_list + ".";
+          "the -emit-select-tf-ops flag):\n\t" +
+          failed_flex_ops_list;
     if (!failed_custom_ops_list.empty())
       err +=
           "Ops that need custom implementation (enabled via setting the "
-          "-emit-custom-ops flag): " +
+          "-emit-custom-ops flag):\n\t" +
           failed_custom_ops_list;
 
     auto& failed_region = named_regions[first_failed_func];

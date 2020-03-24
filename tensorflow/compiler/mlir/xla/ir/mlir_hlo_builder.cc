@@ -67,6 +67,15 @@ StatusOr<XlaOp> MlirHloBuilder::MakeXlaOp(mlir::Value val) {
   return XlaOp(handle, this);
 }
 
+XlaOp MlirHloBuilder::ConstantLiteral(const LiteralSlice& literal) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(mlir::DenseElementsAttr attr,
+                        CreateDenseElementsAttrFromLiteral(literal, builder_));
+    auto op = builder_.create<mlir::xla_hlo::ConstOp>(loc_, attr);
+    return MakeXlaOp(op);
+  });
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {

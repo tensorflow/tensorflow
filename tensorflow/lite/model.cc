@@ -270,6 +270,8 @@ FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
 
 FlatBufferModel::~FlatBufferModel() {}
 
+namespace impl {
+
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
     : model_(model.GetModel()),
@@ -782,5 +784,7 @@ TfLiteStatus InterpreterBuilder::operator()(
 
   return kTfLiteOk;
 }
+
+}  // namespace impl
 
 }  // namespace tflite

@@ -22,7 +22,7 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project
 #include "mlir/IR/PatternMatch.h"  // TF:llvm-project
 #include "mlir/IR/Value.h"  // TF:llvm-project

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
@@ -215,6 +216,17 @@ Status SelectWinograd36To4x4(
   RETURN_IF_ERROR(
       CreateWinograd36To4x4(creation_context, op_def, biases, &operation));
   *ptr = absl::make_unique<Winograd36To4x4>(std::move(operation));
+  return OkStatus();
+}
+
+Status SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
+                                   const CreationContext& creation_context,
+                                   const OperationDef& op_def,
+                                   std::unique_ptr<GPUOperation>* ptr) {
+  QuantizeAndDequantize operation;
+  RETURN_IF_ERROR(
+      CreateQuantizeAndDequantize(creation_context, op_def, attr, &operation));
+  *ptr = absl::make_unique<QuantizeAndDequantize>(std::move(operation));
   return OkStatus();
 }
 

@@ -21,17 +21,17 @@ namespace tensorflow {
 namespace io {
 
 BufferedInputStream::BufferedInputStream(InputStreamInterface* input_stream,
-                                         size_t buffer_size,
+                                         size_t buffer_bytes,
                                          bool owns_input_stream)
     : input_stream_(input_stream),
-      size_(buffer_size),
+      size_(buffer_bytes),
       owns_input_stream_(owns_input_stream) {
   buf_.reserve(size_);
 }
 
 BufferedInputStream::BufferedInputStream(RandomAccessFile* file,
-                                         size_t buffer_size)
-    : BufferedInputStream(new RandomAccessInputStream(file), buffer_size,
+                                         size_t buffer_bytes)
+    : BufferedInputStream(new RandomAccessInputStream(file), buffer_bytes,
                           true) {}
 
 BufferedInputStream::~BufferedInputStream() {
@@ -56,7 +56,9 @@ Status BufferedInputStream::FillBuffer() {
   return s;
 }
 
-Status BufferedInputStream::ReadLineHelper(string* result, bool include_eol) {
+template <typename StringType>
+Status BufferedInputStream::ReadLineHelper(StringType* result,
+                                           bool include_eol) {
   result->clear();
   Status s;
   while (true) {
@@ -70,13 +72,13 @@ Status BufferedInputStream::ReadLineHelper(string* result, bool include_eol) {
     char c = buf_[pos_++];
     if (c == '\n') {
       if (include_eol) {
-        *result += c;
+        result->append(1, c);
       }
       return Status::OK();
     }
     // We don't append '\r' to *result
     if (c != '\r') {
-      *result += c;
+      result->append(1, c);
     }
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
@@ -199,6 +201,10 @@ Status BufferedInputStream::Reset() {
 }
 
 Status BufferedInputStream::ReadLine(string* result) {
+  return ReadLineHelper(result, false);
+}
+
+Status BufferedInputStream::ReadLine(tstring* result) {
   return ReadLineHelper(result, false);
 }
 

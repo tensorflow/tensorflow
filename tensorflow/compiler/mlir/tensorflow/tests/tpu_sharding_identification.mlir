@@ -10,6 +10,7 @@ func @check_sharding_attrs_exists_for_empty_launch_func() {
   return
 }
 
+// CHECK-LABEL: func @empty_func() {
 func @empty_func() {
   return
 }
@@ -28,6 +29,9 @@ func @check_default_sharding_for_block_arg_inputs_outputs(%arg0: tensor<*xi32>) 
   return
 }
 
+// CHECK-LABEL: func @func_without_sharding
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   return %arg0 : tensor<*xi32>
 }
@@ -46,6 +50,9 @@ func @check_default_sharding_for_inputs_outputs(%arg0: tensor<*xi32>) {
   return
 }
 
+// CHECK-LABEL: func @func_without_sharding
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @func_without_sharding(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.A"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
   return %0 : tensor<*xi32>
@@ -64,6 +71,9 @@ func @check_sharding_for_input_correctly_identified(%arg0: tensor<*xi32>) {
   return
 }
 
+// CHECK-LABEL: func @inputs_with_sharding_func
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\01\02\03"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\08\01\1A\01\01\22\01\00"})
 func @inputs_with_sharding_func(%arg0: tensor<*xi32>) -> tensor<*xi32> {
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.A"(%0) : (tensor<*xi32>) -> (tensor<*xi32>)
@@ -83,6 +93,9 @@ func @check_sharding_for_multiple_inputs_outputs(%arg0: tensor<*xi32>, %arg1: te
 return
 }
 
+// CHECK-LABEL: func @func_with_sharding
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*xi1> {xla_hlo.sharding = "\04\05\06"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {xla_hlo.sharding = "\0D\0E\0F"})
 func @func_with_sharding(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>) {
   %0 = "tf.XlaSharding"(%arg0) { _XlaSharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.XlaSharding"(%arg1) { _XlaSharding = "\04\05\06" } : (tensor<*xi1>) -> tensor<*xi1>
@@ -105,6 +118,9 @@ func @check_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
   return
 }
 
+// CHECK-LABEL: func @func_with_sharding_after_identity
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*xi1> {xla_hlo.sharding = "\04\05\06"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {xla_hlo.sharding = "\0D\0E\0F"})
 func @func_with_sharding_after_identity(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>) {
   %0 = "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03" } : (tensor<*xi32>) -> tensor<*xi32>
@@ -128,6 +144,9 @@ func @check_sharding_after_read_variable(%arg0: tensor<*xi32>, %arg1: tensor<*xi
   return
 }
 
+// CHECK-LABEL: func @func_with_sharding_after_read_variable
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*x!tf.resource<tensor<32xf32>>> {xla_hlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*x!tf.resource<tensor<32xf32>>> {xla_hlo.sharding = "\04\05\06"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {xla_hlo.sharding = "\0D\0E\0F"})
 func @func_with_sharding_after_read_variable(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>, %arg1: tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<*xi32>, tensor<*xi1>) {
   %0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
   %1 = "tf.XlaSharding"(%0) { _XlaSharding = "\01\02\03" } : (tensor<32xf32>) -> tensor<32xf32>
@@ -153,6 +172,9 @@ func @check_sharding_after_cast_op(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) {
   return
 }
 
+// CHECK-LABEL: func @func_with_sharding_after_cast
+// CHECK-SAME: (%{{[a-z0-9]+}}: tensor<*xi32> {xla_hlo.sharding = "\01\02\03"}, %{{[a-z0-9]+}}: tensor<*xi1> {xla_hlo.sharding = "\04\05\06"})
+// CHECK-SAME: -> (tensor<*xi32> {xla_hlo.sharding = "\0A\0B\0C"}, tensor<*xi1> {xla_hlo.sharding = "\0D\0E\0F"})
 func @func_with_sharding_after_cast(%arg0: tensor<*xi32>, %arg1: tensor<*xi1>) -> (tensor<*xi32>, tensor<*xi1>) {
   %0 = "tf.Identity"(%arg0) : (tensor<*xi32>) -> tensor<*xi32>
   %1 = "tf.Cast"(%0) : (tensor<*xi32>) -> tensor<*xi1>

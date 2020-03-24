@@ -47,7 +47,7 @@ func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
 // CHECK-LABEL: func @minf
 func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.min"(%lhs, %rhs, %result)
+  "xla_lhlo.minimum"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -62,7 +62,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
           %result: memref<2x2xi32>) {
-  "xla_lhlo.max"(%lhs, %rhs, %result)
+  "xla_lhlo.maximum"(%lhs, %rhs, %result)
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }

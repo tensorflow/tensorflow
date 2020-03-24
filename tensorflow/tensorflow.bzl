@@ -265,6 +265,17 @@ def if_nccl(if_true, if_false = []):
         "//conditions:default": if_true,
     })
 
+# Linux systems may required -lrt linker flag for e.g. clock_gettime
+# see https://github.com/tensorflow/tensorflow/issues/15129
+def lrt_if_needed():
+    lrt = ["-lrt"]
+    return select({
+        clean_dep("//tensorflow:linux_aarch64"): lrt,
+        clean_dep("//tensorflow:linux_x86_64"): lrt,
+        clean_dep("//tensorflow:linux_ppc64le"): lrt,
+        "//conditions:default": [],
+    })
+
 def get_win_copts(is_external = False):
     WINDOWS_COPTS = [
         "/DPLATFORM_WINDOWS",
@@ -541,7 +552,7 @@ def tf_cc_shared_object(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         framework_so = tf_binary_additional_srcs(),
         soversion = None,
         kernels = [],
@@ -645,7 +656,7 @@ def tf_cc_binary(
         srcs = [],
         deps = [],
         data = [],
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         copts = tf_copts(),
         kernels = [],
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
@@ -741,7 +752,7 @@ def tf_gen_op_wrapper_cc(
     tf_cc_binary(
         name = tool,
         copts = tf_copts(),
-        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]),
+        linkopts = if_not_windows(["-lm", "-Wl,-ldl"]) + lrt_if_needed(),
         linkstatic = 1,  # Faster to link this one-time-use binary dynamically
         deps = [op_gen] + deps,
     )
@@ -914,7 +925,7 @@ def tf_gen_op_wrapper_py(
         hidden_file = None,
         generated_target_name = None,
         op_whitelist = [],
-        cc_linkopts = [],
+        cc_linkopts = lrt_if_needed(),
         api_def_srcs = []):
     _ = require_shape_functions  # Unused.
 
@@ -1225,7 +1236,7 @@ def tf_cc_tests(
         tags = [],
         size = "medium",
         args = None,
-        linkopts = [],
+        linkopts = lrt_if_needed(),
         kernels = [],
         create_named_test_suite = False,
         visibility = None):
@@ -2267,9 +2278,6 @@ def gpu_py_test(
         xla_enabled = False,
         grpc_enabled = False,
         **kwargs):
-    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
-    # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
     if "additional_deps" in kwargs:
@@ -2278,8 +2286,26 @@ def gpu_py_test(
         test_name = name
         test_tags = tags
         if config == "gpu":
-            test_name += "_gpu"
             test_tags = test_tags + tf_gpu_tests_tags()
+        if xla_enable_strict_auto_jit:
+            tf_py_test(
+                name = test_name + "_xla_" + config,
+                size = size,
+                srcs = srcs,
+                args = args,
+                data = data,
+                flaky = flaky,
+                grpc_enabled = grpc_enabled,
+                kernels = kernels,
+                main = main,
+                shard_count = shard_count,
+                tags = test_tags + ["xla", "manual"],
+                xla_enabled = xla_enabled,
+                xla_enable_strict_auto_jit = True,
+                **kwargs
+            )
+        if config == "gpu":
+            test_name += "_gpu"
         tf_py_test(
             name = test_name,
             size = size,
@@ -2398,10 +2424,24 @@ def gpu_py_tests(
         **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
-    _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
     if "additional_deps" in kwargs:
         fail("Use `deps` to specify dependencies. `additional_deps` has been replaced with the standard pattern of `deps`.")
+    if xla_enable_strict_auto_jit:
+        py_tests(
+            name = name + "_xla",
+            size = size,
+            srcs = srcs,
+            data = data,
+            grpc_enabled = grpc_enabled,
+            kernels = kernels,
+            prefix = prefix,
+            shard_count = shard_count,
+            tags = test_tags + ["xla", "manual"],
+            xla_enabled = xla_enabled,
+            xla_enable_strict_auto_jit = True,
+            **kwargs
+        )
     py_tests(
         name = name,
         size = size,

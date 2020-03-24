@@ -174,6 +174,8 @@ class FlatBufferModel {
   std::unique_ptr<Allocation> allocation_;
 };
 
+namespace impl {
+
 /// Build an interpreter capable of interpreting `model`.
 ///
 /// model: A model whose lifetime must be at least as long as any
@@ -237,6 +239,10 @@ class InterpreterBuilder {
 
   bool has_flex_op_ = false;
 };
+
+}  // namespace impl
+
+using InterpreterBuilder = impl::InterpreterBuilder;
 
 }  // namespace tflite
 

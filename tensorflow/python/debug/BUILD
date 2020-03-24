@@ -871,7 +871,10 @@ py_test(
     srcs = ["lib/source_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
+    tags = [
+        "no_oss_py38",  #TODO(b/151449908)
+        "no_windows",
+    ],
     deps = [
         ":debug_data",
         ":debug_utils",

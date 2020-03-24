@@ -74,31 +74,31 @@ class ConvertTFDilatedConvOp : public OpRewritePattern<Conv2dOpTy> {
       PatternRewriter& rewriter) const;
 
  public:
-  PatternMatchResult matchAndRewrite(Conv2dOpTy op,
-                                     PatternRewriter& rewriter) const override;
+  LogicalResult matchAndRewrite(Conv2dOpTy op,
+                                PatternRewriter& rewriter) const override;
 };
 
 template <typename Conv2dOpTy>
-PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
+LogicalResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     Conv2dOpTy op, PatternRewriter& rewriter) const {
   // Make sure Conv2D has 'VALID' padding.
   if (op.template getAttrOfType<StringAttr>("padding").getValue() != "VALID") {
-    return Pattern::matchFailure();
+    return failure();
   }
   // Make sure dilations are all ones if set.
   const ArrayAttr& dilations =
       op.template getAttrOfType<ArrayAttr>("dilations");
   if (dilations && !TFIntListIsAllOnes(dilations)) {
-    return Pattern::matchFailure();
+    return failure();
   }
 
   // Check if the ConvOp is preceded by a `Expand` op and succeeded by a
   // `Squeeze` op.
   Operation* prev_op = op.getOperation()->getPrevNode();
-  if (!prev_op) return Pattern::matchFailure();
+  if (!prev_op) return failure();
 
   Operation* next_op = op.getOperation()->getNextNode();
-  if (!next_op) return Pattern::matchFailure();
+  if (!next_op) return failure();
 
   TF::ExpandDimsOp expand_op;
   TF::SqueezeOp squeeze_op;
@@ -107,7 +107,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (llvm::isa<TF::ExpandDimsOp>(prev_op)) {
     if (!llvm::isa<TF::SqueezeOp>(next_op)) {
       // Expand/Squeeze op must come in pair.
-      return Pattern::matchFailure();
+      return failure();
     }
     expand_op = llvm::cast<TF::ExpandDimsOp>(prev_op);
     squeeze_op = llvm::cast<TF::SqueezeOp>(next_op);
@@ -119,24 +119,24 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
           (*const_op.value().cast<DenseElementsAttr>().getIntValues().begin())
               .getSExtValue();
     } else {
-      return Pattern::matchFailure();
+      return failure();
     }
     // Make sure that the `squeeze_dims` is equal to `expand_axis`.
     auto squeeze_dims = squeeze_op.squeeze_dims();
     if (squeeze_dims.size() != 1 ||
         squeeze_dims[0].cast<IntegerAttr>().getInt() != expand_axis) {
-      return Pattern::matchFailure();
+      return failure();
     }
 
     // Update previous/next op pointer.
     prev_op = prev_op->getPrevNode();
-    if (!prev_op) return Pattern::matchFailure();
+    if (!prev_op) return failure();
     next_op = next_op->getNextNode();
-    if (!next_op) return Pattern::matchFailure();
+    if (!next_op) return failure();
   }
 
   // SpaceToBatchND op.
-  if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) return Pattern::matchFailure();
+  if (!llvm::isa<TF::SpaceToBatchNDOp>(prev_op)) return failure();
   // TODO(b/149936532): Check `padding` input, currently ignored.
   TF::SpaceToBatchNDOp stb_op = llvm::cast<TF::SpaceToBatchNDOp>(prev_op);
 
@@ -148,7 +148,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   if (llvm::isa<TF::PadOp>(next_op)) {
     pad_op = llvm::cast<TF::PadOp>(next_op);
     next_op = next_op->getNextNode();
-    if (!next_op) return Pattern::matchFailure();
+    if (!next_op) return failure();
   }
 
   // BatchToSpaceND + BiasAdd.
@@ -160,8 +160,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
     // Must be BiasAdd + BatchToSpaceND.
     biasadd_op = llvm::cast<TF::BiasAddOp>(next_op);
     next_op = next_op->getNextNode();
-    if (!next_op || !llvm::isa<TF::BatchToSpaceNDOp>(next_op))
-      return Pattern::matchFailure();
+    if (!next_op || !llvm::isa<TF::BatchToSpaceNDOp>(next_op)) return failure();
     bts_op = llvm::cast<TF::BatchToSpaceNDOp>(next_op);
   } else if (llvm::isa<TF::BatchToSpaceNDOp>(next_op)) {
     // BatchToSpaceND + (optional) BiasAdd.
@@ -172,12 +171,12 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
       final_op_is_bts = false;
     }
   } else {
-    return Pattern::matchFailure();
+    return failure();
   }
 
   llvm::Optional<ArrayAttr> dilations_attr = ExtractDilationsAttrFromBlockShape(
       stb_op.block_shape(), bts_op.block_shape(), rewriter);
-  if (!dilations_attr.hasValue()) return Pattern::matchFailure();
+  if (!dilations_attr.hasValue()) return failure();
   op.setAttr("dilations", dilations_attr.getValue());
 
   // Padding is set to 'SAME' when `stb_op` has non-zero paddings.
@@ -228,7 +227,7 @@ PatternMatchResult ConvertTFDilatedConvOp<Conv2dOpTy>::matchAndRewrite(
   }
 
   stb_op.getResult().dropAllUses();
-  return Pattern::matchSuccess();
+  return success();
 }
 
 template <typename Conv2dOpTy>

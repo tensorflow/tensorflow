@@ -260,22 +260,22 @@ struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
   explicit BinaryOpWithBroadcastConvert(MLIRContext *context)
       : OpRewritePattern<SrcOp>(context) {}
 
-  PatternMatchResult matchAndRewrite(SrcOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(SrcOp op,
+                                PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
 
     auto op_ranked_type = op.getType().template dyn_cast<RankedTensorType>();
-    if (!op_ranked_type) return this->matchFailure();
+    if (!op_ranked_type) return failure();
 
     if (op_ranked_type.hasStaticShape()) {
       if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-        return this->matchFailure();
+        return failure();
       }
     } else {
       if (!CreateDynamicBroadcastsForBinaryOp(op, &rewriter, &new_lhs,
                                               &new_rhs)) {
-        return this->matchFailure();
+        return failure();
       }
     }
 
@@ -283,7 +283,7 @@ struct BinaryOpWithBroadcastConvert : public OpRewritePattern<SrcOp> {
     // New args are broadcasts, so no dims are needed on the replacement op.
     rewriter.replaceOpWithNewOp<SrcOp>(op, op.getType(), new_lhs, new_rhs,
                                        /*broadcast_dims=*/nullptr);
-    return this->matchSuccess();
+    return success();
   }
 };
 
@@ -292,18 +292,18 @@ struct CompareWithBroadcastConvert : public OpRewritePattern<CompareOp> {
   explicit CompareWithBroadcastConvert(MLIRContext *context)
       : OpRewritePattern<CompareOp>(context) {}
 
-  PatternMatchResult matchAndRewrite(CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(CompareOp op,
+                                PatternRewriter &rewriter) const override {
     Value new_lhs;
     Value new_rhs;
     if (!CreateBroadcastsForBinaryOp(op, &rewriter, &new_lhs, &new_rhs)) {
-      return this->matchFailure();
+      return failure();
     }
 
     rewriter.replaceOpWithNewOp<CompareOp>(op, op.getType(), new_lhs, new_rhs,
                                            /*broadcast_dims=*/nullptr,
                                            op.comparison_direction());
-    return this->matchSuccess();
+    return success();
   }
 };
 

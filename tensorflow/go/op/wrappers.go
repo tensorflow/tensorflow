@@ -8483,62 +8483,6 @@ func OptimizeDataset(scope *Scope, input_dataset tf.Output, optimizations tf.Out
 	return op.Output(0)
 }
 
-// DatasetToGraphAttr is an optional argument to DatasetToGraph.
-type DatasetToGraphAttr func(optionalAttr)
-
-// DatasetToGraphStatefulWhitelist sets the optional stateful_whitelist attribute to value.
-// If not specified, defaults to {}
-//
-// REQUIRES: len(value) >= 0
-func DatasetToGraphStatefulWhitelist(value []string) DatasetToGraphAttr {
-	return func(m optionalAttr) {
-		m["stateful_whitelist"] = value
-	}
-}
-
-// DatasetToGraphAllowStateful sets the optional allow_stateful attribute to value.
-// If not specified, defaults to false
-func DatasetToGraphAllowStateful(value bool) DatasetToGraphAttr {
-	return func(m optionalAttr) {
-		m["allow_stateful"] = value
-	}
-}
-
-// DatasetToGraphStripDeviceAssignment sets the optional strip_device_assignment attribute to value.
-// If not specified, defaults to false
-func DatasetToGraphStripDeviceAssignment(value bool) DatasetToGraphAttr {
-	return func(m optionalAttr) {
-		m["strip_device_assignment"] = value
-	}
-}
-
-// Returns a serialized GraphDef representing `input_dataset`.
-//
-// Returns a graph representation for `input_dataset`.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the dataset to return the graph representation for.
-//
-// Returns The graph representation of the dataset (as serialized GraphDef).
-func DatasetToGraph(scope *Scope, input_dataset tf.Output, optional ...DatasetToGraphAttr) (graph tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DatasetToGraph",
-		Input: []tf.Input{
-			input_dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Converts the given `resource_handle` representing an iterator to a string.
 //
 // Arguments:
@@ -11733,141 +11677,49 @@ func NonMaxSuppressionV2(scope *Scope, boxes tf.Output, scores tf.Output, max_ou
 	return op.Output(0)
 }
 
-// DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
-type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
+// NonMaxSuppressionAttr is an optional argument to NonMaxSuppression.
+type NonMaxSuppressionAttr func(optionalAttr)
 
-// DepthwiseConv2dNativeBackpropFilterDataFormat sets the optional data_format attribute to value.
+// NonMaxSuppressionIouThreshold sets the optional iou_threshold attribute to value.
 //
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, height, width, channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, channels, height, width].
-// If not specified, defaults to "NHWC"
-func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2dNativeBackpropFilterAttr {
+// value: A float representing the threshold for deciding whether boxes
+// overlap too much with respect to IOU.
+// If not specified, defaults to 0.5
+func NonMaxSuppressionIouThreshold(value float32) NonMaxSuppressionAttr {
 	return func(m optionalAttr) {
-		m["data_format"] = value
+		m["iou_threshold"] = value
 	}
 }
 
-// DepthwiseConv2dNativeBackpropFilterDilations sets the optional dilations attribute to value.
+// Greedily selects a subset of bounding boxes in descending order of score,
 //
-// value: 1-D tensor of length 4.  The dilation factor for each dimension of
-// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-// element on that dimension. The dimension order is determined by the value of
-// `data_format`, see above for details. Dilations in the batch and depth
-// dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
-func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes the gradients of depthwise convolution with respect to the filter.
+// pruning away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system.  Note that this
+// algorithm is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+// The output of this operation is a set of integers indexing into the input
+// collection of bounding boxes representing the selected boxes.  The bounding
+// box coordinates corresponding to the selected indices can then be obtained
+// using the `tf.gather operation`.  For example:
+//   selected_indices = tf.image.non_max_suppression(
+//       boxes, scores, max_output_size, iou_threshold)
+//   selected_boxes = tf.gather(boxes, selected_indices)
 //
 // Arguments:
-//	input: 4-D with shape based on `data_format`.  For example, if
-// `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
-// in_width, in_channels]` tensor.
-//	filter_sizes: An integer vector representing the tensor shape of `filter`,
-// where `filter` is a 4-D
-// `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
-//	out_backprop: 4-D with shape  based on `data_format`.
-// For example, if `data_format` is 'NHWC' then
-// out_backprop shape is `[batch, out_height, out_width, out_channels]`.
-// Gradients w.r.t. the output of the convolution.
-//	strides: The stride of the sliding window for each dimension of the input
-// of the convolution.
-//	padding: The type of padding algorithm to use.
+//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+// score corresponding to each box (each row of boxes).
+//	max_output_size: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression.
 //
-// Returns 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
-// the `filter` input of the convolution.
-func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeBackpropFilterAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DepthwiseConv2dNativeBackpropFilter",
-		Input: []tf.Input{
-			input, filter_sizes, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CropAndResizeAttr is an optional argument to CropAndResize.
-type CropAndResizeAttr func(optionalAttr)
-
-// CropAndResizeMethod sets the optional method attribute to value.
-//
-// value: A string specifying the sampling method for resizing. It can be either
-// `"bilinear"` or `"nearest"` and default to `"bilinear"`. Currently two sampling
-// methods are supported: Bilinear and Nearest Neighbor.
-// If not specified, defaults to "bilinear"
-func CropAndResizeMethod(value string) CropAndResizeAttr {
-	return func(m optionalAttr) {
-		m["method"] = value
-	}
-}
-
-// CropAndResizeExtrapolationValue sets the optional extrapolation_value attribute to value.
-//
-// value: Value used for extrapolation, when applicable.
-// If not specified, defaults to 0
-func CropAndResizeExtrapolationValue(value float32) CropAndResizeAttr {
-	return func(m optionalAttr) {
-		m["extrapolation_value"] = value
-	}
-}
-
-// Extracts crops from the input image tensor and resizes them.
-//
-// Extracts crops from the input image tensor and resizes them using bilinear
-// sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
-// common output size specified by `crop_size`. This is more general than the
-// `crop_to_bounding_box` op which extracts a fixed size slice from the input image
-// and does not allow resizing or aspect ratio change.
-//
-// Returns a tensor with `crops` from the input `image` at positions defined at the
-// bounding box locations in `boxes`. The cropped boxes are all resized (with
-// bilinear or nearest neighbor interpolation) to a fixed
-// `size = [crop_height, crop_width]`. The result is a 4-D tensor
-// `[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
-// In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
-// results to using `tf.image.resize_bilinear()` or
-// `tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
-// `align_corners=True`.
-//
-// Arguments:
-//	image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
-// Both `image_height` and `image_width` need to be positive.
-//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
-// specifies the coordinates of a box in the `box_ind[i]` image and is specified
-// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
-// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
-// `[0, 1]` interval of normalized image height is mapped to
-// `[0, image_height - 1]` in image height coordinates. We do allow `y1` > `y2`, in
-// which case the sampled crop is an up-down flipped version of the original
-// image. The width dimension is treated similarly. Normalized coordinates
-// outside the `[0, 1]` range are allowed, in which case we use
-// `extrapolation_value` to extrapolate the input image values.
-//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
-// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
-//	crop_size: A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`. All
-// cropped image patches are resized to this size. The aspect ratio of the image
-// content is not preserved. Both `crop_height` and `crop_width` need to be
-// positive.
-//
-// Returns A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
-func CropAndResize(scope *Scope, image tf.Output, boxes tf.Output, box_ind tf.Output, crop_size tf.Output, optional ...CropAndResizeAttr) (crops tf.Output) {
+// Returns A 1-D integer tensor of shape `[M]` representing the selected
+// indices from the boxes tensor, where `M <= max_output_size`.
+func NonMaxSuppression(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, optional ...NonMaxSuppressionAttr) (selected_indices tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -11876,9 +11728,164 @@ func CropAndResize(scope *Scope, image tf.Output, boxes tf.Output, box_ind tf.Ou
 		a(attrs)
 	}
 	opspec := tf.OpSpec{
-		Type: "CropAndResize",
+		Type: "NonMaxSuppression",
 		Input: []tf.Input{
-			image, boxes, box_ind, crop_size,
+			boxes, scores, max_output_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CropAndResizeGradBoxesAttr is an optional argument to CropAndResizeGradBoxes.
+type CropAndResizeGradBoxesAttr func(optionalAttr)
+
+// CropAndResizeGradBoxesMethod sets the optional method attribute to value.
+//
+// value: A string specifying the interpolation method. Only 'bilinear' is
+// supported for now.
+// If not specified, defaults to "bilinear"
+func CropAndResizeGradBoxesMethod(value string) CropAndResizeGradBoxesAttr {
+	return func(m optionalAttr) {
+		m["method"] = value
+	}
+}
+
+// Computes the gradient of the crop_and_resize op wrt the input boxes tensor.
+//
+// Arguments:
+//	grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+//	image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+// Both `image_height` and `image_width` need to be positive.
+//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+// specifies the coordinates of a box in the `box_ind[i]` image and is specified
+// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+// `[0, 1]` interval of normalized image height is mapped to
+// `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+// which case the sampled crop is an up-down flipped version of the original
+// image. The width dimension is treated similarly. Normalized coordinates
+// outside the `[0, 1]` range are allowed, in which case we use
+// `extrapolation_value` to extrapolate the input image values.
+//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+//
+// Returns A 2-D tensor of shape `[num_boxes, 4]`.
+func CropAndResizeGradBoxes(scope *Scope, grads tf.Output, image tf.Output, boxes tf.Output, box_ind tf.Output, optional ...CropAndResizeGradBoxesAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CropAndResizeGradBoxes",
+		Input: []tf.Input{
+			grads, image, boxes, box_ind,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ExtractGlimpseAttr is an optional argument to ExtractGlimpse.
+type ExtractGlimpseAttr func(optionalAttr)
+
+// ExtractGlimpseCentered sets the optional centered attribute to value.
+//
+// value: indicates if the offset coordinates are centered relative to
+// the image, in which case the (0, 0) offset is relative to the center
+// of the input images. If false, the (0,0) offset corresponds to the
+// upper left corner of the input images.
+// If not specified, defaults to true
+func ExtractGlimpseCentered(value bool) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["centered"] = value
+	}
+}
+
+// ExtractGlimpseNormalized sets the optional normalized attribute to value.
+//
+// value: indicates if the offset coordinates are normalized.
+// If not specified, defaults to true
+func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["normalized"] = value
+	}
+}
+
+// ExtractGlimpseUniformNoise sets the optional uniform_noise attribute to value.
+//
+// value: indicates if the noise should be generated using a
+// uniform distribution or a Gaussian distribution.
+// If not specified, defaults to true
+func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["uniform_noise"] = value
+	}
+}
+
+// ExtractGlimpseNoise sets the optional noise attribute to value.
+//
+// value: indicates if the noise should `uniform`, `gaussian`, or
+// `zero`. The default is `uniform` which means the the noise type
+// will be decided by `uniform_noise`.
+// If not specified, defaults to "uniform"
+func ExtractGlimpseNoise(value string) ExtractGlimpseAttr {
+	return func(m optionalAttr) {
+		m["noise"] = value
+	}
+}
+
+// Extracts a glimpse from the input tensor.
+//
+// Returns a set of windows called glimpses extracted at location
+// `offsets` from the input tensor. If the windows only partially
+// overlaps the inputs, the non overlapping areas will be filled with
+// random noise.
+//
+// The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+// glimpse_width, channels]`. The channels and batch dimensions are the
+// same as that of the input tensor. The height and width of the output
+// windows are specified in the `size` parameter.
+//
+// The argument `normalized` and `centered` controls how the windows are built:
+//
+// * If the coordinates are normalized but not centered, 0.0 and 1.0
+//   correspond to the minimum and maximum of each height and width
+//   dimension.
+// * If the coordinates are both normalized and centered, they range from
+//   -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+//   left corner, the lower right corner is located at (1.0, 1.0) and the
+//   center is at (0, 0).
+// * If the coordinates are not normalized they are interpreted as
+//   numbers of pixels.
+//
+// Arguments:
+//	input: A 4-D float tensor of shape `[batch_size, height, width, channels]`.
+//	size: A 1-D tensor of 2 elements containing the size of the glimpses
+// to extract.  The glimpse height must be specified first, following
+// by the glimpse width.
+//	offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
+// the y, x locations of the center of each window.
+//
+// Returns A tensor representing the glimpses `[batch_size,
+// glimpse_height, glimpse_width, channels]`.
+func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Output, optional ...ExtractGlimpseAttr) (glimpse tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ExtractGlimpse",
+		Input: []tf.Input{
+			input, size, offsets,
 		},
 		Attrs: attrs,
 	}
@@ -12014,7 +12021,7 @@ func SampleDistortedBoundingBoxV2Seed2(value int64) SampleDistortedBoundingBoxV2
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12025,7 +12032,7 @@ func SampleDistortedBoundingBoxV2AspectRatioRange(value []float32) SampleDistort
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxV2AreaRange(value []float32) SampleDistortedBoundingBoxV2Attr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -12181,7 +12188,7 @@ func RGBToHSV(scope *Scope, images tf.Output) (output tf.Output) {
 //     convert $src.gif -coalesce $dst.gif
 //
 // This op also supports decoding JPEGs and PNGs, though it is cleaner to use
-// `tf.image.decode_image`.
+// `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
@@ -12243,7 +12250,7 @@ func SampleDistortedBoundingBoxMinObjectCovered(value float32) SampleDistortedBo
 //
 // value: The cropped area of the image must have an aspect ratio =
 // width / height within this range.
-// If not specified, defaults to {f:0.75 f:1.33}
+// If not specified, defaults to {f:0.75  f:1.33}
 func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["aspect_ratio_range"] = value
@@ -12254,7 +12261,7 @@ func SampleDistortedBoundingBoxAspectRatioRange(value []float32) SampleDistorted
 //
 // value: The cropped area of the image must contain a fraction of the
 // supplied image within this range.
-// If not specified, defaults to {f:0.05 f:1}
+// If not specified, defaults to {f:0.05  f:1}
 func SampleDistortedBoundingBoxAreaRange(value []float32) SampleDistortedBoundingBoxAttr {
 	return func(m optionalAttr) {
 		m["area_range"] = value
@@ -13152,70 +13159,6 @@ func ReaderSerializeStateV2(scope *Scope, reader_handle tf.Output) (state tf.Out
 	return op.Output(0)
 }
 
-// DecodeRawAttr is an optional argument to DecodeRaw.
-type DecodeRawAttr func(optionalAttr)
-
-// DecodeRawLittleEndian sets the optional little_endian attribute to value.
-//
-// value: Whether the input `bytes` are in little-endian order.
-// Ignored for `out_type` values that are stored in a single byte like
-// `uint8`.
-// If not specified, defaults to true
-func DecodeRawLittleEndian(value bool) DecodeRawAttr {
-	return func(m optionalAttr) {
-		m["little_endian"] = value
-	}
-}
-
-// Reinterpret the bytes of a string as a vector of numbers.
-//
-// Arguments:
-//	bytes: All the elements must have the same length.
-//
-//
-// Returns A Tensor with one more dimension than the input `bytes`.  The
-// added dimension will have size equal to the length of the elements
-// of `bytes` divided by the number of bytes to represent `out_type`.
-func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...DecodeRawAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"out_type": out_type}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeRaw",
-		Input: []tf.Input{
-			bytes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the number of records this Reader has produced.
-//
-// This is the same as the number of ReaderRead executions that have
-// succeeded.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_produced tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderNumRecordsProducedV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns up to `num_records` (key, value) pairs produced by a Reader.
 //
 // Will dequeue from the input queue if necessary (e.g. when the
@@ -13982,7 +13925,7 @@ func DebugNumericSummaryGatedGrpc(value bool) DebugNumericSummaryAttr {
 // Provide a basic summary of numeric value types, range and distribution.
 //
 // output: A double tensor of shape [14 + nDimensions], where nDimensions is the
-//   the number of dimensions of the tensor's shape. The elements of output are:
+//   number of dimensions of the tensor's shape. The elements of output are:
 //   [0]: is initialized (1.0) or not (0.0).
 //   [1]: total number of elements
 //   [2]: NaN element count
@@ -13992,7 +13935,7 @@ func DebugNumericSummaryGatedGrpc(value bool) DebugNumericSummaryAttr {
 //     -inf. Otherwise, this is the count of elements > lower_bound and < 0.
 //   [5]: zero element count
 //   [6]: positive element count (excluding +inf), if upper_bound is the default
-//     -inf. Otherwise, this is the count of elements < upper_bound and > 0.
+//     +inf. Otherwise, this is the count of elements < upper_bound and > 0.
 //   [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by
 //     default.
 // Output elements [1:8] are all zero, if the tensor is uninitialized.
@@ -15489,7 +15432,7 @@ func DecodePngDtype(value tf.DataType) DecodePngAttr {
 // of color channels.
 //
 // This op also supports decoding JPEGs and non-animated GIFs since the interface
-// is the same, though it is cleaner to use `tf.image.decode_image`.
+// is the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The PNG-encoded image.
@@ -16104,8 +16047,6 @@ type RetrieveTPUEmbeddingAdagradParametersAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingAdagradParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingAdagradParametersTableId(value int64) RetrieveTPUEmbeddingAdagradParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -19095,7 +19036,7 @@ func ImageSummaryMaxImages(value int64) ImageSummaryAttr {
 // ImageSummaryBadColor sets the optional bad_color attribute to value.
 //
 // value: Color to use for pixels with non-finite values.
-// If not specified, defaults to {dtype:DT_UINT8 tensor_shape:{dim:{size:4}} int_val:255 int_val:0 int_val:0 int_val:255}
+// If not specified, defaults to {dtype:DT_UINT8  tensor_shape:{dim:{size:4}}  int_val:255  int_val:0  int_val:0  int_val:255}
 func ImageSummaryBadColor(value tf.Tensor) ImageSummaryAttr {
 	return func(m optionalAttr) {
 		m["bad_color"] = value
@@ -20166,7 +20107,7 @@ func Conv3DBackpropFilterV2DataFormat(value string) Conv3DBackpropFilterV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterV2Dilations(value []int64) Conv3DBackpropFilterV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -21063,102 +21004,6 @@ func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// OutfeedDequeueAttr is an optional argument to OutfeedDequeue.
-type OutfeedDequeueAttr func(optionalAttr)
-
-// OutfeedDequeueDeviceOrdinal sets the optional device_ordinal attribute to value.
-//
-// value: The TPU device to use. This should be -1 when the Op
-// is running on a TPU device, and >= 0 when the Op is running on the CPU
-// device.
-// If not specified, defaults to -1
-func OutfeedDequeueDeviceOrdinal(value int64) OutfeedDequeueAttr {
-	return func(m optionalAttr) {
-		m["device_ordinal"] = value
-	}
-}
-
-// Retrieves a single tensor from the computation outfeed.
-//
-// This operation will block indefinitely until data is available.
-//
-// Arguments:
-//	dtype: The type of elements in the tensor.
-//	shape: The shape of the tensor.
-//
-// Returns A tensor that will be read from the device outfeed.
-func OutfeedDequeue(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...OutfeedDequeueAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype, "shape": shape}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OutfeedDequeue",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CropAndResizeGradImageAttr is an optional argument to CropAndResizeGradImage.
-type CropAndResizeGradImageAttr func(optionalAttr)
-
-// CropAndResizeGradImageMethod sets the optional method attribute to value.
-//
-// value: A string specifying the interpolation method. Only 'bilinear' is
-// supported for now.
-// If not specified, defaults to "bilinear"
-func CropAndResizeGradImageMethod(value string) CropAndResizeGradImageAttr {
-	return func(m optionalAttr) {
-		m["method"] = value
-	}
-}
-
-// Computes the gradient of the crop_and_resize op wrt the input image tensor.
-//
-// Arguments:
-//	grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
-//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
-// specifies the coordinates of a box in the `box_ind[i]` image and is specified
-// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
-// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
-// `[0, 1]` interval of normalized image height is mapped to
-// `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
-// which case the sampled crop is an up-down flipped version of the original
-// image. The width dimension is treated similarly. Normalized coordinates
-// outside the `[0, 1]` range are allowed, in which case we use
-// `extrapolation_value` to extrapolate the input image values.
-//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
-// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
-//	image_size: A 1-D tensor with value `[batch, image_height, image_width, depth]`
-// containing the original image size. Both `image_height` and `image_width` need
-// to be positive.
-//
-//
-// Returns A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
-func CropAndResizeGradImage(scope *Scope, grads tf.Output, boxes tf.Output, box_ind tf.Output, image_size tf.Output, T tf.DataType, optional ...CropAndResizeGradImageAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"T": T}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CropAndResizeGradImage",
-		Input: []tf.Input{
-			grads, boxes, box_ind, image_size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes hyperbolic tangent of `x` element-wise.
 //
 //   Given an input tensor, this function computes hyperbolic tangent of every
@@ -21434,7 +21279,7 @@ func Conv2DBackpropInputDataFormat(value string) Conv2DBackpropInputAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropInputDilations(value []int64) Conv2DBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22142,7 +21987,7 @@ func Conv2DDataFormat(value string) Conv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DDilations(value []int64) Conv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22338,7 +22183,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeOutType(value tf.DataTy
 // QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAndRequantizeAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22407,7 +22252,7 @@ func QuantizedDepthwiseConv2DWithBiasAndReluOutType(value tf.DataType) Quantized
 // QuantizedDepthwiseConv2DWithBiasAndReluDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasAndReluDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAndReluAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22522,7 +22367,7 @@ func QuantizedDepthwiseConv2DWithBiasOutType(value tf.DataType) QuantizedDepthwi
 // QuantizedDepthwiseConv2DWithBiasDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DWithBiasDilations(value []int64) QuantizedDepthwiseConv2DWithBiasAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22581,7 +22426,7 @@ func QuantizedDepthwiseConv2DOutType(value tf.DataType) QuantizedDepthwiseConv2D
 // QuantizedDepthwiseConv2DDilations sets the optional dilations attribute to value.
 //
 // value: List of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedDepthwiseConv2DDilations(value []int64) QuantizedDepthwiseConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22755,7 +22600,7 @@ func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChann
 // QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
 //
 // value: list of dilation values.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -22996,8 +22841,6 @@ type LoadTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
 
 // LoadTPUEmbeddingADAMParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingADAMParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingADAMParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -23060,8 +22903,6 @@ type RetrieveTPUEmbeddingRMSPropParametersAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingRMSPropParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingRMSPropParametersTableId(value int64) RetrieveTPUEmbeddingRMSPropParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -23136,7 +22977,7 @@ func Conv3DBackpropInputV2DataFormat(value string) Conv3DBackpropInputV2Attr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropInputV2Dilations(value []int64) Conv3DBackpropInputV2Attr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -24832,103 +24673,6 @@ func SoftsignGrad(scope *Scope, gradients tf.Output, features tf.Output) (backpr
 	return op.Output(0)
 }
 
-// QuantizeAndDequantizeV3Attr is an optional argument to QuantizeAndDequantizeV3.
-type QuantizeAndDequantizeV3Attr func(optionalAttr)
-
-// QuantizeAndDequantizeV3SignedInput sets the optional signed_input attribute to value.
-// If not specified, defaults to true
-func QuantizeAndDequantizeV3SignedInput(value bool) QuantizeAndDequantizeV3Attr {
-	return func(m optionalAttr) {
-		m["signed_input"] = value
-	}
-}
-
-// QuantizeAndDequantizeV3RangeGiven sets the optional range_given attribute to value.
-// If not specified, defaults to true
-func QuantizeAndDequantizeV3RangeGiven(value bool) QuantizeAndDequantizeV3Attr {
-	return func(m optionalAttr) {
-		m["range_given"] = value
-	}
-}
-
-// QuantizeAndDequantizeV3NarrowRange sets the optional narrow_range attribute to value.
-// If not specified, defaults to false
-func QuantizeAndDequantizeV3NarrowRange(value bool) QuantizeAndDequantizeV3Attr {
-	return func(m optionalAttr) {
-		m["narrow_range"] = value
-	}
-}
-
-// QuantizeAndDequantizeV3Axis sets the optional axis attribute to value.
-// If not specified, defaults to -1
-func QuantizeAndDequantizeV3Axis(value int64) QuantizeAndDequantizeV3Attr {
-	return func(m optionalAttr) {
-		m["axis"] = value
-	}
-}
-
-// Quantizes then dequantizes a tensor.
-//
-// This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
-// tensor, so its value can change during training.
-func QuantizeAndDequantizeV3(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, num_bits tf.Output, optional ...QuantizeAndDequantizeV3Attr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizeAndDequantizeV3",
-		Input: []tf.Input{
-			input, input_min, input_max, num_bits,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns x * y element-wise.
-//
-// *NOTE*: `Multiply` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Mul(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Mul",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes softplus gradients for a softplus operation.
-//
-// Arguments:
-//	gradients: The backpropagated gradients to the corresponding softplus operation.
-//	features: The features passed as input to the corresponding softplus operation.
-//
-// Returns The gradients: `gradients / (1 + exp(-features))`.
-func SoftplusGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SoftplusGrad",
-		Input: []tf.Input{
-			gradients, features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes the LSTM cell backward propagation for 1 timestep.
 //
 // This implementation is to be used in conjunction of LSTMBlockCell.
@@ -25576,7 +25320,7 @@ func AvgPool3DGrad(scope *Scope, orig_input_shape tf.Output, grad tf.Output, ksi
 type Conv3DBackpropFilterAttr func(optionalAttr)
 
 // Conv3DBackpropFilterDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DBackpropFilterDilations(value []int64) Conv3DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25639,7 +25383,7 @@ func Conv3DDataFormat(value string) Conv3DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
 func Conv3DDilations(value []int64) Conv3DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -25678,97 +25422,6 @@ func Conv3D(scope *Scope, input tf.Output, filter tf.Output, strides []int64, pa
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Compute the lower regularized incomplete Gamma function `P(a, x)`.
-//
-// The lower regularized incomplete Gamma function is defined as:
-//
-//
-// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
-//
-// where
-//
-// \\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
-//
-// is the lower incomplete Gamma function.
-//
-// Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
-// Gamma function.
-func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Igamma",
-		Input: []tf.Input{
-			a, x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StringSplitV2Attr is an optional argument to StringSplitV2.
-type StringSplitV2Attr func(optionalAttr)
-
-// StringSplitV2Maxsplit sets the optional maxsplit attribute to value.
-//
-// value: An `int`. If `maxsplit > 0`, limit of the split of the result.
-// If not specified, defaults to -1
-func StringSplitV2Maxsplit(value int64) StringSplitV2Attr {
-	return func(m optionalAttr) {
-		m["maxsplit"] = value
-	}
-}
-
-// Split elements of `source` based on `sep` into a `SparseTensor`.
-//
-// Let N be the size of source (typically N will be the batch size). Split each
-// element of `source` based on `sep` and return a `SparseTensor`
-// containing the split tokens. Empty tokens are ignored.
-//
-// For example, N = 2, source[0] is 'hello world' and source[1] is 'a b c',
-// then the output will be
-// ```
-// st.indices = [0, 0;
-//               0, 1;
-//               1, 0;
-//               1, 1;
-//               1, 2]
-// st.shape = [2, 3]
-// st.values = ['hello', 'world', 'a', 'b', 'c']
-// ```
-//
-// If `sep` is given, consecutive delimiters are not grouped together and are
-// deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
-// sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
-// string, consecutive whitespace are regarded as a single separator, and the
-// result will contain no empty strings at the startor end if the string has
-// leading or trailing whitespace.
-//
-// Note that the above mentioned behavior matches python's str.split.
-//
-// Arguments:
-//	input: `1-D` string `Tensor`, the strings to split.
-//	sep: `0-D` string `Tensor`, the delimiter character.
-func StringSplitV2(scope *Scope, input tf.Output, sep tf.Output, optional ...StringSplitV2Attr) (indices tf.Output, values tf.Output, shape tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StringSplitV2",
-		Input: []tf.Input{
-			input, sep,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // UniqueWithCountsAttr is an optional argument to UniqueWithCounts.
@@ -25973,7 +25626,7 @@ func DepthwiseConv2dNativeBackpropInputDataFormat(value string) DepthwiseConv2dN
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func DepthwiseConv2dNativeBackpropInputDilations(value []int64) DepthwiseConv2dNativeBackpropInputAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -26012,313 +25665,6 @@ func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, fil
 		Type: "DepthwiseConv2dNativeBackpropInput",
 		Input: []tf.Input{
 			input_sizes, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
-type Conv3DBackpropInputAttr func(optionalAttr)
-
-// Conv3DBackpropInputDilations sets the optional dilations attribute to value.
-// If not specified, defaults to {i:1 i:1 i:1 i:1 i:1}
-func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes the gradients of 3-D convolution with respect to the input.
-//
-// DEPRECATED at GraphDef version 10: Use Conv3DBackpropInputV2
-//
-// Arguments:
-//	input: Shape `[batch, depth, rows, cols, in_channels]`.
-//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
-// `in_channels` must match between `input` and `filter`.
-//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
-// out_channels]`.
-//	strides: 1-D tensor of length 5. The stride of the sliding window for each
-// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
-//	padding: The type of padding algorithm to use.
-func Conv3DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropInputAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Conv3DBackpropInput",
-		Input: []tf.Input{
-			input, filter, out_backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates an all-zeros CSRSparseMatrix with shape `dense_shape`.
-//
-// Arguments:
-//	dense_shape: The desired matrix shape.
-//
-//
-// Returns An empty CSR matrix with shape `dense_shape`.
-func SparseMatrixZeros(scope *Scope, dense_shape tf.Output, type_ tf.DataType) (sparse_matrix tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"type": type_}
-	opspec := tf.OpSpec{
-		Type: "SparseMatrixZeros",
-		Input: []tf.Input{
-			dense_shape,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Forwards `data` to the output port determined by `pred`.
-//
-// If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
-// the data goes to `output_false`.
-//
-// See also `RefSwitch` and `Merge`.
-//
-// Arguments:
-//	data: The tensor to be forwarded to the appropriate output.
-//	pred: A scalar that specifies which output port will receive data.
-//
-// Returns:
-//	output_false: If `pred` is false, data will be forwarded to this output.
-//	output_true: If `pred` is true, data will be forwarded to this output.
-func Switch(scope *Scope, data tf.Output, pred tf.Output) (output_false tf.Output, output_true tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Switch",
-		Input: []tf.Input{
-			data, pred,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// UnicodeEncodeAttr is an optional argument to UnicodeEncode.
-type UnicodeEncodeAttr func(optionalAttr)
-
-// UnicodeEncodeErrors sets the optional errors attribute to value.
-//
-// value: Error handling policy when there is invalid formatting found in the input.
-// The value of 'strict' will cause the operation to produce a InvalidArgument
-// error on any invalid input formatting. A value of 'replace' (the default) will
-// cause the operation to replace any invalid formatting in the input with the
-// `replacement_char` codepoint. A value of 'ignore' will cause the operation to
-// skip any invalid formatting in the input and produce no corresponding output
-// character.
-// If not specified, defaults to "replace"
-func UnicodeEncodeErrors(value string) UnicodeEncodeAttr {
-	return func(m optionalAttr) {
-		m["errors"] = value
-	}
-}
-
-// UnicodeEncodeReplacementChar sets the optional replacement_char attribute to value.
-//
-// value: The replacement character codepoint to be used in place of any invalid
-// formatting in the input when `errors='replace'`. Any valid unicode codepoint may
-// be used. The default value is the default unicode replacement character is
-// 0xFFFD (U+65533).
-// If not specified, defaults to 65533
-func UnicodeEncodeReplacementChar(value int64) UnicodeEncodeAttr {
-	return func(m optionalAttr) {
-		m["replacement_char"] = value
-	}
-}
-
-// Encode a tensor of ints into unicode strings.
-//
-// Returns a vector of strings, where `output[i]` is constructed by encoding the
-// Unicode codepoints in `input_values[input_splits[i]:input_splits[i+1]]`
-// using `output_encoding`.
-//
-// ---
-//
-// Example:
-//
-// ```
-// input_values = [72, 101, 108, 108, 111, 87, 111, 114, 108, 100]
-// input_splits = [0, 5, 10]
-// output_encoding = 'UTF-8'
-//
-// output = ['Hello', 'World']
-// ```
-//
-// Arguments:
-//	input_values: A 1D tensor containing the unicode codepoints that should be encoded.
-//	input_splits: A 1D tensor specifying how the unicode codepoints should be split into strings.
-// In particular, `output[i]` is constructed by encoding the codepoints in the
-// slice `input_values[input_splits[i]:input_splits[i+1]]`.
-//	output_encoding: Unicode encoding of the output strings. Valid encodings are: `"UTF-8",
-// "UTF-16-BE", and "UTF-32-BE"`.
-//
-// Returns The 1-D Tensor of strings encoded from the provided unicode codepoints.
-func UnicodeEncode(scope *Scope, input_values tf.Output, input_splits tf.Output, output_encoding string, optional ...UnicodeEncodeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_encoding": output_encoding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "UnicodeEncode",
-		Input: []tf.Input{
-			input_values, input_splits,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingFTRLParametersGradAccumDebug.
-type RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugConfig(value string) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve FTRL embedding parameters with debug support.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the FTRL optimization algorithm.
-//	accumulators: Parameter accumulators updated by the FTRL optimization algorithm.
-//	linears: Parameter linears updated by the FTRL optimization algorithm.
-//	gradient_accumulators: Parameter gradient_accumulators updated by the FTRL optimization algorithm.
-func RetrieveTPUEmbeddingFTRLParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr) (parameters tf.Output, accumulators tf.Output, linears tf.Output, gradient_accumulators tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingFTRLParametersGradAccumDebug",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
-}
-
-// DepthwiseConv2dNativeAttr is an optional argument to DepthwiseConv2dNative.
-type DepthwiseConv2dNativeAttr func(optionalAttr)
-
-// DepthwiseConv2dNativeDataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, height, width, channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, channels, height, width].
-// If not specified, defaults to "NHWC"
-func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// DepthwiseConv2dNativeDilations sets the optional dilations attribute to value.
-//
-// value: 1-D tensor of length 4.  The dilation factor for each dimension of
-// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
-// element on that dimension. The dimension order is determined by the value of
-// `data_format`, see above for details. Dilations in the batch and depth
-// dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
-func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
-	return func(m optionalAttr) {
-		m["dilations"] = value
-	}
-}
-
-// Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
-//
-// Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
-// and a filter / kernel tensor of shape
-// `[filter_height, filter_width, in_channels, channel_multiplier]`, containing
-// `in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
-// a different filter to each input channel (expanding from 1 channel to
-// `channel_multiplier` channels for each), then concatenates the results
-// together. Thus, the output has `in_channels * channel_multiplier` channels.
-//
-// ```
-// for k in 0..in_channels-1
-//   for q in 0..channel_multiplier-1
-//     output[b, i, j, k * channel_multiplier + q] =
-//       sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
-//                         filter[di, dj, k, q]
-// ```
-//
-// Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
-// horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
-//
-// Arguments:
-//
-//
-//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
-// of `input`.
-//	padding: The type of padding algorithm to use.
-func DepthwiseConv2dNative(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DepthwiseConv2dNative",
-		Input: []tf.Input{
-			input, filter,
 		},
 		Attrs: attrs,
 	}
@@ -26419,145 +25765,6 @@ func FusedPadConv2D(scope *Scope, input tf.Output, paddings tf.Output, filter tf
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// Returns the cardinality of `input_dataset`.
-//
-// Returns the cardinality of `input_dataset`.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the dataset to return cardinality for.
-//
-// Returns The cardinality of `input_dataset`. Named constants are used to represent
-// infinite and unknown cardinality.
-func DatasetCardinality(scope *Scope, input_dataset tf.Output) (cardinality tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "DatasetCardinality",
-		Input: []tf.Input{
-			input_dataset,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates a dataset that emits each dim-0 slice of `components` once.
-func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "TensorSliceDataset",
-		Input: []tf.Input{
-			tf.OutputList(components),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RetrieveTPUEmbeddingMDLAdagradLightParametersAttr is an optional argument to RetrieveTPUEmbeddingMDLAdagradLightParameters.
-type RetrieveTPUEmbeddingMDLAdagradLightParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingMDLAdagradLightParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingMDLAdagradLightParametersTableId(value int64) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingMDLAdagradLightParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingMDLAdagradLightParametersTableName(value string) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingMDLAdagradLightParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingMDLAdagradLightParametersConfig(value string) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve MDL Adagrad Light embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the MDL Adagrad Light optimization algorithm.
-//	accumulators: Parameter accumulators updated by the MDL Adagrad Light optimization algorithm.
-//	weights: Parameter weights updated by the MDL Adagrad Light optimization algorithm.
-//	benefits: Parameter benefits updated by the MDL Adagrad Light optimization algorithm.
-func RetrieveTPUEmbeddingMDLAdagradLightParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingMDLAdagradLightParametersAttr) (parameters tf.Output, accumulators tf.Output, weights tf.Output, benefits tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingMDLAdagradLightParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
-}
-
-// Adds sparse updates to the variable referenced by `resource`.
-//
-// This operation computes
-//
-//     # Scalar indices
-//     ref[indices, ...] += updates[...]
-//
-//     # Vector indices (for each i)
-//     ref[indices[i], ...] += updates[i, ...]
-//
-//     # High rank indices (for each i, ..., j)
-//     ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
-//
-// Duplicate entries are handled correctly: if multiple `indices` reference
-// the same location, their contributions add.
-//
-// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
-// </div>
-//
-// Arguments:
-//	resource: Should be from a `Variable` node.
-//	indices: A tensor of indices into the first dimension of `ref`.
-//	updates: A tensor of updated values to add to `ref`.
-//
-// Returns the created operation.
-func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceScatterAdd",
-		Input: []tf.Input{
-			resource, indices, updates,
-		},
-	}
-	return scope.AddOperation(opspec)
 }
 
 // ConfigureDistributedTPUAttr is an optional argument to ConfigureDistributedTPU.
@@ -26903,7 +26110,7 @@ func QuantizedConv2DOutType(value tf.DataType) QuantizedConv2DAttr {
 // filter element on that dimension. The dimension order is determined by the
 // value of `data_format`, see above for details. Dilations in the batch and
 // depth dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func QuantizedConv2DDilations(value []int64) QuantizedConv2DAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -28620,6 +27827,70 @@ func FusedBatchNormGradV3(scope *Scope, y_backprop tf.Output, x tf.Output, scale
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
+// Returns the number of records this Reader has produced.
+//
+// This is the same as the number of ReaderRead executions that have
+// succeeded.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+func ReaderNumRecordsProducedV2(scope *Scope, reader_handle tf.Output) (records_produced tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderNumRecordsProducedV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeRawAttr is an optional argument to DecodeRaw.
+type DecodeRawAttr func(optionalAttr)
+
+// DecodeRawLittleEndian sets the optional little_endian attribute to value.
+//
+// value: Whether the input `bytes` are in little-endian order.
+// Ignored for `out_type` values that are stored in a single byte like
+// `uint8`.
+// If not specified, defaults to true
+func DecodeRawLittleEndian(value bool) DecodeRawAttr {
+	return func(m optionalAttr) {
+		m["little_endian"] = value
+	}
+}
+
+// Reinterpret the bytes of a string as a vector of numbers.
+//
+// Arguments:
+//	bytes: All the elements must have the same length.
+//
+//
+// Returns A Tensor with one more dimension than the input `bytes`.  The
+// added dimension will have size equal to the length of the elements
+// of `bytes` divided by the number of bytes to represent `out_type`.
+func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...DecodeRawAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"out_type": out_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeRaw",
+		Input: []tf.Input{
+			bytes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Gather ragged slices from `params` axis `0` according to `indices`.
 //
 // Outputs a `RaggedTensor` output composed from `output_dense_values` and
@@ -29407,59 +28678,6 @@ func RandomPoissonV2(scope *Scope, shape tf.Output, rate tf.Output, optional ...
 		Type: "RandomPoissonV2",
 		Input: []tf.Input{
 			shape, rate,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// CropAndResizeGradBoxesAttr is an optional argument to CropAndResizeGradBoxes.
-type CropAndResizeGradBoxesAttr func(optionalAttr)
-
-// CropAndResizeGradBoxesMethod sets the optional method attribute to value.
-//
-// value: A string specifying the interpolation method. Only 'bilinear' is
-// supported for now.
-// If not specified, defaults to "bilinear"
-func CropAndResizeGradBoxesMethod(value string) CropAndResizeGradBoxesAttr {
-	return func(m optionalAttr) {
-		m["method"] = value
-	}
-}
-
-// Computes the gradient of the crop_and_resize op wrt the input boxes tensor.
-//
-// Arguments:
-//	grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
-//	image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
-// Both `image_height` and `image_width` need to be positive.
-//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
-// specifies the coordinates of a box in the `box_ind[i]` image and is specified
-// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
-// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
-// `[0, 1]` interval of normalized image height is mapped to
-// `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
-// which case the sampled crop is an up-down flipped version of the original
-// image. The width dimension is treated similarly. Normalized coordinates
-// outside the `[0, 1]` range are allowed, in which case we use
-// `extrapolation_value` to extrapolate the input image values.
-//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
-// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
-//
-// Returns A 2-D tensor of shape `[num_boxes, 4]`.
-func CropAndResizeGradBoxes(scope *Scope, grads tf.Output, image tf.Output, boxes tf.Output, box_ind tf.Output, optional ...CropAndResizeGradBoxesAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "CropAndResizeGradBoxes",
-		Input: []tf.Input{
-			grads, image, boxes, box_ind,
 		},
 		Attrs: attrs,
 	}
@@ -30859,6 +30077,143 @@ func ResourceScatterSub(scope *Scope, resource tf.Output, indices tf.Output, upd
 	}
 	opspec := tf.OpSpec{
 		Type: "ResourceScatterSub",
+		Input: []tf.Input{
+			resource, indices, updates,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Returns the cardinality of `input_dataset`.
+//
+// Returns the cardinality of `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the dataset to return cardinality for.
+//
+// Returns The cardinality of `input_dataset`. Named constants are used to represent
+// infinite and unknown cardinality.
+func DatasetCardinality(scope *Scope, input_dataset tf.Output) (cardinality tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DatasetCardinality",
+		Input: []tf.Input{
+			input_dataset,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that emits each dim-0 slice of `components` once.
+func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "TensorSliceDataset",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingMDLAdagradLightParametersAttr is an optional argument to RetrieveTPUEmbeddingMDLAdagradLightParameters.
+type RetrieveTPUEmbeddingMDLAdagradLightParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingMDLAdagradLightParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingMDLAdagradLightParametersTableId(value int64) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingMDLAdagradLightParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingMDLAdagradLightParametersTableName(value string) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingMDLAdagradLightParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingMDLAdagradLightParametersConfig(value string) RetrieveTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve MDL Adagrad Light embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the MDL Adagrad Light optimization algorithm.
+//	accumulators: Parameter accumulators updated by the MDL Adagrad Light optimization algorithm.
+//	weights: Parameter weights updated by the MDL Adagrad Light optimization algorithm.
+//	benefits: Parameter benefits updated by the MDL Adagrad Light optimization algorithm.
+func RetrieveTPUEmbeddingMDLAdagradLightParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingMDLAdagradLightParametersAttr) (parameters tf.Output, accumulators tf.Output, weights tf.Output, benefits tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingMDLAdagradLightParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// Adds sparse updates to the variable referenced by `resource`.
+//
+// This operation computes
+//
+//     # Scalar indices
+//     ref[indices, ...] += updates[...]
+//
+//     # Vector indices (for each i)
+//     ref[indices[i], ...] += updates[i, ...]
+//
+//     # High rank indices (for each i, ..., j)
+//     ref[indices[i, ..., j], ...] += updates[i, ..., j, ...]
+//
+// Duplicate entries are handled correctly: if multiple `indices` reference
+// the same location, their contributions add.
+//
+// Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`.
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src='https://www.tensorflow.org/images/ScatterAdd.png' alt>
+// </div>
+//
+// Arguments:
+//	resource: Should be from a `Variable` node.
+//	indices: A tensor of indices into the first dimension of `ref`.
+//	updates: A tensor of updated values to add to `ref`.
+//
+// Returns the created operation.
+func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, updates tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceScatterAdd",
 		Input: []tf.Input{
 			resource, indices, updates,
 		},
@@ -32452,8 +31807,6 @@ type RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -33025,6 +32378,97 @@ func CSRSparseMatrixComponents(scope *Scope, csr_sparse_matrix tf.Output, index 
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// StringSplitV2Attr is an optional argument to StringSplitV2.
+type StringSplitV2Attr func(optionalAttr)
+
+// StringSplitV2Maxsplit sets the optional maxsplit attribute to value.
+//
+// value: An `int`. If `maxsplit > 0`, limit of the split of the result.
+// If not specified, defaults to -1
+func StringSplitV2Maxsplit(value int64) StringSplitV2Attr {
+	return func(m optionalAttr) {
+		m["maxsplit"] = value
+	}
+}
+
+// Split elements of `source` based on `sep` into a `SparseTensor`.
+//
+// Let N be the size of source (typically N will be the batch size). Split each
+// element of `source` based on `sep` and return a `SparseTensor`
+// containing the split tokens. Empty tokens are ignored.
+//
+// For example, N = 2, source[0] is 'hello world' and source[1] is 'a b c',
+// then the output will be
+// ```
+// st.indices = [0, 0;
+//               0, 1;
+//               1, 0;
+//               1, 1;
+//               1, 2]
+// st.shape = [2, 3]
+// st.values = ['hello', 'world', 'a', 'b', 'c']
+// ```
+//
+// If `sep` is given, consecutive delimiters are not grouped together and are
+// deemed to delimit empty strings. For example, source of `"1<>2<><>3"` and
+// sep of `"<>"` returns `["1", "2", "", "3"]`. If `sep` is None or an empty
+// string, consecutive whitespace are regarded as a single separator, and the
+// result will contain no empty strings at the startor end if the string has
+// leading or trailing whitespace.
+//
+// Note that the above mentioned behavior matches python's str.split.
+//
+// Arguments:
+//	input: `1-D` string `Tensor`, the strings to split.
+//	sep: `0-D` string `Tensor`, the delimiter character.
+func StringSplitV2(scope *Scope, input tf.Output, sep tf.Output, optional ...StringSplitV2Attr) (indices tf.Output, values tf.Output, shape tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StringSplitV2",
+		Input: []tf.Input{
+			input, sep,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Compute the lower regularized incomplete Gamma function `P(a, x)`.
+//
+// The lower regularized incomplete Gamma function is defined as:
+//
+//
+// \\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+//
+// where
+//
+// \\(gamma(a, x) = \\int_{0}^{x} t^{a-1} exp(-t) dt\\)
+//
+// is the lower incomplete Gamma function.
+//
+// Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
+// Gamma function.
+func Igamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Igamma",
+		Input: []tf.Input{
+			a, x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Convert a (possibly batched) CSRSparseMatrix to dense.
 //
 // Arguments:
@@ -33518,8 +32962,6 @@ type LoadTPUEmbeddingCenteredRMSPropParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingCenteredRMSPropParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingCenteredRMSPropParametersTableId(value int64) LoadTPUEmbeddingCenteredRMSPropParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -34619,121 +34061,6 @@ func SparseSliceGrad(scope *Scope, backprop_val_grad tf.Output, input_indices tf
 	return op.Output(0)
 }
 
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed Precision at `k` as a `bool Tensor`.
-func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"k": k}
-	opspec := tf.OpSpec{
-		Type: "InTopK",
-		Input: []tf.Input{
-			predictions, targets,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns x - y element-wise.
-//
-// *NOTE*: `Subtract` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Sub",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
-type FusedResizeAndPadConv2DAttr func(optionalAttr)
-
-// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
-//
-// value: If true, the centers of the 4 corner pixels of the input and output tensors are
-// aligned, preserving the values at the corner pixels. Defaults to false.
-// If not specified, defaults to false
-func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
-	return func(m optionalAttr) {
-		m["resize_align_corners"] = value
-	}
-}
-
-// Performs a resize and padding as a preprocess during a convolution.
-//
-// It's often possible to do spatial transformations more efficiently as part of
-// the packing stage of a convolution, so this op allows for an optimized
-// implementation where these stages are fused together. This prevents the need to
-// write out the intermediate results as whole tensors, reducing memory pressure,
-// and we can get some latency gains by merging the transformation calculations.
-// The data_format attribute for Conv2D isn't supported by this op, and defaults to
-// 'NHWC' order.
-// Internally this op uses a single per-graph scratch buffer, which means that it
-// will block if multiple versions are being run in parallel. This is because this
-// operator is primarily an optimization to minimize memory usage.
-//
-// Arguments:
-//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
-//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-// new size for the images.
-//	paddings: A two-column matrix specifying the padding sizes. The number of
-// rows must be the same as the rank of `input`.
-//	filter: 4-D with shape
-// `[filter_height, filter_width, in_channels, out_channels]`.
-//
-//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
-// of `input`. Must be in the same order as the dimension specified with format.
-//	padding: The type of padding algorithm to use.
-func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FusedResizeAndPadConv2D",
-		Input: []tf.Input{
-			input, size, paddings, filter,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns the truth value of x OR y element-wise.
 //
 // *NOTE*: `LogicalOr` supports broadcasting. More about broadcasting
@@ -35099,8 +34426,6 @@ type RetrieveTPUEmbeddingProximalAdagradParametersAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingProximalAdagradParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingProximalAdagradParametersTableId(value int64) RetrieveTPUEmbeddingProximalAdagradParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -36500,67 +35825,6 @@ func SparseAddGrad(scope *Scope, backprop_val_grad tf.Output, a_indices tf.Outpu
 	return op.Output(0), op.Output(1)
 }
 
-// NonMaxSuppressionAttr is an optional argument to NonMaxSuppression.
-type NonMaxSuppressionAttr func(optionalAttr)
-
-// NonMaxSuppressionIouThreshold sets the optional iou_threshold attribute to value.
-//
-// value: A float representing the threshold for deciding whether boxes
-// overlap too much with respect to IOU.
-// If not specified, defaults to 0.5
-func NonMaxSuppressionIouThreshold(value float32) NonMaxSuppressionAttr {
-	return func(m optionalAttr) {
-		m["iou_threshold"] = value
-	}
-}
-
-// Greedily selects a subset of bounding boxes in descending order of score,
-//
-// pruning away boxes that have high intersection-over-union (IOU) overlap
-// with previously selected boxes.  Bounding boxes are supplied as
-// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
-// diagonal pair of box corners and the coordinates can be provided as normalized
-// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
-// is agnostic to where the origin is in the coordinate system.  Note that this
-// algorithm is invariant to orthogonal transformations and translations
-// of the coordinate system; thus translating or reflections of the coordinate
-// system result in the same boxes being selected by the algorithm.
-// The output of this operation is a set of integers indexing into the input
-// collection of bounding boxes representing the selected boxes.  The bounding
-// box coordinates corresponding to the selected indices can then be obtained
-// using the `tf.gather operation`.  For example:
-//   selected_indices = tf.image.non_max_suppression(
-//       boxes, scores, max_output_size, iou_threshold)
-//   selected_boxes = tf.gather(boxes, selected_indices)
-//
-// Arguments:
-//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
-//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
-// score corresponding to each box (each row of boxes).
-//	max_output_size: A scalar integer tensor representing the maximum number of
-// boxes to be selected by non max suppression.
-//
-// Returns A 1-D integer tensor of shape `[M]` representing the selected
-// indices from the boxes tensor, where `M <= max_output_size`.
-func NonMaxSuppression(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, optional ...NonMaxSuppressionAttr) (selected_indices tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "NonMaxSuppression",
-		Input: []tf.Input{
-			boxes, scores, max_output_size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Removes keys and its associated values from a table.
 //
 // The tensor `keys` must of the same type as the keys of the table. Keys not
@@ -37291,6 +36555,121 @@ func AdjustHue(scope *Scope, images tf.Output, delta tf.Output) (output tf.Outpu
 	return op.Output(0)
 }
 
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed Precision at `k` as a `bool Tensor`.
+func InTopK(scope *Scope, predictions tf.Output, targets tf.Output, k int64) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"k": k}
+	opspec := tf.OpSpec{
+		Type: "InTopK",
+		Input: []tf.Input{
+			predictions, targets,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns x - y element-wise.
+//
+// *NOTE*: `Subtract` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Sub(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Sub",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// FusedResizeAndPadConv2DAttr is an optional argument to FusedResizeAndPadConv2D.
+type FusedResizeAndPadConv2DAttr func(optionalAttr)
+
+// FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
+//
+// value: If true, the centers of the 4 corner pixels of the input and output tensors are
+// aligned, preserving the values at the corner pixels. Defaults to false.
+// If not specified, defaults to false
+func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
+	return func(m optionalAttr) {
+		m["resize_align_corners"] = value
+	}
+}
+
+// Performs a resize and padding as a preprocess during a convolution.
+//
+// It's often possible to do spatial transformations more efficiently as part of
+// the packing stage of a convolution, so this op allows for an optimized
+// implementation where these stages are fused together. This prevents the need to
+// write out the intermediate results as whole tensors, reducing memory pressure,
+// and we can get some latency gains by merging the transformation calculations.
+// The data_format attribute for Conv2D isn't supported by this op, and defaults to
+// 'NHWC' order.
+// Internally this op uses a single per-graph scratch buffer, which means that it
+// will block if multiple versions are being run in parallel. This is because this
+// operator is primarily an optimization to minimize memory usage.
+//
+// Arguments:
+//	input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+//	size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//	paddings: A two-column matrix specifying the padding sizes. The number of
+// rows must be the same as the rank of `input`.
+//	filter: 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.
+//
+//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
+// of `input`. Must be in the same order as the dimension specified with format.
+//	padding: The type of padding algorithm to use.
+func FusedResizeAndPadConv2D(scope *Scope, input tf.Output, size tf.Output, paddings tf.Output, filter tf.Output, mode string, strides []int64, padding string, optional ...FusedResizeAndPadConv2DAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"mode": mode, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FusedResizeAndPadConv2D",
+		Input: []tf.Input{
+			input, size, paddings, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes the product along segments of a tensor.
 //
 // Read
@@ -37799,6 +37178,294 @@ func FFT3D(scope *Scope, input tf.Output) (output tf.Output) {
 	return op.Output(0)
 }
 
+// Creates a dataset that passes a sliding window over `input_dataset`.
+//
+// Arguments:
+//
+//	window_size: A scalar representing the number of elements in the
+// sliding window.
+//	window_shift: A scalar representing the steps moving the sliding window
+// forward in one iteration. It must be positive.
+//	window_stride: A scalar representing the stride of the input elements of the sliding window.
+// It must be positive.
+//
+//
+func SlidingWindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output, window_shift tf.Output, window_stride tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SlidingWindowDataset",
+		Input: []tf.Input{
+			input_dataset, window_size, window_shift, window_stride,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Locks a mutex resource.  The output is the lock.  So long as the lock tensor
+//
+// is alive, any other request to use `MutexLock` with this mutex will wait.
+//
+// This is particularly useful for creating a critical section when used in
+// conjunction with `MutexLockIdentity`:
+//
+// ```python
+//
+// mutex = mutex_v2(
+//   shared_name=handle_name, container=container, name=name)
+//
+// def execute_in_critical_section(fn, *args, **kwargs):
+//   lock = gen_resource_variable_ops.mutex_lock(mutex)
+//
+//   with ops.control_dependencies([lock]):
+//     r = fn(*args, **kwargs)
+//
+//   with ops.control_dependencies(nest.flatten(r)):
+//     with ops.colocate_with(mutex):
+//       ensure_lock_exists = mutex_lock_identity(lock)
+//
+//     # Make sure that if any element of r is accessed, all of
+//     # them are executed together.
+//     r = nest.map_structure(tf.identity, r)
+//
+//   with ops.control_dependencies([ensure_lock_exists]):
+//     return nest.map_structure(tf.identity, r)
+// ```
+//
+// While `fn` is running in the critical section, no other functions which wish to
+// use this critical section may run.
+//
+// Often the use case is that two executions of the same graph, in parallel,
+// wish to run `fn`; and we wish to ensure that only one of them executes
+// at a time.  This is especially important if `fn` modifies one or more
+// variables at a time.
+//
+// It is also useful if two separate functions must share a resource, but we
+// wish to ensure the usage is exclusive.
+//
+// Arguments:
+//	mutex: The mutex resource to lock.
+//
+// Returns A tensor that keeps a shared pointer to a lock on the mutex;
+// when the Tensor is destroyed, the use count on the shared pointer is decreased
+// by 1.  When it reaches 0, the lock is released.
+func MutexLock(scope *Scope, mutex tf.Output) (mutex_lock tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MutexLock",
+		Input: []tf.Input{
+			mutex,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MaxPoolGradWithArgmaxAttr is an optional argument to MaxPoolGradWithArgmax.
+type MaxPoolGradWithArgmaxAttr func(optionalAttr)
+
+// MaxPoolGradWithArgmaxIncludeBatchInIndex sets the optional include_batch_in_index attribute to value.
+//
+// value: Whether to include batch dimension in flattened index of `argmax`.
+// If not specified, defaults to false
+func MaxPoolGradWithArgmaxIncludeBatchInIndex(value bool) MaxPoolGradWithArgmaxAttr {
+	return func(m optionalAttr) {
+		m["include_batch_in_index"] = value
+	}
+}
+
+// Computes gradients of the maxpooling function.
+//
+// Arguments:
+//	input: The original input.
+//	grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
+// output of `max_pool`.
+//	argmax: The indices of the maximum values chosen for each output of `max_pool`.
+//	ksize: The size of the window for each dimension of the input tensor.
+//	strides: The stride of the sliding window for each dimension of the
+// input tensor.
+//	padding: The type of padding algorithm to use.
+//
+// Returns Gradients w.r.t. the input of `max_pool`.
+func MaxPoolGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradWithArgmaxAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MaxPoolGradWithArgmax",
+		Input: []tf.Input{
+			input, grad, argmax,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// 2D fast Fourier transform.
+//
+// Computes the 2-dimensional discrete Fourier transform over the inner-most
+// 2 dimensions of `input`.
+//
+// Arguments:
+//	input: A complex tensor.
+//
+// Returns A complex tensor of the same shape as `input`. The inner-most 2
+//   dimensions of `input` are replaced with their 2D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fft2
+// @end_compatibility
+func FFT2D(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFT2D",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// SdcaOptimizerAttr is an optional argument to SdcaOptimizer.
+type SdcaOptimizerAttr func(optionalAttr)
+
+// SdcaOptimizerAdaptative sets the optional adaptative attribute to value.
+//
+// value: Whether to use Adaptive SDCA for the inner loop.
+// If not specified, defaults to true
+func SdcaOptimizerAdaptative(value bool) SdcaOptimizerAttr {
+	return func(m optionalAttr) {
+		m["adaptative"] = value
+	}
+}
+
+// Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for
+//
+// linear models with L1 + L2 regularization. As global optimization objective is
+// strongly-convex, the optimizer optimizes the dual objective at each step. The
+// optimizer applies each update one example at a time. Examples are sampled
+// uniformly, and the optimizer is learning rate free and enjoys linear convergence
+// rate.
+//
+// [Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
+// Shai Shalev-Shwartz, Tong Zhang. 2012
+//
+// $$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
+//
+// [Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
+// Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
+// Peter Richtarik, Martin Takac. 2015
+//
+// [Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
+// Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
+//
+// Arguments:
+//	sparse_example_indices: a list of vectors which contain example indices.
+//	sparse_feature_indices: a list of vectors which contain feature indices.
+//	sparse_feature_values: a list of vectors which contains feature value
+// associated with each feature group.
+//	dense_features: a list of matrices which contains the dense feature values.
+//	example_weights: a vector which contains the weight associated with each
+// example.
+//	example_labels: a vector which contains the label/target associated with each
+// example.
+//	sparse_indices: a list of vectors where each value is the indices which has
+// corresponding weights in sparse_weights. This field maybe omitted for the
+// dense approach.
+//	sparse_weights: a list of vectors where each value is the weight associated with
+// a sparse feature group.
+//	dense_weights: a list of vectors where the values are the weights associated
+// with a dense feature group.
+//	example_state_data: a list of vectors containing the example state data.
+//	loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
+// squared and hinge losses.
+//	l1: Symmetric l1 regularization strength.
+//	l2: Symmetric l2 regularization strength.
+//	num_loss_partitions: Number of partitions of the global loss function.
+//	num_inner_iterations: Number of iterations per mini-batch.
+//
+// Returns:
+//	out_example_state_data: a list of vectors containing the updated example state
+// data.
+//	out_delta_sparse_weights: a list of vectors where each value is the delta
+// weights associated with a sparse feature group.
+//	out_delta_dense_weights: a list of vectors where the values are the delta
+// weights associated with a dense feature group.
+func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feature_indices []tf.Output, sparse_feature_values []tf.Output, dense_features []tf.Output, example_weights tf.Output, example_labels tf.Output, sparse_indices []tf.Output, sparse_weights []tf.Output, dense_weights []tf.Output, example_state_data tf.Output, loss_type string, l1 float32, l2 float32, num_loss_partitions int64, num_inner_iterations int64, optional ...SdcaOptimizerAttr) (out_example_state_data tf.Output, out_delta_sparse_weights []tf.Output, out_delta_dense_weights []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"loss_type": loss_type, "l1": l1, "l2": l2, "num_loss_partitions": num_loss_partitions, "num_inner_iterations": num_inner_iterations}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SdcaOptimizer",
+		Input: []tf.Input{
+			tf.OutputList(sparse_example_indices), tf.OutputList(sparse_feature_indices), tf.OutputList(sparse_feature_values), tf.OutputList(dense_features), example_weights, example_labels, tf.OutputList(sparse_indices), tf.OutputList(sparse_weights), tf.OutputList(dense_weights), example_state_data,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	out_example_state_data = op.Output(idx)
+	if out_delta_sparse_weights, idx, err = makeOutputList(op, idx, "out_delta_sparse_weights"); err != nil {
+		scope.UpdateErr("SdcaOptimizer", err)
+		return
+	}
+	if out_delta_dense_weights, idx, err = makeOutputList(op, idx, "out_delta_dense_weights"); err != nil {
+		scope.UpdateErr("SdcaOptimizer", err)
+		return
+	}
+	return out_example_state_data, out_delta_sparse_weights, out_delta_dense_weights
+}
+
+// Inverse fast Fourier transform.
+//
+// Computes the inverse 1-dimensional discrete Fourier transform over the
+// inner-most dimension of `input`.
+//
+// Arguments:
+//	input: A complex tensor.
+//
+// Returns A complex tensor of the same shape as `input`. The inner-most
+//   dimension of `input` is replaced with its inverse 1D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.ifft
+// @end_compatibility
+func IFFT(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IFFT",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CollectiveGatherAttr is an optional argument to CollectiveGather.
 type CollectiveGatherAttr func(optionalAttr)
 
@@ -38039,112 +37706,6 @@ func StatefulTruncatedNormal(scope *Scope, resource tf.Output, algorithm tf.Outp
 	return op.Output(0)
 }
 
-// Returns the next record (key, value pair) produced by a Reader.
-//
-// Will dequeue from the input queue if necessary (e.g. when the
-// Reader needs to start reading from a new file since it has finished
-// with the previous file).
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-//	queue_handle: Handle to a Queue, with string work items.
-//
-// Returns:
-//	key: A scalar.
-//	value: A scalar.
-func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output) (key tf.Output, value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderReadV2",
-		Input: []tf.Input{
-			reader_handle, queue_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// CumprodAttr is an optional argument to Cumprod.
-type CumprodAttr func(optionalAttr)
-
-// CumprodExclusive sets the optional exclusive attribute to value.
-//
-// value: If `True`, perform exclusive cumprod.
-// If not specified, defaults to false
-func CumprodExclusive(value bool) CumprodAttr {
-	return func(m optionalAttr) {
-		m["exclusive"] = value
-	}
-}
-
-// CumprodReverse sets the optional reverse attribute to value.
-//
-// value: A `bool` (default: False).
-// If not specified, defaults to false
-func CumprodReverse(value bool) CumprodAttr {
-	return func(m optionalAttr) {
-		m["reverse"] = value
-	}
-}
-
-// Compute the cumulative product of the tensor `x` along `axis`.
-//
-// By default, this op performs an inclusive cumprod, which means that the first
-// element of the input is identical to the first element of the output:
-//
-// ```python
-// tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
-// ```
-//
-// By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
-// performed instead:
-//
-// ```python
-// tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
-// ```
-//
-// By setting the `reverse` kwarg to `True`, the cumprod is performed in the
-// opposite direction:
-//
-// ```python
-// tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
-// ```
-//
-// This is more efficient than using separate `tf.reverse` ops.
-//
-// The `reverse` and `exclusive` kwargs can also be combined:
-//
-// ```python
-// tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
-// ```
-//
-// Arguments:
-//	x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
-// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
-// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
-//	axis: A `Tensor` of type `int32` (default: 0). Must be in the range
-// `[-rank(x), rank(x))`.
-func Cumprod(scope *Scope, x tf.Output, axis tf.Output, optional ...CumprodAttr) (out tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Cumprod",
-		Input: []tf.Input{
-			x, axis,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Returns the rank of a tensor.
 //
 // This operation returns an integer representing the rank of `input`.
@@ -38332,132 +37893,6 @@ func IsBoostedTreesQuantileStreamResourceInitialized(scope *Scope, quantile_stre
 	return op.Output(0)
 }
 
-// SdcaOptimizerAttr is an optional argument to SdcaOptimizer.
-type SdcaOptimizerAttr func(optionalAttr)
-
-// SdcaOptimizerAdaptative sets the optional adaptative attribute to value.
-//
-// value: Whether to use Adaptive SDCA for the inner loop.
-// If not specified, defaults to true
-func SdcaOptimizerAdaptative(value bool) SdcaOptimizerAttr {
-	return func(m optionalAttr) {
-		m["adaptative"] = value
-	}
-}
-
-// Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for
-//
-// linear models with L1 + L2 regularization. As global optimization objective is
-// strongly-convex, the optimizer optimizes the dual objective at each step. The
-// optimizer applies each update one example at a time. Examples are sampled
-// uniformly, and the optimizer is learning rate free and enjoys linear convergence
-// rate.
-//
-// [Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
-// Shai Shalev-Shwartz, Tong Zhang. 2012
-//
-// $$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
-//
-// [Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
-// Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
-// Peter Richtarik, Martin Takac. 2015
-//
-// [Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
-// Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
-//
-// Arguments:
-//	sparse_example_indices: a list of vectors which contain example indices.
-//	sparse_feature_indices: a list of vectors which contain feature indices.
-//	sparse_feature_values: a list of vectors which contains feature value
-// associated with each feature group.
-//	dense_features: a list of matrices which contains the dense feature values.
-//	example_weights: a vector which contains the weight associated with each
-// example.
-//	example_labels: a vector which contains the label/target associated with each
-// example.
-//	sparse_indices: a list of vectors where each value is the indices which has
-// corresponding weights in sparse_weights. This field maybe omitted for the
-// dense approach.
-//	sparse_weights: a list of vectors where each value is the weight associated with
-// a sparse feature group.
-//	dense_weights: a list of vectors where the values are the weights associated
-// with a dense feature group.
-//	example_state_data: a list of vectors containing the example state data.
-//	loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
-// squared and hinge losses.
-//	l1: Symmetric l1 regularization strength.
-//	l2: Symmetric l2 regularization strength.
-//	num_loss_partitions: Number of partitions of the global loss function.
-//	num_inner_iterations: Number of iterations per mini-batch.
-//
-// Returns:
-//	out_example_state_data: a list of vectors containing the updated example state
-// data.
-//	out_delta_sparse_weights: a list of vectors where each value is the delta
-// weights associated with a sparse feature group.
-//	out_delta_dense_weights: a list of vectors where the values are the delta
-// weights associated with a dense feature group.
-func SdcaOptimizer(scope *Scope, sparse_example_indices []tf.Output, sparse_feature_indices []tf.Output, sparse_feature_values []tf.Output, dense_features []tf.Output, example_weights tf.Output, example_labels tf.Output, sparse_indices []tf.Output, sparse_weights []tf.Output, dense_weights []tf.Output, example_state_data tf.Output, loss_type string, l1 float32, l2 float32, num_loss_partitions int64, num_inner_iterations int64, optional ...SdcaOptimizerAttr) (out_example_state_data tf.Output, out_delta_sparse_weights []tf.Output, out_delta_dense_weights []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"loss_type": loss_type, "l1": l1, "l2": l2, "num_loss_partitions": num_loss_partitions, "num_inner_iterations": num_inner_iterations}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SdcaOptimizer",
-		Input: []tf.Input{
-			tf.OutputList(sparse_example_indices), tf.OutputList(sparse_feature_indices), tf.OutputList(sparse_feature_values), tf.OutputList(dense_features), example_weights, example_labels, tf.OutputList(sparse_indices), tf.OutputList(sparse_weights), tf.OutputList(dense_weights), example_state_data,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	out_example_state_data = op.Output(idx)
-	if out_delta_sparse_weights, idx, err = makeOutputList(op, idx, "out_delta_sparse_weights"); err != nil {
-		scope.UpdateErr("SdcaOptimizer", err)
-		return
-	}
-	if out_delta_dense_weights, idx, err = makeOutputList(op, idx, "out_delta_dense_weights"); err != nil {
-		scope.UpdateErr("SdcaOptimizer", err)
-		return
-	}
-	return out_example_state_data, out_delta_sparse_weights, out_delta_dense_weights
-}
-
-// Inverse fast Fourier transform.
-//
-// Computes the inverse 1-dimensional discrete Fourier transform over the
-// inner-most dimension of `input`.
-//
-// Arguments:
-//	input: A complex tensor.
-//
-// Returns A complex tensor of the same shape as `input`. The inner-most
-//   dimension of `input` is replaced with its inverse 1D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.ifft
-// @end_compatibility
-func IFFT(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IFFT",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Fast Fourier transform.
 //
 // Computes the 1-dimensional discrete Fourier transform over the inner-most
@@ -38620,8 +38055,6 @@ type RetrieveTPUEmbeddingADAMParametersAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingADAMParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingADAMParametersTableId(value int64) RetrieveTPUEmbeddingADAMParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -38724,8 +38157,6 @@ type RetrieveTPUEmbeddingAdagradParametersGradAccumDebugAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingAdagradParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingAdagradParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -39251,6 +38682,168 @@ func QuantizedReluX(scope *Scope, features tf.Output, max_value tf.Output, min_f
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Forwards `data` to the output port determined by `pred`.
+//
+// If `pred` is true, the `data` input is forwarded to `output_true`. Otherwise,
+// the data goes to `output_false`.
+//
+// See also `RefSwitch` and `Merge`.
+//
+// Arguments:
+//	data: The tensor to be forwarded to the appropriate output.
+//	pred: A scalar that specifies which output port will receive data.
+//
+// Returns:
+//	output_false: If `pred` is false, data will be forwarded to this output.
+//	output_true: If `pred` is true, data will be forwarded to this output.
+func Switch(scope *Scope, data tf.Output, pred tf.Output) (output_false tf.Output, output_true tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Switch",
+		Input: []tf.Input{
+			data, pred,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingFTRLParametersGradAccumDebug.
+type RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingFTRLParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingFTRLParametersGradAccumDebugConfig(value string) RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve FTRL embedding parameters with debug support.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the FTRL optimization algorithm.
+//	accumulators: Parameter accumulators updated by the FTRL optimization algorithm.
+//	linears: Parameter linears updated by the FTRL optimization algorithm.
+//	gradient_accumulators: Parameter gradient_accumulators updated by the FTRL optimization algorithm.
+func RetrieveTPUEmbeddingFTRLParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingFTRLParametersGradAccumDebugAttr) (parameters tf.Output, accumulators tf.Output, linears tf.Output, gradient_accumulators tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingFTRLParametersGradAccumDebug",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// UnicodeEncodeAttr is an optional argument to UnicodeEncode.
+type UnicodeEncodeAttr func(optionalAttr)
+
+// UnicodeEncodeErrors sets the optional errors attribute to value.
+//
+// value: Error handling policy when there is invalid formatting found in the input.
+// The value of 'strict' will cause the operation to produce a InvalidArgument
+// error on any invalid input formatting. A value of 'replace' (the default) will
+// cause the operation to replace any invalid formatting in the input with the
+// `replacement_char` codepoint. A value of 'ignore' will cause the operation to
+// skip any invalid formatting in the input and produce no corresponding output
+// character.
+// If not specified, defaults to "replace"
+func UnicodeEncodeErrors(value string) UnicodeEncodeAttr {
+	return func(m optionalAttr) {
+		m["errors"] = value
+	}
+}
+
+// UnicodeEncodeReplacementChar sets the optional replacement_char attribute to value.
+//
+// value: The replacement character codepoint to be used in place of any invalid
+// formatting in the input when `errors='replace'`. Any valid unicode codepoint may
+// be used. The default value is the default unicode replacement character is
+// 0xFFFD (U+65533).
+// If not specified, defaults to 65533
+func UnicodeEncodeReplacementChar(value int64) UnicodeEncodeAttr {
+	return func(m optionalAttr) {
+		m["replacement_char"] = value
+	}
+}
+
+// Encode a tensor of ints into unicode strings.
+//
+// Returns a vector of strings, where `output[i]` is constructed by encoding the
+// Unicode codepoints in `input_values[input_splits[i]:input_splits[i+1]]`
+// using `output_encoding`.
+//
+// ---
+//
+// Example:
+//
+// ```
+// input_values = [72, 101, 108, 108, 111, 87, 111, 114, 108, 100]
+// input_splits = [0, 5, 10]
+// output_encoding = 'UTF-8'
+//
+// output = ['Hello', 'World']
+// ```
+//
+// Arguments:
+//	input_values: A 1D tensor containing the unicode codepoints that should be encoded.
+//	input_splits: A 1D tensor specifying how the unicode codepoints should be split into strings.
+// In particular, `output[i]` is constructed by encoding the codepoints in the
+// slice `input_values[input_splits[i]:input_splits[i+1]]`.
+//	output_encoding: Unicode encoding of the output strings. Valid encodings are: `"UTF-8",
+// "UTF-16-BE", and "UTF-32-BE"`.
+//
+// Returns The 1-D Tensor of strings encoded from the provided unicode codepoints.
+func UnicodeEncode(scope *Scope, input_values tf.Output, input_splits tf.Output, output_encoding string, optional ...UnicodeEncodeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_encoding": output_encoding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "UnicodeEncode",
+		Input: []tf.Input{
+			input_values, input_splits,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // PrelinearizeTupleAttr is an optional argument to PrelinearizeTuple.
 type PrelinearizeTupleAttr func(optionalAttr)
 
@@ -39665,8 +39258,6 @@ type LoadTPUEmbeddingMomentumParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingMomentumParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingMomentumParametersTableId(value int64) LoadTPUEmbeddingMomentumParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -39884,8 +39475,6 @@ type RetrieveTPUEmbeddingAdadeltaParametersAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingAdadeltaParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingAdadeltaParametersTableId(value int64) RetrieveTPUEmbeddingAdadeltaParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -40387,8 +39976,6 @@ type RetrieveTPUEmbeddingMomentumParametersGradAccumDebugAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingMomentumParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingMomentumParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingMomentumParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -40497,6 +40084,66 @@ func ShutdownDistributedTPU(scope *Scope) (o *tf.Operation) {
 	return scope.AddOperation(opspec)
 }
 
+// ResourceApplyMomentumAttr is an optional argument to ResourceApplyMomentum.
+type ResourceApplyMomentumAttr func(optionalAttr)
+
+// ResourceApplyMomentumUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var and accum tensors will be protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyMomentumUseLocking(value bool) ResourceApplyMomentumAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyMomentumUseNesterov sets the optional use_nesterov attribute to value.
+//
+// value: If `True`, the tensor passed to compute grad will be
+// var - lr * momentum * accum, so in the end, the var you get is actually
+// var - lr * momentum * accum.
+// If not specified, defaults to false
+func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
+	return func(m optionalAttr) {
+		m["use_nesterov"] = value
+	}
+}
+
+// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
+//
+// want to use Nesterov momentum.
+//
+// accum = accum * momentum + grad
+// var -= lr * accum
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	accum: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	grad: The gradient.
+//	momentum: Momentum. Must be a scalar.
+//
+// Returns the created operation.
+func ResourceApplyMomentum(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, grad tf.Output, momentum tf.Output, optional ...ResourceApplyMomentumAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyMomentum",
+		Input: []tf.Input{
+			var_, accum, lr, grad, momentum,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Returns the value stored in an Optional variant or raises an error if none exists.
 func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
 	if scope.Err() != nil {
@@ -40549,6 +40196,159 @@ func UnicodeScript(scope *Scope, input tf.Output) (output tf.Output) {
 		Input: []tf.Input{
 			input,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CropAndResizeAttr is an optional argument to CropAndResize.
+type CropAndResizeAttr func(optionalAttr)
+
+// CropAndResizeMethod sets the optional method attribute to value.
+//
+// value: A string specifying the sampling method for resizing. It can be either
+// `"bilinear"` or `"nearest"` and default to `"bilinear"`. Currently two sampling
+// methods are supported: Bilinear and Nearest Neighbor.
+// If not specified, defaults to "bilinear"
+func CropAndResizeMethod(value string) CropAndResizeAttr {
+	return func(m optionalAttr) {
+		m["method"] = value
+	}
+}
+
+// CropAndResizeExtrapolationValue sets the optional extrapolation_value attribute to value.
+//
+// value: Value used for extrapolation, when applicable.
+// If not specified, defaults to 0
+func CropAndResizeExtrapolationValue(value float32) CropAndResizeAttr {
+	return func(m optionalAttr) {
+		m["extrapolation_value"] = value
+	}
+}
+
+// Extracts crops from the input image tensor and resizes them.
+//
+// Extracts crops from the input image tensor and resizes them using bilinear
+// sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
+// common output size specified by `crop_size`. This is more general than the
+// `crop_to_bounding_box` op which extracts a fixed size slice from the input image
+// and does not allow resizing or aspect ratio change.
+//
+// Returns a tensor with `crops` from the input `image` at positions defined at the
+// bounding box locations in `boxes`. The cropped boxes are all resized (with
+// bilinear or nearest neighbor interpolation) to a fixed
+// `size = [crop_height, crop_width]`. The result is a 4-D tensor
+// `[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
+// In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
+// results to using `tf.image.resize_bilinear()` or
+// `tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
+// `align_corners=True`.
+//
+// Arguments:
+//	image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+// Both `image_height` and `image_width` need to be positive.
+//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+// specifies the coordinates of a box in the `box_ind[i]` image and is specified
+// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+// `[0, 1]` interval of normalized image height is mapped to
+// `[0, image_height - 1]` in image height coordinates. We do allow `y1` > `y2`, in
+// which case the sampled crop is an up-down flipped version of the original
+// image. The width dimension is treated similarly. Normalized coordinates
+// outside the `[0, 1]` range are allowed, in which case we use
+// `extrapolation_value` to extrapolate the input image values.
+//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+//	crop_size: A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`. All
+// cropped image patches are resized to this size. The aspect ratio of the image
+// content is not preserved. Both `crop_height` and `crop_width` need to be
+// positive.
+//
+// Returns A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+func CropAndResize(scope *Scope, image tf.Output, boxes tf.Output, box_ind tf.Output, crop_size tf.Output, optional ...CropAndResizeAttr) (crops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CropAndResize",
+		Input: []tf.Input{
+			image, boxes, box_ind, crop_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DepthwiseConv2dNativeBackpropFilterAttr is an optional argument to DepthwiseConv2dNativeBackpropFilter.
+type DepthwiseConv2dNativeBackpropFilterAttr func(optionalAttr)
+
+// DepthwiseConv2dNativeBackpropFilterDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func DepthwiseConv2dNativeBackpropFilterDataFormat(value string) DepthwiseConv2dNativeBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// DepthwiseConv2dNativeBackpropFilterDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
+func DepthwiseConv2dNativeBackpropFilterDilations(value []int64) DepthwiseConv2dNativeBackpropFilterAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of depthwise convolution with respect to the filter.
+//
+// Arguments:
+//	input: 4-D with shape based on `data_format`.  For example, if
+// `data_format` is 'NHWC' then `input` is a 4-D `[batch, in_height,
+// in_width, in_channels]` tensor.
+//	filter_sizes: An integer vector representing the tensor shape of `filter`,
+// where `filter` is a 4-D
+// `[filter_height, filter_width, in_channels, depthwise_multiplier]` tensor.
+//	out_backprop: 4-D with shape  based on `data_format`.
+// For example, if `data_format` is 'NHWC' then
+// out_backprop shape is `[batch, out_height, out_width, out_channels]`.
+// Gradients w.r.t. the output of the convolution.
+//	strides: The stride of the sliding window for each dimension of the input
+// of the convolution.
+//	padding: The type of padding algorithm to use.
+//
+// Returns 4-D with shape
+// `[filter_height, filter_width, in_channels, out_channels]`.  Gradient w.r.t.
+// the `filter` input of the convolution.
+func DepthwiseConv2dNativeBackpropFilter(scope *Scope, input tf.Output, filter_sizes tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeBackpropFilterAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DepthwiseConv2dNativeBackpropFilter",
+		Input: []tf.Input{
+			input, filter_sizes, out_backprop,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -40882,6 +40682,546 @@ func SendTPUEmbeddingGradients(scope *Scope, inputs []tf.Output, learning_rates 
 	return scope.AddOperation(opspec)
 }
 
+// MapPeekAttr is an optional argument to MapPeek.
+type MapPeekAttr func(optionalAttr)
+
+// MapPeekCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapPeekCapacity(value int64) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapPeekMemoryLimit(value int64) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// MapPeekContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func MapPeekContainer(value string) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MapPeekSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func MapPeekSharedName(value string) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op peeks at the values at the specified key.  If the
+//
+// underlying container does not contain this key
+// this op will block until it does.
+func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MapPeek",
+		Input: []tf.Input{
+			key, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("MapPeek", err)
+		return
+	}
+	return values
+}
+
+// RetrieveTPUEmbeddingCenteredRMSPropParametersAttr is an optional argument to RetrieveTPUEmbeddingCenteredRMSPropParameters.
+type RetrieveTPUEmbeddingCenteredRMSPropParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingCenteredRMSPropParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingCenteredRMSPropParametersTableId(value int64) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingCenteredRMSPropParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingCenteredRMSPropParametersTableName(value string) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingCenteredRMSPropParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingCenteredRMSPropParametersConfig(value string) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve centered RMSProp embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the centered RMSProp optimization algorithm.
+//	ms: Parameter ms updated by the centered RMSProp optimization algorithm.
+//	mom: Parameter mom updated by the centered RMSProp optimization algorithm.
+//	mg: Parameter mg updated by the centered RMSProp optimization algorithm.
+func RetrieveTPUEmbeddingCenteredRMSPropParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingCenteredRMSPropParametersAttr) (parameters tf.Output, ms tf.Output, mom tf.Output, mg tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingCenteredRMSPropParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// Transforms a vector of brain.Example protos (as strings) into typed tensors.
+//
+// Arguments:
+//	serialized: A vector containing a batch of binary serialized Example protos.
+//	names: A vector containing the names of the serialized protos.
+// May contain, for example, table key (descriptive) names for the
+// corresponding serialized protos.  These are purely useful for debugging
+// purposes, and the presence of values here has no effect on the output.
+// May also be an empty vector if no names are available.
+// If non-empty, this vector must be the same length as "serialized".
+//	sparse_keys: A list of Nsparse string Tensors (scalars).
+// The keys expected in the Examples' features associated with sparse values.
+//	dense_keys: A list of Ndense string Tensors (scalars).
+// The keys expected in the Examples' features associated with dense values.
+//	dense_defaults: A list of Ndense Tensors (some may be empty).
+// dense_defaults[j] provides default values
+// when the example's feature_map lacks dense_key[j].  If an empty Tensor is
+// provided for dense_defaults[j], then the Feature dense_keys[j] is required.
+// The input type is inferred from dense_defaults[j], even when it's empty.
+// If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
+// then the shape of dense_defaults[j] must match that of dense_shapes[j].
+// If dense_shapes[j] has an undefined major dimension (variable strides dense
+// feature), dense_defaults[j] must contain a single element:
+// the padding element.
+//	sparse_types: A list of Nsparse types; the data types of data in each Feature
+// given in sparse_keys.
+// Currently the ParseExample supports DT_FLOAT (FloatList),
+// DT_INT64 (Int64List), and DT_STRING (BytesList).
+//	dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
+// given in dense_keys.
+// The number of elements in the Feature corresponding to dense_key[j]
+// must always equal dense_shapes[j].NumEntries().
+// If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
+// Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
+// The dense outputs are just the inputs row-stacked by batch.
+// This works for dense_shapes[j] = (-1, D1, ..., DN).  In this case
+// the shape of the output Tensor dense_values[j] will be
+// (|serialized|, M, D1, .., DN), where M is the maximum number of blocks
+// of elements of length D1 * .... * DN, across all minibatch entries
+// in the input.  Any minibatch entry with less than M blocks of elements of
+// length D1 * ... * DN will be padded with the corresponding default_value
+// scalar element along the second dimension.
+func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_keys []tf.Output, dense_keys []tf.Output, dense_defaults []tf.Output, sparse_types []tf.DataType, dense_shapes []tf.Shape) (sparse_indices []tf.Output, sparse_values []tf.Output, sparse_shapes []tf.Output, dense_values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"sparse_types": sparse_types, "dense_shapes": dense_shapes}
+	opspec := tf.OpSpec{
+		Type: "ParseExample",
+		Input: []tf.Input{
+			serialized, names, tf.OutputList(sparse_keys), tf.OutputList(dense_keys), tf.OutputList(dense_defaults),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if sparse_indices, idx, err = makeOutputList(op, idx, "sparse_indices"); err != nil {
+		scope.UpdateErr("ParseExample", err)
+		return
+	}
+	if sparse_values, idx, err = makeOutputList(op, idx, "sparse_values"); err != nil {
+		scope.UpdateErr("ParseExample", err)
+		return
+	}
+	if sparse_shapes, idx, err = makeOutputList(op, idx, "sparse_shapes"); err != nil {
+		scope.UpdateErr("ParseExample", err)
+		return
+	}
+	if dense_values, idx, err = makeOutputList(op, idx, "dense_values"); err != nil {
+		scope.UpdateErr("ParseExample", err)
+		return
+	}
+	return sparse_indices, sparse_values, sparse_shapes, dense_values
+}
+
+// ResourceSparseApplyAdadeltaAttr is an optional argument to ResourceSparseApplyAdadelta.
+type ResourceSparseApplyAdadeltaAttr func(optionalAttr)
+
+// ResourceSparseApplyAdadeltaUseLocking sets the optional use_locking attribute to value.
+//
+// value: If True, updating of the var and accum tensors will be protected by
+// a lock; otherwise the behavior is undefined, but may exhibit less contention.
+// If not specified, defaults to false
+func ResourceSparseApplyAdadeltaUseLocking(value bool) ResourceSparseApplyAdadeltaAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// var: Should be from a Variable().
+//
+// Arguments:
+//
+//	accum: Should be from a Variable().
+//	accum_update: : Should be from a Variable().
+//	lr: Learning rate. Must be a scalar.
+//	rho: Decay factor. Must be a scalar.
+//	epsilon: Constant factor. Must be a scalar.
+//	grad: The gradient.
+//	indices: A vector of indices into the first dimension of var and accum.
+//
+// Returns the created operation.
+func ResourceSparseApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_update tf.Output, lr tf.Output, rho tf.Output, epsilon tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyAdadeltaAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceSparseApplyAdadelta",
+		Input: []tf.Input{
+			var_, accum, accum_update, lr, rho, epsilon, grad, indices,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Computes sigmoid of `x` element-wise.
+//
+// Specifically, `y = 1 / (1 + exp(-x))`.
+func Sigmoid(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Sigmoid",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingADAMParametersGradAccumDebug.
+type RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingADAMParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingADAMParametersGradAccumDebugConfig(value string) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve ADAM embedding parameters with debug support.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the ADAM optimization algorithm.
+//	momenta: Parameter momenta updated by the ADAM optimization algorithm.
+//	velocities: Parameter velocities updated by the ADAM optimization algorithm.
+//	gradient_accumulators: Parameter gradient_accumulators updated by the ADAM optimization algorithm.
+func RetrieveTPUEmbeddingADAMParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr) (parameters tf.Output, momenta tf.Output, velocities tf.Output, gradient_accumulators tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingADAMParametersGradAccumDebug",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
+}
+
+// ResourceApplyAdamAttr is an optional argument to ResourceApplyAdam.
+type ResourceApplyAdamAttr func(optionalAttr)
+
+// ResourceApplyAdamUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var, m, and v tensors will be protected
+// by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyAdamUseNesterov sets the optional use_nesterov attribute to value.
+//
+// value: If `True`, uses the nesterov update.
+// If not specified, defaults to false
+func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
+	return func(m optionalAttr) {
+		m["use_nesterov"] = value
+	}
+}
+
+// Update '*var' according to the Adam algorithm.
+//
+// $$\text{lr}_t := \mathrm{learning_rate} * \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
+// $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
+// $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
+// $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilon)$$
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	m: Should be from a Variable().
+//	v: Should be from a Variable().
+//	beta1_power: Must be a scalar.
+//	beta2_power: Must be a scalar.
+//	lr: Scaling factor. Must be a scalar.
+//	beta1: Momentum factor. Must be a scalar.
+//	beta2: Momentum factor. Must be a scalar.
+//	epsilon: Ridge term. Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyAdam(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output, beta1_power tf.Output, beta2_power tf.Output, lr tf.Output, beta1 tf.Output, beta2 tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyAdamAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyAdam",
+		Input: []tf.Input{
+			var_, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// DatasetToGraphAttr is an optional argument to DatasetToGraph.
+type DatasetToGraphAttr func(optionalAttr)
+
+// DatasetToGraphStatefulWhitelist sets the optional stateful_whitelist attribute to value.
+// If not specified, defaults to {}
+//
+// REQUIRES: len(value) >= 0
+func DatasetToGraphStatefulWhitelist(value []string) DatasetToGraphAttr {
+	return func(m optionalAttr) {
+		m["stateful_whitelist"] = value
+	}
+}
+
+// DatasetToGraphAllowStateful sets the optional allow_stateful attribute to value.
+// If not specified, defaults to false
+func DatasetToGraphAllowStateful(value bool) DatasetToGraphAttr {
+	return func(m optionalAttr) {
+		m["allow_stateful"] = value
+	}
+}
+
+// DatasetToGraphStripDeviceAssignment sets the optional strip_device_assignment attribute to value.
+// If not specified, defaults to false
+func DatasetToGraphStripDeviceAssignment(value bool) DatasetToGraphAttr {
+	return func(m optionalAttr) {
+		m["strip_device_assignment"] = value
+	}
+}
+
+// Returns a serialized GraphDef representing `input_dataset`.
+//
+// Returns a graph representation for `input_dataset`.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the dataset to return the graph representation for.
+//
+// Returns The graph representation of the dataset (as serialized GraphDef).
+func DatasetToGraph(scope *Scope, input_dataset tf.Output, optional ...DatasetToGraphAttr) (graph tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DatasetToGraph",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// QuantizeAndDequantizeV3Attr is an optional argument to QuantizeAndDequantizeV3.
+type QuantizeAndDequantizeV3Attr func(optionalAttr)
+
+// QuantizeAndDequantizeV3SignedInput sets the optional signed_input attribute to value.
+// If not specified, defaults to true
+func QuantizeAndDequantizeV3SignedInput(value bool) QuantizeAndDequantizeV3Attr {
+	return func(m optionalAttr) {
+		m["signed_input"] = value
+	}
+}
+
+// QuantizeAndDequantizeV3RangeGiven sets the optional range_given attribute to value.
+// If not specified, defaults to true
+func QuantizeAndDequantizeV3RangeGiven(value bool) QuantizeAndDequantizeV3Attr {
+	return func(m optionalAttr) {
+		m["range_given"] = value
+	}
+}
+
+// QuantizeAndDequantizeV3NarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func QuantizeAndDequantizeV3NarrowRange(value bool) QuantizeAndDequantizeV3Attr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// QuantizeAndDequantizeV3Axis sets the optional axis attribute to value.
+// If not specified, defaults to -1
+func QuantizeAndDequantizeV3Axis(value int64) QuantizeAndDequantizeV3Attr {
+	return func(m optionalAttr) {
+		m["axis"] = value
+	}
+}
+
+// Quantizes then dequantizes a tensor.
+//
+// This is almost identical to QuantizeAndDequantizeV2, except that num_bits is a
+// tensor, so its value can change during training.
+func QuantizeAndDequantizeV3(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, num_bits tf.Output, optional ...QuantizeAndDequantizeV3Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizeAndDequantizeV3",
+		Input: []tf.Input{
+			input, input_min, input_max, num_bits,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns x * y element-wise.
+//
+// *NOTE*: `Multiply` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func Mul(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Mul",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes softplus gradients for a softplus operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding softplus operation.
+//	features: The features passed as input to the corresponding softplus operation.
+//
+// Returns The gradients: `gradients / (1 + exp(-features))`.
+func SoftplusGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SoftplusGrad",
+		Input: []tf.Input{
+			gradients, features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes softmax cross entropy cost and gradients to backpropagate.
 //
 // Unlike `SoftmaxCrossEntropyWithLogits`, this operation does not accept
@@ -41009,8 +41349,6 @@ type RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr func(option
 
 // RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -41059,1484 +41397,6 @@ func RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug(scope *Scope, n
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Records the latency of producing `input_dataset` elements in a StatsAggregator.
-func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "LatencyStatsDataset",
-		Input: []tf.Input{
-			input_dataset, tag,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes the power of one value to another.
-//
-// Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
-// corresponding elements in `x` and `y`. For example:
-//
-// ```
-// # tensor 'x' is [[2, 2]], [3, 3]]
-// # tensor 'y' is [[8, 16], [2, 3]]
-// tf.pow(x, y) ==> [[256, 65536], [9, 27]]
-// ```
-func Pow(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Pow",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Element-wise multiplication of a sparse matrix with a dense tensor.
-//
-// Returns a sparse matrix.
-//
-// The dense tensor `b` may be either a scalar; otherwise `a` must be a rank-3
-// `SparseMatrix`; in this case `b` must be shaped `[batch_size, 1, 1]` and the
-// multiply operation broadcasts.
-//
-// **NOTE** even if `b` is zero, the sparsity structure of the output does not
-// change.
-//
-// Arguments:
-//	a: A CSRSparseMatrix.
-//	b: A dense tensor.
-//
-// Returns A dense output tensor.
-func SparseMatrixMul(scope *Scope, a tf.Output, b tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseMatrixMul",
-		Input: []tf.Input{
-			a, b,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the element-wise sum of a list of tensors.
-//
-// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
-// wait for all of its inputs to be ready before beginning to sum. This can
-// save memory if inputs are ready at different times, since minimum temporary
-// storage is proportional to the output size rather than the inputs size.
-//
-// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
-//
-// Returns a `Tensor` of same shape and type as the elements of `inputs`.
-//
-// Arguments:
-//	inputs: A list of `Tensor` objects, each with same shape and type.
-//	shape: Shape of elements of `inputs`.
-func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"shape": shape}
-	opspec := tf.OpSpec{
-		Type: "AccumulateNV2",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// An op enabling differentiation of TPU Embeddings.
-//
-// This op simply returns its first input, which is assumed to have been sliced
-// from the Tensors returned by TPUEmbeddingDequeueActivations. The presence of
-// this op, and its first argument being a trainable Variable, enables automatic
-// differentiation of graphs containing embeddings via the TPU Embedding Python
-// libraries.
-//
-// Arguments:
-//	embedding_variable: A trainable variable, enabling optimizers to find this op.
-//	sliced_activations: The embedding activations Tensor to return.
-//	table_id: The id of the table in the embedding layer configuration from which
-// these activations were computed.
-//	lookup_id: Identifier of the set of embedding indices which produced these
-// activations.
-func TPUEmbeddingActivations(scope *Scope, embedding_variable tf.Output, sliced_activations tf.Output, table_id int64, lookup_id int64) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"table_id": table_id, "lookup_id": lookup_id}
-	opspec := tf.OpSpec{
-		Type: "TPUEmbeddingActivations",
-		Input: []tf.Input{
-			embedding_variable, sliced_activations,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Transforms a vector of brain.Example protos (as strings) into typed tensors.
-//
-// Arguments:
-//	serialized: A vector containing a batch of binary serialized Example protos.
-//	names: A vector containing the names of the serialized protos.
-// May contain, for example, table key (descriptive) names for the
-// corresponding serialized protos.  These are purely useful for debugging
-// purposes, and the presence of values here has no effect on the output.
-// May also be an empty vector if no names are available.
-// If non-empty, this vector must be the same length as "serialized".
-//	sparse_keys: A list of Nsparse string Tensors (scalars).
-// The keys expected in the Examples' features associated with sparse values.
-//	dense_keys: A list of Ndense string Tensors (scalars).
-// The keys expected in the Examples' features associated with dense values.
-//	dense_defaults: A list of Ndense Tensors (some may be empty).
-// dense_defaults[j] provides default values
-// when the example's feature_map lacks dense_key[j].  If an empty Tensor is
-// provided for dense_defaults[j], then the Feature dense_keys[j] is required.
-// The input type is inferred from dense_defaults[j], even when it's empty.
-// If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
-// then the shape of dense_defaults[j] must match that of dense_shapes[j].
-// If dense_shapes[j] has an undefined major dimension (variable strides dense
-// feature), dense_defaults[j] must contain a single element:
-// the padding element.
-//	sparse_types: A list of Nsparse types; the data types of data in each Feature
-// given in sparse_keys.
-// Currently the ParseExample supports DT_FLOAT (FloatList),
-// DT_INT64 (Int64List), and DT_STRING (BytesList).
-//	dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
-// given in dense_keys.
-// The number of elements in the Feature corresponding to dense_key[j]
-// must always equal dense_shapes[j].NumEntries().
-// If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
-// Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
-// The dense outputs are just the inputs row-stacked by batch.
-// This works for dense_shapes[j] = (-1, D1, ..., DN).  In this case
-// the shape of the output Tensor dense_values[j] will be
-// (|serialized|, M, D1, .., DN), where M is the maximum number of blocks
-// of elements of length D1 * .... * DN, across all minibatch entries
-// in the input.  Any minibatch entry with less than M blocks of elements of
-// length D1 * ... * DN will be padded with the corresponding default_value
-// scalar element along the second dimension.
-func ParseExample(scope *Scope, serialized tf.Output, names tf.Output, sparse_keys []tf.Output, dense_keys []tf.Output, dense_defaults []tf.Output, sparse_types []tf.DataType, dense_shapes []tf.Shape) (sparse_indices []tf.Output, sparse_values []tf.Output, sparse_shapes []tf.Output, dense_values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"sparse_types": sparse_types, "dense_shapes": dense_shapes}
-	opspec := tf.OpSpec{
-		Type: "ParseExample",
-		Input: []tf.Input{
-			serialized, names, tf.OutputList(sparse_keys), tf.OutputList(dense_keys), tf.OutputList(dense_defaults),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if sparse_indices, idx, err = makeOutputList(op, idx, "sparse_indices"); err != nil {
-		scope.UpdateErr("ParseExample", err)
-		return
-	}
-	if sparse_values, idx, err = makeOutputList(op, idx, "sparse_values"); err != nil {
-		scope.UpdateErr("ParseExample", err)
-		return
-	}
-	if sparse_shapes, idx, err = makeOutputList(op, idx, "sparse_shapes"); err != nil {
-		scope.UpdateErr("ParseExample", err)
-		return
-	}
-	if dense_values, idx, err = makeOutputList(op, idx, "dense_values"); err != nil {
-		scope.UpdateErr("ParseExample", err)
-		return
-	}
-	return sparse_indices, sparse_values, sparse_shapes, dense_values
-}
-
-// MapPeekAttr is an optional argument to MapPeek.
-type MapPeekAttr func(optionalAttr)
-
-// MapPeekCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapPeekCapacity(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapPeekMemoryLimit(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapPeekContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func MapPeekContainer(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MapPeekSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func MapPeekSharedName(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op peeks at the values at the specified key.  If the
-//
-// underlying container does not contain this key
-// this op will block until it does.
-func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MapPeek",
-		Input: []tf.Input{
-			key, indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("MapPeek", err)
-		return
-	}
-	return values
-}
-
-// RetrieveTPUEmbeddingCenteredRMSPropParametersAttr is an optional argument to RetrieveTPUEmbeddingCenteredRMSPropParameters.
-type RetrieveTPUEmbeddingCenteredRMSPropParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingCenteredRMSPropParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingCenteredRMSPropParametersTableId(value int64) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingCenteredRMSPropParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingCenteredRMSPropParametersTableName(value string) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingCenteredRMSPropParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingCenteredRMSPropParametersConfig(value string) RetrieveTPUEmbeddingCenteredRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve centered RMSProp embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the centered RMSProp optimization algorithm.
-//	ms: Parameter ms updated by the centered RMSProp optimization algorithm.
-//	mom: Parameter mom updated by the centered RMSProp optimization algorithm.
-//	mg: Parameter mg updated by the centered RMSProp optimization algorithm.
-func RetrieveTPUEmbeddingCenteredRMSPropParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingCenteredRMSPropParametersAttr) (parameters tf.Output, ms tf.Output, mom tf.Output, mg tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingCenteredRMSPropParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
-}
-
-// Computes the LSTM cell backward propagation for the entire time sequence.
-//
-// This implementation is to be used in conjunction of BlockLSTMV2.
-//
-// Arguments:
-//	seq_len_max: Maximum time length actually used by this input. Outputs are padded
-// with zeros beyond this length.
-//	x: The sequence input to the LSTM, shape (timelen, batch_size, num_inputs).
-//	cs_prev: Value of the initial cell state.
-//	h_prev: Initial output of cell (to be used for peephole).
-//	w: The weight matrix.
-//	wci: The weight matrix for input gate peephole connection.
-//	wcf: The weight matrix for forget gate peephole connection.
-//	wco: The weight matrix for output gate peephole connection.
-//	b: The bias vector.
-//	i: The input gate over the whole time sequence.
-//	cs: The cell state before the tanh over the whole time sequence.
-//	f: The forget gate over the whole time sequence.
-//	o: The output gate over the whole time sequence.
-//	ci: The cell input over the whole time sequence.
-//	co: The cell after the tanh over the whole time sequence.
-//	h: The output h vector over the whole time sequence.
-//	cs_grad: The current gradient of cs.
-//	h_grad: The gradient of h vector.
-//	use_peephole: Whether to use peephole weights.
-//
-// Returns:
-//	x_grad: The gradient of x to be back-propped.
-//	cs_prev_grad: The gradient of cs_prev to be back-propped.
-//	h_prev_grad: The gradient of h_prev to be back-propped.
-//	w_grad: The gradient for w to be back-propped.
-//	wci_grad: The gradient for wci to be back-propped.
-//	wcf_grad: The gradient for wcf to be back-propped.
-//	wco_grad: The gradient for wco to be back-propped.
-//	b_grad: The gradient for w to be back-propped.
-func BlockLSTMGradV2(scope *Scope, seq_len_max tf.Output, x tf.Output, cs_prev tf.Output, h_prev tf.Output, w tf.Output, wci tf.Output, wcf tf.Output, wco tf.Output, b tf.Output, i tf.Output, cs tf.Output, f tf.Output, o tf.Output, ci tf.Output, co tf.Output, h tf.Output, cs_grad tf.Output, h_grad tf.Output, use_peephole bool) (x_grad tf.Output, cs_prev_grad tf.Output, h_prev_grad tf.Output, w_grad tf.Output, wci_grad tf.Output, wcf_grad tf.Output, wco_grad tf.Output, b_grad tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"use_peephole": use_peephole}
-	opspec := tf.OpSpec{
-		Type: "BlockLSTMGradV2",
-		Input: []tf.Input{
-			seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b, i, cs, f, o, ci, co, h, cs_grad, h_grad,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4), op.Output(5), op.Output(6), op.Output(7)
-}
-
-// Returns the element-wise max of two SparseTensors.
-//
-// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
-//
-// Arguments:
-//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
-// SparseTensor, in the canonical lexicographic ordering.
-//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
-//	a_shape: 1-D.  Shape of the input SparseTensor.
-//	b_indices: counterpart to `a_indices` for the other operand.
-//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
-//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
-//
-// Returns:
-//	output_indices: 2-D.  The indices of the output SparseTensor.
-//	output_values: 1-D.  The values of the output SparseTensor.
-func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSparseMaximum",
-		Input: []tf.Input{
-			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// Computes the Bessel i1e function of `x` element-wise.
-//
-// Exponentially scaled modified Bessel function of order 0 defined as
-// `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
-//
-// This function is faster and numerically stabler than `bessel_i1(x)`.
-func BesselI1e(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BesselI1e",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns a batched diagonal tensor with a given batched diagonal values.
-//
-// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
-// everything else padded with zeros. The diagonal is computed as follows:
-//
-// Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
-// tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
-//
-// `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
-//
-// For example:
-//
-// ```
-// # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
-//
-// and diagonal.shape = (2, 4)
-//
-// tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
-//                                      [0, 2, 0, 0]
-//                                      [0, 0, 3, 0]
-//                                      [0, 0, 0, 4]],
-//                                     [[5, 0, 0, 0]
-//                                      [0, 6, 0, 0]
-//                                      [0, 0, 7, 0]
-//                                      [0, 0, 0, 8]]]
-//
-// which has shape (2, 4, 4)
-// ```
-//
-// Arguments:
-//	diagonal: Rank `k`, where `k >= 1`.
-//
-// Returns Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
-func MatrixDiag(scope *Scope, diagonal tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MatrixDiag",
-		Input: []tf.Input{
-			diagonal,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
-type StatelessTruncatedNormalAttr func(optionalAttr)
-
-// StatelessTruncatedNormalDtype sets the optional dtype attribute to value.
-//
-// value: The type of the output.
-// If not specified, defaults to DT_FLOAT
-func StatelessTruncatedNormalDtype(value tf.DataType) StatelessTruncatedNormalAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Outputs deterministic pseudorandom values from a truncated normal distribution.
-//
-// The generated values follow a normal distribution with mean 0 and standard
-// deviation 1, except that values whose magnitude is more than 2 standard
-// deviations from the mean are dropped and re-picked.
-//
-// The outputs are a deterministic function of `shape` and `seed`.
-//
-// Arguments:
-//	shape: The shape of the output tensor.
-//	seed: 2 seeds (shape [2]).
-//
-// Returns Random values with specified shape.
-func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessTruncatedNormalAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StatelessTruncatedNormal",
-		Input: []tf.Input{
-			shape, seed,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// StatelessRandomUniformAttr is an optional argument to StatelessRandomUniform.
-type StatelessRandomUniformAttr func(optionalAttr)
-
-// StatelessRandomUniformDtype sets the optional dtype attribute to value.
-//
-// value: The type of the output.
-// If not specified, defaults to DT_FLOAT
-func StatelessRandomUniformDtype(value tf.DataType) StatelessRandomUniformAttr {
-	return func(m optionalAttr) {
-		m["dtype"] = value
-	}
-}
-
-// Outputs deterministic pseudorandom random values from a uniform distribution.
-//
-// The generated values follow a uniform distribution in the range `[0, 1)`. The
-// lower bound 0 is included in the range, while the upper bound 1 is excluded.
-//
-// The outputs are a deterministic function of `shape` and `seed`.
-//
-// Arguments:
-//	shape: The shape of the output tensor.
-//	seed: 2 seeds (shape [2]).
-//
-// Returns Random values with specified shape.
-func StatelessRandomUniform(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessRandomUniformAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StatelessRandomUniform",
-		Input: []tf.Input{
-			shape, seed,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MaxPoolGradGradV2Attr is an optional argument to MaxPoolGradGradV2.
-type MaxPoolGradGradV2Attr func(optionalAttr)
-
-// MaxPoolGradGradV2DataFormat sets the optional data_format attribute to value.
-//
-// value: Specify the data format of the input and output data. With the
-// default format "NHWC", the data is stored in the order of:
-//     [batch, in_height, in_width, in_channels].
-// Alternatively, the format could be "NCHW", the data storage order of:
-//     [batch, in_channels, in_height, in_width].
-// If not specified, defaults to "NHWC"
-func MaxPoolGradGradV2DataFormat(value string) MaxPoolGradGradV2Attr {
-	return func(m optionalAttr) {
-		m["data_format"] = value
-	}
-}
-
-// Computes second-order gradients of the maxpooling function.
-//
-// Arguments:
-//	orig_input: The original input tensor.
-//	orig_output: The original output tensor.
-//	grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
-//	ksize: The size of the window for each dimension of the input tensor.
-//	strides: The stride of the sliding window for each dimension of the
-// input tensor.
-//	padding: The type of padding algorithm to use.
-//
-// Returns Gradients of gradients w.r.t. the input to `max_pool`.
-func MaxPoolGradGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad tf.Output, ksize tf.Output, strides tf.Output, padding string, optional ...MaxPoolGradGradV2Attr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MaxPoolGradGradV2",
-		Input: []tf.Input{
-			orig_input, orig_output, grad, ksize, strides,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RetrieveTPUEmbeddingMomentumParametersAttr is an optional argument to RetrieveTPUEmbeddingMomentumParameters.
-type RetrieveTPUEmbeddingMomentumParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingMomentumParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingMomentumParametersTableId(value int64) RetrieveTPUEmbeddingMomentumParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingMomentumParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingMomentumParametersTableName(value string) RetrieveTPUEmbeddingMomentumParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingMomentumParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingMomentumParametersConfig(value string) RetrieveTPUEmbeddingMomentumParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve Momentum embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the Momentum optimization algorithm.
-//	momenta: Parameter momenta updated by the Momentum optimization algorithm.
-func RetrieveTPUEmbeddingMomentumParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingMomentumParametersAttr) (parameters tf.Output, momenta tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingMomentumParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// RecvAttr is an optional argument to Recv.
-type RecvAttr func(optionalAttr)
-
-// RecvClientTerminated sets the optional client_terminated attribute to value.
-//
-// value: If set to true, this indicates that the node was added
-// to the graph as a result of a client-side feed or fetch of Tensor data,
-// in which case the corresponding send or recv is expected to be managed
-// locally by the caller.
-// If not specified, defaults to false
-func RecvClientTerminated(value bool) RecvAttr {
-	return func(m optionalAttr) {
-		m["client_terminated"] = value
-	}
-}
-
-// Receives the named tensor from send_device on recv_device.
-//
-// Arguments:
-//
-//	tensor_name: The name of the tensor to receive.
-//	send_device: The name of the device sending the tensor.
-//	send_device_incarnation: The current incarnation of send_device.
-//	recv_device: The name of the device receiving the tensor.
-//
-// Returns The tensor to receive.
-func Recv(scope *Scope, tensor_type tf.DataType, tensor_name string, send_device string, send_device_incarnation int64, recv_device string, optional ...RecvAttr) (tensor tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"tensor_type": tensor_type, "tensor_name": tensor_name, "send_device": send_device, "send_device_incarnation": send_device_incarnation, "recv_device": recv_device}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Recv",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// OrderedMapStageAttr is an optional argument to OrderedMapStage.
-type OrderedMapStageAttr func(optionalAttr)
-
-// OrderedMapStageCapacity sets the optional capacity attribute to value.
-//
-// value: Maximum number of elements in the Staging Area. If > 0, inserts
-// on the container will block when the capacity is reached.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapStageCapacity(value int64) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// OrderedMapStageMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func OrderedMapStageMemoryLimit(value int64) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// OrderedMapStageContainer sets the optional container attribute to value.
-//
-// value: If non-empty, this queue is placed in the given container. Otherwise,
-// a default container is used.
-// If not specified, defaults to ""
-func OrderedMapStageContainer(value string) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// OrderedMapStageSharedName sets the optional shared_name attribute to value.
-//
-// value: It is necessary to match this name to the matching Unstage Op.
-// If not specified, defaults to ""
-func OrderedMapStageSharedName(value string) OrderedMapStageAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Stage (key, values) in the underlying container which behaves like a ordered
-//
-// associative container.   Elements are ordered by key.
-//
-// Arguments:
-//	key: int64
-//
-//	values: a list of tensors
-// dtypes A list of data types that inserted values should adhere to.
-//
-//
-// Returns the created operation.
-func OrderedMapStage(scope *Scope, key tf.Output, indices tf.Output, values []tf.Output, dtypes []tf.DataType, optional ...OrderedMapStageAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "OrderedMapStage",
-		Input: []tf.Input{
-			key, indices, tf.OutputList(values),
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// TPUReplicateMetadataAttr is an optional argument to TPUReplicateMetadata.
-type TPUReplicateMetadataAttr func(optionalAttr)
-
-// TPUReplicateMetadataNumCoresPerReplica sets the optional num_cores_per_replica attribute to value.
-//
-// value: Number of cores per replica. Used for model parallelism.
-// If not specified, defaults to 1
-func TPUReplicateMetadataNumCoresPerReplica(value int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["num_cores_per_replica"] = value
-	}
-}
-
-// TPUReplicateMetadataTopology sets the optional topology attribute to value.
-//
-// value: TopologyProto indicating the topology of the TPU pod slice.
-// If not specified, defaults to ""
-func TPUReplicateMetadataTopology(value string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["topology"] = value
-	}
-}
-
-// TPUReplicateMetadataUseTpu sets the optional use_tpu attribute to value.
-//
-// value: Whether to place the computation on the TPU.
-// If not specified, defaults to true
-func TPUReplicateMetadataUseTpu(value bool) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["use_tpu"] = value
-	}
-}
-
-// TPUReplicateMetadataDeviceAssignment sets the optional device_assignment attribute to value.
-//
-// value: The assignment of devices for the computation.
-// If not specified, defaults to {}
-func TPUReplicateMetadataDeviceAssignment(value []int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["device_assignment"] = value
-	}
-}
-
-// TPUReplicateMetadataComputationShape sets the optional computation_shape attribute to value.
-//
-// value: DEPRECATED. Use num_cores_per_replica instead.
-// If not specified, defaults to {}
-func TPUReplicateMetadataComputationShape(value []int64) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["computation_shape"] = value
-	}
-}
-
-// TPUReplicateMetadataHostComputeCore sets the optional host_compute_core attribute to value.
-// If not specified, defaults to {}
-func TPUReplicateMetadataHostComputeCore(value []string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["host_compute_core"] = value
-	}
-}
-
-// TPUReplicateMetadataPaddingMap sets the optional padding_map attribute to value.
-// If not specified, defaults to {}
-func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["padding_map"] = value
-	}
-}
-
-// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
-// If not specified, defaults to "STEP_MARK_AT_ENTRY"
-func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["step_marker_location"] = value
-	}
-}
-
-// TPUReplicateMetadataAllowSoftPlacement sets the optional allow_soft_placement attribute to value.
-// If not specified, defaults to false
-func TPUReplicateMetadataAllowSoftPlacement(value bool) TPUReplicateMetadataAttr {
-	return func(m optionalAttr) {
-		m["allow_soft_placement"] = value
-	}
-}
-
-// Metadata indicating how the TPU computation should be replicated.
-//
-// This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
-//
-// Arguments:
-//	num_replicas: Number of replicas of the computation
-//
-// Returns the created operation.
-func TPUReplicateMetadata(scope *Scope, num_replicas int64, optional ...TPUReplicateMetadataAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_replicas": num_replicas}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TPUReplicateMetadata",
-
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// ExtractGlimpseAttr is an optional argument to ExtractGlimpse.
-type ExtractGlimpseAttr func(optionalAttr)
-
-// ExtractGlimpseCentered sets the optional centered attribute to value.
-//
-// value: indicates if the offset coordinates are centered relative to
-// the image, in which case the (0, 0) offset is relative to the center
-// of the input images. If false, the (0,0) offset corresponds to the
-// upper left corner of the input images.
-// If not specified, defaults to true
-func ExtractGlimpseCentered(value bool) ExtractGlimpseAttr {
-	return func(m optionalAttr) {
-		m["centered"] = value
-	}
-}
-
-// ExtractGlimpseNormalized sets the optional normalized attribute to value.
-//
-// value: indicates if the offset coordinates are normalized.
-// If not specified, defaults to true
-func ExtractGlimpseNormalized(value bool) ExtractGlimpseAttr {
-	return func(m optionalAttr) {
-		m["normalized"] = value
-	}
-}
-
-// ExtractGlimpseUniformNoise sets the optional uniform_noise attribute to value.
-//
-// value: indicates if the noise should be generated using a
-// uniform distribution or a Gaussian distribution.
-// If not specified, defaults to true
-func ExtractGlimpseUniformNoise(value bool) ExtractGlimpseAttr {
-	return func(m optionalAttr) {
-		m["uniform_noise"] = value
-	}
-}
-
-// ExtractGlimpseNoise sets the optional noise attribute to value.
-//
-// value: indicates if the noise should `uniform`, `gaussian`, or
-// `zero`. The default is `uniform` which means the the noise type
-// will be decided by `uniform_noise`.
-// If not specified, defaults to "uniform"
-func ExtractGlimpseNoise(value string) ExtractGlimpseAttr {
-	return func(m optionalAttr) {
-		m["noise"] = value
-	}
-}
-
-// Extracts a glimpse from the input tensor.
-//
-// Returns a set of windows called glimpses extracted at location
-// `offsets` from the input tensor. If the windows only partially
-// overlaps the inputs, the non overlapping areas will be filled with
-// random noise.
-//
-// The result is a 4-D tensor of shape `[batch_size, glimpse_height,
-// glimpse_width, channels]`. The channels and batch dimensions are the
-// same as that of the input tensor. The height and width of the output
-// windows are specified in the `size` parameter.
-//
-// The argument `normalized` and `centered` controls how the windows are built:
-//
-// * If the coordinates are normalized but not centered, 0.0 and 1.0
-//   correspond to the minimum and maximum of each height and width
-//   dimension.
-// * If the coordinates are both normalized and centered, they range from
-//   -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
-//   left corner, the lower right corner is located at (1.0, 1.0) and the
-//   center is at (0, 0).
-// * If the coordinates are not normalized they are interpreted as
-//   numbers of pixels.
-//
-// Arguments:
-//	input: A 4-D float tensor of shape `[batch_size, height, width, channels]`.
-//	size: A 1-D tensor of 2 elements containing the size of the glimpses
-// to extract.  The glimpse height must be specified first, following
-// by the glimpse width.
-//	offsets: A 2-D integer tensor of shape `[batch_size, 2]` containing
-// the y, x locations of the center of each window.
-//
-// Returns A tensor representing the glimpses `[batch_size,
-// glimpse_height, glimpse_width, channels]`.
-func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Output, optional ...ExtractGlimpseAttr) (glimpse tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ExtractGlimpse",
-		Input: []tf.Input{
-			input, size, offsets,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceApplyAdamAttr is an optional argument to ResourceApplyAdam.
-type ResourceApplyAdamAttr func(optionalAttr)
-
-// ResourceApplyAdamUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var, m, and v tensors will be protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// ResourceApplyAdamUseNesterov sets the optional use_nesterov attribute to value.
-//
-// value: If `True`, uses the nesterov update.
-// If not specified, defaults to false
-func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
-	return func(m optionalAttr) {
-		m["use_nesterov"] = value
-	}
-}
-
-// Update '*var' according to the Adam algorithm.
-//
-// $$\text{lr}_t := \mathrm{learning_rate} * \sqrt{1 - \beta_2^t} / (1 - \beta_1^t)$$
-// $$m_t := \beta_1 * m_{t-1} + (1 - \beta_1) * g$$
-// $$v_t := \beta_2 * v_{t-1} + (1 - \beta_2) * g * g$$
-// $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilon)$$
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	m: Should be from a Variable().
-//	v: Should be from a Variable().
-//	beta1_power: Must be a scalar.
-//	beta2_power: Must be a scalar.
-//	lr: Scaling factor. Must be a scalar.
-//	beta1: Momentum factor. Must be a scalar.
-//	beta2: Momentum factor. Must be a scalar.
-//	epsilon: Ridge term. Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyAdam(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output, beta1_power tf.Output, beta2_power tf.Output, lr tf.Output, beta1 tf.Output, beta2 tf.Output, epsilon tf.Output, grad tf.Output, optional ...ResourceApplyAdamAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyAdam",
-		Input: []tf.Input{
-			var_, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Computes sigmoid of `x` element-wise.
-//
-// Specifically, `y = 1 / (1 + exp(-x))`.
-func Sigmoid(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Sigmoid",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceSparseApplyAdadeltaAttr is an optional argument to ResourceSparseApplyAdadelta.
-type ResourceSparseApplyAdadeltaAttr func(optionalAttr)
-
-// ResourceSparseApplyAdadeltaUseLocking sets the optional use_locking attribute to value.
-//
-// value: If True, updating of the var and accum tensors will be protected by
-// a lock; otherwise the behavior is undefined, but may exhibit less contention.
-// If not specified, defaults to false
-func ResourceSparseApplyAdadeltaUseLocking(value bool) ResourceSparseApplyAdadeltaAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// var: Should be from a Variable().
-//
-// Arguments:
-//
-//	accum: Should be from a Variable().
-//	accum_update: : Should be from a Variable().
-//	lr: Learning rate. Must be a scalar.
-//	rho: Decay factor. Must be a scalar.
-//	epsilon: Constant factor. Must be a scalar.
-//	grad: The gradient.
-//	indices: A vector of indices into the first dimension of var and accum.
-//
-// Returns the created operation.
-func ResourceSparseApplyAdadelta(scope *Scope, var_ tf.Output, accum tf.Output, accum_update tf.Output, lr tf.Output, rho tf.Output, epsilon tf.Output, grad tf.Output, indices tf.Output, optional ...ResourceSparseApplyAdadeltaAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceSparseApplyAdadelta",
-		Input: []tf.Input{
-			var_, accum, accum_update, lr, rho, epsilon, grad, indices,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingADAMParametersGradAccumDebug.
-type RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingADAMParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingADAMParametersGradAccumDebugConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingADAMParametersGradAccumDebugConfig(value string) RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve ADAM embedding parameters with debug support.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the ADAM optimization algorithm.
-//	momenta: Parameter momenta updated by the ADAM optimization algorithm.
-//	velocities: Parameter velocities updated by the ADAM optimization algorithm.
-//	gradient_accumulators: Parameter gradient_accumulators updated by the ADAM optimization algorithm.
-func RetrieveTPUEmbeddingADAMParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingADAMParametersGradAccumDebugAttr) (parameters tf.Output, momenta tf.Output, velocities tf.Output, gradient_accumulators tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingADAMParametersGradAccumDebug",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3)
-}
-
-// RequantizePerChannelAttr is an optional argument to RequantizePerChannel.
-type RequantizePerChannelAttr func(optionalAttr)
-
-// RequantizePerChannelOutType sets the optional out_type attribute to value.
-//
-// value: The quantized type of output tensor that needs to be converted.
-// If not specified, defaults to DT_QUINT8
-func RequantizePerChannelOutType(value tf.DataType) RequantizePerChannelAttr {
-	return func(m optionalAttr) {
-		m["out_type"] = value
-	}
-}
-
-// Requantizes input with min and max values known per channel.
-//
-// Arguments:
-//	input: The original input tensor.
-//	input_min: The minimum value of the input tensor
-//	input_max: The maximum value of the input tensor.
-//	requested_output_min: The minimum value of the output tensor requested.
-//	requested_output_max: The maximum value of the output tensor requested.
-//
-// Returns:
-//	output: Output tensor.
-//	output_min: The minimum value of the final output tensor
-//	output_max: The maximum value of the final output tensor.
-func RequantizePerChannel(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, requested_output_min tf.Output, requested_output_max tf.Output, optional ...RequantizePerChannelAttr) (output tf.Output, output_min tf.Output, output_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RequantizePerChannel",
-		Input: []tf.Input{
-			input, input_min, input_max, requested_output_min, requested_output_max,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// LeakyReluAttr is an optional argument to LeakyRelu.
-type LeakyReluAttr func(optionalAttr)
-
-// LeakyReluAlpha sets the optional alpha attribute to value.
-// If not specified, defaults to 0.2
-func LeakyReluAlpha(value float32) LeakyReluAttr {
-	return func(m optionalAttr) {
-		m["alpha"] = value
-	}
-}
-
-// Computes rectified linear: `max(features, features * alpha)`.
-func LeakyRelu(scope *Scope, features tf.Output, optional ...LeakyReluAttr) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LeakyRelu",
-		Input: []tf.Input{
-			features,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RetrieveTPUEmbeddingFTRLParametersAttr is an optional argument to RetrieveTPUEmbeddingFTRLParameters.
-type RetrieveTPUEmbeddingFTRLParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingFTRLParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingFTRLParametersTableId(value int64) RetrieveTPUEmbeddingFTRLParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingFTRLParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingFTRLParametersTableName(value string) RetrieveTPUEmbeddingFTRLParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingFTRLParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingFTRLParametersConfig(value string) RetrieveTPUEmbeddingFTRLParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve FTRL embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns:
-//	parameters: Parameter parameters updated by the FTRL optimization algorithm.
-//	accumulators: Parameter accumulators updated by the FTRL optimization algorithm.
-//	linears: Parameter linears updated by the FTRL optimization algorithm.
-func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingFTRLParametersAttr) (parameters tf.Output, accumulators tf.Output, linears tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingFTRLParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// SerializeManySparseAttr is an optional argument to SerializeManySparse.
-type SerializeManySparseAttr func(optionalAttr)
-
-// SerializeManySparseOutType sets the optional out_type attribute to value.
-//
-// value: The `dtype` to use for serialization; the supported types are `string`
-// (default) and `variant`.
-// If not specified, defaults to DT_STRING
-func SerializeManySparseOutType(value tf.DataType) SerializeManySparseAttr {
-	return func(m optionalAttr) {
-		m["out_type"] = value
-	}
-}
-
-// Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object.
-//
-// The `SparseTensor` must have rank `R` greater than 1, and the first dimension
-// is treated as the minibatch dimension.  Elements of the `SparseTensor`
-// must be sorted in increasing order of this first dimension.  The serialized
-// `SparseTensor` objects going into each row of `serialized_sparse` will have
-// rank `R-1`.
-//
-// The minibatch size `N` is extracted from `sparse_shape[0]`.
-//
-// Arguments:
-//	sparse_indices: 2-D.  The `indices` of the minibatch `SparseTensor`.
-//	sparse_values: 1-D.  The `values` of the minibatch `SparseTensor`.
-//	sparse_shape: 1-D.  The `shape` of the minibatch `SparseTensor`.
-func SerializeManySparse(scope *Scope, sparse_indices tf.Output, sparse_values tf.Output, sparse_shape tf.Output, optional ...SerializeManySparseAttr) (serialized_sparse tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SerializeManySparse",
-		Input: []tf.Input{
-			sparse_indices, sparse_values, sparse_shape,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Says whether the targets are in the top `K` predictions.
-//
-// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
-// prediction for the target class is among the top `k` predictions among
-// all predictions for example `i`. Note that the behavior of `InTopK` differs
-// from the `TopK` op in its handling of ties; if multiple classes have the
-// same prediction value and straddle the top-`k` boundary, all of those
-// classes are considered to be in the top `k`.
-//
-// More formally, let
-//
-//   \\(predictions_i\\) be the predictions for all classes for example `i`,
-//   \\(targets_i\\) be the target class for example `i`,
-//   \\(out_i\\) be the output for example `i`,
-//
-// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
-//
-// Arguments:
-//	predictions: A `batch_size` x `classes` tensor.
-//	targets: A `batch_size` vector of class ids.
-//	k: Number of top elements to look at for computing precision.
-//
-// Returns Computed precision at `k` as a `bool Tensor`.
-func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "InTopKV2",
-		Input: []tf.Input{
-			predictions, targets, k,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Creates an Optional variant with no value.
-func OptionalNone(scope *Scope) (optional tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "OptionalNone",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr is an optional argument to RetrieveTPUEmbeddingStochasticGradientDescentParameters.
-type RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr func(optionalAttr)
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId(value int64) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// RetrieveTPUEmbeddingStochasticGradientDescentParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func RetrieveTPUEmbeddingStochasticGradientDescentParametersConfig(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Retrieve SGD embedding parameters.
-//
-// An op that retrieves optimization parameters from embedding to host
-// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
-// the correct embedding table configuration. For example, this op is
-// used to retrieve updated parameters before saving a checkpoint.
-//
-// Returns Parameter parameters updated by the stochastic gradient descent optimization algorithm.
-func RetrieveTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr) (parameters tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "RetrieveTPUEmbeddingStochasticGradientDescentParameters",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Returns x / y element-wise.
@@ -42751,7 +41611,7 @@ func DecodeJpegDctMethod(value string) DecodeJpegAttr {
 //
 //
 // This op also supports decoding PNGs and non-animated GIFs since the interface is
-// the same, though it is cleaner to use `tf.image.decode_image`.
+// the same, though it is cleaner to use `tf.io.decode_image`.
 //
 // Arguments:
 //	contents: 0-D.  The JPEG-encoded image.
@@ -42845,8 +41705,6 @@ type LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr func(optionalAt
 
 // LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingProximalAdagradParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43089,8 +41947,6 @@ type LoadTPUEmbeddingAdadeltaParametersGradAccumDebugAttr func(optionalAttr)
 
 // LoadTPUEmbeddingAdadeltaParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingAdadeltaParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingAdadeltaParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43229,8 +42085,6 @@ type RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugAttr func(optionalAttr)
 
 // RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43344,8 +42198,6 @@ type LoadTPUEmbeddingFTRLParametersGradAccumDebugAttr func(optionalAttr)
 
 // LoadTPUEmbeddingFTRLParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingFTRLParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingFTRLParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43408,8 +42260,6 @@ type LoadTPUEmbeddingAdadeltaParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingAdadeltaParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingAdadeltaParametersTableId(value int64) LoadTPUEmbeddingAdadeltaParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43464,6 +42314,614 @@ func LoadTPUEmbeddingAdadeltaParameters(scope *Scope, parameters tf.Output, accu
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Records the latency of producing `input_dataset` elements in a StatsAggregator.
+func LatencyStatsDataset(scope *Scope, input_dataset tf.Output, tag tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "LatencyStatsDataset",
+		Input: []tf.Input{
+			input_dataset, tag,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the power of one value to another.
+//
+// Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
+// corresponding elements in `x` and `y`. For example:
+//
+// ```
+// # tensor 'x' is [[2, 2]], [3, 3]]
+// # tensor 'y' is [[8, 16], [2, 3]]
+// tf.pow(x, y) ==> [[256, 65536], [9, 27]]
+// ```
+func Pow(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Pow",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Element-wise multiplication of a sparse matrix with a dense tensor.
+//
+// Returns a sparse matrix.
+//
+// The dense tensor `b` may be either a scalar; otherwise `a` must be a rank-3
+// `SparseMatrix`; in this case `b` must be shaped `[batch_size, 1, 1]` and the
+// multiply operation broadcasts.
+//
+// **NOTE** even if `b` is zero, the sparsity structure of the output does not
+// change.
+//
+// Arguments:
+//	a: A CSRSparseMatrix.
+//	b: A dense tensor.
+//
+// Returns A dense output tensor.
+func SparseMatrixMul(scope *Scope, a tf.Output, b tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseMatrixMul",
+		Input: []tf.Input{
+			a, b,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the element-wise sum of a list of tensors.
+//
+// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+// wait for all of its inputs to be ready before beginning to sum. This can
+// save memory if inputs are ready at different times, since minimum temporary
+// storage is proportional to the output size rather than the inputs size.
+//
+// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+//
+// Returns a `Tensor` of same shape and type as the elements of `inputs`.
+//
+// Arguments:
+//	inputs: A list of `Tensor` objects, each with same shape and type.
+//	shape: Shape of elements of `inputs`.
+func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "AccumulateNV2",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// An op enabling differentiation of TPU Embeddings.
+//
+// This op simply returns its first input, which is assumed to have been sliced
+// from the Tensors returned by TPUEmbeddingDequeueActivations. The presence of
+// this op, and its first argument being a trainable Variable, enables automatic
+// differentiation of graphs containing embeddings via the TPU Embedding Python
+// libraries.
+//
+// Arguments:
+//	embedding_variable: A trainable variable, enabling optimizers to find this op.
+//	sliced_activations: The embedding activations Tensor to return.
+//	table_id: The id of the table in the embedding layer configuration from which
+// these activations were computed.
+//	lookup_id: Identifier of the set of embedding indices which produced these
+// activations.
+func TPUEmbeddingActivations(scope *Scope, embedding_variable tf.Output, sliced_activations tf.Output, table_id int64, lookup_id int64) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"table_id": table_id, "lookup_id": lookup_id}
+	opspec := tf.OpSpec{
+		Type: "TPUEmbeddingActivations",
+		Input: []tf.Input{
+			embedding_variable, sliced_activations,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes the LSTM cell backward propagation for the entire time sequence.
+//
+// This implementation is to be used in conjunction of BlockLSTMV2.
+//
+// Arguments:
+//	seq_len_max: Maximum time length actually used by this input. Outputs are padded
+// with zeros beyond this length.
+//	x: The sequence input to the LSTM, shape (timelen, batch_size, num_inputs).
+//	cs_prev: Value of the initial cell state.
+//	h_prev: Initial output of cell (to be used for peephole).
+//	w: The weight matrix.
+//	wci: The weight matrix for input gate peephole connection.
+//	wcf: The weight matrix for forget gate peephole connection.
+//	wco: The weight matrix for output gate peephole connection.
+//	b: The bias vector.
+//	i: The input gate over the whole time sequence.
+//	cs: The cell state before the tanh over the whole time sequence.
+//	f: The forget gate over the whole time sequence.
+//	o: The output gate over the whole time sequence.
+//	ci: The cell input over the whole time sequence.
+//	co: The cell after the tanh over the whole time sequence.
+//	h: The output h vector over the whole time sequence.
+//	cs_grad: The current gradient of cs.
+//	h_grad: The gradient of h vector.
+//	use_peephole: Whether to use peephole weights.
+//
+// Returns:
+//	x_grad: The gradient of x to be back-propped.
+//	cs_prev_grad: The gradient of cs_prev to be back-propped.
+//	h_prev_grad: The gradient of h_prev to be back-propped.
+//	w_grad: The gradient for w to be back-propped.
+//	wci_grad: The gradient for wci to be back-propped.
+//	wcf_grad: The gradient for wcf to be back-propped.
+//	wco_grad: The gradient for wco to be back-propped.
+//	b_grad: The gradient for w to be back-propped.
+func BlockLSTMGradV2(scope *Scope, seq_len_max tf.Output, x tf.Output, cs_prev tf.Output, h_prev tf.Output, w tf.Output, wci tf.Output, wcf tf.Output, wco tf.Output, b tf.Output, i tf.Output, cs tf.Output, f tf.Output, o tf.Output, ci tf.Output, co tf.Output, h tf.Output, cs_grad tf.Output, h_grad tf.Output, use_peephole bool) (x_grad tf.Output, cs_prev_grad tf.Output, h_prev_grad tf.Output, w_grad tf.Output, wci_grad tf.Output, wcf_grad tf.Output, wco_grad tf.Output, b_grad tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"use_peephole": use_peephole}
+	opspec := tf.OpSpec{
+		Type: "BlockLSTMGradV2",
+		Input: []tf.Input{
+			seq_len_max, x, cs_prev, h_prev, w, wci, wcf, wco, b, i, cs, f, o, ci, co, h, cs_grad, h_grad,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4), op.Output(5), op.Output(6), op.Output(7)
+}
+
+// Returns the element-wise max of two SparseTensors.
+//
+// Assumes the two SparseTensors have the same shape, i.e., no broadcasting.
+//
+// Arguments:
+//	a_indices: 2-D.  `N x R` matrix with the indices of non-empty values in a
+// SparseTensor, in the canonical lexicographic ordering.
+//	a_values: 1-D.  `N` non-empty values corresponding to `a_indices`.
+//	a_shape: 1-D.  Shape of the input SparseTensor.
+//	b_indices: counterpart to `a_indices` for the other operand.
+//	b_values: counterpart to `a_values` for the other operand; must be of the same dtype.
+//	b_shape: counterpart to `a_shape` for the other operand; the two shapes must be equal.
+//
+// Returns:
+//	output_indices: 2-D.  The indices of the output SparseTensor.
+//	output_values: 1-D.  The values of the output SparseTensor.
+func SparseSparseMaximum(scope *Scope, a_indices tf.Output, a_values tf.Output, a_shape tf.Output, b_indices tf.Output, b_values tf.Output, b_shape tf.Output) (output_indices tf.Output, output_values tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSparseMaximum",
+		Input: []tf.Input{
+			a_indices, a_values, a_shape, b_indices, b_values, b_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Computes the Bessel i1e function of `x` element-wise.
+//
+// Exponentially scaled modified Bessel function of order 0 defined as
+// `bessel_i1e(x) = exp(-abs(x)) bessel_i1(x)`.
+//
+// This function is faster and numerically stabler than `bessel_i1(x)`.
+func BesselI1e(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BesselI1e",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes rectified linear gradients for a Relu operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding Relu operation.
+//	features: The features passed as input to the corresponding Relu operation, OR
+// the outputs of that operation (both work equivalently).
+//
+// Returns `gradients * (features > 0)`.
+func ReluGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReluGrad",
+		Input: []tf.Input{
+			gradients, features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LoadTPUEmbeddingRMSPropParametersAttr is an optional argument to LoadTPUEmbeddingRMSPropParameters.
+type LoadTPUEmbeddingRMSPropParametersAttr func(optionalAttr)
+
+// LoadTPUEmbeddingRMSPropParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func LoadTPUEmbeddingRMSPropParametersTableId(value int64) LoadTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingRMSPropParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingRMSPropParametersTableName(value string) LoadTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingRMSPropParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingRMSPropParametersConfig(value string) LoadTPUEmbeddingRMSPropParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load RMSProp embedding parameters.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the RMSProp optimization algorithm.
+//	ms: Value of ms used in the RMSProp optimization algorithm.
+//	mom: Value of mom used in the RMSProp optimization algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingRMSPropParameters(scope *Scope, parameters tf.Output, ms tf.Output, mom tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingRMSPropParametersAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingRMSPropParameters",
+		Input: []tf.Input{
+			parameters, ms, mom,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Returns a batched diagonal tensor with a given batched diagonal values.
+//
+// Given a `diagonal`, this operation returns a tensor with the `diagonal` and
+// everything else padded with zeros. The diagonal is computed as follows:
+//
+// Assume `diagonal` has `k` dimensions `[I, J, K, ..., N]`, then the output is a
+// tensor of rank `k+1` with dimensions [I, J, K, ..., N, N]` where:
+//
+// `output[i, j, k, ..., m, n] = 1{m=n} * diagonal[i, j, k, ..., n]`.
+//
+// For example:
+//
+// ```
+// # 'diagonal' is [[1, 2, 3, 4], [5, 6, 7, 8]]
+//
+// and diagonal.shape = (2, 4)
+//
+// tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0]
+//                                      [0, 2, 0, 0]
+//                                      [0, 0, 3, 0]
+//                                      [0, 0, 0, 4]],
+//                                     [[5, 0, 0, 0]
+//                                      [0, 6, 0, 0]
+//                                      [0, 0, 7, 0]
+//                                      [0, 0, 0, 8]]]
+//
+// which has shape (2, 4, 4)
+// ```
+//
+// Arguments:
+//	diagonal: Rank `k`, where `k >= 1`.
+//
+// Returns Rank `k+1`, with `output.shape = diagonal.shape + [diagonal.shape[-1]]`.
+func MatrixDiag(scope *Scope, diagonal tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MatrixDiag",
+		Input: []tf.Input{
+			diagonal,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StatelessTruncatedNormalAttr is an optional argument to StatelessTruncatedNormal.
+type StatelessTruncatedNormalAttr func(optionalAttr)
+
+// StatelessTruncatedNormalDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_FLOAT
+func StatelessTruncatedNormalDtype(value tf.DataType) StatelessTruncatedNormalAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs deterministic pseudorandom values from a truncated normal distribution.
+//
+// The generated values follow a normal distribution with mean 0 and standard
+// deviation 1, except that values whose magnitude is more than 2 standard
+// deviations from the mean are dropped and re-picked.
+//
+// The outputs are a deterministic function of `shape` and `seed`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//
+// Returns Random values with specified shape.
+func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessTruncatedNormalAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessTruncatedNormal",
+		Input: []tf.Input{
+			shape, seed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr is an optional argument to RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug.
+type RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableId(value int64) RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableName(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugConfig(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve SGD embedding parameters with debug support.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the stochastic gradient descent optimization algorithm.
+//	gradient_accumulators: Parameter gradient_accumulators updated by the Adadelta optimization algorithm.
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr) (parameters tf.Output, gradient_accumulators tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// StatelessRandomUniformAttr is an optional argument to StatelessRandomUniform.
+type StatelessRandomUniformAttr func(optionalAttr)
+
+// StatelessRandomUniformDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_FLOAT
+func StatelessRandomUniformDtype(value tf.DataType) StatelessRandomUniformAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs deterministic pseudorandom random values from a uniform distribution.
+//
+// The generated values follow a uniform distribution in the range `[0, 1)`. The
+// lower bound 0 is included in the range, while the upper bound 1 is excluded.
+//
+// The outputs are a deterministic function of `shape` and `seed`.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//	seed: 2 seeds (shape [2]).
+//
+// Returns Random values with specified shape.
+func StatelessRandomUniform(scope *Scope, shape tf.Output, seed tf.Output, optional ...StatelessRandomUniformAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessRandomUniform",
+		Input: []tf.Input{
+			shape, seed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// MaxPoolGradGradV2Attr is an optional argument to MaxPoolGradGradV2.
+type MaxPoolGradGradV2Attr func(optionalAttr)
+
+// MaxPoolGradGradV2DataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, in_height, in_width, in_channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, in_channels, in_height, in_width].
+// If not specified, defaults to "NHWC"
+func MaxPoolGradGradV2DataFormat(value string) MaxPoolGradGradV2Attr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// Computes second-order gradients of the maxpooling function.
+//
+// Arguments:
+//	orig_input: The original input tensor.
+//	orig_output: The original output tensor.
+//	grad: 4-D.  Gradients of gradients w.r.t. the input of `max_pool`.
+//	ksize: The size of the window for each dimension of the input tensor.
+//	strides: The stride of the sliding window for each dimension of the
+// input tensor.
+//	padding: The type of padding algorithm to use.
+//
+// Returns Gradients of gradients w.r.t. the input to `max_pool`.
+func MaxPoolGradGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output, grad tf.Output, ksize tf.Output, strides tf.Output, padding string, optional ...MaxPoolGradGradV2Attr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MaxPoolGradGradV2",
+		Input: []tf.Input{
+			orig_input, orig_output, grad, ksize, strides,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingMomentumParametersAttr is an optional argument to RetrieveTPUEmbeddingMomentumParameters.
+type RetrieveTPUEmbeddingMomentumParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingMomentumParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingMomentumParametersTableId(value int64) RetrieveTPUEmbeddingMomentumParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingMomentumParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingMomentumParametersTableName(value string) RetrieveTPUEmbeddingMomentumParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingMomentumParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingMomentumParametersConfig(value string) RetrieveTPUEmbeddingMomentumParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve Momentum embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the Momentum optimization algorithm.
+//	momenta: Parameter momenta updated by the Momentum optimization algorithm.
+func RetrieveTPUEmbeddingMomentumParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingMomentumParametersAttr) (parameters tf.Output, momenta tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingMomentumParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // PaddingFIFOQueueV2Attr is an optional argument to PaddingFIFOQueueV2.
@@ -43553,8 +43011,6 @@ type LoadTPUEmbeddingMomentumParametersGradAccumDebugAttr func(optionalAttr)
 
 // LoadTPUEmbeddingMomentumParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingMomentumParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingMomentumParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43605,6 +43061,736 @@ func LoadTPUEmbeddingMomentumParametersGradAccumDebug(scope *Scope, parameters t
 		Type: "LoadTPUEmbeddingMomentumParametersGradAccumDebug",
 		Input: []tf.Input{
 			parameters, momenta, gradient_accumulators,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// RecvAttr is an optional argument to Recv.
+type RecvAttr func(optionalAttr)
+
+// RecvClientTerminated sets the optional client_terminated attribute to value.
+//
+// value: If set to true, this indicates that the node was added
+// to the graph as a result of a client-side feed or fetch of Tensor data,
+// in which case the corresponding send or recv is expected to be managed
+// locally by the caller.
+// If not specified, defaults to false
+func RecvClientTerminated(value bool) RecvAttr {
+	return func(m optionalAttr) {
+		m["client_terminated"] = value
+	}
+}
+
+// Receives the named tensor from send_device on recv_device.
+//
+// Arguments:
+//
+//	tensor_name: The name of the tensor to receive.
+//	send_device: The name of the device sending the tensor.
+//	send_device_incarnation: The current incarnation of send_device.
+//	recv_device: The name of the device receiving the tensor.
+//
+// Returns The tensor to receive.
+func Recv(scope *Scope, tensor_type tf.DataType, tensor_name string, send_device string, send_device_incarnation int64, recv_device string, optional ...RecvAttr) (tensor tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"tensor_type": tensor_type, "tensor_name": tensor_name, "send_device": send_device, "send_device_incarnation": send_device_incarnation, "recv_device": recv_device}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Recv",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// OrderedMapStageAttr is an optional argument to OrderedMapStage.
+type OrderedMapStageAttr func(optionalAttr)
+
+// OrderedMapStageCapacity sets the optional capacity attribute to value.
+//
+// value: Maximum number of elements in the Staging Area. If > 0, inserts
+// on the container will block when the capacity is reached.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapStageCapacity(value int64) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// OrderedMapStageMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func OrderedMapStageMemoryLimit(value int64) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// OrderedMapStageContainer sets the optional container attribute to value.
+//
+// value: If non-empty, this queue is placed in the given container. Otherwise,
+// a default container is used.
+// If not specified, defaults to ""
+func OrderedMapStageContainer(value string) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// OrderedMapStageSharedName sets the optional shared_name attribute to value.
+//
+// value: It is necessary to match this name to the matching Unstage Op.
+// If not specified, defaults to ""
+func OrderedMapStageSharedName(value string) OrderedMapStageAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Stage (key, values) in the underlying container which behaves like a ordered
+//
+// associative container.   Elements are ordered by key.
+//
+// Arguments:
+//	key: int64
+//
+//	values: a list of tensors
+// dtypes A list of data types that inserted values should adhere to.
+//
+//
+// Returns the created operation.
+func OrderedMapStage(scope *Scope, key tf.Output, indices tf.Output, values []tf.Output, dtypes []tf.DataType, optional ...OrderedMapStageAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "OrderedMapStage",
+		Input: []tf.Input{
+			key, indices, tf.OutputList(values),
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// TPUReplicateMetadataAttr is an optional argument to TPUReplicateMetadata.
+type TPUReplicateMetadataAttr func(optionalAttr)
+
+// TPUReplicateMetadataNumCoresPerReplica sets the optional num_cores_per_replica attribute to value.
+//
+// value: Number of cores per replica. Used for model parallelism.
+// If not specified, defaults to 1
+func TPUReplicateMetadataNumCoresPerReplica(value int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["num_cores_per_replica"] = value
+	}
+}
+
+// TPUReplicateMetadataTopology sets the optional topology attribute to value.
+//
+// value: TopologyProto indicating the topology of the TPU pod slice.
+// If not specified, defaults to ""
+func TPUReplicateMetadataTopology(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["topology"] = value
+	}
+}
+
+// TPUReplicateMetadataUseTpu sets the optional use_tpu attribute to value.
+//
+// value: Whether to place the computation on the TPU.
+// If not specified, defaults to true
+func TPUReplicateMetadataUseTpu(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["use_tpu"] = value
+	}
+}
+
+// TPUReplicateMetadataDeviceAssignment sets the optional device_assignment attribute to value.
+//
+// value: The assignment of devices for the computation.
+// If not specified, defaults to {}
+func TPUReplicateMetadataDeviceAssignment(value []int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["device_assignment"] = value
+	}
+}
+
+// TPUReplicateMetadataComputationShape sets the optional computation_shape attribute to value.
+//
+// value: DEPRECATED. Use num_cores_per_replica instead.
+// If not specified, defaults to {}
+func TPUReplicateMetadataComputationShape(value []int64) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["computation_shape"] = value
+	}
+}
+
+// TPUReplicateMetadataHostComputeCore sets the optional host_compute_core attribute to value.
+// If not specified, defaults to {}
+func TPUReplicateMetadataHostComputeCore(value []string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["host_compute_core"] = value
+	}
+}
+
+// TPUReplicateMetadataPaddingMap sets the optional padding_map attribute to value.
+// If not specified, defaults to {}
+func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["padding_map"] = value
+	}
+}
+
+// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
+// If not specified, defaults to "STEP_MARK_AT_ENTRY"
+func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["step_marker_location"] = value
+	}
+}
+
+// TPUReplicateMetadataAllowSoftPlacement sets the optional allow_soft_placement attribute to value.
+// If not specified, defaults to false
+func TPUReplicateMetadataAllowSoftPlacement(value bool) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["allow_soft_placement"] = value
+	}
+}
+
+// Metadata indicating how the TPU computation should be replicated.
+//
+// This operation holds the metadata common to operations of a `tpu.replicate()` computation subgraph.
+//
+// Arguments:
+//	num_replicas: Number of replicas of the computation
+//
+// Returns the created operation.
+func TPUReplicateMetadata(scope *Scope, num_replicas int64, optional ...TPUReplicateMetadataAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_replicas": num_replicas}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TPUReplicateMetadata",
+
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// RequantizePerChannelAttr is an optional argument to RequantizePerChannel.
+type RequantizePerChannelAttr func(optionalAttr)
+
+// RequantizePerChannelOutType sets the optional out_type attribute to value.
+//
+// value: The quantized type of output tensor that needs to be converted.
+// If not specified, defaults to DT_QUINT8
+func RequantizePerChannelOutType(value tf.DataType) RequantizePerChannelAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Requantizes input with min and max values known per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	input_min: The minimum value of the input tensor
+//	input_max: The maximum value of the input tensor.
+//	requested_output_min: The minimum value of the output tensor requested.
+//	requested_output_max: The maximum value of the output tensor requested.
+//
+// Returns:
+//	output: Output tensor.
+//	output_min: The minimum value of the final output tensor
+//	output_max: The maximum value of the final output tensor.
+func RequantizePerChannel(scope *Scope, input tf.Output, input_min tf.Output, input_max tf.Output, requested_output_min tf.Output, requested_output_max tf.Output, optional ...RequantizePerChannelAttr) (output tf.Output, output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RequantizePerChannel",
+		Input: []tf.Input{
+			input, input_min, input_max, requested_output_min, requested_output_max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// LeakyReluAttr is an optional argument to LeakyRelu.
+type LeakyReluAttr func(optionalAttr)
+
+// LeakyReluAlpha sets the optional alpha attribute to value.
+// If not specified, defaults to 0.2
+func LeakyReluAlpha(value float32) LeakyReluAttr {
+	return func(m optionalAttr) {
+		m["alpha"] = value
+	}
+}
+
+// Computes rectified linear: `max(features, features * alpha)`.
+func LeakyRelu(scope *Scope, features tf.Output, optional ...LeakyReluAttr) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LeakyRelu",
+		Input: []tf.Input{
+			features,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns an element-wise indication of the sign of a number.
+//
+// `y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+//
+// For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+//
+// Example usage:
+// >>> tf.math.sign([0., 2., -3.])
+// <tf.Tensor: shape=(3,), dtype=float32, numpy=array([ 0.,  1., -1.], dtype=float32)>
+func Sign(scope *Scope, x tf.Output) (y tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Sign",
+		Input: []tf.Input{
+			x,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// ResourceApplyAddSignAttr is an optional argument to ResourceApplyAddSign.
+type ResourceApplyAddSignAttr func(optionalAttr)
+
+// ResourceApplyAddSignUseLocking sets the optional use_locking attribute to value.
+//
+// value: If `True`, updating of the var and m tensors is
+// protected by a lock; otherwise the behavior is undefined, but may exhibit less
+// contention.
+// If not specified, defaults to false
+func ResourceApplyAddSignUseLocking(value bool) ResourceApplyAddSignAttr {
+	return func(m optionalAttr) {
+		m["use_locking"] = value
+	}
+}
+
+// Update '*var' according to the AddSign update.
+//
+// m_t <- beta1 * m_{t-1} + (1 - beta1) * g
+// update <- (alpha + sign_decay * sign(g) *sign(m)) * g
+// variable <- variable - lr_t * update
+//
+// Arguments:
+//	var_: Should be from a Variable().
+//	m: Should be from a Variable().
+//	lr: Scaling factor. Must be a scalar.
+//	alpha: Must be a scalar.
+//	sign_decay: Must be a scalar.
+//	beta: Must be a scalar.
+//	grad: The gradient.
+//
+// Returns the created operation.
+func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Output, alpha tf.Output, sign_decay tf.Output, beta tf.Output, grad tf.Output, optional ...ResourceApplyAddSignAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "ResourceApplyAddSign",
+		Input: []tf.Input{
+			var_, m, lr, alpha, sign_decay, beta, grad,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Concatenates tensors along one dimension.
+//
+// Arguments:
+//	values: List of `N` Tensors to concatenate. Their ranks and types must match,
+// and their sizes must match in all dimensions except `concat_dim`.
+//	axis: 0-D.  The dimension along which to concatenate.  Must be in the
+// range [-rank(values), rank(values)).
+//
+// Returns A `Tensor` with the concatenation of values stacked along the
+// `concat_dim` dimension.  This tensor's shape matches that of `values` except
+// in `concat_dim` where it has the sum of the sizes.
+func ConcatV2(scope *Scope, values []tf.Output, axis tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ConcatV2",
+		Input: []tf.Input{
+			tf.OutputList(values), axis,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingRMSPropParametersGradAccumDebug.
+type LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr func(optionalAttr)
+
+// LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingRMSPropParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingRMSPropParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load RMSProp embedding parameters with debug support.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the RMSProp optimization algorithm.
+//	ms: Value of ms used in the RMSProp optimization algorithm.
+//	mom: Value of mom used in the RMSProp optimization algorithm.
+//	gradient_accumulators: Value of gradient_accumulators used in the RMSProp optimization algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingRMSPropParametersGradAccumDebug(scope *Scope, parameters tf.Output, ms tf.Output, mom tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingRMSPropParametersGradAccumDebug",
+		Input: []tf.Input{
+			parameters, ms, mom, gradient_accumulators,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// TensorListConcatAttr is an optional argument to TensorListConcat.
+type TensorListConcatAttr func(optionalAttr)
+
+// TensorListConcatElementShape sets the optional element_shape attribute to value.
+// If not specified, defaults to {unknown_rank:true}
+func TensorListConcatElementShape(value tf.Shape) TensorListConcatAttr {
+	return func(m optionalAttr) {
+		m["element_shape"] = value
+	}
+}
+
+// Concats all tensors in the list along the 0th dimension.
+//
+// Requires that all tensors have the same shape except the first dimension.
+//
+// input_handle: The input list.
+// tensor: The concated result.
+// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
+//
+func TensorListConcat(scope *Scope, input_handle tf.Output, element_dtype tf.DataType, optional ...TensorListConcatAttr) (tensor tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"element_dtype": element_dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListConcat",
+		Input: []tf.Input{
+			input_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// LoadTPUEmbeddingMDLAdagradLightParametersAttr is an optional argument to LoadTPUEmbeddingMDLAdagradLightParameters.
+type LoadTPUEmbeddingMDLAdagradLightParametersAttr func(optionalAttr)
+
+// LoadTPUEmbeddingMDLAdagradLightParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func LoadTPUEmbeddingMDLAdagradLightParametersTableId(value int64) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingMDLAdagradLightParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingMDLAdagradLightParametersTableName(value string) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingMDLAdagradLightParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingMDLAdagradLightParametersConfig(value string) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load MDL Adagrad Light embedding parameters.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the MDL Adagrad Light optimization algorithm.
+//	accumulators: Value of accumulators used in the MDL Adagrad Light optimization algorithm.
+//	weights: Value of weights used in the MDL Adagrad Light optimization algorithm.
+//	benefits: Value of benefits used in the MDL Adagrad Light optimization algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingMDLAdagradLightParameters(scope *Scope, parameters tf.Output, accumulators tf.Output, weights tf.Output, benefits tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingMDLAdagradLightParametersAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingMDLAdagradLightParameters",
+		Input: []tf.Input{
+			parameters, accumulators, weights, benefits,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Returns the next record (key, value pair) produced by a Reader.
+//
+// Will dequeue from the input queue if necessary (e.g. when the
+// Reader needs to start reading from a new file since it has finished
+// with the previous file).
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+//	queue_handle: Handle to a Queue, with string work items.
+//
+// Returns:
+//	key: A scalar.
+//	value: A scalar.
+func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output) (key tf.Output, value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderReadV2",
+		Input: []tf.Input{
+			reader_handle, queue_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// CumprodAttr is an optional argument to Cumprod.
+type CumprodAttr func(optionalAttr)
+
+// CumprodExclusive sets the optional exclusive attribute to value.
+//
+// value: If `True`, perform exclusive cumprod.
+// If not specified, defaults to false
+func CumprodExclusive(value bool) CumprodAttr {
+	return func(m optionalAttr) {
+		m["exclusive"] = value
+	}
+}
+
+// CumprodReverse sets the optional reverse attribute to value.
+//
+// value: A `bool` (default: False).
+// If not specified, defaults to false
+func CumprodReverse(value bool) CumprodAttr {
+	return func(m optionalAttr) {
+		m["reverse"] = value
+	}
+}
+
+// Compute the cumulative product of the tensor `x` along `axis`.
+//
+// By default, this op performs an inclusive cumprod, which means that the first
+// element of the input is identical to the first element of the output:
+//
+// ```python
+// tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
+// ```
+//
+// By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
+// performed instead:
+//
+// ```python
+// tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
+// ```
+//
+// By setting the `reverse` kwarg to `True`, the cumprod is performed in the
+// opposite direction:
+//
+// ```python
+// tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
+// ```
+//
+// This is more efficient than using separate `tf.reverse` ops.
+//
+// The `reverse` and `exclusive` kwargs can also be combined:
+//
+// ```python
+// tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
+// ```
+//
+// Arguments:
+//	x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
+// `int64`, `int32`, `uint8`, `uint16`, `int16`, `int8`, `complex64`,
+// `complex128`, `qint8`, `quint8`, `qint32`, `half`.
+//	axis: A `Tensor` of type `int32` (default: 0). Must be in the range
+// `[-rank(x), rank(x))`.
+func Cumprod(scope *Scope, x tf.Output, axis tf.Output, optional ...CumprodAttr) (out tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Cumprod",
+		Input: []tf.Input{
+			x, axis,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug.
+type LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr func(optionalAttr)
+
+// LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Load SGD embedding parameters.
+//
+// An op that loads optimization parameters into HBM for embedding. Must be
+// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
+// embedding table configuration. For example, this op is used to install
+// parameters that are loaded from a checkpoint before a training loop is
+// executed.
+//
+// Arguments:
+//	parameters: Value of parameters used in the stochastic gradient descent optimization algorithm.
+//	gradient_accumulators: Value of gradient_accumulators used in the Adadelta optimization algorithm.
+//
+//
+//
+// Returns the created operation.
+func LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug(scope *Scope, parameters tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebugAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug",
+		Input: []tf.Input{
+			parameters, gradient_accumulators,
 		},
 		Attrs: attrs,
 	}
@@ -43801,8 +43987,6 @@ type LoadTPUEmbeddingStochasticGradientDescentParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingStochasticGradientDescentParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingStochasticGradientDescentParametersTableId(value int64) LoadTPUEmbeddingStochasticGradientDescentParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -43857,64 +44041,81 @@ func LoadTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, parameter
 	return scope.AddOperation(opspec)
 }
 
-// ResourceApplyMomentumAttr is an optional argument to ResourceApplyMomentum.
-type ResourceApplyMomentumAttr func(optionalAttr)
-
-// ResourceApplyMomentumUseLocking sets the optional use_locking attribute to value.
+// Counts the number of occurrences of each value in an integer array.
 //
-// value: If `True`, updating of the var and accum tensors will be protected
-// by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyMomentumUseLocking(value bool) ResourceApplyMomentumAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// ResourceApplyMomentumUseNesterov sets the optional use_nesterov attribute to value.
+// Outputs a vector with length `size` and the same dtype as `weights`. If
+// `weights` are empty, then index `i` stores the number of times the value `i` is
+// counted in `arr`. If `weights` are non-empty, then index `i` stores the sum of
+// the value in `weights` at each index where the corresponding value in `arr` is
+// `i`.
 //
-// value: If `True`, the tensor passed to compute grad will be
-// var - lr * momentum * accum, so in the end, the var you get is actually
-// var - lr * momentum * accum.
-// If not specified, defaults to false
-func ResourceApplyMomentumUseNesterov(value bool) ResourceApplyMomentumAttr {
-	return func(m optionalAttr) {
-		m["use_nesterov"] = value
-	}
-}
-
-// Update '*var' according to the momentum scheme. Set use_nesterov = True if you
-//
-// want to use Nesterov momentum.
-//
-// accum = accum * momentum + grad
-// var -= lr * accum
+// Values in `arr` outside of the range [0, size) are ignored.
 //
 // Arguments:
-//	var_: Should be from a Variable().
-//	accum: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	grad: The gradient.
-//	momentum: Momentum. Must be a scalar.
+//	arr: int32 `Tensor`.
+//	size: non-negative int32 scalar `Tensor`.
+//	weights: is an int32, int64, float32, or float64 `Tensor` with the same
+// shape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights
+// equal to 1.
 //
-// Returns the created operation.
-func ResourceApplyMomentum(scope *Scope, var_ tf.Output, accum tf.Output, lr tf.Output, grad tf.Output, momentum tf.Output, optional ...ResourceApplyMomentumAttr) (o *tf.Operation) {
+// Returns 1D `Tensor` with length equal to `size`. The counts or summed weights for
+// each value in the range [0, size).
+func Bincount(scope *Scope, arr tf.Output, size tf.Output, weights tf.Output) (bins tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
 	opspec := tf.OpSpec{
-		Type: "ResourceApplyMomentum",
+		Type: "Bincount",
 		Input: []tf.Input{
-			var_, accum, lr, grad, momentum,
+			arr, size, weights,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Gradients for batch normalization.
+//
+// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
+//
+// This op is deprecated. See `tf.nn.batch_normalization`.
+//
+// Arguments:
+//	t: A 4D input Tensor.
+//	m: A 1D mean Tensor with size matching the last dimension of t.
+// This is the first output from tf.nn.moments,
+// or a saved moving average thereof.
+//	v: A 1D variance Tensor with size matching the last dimension of t.
+// This is the second output from tf.nn.moments,
+// or a saved moving average thereof.
+//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
+// If "scale_after_normalization" is true, this Tensor will be multiplied
+// with the normalized Tensor.
+//	backprop: 4D backprop Tensor.
+//	variance_epsilon: A small float number to avoid dividing by 0.
+//	scale_after_normalization: A bool indicating whether the resulted tensor
+// needs to be multiplied with gamma.
+//
+// Returns:
+//	dx: 4D backprop tensor for input.
+//	dm: 1D backprop tensor for mean.
+//	dv: 1D backprop tensor for variance.
+//	db: 1D backprop tensor for beta.
+//	dg: 1D backprop tensor for gamma.
+func BatchNormWithGlobalNormalizationGrad(scope *Scope, t tf.Output, m tf.Output, v tf.Output, gamma tf.Output, backprop tf.Output, variance_epsilon float32, scale_after_normalization bool) (dx tf.Output, dm tf.Output, dv tf.Output, db tf.Output, dg tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
+	opspec := tf.OpSpec{
+		Type: "BatchNormWithGlobalNormalizationGrad",
+		Input: []tf.Input{
+			t, m, v, gamma, backprop,
 		},
 		Attrs: attrs,
 	}
-	return scope.AddOperation(opspec)
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
 }
 
 // Strip leading and trailing whitespaces from the Tensor.
@@ -44113,8 +44314,6 @@ type LoadTPUEmbeddingAdagradParametersGradAccumDebugAttr func(optionalAttr)
 
 // LoadTPUEmbeddingAdagradParametersGradAccumDebugTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingAdagradParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingAdagradParametersGradAccumDebugAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -44255,8 +44454,6 @@ type LoadTPUEmbeddingADAMParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingADAMParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingADAMParametersTableId(value int64) LoadTPUEmbeddingADAMParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -44463,8 +44660,6 @@ type LoadTPUEmbeddingAdagradParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingAdagradParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingAdagradParametersTableId(value int64) LoadTPUEmbeddingAdagradParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -44822,91 +45017,6 @@ func ImageProjectiveTransformV2(scope *Scope, images tf.Output, transforms tf.Ou
 	return op.Output(0)
 }
 
-// Computes rectified linear gradients for a Relu operation.
-//
-// Arguments:
-//	gradients: The backpropagated gradients to the corresponding Relu operation.
-//	features: The features passed as input to the corresponding Relu operation, OR
-// the outputs of that operation (both work equivalently).
-//
-// Returns `gradients * (features > 0)`.
-func ReluGrad(scope *Scope, gradients tf.Output, features tf.Output) (backprops tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReluGrad",
-		Input: []tf.Input{
-			gradients, features,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// LoadTPUEmbeddingRMSPropParametersAttr is an optional argument to LoadTPUEmbeddingRMSPropParameters.
-type LoadTPUEmbeddingRMSPropParametersAttr func(optionalAttr)
-
-// LoadTPUEmbeddingRMSPropParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func LoadTPUEmbeddingRMSPropParametersTableId(value int64) LoadTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// LoadTPUEmbeddingRMSPropParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingRMSPropParametersTableName(value string) LoadTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// LoadTPUEmbeddingRMSPropParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingRMSPropParametersConfig(value string) LoadTPUEmbeddingRMSPropParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Load RMSProp embedding parameters.
-//
-// An op that loads optimization parameters into HBM for embedding. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-// embedding table configuration. For example, this op is used to install
-// parameters that are loaded from a checkpoint before a training loop is
-// executed.
-//
-// Arguments:
-//	parameters: Value of parameters used in the RMSProp optimization algorithm.
-//	ms: Value of ms used in the RMSProp optimization algorithm.
-//	mom: Value of mom used in the RMSProp optimization algorithm.
-//
-//
-//
-// Returns the created operation.
-func LoadTPUEmbeddingRMSPropParameters(scope *Scope, parameters tf.Output, ms tf.Output, mom tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingRMSPropParametersAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LoadTPUEmbeddingRMSPropParameters",
-		Input: []tf.Input{
-			parameters, ms, mom,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
 // InfeedEnqueueTupleAttr is an optional argument to InfeedEnqueueTuple.
 type InfeedEnqueueTupleAttr func(optionalAttr)
 
@@ -45050,6 +45160,154 @@ func InfeedEnqueue(scope *Scope, input tf.Output, optional ...InfeedEnqueueAttr)
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// SerializeManySparseAttr is an optional argument to SerializeManySparse.
+type SerializeManySparseAttr func(optionalAttr)
+
+// SerializeManySparseOutType sets the optional out_type attribute to value.
+//
+// value: The `dtype` to use for serialization; the supported types are `string`
+// (default) and `variant`.
+// If not specified, defaults to DT_STRING
+func SerializeManySparseOutType(value tf.DataType) SerializeManySparseAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// Serialize an `N`-minibatch `SparseTensor` into an `[N, 3]` `Tensor` object.
+//
+// The `SparseTensor` must have rank `R` greater than 1, and the first dimension
+// is treated as the minibatch dimension.  Elements of the `SparseTensor`
+// must be sorted in increasing order of this first dimension.  The serialized
+// `SparseTensor` objects going into each row of `serialized_sparse` will have
+// rank `R-1`.
+//
+// The minibatch size `N` is extracted from `sparse_shape[0]`.
+//
+// Arguments:
+//	sparse_indices: 2-D.  The `indices` of the minibatch `SparseTensor`.
+//	sparse_values: 1-D.  The `values` of the minibatch `SparseTensor`.
+//	sparse_shape: 1-D.  The `shape` of the minibatch `SparseTensor`.
+func SerializeManySparse(scope *Scope, sparse_indices tf.Output, sparse_values tf.Output, sparse_shape tf.Output, optional ...SerializeManySparseAttr) (serialized_sparse tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SerializeManySparse",
+		Input: []tf.Input{
+			sparse_indices, sparse_values, sparse_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Says whether the targets are in the top `K` predictions.
+//
+// This outputs a `batch_size` bool array, an entry `out[i]` is `true` if the
+// prediction for the target class is among the top `k` predictions among
+// all predictions for example `i`. Note that the behavior of `InTopK` differs
+// from the `TopK` op in its handling of ties; if multiple classes have the
+// same prediction value and straddle the top-`k` boundary, all of those
+// classes are considered to be in the top `k`.
+//
+// More formally, let
+//
+//   \\(predictions_i\\) be the predictions for all classes for example `i`,
+//   \\(targets_i\\) be the target class for example `i`,
+//   \\(out_i\\) be the output for example `i`,
+//
+// $$out_i = predictions_{i, targets_i} \in TopKIncludingTies(predictions_i)$$
+//
+// Arguments:
+//	predictions: A `batch_size` x `classes` tensor.
+//	targets: A `batch_size` vector of class ids.
+//	k: Number of top elements to look at for computing precision.
+//
+// Returns Computed precision at `k` as a `bool Tensor`.
+func InTopKV2(scope *Scope, predictions tf.Output, targets tf.Output, k tf.Output) (precision tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "InTopKV2",
+		Input: []tf.Input{
+			predictions, targets, k,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates an Optional variant with no value.
+func OptionalNone(scope *Scope) (optional tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OptionalNone",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr is an optional argument to RetrieveTPUEmbeddingStochasticGradientDescentParameters.
+type RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableId(value int64) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersTableName(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingStochasticGradientDescentParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingStochasticGradientDescentParametersConfig(value string) RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve SGD embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns Parameter parameters updated by the stochastic gradient descent optimization algorithm.
+func RetrieveTPUEmbeddingStochasticGradientDescentParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingStochasticGradientDescentParametersAttr) (parameters tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingStochasticGradientDescentParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Output a fact about factorials.
@@ -45531,168 +45789,6 @@ func TPUOrdinalSelector(scope *Scope) (device_ordinals tf.Output) {
 	return op.Output(0)
 }
 
-// Creates a dataset that passes a sliding window over `input_dataset`.
-//
-// Arguments:
-//
-//	window_size: A scalar representing the number of elements in the
-// sliding window.
-//	window_shift: A scalar representing the steps moving the sliding window
-// forward in one iteration. It must be positive.
-//	window_stride: A scalar representing the stride of the input elements of the sliding window.
-// It must be positive.
-//
-//
-func SlidingWindowDataset(scope *Scope, input_dataset tf.Output, window_size tf.Output, window_shift tf.Output, window_stride tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "SlidingWindowDataset",
-		Input: []tf.Input{
-			input_dataset, window_size, window_shift, window_stride,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Locks a mutex resource.  The output is the lock.  So long as the lock tensor
-//
-// is alive, any other request to use `MutexLock` with this mutex will wait.
-//
-// This is particularly useful for creating a critical section when used in
-// conjunction with `MutexLockIdentity`:
-//
-// ```python
-//
-// mutex = mutex_v2(
-//   shared_name=handle_name, container=container, name=name)
-//
-// def execute_in_critical_section(fn, *args, **kwargs):
-//   lock = gen_resource_variable_ops.mutex_lock(mutex)
-//
-//   with ops.control_dependencies([lock]):
-//     r = fn(*args, **kwargs)
-//
-//   with ops.control_dependencies(nest.flatten(r)):
-//     with ops.colocate_with(mutex):
-//       ensure_lock_exists = mutex_lock_identity(lock)
-//
-//     # Make sure that if any element of r is accessed, all of
-//     # them are executed together.
-//     r = nest.map_structure(tf.identity, r)
-//
-//   with ops.control_dependencies([ensure_lock_exists]):
-//     return nest.map_structure(tf.identity, r)
-// ```
-//
-// While `fn` is running in the critical section, no other functions which wish to
-// use this critical section may run.
-//
-// Often the use case is that two executions of the same graph, in parallel,
-// wish to run `fn`; and we wish to ensure that only one of them executes
-// at a time.  This is especially important if `fn` modifies one or more
-// variables at a time.
-//
-// It is also useful if two separate functions must share a resource, but we
-// wish to ensure the usage is exclusive.
-//
-// Arguments:
-//	mutex: The mutex resource to lock.
-//
-// Returns A tensor that keeps a shared pointer to a lock on the mutex;
-// when the Tensor is destroyed, the use count on the shared pointer is decreased
-// by 1.  When it reaches 0, the lock is released.
-func MutexLock(scope *Scope, mutex tf.Output) (mutex_lock tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MutexLock",
-		Input: []tf.Input{
-			mutex,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// MaxPoolGradWithArgmaxAttr is an optional argument to MaxPoolGradWithArgmax.
-type MaxPoolGradWithArgmaxAttr func(optionalAttr)
-
-// MaxPoolGradWithArgmaxIncludeBatchInIndex sets the optional include_batch_in_index attribute to value.
-//
-// value: Whether to include batch dimension in flattened index of `argmax`.
-// If not specified, defaults to false
-func MaxPoolGradWithArgmaxIncludeBatchInIndex(value bool) MaxPoolGradWithArgmaxAttr {
-	return func(m optionalAttr) {
-		m["include_batch_in_index"] = value
-	}
-}
-
-// Computes gradients of the maxpooling function.
-//
-// Arguments:
-//	input: The original input.
-//	grad: 4-D with shape `[batch, height, width, channels]`.  Gradients w.r.t. the
-// output of `max_pool`.
-//	argmax: The indices of the maximum values chosen for each output of `max_pool`.
-//	ksize: The size of the window for each dimension of the input tensor.
-//	strides: The stride of the sliding window for each dimension of the
-// input tensor.
-//	padding: The type of padding algorithm to use.
-//
-// Returns Gradients w.r.t. the input of `max_pool`.
-func MaxPoolGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradWithArgmaxAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MaxPoolGradWithArgmax",
-		Input: []tf.Input{
-			input, grad, argmax,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// 2D fast Fourier transform.
-//
-// Computes the 2-dimensional discrete Fourier transform over the inner-most
-// 2 dimensions of `input`.
-//
-// Arguments:
-//	input: A complex tensor.
-//
-// Returns A complex tensor of the same shape as `input`. The inner-most 2
-//   dimensions of `input` are replaced with their 2D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.fft2
-// @end_compatibility
-func FFT2D(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FFT2D",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Conv2DBackpropFilterAttr is an optional argument to Conv2DBackpropFilter.
 type Conv2DBackpropFilterAttr func(optionalAttr)
 
@@ -45738,7 +45834,7 @@ func Conv2DBackpropFilterDataFormat(value string) Conv2DBackpropFilterAttr {
 // element on that dimension. The dimension order is determined by the value of
 // `data_format`, see above for details. Dilations in the batch and depth
 // dimensions must be 1.
-// If not specified, defaults to {i:1 i:1 i:1 i:1}
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
 func Conv2DBackpropFilterDilations(value []int64) Conv2DBackpropFilterAttr {
 	return func(m optionalAttr) {
 		m["dilations"] = value
@@ -46025,205 +46121,6 @@ func ResourceApplyPowerSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Out
 		Type: "ResourceApplyPowerSign",
 		Input: []tf.Input{
 			var_, m, lr, logbase, sign_decay, beta, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Returns an element-wise indication of the sign of a number.
-//
-// `y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
-//
-// For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
-//
-// Example usage:
-// >>> tf.math.sign([0., 2., -3.])
-// <tf.Tensor: shape=(3,), dtype=float32, numpy=array([ 0.,  1., -1.], dtype=float32)>
-func Sign(scope *Scope, x tf.Output) (y tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Sign",
-		Input: []tf.Input{
-			x,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// ResourceApplyAddSignAttr is an optional argument to ResourceApplyAddSign.
-type ResourceApplyAddSignAttr func(optionalAttr)
-
-// ResourceApplyAddSignUseLocking sets the optional use_locking attribute to value.
-//
-// value: If `True`, updating of the var and m tensors is
-// protected by a lock; otherwise the behavior is undefined, but may exhibit less
-// contention.
-// If not specified, defaults to false
-func ResourceApplyAddSignUseLocking(value bool) ResourceApplyAddSignAttr {
-	return func(m optionalAttr) {
-		m["use_locking"] = value
-	}
-}
-
-// Update '*var' according to the AddSign update.
-//
-// m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-// update <- (alpha + sign_decay * sign(g) *sign(m)) * g
-// variable <- variable - lr_t * update
-//
-// Arguments:
-//	var_: Should be from a Variable().
-//	m: Should be from a Variable().
-//	lr: Scaling factor. Must be a scalar.
-//	alpha: Must be a scalar.
-//	sign_decay: Must be a scalar.
-//	beta: Must be a scalar.
-//	grad: The gradient.
-//
-// Returns the created operation.
-func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Output, alpha tf.Output, sign_decay tf.Output, beta tf.Output, grad tf.Output, optional ...ResourceApplyAddSignAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "ResourceApplyAddSign",
-		Input: []tf.Input{
-			var_, m, lr, alpha, sign_decay, beta, grad,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Concatenates tensors along one dimension.
-//
-// Arguments:
-//	values: List of `N` Tensors to concatenate. Their ranks and types must match,
-// and their sizes must match in all dimensions except `concat_dim`.
-//	axis: 0-D.  The dimension along which to concatenate.  Must be in the
-// range [-rank(values), rank(values)).
-//
-// Returns A `Tensor` with the concatenation of values stacked along the
-// `concat_dim` dimension.  This tensor's shape matches that of `values` except
-// in `concat_dim` where it has the sum of the sizes.
-func ConcatV2(scope *Scope, values []tf.Output, axis tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ConcatV2",
-		Input: []tf.Input{
-			tf.OutputList(values), axis,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TensorListConcatAttr is an optional argument to TensorListConcat.
-type TensorListConcatAttr func(optionalAttr)
-
-// TensorListConcatElementShape sets the optional element_shape attribute to value.
-// If not specified, defaults to {unknown_rank:true}
-func TensorListConcatElementShape(value tf.Shape) TensorListConcatAttr {
-	return func(m optionalAttr) {
-		m["element_shape"] = value
-	}
-}
-
-// Concats all tensors in the list along the 0th dimension.
-//
-// Requires that all tensors have the same shape except the first dimension.
-//
-// input_handle: The input list.
-// tensor: The concated result.
-// lengths: Output tensor containing sizes of the 0th dimension of tensors in the list, used for computing the gradient.
-//
-func TensorListConcat(scope *Scope, input_handle tf.Output, element_dtype tf.DataType, optional ...TensorListConcatAttr) (tensor tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"element_dtype": element_dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorListConcat",
-		Input: []tf.Input{
-			input_handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
-// LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr is an optional argument to LoadTPUEmbeddingRMSPropParametersGradAccumDebug.
-type LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr func(optionalAttr)
-
-// LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableId(value int64) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingRMSPropParametersGradAccumDebugTableName(value string) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// LoadTPUEmbeddingRMSPropParametersGradAccumDebugConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingRMSPropParametersGradAccumDebugConfig(value string) LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Load RMSProp embedding parameters with debug support.
-//
-// An op that loads optimization parameters into HBM for embedding. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-// embedding table configuration. For example, this op is used to install
-// parameters that are loaded from a checkpoint before a training loop is
-// executed.
-//
-// Arguments:
-//	parameters: Value of parameters used in the RMSProp optimization algorithm.
-//	ms: Value of ms used in the RMSProp optimization algorithm.
-//	mom: Value of mom used in the RMSProp optimization algorithm.
-//	gradient_accumulators: Value of gradient_accumulators used in the RMSProp optimization algorithm.
-//
-//
-//
-// Returns the created operation.
-func LoadTPUEmbeddingRMSPropParametersGradAccumDebug(scope *Scope, parameters tf.Output, ms tf.Output, mom tf.Output, gradient_accumulators tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingRMSPropParametersGradAccumDebugAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LoadTPUEmbeddingRMSPropParametersGradAccumDebug",
-		Input: []tf.Input{
-			parameters, ms, mom, gradient_accumulators,
 		},
 		Attrs: attrs,
 	}
@@ -46522,6 +46419,61 @@ func ResourceApplyCenteredRMSProp(scope *Scope, var_ tf.Output, mg tf.Output, ms
 	return scope.AddOperation(opspec)
 }
 
+// RetrieveTPUEmbeddingFTRLParametersAttr is an optional argument to RetrieveTPUEmbeddingFTRLParameters.
+type RetrieveTPUEmbeddingFTRLParametersAttr func(optionalAttr)
+
+// RetrieveTPUEmbeddingFTRLParametersTableId sets the optional table_id attribute to value.
+// If not specified, defaults to -1
+func RetrieveTPUEmbeddingFTRLParametersTableId(value int64) RetrieveTPUEmbeddingFTRLParametersAttr {
+	return func(m optionalAttr) {
+		m["table_id"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingFTRLParametersTableName sets the optional table_name attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingFTRLParametersTableName(value string) RetrieveTPUEmbeddingFTRLParametersAttr {
+	return func(m optionalAttr) {
+		m["table_name"] = value
+	}
+}
+
+// RetrieveTPUEmbeddingFTRLParametersConfig sets the optional config attribute to value.
+// If not specified, defaults to ""
+func RetrieveTPUEmbeddingFTRLParametersConfig(value string) RetrieveTPUEmbeddingFTRLParametersAttr {
+	return func(m optionalAttr) {
+		m["config"] = value
+	}
+}
+
+// Retrieve FTRL embedding parameters.
+//
+// An op that retrieves optimization parameters from embedding to host
+// memory. Must be preceded by a ConfigureTPUEmbeddingHost op that sets up
+// the correct embedding table configuration. For example, this op is
+// used to retrieve updated parameters before saving a checkpoint.
+//
+// Returns:
+//	parameters: Parameter parameters updated by the FTRL optimization algorithm.
+//	accumulators: Parameter accumulators updated by the FTRL optimization algorithm.
+//	linears: Parameter linears updated by the FTRL optimization algorithm.
+func RetrieveTPUEmbeddingFTRLParameters(scope *Scope, num_shards int64, shard_id int64, optional ...RetrieveTPUEmbeddingFTRLParametersAttr) (parameters tf.Output, accumulators tf.Output, linears tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "RetrieveTPUEmbeddingFTRLParameters",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // EnqueueTPUEmbeddingIntegerBatchAttr is an optional argument to EnqueueTPUEmbeddingIntegerBatch.
 type EnqueueTPUEmbeddingIntegerBatchAttr func(optionalAttr)
 
@@ -46674,8 +46626,6 @@ type LoadTPUEmbeddingFTRLParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingFTRLParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingFTRLParametersTableId(value int64) LoadTPUEmbeddingFTRLParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -46730,6 +46680,149 @@ func LoadTPUEmbeddingFTRLParameters(scope *Scope, parameters tf.Output, accumula
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Conv3DBackpropInputAttr is an optional argument to Conv3DBackpropInput.
+type Conv3DBackpropInputAttr func(optionalAttr)
+
+// Conv3DBackpropInputDilations sets the optional dilations attribute to value.
+// If not specified, defaults to {i:1  i:1  i:1  i:1  i:1}
+func Conv3DBackpropInputDilations(value []int64) Conv3DBackpropInputAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes the gradients of 3-D convolution with respect to the input.
+//
+// DEPRECATED at GraphDef version 10: Use Conv3DBackpropInputV2
+//
+// Arguments:
+//	input: Shape `[batch, depth, rows, cols, in_channels]`.
+//	filter: Shape `[depth, rows, cols, in_channels, out_channels]`.
+// `in_channels` must match between `input` and `filter`.
+//	out_backprop: Backprop signal of shape `[batch, out_depth, out_rows, out_cols,
+// out_channels]`.
+//	strides: 1-D tensor of length 5. The stride of the sliding window for each
+// dimension of `input`. Must have `strides[0] = strides[4] = 1`.
+//	padding: The type of padding algorithm to use.
+func Conv3DBackpropInput(scope *Scope, input tf.Output, filter tf.Output, out_backprop tf.Output, strides []int64, padding string, optional ...Conv3DBackpropInputAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Conv3DBackpropInput",
+		Input: []tf.Input{
+			input, filter, out_backprop,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DepthwiseConv2dNativeAttr is an optional argument to DepthwiseConv2dNative.
+type DepthwiseConv2dNativeAttr func(optionalAttr)
+
+// DepthwiseConv2dNativeDataFormat sets the optional data_format attribute to value.
+//
+// value: Specify the data format of the input and output data. With the
+// default format "NHWC", the data is stored in the order of:
+//     [batch, height, width, channels].
+// Alternatively, the format could be "NCHW", the data storage order of:
+//     [batch, channels, height, width].
+// If not specified, defaults to "NHWC"
+func DepthwiseConv2dNativeDataFormat(value string) DepthwiseConv2dNativeAttr {
+	return func(m optionalAttr) {
+		m["data_format"] = value
+	}
+}
+
+// DepthwiseConv2dNativeDilations sets the optional dilations attribute to value.
+//
+// value: 1-D tensor of length 4.  The dilation factor for each dimension of
+// `input`. If set to k > 1, there will be k-1 skipped cells between each filter
+// element on that dimension. The dimension order is determined by the value of
+// `data_format`, see above for details. Dilations in the batch and depth
+// dimensions must be 1.
+// If not specified, defaults to {i:1  i:1  i:1  i:1}
+func DepthwiseConv2dNativeDilations(value []int64) DepthwiseConv2dNativeAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes a 2-D depthwise convolution given 4-D `input` and `filter` tensors.
+//
+// Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+// and a filter / kernel tensor of shape
+// `[filter_height, filter_width, in_channels, channel_multiplier]`, containing
+// `in_channels` convolutional filters of depth 1, `depthwise_conv2d` applies
+// a different filter to each input channel (expanding from 1 channel to
+// `channel_multiplier` channels for each), then concatenates the results
+// together. Thus, the output has `in_channels * channel_multiplier` channels.
+//
+// ```
+// for k in 0..in_channels-1
+//   for q in 0..channel_multiplier-1
+//     output[b, i, j, k * channel_multiplier + q] =
+//       sum_{di, dj} input[b, strides[1] * i + di, strides[2] * j + dj, k] *
+//                         filter[di, dj, k, q]
+// ```
+//
+// Must have `strides[0] = strides[3] = 1`.  For the most common case of the same
+// horizontal and vertices strides, `strides = [1, stride, stride, 1]`.
+//
+// Arguments:
+//
+//
+//	strides: 1-D of length 4.  The stride of the sliding window for each dimension
+// of `input`.
+//	padding: The type of padding algorithm to use.
+func DepthwiseConv2dNative(scope *Scope, input tf.Output, filter tf.Output, strides []int64, padding string, optional ...DepthwiseConv2dNativeAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DepthwiseConv2dNative",
+		Input: []tf.Input{
+			input, filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates an all-zeros CSRSparseMatrix with shape `dense_shape`.
+//
+// Arguments:
+//	dense_shape: The desired matrix shape.
+//
+//
+// Returns An empty CSR matrix with shape `dense_shape`.
+func SparseMatrixZeros(scope *Scope, dense_shape tf.Output, type_ tf.DataType) (sparse_matrix tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"type": type_}
+	opspec := tf.OpSpec{
+		Type: "SparseMatrixZeros",
+		Input: []tf.Input{
+			dense_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Computes the minimum along segments of a tensor.
@@ -46874,83 +46967,6 @@ func ResourceApplyAdagradV2(scope *Scope, var_ tf.Output, accum tf.Output, lr tf
 	return scope.AddOperation(opspec)
 }
 
-// Counts the number of occurrences of each value in an integer array.
-//
-// Outputs a vector with length `size` and the same dtype as `weights`. If
-// `weights` are empty, then index `i` stores the number of times the value `i` is
-// counted in `arr`. If `weights` are non-empty, then index `i` stores the sum of
-// the value in `weights` at each index where the corresponding value in `arr` is
-// `i`.
-//
-// Values in `arr` outside of the range [0, size) are ignored.
-//
-// Arguments:
-//	arr: int32 `Tensor`.
-//	size: non-negative int32 scalar `Tensor`.
-//	weights: is an int32, int64, float32, or float64 `Tensor` with the same
-// shape as `arr`, or a length-0 `Tensor`, in which case it acts as all weights
-// equal to 1.
-//
-// Returns 1D `Tensor` with length equal to `size`. The counts or summed weights for
-// each value in the range [0, size).
-func Bincount(scope *Scope, arr tf.Output, size tf.Output, weights tf.Output) (bins tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Bincount",
-		Input: []tf.Input{
-			arr, size, weights,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Gradients for batch normalization.
-//
-// DEPRECATED at GraphDef version 9: Use tf.nn.batch_normalization()
-//
-// This op is deprecated. See `tf.nn.batch_normalization`.
-//
-// Arguments:
-//	t: A 4D input Tensor.
-//	m: A 1D mean Tensor with size matching the last dimension of t.
-// This is the first output from tf.nn.moments,
-// or a saved moving average thereof.
-//	v: A 1D variance Tensor with size matching the last dimension of t.
-// This is the second output from tf.nn.moments,
-// or a saved moving average thereof.
-//	gamma: A 1D gamma Tensor with size matching the last dimension of t.
-// If "scale_after_normalization" is true, this Tensor will be multiplied
-// with the normalized Tensor.
-//	backprop: 4D backprop Tensor.
-//	variance_epsilon: A small float number to avoid dividing by 0.
-//	scale_after_normalization: A bool indicating whether the resulted tensor
-// needs to be multiplied with gamma.
-//
-// Returns:
-//	dx: 4D backprop tensor for input.
-//	dm: 1D backprop tensor for mean.
-//	dv: 1D backprop tensor for variance.
-//	db: 1D backprop tensor for beta.
-//	dg: 1D backprop tensor for gamma.
-func BatchNormWithGlobalNormalizationGrad(scope *Scope, t tf.Output, m tf.Output, v tf.Output, gamma tf.Output, backprop tf.Output, variance_epsilon float32, scale_after_normalization bool) (dx tf.Output, dm tf.Output, dv tf.Output, db tf.Output, dg tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"variance_epsilon": variance_epsilon, "scale_after_normalization": scale_after_normalization}
-	opspec := tf.OpSpec{
-		Type: "BatchNormWithGlobalNormalizationGrad",
-		Input: []tf.Input{
-			t, m, v, gamma, backprop,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
-}
-
 // Returns the number of gradients aggregated in the given accumulators.
 //
 // Arguments:
@@ -47005,70 +47021,6 @@ func TPUReplicatedOutput(scope *Scope, input tf.Output, num_replicas int64) (out
 		return
 	}
 	return outputs
-}
-
-// LoadTPUEmbeddingMDLAdagradLightParametersAttr is an optional argument to LoadTPUEmbeddingMDLAdagradLightParameters.
-type LoadTPUEmbeddingMDLAdagradLightParametersAttr func(optionalAttr)
-
-// LoadTPUEmbeddingMDLAdagradLightParametersTableId sets the optional table_id attribute to value.
-// If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
-func LoadTPUEmbeddingMDLAdagradLightParametersTableId(value int64) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["table_id"] = value
-	}
-}
-
-// LoadTPUEmbeddingMDLAdagradLightParametersTableName sets the optional table_name attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingMDLAdagradLightParametersTableName(value string) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["table_name"] = value
-	}
-}
-
-// LoadTPUEmbeddingMDLAdagradLightParametersConfig sets the optional config attribute to value.
-// If not specified, defaults to ""
-func LoadTPUEmbeddingMDLAdagradLightParametersConfig(value string) LoadTPUEmbeddingMDLAdagradLightParametersAttr {
-	return func(m optionalAttr) {
-		m["config"] = value
-	}
-}
-
-// Load MDL Adagrad Light embedding parameters.
-//
-// An op that loads optimization parameters into HBM for embedding. Must be
-// preceded by a ConfigureTPUEmbeddingHost op that sets up the correct
-// embedding table configuration. For example, this op is used to install
-// parameters that are loaded from a checkpoint before a training loop is
-// executed.
-//
-// Arguments:
-//	parameters: Value of parameters used in the MDL Adagrad Light optimization algorithm.
-//	accumulators: Value of accumulators used in the MDL Adagrad Light optimization algorithm.
-//	weights: Value of weights used in the MDL Adagrad Light optimization algorithm.
-//	benefits: Value of benefits used in the MDL Adagrad Light optimization algorithm.
-//
-//
-//
-// Returns the created operation.
-func LoadTPUEmbeddingMDLAdagradLightParameters(scope *Scope, parameters tf.Output, accumulators tf.Output, weights tf.Output, benefits tf.Output, num_shards int64, shard_id int64, optional ...LoadTPUEmbeddingMDLAdagradLightParametersAttr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"num_shards": num_shards, "shard_id": shard_id}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LoadTPUEmbeddingMDLAdagradLightParameters",
-		Input: []tf.Input{
-			parameters, accumulators, weights, benefits,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Converts a tensor to a scalar predicate.
@@ -47629,8 +47581,6 @@ type LoadTPUEmbeddingProximalAdagradParametersAttr func(optionalAttr)
 
 // LoadTPUEmbeddingProximalAdagradParametersTableId sets the optional table_id attribute to value.
 // If not specified, defaults to -1
-//
-// REQUIRES: value >= -1
 func LoadTPUEmbeddingProximalAdagradParametersTableId(value int64) LoadTPUEmbeddingProximalAdagradParametersAttr {
 	return func(m optionalAttr) {
 		m["table_id"] = value
@@ -48492,6 +48442,102 @@ func StatelessRandomUniformInt(scope *Scope, shape tf.Output, seed tf.Output, mi
 		Input: []tf.Input{
 			shape, seed, minval, maxval,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// CropAndResizeGradImageAttr is an optional argument to CropAndResizeGradImage.
+type CropAndResizeGradImageAttr func(optionalAttr)
+
+// CropAndResizeGradImageMethod sets the optional method attribute to value.
+//
+// value: A string specifying the interpolation method. Only 'bilinear' is
+// supported for now.
+// If not specified, defaults to "bilinear"
+func CropAndResizeGradImageMethod(value string) CropAndResizeGradImageAttr {
+	return func(m optionalAttr) {
+		m["method"] = value
+	}
+}
+
+// Computes the gradient of the crop_and_resize op wrt the input image tensor.
+//
+// Arguments:
+//	grads: A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+//	boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+// specifies the coordinates of a box in the `box_ind[i]` image and is specified
+// in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
+// `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
+// `[0, 1]` interval of normalized image height is mapped to
+// `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+// which case the sampled crop is an up-down flipped version of the original
+// image. The width dimension is treated similarly. Normalized coordinates
+// outside the `[0, 1]` range are allowed, in which case we use
+// `extrapolation_value` to extrapolate the input image values.
+//	box_ind: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0, batch)`.
+// The value of `box_ind[i]` specifies the image that the `i`-th box refers to.
+//	image_size: A 1-D tensor with value `[batch, image_height, image_width, depth]`
+// containing the original image size. Both `image_height` and `image_width` need
+// to be positive.
+//
+//
+// Returns A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+func CropAndResizeGradImage(scope *Scope, grads tf.Output, boxes tf.Output, box_ind tf.Output, image_size tf.Output, T tf.DataType, optional ...CropAndResizeGradImageAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"T": T}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "CropAndResizeGradImage",
+		Input: []tf.Input{
+			grads, boxes, box_ind, image_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// OutfeedDequeueAttr is an optional argument to OutfeedDequeue.
+type OutfeedDequeueAttr func(optionalAttr)
+
+// OutfeedDequeueDeviceOrdinal sets the optional device_ordinal attribute to value.
+//
+// value: The TPU device to use. This should be -1 when the Op
+// is running on a TPU device, and >= 0 when the Op is running on the CPU
+// device.
+// If not specified, defaults to -1
+func OutfeedDequeueDeviceOrdinal(value int64) OutfeedDequeueAttr {
+	return func(m optionalAttr) {
+		m["device_ordinal"] = value
+	}
+}
+
+// Retrieves a single tensor from the computation outfeed.
+//
+// This operation will block indefinitely until data is available.
+//
+// Arguments:
+//	dtype: The type of elements in the tensor.
+//	shape: The shape of the tensor.
+//
+// Returns A tensor that will be read from the device outfeed.
+func OutfeedDequeue(scope *Scope, dtype tf.DataType, shape tf.Shape, optional ...OutfeedDequeueAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype, "shape": shape}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "OutfeedDequeue",
+
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

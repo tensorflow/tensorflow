@@ -19,8 +19,8 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffects.td"
-include "mlir/Transforms/LoopLikeInterface.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
@@ -285,7 +285,10 @@ def TFL_ComparisonBinaryBuilder : OpBuilder<
 
 class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<TFL_Dialect, mnemonic, !listconcat(traits,
-      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>])> {
+      [DeclareOpInterfaceMethods<TFL_RuntimeVerification>,
+       // All TFL ops are supported on CPU.
+       DeclareOpInterfaceMethods<TFL_CpuTargetOp>
+      ])> {
   // FlatBuffer generation specific information.
   // -------------------------------------------
   // When generating the FlatBuffer output some operations have
@@ -690,7 +693,7 @@ def TFL_ExternalConstOp : Op<TFL_Dialect, "external_const", [NoSideEffect]> {
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0> {
   let extraClassDeclaration = [{
-    // StatefulOpInterface:
+    // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 0; }
   }];
 }
@@ -715,7 +718,7 @@ def TFL_DepthwiseConv2DOp :
   let arguments = !con(TFL_Conv2DOp.arguments, (ins I32Attr:$depth_multiplier));
 
   let extraClassDeclaration = [{
-    // StatefulOpInterface:
+    // ChannelDimIndexInterface:
     int GetChannelDimIndex() { return 3; }
   }];
 }
@@ -1083,7 +1086,8 @@ def TFL_NotEqualOp : TFL_Op<"not_equal", [
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_DivOp : TFL_Op<"div", [ResultsBroadcastableShape, NoSideEffect]> {
+def TFL_DivOp : TFL_Op<"div", [
+    ResultsBroadcastableShape, NoSideEffect, NoQuantizableResult]> {
   let summary = "Division operator";
 
   let description = [{

@@ -145,7 +145,8 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
       generator_.Skip(num_random_samples_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       // Save state needed to restore the random number generators.
       TF_RETURN_IF_ERROR(writer->WriteScalar(
@@ -156,7 +157,7 @@ class SamplingDatasetOp::Dataset : public DatasetBase {
           writer->WriteScalar(this->full_name("seed2"), seeds_.second));
 
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name("input_impl_empty"), ""));

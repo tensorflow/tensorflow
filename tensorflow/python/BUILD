@@ -2993,6 +2993,7 @@ tf_gen_op_wrapper_private_py(
     deps = [
         "//tensorflow/core:tpu_configuration_ops_op_lib",
         "//tensorflow/core:tpu_cross_replica_ops_op_lib",
+        "//tensorflow/core:tpu_embedding_load_retrieve_ops_op_lib",
         "//tensorflow/core:tpu_embedding_ops_op_lib",
         "//tensorflow/core:tpu_functional_ops_op_lib",
         "//tensorflow/core:tpu_heartbeat_ops_op_lib",
@@ -7725,8 +7726,9 @@ tf_py_test(
     tags = [
         "grappler",
         "no_cuda_on_cpu_tap",
+        "no_mac",
         "no_pip",
-        "nomac",
+        "no_windows",  # TODO(b/151942037)
     ],
     deps = [
         ":array_ops",

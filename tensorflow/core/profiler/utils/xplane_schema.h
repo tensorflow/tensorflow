@@ -130,6 +130,7 @@ enum StatType {
   kTfOp,
   kHloOp,
   kHloModule,
+  kEquation,
   // Performance counter related.
   kRawValue,
   kScaledValue,

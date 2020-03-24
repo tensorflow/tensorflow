@@ -131,7 +131,7 @@ Status GetEglError() {
     case EGL_CONTEXT_LOST:
       return InternalError(
           "A power management event has occurred. The application must destroy "
-          "all contexts and reinitialise OpenGL ES state and objects to "
+          "all contexts and reinitialize OpenGL ES state and objects to "
           "continue rendering.");
   }
   return UnknownError("EGL error: " + std::to_string(error));

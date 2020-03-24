@@ -47,6 +47,13 @@ class Adagrad(optimizer_v2.OptimizerV2):
   $$accum_{g_t} := accum_{g_{t-1}} + g^2$$
   $$\theta_t := \theta_{t-1} - lr * g / (\sqrt{accum_{g_t}} + \epsilon)$$
 
+  @compatibility(eager)
+  When eager execution is enabled, `learning_rate` can be a callable that
+  takes no arguments and returns the actual value to use. This can be useful
+  for changing these values across different invocations of optimizer
+  functions.
+  @end_compatibility
+
   References:
 
   * [Paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
@@ -80,13 +87,6 @@ class Adagrad(optimizer_v2.OptimizerV2):
 
     Raises:
       ValueError: If the `initial_accumulator_value` or `epsilon` is invalid.
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate` can be a callable that
-    takes no arguments and returns the actual value to use. This can be useful
-    for changing these values across different invocations of optimizer
-    functions.
-    @end_compatibility
     """
     if initial_accumulator_value < 0.0:
       raise ValueError('initial_accumulator_value must be non-negative: %s' %

@@ -48,7 +48,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
@@ -57,11 +57,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     for (auto result : reduce_op.out()) {
       auto shaped_type = result.getType().dyn_cast<ShapedType>();
       if (!shaped_type || shaped_type.getRank() != 1) {
-        return matchFailure();
+        return failure();
       }
       auto dim_size = shaped_type.getDimSize(0);
       if (size && size != dim_size) {
-        return matchFailure();
+        return failure();
       }
       size = dim_size;
     }
@@ -73,7 +73,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     for (auto input : reduce_op.operands()) {
       auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
-        return matchFailure();
+        return failure();
       }
       reduce_dim_size =
           shaped_type.getDimSize(reducing_dimension.getSExtValue());
@@ -164,7 +164,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     }
 
     rewriter.eraseOp(reduce_op);
-    return matchSuccess();
+    return success();
   };
 };
 

@@ -95,7 +95,9 @@ void LayoutAssignmentPass::runOnFunction() {
 
   // Get runtime devices information from the closest parent module.
   RuntimeDevices devices;
-  ::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(), &devices);
+  if (failed(::tensorflow::GetDevicesFromOp(func.getParentOfType<ModuleOp>(),
+                                            &devices)))
+    return signalPassFailure();
 
   // If there is no runtime device information and data format is not explicitly
   // forced, there is nothing to do.
@@ -418,8 +420,6 @@ void CreateLayoutOptimizationPipeline(
     OpPassManager& pm,  // NOLINT - MLIR contract is pass by mutable reference.
     const LayoutOptimizationPipelineOptions& options) {
   using Direction = MoveTransposesPass::Direction;
-
-  if (options.force_data_format.empty()) return;
 
   // Assign optimal layout for layout sensitive ops.
   pm.addPass(std::make_unique<LayoutAssignmentPass>(options.force_data_format));

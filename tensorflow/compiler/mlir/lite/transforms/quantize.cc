@@ -19,7 +19,7 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
 #include "mlir/IR/Attributes.h"  // TF:llvm-project
 #include "mlir/IR/Builders.h"  // TF:llvm-project
 #include "mlir/IR/MLIRContext.h"  // TF:llvm-project

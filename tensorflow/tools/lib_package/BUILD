@@ -154,7 +154,6 @@ genrule(
         "@icu//:icu4c/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
-        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
@@ -162,7 +161,6 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
-        "@sobol_data//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],
@@ -236,7 +234,6 @@ genrule(
         "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@libjpeg_turbo//:LICENSE.md",
         "@llvm-project//llvm:LICENSE.TXT",
-        "@llvm-project//mlir:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@local_config_tensorrt//:LICENSE",
@@ -244,7 +241,6 @@ genrule(
         "@nsync//:LICENSE",
         "@png//:LICENSE",
         "@snappy//:COPYING",
-        "@sobol_data//:LICENSE",
         "@zlib//:zlib.h",
     ] + select({
         "//tensorflow:android": [],

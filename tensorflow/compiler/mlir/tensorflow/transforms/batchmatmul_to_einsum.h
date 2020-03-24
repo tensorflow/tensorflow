@@ -32,11 +32,7 @@ class ConvertTFBatchMatMulToEinsumOp
     : public OpRewritePattern<BatchMatMulOpType> {
   using OpRewritePattern<BatchMatMulOpType>::OpRewritePattern;
 
-  static TF::TransposeOp createTransposeOp(
-      Value value, Location loc,
-      PatternRewriter& rewriter);  // NOLINT
-
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       BatchMatMulOpType op,
       PatternRewriter& rewriter) const override;  // NOLINT
 };

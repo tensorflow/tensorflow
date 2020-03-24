@@ -65,6 +65,18 @@ class RMSprop(optimizer_v2.OptimizerV2):
       \mathrm{learning\_rate} * g_t / sqrt(rms_t - mg_t^2 + \epsilon)$$
   $$\theta_t = \theta_{t-1} - mom_t$$
 
+  Note that in the dense implementation of this algorithm, variables and their
+  corresponding accumulators (momentum, gradient moving average, square
+  gradient moving average) will be updated even if the gradient is zero
+  (i.e. accumulators will decay, momentum will be applied). The sparse
+  implementation (used when the gradient is an `IndexedSlices` object,
+  typically because of `tf.gather` or an embedding lookup in the forward pass)
+  will not update variable slices or their accumulators unless those slices
+  were used in the forward pass (nor is there an "eventual" correction to
+  account for these omitted updates). This leads to more efficient updates for
+  large embedding lookup tables (where most of the slices are not accessed in
+  a particular graph execution), but differs from the published algorithm.
+
   Usage:
 
   >>> opt = tf.keras.optimizers.RMSprop(learning_rate=0.1)
@@ -90,18 +102,6 @@ class RMSprop(optimizer_v2.OptimizerV2):
                name="RMSprop",
                **kwargs):
     """Construct a new RMSprop optimizer.
-
-    Note that in the dense implementation of this algorithm, variables and their
-    corresponding accumulators (momentum, gradient moving average, square
-    gradient moving average) will be updated even if the gradient is zero
-    (i.e. accumulators will decay, momentum will be applied). The sparse
-    implementation (used when the gradient is an `IndexedSlices` object,
-    typically because of `tf.gather` or an embedding lookup in the forward pass)
-    will not update variable slices or their accumulators unless those slices
-    were used in the forward pass (nor is there an "eventual" correction to
-    account for these omitted updates). This leads to more efficient updates for
-    large embedding lookup tables (where most of the slices are not accessed in
-    a particular graph execution), but differs from the published algorithm.
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a

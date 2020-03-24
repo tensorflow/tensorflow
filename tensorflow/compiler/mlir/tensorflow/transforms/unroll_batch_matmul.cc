@@ -186,18 +186,18 @@ TF::PackOp ConvertTFBatchMatMulOp<BatchMatMulOpType>::createMatMulOps(
 }
 
 template <typename BatchMatMulOpType>
-PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
+LogicalResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
     BatchMatMulOpType op, PatternRewriter& rewriter) const {
   Value input_lhs = op.x();
   Value input_rhs = op.y();
 
   if (!input_lhs.getType().isa<RankedTensorType>()) {
     // LHS must be a ranked tensor type
-    return this->matchFailure();
+    return failure();
   }
   if (!input_rhs.getType().isa<RankedTensorType>()) {
     // RHS must be a ranked tensor type
-    return this->matchFailure();
+    return failure();
   }
 
   auto lhs_type = input_lhs.getType().cast<RankedTensorType>();
@@ -207,7 +207,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (element_type != rhs_type.getElementType()) {
     // The element type of LHS must be the same with element type of RHS
-    return this->matchFailure();
+    return failure();
   }
 
   auto lhs_shape = lhs_type.getShape();
@@ -220,7 +220,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   const int dims_b = rhs_shape.size();
   if (dims_a < 2 || dims_b < 2) {
     // Both inputs must have rank >= 2
-    return this->matchFailure();
+    return failure();
   }
 
   // Transpose LHS input if necessary.
@@ -241,7 +241,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (lhs_shape[dims_a - 1] != rhs_shape[dims_b - 2]) {
     // Input dimensions must be compatible for multiplication.
-    return this->matchFailure();
+    return failure();
   }
 
   if (dims_a == 2 && dims_b == 2) {
@@ -254,19 +254,19 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
                                               /*b=*/input_rhs,
                                               /*transpose_a=*/false_attr,
                                               /*transpose_b=*/false_attr);
-    return this->matchSuccess();
+    return success();
   }
 
   // Input dimensions must be defined. MatMulBCast does not support partial
   // shapes.
   for (auto dim : lhs_shape) {
     if (dim == -1) {
-      return this->matchFailure();
+      return failure();
     }
   }
   for (auto dim : rhs_shape) {
     if (dim == -1) {
-      return this->matchFailure();
+      return failure();
     }
   }
   // Ensure that batch shapes are broadcastable.
@@ -277,7 +277,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
 
   if (!bcast.IsValid()) {
     // Input batch dimensions must be broadcastable
-    return this->matchFailure();
+    return failure();
   }
 
   // Compute slices for each batch in the LHS and RHS.
@@ -302,7 +302,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   auto reshape_op = createReshapeOp(pack_op.output(), result_shape,
                                     element_type, loc, rewriter);
   rewriter.replaceOp(op, reshape_op.output());
-  return this->matchSuccess();
+  return success();
 }
 
 static PassRegistration<UnrollBatchMatMulPass> pass(

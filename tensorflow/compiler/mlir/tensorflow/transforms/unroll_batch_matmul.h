@@ -49,8 +49,8 @@ class ConvertTFBatchMatMulOp : public OpRewritePattern<BatchMatMulOpType> {
                                     int rows, int cols, Type element_type,
                                     Location loc, PatternRewriter& rewriter);
 
-  PatternMatchResult matchAndRewrite(BatchMatMulOpType op,
-                                     PatternRewriter& rewriter) const override;
+  LogicalResult matchAndRewrite(BatchMatMulOpType op,
+                                PatternRewriter& rewriter) const override;
 };
 
 }  // namespace TF

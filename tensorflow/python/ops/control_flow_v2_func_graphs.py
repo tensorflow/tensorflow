@@ -18,28 +18,44 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework.func_graph import FuncGraph
+from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import ops
 
 
-class CondBranchFuncGraph(FuncGraph):
+class CondBranchFuncGraph(func_graph.FuncGraph):
   """FuncGraph for branches of tf.cond().
 
   This is used to distinguish cond branches from other functions.
   """
-  pass
+
+  def __init__(self, *args, **kwargs):
+    super(CondBranchFuncGraph, self).__init__(*args, **kwargs)
+    if ops.executing_eagerly_outside_functions():
+      func_graph.override_func_graph_name_scope(
+          self, self.outer_graph.get_name_scope())
 
 
-class WhileCondFuncGraph(FuncGraph):
+class WhileCondFuncGraph(func_graph.FuncGraph):
   """FuncGraph for the condition of tf.while_loop().
 
   This is used to distinguish while conditions from other functions.
   """
-  pass
+
+  def __init__(self, *args, **kwargs):
+    super(WhileCondFuncGraph, self).__init__(*args, **kwargs)
+    if ops.executing_eagerly_outside_functions():
+      func_graph.override_func_graph_name_scope(
+          self, self.outer_graph.get_name_scope())
 
 
-class WhileBodyFuncGraph(FuncGraph):
+class WhileBodyFuncGraph(func_graph.FuncGraph):
   """FuncGraph for the body of tf.while_loop().
 
   This is used to distinguish while bodies from other functions.
   """
-  pass
+
+  def __init__(self, *args, **kwargs):
+    super(WhileBodyFuncGraph, self).__init__(*args, **kwargs)
+    if ops.executing_eagerly_outside_functions():
+      func_graph.override_func_graph_name_scope(
+          self, self.outer_graph.get_name_scope())

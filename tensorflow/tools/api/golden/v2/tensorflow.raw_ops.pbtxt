@@ -109,6 +109,10 @@ tf_module {
     argspec: "args=[\'seed\', \'seed2\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "AnonymousSeedGenerator"
+    argspec: "args=[\'seed\', \'seed2\', \'reshuffle\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Any"
     argspec: "args=[\'input\', \'axis\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
@@ -1066,6 +1070,10 @@ tf_module {
   }
   member_method {
     name: "DeleteRandomSeedGenerator"
+    argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "DeleteSeedGenerator"
     argspec: "args=[\'handle\', \'deleter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
@@ -2077,6 +2085,14 @@ tf_module {
     argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "LoadTPUEmbeddingProximalYogiParameters"
+    argspec: "args=[\'parameters\', \'v\', \'m\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingProximalYogiParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'v\', \'m\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
     name: "LoadTPUEmbeddingRMSPropParameters"
     argspec: "args=[\'parameters\', \'ms\', \'mom\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -2087,6 +2103,10 @@ tf_module {
   member_method {
     name: "LoadTPUEmbeddingStochasticGradientDescentParameters"
     argspec: "args=[\'parameters\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "LoadTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'gradient_accumulators\', \'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
     name: "Log"
@@ -3613,6 +3633,14 @@ tf_module {
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {
+    name: "RetrieveTPUEmbeddingProximalYogiParameters"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingProximalYogiParametersGradAccumDebug"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
     name: "RetrieveTPUEmbeddingRMSPropParameters"
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
@@ -3622,6 +3650,10 @@ tf_module {
   }
   member_method {
     name: "RetrieveTPUEmbeddingStochasticGradientDescentParameters"
+    argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingStochasticGradientDescentParametersGradAccumDebug"
     argspec: "args=[\'num_shards\', \'shard_id\', \'table_id\', \'table_name\', \'config\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'\', \'\', \'None\'], "
   }
   member_method {

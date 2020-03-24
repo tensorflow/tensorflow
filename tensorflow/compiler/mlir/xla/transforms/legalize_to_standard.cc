@@ -35,19 +35,19 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+                                PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
+    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
 
     if (!lhs_type.getElementType().isSignlessInteger() ||
         !rhs_type.getElementType().isSignlessInteger())
-      return matchFailure();
+      return failure();
 
     auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
@@ -60,11 +60,11 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
             .Case("GE", CmpIPredicate::sge)
             .Default(llvm::None);
 
-    if (!compare_predicate.hasValue()) return matchFailure();
+    if (!compare_predicate.hasValue()) return failure();
 
     rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
                                         rhs);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -72,19 +72,19 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+                                PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
+    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
 
     if (!lhs_type.getElementType().isa<FloatType>() ||
         !rhs_type.getElementType().isa<FloatType>())
-      return matchFailure();
+      return failure();
 
     auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
@@ -97,11 +97,11 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
             .Case("GE", CmpFPredicate::OGE)
             .Default(llvm::None);
 
-    if (!compare_predicate.hasValue()) return matchFailure();
+    if (!compare_predicate.hasValue()) return failure();
 
     rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
                                         rhs);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -113,8 +113,8 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::IotaOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::IotaOp op,
+                                PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     auto output_size = output_type.getNumElements();
     auto dimension = op.iota_dimension().getSExtValue();
@@ -159,7 +159,7 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
     // For int/float types we are done, replace op and return.
     if (!complex_ty) {
       rewriter.replaceOp(op, iota_const.getResult());
-      return matchSuccess();
+      return success();
     }
 
     // For complex types, generate a constant tensor of zeroes for the imaginary
@@ -170,7 +170,7 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
         rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
     rewriter.replaceOpWithNewOp<xla_hlo::ComplexOp>(op, iota_const,
                                                     imag_zeroes);
-    return matchSuccess();
+    return success();
   }
 };
 

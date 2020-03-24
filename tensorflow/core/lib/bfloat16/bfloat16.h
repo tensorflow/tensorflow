@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <complex>
 #include <iostream>
+#include <limits>
 
 #include "tensorflow/core/platform/byte_order.h"
 
@@ -52,6 +53,10 @@ struct bfloat16 {
     bfloat16 output;
     if (float_isnan(v)) {
       output.value = NAN_VALUE;
+      return output;
+    } else if (std::fabs(v) < std::numeric_limits<float>::min()) {
+      // Flush denormal to +/- 0.
+      output.value = std::signbit(v) ? 0x8000 : 0;
       return output;
     }
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&v);
@@ -196,6 +201,9 @@ struct bfloat16 {
       // qNaN magic: All exponent bits set + most significant bit of fraction
       // set.
       output.value = 0x7fc0;
+    } else if (std::fabs(v) < std::numeric_limits<float>::min()) {
+      // Flush denormal to +/- 0.0
+      output.value = std::signbit(v) ? 0x8000 : 0;
     } else {
       // Fast rounding algorithm that rounds a half value to nearest even. This
       // reduces expected error when we convert a large number of floats. Here

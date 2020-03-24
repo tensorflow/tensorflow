@@ -88,6 +88,8 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<const Shape*> GetShapePtr(XlaOp op) const override;
 
  private:
+  XlaOp ConstantLiteral(const LiteralSlice& literal) override;
+
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
 

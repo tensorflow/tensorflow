@@ -55,7 +55,7 @@ extern const char* kProtobufUint64Typename;
 // this function has no size restrictions on the total size of the encoded
 // protocol buffer.
 bool ParseProtoUnlimited(protobuf::MessageLite* proto,
-                         const string& serialized);
+                         const std::string& serialized);
 bool ParseProtoUnlimited(protobuf::MessageLite* proto, const void* serialized,
                          size_t size);
 inline bool ParseProtoUnlimited(protobuf::MessageLite* proto,
@@ -64,11 +64,13 @@ inline bool ParseProtoUnlimited(protobuf::MessageLite* proto,
 }
 
 // Returns the string value for the value of a string or bytes protobuf field.
-inline const string& ProtobufStringToString(const string& s) { return s; }
+inline const std::string& ProtobufStringToString(const std::string& s) {
+  return s;
+}
 
 // Set <dest> to <src>. Swapping is allowed, as <src> does not need to be
 // preserved.
-inline void SetProtobufStringSwapAllowed(string* src, string* dest) {
+inline void SetProtobufStringSwapAllowed(std::string* src, std::string* dest) {
   *dest = std::move(*src);
 }
 
@@ -77,8 +79,10 @@ inline void SetProtobufStringSwapAllowed(string* src, string* dest) {
 // tools/proto_text's generated code.  They have the same name as the versions
 // in core/platform/protobuf.h, so the generation code doesn't need to determine
 // if the type is Cord or string at generation time.
-inline string ProtobufStringToString(const Cord& s) { return s.ToString(); }
-inline void SetProtobufStringSwapAllowed(string* src, Cord* dest) {
+inline std::string ProtobufStringToString(const Cord& s) {
+  return s.ToString();
+}
+inline void SetProtobufStringSwapAllowed(std::string* src, Cord* dest) {
   dest->CopyFrom(*src);
 }
 #endif  // defined(TENSORFLOW_PROTOBUF_USES_CORD)

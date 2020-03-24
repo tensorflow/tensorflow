@@ -84,21 +84,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
-  // This pass does resource analysis of saved model global tensors and marks
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-
-  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
-  }
-
   // The ophint extractions happen before lots of other passes:
   // The assumption of ophint-extraction is each ophinted region is a black-box
   // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
@@ -112,6 +97,27 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateExtractOphintPass());
     // Convert composite op pass will happen after ophint extraction pass.
     pass_manager->addPass(mlir::TFL::CreateLegalizeOphintFuncOpPass());
+  }
+
+  // This decomposes resource ops like ResourceGather into read-variable op
+  // followed by gather. This is used when the saved model import path is used
+  // during which resources dont get frozen in the python layer.
+  pass_manager->addNestedPass<mlir::FuncOp>(
+      mlir::TFDevice::CreateDecomposeResourceOpsPass());
+
+  // This pass does resource analysis of saved model global tensors and marks
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
+  // This pass marks non-exported functions as symbol visibility 'private'
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::
+          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
+
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
   // Legalize while early to allow further constant folding.

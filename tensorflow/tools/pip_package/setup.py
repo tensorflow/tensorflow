@@ -60,7 +60,7 @@ REQUIRED_PACKAGES = [
     'keras_preprocessing >= 1.1.0',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'protobuf >= 3.8.0',
+    'protobuf >= 3.9.2',
     'tensorboard >= 2.1.0, < 2.2.0',
     'tensorflow_estimator >= 2.1.0, < 2.2.0',
     'termcolor >= 1.1.0',
@@ -246,6 +246,7 @@ headers = (
     list(find_files('*.proto', 'tensorflow/compiler')) +
     list(find_files('*.proto', 'tensorflow/core')) +
     list(find_files('*.proto', 'tensorflow/python')) +
+    list(find_files('*.h', 'tensorflow/c')) +
     list(find_files('*.h', 'tensorflow/cc')) +
     list(find_files('*.h', 'tensorflow/compiler')) +
     list(find_files('*.h', 'tensorflow/core')) +

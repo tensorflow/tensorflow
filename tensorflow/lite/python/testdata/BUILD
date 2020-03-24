@@ -1,6 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tf_to_tflite")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -92,9 +91,10 @@ pybind_extension(
     name = "_pywrap_test_registerer",
     srcs = [
         "test_registerer_wrapper.cc",
-    ] + tf_binary_additional_srcs(),
+    ],
     hdrs = ["test_registerer.h"],
     additional_exported_symbols = ["TF_TestRegisterer"],
+    link_in_framework = True,
     module_name = "_pywrap_test_registerer",
     deps = [
         ":test_registerer",

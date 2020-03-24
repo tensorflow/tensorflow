@@ -23,8 +23,8 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
 #include "mlir/IR/AffineExpr.h"  // TF:llvm-project
 #include "mlir/IR/AffineMap.h"  // TF:llvm-project

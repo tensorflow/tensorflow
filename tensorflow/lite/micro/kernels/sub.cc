@@ -116,7 +116,7 @@ void EvalSub(TfLiteContext* context, TfLiteNode* node, TfLiteSubParams* params,
          GetTensorShape(input2), GetTensorData<float>(input2),            \
          GetTensorShape(output), GetTensorData<float>(output))
   if (data->requires_broadcast) {
-    TF_LITE_SUB(tflite::reference_ops::BroadcastSub4DSlow);
+    TF_LITE_SUB(tflite::reference_ops::BroadcastSubSlow);
   } else {
     TF_LITE_SUB(tflite::reference_ops::SubWithActivation);
   }
@@ -150,13 +150,13 @@ TfLiteStatus EvalSubQuantized(TfLiteContext* context, TfLiteNode* node,
          GetTensorShape(output), GetTensorData<dtype>(output));
     if (output->type == kTfLiteInt8) {
       if (need_broadcast) {
-        TF_LITE_SUB(tflite::reference_ops::BroadcastSub4DSlow, int8_t);
+        TF_LITE_SUB(tflite::reference_ops::BroadcastSubSlow, int8_t);
       } else {
         TF_LITE_SUB(tflite::reference_ops::Sub, int8_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_SUB(tflite::reference_ops::BroadcastSub4DSlow, uint8_t);
+        TF_LITE_SUB(tflite::reference_ops::BroadcastSubSlow, uint8_t);
       } else {
         TF_LITE_SUB(tflite::reference_ops::Sub, uint8_t);
       }

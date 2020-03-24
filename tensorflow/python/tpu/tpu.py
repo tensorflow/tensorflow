@@ -223,7 +223,7 @@ def tpu_replicated_input_resolver(op, resource_reads, resource_writes):
       return False
   # Replace tensors in `resource_inputs` which are outputs of TPUReplicatedInput
   # with the actual replicated inputs. This allows ACD to correct add control
-  # deps when there are multiple calls to `experimental_run_v2` in a
+  # deps when there are multiple calls to `run` in a
   # `tf.function`.
   def replace_with_unreplicated_resources(resource_inputs):
     """Replaces handles in `resource_inputs` with their unreplicated inputs."""
@@ -314,7 +314,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
       job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
-      devices_to_vars = {v.device: v for v in vars_}
+      devices_to_vars = {device_util.canonicalize(v.device): v for v in vars_}
       replicated_vars = []
       for replica_id in range(device_assignment.num_replicas):
         for logical_core in range(device_assignment.num_cores_per_replica):

@@ -124,7 +124,7 @@ static float svdf_golden_output_rank_2[] = {
 void ValidateSVDFGoldens(const int batch_size, const int num_units,
                          const int input_size, const int rank,
                          TfLiteTensor* tensors, const int tensor_count,
-                         bool is_hybrid_op, float* golden_input_data,
+                         float* golden_input_data,
                          const int golden_input_data_size, float* output_data,
                          float* expected_output, float tolerance = 1e-5f) {
   TfLiteContext context;
@@ -145,30 +145,15 @@ void ValidateSVDFGoldens(const int batch_size, const int num_units,
   }
 
   // Bias is an optional tensor:
-  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
-  // has been implemented (b/132070898)
-  // int inputs_array_data[] = {5, 0, 1, 2, kTfLiteOptionalTensor, 3};
-  int inputs_array_data[] = {6, 0, 1, 2, kTfLiteOptionalTensor, 3, 5};
+  int inputs_array_data[] = {5, 0, 1, 2, kTfLiteOptionalTensor, 3};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
 
   int outputs_array_data[] = {1, 4};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  int temporaries_array_data[] = {1, 5};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
-
-  int hybrid_temporaries_array_data[] = {4, 5, 6, 7, 8};
-  TfLiteIntArray* hybrid_temporaries_array =
-      IntArrayFromInts(hybrid_temporaries_array_data);
-
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
-  if (is_hybrid_op) {
-    node.temporaries = hybrid_temporaries_array;
-  } else {
-    node.temporaries = temporaries_array;
-  }
   node.user_data = user_data;
   node.builtin_data = reinterpret_cast<void*>(&params);
   node.custom_initial_data = nullptr;
@@ -294,14 +279,10 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
   TfLiteIntArray* activation_state_dims =
       IntArrayFromInts(activation_state_dims_args);
 
-  // Scratch output is the same shape as output:
-  const int scratch_dims_args[] = {2, batch_size, num_filters};
-  TfLiteIntArray* scratch_dims = IntArrayFromInts(scratch_dims_args);
-
   const int output_dims_args[] = {2, batch_size, num_units};
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_args);
 
-  const int tensor_count = 6;  // 4 inputs, 1 output, 1 scratch
+  const int tensor_count = 5;  // 4 inputs, 1 output
   TfLiteTensor tensors[] = {
       CreateFloatTensor(input_data, input_dims, "input"),
       CreateFloatTensor(weights_feature_data, weights_feature_dims,
@@ -310,13 +291,11 @@ void TestSVDF(const int batch_size, const int num_units, const int input_size,
       CreateFloatTensor(activation_state_data, activation_state_dims,
                         "activation_state", true /* is_variable */),
       CreateFloatTensor(output_data, output_dims, "output"),
-      CreateFloatTensor(scratch_data, scratch_dims, "scratch"),
   };
 
   ValidateSVDFGoldens(batch_size, num_units, input_size, rank, tensors,
-                      tensor_count, false /* is_hybrid */, golden_input_data,
-                      golden_input_data_size, output_data, expected_output,
-                      tolerance);
+                      tensor_count, golden_input_data, golden_input_data_size,
+                      output_data, expected_output, tolerance);
 }
 
 inline void TestIntegerSVDF(
@@ -583,12 +562,12 @@ TF_LITE_MICRO_TEST(BlackBoxTestIntegerRank1) {
   const int output_dims_count = batch_size * num_units;
   int8_t output_data[output_dims_count];
 
-  float input_scale = 1.f / INT8_MAX;            // Range  is [-1, 1]
+  float input_scale = 1.f / INT8_MAX;             // Range is [-1, 1]
   float weights_feature_scale = 0.5f / INT8_MAX;  // Range is [-0.5, 0.5]
   float weights_time_scale = 1.f / INT16_MAX;     // Range is [-1, 1]
-  float activation_scale = 16.f / INT16_MAX;     // Range is [-16, 16]
-  float bias_scale = 512.f / INT32_MAX;          // Range is [-512, 512]
-  float output_scale = 0.5f / INT8_MAX;          // Range is [-0.5, 0.5]
+  float activation_scale = 16.f / INT16_MAX;      // Range is [-16, 16]
+  float bias_scale = 512.f / INT32_MAX;           // Range is [-512, 512]
+  float output_scale = 0.5f / INT8_MAX;           // Range is [-0.5, 0.5]
 
   tflite::testing::TestIntegerSVDF(
       batch_size, num_units, input_size, memory_size, rank, input_data,

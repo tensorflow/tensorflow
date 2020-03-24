@@ -195,10 +195,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
       return model::MakeInterleaveManyNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCycleIndex), cycle_index_));
       TF_RETURN_IF_ERROR(
@@ -207,7 +209,7 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kEndOfInput), ""));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kNumOpen), num_open_));
-      TF_RETURN_IF_ERROR(SaveCurrentElements(writer));
+      TF_RETURN_IF_ERROR(SaveCurrentElements(ctx, writer));
       return Status::OK();
     }
 
@@ -234,11 +236,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
    private:
-    Status SaveCurrentElements(IteratorStateWriter* writer)
+    Status SaveCurrentElements(SerializationContext* ctx,
+                               IteratorStateWriter* writer)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       for (int idx = 0; idx < current_elements_.size(); idx++) {
         if (current_elements_[idx]) {
-          TF_RETURN_IF_ERROR(SaveInput(writer, current_elements_[idx]));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, current_elements_[idx]));
           TF_RETURN_IF_ERROR(writer->WriteScalar(
               full_name(strings::StrCat(kArgsSize, "[", idx, "]")),
               args_list_[idx].size()));

@@ -251,15 +251,17 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/ctx->runner_threadpool_size())});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       mutex_lock l(*mu_);
       // Wait for all in-flight calls to complete.
       while (num_calls_ > 0) {
         cond_var_->wait(l);
       }
       DCHECK_EQ(num_calls_, 0);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(full_name(kCallCounter), call_counter_));
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kBatchResultsSize),

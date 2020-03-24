@@ -29,7 +29,7 @@ namespace gpu {
 namespace testing {
 
 // Runs Tensorflow Lite model using Tensorflow Lite with a delegate and
-// an appropriate operations resolver. If delegate is nullptr, infererence will
+// an appropriate operations resolver. If delegate is nullptr, inference will
 // be done only on CPU.
 Status InterpreterInvokeWithOpResolver(const ::tflite::Model* model,
                                        TfLiteDelegate* delegate,
@@ -38,7 +38,7 @@ Status InterpreterInvokeWithOpResolver(const ::tflite::Model* model,
                                        std::vector<TensorFloat32>* outputs);
 
 // Runs Tensorflow Lite model using Tensorflow Lite with a delegate and
-// builtin operations resolver. If delegate is nullptr, infererence will
+// builtin operations resolver. If delegate is nullptr, inference will
 // be done only on CPU.
 Status InterpreterInvoke(const ::tflite::Model* model, TfLiteDelegate* delegate,
                          const std::vector<TensorFloat32>& inputs,

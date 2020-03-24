@@ -24,10 +24,11 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
@@ -250,7 +251,7 @@ class MergeLayersTest(keras_parameterized.TestCase):
     self.assertAllEqual(out_dense, out_ragged)
 
 
-@tf_test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MergeLayersTestNoExecution(test.TestCase):
 
   def test_merge_elementwise_errors(self):

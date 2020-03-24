@@ -164,10 +164,11 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kMode), mode_));
-      return SaveInput(writer, iterator_);
+      return SaveInput(ctx, writer, iterator_);
     }
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
@@ -303,7 +304,8 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kCurIndex), cur_index_));
@@ -333,7 +335,7 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
           lockfile_ = strings::StrCat(filename_, kLockFileSuffix);
           lockfile_created_ = false;
         }
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kShardId), shard_id_));
         return Status::OK();
       }
@@ -532,7 +534,8 @@ class CacheDatasetOp::FileDataset : public DatasetBase {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kCurIndex), cur_index_));
@@ -785,14 +788,15 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (cache_->IsCompleted()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
         TF_RETURN_IF_ERROR(SaveCache(
             writer, cache_, [this](const string& s) { return full_name(s); }));
       }
-      return SaveInput(writer, iterator_);
+      return SaveInput(ctx, writer, iterator_);
     }
 
     Status RestoreInternal(IteratorContext* ctx,
@@ -867,14 +871,15 @@ class CacheDatasetOp::MemoryDataset : public DatasetBase {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (!cache_->IsCompleted()) {
           TF_RETURN_IF_ERROR(
               SaveCache(writer, &temp_cache_,
                         [this](const string& s) { return full_name(s); }));
         }
-        return SaveInput(writer, input_impl_);
+        return SaveInput(ctx, writer, input_impl_);
       }
 
       Status RestoreInternal(IteratorContext* ctx,

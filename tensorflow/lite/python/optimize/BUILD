@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -46,11 +45,13 @@ pybind_extension(
     name = "_pywrap_tensorflow_lite_calibration_wrapper",
     srcs = [
         "calibration_wrapper_pybind11.cc",
-    ] + tf_binary_additional_srcs(),
+    ],
     hdrs = ["calibration_wrapper.h"],
+    link_in_framework = True,
     module_name = "_pywrap_tensorflow_lite_calibration_wrapper",
     deps = [
         ":calibration_wrapper_lib",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/python:pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
@@ -61,8 +62,9 @@ pybind_extension(
     name = "_pywrap_tensorflow_lite_sparsification_wrapper",
     srcs = [
         "sparsification_wrapper_pybind11.cc",
-    ] + tf_binary_additional_srcs(),
+    ],
     hdrs = ["sparsification_wrapper.h"],
+    link_in_framework = True,
     module_name = "_pywrap_tensorflow_lite_sparsification_wrapper",
     deps = [
         ":sparsification_wrapper_lib",

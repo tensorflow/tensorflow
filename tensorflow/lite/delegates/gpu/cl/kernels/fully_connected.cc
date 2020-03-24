@@ -29,7 +29,7 @@ namespace {
 // vec mat mult) on 4 parts to create more threads
 // tid.y thread process every 4-th element in vec vec dot
 // Good results for ~1024 x 1024 sizes, for other can be written more
-// otimized shaders
+// optimized shaders
 
 std::string GetFullyConnectedKernelCode(
     const OperationDef& op_def, const LinearStorage& biases,

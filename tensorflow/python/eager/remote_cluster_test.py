@@ -128,6 +128,7 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
 
   def tearDown(self):
     super(DynamicClusterTest, self).tearDown()
+    ops.device(None).__enter__()
     context._reset_context()
 
   @test_util.run_in_async_and_sync_mode
@@ -370,6 +371,9 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
     def worker_fn(i):
       return math_ops.matmul(i, i)
 
+    # Forces function tracing and registration
+    worker_fn.get_concrete_function(x1)
+
     def thread_fn(device, results):
       for i in range(num_calls):
         with self._coord.stop_on_exception():
@@ -504,6 +508,13 @@ class DynamicClusterWithoutLazyRemoteInputsCopyTest(DynamicClusterTest):
     super(DynamicClusterWithoutLazyRemoteInputsCopyTest, cls).tearDownClass()
     context._reset_context()
     context.context().lazy_remote_inputs_copy = True
+
+  # TODO(haoyuzhang): When lazyh remote inputs copy is disabled, we use the
+  # WorkerService RunGraph request to execute component functions in distributed
+  # function execution. We currently do not have access control in WorkerService
+  # to allow concurrent cluster update and function execution.
+  def testMultiThreadPendingNodesLockFree(self):
+    self.skipTest("Unsupported case")
 
 
 if __name__ == "__main__":

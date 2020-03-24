@@ -305,6 +305,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:

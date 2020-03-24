@@ -77,8 +77,8 @@ static bool IsOpWhitelisted(Operation* op) {
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit whitelist when MLIR based bridge is enabled for
   // all tf2xla kernels.
-  return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) ||
-         isa<TF::SelectV2Op>(op) || isa<TF::CastOp>(op);
+  return isa<TF::AbsOp>(op) || isa<TF::Atan2Op>(op) || isa<TF::CastOp>(op) ||
+         isa<TF::InvOp>(op) || isa<TF::SelectV2Op>(op);
 }
 
 static llvm::Optional<absl::string_view> GetJitDevice(

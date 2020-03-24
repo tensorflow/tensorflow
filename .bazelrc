@@ -356,7 +356,15 @@ build:rbe_cpu_linux --extra_execution_platforms"=@org_tensorflow//third_party/to
 build:rbe_cpu_linux --host_platform="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
 build:rbe_cpu_linux --platforms="@org_tensorflow//third_party/toolchains:rbe_ubuntu16.04-manylinux2010"
 
-build:rbe_linux_cuda_nvcc --config=rbe_linux
+build:rbe_linux_cuda_base --config=rbe_linux
+build:rbe_linux_cuda_base --repo_env=TF_NEED_TENSORRT=1
+build:rbe_linux_cuda_base --repo_env=TF_CUDA_VERSION=10
+build:rbe_linux_cuda_base --repo_env=TF_CUDNN_VERSION=7
+build:rbe_linux_cuda_base --repo_env=REMOTE_GPU_TESTING=1
+build:rbe_linux_cuda_base --repo_env=TF_NEED_CUDA=1
+test:rbe_linux_cuda_base --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+
+build:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
 build:rbe_linux_cuda_nvcc --crosstool_top="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
 build:rbe_linux_cuda_nvcc --extra_toolchains="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
 build:rbe_linux_cuda_nvcc --extra_execution_platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
@@ -365,13 +373,20 @@ build:rbe_linux_cuda_nvcc --platforms="@ubuntu16.04-py3-gcc7_manylinux2010-cuda1
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
 build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
 build:rbe_linux_cuda_nvcc --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
-build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_TENSORRT=1
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_VERSION=10
-build:rbe_linux_cuda_nvcc --repo_env=TF_CUDNN_VERSION=7
-build:rbe_linux_cuda_nvcc --repo_env=REMOTE_GPU_TESTING=1
-build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_CUDA=1
 build:rbe_linux_cuda_nvcc --define=using_cuda_nvcc=true
-test:rbe_linux_cuda_nvcc --test_env=LD_LIBRARY_PATH="/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64"
+test:rbe_linux_cuda_nvcc --config=rbe_linux_cuda_base
+
+build:rbe_linux_cuda_clang --config=rbe_linux_cuda_base
+build:rbe_linux_cuda_clang --crosstool_top="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain"
+build:rbe_linux_cuda_clang --extra_toolchains="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda//crosstool:toolchain-linux-x86_64"
+build:rbe_linux_cuda_clang --extra_execution_platforms="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --host_platform="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --platforms="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_platform//:platform"
+build:rbe_linux_cuda_clang --repo_env=TF_CUDA_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_cuda"
+build:rbe_linux_cuda_clang --repo_env=TF_TENSORRT_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_tensorrt"
+build:rbe_linux_cuda_clang --repo_env=TF_NCCL_CONFIG_REPO="@ubuntu16.04-py3-clang_manylinux2010-cuda10.1-cudnn7-tensorrt6.0_config_nccl"
+build:rbe_linux_cuda_clang --define=using_cuda_clang=true
+test:rbe_linux_cuda_clang --config=rbe_linux_cuda_base
 
 common:rbe_gpu_linux --config=rbe_linux_cuda_nvcc
 

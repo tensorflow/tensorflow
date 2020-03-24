@@ -137,7 +137,7 @@ class TPUStrategyTest(test.TestCase):
       def computation():
         return random_ops.random_gamma([10], [0.5, 1.5])
 
-      return strategy.experimental_run_v2(computation)
+      return strategy.run(computation)
 
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  "TPU compilation failed"):
@@ -149,7 +149,7 @@ class TPUStrategyTest(test.TestCase):
       def computation():
         return random_ops.random_normal([10])
 
-      return strategy.experimental_run_v2(computation)
+      return strategy.run(computation)
 
     good_run()
 

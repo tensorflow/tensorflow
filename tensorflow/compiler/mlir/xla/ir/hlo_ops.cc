@@ -500,21 +500,21 @@ struct ExtractElementFromScalarsToDimensionTensor
     : public OpRewritePattern<ExtractElementOp> {
   using OpRewritePattern<ExtractElementOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ExtractElementOp extract,
-                                     PatternRewriter& rewriter) const override {
-    if (extract.indices().size() != 1) return matchFailure();
+  LogicalResult matchAndRewrite(ExtractElementOp extract,
+                                PatternRewriter& rewriter) const override {
+    if (extract.indices().size() != 1) return failure();
 
     if (auto scalars_to_tensor = dyn_cast_or_null<ScalarsToDimensionTensorOp>(
             extract.aggregate().getDefiningOp())) {
       APInt index;
       if (!matchPattern(*extract.indices().begin(), m_ConstantInt(&index))) {
-        return matchFailure();
+        return failure();
       }
       rewriter.replaceOp(extract,
                          scalars_to_tensor.getOperand(index.getZExtValue()));
-      return matchSuccess();
+      return success();
     }
-    return matchFailure();
+    return failure();
   }
 };
 
@@ -545,19 +545,9 @@ static LogicalResult Verify(DynamicBroadcastInDimOp op) {
   auto operandRank = operandType.getRank();
   auto resultRank = resultType.getRank();
 
-  if (!op.broadcast_dimensions()) {
-    if (operandRank == 0) {
-      return success();
-    }
-    return op.emitOpError(
-        llvm::formatv("broadcast_dimensions is absent, but required because "
-                      "operand has non-zero rank ({0})",
-                      operandRank));
-  }
-
   // Verify broadcast_dimensions.
-  auto bcastDimensions = *op.broadcast_dimensions();
-  auto bcastDimensionsType = op.broadcast_dimensions()->getType();
+  auto bcastDimensions = op.broadcast_dimensions();
+  auto bcastDimensionsType = op.broadcast_dimensions().getType();
   auto bcastDimensionsRank = bcastDimensionsType.getRank();
   // TODO(laurenzo): Update the BroadcastDimAttr to constrain its rank to 1.
   if (bcastDimensionsRank != 1) {
