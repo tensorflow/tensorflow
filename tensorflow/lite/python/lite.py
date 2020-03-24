@@ -319,7 +319,7 @@ class TFLiteConverterBase(object):
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float, self.experimental_new_quantizer)
+          inference_output_type, allow_float)
 
   def _is_unknown_shapes_allowed(self, fp32_execution):
     # TODO(b/128319310): Investigate which quantization methods work.
