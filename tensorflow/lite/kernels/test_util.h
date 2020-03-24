@@ -266,7 +266,6 @@ class SingleOpModel {
 
   // Quantize and populate data for bias with per channel quantization.
   void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
-    const int32_t num_inputs = input_data.size();
     TfLiteTensor* t = interpreter_->tensor(index);
     auto* params =
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
