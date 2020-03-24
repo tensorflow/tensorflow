@@ -380,9 +380,6 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_ADD:
     case BuiltinOperator_CONCATENATION:
-    case BuiltinOperator_MAXIMUM:
-    case BuiltinOperator_MINIMUM:
-    case BuiltinOperator_MAX_POOL_2D:
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
     case BuiltinOperator_SOFTMAX:
