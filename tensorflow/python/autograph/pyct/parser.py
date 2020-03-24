@@ -102,8 +102,17 @@ def dedent_block(code_string):
   # lines. For example, `def foo()` may be untokenized as `def foo ()`
   # So instead of using the output of dedent, we match the leading whitespace
   # on each line.
+  lines = code_string.split('\n')
+  new_lines = new_code.split('\n')
+  line_pairs = []
+  i = 0
+  for line in lines:
+    line_pairs.append((line, new_lines[i]))
+    if line[-1:] == '\\' or line[-2:] == '\\\r':
+      continue
+    i += 1
   dedented_code = []
-  for line, new_line in zip(code_string.split('\n'), new_code.split('\n')):
+  for line, new_line in line_pairs:
     original_indent = re.match(_LEADING_WHITESPACE, line).group()
     new_indent = re.match(_LEADING_WHITESPACE, new_line).group()
     if len(original_indent) > len(new_indent):
