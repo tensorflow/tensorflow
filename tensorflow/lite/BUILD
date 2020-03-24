@@ -308,6 +308,16 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tflite_with_xnnpack",
+    srcs = ["tflite_with_xnnpack.cc"],
+    copts = tflite_copts() + TFLITE_DEFAULT_COPTS,
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+    ],
+)
+
 cc_test(
     name = "string_util_test",
     size = "small",
@@ -430,6 +440,37 @@ tf_cc_test(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test model framework with the XNNPACK delegate.
+cc_test(
+    name = "model_xnnpack_test",
+    size = "small",
+    srcs = [
+        "model_xnnpack_test.cc",
+    ],
+    data = [
+        "testdata/multi_add.bin",
+    ],
+    tags = [
+        "no_windows",  # No weak symbols with MSVC.
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":framework",
+        ":tflite_with_xnnpack",
+        ":util",
+        ":version",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/profiling:platform_profiler",
+        "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
