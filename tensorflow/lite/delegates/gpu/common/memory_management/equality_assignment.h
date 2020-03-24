@@ -29,7 +29,7 @@ namespace gpu {
 
 // Fast version of Equality Assignments for hashable types.
 template <typename TensorSizeT>
-absl::Status EqualityAssignmentWithHash(
+Status EqualityAssignmentWithHash(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -69,12 +69,12 @@ absl::Status EqualityAssignmentWithHash(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 // Slower version of Equality Assignments for unhashable types.
 template <typename TensorSizeT>
-absl::Status EqualityAssignment(
+Status EqualityAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -109,7 +109,7 @@ absl::Status EqualityAssignment(
       dealloc_task[best_obj] = usage_records[i].last_task;
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

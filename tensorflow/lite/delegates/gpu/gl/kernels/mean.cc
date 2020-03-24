@@ -32,11 +32,11 @@ namespace {
 
 class Mean : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto attr = absl::any_cast<MeanAttributes>(ctx.node->operation.attributes);
     if (attr.dims != std::set<Axis>({Axis::HEIGHT, Axis::WIDTH})) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Mean calculation is supported only for height and width.");
     }
 
@@ -72,7 +72,7 @@ class Mean : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

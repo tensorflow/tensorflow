@@ -516,11 +516,11 @@ void CLDevice::DisableOneLayerTextureArray() {
   info_.adreno_info.support_one_layer_texture_array = false;
 }
 
-absl::Status CreateDefaultGPUDevice(CLDevice* result) {
+Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_platforms;
   clGetPlatformIDs(0, nullptr, &num_platforms);
   if (num_platforms == 0) {
-    return absl::UnknownError("No supported OpenCL platform.");
+    return UnknownError("No supported OpenCL platform.");
   }
   std::vector<cl_platform_id> platforms(num_platforms);
   clGetPlatformIDs(num_platforms, platforms.data(), nullptr);
@@ -529,7 +529,7 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
   cl_uint num_devices;
   clGetDeviceIDs(platform_id, CL_DEVICE_TYPE_GPU, 0, nullptr, &num_devices);
   if (num_devices == 0) {
-    return absl::UnknownError("No GPU on current platform.");
+    return UnknownError("No GPU on current platform.");
   }
 
   std::vector<cl_device_id> devices(num_devices);
@@ -537,7 +537,7 @@ absl::Status CreateDefaultGPUDevice(CLDevice* result) {
                  nullptr);
 
   *result = CLDevice(devices[0], platform_id);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

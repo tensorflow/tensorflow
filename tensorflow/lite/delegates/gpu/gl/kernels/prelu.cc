@@ -35,17 +35,17 @@ namespace {
 
 class PReLULinearAlpha : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr =
         absl::any_cast<const PReLUAttributes&>(ctx.node->operation.attributes);
     auto alpha = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.alpha);
     if (!alpha) {
-      return absl::InvalidArgumentError("Alpha is missing");
+      return InvalidArgumentError("Alpha is missing");
     }
     if (alpha->shape.v != output->tensor.shape.c) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Alpha shape does not match the number of channels.");
     }
 
@@ -79,26 +79,25 @@ class PReLULinearAlpha : public NodeShader {
                   /*input=*/IOStructure::AUTO,
                   /*output=*/IOStructure::AUTO,
               };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 
 class PReLUFull : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr =
         absl::any_cast<const PReLUAttributes&>(ctx.node->operation.attributes);
     auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);
     if (!alpha) {
-      return absl::InvalidArgumentError("Alpha is missing");
+      return InvalidArgumentError("Alpha is missing");
     }
     if (alpha->shape.h != output->tensor.shape.h ||
         alpha->shape.w != output->tensor.shape.w ||
         alpha->shape.c != output->tensor.shape.c) {
-      return absl::InvalidArgumentError(
-          "Alpha shape does not match input shape.");
+      return InvalidArgumentError("Alpha shape does not match input shape.");
     }
 
     auto shape = output->tensor.shape;
@@ -142,14 +141,14 @@ class PReLUFull : public NodeShader {
                   /*input=*/IOStructure::AUTO,
                   /*output=*/IOStructure::AUTO,
               };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 
 class PReLU : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto attr =
         absl::any_cast<const PReLUAttributes&>(ctx.node->operation.attributes);
     auto alpha = absl::get_if<Tensor<HWC, DataType::FLOAT32>>(&attr.alpha);

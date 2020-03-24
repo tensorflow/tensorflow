@@ -202,9 +202,8 @@ BHWDC CalculateOutputShape(const BHWDC& input, const Pooling3DAttributes& attr);
 
 // @return shape of a tensor after Concat operation is applied to the given
 //         input.
-absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
-                                  const ConcatAttributes& attr,
-                                  BHWC* output_shape);
+Status CalculateOutputShape(const std::vector<BHWC>& input,
+                            const ConcatAttributes& attr, BHWC* output_shape);
 
 // @return padding for pooling operation to make sure output keep the same shape
 // as the given input.

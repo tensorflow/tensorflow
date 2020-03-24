@@ -31,10 +31,9 @@ using CompiledModel = std::vector<ComputeTaskDescriptorPtr>;
 // Receives input CompiledModel, validates, optimizes it and returns output
 // CompiledModel. No shader compilation or memory allocation happen here, this
 // function just does high-level operations fusion.
-absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
-                                   const std::vector<ValueId>& output_buffers,
-                                   const CompiledModel& input,
-                                   CompiledModel* output);
+Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
+                             const std::vector<ValueId>& output_buffers,
+                             const CompiledModel& input, CompiledModel* output);
 
 }  // namespace metal
 }  // namespace gpu

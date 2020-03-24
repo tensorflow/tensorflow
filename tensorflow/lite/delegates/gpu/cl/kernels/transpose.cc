@@ -125,14 +125,14 @@ Transpose& Transpose::operator=(Transpose&& operation) {
   return *this;
 }
 
-absl::Status Transpose::Compile(const CreationContext& creation_context) {
+Status Transpose::Compile(const CreationContext& creation_context) {
   const auto code = GetTransposeCode(definition_, attr_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-absl::Status Transpose::BindArguments() {
+Status Transpose::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -141,7 +141,8 @@ absl::Status Transpose::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Channels()));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 int3 Transpose::GetGridSize() const {
@@ -151,12 +152,12 @@ int3 Transpose::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status Transpose::Tune(const TuningParameters& params) {
+Status Transpose::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status Transpose::AddToQueue(CLCommandQueue* queue) {
+Status Transpose::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

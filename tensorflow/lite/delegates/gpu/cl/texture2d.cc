@@ -21,9 +21,8 @@ namespace cl {
 namespace {
 
 // Creates new 4-channel 2D texture with cl_channel_type elements
-absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
-                             void* data, CLContext* context,
-                             Texture2D* result) {
+Status CreateTexture2D(int width, int height, cl_channel_type type, void* data,
+                       CLContext* context, Texture2D* result) {
   cl_image_desc desc;
   desc.image_type = CL_MEM_OBJECT_IMAGE2D;
   desc.image_width = width;
@@ -48,14 +47,14 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
   cl_mem texture = CreateImage2DLegacy(context->context(), flags, &format,
                                        &desc, data, &error_code);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to create Texture2D (clCreateImage)",
                      CLErrorCodeToString(error_code)));
   }
 
   *result = Texture2D(texture, width, height, type);
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 }  // namespace
 
@@ -96,20 +95,20 @@ void Texture2D::Release() {
 }
 
 // Creates new 4-channel 2D texture with f32 elements
-absl::Status CreateTexture2DRGBA32F(int width, int height, CLContext* context,
-                                    Texture2D* result) {
+Status CreateTexture2DRGBA32F(int width, int height, CLContext* context,
+                              Texture2D* result) {
   return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
 }
 
 // Creates new 4-channel 2D texture with f16 elements
-absl::Status CreateTexture2DRGBA16F(int width, int height, CLContext* context,
-                                    Texture2D* result) {
+Status CreateTexture2DRGBA16F(int width, int height, CLContext* context,
+                              Texture2D* result) {
   return CreateTexture2D(width, height, CL_HALF_FLOAT, nullptr, context,
                          result);
 }
 
-absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
-                                 CLContext* context, Texture2D* result) {
+Status CreateTexture2DRGBA(DataType type, int width, int height,
+                           CLContext* context, Texture2D* result) {
   if (type == DataType::FLOAT32) {
     return CreateTexture2D(width, height, CL_FLOAT, nullptr, context, result);
   } else {
@@ -118,9 +117,8 @@ absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
   }
 }
 
-absl::Status CreateTexture2DRGBA(DataType type, int width, int height,
-                                 void* data, CLContext* context,
-                                 Texture2D* result) {
+Status CreateTexture2DRGBA(DataType type, int width, int height, void* data,
+                           CLContext* context, Texture2D* result) {
   if (type == DataType::FLOAT32) {
     return CreateTexture2D(width, height, CL_FLOAT, data, context, result);
   } else {

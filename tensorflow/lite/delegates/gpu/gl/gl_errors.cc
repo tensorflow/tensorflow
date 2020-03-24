@@ -58,83 +58,83 @@ struct ErrorFormatter {
 
 // TODO(akulik): create new error space for GL error.
 
-absl::Status GetOpenGlErrors() {
+Status GetOpenGlErrors() {
   auto error = glGetError();
   if (error == GL_NO_ERROR) {
-    return absl::OkStatus();
+    return OkStatus();
   }
   auto error2 = glGetError();
   if (error2 == GL_NO_ERROR) {
-    return absl::InternalError(ErrorToString(error));
+    return InternalError(ErrorToString(error));
   }
   std::vector<GLenum> errors = {error, error2};
   for (error = glGetError(); error != GL_NO_ERROR; error = glGetError()) {
     errors.push_back(error);
   }
-  return absl::InternalError(absl::StrJoin(errors, ",", ErrorFormatter()));
+  return InternalError(absl::StrJoin(errors, ",", ErrorFormatter()));
 }
 
-absl::Status GetEglError() {
+Status GetEglError() {
   EGLint error = eglGetError();
   switch (error) {
     case EGL_SUCCESS:
-      return absl::OkStatus();
+      return OkStatus();
     case EGL_NOT_INITIALIZED:
-      return absl::InternalError(
+      return InternalError(
           "EGL is not initialized, or could not be initialized, for the "
           "specified EGL display connection.");
     case EGL_BAD_ACCESS:
-      return absl::InternalError(
+      return InternalError(
           "EGL cannot access a requested resource (for example a context is "
           "bound in another thread).");
     case EGL_BAD_ALLOC:
-      return absl::InternalError(
+      return InternalError(
           "EGL failed to allocate resources for the requested operation.");
     case EGL_BAD_ATTRIBUTE:
-      return absl::InternalError(
+      return InternalError(
           "An unrecognized attribute or attribute value was passed in the "
           "attribute list.");
     case EGL_BAD_CONTEXT:
-      return absl::InternalError(
+      return InternalError(
           "An EGLContext argument does not name a valid EGL rendering "
           "context.");
     case EGL_BAD_CONFIG:
-      return absl::InternalError(
+      return InternalError(
           "An EGLConfig argument does not name a valid EGL frame buffer "
           "configuration.");
     case EGL_BAD_CURRENT_SURFACE:
-      return absl::InternalError(
+      return InternalError(
           "The current surface of the calling thread is a window, pixel buffer "
           "or pixmap that is no longer valid.");
     case EGL_BAD_DISPLAY:
-      return absl::InternalError(
+      return InternalError(
           "An EGLDisplay argument does not name a valid EGL display "
           "connection.");
     case EGL_BAD_SURFACE:
-      return absl::InternalError(
+      return InternalError(
           "An EGLSurface argument does not name a valid surface (window, pixel "
           "buffer or pixmap) configured for GL rendering.");
     case EGL_BAD_MATCH:
-      return absl::InternalError(
+      return InternalError(
           "Arguments are inconsistent (for example, a valid context requires "
           "buffers not supplied by a valid surface).");
     case EGL_BAD_PARAMETER:
-      return absl::InternalError("One or more argument values are invalid.");
+      return InternalError("One or more argument values are invalid.");
     case EGL_BAD_NATIVE_PIXMAP:
-      return absl::InternalError(
+      return InternalError(
           "A NativePixmapType argument does not refer to a valid native "
           "pixmap.");
     case EGL_BAD_NATIVE_WINDOW:
-      return absl::InternalError(
+      return InternalError(
           "A NativeWindowType argument does not refer to a valid native "
           "window.");
     case EGL_CONTEXT_LOST:
-      return absl::InternalError(
+      return InternalError(
           "A power management event has occurred. The application must destroy "
           "all contexts and reinitialize OpenGL ES state and objects to "
           "continue rendering.");
   }
-  return absl::UnknownError("EGL error: " + std::to_string(error));
+  return UnknownError("EGL error: " + std::to_string(error));
 }
 
 }  // namespace gl

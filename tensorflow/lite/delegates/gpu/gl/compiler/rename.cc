@@ -174,17 +174,17 @@ class ObjectRewriter : public InlineRewrite {
 
 }  // namespace
 
-absl::Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
+Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
   VariableRewriter variable_rewriter("$", name_func);
   ObjectRewriter object_rewriter("$", name_func);
   for (auto&& uniform_parameter : code->parameters) {
     if (!variable_rewriter.AddVariable(std::move(uniform_parameter))) {
-      return absl::InternalError("Variable name already exists");
+      return InternalError("Variable name already exists");
     }
   }
   for (auto&& object : code->objects) {
     if (!object_rewriter.AddObject(object.first, std::move(object.second))) {
-      return absl::InternalError("Object name already exists");
+      return InternalError("Object name already exists");
     }
   }
   TextPreprocessor preprocessor('$', /*keep_unknown_rewrites=*/true);
@@ -195,7 +195,7 @@ absl::Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
   code->source_code = source_code;
   code->parameters = variable_rewriter.GetUniformParameters();
   code->objects = object_rewriter.GetObjects();
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gl

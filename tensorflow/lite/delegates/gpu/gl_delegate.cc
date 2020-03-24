@@ -93,8 +93,7 @@ class Delegate {
     }
   }
 
-  absl::Status CopyFromBufferHandle(TfLiteBufferHandle handle,
-                                    TfLiteTensor* tensor) {
+  Status CopyFromBufferHandle(TfLiteBufferHandle handle, TfLiteTensor* tensor) {
     ValueRef ref;
     RETURN_IF_ERROR(FindObject(handle, &ref));
     auto buffer = phwc4_objects_.FindBuffer(handle);
@@ -106,8 +105,8 @@ class Delegate {
     });
   }
 
-  absl::Status CopyToBufferHandle(TfLiteBufferHandle handle,
-                                  TfLiteTensor* tensor) const {
+  Status CopyToBufferHandle(TfLiteBufferHandle handle,
+                            TfLiteTensor* tensor) const {
     ValueRef ref;
     RETURN_IF_ERROR(FindObject(handle, &ref));
     auto buffer = phwc4_objects_.FindBuffer(handle);
@@ -118,7 +117,7 @@ class Delegate {
     });
   }
 
-  absl::Status BindBufferToTensor(GLuint ssbo, int tensor_index) {
+  Status BindBufferToTensor(GLuint ssbo, int tensor_index) {
     int64_t bytes_size;
     RETURN_IF_ERROR(GetSSBOSize(ssbo, &bytes_size));
     return bhwc_objects_.RegisterBuffer(
@@ -127,8 +126,8 @@ class Delegate {
                                /* has_ownership = */ false));
   }
 
-  absl::Status Prepare(TfLiteContext* context,
-                       const TfLiteDelegateParams* delegate_params) {
+  Status Prepare(TfLiteContext* context,
+                 const TfLiteDelegateParams* delegate_params) {
     // Extract TFLite delegate execution plan from the context and convert it
     // into FlowGraph32.
     GraphFloat32 graph;
@@ -138,7 +137,7 @@ class Delegate {
     NullTransformationReporter reporter;
     ModelTransformer transformer(&graph, &reporter);
     if (!ApplyGeneralTransformations(&transformer)) {
-      return absl::InternalError("Graph general transformations failed");
+      return InternalError("Graph general transformations failed");
     }
 
     if (!env_) RETURN_IF_ERROR(EglEnvironment::NewEglEnvironment(&env_));
@@ -177,7 +176,7 @@ class Delegate {
         tflite_graph_io.insert(tensor_index);
         const auto* input = find_value(tensor_index);
         if (!input || tensor->type != TfLiteType::kTfLiteFloat32) {
-          return absl::NotFoundError("Input tensor is not found in the graph.");
+          return NotFoundError("Input tensor is not found in the graph.");
         }
 
         inputs_.push_back(input->id);
@@ -216,8 +215,7 @@ class Delegate {
         tflite_graph_io.insert(tensor_index);
         const auto* output = find_value(tensor_index);
         if (!output || tensor->type != TfLiteType::kTfLiteFloat32) {
-          return absl::NotFoundError(
-              "Output tensor is not found in the graph.");
+          return NotFoundError("Output tensor is not found in the graph.");
         }
 
         outputs_.push_back(output->id);
@@ -272,14 +270,14 @@ class Delegate {
     RETURN_IF_ERROR(compiled_model->NewRun(runtime_options, &phwc4_objects_,
                                            command_queue_.get(),
                                            &inference_context_));
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status Invoke(TfLiteContext* context) {
+  Status Invoke(TfLiteContext* context) {
     const EGLContext egl_context_at_delegate_init = env_->context().context();
     const EGLContext egl_context_at_delegate_invoke = eglGetCurrentContext();
     if (egl_context_at_delegate_init != egl_context_at_delegate_invoke) {
-      return absl::FailedPreconditionError(
+      return FailedPreconditionError(
           "Delegate should run on the same thread where it was initialized.");
     }
 
@@ -332,18 +330,18 @@ class Delegate {
         RETURN_IF_ERROR(CopyFromBufferHandle(id, &tensor));
       }
     }
-    return absl::OkStatus();
+    return OkStatus();
   }
 
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
 
  private:
-  absl::Status FindObject(ValueId id, ValueRef* ref) const {
+  Status FindObject(ValueId id, ValueRef* ref) const {
     if (id >= tensors_.size()) {
-      return absl::InvalidArgumentError("Invalid buffer id");
+      return InvalidArgumentError("Invalid buffer id");
     }
     *ref = tensors_[id];
-    return absl::OkStatus();
+    return OkStatus();
   }
 
   TfLiteDelegate delegate_ = {
@@ -389,7 +387,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = gpu_delegate->Prepare(context, params);
         if (status.ok()) return gpu_delegate;
         context->ReportError(context, "TfLiteGpuDelegate Prepare: %s",
-                             std::string(status.message()).c_str());
+                             status.error_message().c_str());
         return nullptr;
       },
       // .free
@@ -403,7 +401,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = GetGpuDelegate(node)->Invoke(context);
         if (status.ok()) return kTfLiteOk;
         context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                             std::string(status.message()).c_str());
+                             status.error_message().c_str());
         return kTfLiteError;
       },
       nullptr,              // .profiling_string
@@ -427,7 +425,7 @@ TfLiteStatus DelegateCopyFromBufferHandle(TfLiteContext* context,
   const auto status = gpu_delegate->CopyFromBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
   context->ReportError(context, "TfLiteGpuDelegate CopyFromBufferHandle: %s",
-                       std::string(status.message()).c_str());
+                       status.error_message().c_str());
   return kTfLiteError;
 }
 
@@ -440,7 +438,7 @@ TfLiteStatus DelegateCopyToBufferHandle(TfLiteContext* context,
   const auto status = gpu_delegate->CopyToBufferHandle(buffer_handle, tensor);
   if (status.ok()) return kTfLiteOk;
   context->ReportError(context, "TfLiteGpuDelegate CopyToBufferHandle: %s",
-                       std::string(status.message()).c_str());
+                       status.error_message().c_str());
   return kTfLiteError;
 }
 

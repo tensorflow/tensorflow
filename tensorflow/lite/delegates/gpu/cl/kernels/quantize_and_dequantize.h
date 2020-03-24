@@ -57,9 +57,9 @@ class QuantizeAndDequantize : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
+  Status BindArguments(CLKernel* kernel) override;
 
-  friend absl::Status CreateQuantizeAndDequantize(
+  friend Status CreateQuantizeAndDequantize(
       const CreationContext& creation_context, const OperationDef& definition,
       const QuantizeAndDequantizeAttributes& attr,
       QuantizeAndDequantize* result);
@@ -70,26 +70,27 @@ class QuantizeAndDequantize : public ElementwiseOperation {
                         CalculationsPrecision scalar_precision);
 
   template <DataType T>
-  absl::Status UploadParameters(
-      const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
+  Status UploadParameters(const ::tflite::gpu::Tensor<Linear, T>& parameters,
+                          CLContext* context);
 
   FLT min_;
   FLT max_;
   FLT scale_;
 };
 
-absl::Status CreateQuantizeAndDequantize(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const QuantizeAndDequantizeAttributes& attr, QuantizeAndDequantize* result);
+Status CreateQuantizeAndDequantize(const CreationContext& creation_context,
+                                   const OperationDef& definition,
+                                   const QuantizeAndDequantizeAttributes& attr,
+                                   QuantizeAndDequantize* result);
 
 template <DataType T>
-absl::Status QuantizeAndDequantize::UploadParameters(
+Status QuantizeAndDequantize::UploadParameters(
     const ::tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
   LinearStorageCreateInfo create_info;
   create_info.storage_type =
       DeduceLinearStorageType(definition_.GetPrimaryStorageType());
   create_info.data_type = definition_.GetPrimaryDataType();
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

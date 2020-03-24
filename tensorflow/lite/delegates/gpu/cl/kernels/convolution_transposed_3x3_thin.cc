@@ -221,18 +221,19 @@ ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
   return *this;
 }
 
-absl::Status ConvolutionTransposed3x3Thin::Compile(
+Status ConvolutionTransposed3x3Thin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, biases_, IntegralDivideRoundUp(src_channels_, 4),
       IntegralDivideRoundUp(dst_channels_, 4), *creation_context.device,
       linked_operations_);
+
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConvolutionTransposed3x3Thin::BindArguments() {
+Status ConvolutionTransposed3x3Thin::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -241,7 +242,7 @@ absl::Status ConvolutionTransposed3x3Thin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
@@ -251,13 +252,12 @@ int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed3x3Thin::Tune(
-    const TuningParameters& params) {
+Status ConvolutionTransposed3x3Thin::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
+Status ConvolutionTransposed3x3Thin::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -271,13 +271,13 @@ bool IsConvolutionTransposed3x3ThinSupported(
          attr.padding.appended.h == 1;
 }
 
-absl::Status CreateConvolutionTransposed3x3Thin(
+Status CreateConvolutionTransposed3x3Thin(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed3x3Thin* result) {
   if (!IsConvolutionTransposed3x3ThinSupported(*creation_context.device,
                                                attr)) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "ConvolutionTransposed3x3Thin doesn't support this attributes");
   }
   *result = ConvolutionTransposed3x3Thin(definition, attr);
@@ -291,7 +291,8 @@ absl::Status CreateConvolutionTransposed3x3Thin(
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 }  // namespace cl

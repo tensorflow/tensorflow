@@ -64,12 +64,12 @@ class LinearStorage {
   std::string GetDeclaration() const;
 
  private:
-  friend absl::Status CreateTextureLinearStorage(int size, DataType data_type,
-                                                 void* data, CLContext* context,
-                                                 LinearStorage* result);
-  friend absl::Status CreateBufferLinearStorage(int size, DataType data_type,
-                                                void* data, CLContext* context,
-                                                LinearStorage* result);
+  friend Status CreateTextureLinearStorage(int size, DataType data_type,
+                                           void* data, CLContext* context,
+                                           LinearStorage* result);
+  friend Status CreateBufferLinearStorage(int size, DataType data_type,
+                                          void* data, CLContext* context,
+                                          LinearStorage* result);
 
   LinearStorage(int depth, LinearStorageType storage_type, DataType data_type);
 
@@ -83,22 +83,20 @@ class LinearStorage {
   DataType data_type_;
 };
 
-absl::Status CreateBufferLinearStorage(int size, DataType data_type, void* data,
-                                       CLContext* context,
-                                       LinearStorage* result);
+Status CreateBufferLinearStorage(int size, DataType data_type, void* data,
+                                 CLContext* context, LinearStorage* result);
 
-absl::Status CreateTextureLinearStorage(int size, DataType data_type,
-                                        void* data, CLContext* context,
-                                        LinearStorage* result);
+Status CreateTextureLinearStorage(int size, DataType data_type, void* data,
+                                  CLContext* context, LinearStorage* result);
 
-absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
-                                 int size, void* data, CLContext* context,
-                                 LinearStorage* result);
+Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
+                           int size, void* data, CLContext* context,
+                           LinearStorage* result);
 
 template <DataType T>
-absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
-                                 const ::tflite::gpu::Tensor<Linear, T>& tensor,
-                                 CLContext* context, LinearStorage* result) {
+Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
+                           const ::tflite::gpu::Tensor<Linear, T>& tensor,
+                           CLContext* context, LinearStorage* result) {
   int size = creation_info.aligned_size != 0 ? creation_info.aligned_size
                                              : tensor.shape.v;
   const int depth = IntegralDivideRoundUp(size, 4);
@@ -114,7 +112,7 @@ absl::Status CreateLinearStorage(const LinearStorageCreateInfo& creation_info,
                                         context, result));
   }
   result->SetName(creation_info.name);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

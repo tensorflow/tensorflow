@@ -80,14 +80,14 @@ std::string ReLU::GetArgsDeclaration() const {
   return args;
 }
 
-absl::Status ReLU::BindArguments(CLKernel* kernel) {
+Status ReLU::BindArguments(CLKernel* kernel) {
   if (alpha_.Active()) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(alpha_));
   }
   if (clip_.Active()) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(clip_));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 ReLU CreateReLU(const CreationContext& creation_context,

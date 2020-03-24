@@ -81,11 +81,11 @@ class MergeConvolutionWithAdd : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    absl::Status status = RemoveFollowingNode(graph, &add_node, &conv_node);
+    Status status = RemoveFollowingNode(graph, &add_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove add node after convolution: " +
-                  std::string(status.message())};
+                  status.error_message()};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -131,11 +131,11 @@ class MergeAddWithConvolution : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    absl::Status status = RemovePrecedingNode(graph, &add_node, &conv_node);
+    Status status = RemovePrecedingNode(graph, &add_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove add node after convolution: " +
-                  std::string(status.message())};
+                  status.error_message()};
     }
     return {TransformStatus::APPLIED, ""};
   }

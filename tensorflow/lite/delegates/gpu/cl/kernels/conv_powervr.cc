@@ -173,7 +173,7 @@ ConvPowerVR& ConvPowerVR::operator=(ConvPowerVR&& operation) {
   return *this;
 }
 
-absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
+Status ConvPowerVR::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_padding_.x != 1;
   const std::string code =
@@ -189,7 +189,7 @@ absl::Status ConvPowerVR::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConvPowerVR::BindArguments() {
+Status ConvPowerVR::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -211,7 +211,7 @@ absl::Status ConvPowerVR::BindArguments() {
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConvPowerVR::GetGridSize() const {
@@ -245,13 +245,13 @@ int3 ConvPowerVR::GetGridSize() const {
   }
 }
 
-absl::Status ConvPowerVR::Tune(const TuningParameters& params) {
+Status ConvPowerVR::Tune(const TuningParameters& params) {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
       conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_BY_THREADS ||
       conv_params_.fixed_work_group_size) {
-    return absl::OkStatus();
+    return OkStatus();
   }
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
@@ -260,10 +260,10 @@ absl::Status ConvPowerVR::Tune(const TuningParameters& params) {
     return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                                 &conv_params_.work_group_size);
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
+Status ConvPowerVR::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(),
                                  conv_params_.work_group_size);
@@ -848,26 +848,27 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParamsWinograd(
   return params;
 }
 
-absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvPowerVR* result, const BHWC* dst_shape) {
+Status CreateConvPowerVR(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const Convolution2DAttributes& attr,
+                         ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvPowerVR* result, const BHWC* dst_shape) {
+Status CreateConvPowerVR(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
+                         ConvPowerVR* result, const BHWC* dst_shape) {
   *result = ConvPowerVR(definition, attr, *creation_context.device, dst_shape);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-absl::Status CreateConvPowerVRWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvPowerVR* result,
-    const BHWC* dst_shape) {
+Status CreateConvPowerVRWino4x4To6x6(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const Convolution2DAttributes& attr,
+                                     ConvPowerVR* result,
+                                     const BHWC* dst_shape) {
   *result = ConvPowerVR(definition);
   result->conv_params_ = result->GuessBestParamsWinograd(
       *creation_context.device, definition, attr, dst_shape);

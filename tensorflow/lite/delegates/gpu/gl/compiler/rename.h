@@ -32,7 +32,7 @@ using NameFunctor = std::function<std::string(absl::string_view name)>;
 
 // Rewrites source code, objects and parameters with the new names supplied
 // by the given functor.
-absl::Status Rename(const NameFunctor& name_func, GeneratedCode* code);
+Status Rename(const NameFunctor& name_func, GeneratedCode* code);
 
 }  // namespace gl
 }  // namespace gpu

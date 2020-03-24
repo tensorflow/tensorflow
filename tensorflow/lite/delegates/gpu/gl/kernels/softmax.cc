@@ -41,19 +41,17 @@ float4 GetMask(int num_channels) {
 
 class Softmax : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     const auto* input = ctx.graph->FindInputs(ctx.node->id)[0];
     const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
     const auto& attr = absl::any_cast<const SoftmaxAttributes&>(
         ctx.node->operation.attributes);
     if (input->tensor.shape != output->tensor.shape) {
-      return absl::InvalidArgumentError(
-          "Input and output shapes do not match.");
+      return InvalidArgumentError("Input and output shapes do not match.");
     }
     if (attr.axis != Axis::CHANNELS) {
-      return absl::UnimplementedError(
-          "Softmax is only supported for channels axis.");
+      return UnimplementedError("Softmax is only supported for channels axis.");
     }
     return input->tensor.shape.h == 1 && input->tensor.shape.w == 1
                ? GenerateCodeFor1x1(ctx, generated_code)
@@ -61,8 +59,8 @@ class Softmax : public NodeShader {
   }
 
  private:
-  absl::Status GenerateCodeFor1x1(const GenerationContext& ctx,
-                                  GeneratedCode* generated_code) const {
+  Status GenerateCodeFor1x1(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const {
     const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
     const int depth = IntegralDivideRoundUp(output->tensor.shape.c, 4);
     std::vector<Variable> shared_variables = {
@@ -135,11 +133,11 @@ class Softmax : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status GenerateCodeGeneral(const GenerationContext& ctx,
-                                   GeneratedCode* generated_code) const {
+  Status GenerateCodeGeneral(const GenerationContext& ctx,
+                             GeneratedCode* generated_code) const {
     const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
     std::vector<Variable> parameters = {
         {"src_depth", IntegralDivideRoundUp(output->tensor.shape.c, 4)},
@@ -174,7 +172,7 @@ class Softmax : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

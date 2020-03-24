@@ -27,12 +27,11 @@ namespace cl {
 
 // @return if error_code is success, then return OK status. Otherwise translates
 // error code into a message.
-inline absl::Status GetOpenCLError(cl_int error_code) {
+inline Status GetOpenCLError(cl_int error_code) {
   if (error_code == CL_SUCCESS) {
-    return absl::OkStatus();
+    return OkStatus();
   }
-  return absl::InternalError("OpenCL error: " +
-                             CLErrorCodeToString(error_code));
+  return InternalError("OpenCL error: " + CLErrorCodeToString(error_code));
 }
 
 }  // namespace cl

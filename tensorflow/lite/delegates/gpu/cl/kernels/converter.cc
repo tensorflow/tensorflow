@@ -35,12 +35,12 @@ namespace {
 
 class OpenClConverterImpl : public TensorObjectConverter {
  public:
-  virtual absl::Status Init(const TensorObjectDef& input_def,
-                            const TensorObjectDef& output_def,
-                            Environment* environment) = 0;
+  virtual Status Init(const TensorObjectDef& input_def,
+                      const TensorObjectDef& output_def,
+                      Environment* environment) = 0;
 
  protected:
-  absl::Status DispatchKernel(cl_mem input, cl_mem output) {
+  Status DispatchKernel(cl_mem input, cl_mem output) {
     kernel_.ResetBindingCounter();
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(input));
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(output));
@@ -119,9 +119,9 @@ class FromTensorConverter : public OpenClConverterImpl {
   })");
   }
 
-  absl::Status Init(const TensorObjectDef& input_def,
-                    const TensorObjectDef& output_def,
-                    Environment* environment) final {
+  Status Init(const TensorObjectDef& input_def,
+              const TensorObjectDef& output_def,
+              Environment* environment) final {
     auto params_kernel = output_def.object_def.data_layout == DataLayout::BHWC
                              ? GetToBhwcKernel(input_def, output_def)
                              : GetToDhwc4Kernel(input_def, output_def);
@@ -157,12 +157,11 @@ __kernel void from_tensor()" +
         environment->device(), &kernel_);
   }
 
-  absl::Status Convert(const TensorObject& input_obj,
-                       const TensorObject& output_obj) override {
+  Status Convert(const TensorObject& input_obj,
+                 const TensorObject& output_obj) override {
     auto output = absl::get_if<OpenClBuffer>(&output_obj);
     if (!output || !output->memobj) {
-      return absl::InvalidArgumentError(
-          "Missing output in from_tensor converter");
+      return InvalidArgumentError("Missing output in from_tensor converter");
     }
     auto input_texture = absl::get_if<OpenClTexture>(&input_obj);
     if (input_texture && input_texture->memobj) {
@@ -172,7 +171,7 @@ __kernel void from_tensor()" +
     if (input_buffer && input_buffer->memobj) {
       return DispatchKernel(input_buffer->memobj, output->memobj);
     }
-    return absl::InvalidArgumentError("Missing input in from_tensor converter");
+    return InvalidArgumentError("Missing input in from_tensor converter");
   }
 };
 
@@ -226,9 +225,9 @@ class ToTensorConverter : public OpenClConverterImpl {
 )");
   }
 
-  absl::Status Init(const TensorObjectDef& input_def,
-                    const TensorObjectDef& output_def,
-                    Environment* environment) final {
+  Status Init(const TensorObjectDef& input_def,
+              const TensorObjectDef& output_def,
+              Environment* environment) final {
     auto params_kernel = input_def.object_def.data_layout == DataLayout::BHWC
                              ? GetFromBhwcKernel(input_def, output_def)
                              : GetFromDhwc4Kernel(input_def, output_def);
@@ -262,11 +261,11 @@ __kernel void to_tensor()" +
         &kernel_);
   }
 
-  absl::Status Convert(const TensorObject& input_obj,
-                       const TensorObject& output_obj) override {
+  Status Convert(const TensorObject& input_obj,
+                 const TensorObject& output_obj) override {
     auto input = absl::get_if<OpenClBuffer>(&input_obj);
     if (!input || !input->memobj) {
-      return absl::InvalidArgumentError("Missing input in to_tensor converter");
+      return InvalidArgumentError("Missing input in to_tensor converter");
     }
     auto output_texture = absl::get_if<OpenClTexture>(&output_obj);
     if (output_texture && output_texture->memobj) {
@@ -276,7 +275,7 @@ __kernel void to_tensor()" +
     if (output_buffer && output_buffer->memobj) {
       return DispatchKernel(input->memobj, output_buffer->memobj);
     }
-    return absl::InvalidArgumentError("Missing input in to_tensor converter");
+    return InvalidArgumentError("Missing input in to_tensor converter");
   }
 };
 
@@ -319,18 +318,18 @@ class TrivialCopier : public OpenClConverterImpl {
            input.data_layout == output.data_layout;
   }
 
-  absl::Status Init(const TensorObjectDef& input_def,
-                    const TensorObjectDef& output_def,
-                    Environment* environment) final {
+  Status Init(const TensorObjectDef& input_def,
+              const TensorObjectDef& output_def,
+              Environment* environment) final {
     dims_ = input_def.dimensions;
     data_type_ = input_def.object_def.data_type;
     queue_ = environment->queue();
     region_ = CalculateTextureRegion(output_def);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status Convert(const TensorObject& input_obj,
-                       const TensorObject& output_obj) override {
+  Status Convert(const TensorObject& input_obj,
+                 const TensorObject& output_obj) override {
     auto texture_input = absl::get_if<OpenClTexture>(&input_obj);
     auto texture_output = absl::get_if<OpenClTexture>(&output_obj);
     if (texture_input && texture_output) {
@@ -341,12 +340,12 @@ class TrivialCopier : public OpenClConverterImpl {
     if (buffer_input && buffer_output) {
       return Copy(*buffer_input, *buffer_output);
     }
-    return absl::InternalError("Unexpected object");
+    return InternalError("Unexpected object");
   }
 
-  absl::Status Copy(const OpenClBuffer& input, const OpenClBuffer& output) {
+  Status Copy(const OpenClBuffer& input, const OpenClBuffer& output) {
     if (input.memobj == output.memobj) {
-      return absl::OkStatus();
+      return OkStatus();
     }
     return GetOpenCLError(clEnqueueCopyBuffer(
         queue_->queue(), input.memobj, output.memobj, 0, 0,
@@ -354,9 +353,9 @@ class TrivialCopier : public OpenClConverterImpl {
         nullptr));
   }
 
-  absl::Status Copy(const OpenClTexture& input, const OpenClTexture& output) {
+  Status Copy(const OpenClTexture& input, const OpenClTexture& output) {
     if (input.memobj == output.memobj) {
-      return absl::OkStatus();
+      return OkStatus();
     }
     size_t origin[3] = {0, 0, 0};
     return GetOpenCLError(
@@ -381,18 +380,18 @@ class CpuCopier : public OpenClConverterImpl {
              IsOpenClTextureOrBuffer(input.object_type)));
   }
 
-  absl::Status Init(const TensorObjectDef& input_def,
-                    const TensorObjectDef& output_def,
-                    Environment* environment) final {
+  Status Init(const TensorObjectDef& input_def,
+              const TensorObjectDef& output_def,
+              Environment* environment) final {
     region_ = CalculateTextureRegion(
         input_def.object_def.object_type == ObjectType::CPU_MEMORY ? output_def
                                                                    : input_def);
     queue_ = environment->queue();
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status Convert(const TensorObject& input_obj,
-                       const TensorObject& output_obj) override {
+  Status Convert(const TensorObject& input_obj,
+                 const TensorObject& output_obj) override {
     auto cpu_input = absl::get_if<CpuMemory>(&input_obj);
     auto cpu_output = absl::get_if<CpuMemory>(&output_obj);
     if (cpu_input) {
@@ -420,7 +419,7 @@ class CpuCopier : public OpenClConverterImpl {
             buffer_input->memobj, cpu_output->size_bytes, cpu_output->data);
       }
     }
-    return absl::InternalError("Unexpected object");
+    return InternalError("Unexpected object");
   }
 
  private:
@@ -443,7 +442,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
             ToTensorConverter::IsSupported(input_def, output_def));
   }
 
-  absl::Status MakeConverter(
+  Status MakeConverter(
       const TensorObjectDef& input, const TensorObjectDef& output,
       std::unique_ptr<TensorObjectConverter>* converter) final {
     std::unique_ptr<OpenClConverterImpl> impl;
@@ -458,11 +457,11 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
     } else if (ToTensorConverter::IsSupported(input_def, output_def)) {
       impl = absl::make_unique<ToTensorConverter>();
     } else {
-      return absl::UnimplementedError("Unsupported conversion");
+      return UnimplementedError("Unsupported conversion");
     }
     RETURN_IF_ERROR(impl->Init(input, output, environment_));
     *converter = std::move(impl);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
   Environment* environment_;

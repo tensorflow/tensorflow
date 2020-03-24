@@ -31,7 +31,7 @@ namespace tflite {
 namespace gpu {
 namespace gl {
 
-absl::Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
+Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
   uint3 workgroup_size = uint3(4, 4, 4);
   std::string shader_source = GetShaderHeader(workgroup_size) + R"(
     layout(std430) buffer;
@@ -62,24 +62,22 @@ absl::Status ConverterPhwc4ToBhwc::Create(ConverterPhwc4ToBhwc* converter) {
   GlProgram program;
   RETURN_IF_ERROR(GlProgram::CreateWithShader(shader, &program));
   *converter = ConverterPhwc4ToBhwc(std::move(program), workgroup_size);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape,
-                                           const GlBuffer& source,
-                                           CommandQueue* command_queue,
-                                           GlBuffer* destination) {
+Status ConverterPhwc4ToBhwc::Convert(const BHWC& shape, const GlBuffer& source,
+                                     CommandQueue* command_queue,
+                                     GlBuffer* destination) {
   if (source.bytes_size() < BytesForPHWC4(shape)) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "Phwc4ToBhwc: Input data size does not match expected size.");
   }
   if (destination->bytes_size() < BytesForBHWC(shape)) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "Phwc4ToBhwc: output data size does not match expected size.");
   }
   if (shape.b != 1) {
-    return absl::UnimplementedError(
-        "Phwc4ToBhwc: Batch size is not equal to 1.");
+    return UnimplementedError("Phwc4ToBhwc: Batch size is not equal to 1.");
   }
 
   uint3 workload = uint3(shape.w, shape.h, shape.c);

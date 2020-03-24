@@ -96,7 +96,7 @@ ConcatXY& ConcatXY::operator=(ConcatXY&& operation) {
   return *this;
 }
 
-absl::Status ConcatXY::Compile(const CreationContext& creation_context) {
+Status ConcatXY::Compile(const CreationContext& creation_context) {
   const auto code =
       GetConcatKernelCode(definition_, tensors_count_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -104,7 +104,7 @@ absl::Status ConcatXY::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConcatXY::BindArguments() {
+Status ConcatXY::BindArguments() {
   kernel_.ResetBindingCounter();
   for (int i = 0; i < tensors_count_; ++i) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[i]->GetMemoryPtr()));
@@ -122,7 +122,7 @@ absl::Status ConcatXY::BindArguments() {
     y_offset += attr_.axis == Axis::HEIGHT ? height : 0;
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConcatXY::GetGridSize() const {
@@ -140,12 +140,12 @@ int3 ConcatXY::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConcatXY::Tune(const TuningParameters& params) {
+Status ConcatXY::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status ConcatXY::AddToQueue(CLCommandQueue* queue) {
+Status ConcatXY::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

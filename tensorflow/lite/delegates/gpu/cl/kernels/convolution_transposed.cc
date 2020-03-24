@@ -368,8 +368,7 @@ ConvolutionTransposed& ConvolutionTransposed::operator=(
   return *this;
 }
 
-absl::Status ConvolutionTransposed::Compile(
-    const CreationContext& creation_context) {
+Status ConvolutionTransposed::Compile(const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, biases_, *creation_context.device, weights_are_buffer_,
       block_size_, linked_operations_);
@@ -381,7 +380,7 @@ absl::Status ConvolutionTransposed::Compile(
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConvolutionTransposed::BindArguments() {
+Status ConvolutionTransposed::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (weights_are_buffer_) {
@@ -400,7 +399,7 @@ absl::Status ConvolutionTransposed::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConvolutionTransposed::GetGridSize() const {
@@ -413,21 +412,21 @@ int3 ConvolutionTransposed::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed::Tune(const TuningParameters& params) {
+Status ConvolutionTransposed::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &work_group_size_);
 }
 
-absl::Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
+Status ConvolutionTransposed::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-absl::Status CreateConvolutionTransposed(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed* result) {
+Status CreateConvolutionTransposed(const CreationContext& creation_context,
+                                   const OperationDef& definition,
+                                   const ConvolutionTransposedAttributes& attr,
+                                   ConvolutionTransposed* result) {
   *result = ConvolutionTransposed(definition, attr, *creation_context.device);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
@@ -439,7 +438,8 @@ absl::Status CreateConvolutionTransposed(
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 }  // namespace cl

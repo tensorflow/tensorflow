@@ -304,11 +304,12 @@ ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
   return *this;
 }
 
-absl::Status ConvolutionTransposed3x3::Compile(
+Status ConvolutionTransposed3x3::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, biases_, linked_operations_, weights_upload_type_, padding_,
       work_group_launch_order_);
+
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsPowerVR()) {
@@ -317,10 +318,11 @@ absl::Status ConvolutionTransposed3x3::Compile(
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
-absl::Status ConvolutionTransposed3x3::BindArguments() {
+Status ConvolutionTransposed3x3::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -335,7 +337,10 @@ absl::Status ConvolutionTransposed3x3::BindArguments() {
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
-  return kernel_.SetBytesAuto(int2(padding_x * src_[0]->Batch(), padding_y));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int2(padding_x * src_[0]->Batch(), padding_y)));
+
+  return OkStatus();
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {
@@ -353,7 +358,7 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed3x3::AddToQueue(CLCommandQueue* queue) {
+Status ConvolutionTransposed3x3::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -365,13 +370,13 @@ bool IsConvolutionTransposed3x3Supported(
          attr.stride.w == 2 && attr.stride.h == 2;
 }
 
-absl::Status CreateConvolutionTransposed3x3(
+Status CreateConvolutionTransposed3x3(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed3x3* result) {
   if (!IsConvolutionTransposed3x3Supported(*creation_context.device, definition,
                                            attr)) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "ConvolutionTransposed3x3 doesn't support this attributes");
   }
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
@@ -386,7 +391,7 @@ absl::Status CreateConvolutionTransposed3x3(
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

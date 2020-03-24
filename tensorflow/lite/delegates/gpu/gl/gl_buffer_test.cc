@@ -89,7 +89,7 @@ TEST(Buffer, SubView) {
   GlBuffer view1;
   ASSERT_TRUE(buffer.MakeView(4, 16, &view1).ok());
   GlBuffer view2;
-  EXPECT_FALSE(view1.MakeView(1, 16, &view2).ok());
+  EXPECT_NE(view1.MakeView(1, 16, &view2), OkStatus());
   ASSERT_TRUE(view1.MakeView(2, 2, &view2).ok());
 
   EXPECT_FALSE(view2.has_ownership());

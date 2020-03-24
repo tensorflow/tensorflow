@@ -23,10 +23,10 @@ namespace gpu {
 namespace gl {
 
 // @return recent opengl errors and packs them into Status.
-absl::Status GetOpenGlErrors();
+Status GetOpenGlErrors();
 
 // @return the error of the last called EGL function in the current thread.
-absl::Status GetEglError();
+Status GetEglError();
 
 }  // namespace gl
 }  // namespace gpu

@@ -56,9 +56,8 @@ void CLCommandQueue::Release() {
   }
 }
 
-absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                              int3 work_group_size,
-                                              CLEvent* event) {
+Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
+                                        int3 work_group_size, CLEvent* event) {
   std::vector<size_t> local(3);
   std::vector<size_t> global(3);
   for (int i = 0; i < 3; ++i) {
@@ -73,31 +72,30 @@ absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
     *event = CLEvent(resulting_event);
   }
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to clEnqueueNDRangeKernel - ",
-                     CLErrorCodeToString(error_code)));
+    return UnknownError(absl::StrCat("Failed to clEnqueueNDRangeKernel - ",
+                                     CLErrorCodeToString(error_code)));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                              int3 work_group_size) {
+Status CLCommandQueue::DispatchImplicit(const CLKernel& kernel, int3 grid,
+                                        int3 work_group_size) {
   return DispatchImplicit(kernel, grid, work_group_size, nullptr);
 }
 
-absl::Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
+Status CLCommandQueue::EnqueueEvent(CLEvent* event) {
   cl_event resulting_event;
   const int error_code = clEnqueueMarker(queue_, &resulting_event);
   *event = CLEvent(resulting_event);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(absl::StrCat("Failed to clEnqueueMarker - ",
-                                           CLErrorCodeToString(error_code)));
+    return UnknownError(absl::StrCat("Failed to clEnqueueMarker - ",
+                                     CLErrorCodeToString(error_code)));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
-                                               const void* data) {
+Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
+                                         const void* data) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
@@ -105,16 +103,16 @@ absl::Status CLCommandQueue::EnqueueWriteImage(cl_mem memory, int3 region,
   auto error_code = clEnqueueWriteImage(queue_, memory, CL_TRUE, origin, r, 0,
                                         0, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to upload data to GPU (clEnqueueWriteImage) - ",
                      CLErrorCodeToString(error_code)));
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
-                                              void* data) {
+Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
+                                        void* data) {
   const size_t origin[] = {0, 0, 0};
   const size_t r[] = {static_cast<size_t>(region.x),
                       static_cast<size_t>(region.y),
@@ -122,47 +120,45 @@ absl::Status CLCommandQueue::EnqueueReadImage(cl_mem memory, int3 region,
   auto error_code = clEnqueueReadImage(queue_, memory, CL_TRUE, origin, r, 0, 0,
                                        data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to read data from GPU (clEnqueueReadImage) - ",
                      CLErrorCodeToString(error_code)));
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory,
-                                                size_t size_in_bytes,
-                                                const void* data) {
+Status CLCommandQueue::EnqueueWriteBuffer(cl_mem memory, size_t size_in_bytes,
+                                          const void* data) {
   auto error_code = clEnqueueWriteBuffer(
       queue_, memory, CL_TRUE, 0, size_in_bytes, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to upload data to GPU (clEnqueueWriteBuffer) - ",
                      CLErrorCodeToString(error_code)));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::EnqueueReadBuffer(cl_mem memory,
-                                               size_t size_in_bytes,
-                                               void* data) {
+Status CLCommandQueue::EnqueueReadBuffer(cl_mem memory, size_t size_in_bytes,
+                                         void* data) {
   auto error_code = clEnqueueReadBuffer(
       queue_, memory, CL_TRUE, 0, size_in_bytes, data, 0, nullptr, nullptr);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to read data from GPU (clEnqueueReadBuffer) - ",
                      CLErrorCodeToString(error_code)));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CLCommandQueue::WaitForCompletion() {
+Status CLCommandQueue::WaitForCompletion() {
   auto error_code = clFinish(queue_);
   if (error_code != CL_SUCCESS) {
-    return absl::UnknownError(
+    return UnknownError(
         absl::StrCat("Failed to clFinish - ", CLErrorCodeToString(error_code)));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 ProfilingCommandQueue::ProfilingCommandQueue(cl_command_queue queue)
@@ -191,14 +187,14 @@ void ProfilingCommandQueue::SetEventsLabel(const std::string& name) {
 
 void ProfilingCommandQueue::ResetMeasurements() { events_.clear(); }
 
-absl::Status ProfilingCommandQueue::DispatchImplicit(const CLKernel& kernel,
-                                                     int3 grid,
-                                                     int3 work_group_size) {
+Status ProfilingCommandQueue::DispatchImplicit(const CLKernel& kernel,
+                                               int3 grid,
+                                               int3 work_group_size) {
   events_.push_back(CLEvent());
   RETURN_IF_ERROR(CLCommandQueue::DispatchImplicit(
       kernel, grid, work_group_size, &events_[events_.size() - 1]));
   events_.back().SetName(current_label_);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
@@ -212,7 +208,7 @@ ProfilingInfo ProfilingCommandQueue::GetProfilingInfo() const {
   return result;
 }
 
-absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
+Status ProfilingCommandQueue::GetBestWorkGroupIndex(
     const CLKernel& kernel, const DeviceInfo& device_info, const int3& grid,
     const std::vector<int3>& work_group_sizes, int* index) {
   // Some Adreno 3xx can have wrong numbers for some events
@@ -272,22 +268,20 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
 
   *index = minimum_index;
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CreateCLCommandQueue(const CLDevice& device,
-                                  const CLContext& context,
-                                  CLCommandQueue* result) {
+Status CreateCLCommandQueue(const CLDevice& device, const CLContext& context,
+                            CLCommandQueue* result) {
   int error_code;
   cl_command_queue queue =
       clCreateCommandQueue(context.context(), device.id(), 0, &error_code);
   if (!queue) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to create a command queue - ",
-                     CLErrorCodeToString(error_code)));
+    return UnknownError(absl::StrCat("Failed to create a command queue - ",
+                                     CLErrorCodeToString(error_code)));
   }
   *result = CLCommandQueue(queue, true);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 double ProfilingCommandQueue::GetQueueExecutionTimeMs() const {
@@ -306,20 +300,19 @@ double ProfilingCommandQueue::GetSumOfEventsTimeMs() const {
   return sum;
 }
 
-absl::Status CreateProfilingCommandQueue(const CLDevice& device,
-                                         const CLContext& context,
-                                         ProfilingCommandQueue* result) {
+Status CreateProfilingCommandQueue(const CLDevice& device,
+                                   const CLContext& context,
+                                   ProfilingCommandQueue* result) {
   int error_code;
   cl_command_queue queue = clCreateCommandQueue(
       context.context(), device.id(), CL_QUEUE_PROFILING_ENABLE, &error_code);
   if (!queue) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to create a command queue - ",
-                     CLErrorCodeToString(error_code)));
+    return UnknownError(absl::StrCat("Failed to create a command queue - ",
+                                     CLErrorCodeToString(error_code)));
   }
 
   *result = ProfilingCommandQueue(queue);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 absl::Duration ProfilingInfo::GetTotalTime() const {

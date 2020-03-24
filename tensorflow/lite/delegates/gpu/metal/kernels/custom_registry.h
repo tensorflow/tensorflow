@@ -28,11 +28,11 @@ namespace gpu {
 namespace metal {
 
 // Registers custom operations.
-absl::Status RegisterCustomOps(const GraphFloat32& graph, const Node* node,
-                               const std::vector<ValueId>& inputs,
-                               const std::vector<ValueId>& outputs,
-                               const RuntimeOptions& options,
-                               std::vector<ComputeTaskDescriptorPtr>* tasks);
+Status RegisterCustomOps(const GraphFloat32& graph, const Node* node,
+                         const std::vector<ValueId>& inputs,
+                         const std::vector<ValueId>& outputs,
+                         const RuntimeOptions& options,
+                         std::vector<ComputeTaskDescriptorPtr>* tasks);
 
 }  // namespace metal
 }  // namespace gpu

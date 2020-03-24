@@ -26,12 +26,12 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-absl::Status RegisterCustomOps(const GraphFloat32& graph, const Node* node,
-                               const std::vector<ValueId>& inputs,
-                               const std::vector<ValueId>& outputs,
-                               const RuntimeOptions& options,
-                               std::vector<ComputeTaskDescriptorPtr>* tasks) {
-  return absl::UnimplementedError("Unsupported op: " + node->operation.type);
+Status RegisterCustomOps(const GraphFloat32& graph, const Node* node,
+                         const std::vector<ValueId>& inputs,
+                         const std::vector<ValueId>& outputs,
+                         const RuntimeOptions& options,
+                         std::vector<ComputeTaskDescriptorPtr>* tasks) {
+  return UnimplementedError("Unsupported op: " + node->operation.type);
 }
 
 }  // namespace metal

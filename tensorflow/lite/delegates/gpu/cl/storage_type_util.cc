@@ -24,7 +24,6 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
 bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
                               const BHWDC& shape,
                               const TensorDescriptor& descriptor) {

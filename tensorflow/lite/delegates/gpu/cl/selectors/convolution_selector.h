@@ -28,16 +28,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectConvolution(const Convolution2DAttributes& attr,
-                               const BHWC& dst_shape,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def, ModelHints hints,
-                               std::unique_ptr<GPUOperation>* ptr);
+Status SelectConvolution(const Convolution2DAttributes& attr,
+                         const BHWC& dst_shape,
+                         const CreationContext& creation_context,
+                         const OperationDef& op_def, ModelHints hints,
+                         std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectConvolutionForWinograd(
-    const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
+                                    const BHWC& dst_shape,
+                                    const CreationContext& creation_context,
+                                    const OperationDef& op_def,
+                                    ModelHints hints,
+                                    std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

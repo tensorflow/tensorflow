@@ -36,7 +36,7 @@ namespace gl {
 // EGL environment needs to be created once per thread.
 class EglEnvironment {
  public:
-  static absl::Status NewEglEnvironment(
+  static Status NewEglEnvironment(
       std::unique_ptr<EglEnvironment>* egl_environment);
 
   EglEnvironment() = default;
@@ -47,10 +47,10 @@ class EglEnvironment {
   const GpuInfo& gpu_info() const { return gpu_info_; }
 
  private:
-  absl::Status Init();
-  absl::Status InitConfiglessContext();
-  absl::Status InitSurfacelessContext();
-  absl::Status InitPBufferContext();
+  Status Init();
+  Status InitConfiglessContext();
+  Status InitSurfacelessContext();
+  Status InitPBufferContext();
 
   EGLDisplay display_ = EGL_NO_DISPLAY;
   EglSurface surface_draw_;

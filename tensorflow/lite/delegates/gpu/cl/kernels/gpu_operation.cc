@@ -154,7 +154,7 @@ ElementwiseOperation& ElementwiseOperation::operator=(
   return *this;
 }
 
-absl::Status ElementwiseOperation::BindArguments() {
+Status ElementwiseOperation::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArguments(&kernel_));
@@ -162,7 +162,7 @@ absl::Status ElementwiseOperation::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ElementwiseOperation::GetGridSize() const {
@@ -172,20 +172,19 @@ int3 ElementwiseOperation::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ElementwiseOperation::Compile(
-    const CreationContext& creation_context) {
+Status ElementwiseOperation::Compile(const CreationContext& creation_context) {
   const auto code = GetElementWiseCode(definition_, *this, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-absl::Status ElementwiseOperation::AddToQueue(CLCommandQueue* queue) {
+Status ElementwiseOperation::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-absl::Status ElementwiseOperation::Tune(const TuningParameters& params) {
+Status ElementwiseOperation::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
@@ -210,12 +209,12 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
   return code;
 }
 
-absl::Status BindArgs(CLKernel* kernel,
-                      const std::vector<ElementwiseOperation*>& linked_ops) {
+Status BindArgs(CLKernel* kernel,
+                const std::vector<ElementwiseOperation*>& linked_ops) {
   for (auto linked_op : linked_ops) {
     RETURN_IF_ERROR(linked_op->BindArguments(kernel));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

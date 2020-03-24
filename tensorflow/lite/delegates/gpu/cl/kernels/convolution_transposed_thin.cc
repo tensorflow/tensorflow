@@ -184,7 +184,7 @@ ConvolutionTransposedThin& ConvolutionTransposedThin::operator=(
   return *this;
 }
 
-absl::Status ConvolutionTransposedThin::Compile(
+Status ConvolutionTransposedThin::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
       definition_, IntegralDivideRoundUp(src_channels_, 4), dst_channels_,
@@ -201,7 +201,7 @@ absl::Status ConvolutionTransposedThin::Compile(
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConvolutionTransposedThin::BindArguments() {
+Status ConvolutionTransposedThin::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_buf_.GetMemoryPtr()));
@@ -210,7 +210,7 @@ absl::Status ConvolutionTransposedThin::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(bias_value_));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConvolutionTransposedThin::GetGridSize() const {
@@ -220,12 +220,12 @@ int3 ConvolutionTransposedThin::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposedThin::Tune(const TuningParameters& params) {
+Status ConvolutionTransposedThin::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status ConvolutionTransposedThin::AddToQueue(CLCommandQueue* queue) {
+Status ConvolutionTransposedThin::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -238,18 +238,18 @@ bool IsConvolutionTransposedThinSupported(
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-absl::Status CreateConvolutionTransposedThin(
+Status CreateConvolutionTransposedThin(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposedThin* result) {
   if (!IsConvolutionTransposedThinSupported(*creation_context.device, attr)) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "ConvolutionTransposedThin doesn't support this attributes");
   }
   *result = ConvolutionTransposedThin(definition, attr);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

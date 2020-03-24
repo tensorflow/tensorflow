@@ -32,19 +32,19 @@ TfLiteIntArray* GetOpsToReplace(TfLiteContext* context);
 
 // Extracts TFLite delegate execution plan from the input TFLite context and
 // converts it into generic graph format.
-absl::Status BuildModel(TfLiteContext* context,
-                        const TfLiteDelegateParams* delegate_params,
-                        GraphFloat32* graph);
+Status BuildModel(TfLiteContext* context,
+                  const TfLiteDelegateParams* delegate_params,
+                  GraphFloat32* graph);
 
 // Same as above but also apply all transformations on the final graph.
 // Prefer using this method instead of BuildModel.
-absl::Status BuildFinalModel(TfLiteContext* context,
-                             const TfLiteDelegateParams* delegate_params,
-                             GraphFloat32* graph);
+Status BuildFinalModel(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params,
+                       GraphFloat32* graph);
 
 // Module-internal converter, exposed for unit testing purpose only.
-absl::Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
-                                            TensorRef<BHWC>* tensor_ref);
+Status ConvertTfLiteTensorToTensorRef(const TfLiteTensor& tflite_tensor,
+                                      TensorRef<BHWC>* tensor_ref);
 
 }  // namespace gpu
 }  // namespace tflite

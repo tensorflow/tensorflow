@@ -17,7 +17,6 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -83,9 +82,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({4, 8, 4, 8, 2, 4, 2, 4}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H2W2I1Stride1x1Dilation2x2 {
@@ -121,9 +120,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1, 1, 1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({10}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H3W3I1Stride1x1Dilation1x1 {
@@ -159,9 +158,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({11}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO2H1W1I2Stride1x1Dilation1x1 {
@@ -197,9 +196,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 1, 1, 1}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({4, 8, 4, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testO1H1W1I1Stride2x2Dilation1x1 {
@@ -236,9 +235,9 @@ using ::tflite::gpu::metal::SingleOpModel;
                       {output});
   XCTAssertTrue(model.PopulateTensor(0, {1, 0, 2, 0, 0, 0, 4, 0, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({2, 4, 8, 16}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 @end

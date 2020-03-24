@@ -28,7 +28,7 @@ namespace gpu {
 namespace cl {
 namespace {
 
-absl::Status SelectConvolutionTransposedAdreno(
+Status SelectConvolutionTransposedAdreno(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
@@ -49,10 +49,10 @@ absl::Status SelectConvolutionTransposedAdreno(
         CreateConvolutionTransposed(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvolutionTransposed>(std::move(conv));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status SelectConvolutionTransposedPowerVR(
+Status SelectConvolutionTransposedPowerVR(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
@@ -85,10 +85,10 @@ absl::Status SelectConvolutionTransposedPowerVR(
         CreateConvolutionTransposed(creation_context, op_def, attr, &conv));
     *ptr = absl::make_unique<ConvolutionTransposed>(std::move(conv));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status SelectConvolutionTransposedMali(
+Status SelectConvolutionTransposedMali(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
@@ -96,15 +96,14 @@ absl::Status SelectConvolutionTransposedMali(
   RETURN_IF_ERROR(
       CreateConvolutionTransposed(creation_context, op_def, attr, &conv));
   *ptr = absl::make_unique<ConvolutionTransposed>(std::move(conv));
-  return absl::OkStatus();
+  return OkStatus();
 }
-
 }  // namespace
 
-absl::Status SelectConvolutionTransposed(
-    const ConvolutionTransposedAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
+Status SelectConvolutionTransposed(const ConvolutionTransposedAttributes& attr,
+                                   const CreationContext& creation_context,
+                                   const OperationDef& op_def,
+                                   std::unique_ptr<GPUOperation>* ptr) {
   switch (creation_context.device->vendor()) {
     case Vendor::QUALCOMM:
       return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,

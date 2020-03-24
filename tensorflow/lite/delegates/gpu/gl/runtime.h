@@ -44,17 +44,17 @@ class Runtime {
           CommandQueue* command_queue, const ObjectManager* external_objects);
 
   // Takes parameters and objects and prepares GL program.
-  absl::Status AddProgram(const GlShader& shader,
-                          const std::vector<Variable>& parameters,
-                          const std::vector<Object>& objects,
-                          const uint3& num_workgroups);
+  Status AddProgram(const GlShader& shader,
+                    const std::vector<Variable>& parameters,
+                    const std::vector<Object>& objects,
+                    const uint3& num_workgroups);
 
   // Needs to be called once all programs and shaders has been added to runtime.
-  absl::Status PrepareForExecution();
+  Status PrepareForExecution();
 
   // Executes all compiled programs.
   // TODO(akulik): add more controls over execution. Execution policy?
-  absl::Status Execute();
+  Status Execute();
 
   // Gets access to objects created while executing generated code.
   const ObjectManager* internal_objects() const { return &internal_objects_; }
@@ -72,14 +72,14 @@ class Runtime {
   }
 
  private:
-  absl::Status AllocateInternalObject(const Object& object);
+  Status AllocateInternalObject(const Object& object);
 
-  absl::Status AllocateConstObject(const Object& object, uint32_t* id);
+  Status AllocateConstObject(const Object& object, uint32_t* id);
 
   // Goes over objects in programs and decides how to allocate them to
   // minimize total allocated memory. Returns a collection of objects to be
   // allocated and shared by internal objects.
-  absl::Status AssignInternalObjects(std::vector<Object>* objects);
+  Status AssignInternalObjects(std::vector<Object>* objects);
 
   const RuntimeOptions options_;
   const GpuInfo gpu_info_;
@@ -92,7 +92,7 @@ class Runtime {
 
   std::unique_ptr<SharedBufferData> shared_readonly_buffer_;
 
-  using BindFunc = std::function<absl::Status()>;
+  using BindFunc = std::function<Status()>;
 
   // Encapsulates a program and all object to bind before dispatch.
   struct CompiledProgramDescriptor {

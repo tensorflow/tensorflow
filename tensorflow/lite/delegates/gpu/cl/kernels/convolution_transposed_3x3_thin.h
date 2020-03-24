@@ -37,10 +37,10 @@ namespace cl {
 class ConvolutionTransposed3x3Thin : public GPUOperation {
  public:
   ConvolutionTransposed3x3Thin() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
 
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ConvolutionTransposed3x3Thin(ConvolutionTransposed3x3Thin&& operation);
@@ -51,7 +51,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       delete;
 
  private:
-  friend absl::Status CreateConvolutionTransposed3x3Thin(
+  friend Status CreateConvolutionTransposed3x3Thin(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr,
       ConvolutionTransposed3x3Thin* result);
@@ -59,14 +59,14 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                       CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  absl::Status BindArguments();
+  Status BindArguments();
   int3 GetGridSize() const;
 
   Buffer weights_;
@@ -80,7 +80,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed3x3Thin::UploadWeights(
+Status ConvolutionTransposed3x3Thin::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(src_channels_, 4);
   const int dst_depth = IntegralDivideRoundUp(dst_channels_, 4);
@@ -150,7 +150,7 @@ void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
 bool IsConvolutionTransposed3x3ThinSupported(
     const CLDevice& device, const ConvolutionTransposedAttributes& attr);
 
-absl::Status CreateConvolutionTransposed3x3Thin(
+Status CreateConvolutionTransposed3x3Thin(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed3x3Thin* result);

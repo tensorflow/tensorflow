@@ -32,11 +32,11 @@ class ConverterPhwc4ToBhwc {
   // Creates invalid object.
   ConverterPhwc4ToBhwc() : program_(), workgroup_size_() {}
 
-  static absl::Status Create(ConverterPhwc4ToBhwc* converter);
+  static Status Create(ConverterPhwc4ToBhwc* converter);
 
-  absl::Status Convert(const BHWC& shape, const GlBuffer& source,
-                       CommandQueue* command_queue /* optional */,
-                       GlBuffer* destination);
+  Status Convert(const BHWC& shape, const GlBuffer& source,
+                 CommandQueue* command_queue /* optional */,
+                 GlBuffer* destination);
 
  private:
   explicit ConverterPhwc4ToBhwc(GlProgram program, const uint3& workgroup_size)

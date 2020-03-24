@@ -72,7 +72,7 @@ class MatchDilatedConvolution : public SequenceTransformation {
       conv_node.operation.attributes = std::move(conv2d_attr);
     }
 
-    absl::Status status = RemoveFollowingNode(graph, &bs_node, &conv_node);
+    Status status = RemoveFollowingNode(graph, &bs_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove batch_to_space node after convolution."};

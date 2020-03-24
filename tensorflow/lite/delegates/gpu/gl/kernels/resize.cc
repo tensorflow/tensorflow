@@ -33,8 +33,10 @@ namespace {
 
 class Resize : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Resize() {}
+
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr =
@@ -42,15 +44,15 @@ class Resize : public NodeShader {
 
     if (input->tensor.shape.w > output->tensor.shape.w ||
         input->tensor.shape.h > output->tensor.shape.h) {
-      return absl::InvalidArgumentError("Output size is less than input size.");
+      return InvalidArgumentError("Output size is less than input size.");
     }
     if (output->tensor.shape.w != attr.new_shape.w ||
         output->tensor.shape.h != attr.new_shape.h) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Output size does not match new_size in attributes.");
     }
     if (input->tensor.shape.c != output->tensor.shape.c) {
-      return absl::InvalidArgumentError("Input/output channels mismatch.");
+      return InvalidArgumentError("Input/output channels mismatch.");
     }
     if (input->tensor.shape.h == 1 && input->tensor.shape.w == 1) {
       // Copy a single element from input.
@@ -64,7 +66,7 @@ class Resize : public NodeShader {
           /*input=*/IOStructure::ONLY_DEFINITIONS,
           /*output=*/IOStructure::AUTO,
       };
-      return absl::OkStatus();
+      return OkStatus();
     }
     std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
@@ -105,7 +107,7 @@ class Resize : public NodeShader {
       value_0 = $input_data_0[coord.x, coord.y, gid.z]$;
       )";
     } else {
-      return absl::InvalidArgumentError("Unknown sampling type");
+      return InvalidArgumentError("Unknown sampling type");
     }
     *generated_code = {
         /*parameters=*/std::move(parameters),
@@ -117,7 +119,7 @@ class Resize : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

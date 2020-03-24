@@ -52,8 +52,8 @@ bool IsApplyMaskSupported(const NodeShader::GenerationContext& ctx) {
   return shape1.h == 1 && shape1.w == 1 && shape0.c == shape1.c;
 }
 
-absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
-                                   GeneratedCode* generated_code) {
+Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
+                             GeneratedCode* generated_code) {
   const auto inputs = ctx.graph->FindInputs(ctx.node->id);
   const auto& shape0 = inputs[0]->tensor.shape;
   const auto& shape1 = inputs[1]->tensor.shape;
@@ -80,11 +80,11 @@ absl::Status GenerateApplyMaskCode(const NodeShader::GenerationContext& ctx,
       /*input=*/IOStructure::ONLY_DEFINITIONS,
       /*output=*/IOStructure::AUTO,
   };
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status GenerateMultiplyScalarCode(
-    const NodeShader::GenerationContext& ctx, GeneratedCode* generated_code) {
+Status GenerateMultiplyScalarCode(const NodeShader::GenerationContext& ctx,
+                                  GeneratedCode* generated_code) {
   auto attr =
       absl::any_cast<MultiplyAttributes>(ctx.node->operation.attributes);
   auto muls = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
@@ -103,7 +103,7 @@ absl::Status GenerateMultiplyScalarCode(
     };
   } else {
     if (!muls) {
-      return absl::InvalidArgumentError("Empty parameters for Multiplication.");
+      return InvalidArgumentError("Empty parameters for Multiplication.");
     }
     auto shape = ctx.graph->FindInputs(ctx.node->id)[0]->tensor.shape;
     *generated_code = {
@@ -120,13 +120,13 @@ absl::Status GenerateMultiplyScalarCode(
     };
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 class Multiply : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     if (IsApplyMaskSupported(ctx)) {
       return GenerateApplyMaskCode(ctx, generated_code);
     } else {

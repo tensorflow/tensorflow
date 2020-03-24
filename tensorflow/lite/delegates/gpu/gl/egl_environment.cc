@@ -28,28 +28,28 @@ namespace {
 // TODO(akulik): detect power management event when all contexts are destroyed
 // and OpenGL ES is reinitialized. See eglMakeCurrent
 
-absl::Status InitDisplay(EGLDisplay* egl_display) {
+Status InitDisplay(EGLDisplay* egl_display) {
   RETURN_IF_ERROR(
       TFLITE_GPU_CALL_EGL(eglGetDisplay, egl_display, EGL_DEFAULT_DISPLAY));
   if (*egl_display == EGL_NO_DISPLAY) {
-    return absl::UnavailableError("eglGetDisplay returned nullptr");
+    return UnavailableError("eglGetDisplay returned nullptr");
   }
   bool is_initialized;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglInitialize, &is_initialized,
                                       *egl_display, nullptr, nullptr));
   if (!is_initialized) {
-    return absl::InternalError("No EGL error, but eglInitialize failed");
+    return InternalError("No EGL error, but eglInitialize failed");
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace
 
-absl::Status EglEnvironment::NewEglEnvironment(
+Status EglEnvironment::NewEglEnvironment(
     std::unique_ptr<EglEnvironment>* egl_environment) {
   *egl_environment = absl::make_unique<EglEnvironment>();
   RETURN_IF_ERROR((*egl_environment)->Init());
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 EglEnvironment::~EglEnvironment() {
@@ -61,12 +61,12 @@ EglEnvironment::~EglEnvironment() {
   }
 }
 
-absl::Status EglEnvironment::Init() {
+Status EglEnvironment::Init() {
   bool is_bound;
   RETURN_IF_ERROR(
       TFLITE_GPU_CALL_EGL(eglBindAPI, &is_bound, EGL_OPENGL_ES_API));
   if (!is_bound) {
-    return absl::InternalError("No EGL error, but eglBindAPI failed");
+    return InternalError("No EGL error, but eglBindAPI failed");
   }
 
   // Re-use context and display if it was created on this thread.
@@ -77,7 +77,7 @@ absl::Status EglEnvironment::Init() {
   } else {
     RETURN_IF_ERROR(InitDisplay(&display_));
 
-    absl::Status status = InitConfiglessContext();
+    Status status = InitConfiglessContext();
     if (!status.ok()) {
       status = InitSurfacelessContext();
     }
@@ -94,30 +94,33 @@ absl::Status EglEnvironment::Init() {
   }
   // TODO(akulik): when do we need ForceSyncTurning?
   ForceSyncTurning();
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status EglEnvironment::InitConfiglessContext() {
+Status EglEnvironment::InitConfiglessContext() {
   RETURN_IF_ERROR(CreateConfiglessContext(display_, EGL_NO_CONTEXT, &context_));
   return context_.MakeCurrentSurfaceless();
 }
 
-absl::Status EglEnvironment::InitSurfacelessContext() {
+Status EglEnvironment::InitSurfacelessContext() {
   RETURN_IF_ERROR(
       CreateSurfacelessContext(display_, EGL_NO_CONTEXT, &context_));
-  RETURN_IF_ERROR(context_.MakeCurrentSurfaceless());
+  Status status = context_.MakeCurrentSurfaceless();
+  if (!status.ok()) {
+    return status;
+  }
 
   // PowerVR support EGL_KHR_surfaceless_context, but glFenceSync crashes on
   // PowerVR when it is surface-less.
   RETURN_IF_ERROR(RequestGpuInfo(&gpu_info_));
   if (gpu_info_.type == GpuType::POWERVR) {
-    return absl::UnavailableError(
+    return UnavailableError(
         "Surface-less context is not properly supported on powervr.");
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status EglEnvironment::InitPBufferContext() {
+Status EglEnvironment::InitPBufferContext() {
   RETURN_IF_ERROR(CreatePBufferContext(display_, EGL_NO_CONTEXT, &context_));
   RETURN_IF_ERROR(CreatePbufferRGBSurface(context_.config(), display_, 1, 1,
                                           &surface_read_));

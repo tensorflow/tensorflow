@@ -45,11 +45,10 @@ class DelegateContext {
             const TfLiteDelegateParams* delegate_params) {
     auto denormalized_graph =
         reinterpret_cast<GraphFloat32*>(delegate_params->delegate->data_);
-    absl::Status status =
-        BuildModel(context, delegate_params, denormalized_graph);
+    Status status = BuildModel(context, delegate_params, denormalized_graph);
     if (!status.ok()) {
       context->ReportError(context, "Failed to convert a model: %s",
-                           std::string(status.message()).c_str());
+                           status.error_message().c_str());
     }
     return status.ok();
   }
@@ -83,14 +82,14 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   return status;
 }
 
-absl::Status FlatBufferToGPUGraph(
+Status FlatBufferToGPUGraph(
     const std::unique_ptr<tflite::FlatBufferModel>& flatbuffer,
     GraphFloat32* graph) {
   tflite::ops::builtin::BuiltinOpResolver op_resolver;
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder interpreter_builder(*flatbuffer, op_resolver);
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
-    return absl::InternalError("Unable to prepare TfLite interpreter.");
+    return InternalError("Unable to prepare TfLite interpreter.");
   }
   interpreter->UseNNAPI(false);
   TfLiteDelegate delegate;
@@ -102,20 +101,20 @@ absl::Status FlatBufferToGPUGraph(
   delegate.FreeBufferHandle = nullptr;
 
   if (interpreter->ModifyGraphWithDelegate(&delegate) != kTfLiteOk) {
-    return absl::InternalError("Conversion from TfLite model failed.");
+    return InternalError("Conversion from TfLite model failed.");
   }
 
   NullTransformationReporter reporter;
   ModelTransformer transformer(graph, &reporter);
   if (!ApplyGeneralTransformations(&transformer)) {
-    return absl::InternalError("Graph general transformations failed");
+    return InternalError("Graph general transformations failed");
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 }  // namespace
 
-absl::Status RunModelSample(const std::string& model_name) {
+Status RunModelSample(const std::string& model_name) {
   auto flatbuffer = tflite::FlatBufferModel::BuildFromFile(model_name.c_str());
   GraphFloat32 graph_cl;
   RETURN_IF_ERROR(FlatBufferToGPUGraph(flatbuffer, &graph_cl));
@@ -161,7 +160,7 @@ absl::Status RunModelSample(const std::string& model_name) {
     std::cout << "Total time - " << average_inference_time << "ms" << std::endl;
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

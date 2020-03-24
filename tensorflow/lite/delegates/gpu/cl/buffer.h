@@ -51,11 +51,11 @@ class Buffer {
   // Writes data to a buffer. Data should point to a region that
   // has exact size in bytes as size_in_bytes(constructor parameter).
   template <typename T>
-  absl::Status WriteData(CLCommandQueue* queue, const absl::Span<T> data);
+  Status WriteData(CLCommandQueue* queue, const absl::Span<T> data);
 
   // Reads data from Buffer into CPU memory.
   template <typename T>
-  absl::Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
+  Status ReadData(CLCommandQueue* queue, std::vector<T>* result) const;
 
  private:
   void Release();
@@ -64,31 +64,29 @@ class Buffer {
   size_t size_;
 };
 
-absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
-                                  Buffer* result);
+Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,
+                            Buffer* result);
 
-absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
-                                  CLContext* context, Buffer* result);
+Status CreateReadOnlyBuffer(size_t size_in_bytes, const void* data,
+                            CLContext* context, Buffer* result);
 
-absl::Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
-                                   Buffer* result);
+Status CreateReadWriteBuffer(size_t size_in_bytes, CLContext* context,
+                             Buffer* result);
 
 template <typename T>
-absl::Status Buffer::WriteData(CLCommandQueue* queue,
-                               const absl::Span<T> data) {
+Status Buffer::WriteData(CLCommandQueue* queue, const absl::Span<T> data) {
   if (size_ != sizeof(T) * data.size()) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "absl::Span<T> data size is different from buffer allocated size.");
   }
   RETURN_IF_ERROR(queue->EnqueueWriteBuffer(buffer_, size_, data.data()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <typename T>
-absl::Status Buffer::ReadData(CLCommandQueue* queue,
-                              std::vector<T>* result) const {
+Status Buffer::ReadData(CLCommandQueue* queue, std::vector<T>* result) const {
   if (size_ % sizeof(T) != 0) {
-    return absl::UnknownError("Wrong element size(typename T is not correct?");
+    return UnknownError("Wrong element size(typename T is not correct?");
   }
 
   const int elements_count = size_ / sizeof(T);

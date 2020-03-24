@@ -61,7 +61,7 @@ class AddQuantAdjustments : public NodeTransformation {
       // The tensor information should rename the same.
       Value<TensorRef<BHWC>>* adjusted_value = graph->NewValue();
       adjusted_value->tensor = output_value->tensor;
-      absl::Status status =
+      Status status =
           graph->SetProducer(quant_and_dequant_node->id, adjusted_value->id);
       if (!status.ok()) {
         return {TransformStatus::INVALID,

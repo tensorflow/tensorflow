@@ -219,7 +219,7 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
   return *this;
 }
 
-absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
+Status ConvConstants::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateConvolutionConstantCode(
@@ -240,7 +240,7 @@ absl::Status ConvConstants::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status ConvConstants::BindArguments() {
+Status ConvConstants::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -254,7 +254,7 @@ absl::Status ConvConstants::BindArguments() {
       kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 ConvConstants::GetGridSize() const {
@@ -263,12 +263,12 @@ int3 ConvConstants::GetGridSize() const {
   return int3(grid_x, grid_y, 1);
 }
 
-absl::Status ConvConstants::Tune(const TuningParameters& params) {
+Status ConvConstants::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
+Status ConvConstants::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -294,12 +294,12 @@ bool IsConvConstantsSupported(const CLDevice& device,
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 
-absl::Status CreateConvConstants(const CreationContext& creation_context,
-                                 const OperationDef& definition,
-                                 const Convolution2DAttributes& attr,
-                                 ConvConstants* result) {
+Status CreateConvConstants(const CreationContext& creation_context,
+                           const OperationDef& definition,
+                           const Convolution2DAttributes& attr,
+                           ConvConstants* result) {
   if (!IsConvConstantsSupported(*creation_context.device, definition, attr)) {
-    return absl::InvalidArgumentError("ConvConstants doesn't supported");
+    return InvalidArgumentError("ConvConstants doesn't supported");
   }
   *result = ConvConstants(definition, attr);
   RETURN_IF_ERROR(
@@ -310,7 +310,8 @@ absl::Status CreateConvConstants(const CreationContext& creation_context,
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 }  // namespace cl

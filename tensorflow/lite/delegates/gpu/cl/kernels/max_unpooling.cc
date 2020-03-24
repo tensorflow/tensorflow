@@ -218,7 +218,7 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
   return *this;
 }
 
-absl::Status MaxUnpooling::Compile(const CreationContext& creation_context) {
+Status MaxUnpooling::Compile(const CreationContext& creation_context) {
   const auto code = GetMaxUnpoolingKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -226,7 +226,7 @@ absl::Status MaxUnpooling::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status MaxUnpooling::BindArguments() {
+Status MaxUnpooling::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
@@ -237,7 +237,8 @@ absl::Status MaxUnpooling::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 int3 MaxUnpooling::GetGridSize() const {
@@ -247,12 +248,12 @@ int3 MaxUnpooling::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status MaxUnpooling::Tune(const TuningParameters& params) {
+Status MaxUnpooling::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status MaxUnpooling::AddToQueue(CLCommandQueue* queue) {
+Status MaxUnpooling::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -290,7 +291,7 @@ MaxUnpooling3D& MaxUnpooling3D::operator=(MaxUnpooling3D&& kernel) {
   return *this;
 }
 
-absl::Status MaxUnpooling3D::Compile(const CreationContext& creation_context) {
+Status MaxUnpooling3D::Compile(const CreationContext& creation_context) {
   const auto code = GetMaxUnpooling3DKernelCode(
       definition_, *creation_context.device, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -298,7 +299,7 @@ absl::Status MaxUnpooling3D::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status MaxUnpooling3D::BindArguments() {
+Status MaxUnpooling3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
@@ -315,7 +316,8 @@ absl::Status MaxUnpooling3D::BindArguments() {
       kernel_.SetBytesAuto(int4(padding_.x, padding_.y, padding_.z, 1)));
   RETURN_IF_ERROR(
       kernel_.SetBytesAuto(int4(stride_.x, stride_.y, stride_.z, 1)));
-  return absl::OkStatus();
+
+  return OkStatus();
 }
 
 int3 MaxUnpooling3D::GetGridSize() const {
@@ -325,12 +327,12 @@ int3 MaxUnpooling3D::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status MaxUnpooling3D::Tune(const TuningParameters& params) {
+Status MaxUnpooling3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status MaxUnpooling3D::AddToQueue(CLCommandQueue* queue) {
+Status MaxUnpooling3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

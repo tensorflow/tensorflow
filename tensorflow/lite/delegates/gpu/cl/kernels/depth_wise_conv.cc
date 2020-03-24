@@ -226,8 +226,7 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
   return *this;
 }
 
-absl::Status DepthWiseConvolution::Compile(
-    const CreationContext& creation_context) {
+Status DepthWiseConvolution::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   const auto code = GenerateDepthWiseConvolutionCode(
@@ -238,7 +237,7 @@ absl::Status DepthWiseConvolution::Compile(
       *creation_context.device, &kernel_);
 }
 
-absl::Status DepthWiseConvolution::BindArguments() {
+Status DepthWiseConvolution::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
@@ -256,7 +255,7 @@ absl::Status DepthWiseConvolution::BindArguments() {
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 DepthWiseConvolution::GetGridSize() const {
@@ -266,20 +265,20 @@ int3 DepthWiseConvolution::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status DepthWiseConvolution::Tune(const TuningParameters& params) {
+Status DepthWiseConvolution::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-absl::Status DepthWiseConvolution::AddToQueue(CLCommandQueue* queue) {
+Status DepthWiseConvolution::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-absl::Status CreateDepthWiseConvolution(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr,
-    DepthWiseConvolution* result) {
+Status CreateDepthWiseConvolution(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const DepthwiseConvolution2DAttributes& attr,
+                                  DepthWiseConvolution* result) {
   bool weights_are_buffer = creation_context.device->IsMali();
   *result = DepthWiseConvolution(definition, attr, weights_are_buffer);
   RETURN_IF_ERROR(
@@ -292,7 +291,7 @@ absl::Status CreateDepthWiseConvolution(
   create_info.aligned_size = attr.weights.shape.o * attr.weights.shape.i;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl

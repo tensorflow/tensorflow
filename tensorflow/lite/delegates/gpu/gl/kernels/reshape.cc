@@ -32,19 +32,19 @@ namespace {
 
 class Reshape : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     if (input->tensor.shape.DimensionsProduct() !=
         output->tensor.shape.DimensionsProduct()) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Number of elements in input & output tensors don't match.");
     }
     auto attr =
         absl::any_cast<ReshapeAttributes>(ctx.node->operation.attributes);
     if (attr.new_shape != output->tensor.shape) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Dimensions for output does not match new_shape attribute");
     }
 
@@ -80,7 +80,7 @@ class Reshape : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

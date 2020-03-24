@@ -564,10 +564,10 @@ ComputeTaskDescriptorPtr FuseChain(const FusionSequence& chain) {
 
 }  // namespace
 
-absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
-                                   const std::vector<ValueId>& output_buffers,
-                                   const CompiledModel& input_vector,
-                                   CompiledModel* output) {
+Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
+                             const std::vector<ValueId>& output_buffers,
+                             const CompiledModel& input_vector,
+                             CompiledModel* output) {
   std::list<ComputeTaskDescriptorPtr> input;
   input.insert(input.end(), input_vector.begin(), input_vector.end());
   OptimizationInfo info;
@@ -606,10 +606,10 @@ absl::Status ValidateOptimizeModel(const std::vector<ValueId>& input_buffers,
         std::to_string(info.unused_input_buffer_ids.size()) +
         "\nMissing output buffers " +
         std::to_string(info.missing_output_buffer_ids.size());
-    return absl::InternalError(message);
+    return InternalError(message);
   }
   for (const auto& chain : sorted_chains) output->push_back(FuseChain(chain));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace metal

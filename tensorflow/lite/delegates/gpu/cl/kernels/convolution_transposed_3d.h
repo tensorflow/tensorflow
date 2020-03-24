@@ -38,10 +38,10 @@ namespace cl {
 class ConvolutionTransposed3D : public GPUOperation {
  public:
   ConvolutionTransposed3D() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
 
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ConvolutionTransposed3D(ConvolutionTransposed3D&& operation);
@@ -50,7 +50,7 @@ class ConvolutionTransposed3D : public GPUOperation {
   ConvolutionTransposed3D& operator=(const ConvolutionTransposed3D&) = delete;
 
  private:
-  friend absl::Status CreateConvolutionTransposed3D(
+  friend Status CreateConvolutionTransposed3D(
       const CreationContext& creation_context, const OperationDef& definition,
       const ConvolutionTransposed3DAttributes& attr,
       ConvolutionTransposed3D* result);
@@ -58,14 +58,14 @@ class ConvolutionTransposed3D : public GPUOperation {
                           const ConvolutionTransposed3DAttributes& attr,
                           const CLDevice& device);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                             CLContext* context);
+  Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+                       CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
-  absl::Status BindArguments();
+  Status BindArguments();
   int3 GetGridSize() const;
 
   LinearStorage biases_;
@@ -88,7 +88,7 @@ class ConvolutionTransposed3D : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed3D::UploadWeights(
+Status ConvolutionTransposed3D::UploadWeights(
     const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
   const int dst_depth =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size_.z);
@@ -155,7 +155,7 @@ absl::Status ConvolutionTransposed3D::UploadWeights(
     }
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <DataType S, typename T>
@@ -214,7 +214,7 @@ void ConvolutionTransposed3D::RearrangeWeightsData(
   }
 }
 
-absl::Status CreateConvolutionTransposed3D(
+Status CreateConvolutionTransposed3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposed3DAttributes& attr,
     ConvolutionTransposed3D* result);

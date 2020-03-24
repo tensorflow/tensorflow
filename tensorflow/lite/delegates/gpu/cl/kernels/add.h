@@ -36,7 +36,7 @@ class Add : public ElementwiseOperation {
   Add(const OperationDef& definition, const std::vector<int>& channels,
       int dst_channels);
 
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Add(Add&& operation);
@@ -47,7 +47,7 @@ class Add : public ElementwiseOperation {
   void SetLinkIndex(int index) override;
   std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
+  Status BindArguments(CLKernel* kernel) override;
 
  private:
   std::string GetElementWiseCode(

@@ -31,11 +31,11 @@ namespace cl {
     function = reinterpret_cast<PFN_##function>(dlsym(libopencl, #function));  \
   }
 
-absl::Status LoadOpenCL() {
+Status LoadOpenCL() {
   void* libopencl = dlopen("libOpenCL.so", RTLD_NOW | RTLD_LOCAL);
   if (libopencl) {
     LoadOpenCLFunctions(libopencl, false);
-    return absl::OkStatus();
+    return OkStatus();
   } else {
     // Pixel phone?
     libopencl = dlopen("libOpenCL-pixel.so", RTLD_NOW | RTLD_LOCAL);
@@ -45,9 +45,9 @@ absl::Status LoadOpenCL() {
           reinterpret_cast<enableOpenCL_t>(dlsym(libopencl, "enableOpenCL"));
       enableOpenCL();
       LoadOpenCLFunctions(libopencl, true);
-      return absl::OkStatus();
+      return OkStatus();
     } else {
-      return absl::UnknownError(
+      return UnknownError(
           absl::StrCat("OpenCL library not loaded - ", dlerror()));
     }
   }

@@ -17,7 +17,6 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -79,9 +78,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors(expected, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)runPrepending:(const HWC&)prepend
@@ -165,9 +164,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testMirrorPadChannelsOperation {
@@ -189,9 +188,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::PAD), attr}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({3.0, 2.0, 1.0, 2.0, 3.0, 2.0, 1.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 

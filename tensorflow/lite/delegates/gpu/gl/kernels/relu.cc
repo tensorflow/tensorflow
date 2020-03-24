@@ -33,8 +33,8 @@ namespace {
 
 class ReLU : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     auto attr = absl::any_cast<ReLUAttributes>(ctx.node->operation.attributes);
     // clamp(value, min(0, alpha * value), clip)
     std::vector<Variable> params;
@@ -62,7 +62,7 @@ class ReLU : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

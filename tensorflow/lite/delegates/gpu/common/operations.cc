@@ -519,15 +519,14 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr) {
   return BHWC(b, h, w, c);
 }
 
-absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
-                                  const ConcatAttributes& attr,
-                                  BHWC* output_shape) {
+Status CalculateOutputShape(const std::vector<BHWC>& input,
+                            const ConcatAttributes& attr, BHWC* output_shape) {
   BHWC new_shape = input[0];
   switch (attr.axis) {
     case Axis::CHANNELS:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].w != new_shape.w) {
-          return absl::InvalidArgumentError(
+          return InvalidArgumentError(
               "Height and Width must be the same when concatenating "
               "by channels axis");
         }
@@ -537,7 +536,7 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::HEIGHT:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].w != new_shape.w || input[i].c != new_shape.c) {
-          return absl::InvalidArgumentError(
+          return InvalidArgumentError(
               "Channels and Width must be the same when concatenating "
               "by height axis");
         }
@@ -547,7 +546,7 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
     case Axis::WIDTH:
       for (int i = 1; i < input.size(); i++) {
         if (input[i].h != new_shape.h || input[i].c != new_shape.c) {
-          return absl::InvalidArgumentError(
+          return InvalidArgumentError(
               "Height and Channels must be the same when concatenating "
               "by width axis");
         }
@@ -555,11 +554,11 @@ absl::Status CalculateOutputShape(const std::vector<BHWC>& input,
       }
       break;
     default:
-      return absl::InvalidArgumentError("Invalid axis");
+      return InvalidArgumentError("Invalid axis");
       break;
   }
   *output_shape = new_shape;
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 Padding2D CalculateSamePadding(const BHWC& input,

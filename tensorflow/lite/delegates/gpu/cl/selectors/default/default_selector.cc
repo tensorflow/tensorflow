@@ -28,13 +28,12 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectDefault(const CreationContext& creation_context,
-                           const OperationDef& op_def, ModelHints hints,
-                           const std::vector<Value<TensorRef<BHWC>>*>& inputs,
-                           const std::vector<Value<TensorRef<BHWC>>*>& outputs,
-                           const Node& node,
-                           GPUOperationsSubgraph* gpu_subgraph) {
-  return absl::UnimplementedError(
+Status SelectDefault(const CreationContext& creation_context,
+                     const OperationDef& op_def, ModelHints hints,
+                     const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                     const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                     const Node& node, GPUOperationsSubgraph* gpu_subgraph) {
+  return UnimplementedError(
       absl::StrCat("No selector for ", node.operation.type));
 }
 

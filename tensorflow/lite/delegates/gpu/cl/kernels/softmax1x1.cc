@@ -115,14 +115,14 @@ Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
   return *this;
 }
 
-absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
+Status Softmax1x1::Compile(const CreationContext& creation_context) {
   const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
+Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));

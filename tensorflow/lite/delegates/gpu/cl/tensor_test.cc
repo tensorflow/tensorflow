@@ -30,9 +30,8 @@ namespace gpu {
 namespace cl {
 namespace {
 
-absl::Status TensorGenericTest(const BHWC& shape,
-                               const TensorDescriptor& descriptor,
-                               Environment* env) {
+Status TensorGenericTest(const BHWC& shape, const TensorDescriptor& descriptor,
+                         Environment* env) {
   TensorFloat32 tensor_cpu;
   tensor_cpu.shape = shape;
   tensor_cpu.data.resize(shape.DimensionsProduct());
@@ -54,15 +53,15 @@ absl::Status TensorGenericTest(const BHWC& shape,
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
-      return absl::InternalError("Wrong value.");
+      return InternalError("Wrong value.");
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status Tensor5DGenericTest(const BHWDC& shape,
-                                 const TensorDescriptor& descriptor,
-                                 Environment* env) {
+Status Tensor5DGenericTest(const BHWDC& shape,
+                           const TensorDescriptor& descriptor,
+                           Environment* env) {
   Tensor5DFloat32 tensor_cpu;
   tensor_cpu.shape = shape;
   tensor_cpu.data.resize(shape.DimensionsProduct());
@@ -84,14 +83,14 @@ absl::Status Tensor5DGenericTest(const BHWDC& shape,
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
-      return absl::InternalError("Wrong value.");
+      return InternalError("Wrong value.");
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status TensorTests(DataType data_type, TensorStorageType storage_type,
-                         Environment* env) {
+Status TensorTests(DataType data_type, TensorStorageType storage_type,
+                   Environment* env) {
   RETURN_IF_ERROR(TensorGenericTest(
       BHWC(1, 6, 7, 3), {data_type, storage_type, Layout::HWC}, env));
   RETURN_IF_ERROR(TensorGenericTest(
@@ -126,7 +125,7 @@ absl::Status TensorTests(DataType data_type, TensorStorageType storage_type,
       BHWDC(7, 6, 1, 3, 7), {data_type, storage_type, Layout::BHWDC}, env));
   RETURN_IF_ERROR(Tensor5DGenericTest(
       BHWDC(13, 7, 3, 4, 3), {data_type, storage_type, Layout::BHWDC}, env));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 TEST_F(OpenCLTest, BufferF32) {

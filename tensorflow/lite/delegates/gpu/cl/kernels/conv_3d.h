@@ -39,9 +39,9 @@ namespace cl {
 class Conv3D : public GPUOperation {
  public:
   Conv3D() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Status AddToQueue(CLCommandQueue* queue) override;
+  Status Tune(const TuningParameters& params) override;
+  Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Conv3D(Conv3D&& operation);
@@ -75,21 +75,21 @@ class Conv3D : public GPUOperation {
          const CLDevice& device);
 
   template <DataType T>
-  absl::Status UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                          const ::tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  Status UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                             CLContext* context);
+  Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+                       CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
-  friend absl::Status CreateConv3D(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const Convolution3DAttributes& attr,
-                                   Conv3D* result);
+  friend Status CreateConv3D(const CreationContext& creation_context,
+                             const OperationDef& definition,
+                             const Convolution3DAttributes& attr,
+                             Conv3D* result);
 
   friend std::string GenerateConv3D(
       const OperationDef& op_def, const LinearStorage& biases,
@@ -105,7 +105,7 @@ class Conv3D : public GPUOperation {
                              int dst_slices, bool x_kernel_is_1,
                              bool y_kernel_is_1, bool z_kernel_is_1) const;
 
-  absl::Status BindArguments();
+  Status BindArguments();
   int3 GetGridSize() const;
 
   Texture2D weights_0_;
@@ -125,9 +125,9 @@ class Conv3D : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status Conv3D::UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                                const ::tflite::gpu::Tensor<Linear, T>& biases,
-                                CLContext* context) {
+Status Conv3D::UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+                          const ::tflite::gpu::Tensor<Linear, T>& biases,
+                          CLContext* context) {
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = conv_params_.AreWeightsBuffer()
@@ -139,12 +139,12 @@ absl::Status Conv3D::UploadData(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
   create_info.name = "biases";
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <DataType T>
-absl::Status Conv3D::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+Status Conv3D::UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
+                             CLContext* context) {
   const int block_size = conv_params_.block_size.w;
   const int dst_slices =
       AlignByN(IntegralDivideRoundUp(weights.shape.o, 4), block_size);
@@ -211,7 +211,7 @@ absl::Status Conv3D::UploadWeights(
     }
   }
 
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <DataType S, typename T>
@@ -271,9 +271,9 @@ void Conv3D::RearrangeWeightsData(
   }
 }
 
-absl::Status CreateConv3D(const CreationContext& creation_context,
-                          const OperationDef& definition,
-                          const Convolution3DAttributes& attr, Conv3D* result);
+Status CreateConv3D(const CreationContext& creation_context,
+                    const OperationDef& definition,
+                    const Convolution3DAttributes& attr, Conv3D* result);
 
 }  // namespace cl
 }  // namespace gpu

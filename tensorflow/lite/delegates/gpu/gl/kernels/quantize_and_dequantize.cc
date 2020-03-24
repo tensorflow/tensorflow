@@ -31,8 +31,8 @@ namespace {
 
 class QuantizeAndDequantize : public NodeShader {
  public:
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     std::string code;
     // Constants
     code += "vec4 scale = vec4($quant_scale$);";
@@ -59,7 +59,7 @@ class QuantizeAndDequantize : public NodeShader {
         /*input=*/IOStructure::AUTO,
         /*output=*/IOStructure::AUTO,
     };
-    return absl::OkStatus();
+    return OkStatus();
   }
 };
 

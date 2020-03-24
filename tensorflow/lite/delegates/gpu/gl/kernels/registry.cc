@@ -120,19 +120,19 @@ class Registry : public NodeShader {
 
   ~Registry() final = default;
 
-  absl::Status GenerateCode(const GenerationContext& ctx,
-                            GeneratedCode* generated_code) const final {
+  Status GenerateCode(const GenerationContext& ctx,
+                      GeneratedCode* generated_code) const final {
     std::vector<std::string> errors;
     auto it = shaders_.find(ctx.node->operation.type);
     if (it != shaders_.end()) {
       for (auto& shader : it->second) {
         const auto status = shader->GenerateCode(ctx, generated_code);
         if (status.ok()) return status;
-        errors.push_back(std::string(status.message()));
+        errors.push_back(status.error_message());
       }
     }
-    return absl::NotFoundError(absl::StrCat(
-        "Suitable node shader is not found: ", absl::StrJoin(errors, ", ")));
+    return NotFoundError(absl::StrCat("Suitable node shader is not found: ",
+                                      absl::StrJoin(errors, ", ")));
   }
 
  private:

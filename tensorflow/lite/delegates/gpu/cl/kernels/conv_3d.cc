@@ -76,7 +76,7 @@ Conv3D& Conv3D::operator=(Conv3D&& operation) {
   return *this;
 }
 
-absl::Status Conv3D::Compile(const CreationContext& creation_context) {
+Status Conv3D::Compile(const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   const std::string code =
@@ -92,7 +92,7 @@ absl::Status Conv3D::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-absl::Status Conv3D::BindArguments() {
+Status Conv3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (conv_params_.AreWeightsBuffer()) {
@@ -131,7 +131,7 @@ absl::Status Conv3D::BindArguments() {
       IntegralDivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w)));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 int3 Conv3D::GetGridSize() const {
@@ -154,12 +154,12 @@ int3 Conv3D::GetGridSize() const {
                   conv_params_.work_group_size.z);
 }
 
-absl::Status Conv3D::Tune(const TuningParameters& params) {
+Status Conv3D::Tune(const TuningParameters& params) {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
       conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return absl::OkStatus();
+    return OkStatus();
   }
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
@@ -168,10 +168,10 @@ absl::Status Conv3D::Tune(const TuningParameters& params) {
     return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                                 &conv_params_.work_group_size);
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status Conv3D::AddToQueue(CLCommandQueue* queue) {
+Status Conv3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(),
                                  conv_params_.work_group_size);
@@ -903,9 +903,9 @@ Conv3D::ConvParams Conv3D::GuessBestParams(
                          x_kernel_is_1, y_kernel_is_1, z_kernel_is_1);
 }
 
-absl::Status CreateConv3D(const CreationContext& creation_context,
-                          const OperationDef& definition,
-                          const Convolution3DAttributes& attr, Conv3D* result) {
+Status CreateConv3D(const CreationContext& creation_context,
+                    const OperationDef& definition,
+                    const Convolution3DAttributes& attr, Conv3D* result) {
   *result = Conv3D(definition, attr, *creation_context.device);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }

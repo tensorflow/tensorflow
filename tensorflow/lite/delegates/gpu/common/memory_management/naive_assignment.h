@@ -30,7 +30,7 @@ namespace gpu {
 // The problem of memory management is NP-complete. This implements a
 // naive algorithm that assigns each tensor to a separate object in memory.
 template <typename TensorSizeT>
-absl::Status NaiveAssignment(
+Status NaiveAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   assignment->object_sizes.resize(usage_records.size());
@@ -40,7 +40,7 @@ absl::Status NaiveAssignment(
     assignment->object_ids[i] = i;
     assignment->object_sizes[i] = record.tensor_size;
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gpu

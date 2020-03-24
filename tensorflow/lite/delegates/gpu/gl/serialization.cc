@@ -390,15 +390,15 @@ absl::Span<const uint8_t> SerializedCompiledModelBuilder::Finalize(
 
 namespace {
 
-absl::Status ParseParameter(const data::UniformParameter& fb_parameter,
-                            Variable* parameter) {
+Status ParseParameter(const data::UniformParameter& fb_parameter,
+                      Variable* parameter) {
   parameter->name = fb_parameter.name()->str();
   switch (fb_parameter.type()) {
     case data::ParameterType::INT32: {
       auto* ptr = fb_parameter.data_as_DataInt32();
       if (ptr == nullptr) {
-        return absl::InvalidArgumentError("Unexpected data type '" +
-                                          parameter->name + "'");
+        return InvalidArgumentError("Unexpected data type '" + parameter->name +
+                                    "'");
       }
       switch (ptr->data()->size()) {
         case 1:
@@ -412,16 +412,16 @@ absl::Status ParseParameter(const data::UniformParameter& fb_parameter,
                                   (*ptr->data())[2], (*ptr->data())[3]);
           break;
         default:
-          return absl::InvalidArgumentError("Unexpected size for parameter '" +
-                                            parameter->name + "'");
+          return InvalidArgumentError("Unexpected size for parameter '" +
+                                      parameter->name + "'");
       }
       break;
     }
     case data::ParameterType::UINT32: {
       auto* ptr = fb_parameter.data_as_DataUint32();
       if (ptr == nullptr) {
-        return absl::InvalidArgumentError("Unexpected data type '" +
-                                          parameter->name + "'");
+        return InvalidArgumentError("Unexpected data type '" + parameter->name +
+                                    "'");
       }
       switch (ptr->data()->size()) {
         case 1:
@@ -432,16 +432,16 @@ absl::Status ParseParameter(const data::UniformParameter& fb_parameter,
                                    (*ptr->data())[2], (*ptr->data())[3]);
           break;
         default:
-          return absl::InvalidArgumentError("Unexpected size for parameter '" +
-                                            parameter->name + "'");
+          return InvalidArgumentError("Unexpected size for parameter '" +
+                                      parameter->name + "'");
       }
       break;
     }
     case data::ParameterType::FLOAT32: {
       auto* ptr = fb_parameter.data_as_DataFloat();
       if (ptr == nullptr) {
-        return absl::InvalidArgumentError("Unexpected data type '" +
-                                          parameter->name + "'");
+        return InvalidArgumentError("Unexpected data type '" + parameter->name +
+                                    "'");
       }
       switch (ptr->data()->size()) {
         case 1:
@@ -455,21 +455,21 @@ absl::Status ParseParameter(const data::UniformParameter& fb_parameter,
                                     (*ptr->data())[2], (*ptr->data())[3]);
           break;
         default:
-          return absl::InvalidArgumentError("Unexpected size for parameter '" +
-                                            parameter->name + "'");
+          return InvalidArgumentError("Unexpected size for parameter '" +
+                                      parameter->name + "'");
       }
       break;
     }
     case data::ParameterType::INT32_2: {
       auto* ptr = fb_parameter.data_as_DataInt32();
       if (ptr == nullptr) {
-        return absl::InvalidArgumentError("Unexpected data type '" +
-                                          parameter->name + "'");
+        return InvalidArgumentError("Unexpected data type '" + parameter->name +
+                                    "'");
       }
 
       if (ptr->data()->size() % 2 != 0) {
-        return absl::InvalidArgumentError("Unexpected size for parameter '" +
-                                          parameter->name + "'");
+        return InvalidArgumentError("Unexpected size for parameter '" +
+                                    parameter->name + "'");
       }
 
       std::vector<int2> values(ptr->data()->size() / 2);
@@ -480,7 +480,7 @@ absl::Status ParseParameter(const data::UniformParameter& fb_parameter,
       break;
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 DataType ToEnum(data::DataType type) {
@@ -520,7 +520,7 @@ AccessType ToEnum(data::AccessType type) {
   }
 }
 
-absl::Status ParseObject(const data::Object& fb_object, Object* object) {
+Status ParseObject(const data::Object& fb_object, Object* object) {
   object->access = ToEnum(fb_object.access());
   object->binding = fb_object.binding();
   object->object_type = ToEnum(fb_object.type());
@@ -543,7 +543,7 @@ absl::Status ParseObject(const data::Object& fb_object, Object* object) {
       break;
     }
     case data::ObjectSize::NONE:
-      return absl::InvalidArgumentError("Texture size is not set");
+      return InvalidArgumentError("Texture size is not set");
   }
 
   switch (fb_object.object_type()) {
@@ -560,10 +560,10 @@ absl::Status ParseObject(const data::Object& fb_object, Object* object) {
       break;
     }
     case data::ObjectVariant::NONE: {
-      return absl::InvalidArgumentError("Object is not set");
+      return InvalidArgumentError("Object is not set");
     }
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 CompiledModelOptions ParseParameters(const data::Parameters& fb_parameters) {
@@ -574,11 +574,11 @@ CompiledModelOptions ParseParameters(const data::Parameters& fb_parameters) {
 
 }  // namespace
 
-absl::Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
-                                      DeserializationHandler* handler) {
+Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
+                                DeserializationHandler* handler) {
   flatbuffers::Verifier verifier(serialized.data(), serialized.size());
   if (!data::VerifyCompiledModelBuffer(verifier)) {
-    return absl::InvalidArgumentError("Serialized model is corrupted.");
+    return InvalidArgumentError("Serialized model is corrupted.");
   }
 
   auto model = data::GetCompiledModel(serialized.data());
@@ -612,7 +612,7 @@ absl::Status DeserializeCompiledModel(absl::Span<const uint8_t> serialized,
                                        program->shader_index()));
   }
   handler->OnOptions(ParseParameters(*model->parameters()));
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gl

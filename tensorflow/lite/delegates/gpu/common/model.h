@@ -136,33 +136,33 @@ class Graph {
   // for a value. If a value had another producer, it will reassign producer
   // appropriately. If a value didn't have a producer, it will be removed
   // from a graph's input.
-  virtual absl::Status SetProducer(NodeId producer, ValueId value) = 0;
+  virtual Status SetProducer(NodeId producer, ValueId value) = 0;
 
   // Removes a producer for the given value. Value becomes producer-less and
   // therefore becomes graph's input.
-  virtual absl::Status RemoveProducer(ValueId value) = 0;
+  virtual Status RemoveProducer(ValueId value) = 0;
 
   // Sets a consumer for the given value. There could be multiple consumers
   // for a value.
-  virtual absl::Status AddConsumer(NodeId consumer, ValueId value) = 0;
+  virtual Status AddConsumer(NodeId consumer, ValueId value) = 0;
 
   // Replace input value for given node.
-  virtual absl::Status ReplaceInput(NodeId node, ValueId old_value,
-                                    ValueId new_value) = 0;
+  virtual Status ReplaceInput(NodeId node, ValueId old_value,
+                              ValueId new_value) = 0;
 
   // Removes a consumer for the given value. If value does not have any
   // consumers it becomes graph's output.
-  virtual absl::Status RemoveConsumer(NodeId consumer, ValueId value) = 0;
+  virtual Status RemoveConsumer(NodeId consumer, ValueId value) = 0;
 
   // Removes node from this graph. For all input values this node will be
   // removed from consumers and for all output values a producer will be
   // removed.
-  virtual absl::Status DeleteNode(NodeId id) = 0;
+  virtual Status DeleteNode(NodeId id) = 0;
 
   // Removes value from this graph. It will be removed from inputs for all
   // dependent nodes. A node that was a producer of this value will loose its
   // output.
-  virtual absl::Status DeleteValue(ValueId id) = 0;
+  virtual Status DeleteValue(ValueId id) = 0;
 };
 
 // Implementation of a Graph interface. It keeps values and nodes referenced by
@@ -268,7 +268,7 @@ class Model : public Graph<TensorT> {
     return values_[id].consumers;
   }
 
-  absl::Status SetProducer(NodeId producer, ValueId value) final {
+  Status SetProducer(NodeId producer, ValueId value) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
@@ -278,13 +278,12 @@ class Model : public Graph<TensorT> {
 
     // check if this value has the same producer already
     if (node_ptr == v->producer) {
-      return absl::InvalidArgumentError(
-          "Node is already a producer of the value");
+      return InvalidArgumentError("Node is already a producer of the value");
     }
 
     // Check if the node is a consumer of this value.
     if (IsInput(producer, value)) {
-      return absl::InvalidArgumentError("Node is a consumer of the value");
+      return InvalidArgumentError("Node is a consumer of the value");
     }
     // TODO(akulik): detect circular dependency?
 
@@ -294,23 +293,22 @@ class Model : public Graph<TensorT> {
     }
     v->producer = node_ptr;
     n->outputs.push_back(value_ptr);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status RemoveProducer(ValueId value) final {
+  Status RemoveProducer(ValueId value) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
     if (v->producer == nullptr) {
-      return absl::InvalidArgumentError("Value does not have a producer");
+      return InvalidArgumentError("Value does not have a producer");
     }
     Erase(&nodes_[v->producer->id].outputs, value_ptr);
     v->producer = nullptr;
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status ReplaceInput(NodeId node, ValueId old_value,
-                            ValueId new_value) final {
+  Status ReplaceInput(NodeId node, ValueId old_value, ValueId new_value) final {
     ValueDef* v_old;
     RETURN_IF_ERROR(LookupValue(old_value, &v_old));
     Value<TensorT>* value_old_ptr = v_old->value.get();
@@ -323,17 +321,17 @@ class Model : public Graph<TensorT> {
 
     // Check if the node is a consumer of old_value.
     if (!IsInput(node, old_value)) {
-      return absl::InvalidArgumentError("old_value must be input of node.");
+      return InvalidArgumentError("old_value must be input of node.");
     }
 
     // Check if the node is not a consumer of new_value.
     if (IsInput(node, new_value)) {
-      return absl::InvalidArgumentError("new_value can not be input of node.");
+      return InvalidArgumentError("new_value can not be input of node.");
     }
 
     // Check if this value has the same producer already
     if (node_ptr == v_new->producer) {
-      return absl::InvalidArgumentError("new_value can not be output of node.");
+      return InvalidArgumentError("new_value can not be output of node.");
     }
 
     for (int i = 0; i < n->inputs.size(); ++i) {
@@ -344,10 +342,10 @@ class Model : public Graph<TensorT> {
     }
     v_new->consumers.push_back(node_ptr);
     Erase(&v_old->consumers, node_ptr);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status AddConsumer(NodeId consumer, ValueId value) final {
+  Status AddConsumer(NodeId consumer, ValueId value) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
@@ -357,21 +355,20 @@ class Model : public Graph<TensorT> {
 
     // check if this value has the same producer already
     if (node_ptr == v->producer) {
-      return absl::InvalidArgumentError("Node is a producer of the value");
+      return InvalidArgumentError("Node is a producer of the value");
     }
 
     // check if this value has the same consumer already
     if (IsInput(consumer, value)) {
-      return absl::InvalidArgumentError(
-          "Node is already a consumer of the value");
+      return InvalidArgumentError("Node is already a consumer of the value");
     }
 
     n->inputs.push_back(value_ptr);
     v->consumers.push_back(node_ptr);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status RemoveConsumer(NodeId consumer, ValueId value) final {
+  Status RemoveConsumer(NodeId consumer, ValueId value) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(value, &v));
     Value<TensorT>* value_ptr = v->value.get();
@@ -379,14 +376,14 @@ class Model : public Graph<TensorT> {
     RETURN_IF_ERROR(LookupNode(consumer, &n));
     Node* node_ptr = n->node.get();
     if (!IsInput(consumer, value)) {
-      return absl::InvalidArgumentError("Node is not a consumer of the value");
+      return InvalidArgumentError("Node is not a consumer of the value");
     }
     Erase(&n->inputs, value_ptr);
     Erase(&v->consumers, node_ptr);
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status DeleteNode(NodeId id) final {
+  Status DeleteNode(NodeId id) final {
     NodeDef* n;
     RETURN_IF_ERROR(LookupNode(id, &n));
     Node* node_ptr = n->node.get();
@@ -399,10 +396,10 @@ class Model : public Graph<TensorT> {
     n->inputs.clear();
     n->outputs.clear();
     n->node.reset();
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status DeleteValue(ValueId id) final {
+  Status DeleteValue(ValueId id) final {
     ValueDef* v;
     RETURN_IF_ERROR(LookupValue(id, &v));
     Value<TensorT>* value_ptr = v->value.get();
@@ -417,10 +414,10 @@ class Model : public Graph<TensorT> {
     v->producer = nullptr;
     v->consumers.clear();
     v->value.reset();
-    return absl::OkStatus();
+    return OkStatus();
   }
 
-  absl::Status MakeExactCopy(Model<TensorT>* model) const {
+  Status MakeExactCopy(Model<TensorT>* model) const {
     model->nodes_.clear();
     model->values_.clear();
     model->name_ = name_;
@@ -443,7 +440,7 @@ class Model : public Graph<TensorT> {
         }
       }
     }
-    return absl::OkStatus();
+    return OkStatus();
   }
 
  private:
@@ -478,29 +475,29 @@ class Model : public Graph<TensorT> {
   }
 
   // @return non-nullptr NodeDef that has valid Node or an error
-  absl::Status LookupNode(NodeId id, NodeDef** node_def) {
+  Status LookupNode(NodeId id, NodeDef** node_def) {
     if (id >= nodes_.size()) {
-      return absl::OutOfRangeError("NodeId is out of range");
+      return OutOfRangeError("NodeId is out of range");
     }
     auto& n = nodes_[id];
     if (!n.node) {
-      return absl::OutOfRangeError("Node is already deleted");
+      return OutOfRangeError("Node is already deleted");
     }
     *node_def = &n;
-    return absl::OkStatus();
+    return OkStatus();
   }
 
   // @return non-nullptr ValueDef that has valid Value or an error
-  absl::Status LookupValue(ValueId id, ValueDef** value_def) {
+  Status LookupValue(ValueId id, ValueDef** value_def) {
     if (id >= values_.size()) {
-      return absl::OutOfRangeError("ValueId is out of range");
+      return OutOfRangeError("ValueId is out of range");
     }
     auto& v = values_[id];
     if (!v.value) {
-      return absl::OutOfRangeError("Value is already deleted");
+      return OutOfRangeError("Value is already deleted");
     }
     *value_def = &v;
-    return absl::OkStatus();
+    return OkStatus();
   }
 
   template <typename Pred>
@@ -540,14 +537,14 @@ class Model : public Graph<TensorT> {
 // outputs that are consumed only by to_keep. In such case to_keep inherits all
 // to_remove inputs.
 template <typename TensorT>
-absl::Status RemovePrecedingNode(Graph<TensorT>* graph, const Node* to_remove,
-                                 const Node* to_keep) {
+Status RemovePrecedingNode(Graph<TensorT>* graph, const Node* to_remove,
+                           const Node* to_keep) {
   // Make sure all outputs from to_remove are consumed by to_keep.
   for (auto output : graph->FindOutputs(to_remove->id)) {
     auto consumers = graph->FindConsumers(output->id);
     if (consumers.size() > 1 ||
         (consumers.size() == 1 && consumers[0] != to_keep)) {
-      return absl::InvalidArgumentError(
+      return InvalidArgumentError(
           "Output from to_remove node has other consumers");
     }
   }
@@ -565,13 +562,13 @@ absl::Status RemovePrecedingNode(Graph<TensorT>* graph, const Node* to_remove,
 // Removes to_remove node that follows to_keep node only if to_remove has inputs
 // that are produced by to_keep. to_keep inherits all to_remove inputs.
 template <typename TensorT>
-absl::Status RemoveFollowingNode(Graph<TensorT>* graph, const Node* to_remove,
-                                 const Node* to_keep) {
+Status RemoveFollowingNode(Graph<TensorT>* graph, const Node* to_remove,
+                           const Node* to_keep) {
   // Make sure all inputs to to_remove are produced by to_keep.
   for (auto input : graph->FindInputs(to_remove->id)) {
     Node* producer = graph->FindProducer(input->id);
     if (producer->id != to_keep->id) {
-      return absl::InvalidArgumentError("To_remove node has other inputs");
+      return InvalidArgumentError("To_remove node has other inputs");
     }
   }
 
@@ -587,12 +584,12 @@ absl::Status RemoveFollowingNode(Graph<TensorT>* graph, const Node* to_remove,
 // Removes to_remove node.
 // Requires that node has one input and one output;
 template <typename TensorT>
-absl::Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
-                                         const Node* to_remove) {
+Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
+                                   const Node* to_remove) {
   auto inputs = graph->FindInputs(to_remove->id);
   auto outputs = graph->FindOutputs(to_remove->id);
   if (inputs.size() != 1 || outputs.size() != 1) {
-    return absl::InvalidArgumentError(
+    return InvalidArgumentError(
         "To_remove node must have 1 input and 1 output");
   }
   auto input_id = inputs[0]->id;
@@ -607,26 +604,26 @@ absl::Status RemoveOneInputOneOutputNode(Graph<TensorT>* graph,
   if (!producer && consumers.empty()) {
     RETURN_IF_ERROR(graph->DeleteValue(input_id));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <typename TensorT>
-absl::Status AddOutput(Graph<TensorT>* graph, const Node* from_node,
-                       Value<TensorT>** output) {
+Status AddOutput(Graph<TensorT>* graph, const Node* from_node,
+                 Value<TensorT>** output) {
   auto link = graph->NewValue();
   RETURN_IF_ERROR(graph->SetProducer(from_node->id, link->id));
   *output = link;
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 template <typename TensorT>
-absl::Status ConnectTwoNodes(Graph<TensorT>* graph, const Node* from_node,
-                             const Node* to_node, Value<TensorT>** output) {
+Status ConnectTwoNodes(Graph<TensorT>* graph, const Node* from_node,
+                       const Node* to_node, Value<TensorT>** output) {
   Value<TensorT>* link;
   RETURN_IF_ERROR(AddOutput(graph, from_node, &link));
   RETURN_IF_ERROR(graph->AddConsumer(to_node->id, link->id));
   *output = link;
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 using GraphFloat32 = Model<TensorRef<BHWC>>;

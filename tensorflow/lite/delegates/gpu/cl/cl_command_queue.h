@@ -74,23 +74,22 @@ class CLCommandQueue {
 
   cl_command_queue queue() const { return queue_; }
 
-  virtual absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                        int3 work_group_size);
+  virtual Status DispatchImplicit(const CLKernel& kernel, int3 grid,
+                                  int3 work_group_size);
 
-  absl::Status EnqueueEvent(CLEvent* event);
+  Status EnqueueEvent(CLEvent* event);
 
-  absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                int3 work_group_size, CLEvent* event);
+  Status DispatchImplicit(const CLKernel& kernel, int3 grid,
+                          int3 work_group_size, CLEvent* event);
 
-  absl::Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data);
-  absl::Status EnqueueReadImage(cl_mem memory, int3 region, void* data);
+  Status EnqueueWriteImage(cl_mem memory, int3 region, const void* data);
+  Status EnqueueReadImage(cl_mem memory, int3 region, void* data);
 
-  absl::Status EnqueueWriteBuffer(cl_mem memory, size_t size_in_bytes,
-                                  const void* data);
-  absl::Status EnqueueReadBuffer(cl_mem memory, size_t size_in_bytes,
-                                 void* data);
+  Status EnqueueWriteBuffer(cl_mem memory, size_t size_in_bytes,
+                            const void* data);
+  Status EnqueueReadBuffer(cl_mem memory, size_t size_in_bytes, void* data);
 
-  absl::Status WaitForCompletion();
+  Status WaitForCompletion();
 
  protected:
   void Release();
@@ -110,15 +109,14 @@ class ProfilingCommandQueue : public CLCommandQueue {
   ProfilingCommandQueue(const ProfilingCommandQueue&) = delete;
   ProfilingCommandQueue& operator=(const ProfilingCommandQueue&) = delete;
 
-  absl::Status DispatchImplicit(const CLKernel& kernel, int3 grid,
-                                int3 work_group_size) override;
+  Status DispatchImplicit(const CLKernel& kernel, int3 grid,
+                          int3 work_group_size) override;
 
   // will write index for fastest work_group among work_group_sizes
-  absl::Status GetBestWorkGroupIndex(const CLKernel& kernel,
-                                     const DeviceInfo& device_info,
-                                     const int3& grid,
-                                     const std::vector<int3>& work_group_sizes,
-                                     int* index);
+  Status GetBestWorkGroupIndex(const CLKernel& kernel,
+                               const DeviceInfo& device_info, const int3& grid,
+                               const std::vector<int3>& work_group_sizes,
+                               int* index);
 
   // call ResetMeasurements() to start new seriese of measurements
   void ResetMeasurements();
@@ -141,13 +139,12 @@ class ProfilingCommandQueue : public CLCommandQueue {
   std::string current_label_;
 };
 
-absl::Status CreateCLCommandQueue(const CLDevice& device,
-                                  const CLContext& context,
-                                  CLCommandQueue* result);
+Status CreateCLCommandQueue(const CLDevice& device, const CLContext& context,
+                            CLCommandQueue* result);
 
-absl::Status CreateProfilingCommandQueue(const CLDevice& device,
-                                         const CLContext& context,
-                                         ProfilingCommandQueue* result);
+Status CreateProfilingCommandQueue(const CLDevice& device,
+                                   const CLContext& context,
+                                   ProfilingCommandQueue* result);
 
 }  // namespace cl
 }  // namespace gpu

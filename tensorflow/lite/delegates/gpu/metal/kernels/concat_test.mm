@@ -17,7 +17,6 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
-#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -67,9 +66,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(model.PopulateTensor(0, {1, 3, 5, 7}));
   XCTAssertTrue(model.PopulateTensor(1, {2, 4, 6, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6, 7, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTwoInputTensorsByAlignedChannel {
@@ -93,9 +92,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(model.PopulateTensor(0, {1, 2, 3, 4}));
   XCTAssertTrue(model.PopulateTensor(1, {5, 6, 7, 8}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6, 7, 8}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTwoInputTensorsByHeight {
@@ -119,9 +118,9 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(model.PopulateTensor(0, {1, 2}));
   XCTAssertTrue(model.PopulateTensor(1, {3, 4, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
 - (void)testTwoInputTensorsByWidth {
@@ -145,8 +144,8 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(model.PopulateTensor(0, {1, 4}));
   XCTAssertTrue(model.PopulateTensor(1, {2, 3, 5, 6}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
   status = CompareVectors({1, 2, 3, 4, 5, 6}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 @end

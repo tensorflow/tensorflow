@@ -37,9 +37,9 @@ namespace cl {
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  Status AddToQueue(CLCommandQueue* queue) override;
 
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -49,13 +49,14 @@ class FullyConnected : public GPUOperation {
 
  private:
   explicit FullyConnected(const OperationDef& definition);
-  friend absl::Status CreateFullyConnected(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const FullyConnectedAttributes& attr, FullyConnected* result);
+  friend Status CreateFullyConnected(const CreationContext& creation_context,
+                                     const OperationDef& definition,
+                                     const FullyConnectedAttributes& attr,
+                                     FullyConnected* result);
 
   template <DataType T>
-  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                       CLContext* context);
 
   template <DataType T, typename S>
   void RearrangeWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -68,7 +69,7 @@ class FullyConnected : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status FullyConnected::UploadWeights(
+Status FullyConnected::UploadWeights(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
@@ -122,10 +123,10 @@ void FullyConnected::RearrangeWeights(
   }
 }
 
-absl::Status CreateFullyConnected(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  FullyConnected* result);
+Status CreateFullyConnected(const CreationContext& creation_context,
+                            const OperationDef& definition,
+                            const FullyConnectedAttributes& attr,
+                            FullyConnected* result);
 
 }  // namespace cl
 }  // namespace gpu

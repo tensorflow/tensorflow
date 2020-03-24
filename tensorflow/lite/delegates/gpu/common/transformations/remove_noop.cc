@@ -44,10 +44,10 @@ class RemoveOperation : public SequenceTransformation {
     if (!remove_predicate_(graph, op_node)) {
       return {TransformStatus::SKIPPED, ""};
     }
-    absl::Status status = RemoveFollowingNode(graph, op_node, prev_op_node);
+    Status status = RemoveFollowingNode(graph, op_node, prev_op_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove a node: " + std::string(status.message())};
+              "Unable to remove a node: " + status.error_message()};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -116,10 +116,10 @@ class RemoveIdentityReshape : public NodeTransformation {
       return {TransformStatus::SKIPPED,
               "Can not apply transformation when node output is graph output"};
     }
-    absl::Status status = RemoveOneInputOneOutputNode(graph, node);
+    Status status = RemoveOneInputOneOutputNode(graph, node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
-              "Unable to remove a node: " + std::string(status.message())};
+              "Unable to remove a node: " + status.error_message()};
     }
     return {TransformStatus::APPLIED,
             "Removed reshape with input_shape == output_shape."};

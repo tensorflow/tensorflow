@@ -42,9 +42,9 @@ GlShader& GlShader::operator=(GlShader&& shader) {
 
 GlShader::~GlShader() { Invalidate(); }
 
-absl::Status GlShader::CompileShader(GLenum shader_type,
-                                     const std::string& shader_source,
-                                     GlShader* gl_shader) {
+Status GlShader::CompileShader(GLenum shader_type,
+                               const std::string& shader_source,
+                               GlShader* gl_shader) {
   // NOTE: code compilation can fail due to gl errors happened before
   GLuint shader_id;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glCreateShader, &shader_id, shader_type));
@@ -64,12 +64,12 @@ absl::Status GlShader::CompileShader(GLenum shader_type,
     glGetShaderiv(shader.id(), GL_INFO_LOG_LENGTH, &info_log_len);
     std::string errors(info_log_len, 0);
     glGetShaderInfoLog(shader.id(), info_log_len, nullptr, &errors[0]);
-    return absl::InternalError("Shader compilation failed: " + errors +
-                               "\nProblem shader is:\n" + shader_source);
+    return InternalError("Shader compilation failed: " + errors +
+                         "\nProblem shader is:\n" + shader_source);
   }
 
   *gl_shader = std::move(shader);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace gl

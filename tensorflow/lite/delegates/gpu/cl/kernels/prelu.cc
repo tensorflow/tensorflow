@@ -73,21 +73,21 @@ std::string PReLU::GetArgsDeclaration() const {
   return args;
 }
 
-absl::Status PReLU::BindArguments(CLKernel* kernel) {
+Status PReLU::BindArguments(CLKernel* kernel) {
   RETURN_IF_ERROR(kernel->SetMemoryAuto(alpha_.GetMemoryPtr()));
   if (clip_.Active()) {
     RETURN_IF_ERROR(kernel->SetBytesAuto(clip_));
   }
-  return absl::OkStatus();
+  return OkStatus();
 }
 
-absl::Status CreatePReLU(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const PReLUAttributes& attr, PReLU* result) {
+Status CreatePReLU(const CreationContext& creation_context,
+                   const OperationDef& definition, const PReLUAttributes& attr,
+                   PReLU* result) {
   auto alpha = absl::get_if<::tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
       &attr.alpha);
   if (!alpha) {
-    return absl::InvalidArgumentError("Alpha is missing");
+    return InvalidArgumentError("Alpha is missing");
   }
   const auto scalar_precision = creation_context.device->IsPowerVR()
                                     ? CalculationsPrecision::F32
@@ -95,7 +95,7 @@ absl::Status CreatePReLU(const CreationContext& creation_context,
   *result = PReLU(definition, attr, scalar_precision);
   RETURN_IF_ERROR(result->UploadParameters(*alpha, creation_context.context));
   result->SetLinkIndex(0);
-  return absl::OkStatus();
+  return OkStatus();
 }
 
 }  // namespace cl
