@@ -125,7 +125,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 void Free(TfLiteContext* context, void* buffer) {}
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
@@ -141,8 +141,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
   op_params.zero_point = output->params.zero_point;
