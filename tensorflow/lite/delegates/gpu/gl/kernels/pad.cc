@@ -34,22 +34,22 @@ namespace {
 
 class Pad : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto attr = absl::any_cast<PadAttributes>(ctx.node->operation.attributes);
 
     if (attr.type != PaddingContentType::ZEROS &&
         attr.type != PaddingContentType::REFLECT) {
-      return UnimplementedError(
+      return absl::UnimplementedError(
           "Only ZERO and REFLECT padding types are supported.");
     }
     if (attr.appended.h < 0 || attr.appended.w < 0 || attr.appended.c < 0 ||
         attr.prepended.h < 0 || attr.prepended.w < 0 || attr.prepended.c < 0) {
-      return UnimplementedError("Negative padding is not supported.");
+      return absl::UnimplementedError("Negative padding is not supported.");
     }
     if (attr.appended.b != 0 || attr.prepended.b != 0) {
-      return UnimplementedError("Padding for BATCH is not supported.");
+      return absl::UnimplementedError("Padding for BATCH is not supported.");
     }
     std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
@@ -130,7 +130,7 @@ class Pad : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

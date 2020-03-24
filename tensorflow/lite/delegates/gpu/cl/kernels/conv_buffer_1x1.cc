@@ -291,16 +291,16 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
   return *this;
 }
 
-Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
+absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code =
       GenerateConvBuffer1x1(definition_, conv_params_, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvBuffer1x1::BindArguments() {
+absl::Status ConvBuffer1x1::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -313,7 +313,7 @@ Status ConvBuffer1x1::BindArguments() {
                        src_width_elements * src_[0]->Height());
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
@@ -328,13 +328,13 @@ int3 ConvBuffer1x1::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvBuffer1x1::Tune(const TuningParameters& params) {
+absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &conv_params_.work_group_size);
 }
 
-Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(),
                                  conv_params_.work_group_size);
@@ -351,12 +351,12 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   if (!IsConvBuffer1x1Supported(definition, attr)) {
-    return InvalidArgumentError("ConvBuffer1x1 doesn't supported");
+    return absl::InvalidArgumentError("ConvBuffer1x1 doesn't supported");
   }
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
@@ -372,10 +372,10 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const FullyConnectedAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const FullyConnectedAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
@@ -392,11 +392,10 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
-                                       const OperationDef& definition,
-                                       const Convolution2DAttributes& attr,
-                                       ConvBuffer1x1* result,
-                                       const BHWC* shape) {
+absl::Status CreateConvBuffer1x1Wino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvBuffer1x1* result,
+    const BHWC* shape) {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;

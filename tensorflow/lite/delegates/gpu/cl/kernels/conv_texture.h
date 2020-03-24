@@ -41,10 +41,10 @@ namespace cl {
 class ConvTexture : public GPUOperation {
  public:
   ConvTexture() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ConvTexture(ConvTexture&& operation);
@@ -53,16 +53,16 @@ class ConvTexture : public GPUOperation {
   ConvTexture& operator=(const ConvTexture&) = delete;
 
  private:
-  friend Status CreateConvTexture(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const Convolution2DAttributes& attr,
-                                  ConvTexture* result);
-  friend Status CreateConvTexture(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  ConvTexture* result);
+  friend absl::Status CreateConvTexture(const CreationContext& creation_context,
+                                        const OperationDef& definition,
+                                        const Convolution2DAttributes& attr,
+                                        ConvTexture* result);
+  friend absl::Status CreateConvTexture(const CreationContext& creation_context,
+                                        const OperationDef& definition,
+                                        const FullyConnectedAttributes& attr,
+                                        ConvTexture* result);
 
-  friend Status CreateConvTextureWino4x4To6x6(
+  friend absl::Status CreateConvTextureWino4x4To6x6(
       const CreationContext& creation_context, const OperationDef& definition,
       const Convolution2DAttributes& attr, ConvTexture* result);
 
@@ -70,25 +70,25 @@ class ConvTexture : public GPUOperation {
               const Convolution2DAttributes& attr);
   explicit ConvTexture(const OperationDef& definition);
   template <DataType T>
-  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                    const ::tflite::gpu::Tensor<Linear, T>& biases,
-                    CLContext* context);
+  absl::Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                          const ::tflite::gpu::Tensor<Linear, T>& biases,
+                          CLContext* context);
 
   template <DataType T>
-  Status UploadDataForWinograd4x4To6x6(
+  absl::Status UploadDataForWinograd4x4To6x6(
       const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
       CLContext* context);
 
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst_0, absl::Span<T> dst_1,
                             absl::Span<T> dst_2, absl::Span<T> dst_3);
 
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   Texture2D weights_0_;
@@ -114,20 +114,20 @@ class ConvTexture : public GPUOperation {
 };
 
 template <DataType T>
-Status ConvTexture::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                               const ::tflite::gpu::Tensor<Linear, T>& biases,
-                               CLContext* context) {
+absl::Status ConvTexture::UploadData(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights,
+    const ::tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
   RETURN_IF_ERROR(UploadWeights(weights, context));
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition_.GetDataType();
   create_info.aligned_size = weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <DataType T>
-Status ConvTexture::UploadDataForWinograd4x4To6x6(
+absl::Status ConvTexture::UploadDataForWinograd4x4To6x6(
     const ::tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
     CLContext* context) {
   ::tflite::gpu::Tensor<OHWI, T> wino_weights;
@@ -145,8 +145,8 @@ Status ConvTexture::UploadDataForWinograd4x4To6x6(
 }
 
 template <DataType T>
-Status ConvTexture::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                                  CLContext* context) {
+absl::Status ConvTexture::UploadWeights(
+    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   dst_depth = AlignByN(dst_depth, block_size_.z);
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
@@ -246,20 +246,19 @@ void ConvTexture::RearrangeWeightsData(
   }
 }
 
-Status CreateConvTexture(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const Convolution2DAttributes& attr,
-                         ConvTexture* result);
+absl::Status CreateConvTexture(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const Convolution2DAttributes& attr,
+                               ConvTexture* result);
 
-Status CreateConvTexture(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const FullyConnectedAttributes& attr,
-                         ConvTexture* result);
+absl::Status CreateConvTexture(const CreationContext& creation_context,
+                               const OperationDef& definition,
+                               const FullyConnectedAttributes& attr,
+                               ConvTexture* result);
 
-Status CreateConvTextureWino4x4To6x6(const CreationContext& creation_context,
-                                     const OperationDef& definition,
-                                     const Convolution2DAttributes& attr,
-                                     ConvTexture* result);
+absl::Status CreateConvTextureWino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvTexture* result);
 
 }  // namespace cl
 }  // namespace gpu
