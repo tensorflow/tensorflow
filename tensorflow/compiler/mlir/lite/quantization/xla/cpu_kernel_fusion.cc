@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -47,21 +48,56 @@ limitations under the License.
 
 #define DEBUG_TYPE "quant-kernel-fusion"
 
+constexpr int kFakeQuantOperandsNum = 5;
+constexpr int kFakeQuantPerChannelOperandsNum = 6;
+
 namespace mlir {
 namespace xla_hlo {
 
 namespace {
 
+TypeAttr GetQuantSpec(Operation* op) {
+  auto fake_quant = llvm::dyn_cast_or_null<CustomCallOp>(op);
+  if (!fake_quant || fake_quant.getNumOperands() < kFakeQuantOperandsNum ||
+      fake_quant.getNumOperands() > kFakeQuantPerChannelOperandsNum ||
+      fake_quant.call_target_name() != "fake_quant_with_min_max_vars")
+    return {};
+
+  DenseFPElementsAttr min, max;
+  DenseIntElementsAttr bit_width, narrow_range, quant_dim;
+  if (!matchPattern(fake_quant.getOperand(1), m_Constant(&min)) ||
+      !matchPattern(fake_quant.getOperand(2), m_Constant(&max)) ||
+      !matchPattern(fake_quant.getOperand(3), m_Constant(&bit_width)) ||
+      !matchPattern(fake_quant.getOperand(4), m_Constant(&narrow_range)))
+    return {};
+
+  auto bit_width_val = (*bit_width.attr_value_begin()).cast<IntegerAttr>();
+  auto narrow_range_val = (*narrow_range.int_value_begin()).getSExtValue();
+  int quant_dim_val = -1;
+  if (fake_quant.getNumOperands() == kFakeQuantPerChannelOperandsNum &&
+      matchPattern(fake_quant.getOperand(kFakeQuantPerChannelOperandsNum - 1),
+                   m_Constant(&quant_dim))) {
+    quant_dim_val = (*quant_dim.int_value_begin()).getSExtValue();
+  }
+
+  OpBuilder builder(op);
+  Type input_type =
+      fake_quant.getOperand(0).getType().cast<ShapedType>().getElementType();
+  return quant::GetQuantizedTypeAttr(
+      builder, input_type, min, max, quant_dim_val, bit_width_val,
+      builder.getBoolAttr(narrow_range_val), /*is_signed=*/true);
+}
+
 // Collects input values from outside for 'ops'.
 void CollectInputs(llvm::ArrayRef<Operation*> ops,
                    llvm::SmallVectorImpl<Value>* inputs,
                    llvm::SmallVectorImpl<Attribute>* input_specs) {
-  for (auto* op : ops) {
-    for (auto operand : op->getOperands()) {
+  for (Operation* op : ops) {
+    for (Value operand : op->getOperands()) {
       if (std::find(inputs->begin(), inputs->end(), operand) != inputs->end()) {
         continue;
       }
-      if (auto* def_op = operand.getDefiningOp()) {
+      if (Operation* def_op = operand.getDefiningOp()) {
         if (std::find(ops.begin(), ops.end(), def_op) == ops.end()) {
           inputs->push_back(operand);
         }
@@ -71,10 +107,13 @@ void CollectInputs(llvm::ArrayRef<Operation*> ops,
     }
   }
 
-  for (auto input : *inputs) {
+  for (Value input : *inputs) {
     ShapedType input_type = input.getType().cast<ShapedType>();
-    // TODO(fengliuai): detect whether it is from fake quant.
-    input_specs->push_back(TypeAttr::get(input_type.getElementType()));
+    if (TypeAttr spec = GetQuantSpec(input.getDefiningOp())) {
+      input_specs->push_back(spec);
+    } else {
+      input_specs->push_back(TypeAttr::get(input_type.getElementType()));
+    }
   }
 }
 
@@ -84,16 +123,19 @@ void CollectRets(llvm::ArrayRef<Operation*> ops,
                  llvm::SmallVectorImpl<Value>* rets,
                  llvm::SmallVectorImpl<Type>* ret_types,
                  llvm::SmallVectorImpl<Attribute>* ret_specs) {
-  for (auto* op : ops) {
-    for (auto result : op->getResults()) {
-      for (auto* user : result.getUsers()) {
+  for (Operation* op : ops) {
+    for (Value result : op->getResults()) {
+      for (Operation* user : result.getUsers()) {
         // If there are any user outside of 'ops'
         if (std::find(ops.begin(), ops.end(), user) == ops.end()) {
           ShapedType ret_type = result.getType().cast<ShapedType>();
           rets->push_back(result);
           ret_types->push_back(ret_type);
-          // TODO(fengliuai): detect whether it is used by fake quant.
-          ret_specs->push_back(TypeAttr::get(ret_type.getElementType()));
+          if (TypeAttr spec = GetQuantSpec(user)) {
+            ret_specs->push_back(spec);
+          } else {
+            ret_specs->push_back(TypeAttr::get(ret_type.getElementType()));
+          }
           break;
         }
       }
