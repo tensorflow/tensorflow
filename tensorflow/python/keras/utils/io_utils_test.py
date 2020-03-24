@@ -137,7 +137,9 @@ class TestIOUtils(keras_parameterized.TestCase):
       self.assertFalse(
           io_utils.ask_to_proceed_with_overwrite('/tmp/not_exists'))
 
-  def test_patH_to_string(self):
+  def test_path_to_string(self):
+    import sys
+
     class PathLikeDummy:
       def __fspath__(self):
         return "dummypath"
