@@ -1069,10 +1069,12 @@ class ModelCheckpoint(Callback):
         (`model.save(filepath)`).
       save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
         the model after each epoch. When using integer, the callback saves the
-        model at end of this many batches. Note that if the saving isn't aligned
-        to epochs, the monitored metric may potentially be less reliable (it
+        model at end of this many batches. If the `Model` is compiled with
+        `experimental_steps_per_execution=N`, then the saving criteria will be
+        checked every Nth batch. Note that if the saving isn't aligned to
+        epochs, the monitored metric may potentially be less reliable (it
         could reflect as little as 1 batch, since the metrics get reset every
-        epoch). Defaults to `'epoch'`
+        epoch). Defaults to `'epoch'`.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.
   """
@@ -1087,6 +1089,7 @@ class ModelCheckpoint(Callback):
                save_freq='epoch',
                **kwargs):
     super(ModelCheckpoint, self).__init__()
+    self._supports_tf_logs = True
     self.monitor = monitor
     self.verbose = verbose
     self.filepath = filepath
@@ -1095,6 +1098,7 @@ class ModelCheckpoint(Callback):
     self.save_freq = save_freq
     self.epochs_since_last_save = 0
     self._batches_seen_since_last_saving = 0
+    self._last_batch_seen = 0
 
     # Deprecated field `load_weights_on_restart` is for loading the checkpoint
     # file from `filepath` at the start of `model.fit()`
@@ -1197,13 +1201,9 @@ class ModelCheckpoint(Callback):
         del self._training_state
         self.model._training_state = None
 
-  def on_batch_end(self, batch, logs=None):
-    if self._implements_train_batch_hooks():
-      logs = logs or {}
-      self._batches_seen_since_last_saving += 1
-      if self._batches_seen_since_last_saving >= self.save_freq:
-        self._save_model(epoch=self._current_epoch, logs=logs)
-        self._batches_seen_since_last_saving = 0
+  def on_train_batch_end(self, batch, logs=None):
+    if self._should_save_on_batch(batch):
+      self._save_model(epoch=self._current_epoch, logs=logs)
 
   def on_epoch_begin(self, epoch, logs=None):
     self._current_epoch = epoch
@@ -1224,6 +1224,23 @@ class ModelCheckpoint(Callback):
       # TODO(rchao): Call `back_up` at finer period such as N steps.
       self._training_state.back_up(epoch)
 
+  def _should_save_on_batch(self, batch):
+    """Handles batch-level saving logic, supports steps_per_execution."""
+    if self.save_freq == 'epoch':
+      return False
+
+    if batch <= self._last_batch_seen:  # New epoch.
+      add_batches = batch + 1  # batches are zero-indexed.
+    else:
+      add_batches = batch - self._last_batch_seen
+    self._batches_seen_since_last_saving += add_batches
+    self._last_batch_seen = batch
+
+    if self._batches_seen_since_last_saving >= self.save_freq:
+      self._batches_seen_since_last_saving = 0
+      return True
+    return False
+
   def _save_model(self, epoch, logs):
     """Saves the model.
 
@@ -1235,6 +1252,8 @@ class ModelCheckpoint(Callback):
 
     if isinstance(self.save_freq,
                   int) or self.epochs_since_last_save >= self.period:
+      # Block only when saving interval is reached.
+      logs = tf_utils.to_numpy_or_python_type(logs)
       self.epochs_since_last_save = 0
       filepath = self._get_file_path(epoch, logs)
 
@@ -1399,10 +1418,6 @@ class ModelCheckpoint(Callback):
       # If there are more than one file having latest modified time, return
       # the file path with the largest file name.
       return file_path_with_largest_file_name
-
-  def _implements_train_batch_hooks(self):
-    # If save_freq="epoch", batch-level hooks don't need to be run.
-    return isinstance(self.save_freq, int)
 
 
 @keras_export('keras.callbacks.EarlyStopping')

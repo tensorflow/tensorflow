@@ -17,10 +17,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 
-#include "mlir/IR/AffineMap.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/literal.h"
 
 namespace xla {

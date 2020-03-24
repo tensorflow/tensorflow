@@ -95,6 +95,19 @@ class Conv1DTest(keras_parameterized.TestCase):
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
+  def test_conv1d_recreate_conv(self):
+    with self.cached_session(use_gpu=True):
+      layer = keras.layers.Conv1D(filters=1,
+                                  kernel_size=3,
+                                  strides=1,
+                                  dilation_rate=2,
+                                  padding='causal')
+      inpt1 = np.random.normal(size=[1, 2, 1])
+      inpt2 = np.random.normal(size=[1, 1, 1])
+      outp1_shape = layer(inpt1).shape
+      _ = layer(inpt2).shape
+      self.assertEqual(outp1_shape, layer(inpt1).shape)
+
 
 @keras_parameterized.run_all_keras_modes
 class Conv2DTest(keras_parameterized.TestCase):

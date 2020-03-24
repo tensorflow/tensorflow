@@ -832,6 +832,47 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            'filepath.*'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
+  def test_ModelCheckpoint_nonblocking(self):
+    filepath = self.get_temp_dir()
+    # Should only cause a sync block when saving is actually performed.
+    callback = keras.callbacks.ModelCheckpoint(filepath=filepath, save_freq=100)
+    self.assertTrue(callback._supports_tf_logs)
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    cb_list = keras.callbacks.CallbackList([callback],
+                                           model=model,
+                                           epochs=1,
+                                           steps=10,
+                                           verbose=0)
+
+    with context.eager_mode():
+      tensor = ops.convert_to_tensor(1.)
+
+    def mock_numpy():
+      raise RuntimeError(
+          'If this error is seen, ModelCheckpoint is causing a blocking '
+          'NumPy conversion even when not checkpointing.')
+
+    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
+      logs = {'metric': tensor}
+
+      cb_list.on_train_begin(logs)
+      cb_list.on_epoch_begin(0, logs)
+      cb_list.on_train_batch_begin(0, logs)
+      cb_list.on_train_batch_end(0, logs)
+      cb_list.on_epoch_end(0, logs)
+      cb_list.on_train_end(logs)
+
+      cb_list.on_test_begin(logs)
+      cb_list.on_test_batch_begin(0, logs)
+      cb_list.on_test_batch_end(0, logs)
+      cb_list.on_test_end(logs)
+
+      cb_list.on_predict_begin(logs)
+      cb_list.on_predict_batch_begin(logs)
+      cb_list.on_predict_batch_end(logs)
+      cb_list.on_predict_end(logs)
+
   def test_EarlyStopping(self):
     with self.cached_session():
       np.random.seed(123)

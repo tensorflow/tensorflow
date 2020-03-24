@@ -20,16 +20,16 @@ limitations under the License.
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/FileUtilities.h"  // TF:llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/FileUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate_flags.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_passes.h"
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"

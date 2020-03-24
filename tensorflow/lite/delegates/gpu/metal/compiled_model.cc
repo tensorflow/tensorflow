@@ -180,10 +180,16 @@ void BuildFusableChains(const std::vector<ValueId>& input_ids,
         bool fused = false;
         for (auto& chain : *chains) {
           // We can fuse only single output for now.
-          if (Contains(task_descriptor->input_buffers,
-                       chain.back()->output_buffer.id) &&
-              CanFuseOperations(chain.back(), task_descriptor, output_ids,
-                                *descriptors, chains)) {
+          bool can_link = false;
+          if (task_descriptor->is_associative_op) {
+            can_link = Contains(task_descriptor->input_buffers,
+                                chain.back()->output_buffer.id);
+          } else {
+            can_link = task_descriptor->input_buffers[0].id ==
+                       chain.back()->output_buffer.id;
+          }
+          if (can_link && CanFuseOperations(chain.back(), task_descriptor,
+                                            output_ids, *descriptors, chains)) {
             chain.push_back(task_descriptor);
             fused = true;
             break;

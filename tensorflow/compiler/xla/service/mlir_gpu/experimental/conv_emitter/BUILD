@@ -32,7 +32,7 @@ cc_library(
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@com_google_absl//absl/types:span",
         "@llvm-project//llvm:support",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TransformUtils",

@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/dlpack.h"
 
-#include "include/dlpack/dlpack.h"  // TF:dlpack
+#include "include/dlpack/dlpack.h"  // from @dlpack
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor.h"

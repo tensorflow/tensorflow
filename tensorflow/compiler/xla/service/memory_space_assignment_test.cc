@@ -1321,6 +1321,61 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
+  // Ensure that SendDone has only a Send operand.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
+  // Ensure that Send and SendDone have the same allocation.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/4);
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.

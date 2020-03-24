@@ -426,6 +426,7 @@ cc_library(
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
+        "batch_matmul.cc",
         "batch_to_space_nd.cc",
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
@@ -840,6 +841,19 @@ cc_test(
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
     tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "batch_matmul_test",
+    size = "small",
+    srcs = ["batch_matmul_test.cc"],
     deps = [
         ":builtin_ops",
         ":test_main",

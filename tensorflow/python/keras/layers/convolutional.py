@@ -202,6 +202,7 @@ class Conv(Layer):
           strides=self.strides,
           padding=self._padding_op,
           data_format=self._conv_op_data_format)
+      self._build_conv_op_input_shape = inputs.get_shape()
 
     # Apply causal padding to inputs for Conv1D.
     if self.padding == 'causal' and self.__class__.__name__ == 'Conv1D':

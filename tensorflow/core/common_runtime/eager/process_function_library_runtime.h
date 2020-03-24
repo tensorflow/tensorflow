@@ -50,8 +50,8 @@ class EagerProcessFunctionLibraryRuntime
  private:
   void RunRemoteDevice(
       const FunctionLibraryRuntime::Options& opts,
-      FunctionLibraryRuntime::Handle local_handle, const InternalArgsView& args,
-      std::vector<Tensor>* rets,
+      FunctionLibraryRuntime::Handle local_handle,
+      gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
       FunctionLibraryRuntime::DoneCallback done) const override;
 #endif  // IS_MOBILE_PLATFORM
 };

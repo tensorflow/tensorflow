@@ -89,7 +89,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:xla_lower",
         "//tensorflow/compiler/mlir/xla:xla_materialize_broadcasts",
         "//tensorflow/compiler/mlir/xla:xla_test_passes",
-        "@llvm-project//mlir:AffineOps",
+        "@llvm-project//mlir:Affine",
         "@llvm-project//mlir:QuantOps",
     ],
 )

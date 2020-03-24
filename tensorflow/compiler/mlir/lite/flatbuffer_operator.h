@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 

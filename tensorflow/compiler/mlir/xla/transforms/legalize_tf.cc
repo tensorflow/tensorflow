@@ -24,20 +24,20 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/Dialect/Traits.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/Dialect/Traits.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
@@ -1629,17 +1629,17 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
 
   LogicalResult matchAndRewrite(TF::BatchMatMulV2Op op,
                                 PatternRewriter &rewriter) const override {
-    // TODO(silvasean): Handle adj_x/adj_y
-    // Should be able to just set the contracting_dimensions attribute
-    // appropriately.
-    // For complex types, need to do a complex conjugation.
-    if (op.adj_x() || op.adj_y()) return failure();
-
     Value lhs = op.x();
     Value rhs = op.y();
     auto lhs_type = lhs.getType().dyn_cast<RankedTensorType>();
     auto rhs_type = rhs.getType().dyn_cast<RankedTensorType>();
     if (!lhs_type || !rhs_type) return failure();
+    if (lhs_type.getElementType().isa<ComplexType>() && op.adj_x()) {
+      lhs = rewriter.create<TF::ConjOp>(op.getLoc(), lhs_type, lhs);
+    }
+    if (rhs_type.getElementType().isa<ComplexType>() && op.adj_y()) {
+      rhs = rewriter.create<TF::ConjOp>(op.getLoc(), rhs_type, rhs);
+    }
     // TODO(silvasean): Support dynamic shapes.
     if (!lhs_type.hasStaticShape() || !rhs_type.hasStaticShape()) {
       return failure();
@@ -1654,10 +1654,10 @@ class ConvertBatchMatMulV2Op : public OpRewritePattern<TF::BatchMatMulV2Op> {
     int64_t rank = lhs_type.getRank();
     auto batch_dimensions = GetI64ElementsAttr(
         llvm::to_vector<4>(llvm::seq<int64_t>(0, rank - 2)), &rewriter);
-    auto lhs_contracting_dimensions =
-        GetI64ElementsAttr(llvm::makeArrayRef({rank - 1}), &rewriter);
-    auto rhs_contracting_dimensions =
-        GetI64ElementsAttr(llvm::makeArrayRef({rank - 2}), &rewriter);
+    auto lhs_contracting_dimensions = GetI64ElementsAttr(
+        llvm::makeArrayRef({op.adj_x() ? rank - 2 : rank - 1}), &rewriter);
+    auto rhs_contracting_dimensions = GetI64ElementsAttr(
+        llvm::makeArrayRef({op.adj_y() ? rank - 1 : rank - 2}), &rewriter);
     auto dimension_numbers = DotDimensionNumbers::get(
         /*lhs_batching_dimensions=*/batch_dimensions,
         /*rhs_batching_dimensions=*/batch_dimensions,

@@ -149,6 +149,7 @@ $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 tensorflow/lite/experimental/ruy/tune_tool.cc \
+tensorflow/lite/tflite_with_xnnpack.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true

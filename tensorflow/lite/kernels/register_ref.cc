@@ -134,6 +134,7 @@ TfLiteRegistration* Register_HARD_SWISH_REF();
 TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 TfLiteRegistration* Register_SELECT_V2();
 TfLiteRegistration* Register_SEGMENT_SUM();
+TfLiteRegistration* Register_BATCH_MATMUL_REF();
 
 namespace {
 

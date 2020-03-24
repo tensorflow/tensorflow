@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
-#include "flatbuffers/idl.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "flatbuffers/idl.h"  // from @flatbuffers
 #include "include/pybind11/pybind11.h"
 #include "include/pybind11/pytypes.h"
 #include "include/pybind11/stl.h"
