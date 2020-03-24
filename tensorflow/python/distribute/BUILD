@@ -940,7 +940,7 @@ distribute_py_test(
     main = "values_test.py",
     shard_count = 5,
     tags = [
-        # "multi_and_single_gpu",  # b/151865826
+        "multi_and_single_gpu",
     ],
     tpu_tags = [
         "no_oss",  # Target too big to run serially reliably.
