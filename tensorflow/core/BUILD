@@ -783,10 +783,10 @@ cc_library(
 cc_library(
     name = "training_op_helpers",
     srcs = [
-        "framework/training_op_helpers.cc",
+        "//tensorflow/core/framework:training_op_helpers.cc",
     ],
     hdrs = [
-        "framework/training_op_helpers.h",
+        "//tensorflow/core/framework:training_op_helpers.h",
     ],
     deps = [
         ":framework",
