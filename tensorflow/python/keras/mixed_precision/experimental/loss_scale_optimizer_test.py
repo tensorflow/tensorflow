@@ -23,6 +23,7 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import context
@@ -498,6 +499,22 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(opt.loss_scale.increment_period, 3.)
     self.assertEqual(opt.loss_scale.multiplier, 4.)
     self.assertEqual(opt._optimizer.my_attribute, 123)
+
+  def testUnsupportedStrategy(self):
+    strategy = central_storage_strategy.CentralStorageStrategy()
+    expected_error = (
+        'Loss scaling is not supported with the tf.distribute.Strategy: '
+        'CentralStorageStrategy. Try using a different Strategy, e.g. a '
+        'MirroredStrategy')
+    with strategy.scope(), self.assertRaisesRegexp(ValueError, expected_error):
+      loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
+    opt = loss_scale_optimizer.LossScaleOptimizer(gradient_descent.SGD(), 1.)
+    with strategy.scope():
+      var = variables.Variable(1.0)
+      loss = lambda: var * 2.0
+      run_fn = lambda: opt.minimize(loss, [var])
+      with self.assertRaisesRegexp(ValueError, expected_error):
+        strategy.experimental_run(run_fn)
 
 
 if __name__ == '__main__':
