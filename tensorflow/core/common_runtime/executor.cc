@@ -538,7 +538,7 @@ static OutputAndControlEdges CountOutputEdges(const Node* n) {
       ++num_output_edges;
     }
   }
-  return {num_output_edges, num_output_control_edges};
+  return OutputAndControlEdges(num_output_edges, num_output_control_edges);
 }
 
 size_t GraphView::NodeItemBytes(const Node* n) {
