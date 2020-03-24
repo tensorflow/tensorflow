@@ -74,6 +74,7 @@ exports_files(
         "tensor_util.h",
         "thread_factory.h",
         "tracking_allocator.h",
+        "training_op_helpers.h",
         "versions.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -87,6 +88,7 @@ exports_files(
         "run_handler_test.cc",
         "run_handler_util_test.cc",
         "variant_op_copy_test.cc",
+        "training_op_helpers.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )
