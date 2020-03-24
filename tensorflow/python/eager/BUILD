@@ -852,9 +852,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 2,
     tags = [
-        "manual",
         "no_oss",  # This test launches local server.
-        "notap",  # TODO(b/152224115)
         "optonly",  # times out
     ],
     deps = [
