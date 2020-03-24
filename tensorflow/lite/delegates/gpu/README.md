@@ -30,10 +30,13 @@ TFLite on GPU supports the following ops in 16-bit and 32-bit float precision:
 * `CONCATENATION v1`
 * `CONV_2D v1`
 * `DEPTHWISE_CONV_2D v1-2`
+* `EXP v1`
 * `FULLY_CONNECTED v1`
 * `LOGISTIC v1`
 * `LSTM v2 (Basic LSTM only)`
 * `MAX_POOL_2D v1`
+* `MAXIMUM v1`
+* `MINIMUM v1`
 * `MUL v1`
 * `PAD v1`
 * `PRELU v1`
@@ -110,7 +113,7 @@ const TfLiteGpuDelegateOptionsV2 kDefaultOptions =
     TfLiteGpuDelegateOptionsV2Default();
 ```
 
-Similar for `NewTfLiteMetalDelgate()`:
+Similar for `NewTfLiteMetalDelegate()`:
 
 ```c++
 const TfLiteMetalDelegateOptions kDefaultOptions = {

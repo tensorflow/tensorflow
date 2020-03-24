@@ -42,11 +42,11 @@ class HostStream : public internal::StreamInterface {
   void BlockUntilDone();
 
  private:
-  bool WorkAvailable() EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool WorkAvailable() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
   void WorkLoop();
 
   absl::Mutex mu_;
-  std::queue<std::function<void()>> work_queue_ GUARDED_BY(mu_);
+  std::queue<std::function<void()>> work_queue_ TF_GUARDED_BY(mu_);
   std::unique_ptr<port::Thread> thread_;
 };
 

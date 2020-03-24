@@ -365,7 +365,8 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForFastMemVar) {
   compile_options.return_updated_values_for_all_resources = true;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
                                      args, &result));
-  EXPECT_EQ(fast_mem_arg_count, 1);
+  // Count 2: one for argument, one for the return value.
+  EXPECT_EQ(fast_mem_arg_count, 2);
 }
 
 // Tests that the compiler can correctly propagate the layout assigned by
@@ -416,6 +417,8 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
   EXPECT_EQ(result.xla_output_shape,
+            xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
+  EXPECT_EQ(result.computation->GetProgramShape().ConsumeValueOrDie().result(),
             xla::ShapeUtil::MakeTupleShape({transposed, transposed}));
 }
 
@@ -1091,6 +1094,8 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1})));
+  EXPECT_EQ(result.computation->GetProgramShape().ConsumeValueOrDie().result(),
+            result.xla_output_shape);
 }
 
 TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
@@ -1131,6 +1136,8 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
       xla::ShapeUtil::MakeTupleShape({result_shape, result_shape})));
+  EXPECT_EQ(result.computation->GetProgramShape().ConsumeValueOrDie().result(),
+            result.xla_output_shape);
 }
 
 // Tests a simple graph that reads and writes a variable.

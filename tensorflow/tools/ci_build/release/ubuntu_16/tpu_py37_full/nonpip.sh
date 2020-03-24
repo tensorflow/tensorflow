@@ -35,22 +35,30 @@ export TF2_BEHAVIOR=1
 
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
-tag_filters="tpu,requires-tpu,-no_tpu,-notpu,-no_oss,-no_oss_py37"
+test_patterns=(//tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/...)
+tag_filters="tpu,-tpu_pod,-no_tpu,-notpu,-no_oss,-no_oss_py37"
 
-bazel_args="--config=opt \
+bazel_args=(
+  --config=opt \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
-  --action_env=TF2_BEHAVIOR=${TF2_BEHAVIOR} \
+  --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --noincompatible_strict_action_env \
-  --build_tag_filters=${tag_filters} \
-  --test_tag_filters=${tag_filters} \
-  --test_output=errors --verbose_failures=true --keep_going \
-  --test_arg=--tpu=${TPU_NAME} \
-  --test_arg=--zone=${TPU_ZONE} \
-  --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \
-  --local_test_jobs=1 \
-  -- //tensorflow/... -//tensorflow/compiler/... -//tensorflow/lite/..."
+  --build_tag_filters="${tag_filters}" \
+  --test_tag_filters="${tag_filters}" \
+  --test_output=errors --verbose_failures=true --keep_going
+)
 
-bazel build "${bazel_args}"
+bazel build "${bazel_args[@]}" -- "${test_patterns[@]}"
+
 ctpu_up -s v2-8 -p tensorflow-testing-tpu
-bazel test "${bazel_args}"
+
+test_args=(
+  --test_timeout=120,600,-1,-1 \
+  --test_arg=--tpu="${TPU_NAME}" \
+  --test_arg=--zone="${TPU_ZONE}" \
+  --test_arg=--test_dir_base=gs://kokoro-tpu-testing/tempdir/ \
+  --local_test_jobs=1
+)
+
+bazel test "${bazel_args[@]}" "${test_args[@]}" -- "${test_patterns[@]}"

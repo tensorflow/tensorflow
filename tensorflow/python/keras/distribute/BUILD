@@ -7,7 +7,12 @@ load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove this deps when distribute test are converted to integration test.
+    default_visibility = [
+        "//tensorflow/python/distribute:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 

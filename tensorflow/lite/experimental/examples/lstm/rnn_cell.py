@@ -163,7 +163,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   This is used only for TfLite, it provides hints and it also makes the
-  variables in the desired for the tflite ops  (transposed and seaparated).
+  variables in the desired for the tflite ops  (transposed and separated).
 
   The default non-peephole implementation is based on:
 

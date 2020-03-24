@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_debug_info_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_types.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -160,6 +161,9 @@ Status GpuExecutable::ExecuteThunks(
     sub_streams.emplace_back();
     TF_ASSIGN_OR_RETURN(sub_streams.back(),
                         run_options->BorrowStream(executor->device_ordinal()));
+    // Require substreams to wait for the main stream, otherwise substreams may
+    // execute before the program is scheduled to start on the main stream.
+    sub_streams.back()->ThenWaitFor(main_stream);
   }
 
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
@@ -196,13 +200,21 @@ Status GpuExecutable::ExecuteThunks(
     VLOG(2) << "Executing the thunk for "
             << thunk->hlo_instruction()->ToString() << " on stream "
             << stream_no;
+    const GpuExecutableRunOptions* gpu_options =
+        run_options->run_options().gpu_executable_run_options();
     Thunk::ExecuteParams thunk_params{
         &buffer_allocations,
         stream,
         run_options->run_options().run_id(),
         &profiler,
         run_options->run_options().device_assignment(),
-        &deferred_host_callbacks};
+        &deferred_host_callbacks,
+        gpu_options && gpu_options->gpu_global_device_ids()
+            ? &*gpu_options->gpu_global_device_ids()
+            : nullptr,
+        gpu_options && gpu_options->nccl_unique_id_callback()
+            ? &gpu_options->nccl_unique_id_callback()
+            : nullptr};
     TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(thunk_params));
     if (thunk_schedule_->Depended(thunk)) {
       auto finish_event = absl::make_unique<se::Event>(main_stream->parent());
@@ -319,7 +331,7 @@ GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
 
 StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ExecutionInput> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   XLA_SCOPED_LOGGING_TIMER(absl::StrCat("GpuExecutable::ExecuteAsyncOnStream(",
                                         module().name(), ")"));
@@ -358,7 +370,7 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
         auto param_no = allocation.parameter_number();
         se::DeviceMemoryBase buffer =
             arguments[param_no]
-                .element(allocation.param_shape_index())
+                .Buffer(allocation.param_shape_index())
                 .AsDeviceMemoryBase();
 
         // All top-level buffers and sub-buffers must have an explicit, non-null
@@ -449,16 +461,15 @@ StatusOr<ExecutionOutput> GpuExecutable::ExecuteAsyncOnStream(
   TF_RETURN_IF_ERROR(buffer_allocations->TearDown(buffers_in_result));
 
   std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
+  for (auto& argument : arguments) {
+    for (auto& index_buffer : *argument.MutableBuffers()) {
+      auto maybe_owning_buffer = index_buffer.second.Release();
       if (maybe_owning_buffer) {
         buffers_to_free.push_back(std::move(*maybe_owning_buffer));
       }
     }
   }
-  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free),
-                         {}, {});
+  return ExecutionOutput(std::move(shaped_buffer), std::move(buffers_to_free));
 }
 
 const InstructionValueSet& GpuExecutable::GetRootValueSet() const {

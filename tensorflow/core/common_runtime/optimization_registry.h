@@ -73,7 +73,7 @@ class GraphOptimizationPass {
   string name() const { return name_; }
 
  private:
-  // The name of the opitimization pass, which is the same as the inherited
+  // The name of the optimization pass, which is the same as the inherited
   // class name.
   string name_;
 };

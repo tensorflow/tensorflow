@@ -32,8 +32,10 @@ StepInfoResult ConvertStepDetailsToStepInfo(bool has_device, int64 step_num,
   auto& type_ps = *(generic.mutable_type_ps());
   uint64 total_event_duration = 0;
   for (const auto& event : step_details.Events()) {
-    type_ps[event.type] += event.span.duration_ps();
-    total_event_duration += event.span.duration_ps();
+    // Ignore event duration outside the step marker.
+    uint64 event_duration = step_time.OverlappedDurationPs(event.span);
+    type_ps[event.type] += event_duration;
+    total_event_duration += event_duration;
   }
   if (total_event_duration < step_time.duration_ps()) {
     // Some time in the step is not associated with any event. Classify them as

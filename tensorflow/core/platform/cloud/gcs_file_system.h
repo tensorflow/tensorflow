@@ -29,8 +29,8 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
-#include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/retrying_file_system.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
@@ -336,7 +336,7 @@ class GcsFileSystem : public FileSystem {
   void ClearFileCaches(const string& fname);
 
   mutex mu_;
-  std::unique_ptr<AuthProvider> auth_provider_ GUARDED_BY(mu_);
+  std::unique_ptr<AuthProvider> auth_provider_ TF_GUARDED_BY(mu_);
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<ZoneProvider> zone_provider_;
 
@@ -347,7 +347,7 @@ class GcsFileSystem : public FileSystem {
   // FileBlockCache instances are themselves threadsafe).
   mutex block_cache_lock_;
   std::unique_ptr<FileBlockCache> file_block_cache_
-      GUARDED_BY(block_cache_lock_);
+      TF_GUARDED_BY(block_cache_lock_);
   std::unique_ptr<GcsDnsCache> dns_cache_;
   GcsThrottle throttle_;
 

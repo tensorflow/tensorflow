@@ -36,6 +36,10 @@ limitations under the License.
 
 namespace tflite {
 
+class InterpreterTest;
+
+namespace impl {
+
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -410,6 +414,11 @@ class Interpreter {
   /// WARNING: This is an experimental API and subject to change.
   void SetProfiler(Profiler* profiler);
 
+  /// Same as SetProfiler except this interpreter takes ownership
+  /// of the provided profiler.
+  /// WARNING: This is an experimental API and subject to change.
+  void SetProfiler(std::unique_ptr<Profiler> profiler);
+
   /// Gets the profiler used for op tracing.
   /// WARNING: This is an experimental API and subject to change.
   Profiler* GetProfiler();
@@ -489,12 +498,15 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
-  friend class InterpreterTest;
+  friend class tflite::InterpreterTest;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
+
+  // Sets the profiler to all subgraphs.
+  void SetSubgraphProfiler(Profiler* profiler);
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
@@ -510,6 +522,10 @@ class Interpreter {
   // WARNING: This is an experimental API and subject to change.
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
   std::vector<TfLiteDelegatePtr> owned_delegates_;
+
+  // Profiler that has been installed and is owned by this interpreter instance.
+  // Useful if client profiler ownership is burdensome.
+  std::unique_ptr<Profiler> owned_profiler_;
 
   bool allow_buffer_handle_output_ = false;
 
@@ -529,6 +545,10 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 };
+
+}  // namespace impl
+
+using Interpreter = impl::Interpreter;
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

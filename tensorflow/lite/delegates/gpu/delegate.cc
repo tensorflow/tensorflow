@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstdint>
 #include <memory>
+#include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "absl/types/span.h"
@@ -71,6 +72,8 @@ class Delegate {
 
   Status Prepare(TfLiteContext* context,
                  const TfLiteDelegateParams* delegate_params) {
+    thread_id_prepare_ = std::this_thread::get_id();
+
     // Extract TFLite delegate execution plan from the context and convert it
     // into FlowGraph32.
     GraphFloat32 graph;
@@ -144,6 +147,16 @@ class Delegate {
   }
 
   Status Invoke(TfLiteContext* context) {
+    if (thread_id_prepare_ != std::this_thread::get_id()) {
+      TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
+                 "GpuDelegate invoke thread != prepare thread");
+      if (enforce_same_thread_) {
+        return FailedPreconditionError(
+            "GpuDelegate must run on the same thread where it was "
+            "initialized.");
+      }
+    }
+
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     return runner_->Run();
   }
@@ -210,6 +223,7 @@ class Delegate {
     options.priority3 = ToPriority(options_.inference_priority3);
     RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                          options, builder));
+    enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
     return OkStatus();
@@ -230,6 +244,9 @@ class Delegate {
   std::unique_ptr<InferenceRunner> runner_;
   std::vector<int64_t> input_indices_;
   std::vector<int64_t> output_indices_;
+
+  std::thread::id thread_id_prepare_;  // thread id used for Prapare()
+  bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
 };
 
 inline Delegate* GetDelegate(TfLiteNode* node) {

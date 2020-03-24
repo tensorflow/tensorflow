@@ -107,6 +107,7 @@ void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
     opts->stats_collector = ctx->stats_collector();
   }
   opts->runner = ctx->runner();
+  opts->run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts->step_container = ctx->step_container();
 }
 

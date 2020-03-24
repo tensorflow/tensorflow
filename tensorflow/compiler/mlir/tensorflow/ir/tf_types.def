@@ -19,10 +19,6 @@ limitations under the License.
 #ifdef HANDLE_TF_TYPE
 
 //             class, enumerant, name
-HANDLE_TF_TYPE(Uint8, UINT8, "uint8")
-HANDLE_TF_TYPE(Uint16, UINT16, "uint16")
-HANDLE_TF_TYPE(Uint32, UINT32, "uint32")
-HANDLE_TF_TYPE(Uint64, UINT64, "uint64")
 HANDLE_TF_TYPE(Qint8, QINT8, "qint8")
 HANDLE_TF_TYPE(Qint16, QINT16, "qint16")
 HANDLE_TF_TYPE(Qint32, QINT32, "qint32")

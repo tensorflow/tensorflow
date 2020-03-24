@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class DeviceMgr;
+
 // A Rendezvous is an abstraction for passing tensors from producers
 // to consumers. A rendezvous is a table of channels. Each channel is
 // keyed by a rendezvous key. The key encodes a pair of <producer,
@@ -127,6 +129,8 @@ class RendezvousInterface {
 // threads with no clear owner.
 class Rendezvous : public RendezvousInterface, public core::RefCounted {
  public:
+  using Factory =
+      std::function<Status(const int64, const DeviceMgr*, Rendezvous**)>;
   // Constructs a rendezvous key for the tensor of "name" sent from
   // "src_device" to "dst_device". The tensor is generated in the frame
   // and iteration specified by "frame_iter".

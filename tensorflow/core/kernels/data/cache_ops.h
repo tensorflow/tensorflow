@@ -51,8 +51,8 @@ class MemoryCache : public ResourceBase {
  private:
   mutex mu_;
   // Determines whether all elements of the dataset have been cached.
-  bool completed_ GUARDED_BY(mu_) = false;
-  std::vector<std::vector<Tensor>> cache_ GUARDED_BY(mu_);
+  bool completed_ TF_GUARDED_BY(mu_) = false;
+  std::vector<std::vector<Tensor>> cache_ TF_GUARDED_BY(mu_);
 };
 
 // Creates an instance of cache resource and transfers ownership to the caller.

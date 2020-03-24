@@ -133,6 +133,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
     dynamic_dimension_inference_ = dynamic_dimension_inference;
   }
 
+  DynamicDimensionInference* dynamic_dimension_inference() {
+    return dynamic_dimension_inference_;
+  }
+
   // Enable the fast path for certain operations like dot or convolution.
   void set_use_fast_path(bool value) { use_fast_path_ = value; }
 

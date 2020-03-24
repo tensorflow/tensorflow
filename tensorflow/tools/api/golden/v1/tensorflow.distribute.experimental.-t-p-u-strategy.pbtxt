@@ -69,6 +69,10 @@ tf_class {
     argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "run"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "scope"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }

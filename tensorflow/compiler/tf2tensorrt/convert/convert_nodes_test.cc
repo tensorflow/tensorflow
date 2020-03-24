@@ -1187,7 +1187,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
         /*max_workspace_size_bytes=*/64 << 20, input_shapes, &logger_,
         /*allocator=*/nullptr, /*calibrator=*/nullptr, &engine_,
         /*use_calibration=*/false, /*use_implicit_batch=*/true,
-        /*convert_successfully=*/nullptr);
+        /*convert_successfully=*/nullptr, /*profiles=*/nullptr);
   }
 
  protected:
@@ -1302,7 +1302,8 @@ class OpConverterTest : public ::testing::Test {
                                     /*max_batch_size=*/batch_size,
                                     /*max_workspace_size_bytes=*/1 << 26,
                                     /*allocator=*/nullptr,
-                                    /*calibrator=*/nullptr));
+                                    /*calibrator=*/nullptr,
+                                    /*profiles=*/nullptr));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);

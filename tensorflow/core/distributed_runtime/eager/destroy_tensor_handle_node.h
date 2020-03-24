@@ -30,15 +30,14 @@ namespace eager {
 class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
  public:
   DestroyTensorHandleNode(std::unique_ptr<EnqueueRequest> request,
-                          EagerClient* eager_client, bool ready)
+                          core::RefCountPtr<EagerClient> eager_client,
+                          bool ready)
       : tensorflow::AsyncEagerNode(),
         request_(std::move(request)),
-        eager_client_(eager_client),
-        ready_(ready) {
-    eager_client_->Ref();
-  }
+        eager_client_(std::move(eager_client)),
+        ready_(ready) {}
 
-  ~DestroyTensorHandleNode() override { eager_client_->Unref(); }
+  ~DestroyTensorHandleNode() override {}
 
   void RunAsync(StatusCallback done) override {
     EnqueueResponse* response = new EnqueueResponse;
@@ -67,6 +66,9 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
   void Abort(Status status) override {}
 
+  // Remote node deletions are best effort
+  bool Fatal() const override { return false; }
+
   string DebugString() const override {
     string out = "[DestroyTensorHandleNode]";
     strings::StrAppend(&out, " request: ", request_->DebugString());
@@ -75,7 +77,7 @@ class DestroyTensorHandleNode : public tensorflow::AsyncEagerNode {
 
  private:
   std::unique_ptr<EnqueueRequest> request_;
-  EagerClient* eager_client_;
+  core::RefCountPtr<EagerClient> eager_client_;
   const string remote_task_;
   bool ready_;
 };

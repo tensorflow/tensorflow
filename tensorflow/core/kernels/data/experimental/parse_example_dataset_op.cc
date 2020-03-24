@@ -273,12 +273,12 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
-      Node* num_parallle_calls_node;
+      Node* num_parallel_calls_node;
       std::vector<Node*> dense_defaults_nodes;
       dense_defaults_nodes.reserve(dense_defaults_.size());
 
       TF_RETURN_IF_ERROR(
-          b->AddScalar(num_parallel_calls_, &num_parallle_calls_node));
+          b->AddScalar(num_parallel_calls_, &num_parallel_calls_node));
 
       for (const Tensor& dense_default : dense_defaults_) {
         Node* node;
@@ -336,7 +336,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddDataset(this,
                                        {
                                            {0, input_graph_node},
-                                           {1, num_parallle_calls_node},
+                                           {1, num_parallel_calls_node},
                                        },
                                        {{2, dense_defaults_nodes}}, attrs,
                                        output));
@@ -348,6 +348,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit ParseExampleFunctor(const Dataset* dataset)
           : dataset_(dataset) {}
+
+      Status CheckExternalState() override { return Status::OK(); }
 
       void MapFunc(IteratorContext* ctx, const string& prefix,
                    std::vector<Tensor> input, std::vector<Tensor>* output,

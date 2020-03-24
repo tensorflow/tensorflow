@@ -65,7 +65,7 @@ class FileSystemRegistryImpl : public FileSystemRegistry {
  private:
   mutable mutex mu_;
   mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
-      GUARDED_BY(mu_);
+      TF_GUARDED_BY(mu_);
 };
 
 Status FileSystemRegistryImpl::Register(const std::string& scheme,
@@ -281,6 +281,12 @@ Status Env::IsDirectory(const string& fname) {
   return fs->IsDirectory(fname);
 }
 
+Status Env::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  FileSystem* fs;
+  TF_RETURN_IF_ERROR(GetFileSystemForFile(path, &fs));
+  return fs->HasAtomicMove(path, has_atomic_move);
+}
+
 Status Env::DeleteRecursively(const string& dirname, int64* undeleted_files,
                               int64* undeleted_dirs) {
   FileSystem* fs;
@@ -394,7 +400,7 @@ bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
 #else
   int32 pid = static_cast<int32>(getpid());
 #endif
-  uint64 now_microsec = NowMicros();
+  long long now_microsec = NowMicros();  // NOLINT
 
   *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
                              pid, now_microsec);

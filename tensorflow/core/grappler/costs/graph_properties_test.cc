@@ -879,7 +879,7 @@ TEST_F(GraphPropertiesTest, InferRestoreOpShape) {
   EXPECT_EQ(DT_FLOAT, restorev2_prop.dtype());
   EXPECT_EQ("float: [128,256]", PropToString(restorev2_prop));
 
-  // Check input shapes of assign op are propagted correctly.
+  // Check input shapes of assign op are propagated correctly.
   const auto input_props = properties.GetInputProperties("init_restore");
   ASSERT_EQ(2, input_props.size());
   const OpInfo::TensorProperties& input_prop = input_props[1];
@@ -995,7 +995,7 @@ TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
   // When using aggressive_shape_inference, we run EvaluateNode() for
   // whitelisted ops and small input / output tensors. For instance, Fill op is
   // evaluated and produces output tensor value if output tensor size is smal
-  // (currently, fewer than 17 elements); otherwise we don't run EvalauteNode().
+  // (currently, fewer than 17 elements); otherwise we don't run EvaluateNode().
   // This is to avoid wasting time and memory for producing huge tensors (e.g.,
   // initializing a large table using Fill.
   {

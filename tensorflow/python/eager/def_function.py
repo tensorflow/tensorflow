@@ -31,6 +31,7 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -174,7 +175,7 @@ class UnliftedInitializerVariable(resource_variable_ops.UninitializedVariable):
 
     with ops.name_scope(name, "Variable", []
                         if init_from_fn else [initial_value]) as scope_name:
-      with ops.name_scope("Initializer"), ops.device(None):
+      with ops.name_scope("Initializer"):
         initial_value = ops.convert_to_tensor(
             initial_value() if init_from_fn else initial_value,
             name="initial_value", dtype=dtype)
@@ -381,20 +382,20 @@ class Function(object):
         conversion options when autograph is set to True.
       experimental_relax_shapes: When true, argument shapes may be relaxed to
         avoid unnecessary retracing.
-      experimental_compile: If false, execute the function in a regular way. The
-        function is optimized by some graph rewrite passes (some ops might be
-        clustered into a single op) and interpreted by the standard TensorFlow
-        executor, which dispatches op kernels one by one as they become
-        executable. Set it to false when directly running a multi-device
-        function on TPUs (e.g. two TPU cores, one TPU core and its
-        host CPU). If True, the function is compiled directly by XLA. XLA would
-        fuse all the ops and emit more efficient code to run for some devices
-        (e.g. TPU, XLA_GPU) and some use cases (e.g. dense tensor computation).
-        It requires that the whole function is compilable by XLA. If None
-        (default), compile the function with XLA when running on TPU and go
-        through the regular function execution path when running on other
-        devices.
-
+      experimental_compile: If `True`, compiles the function using XLA
+        (see https://tensorflow.org/xla). XLA performs compiler optimizations,
+        such as fusion, and attempts to emit more efficient code. This may
+        drastically improve the performance. If set to `True`,
+        the whole function needs to be compilable by XLA, or an
+        `errors.InvalidArgumentError` is thrown.
+        If `None` (default), compiles the function with XLA when running on TPU
+        and goes through the regular function execution path when running on
+        other devices.
+        If `False`, executes the function in a regular way (graph rewrite
+        passes are applied, kernels are dispatched one-by-one by the TensorFlow
+        executor). Set this value to `False` when directly running a
+        multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
+        host CPU).
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
@@ -558,14 +559,16 @@ class Function(object):
 
   def __call__(self, *args, **kwds):
     """Calls the graph function and warn too frequent tracings."""
-    context.ensure_initialized()
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
 
     tracing_count = self._get_tracing_count()
-    if self._experimental_compile:
+    if self._experimental_compile and (
+        not control_flow_util.GraphOrParentsInXlaContext(
+            ops.get_default_graph())):
       # V2 control flow relies on XLAControlFlowContext to generate a
-      # XLA-compatible function graph.
+      # XLA-compatible function graph. If the function is already called inside
+      # an XLA context, we don't create nested XLA context.
       xla_context = control_flow_ops.XLAControlFlowContext()
       try:
         xla_context.Enter()

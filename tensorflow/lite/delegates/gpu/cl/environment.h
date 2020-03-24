@@ -72,6 +72,8 @@ class Environment {
 };
 
 TensorStorageType GetFastestStorageType(const CLDevice& gpu);
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const CLDevice& gpu);
 
 Status CreateEnvironment(Environment* result);
 

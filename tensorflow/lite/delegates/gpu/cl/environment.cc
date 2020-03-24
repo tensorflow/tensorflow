@@ -227,6 +227,34 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
+    const MaliInfo mali_info = gpu.GetInfo().mali_info;
+    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
+        mali_info.IsValhall()) {
+      return TensorStorageType::TEXTURE_2D;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
+  } else if (gpu.IsNvidia()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  } else if (gpu.IsAMD()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  }
+  return TensorStorageType::BUFFER;
+}
+
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const CLDevice& gpu) {
+  if (gpu.IsAdreno()) {
+    if (gpu.IsAdreno3xx() || gpu.IsAdreno4xx()) {
+      return TensorStorageType::BUFFER;
+    } else {
+      return TensorStorageType::IMAGE_BUFFER;
+    }
+  } else if (gpu.IsPowerVR()) {
+    return TensorStorageType::BUFFER;
+  } else if (gpu.IsMali()) {
     return TensorStorageType::BUFFER;
   } else if (gpu.IsNvidia()) {
     return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER

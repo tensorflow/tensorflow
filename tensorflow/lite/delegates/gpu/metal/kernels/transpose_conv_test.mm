@@ -245,4 +245,45 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+- (void)testTransposeConv4x4 {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  ConvolutionTransposedAttributes attr;
+  attr.padding.prepended = HW(1, 1);
+  attr.padding.appended = HW(1, 1);
+  attr.stride = HW(2, 2);
+
+  attr.weights.shape = OHWI(2, 4, 4, 1);
+  attr.weights.data = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                       1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                      2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f,
+                       2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f, 2.0f};
+  attr.weights.id = 1;
+
+  attr.bias.shape = Linear(1);
+  attr.bias.data = {0.0f};
+  attr.bias.id = 2;
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 3;
+  output.shape = BHWC(1, 4, 4, 1);
+
+
+  SingleOpModel model({ToString(OperationType::CONVOLUTION_TRANSPOSED), std::move(attr)}, {input},
+                      {output});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0f, 1.0f, 2.0f, 3.0f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  status = CompareVectors({0.0f, 0.0f, 1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
+                           2.0f, 4.0f, 6.0f, 12.0f, 6.0f, 12.0f, 4.0f, 8.0f,
+                           2.0f, 4.0f, 6.0f, 12.0f, 6.0f, 12.0f, 4.0f, 8.0f,
+                           2.0f, 4.0f, 5.0f, 10.0f, 5.0f, 10.0f, 3.0f, 6.0f},
+                          model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+}
+
 @end

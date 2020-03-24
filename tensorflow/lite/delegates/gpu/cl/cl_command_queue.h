@@ -124,9 +124,9 @@ class ProfilingCommandQueue : public CLCommandQueue {
   double GetQueueExecutionTimeMs() const;
 
   // Difference from GetQueueExecutionTimeMs is that this number doesn't include
-  // time between kernels(kernels launchs or preparing) on GPU. Usually, this
+  // time between kernels(kernels launches or preparing) on GPU. Usually, this
   // time should be 5-10% better than GetQueueExecutionTimeMs, because 5-10%
-  // spend on something else(maybe kernels launchs or preparing)
+  // spend on something else(maybe kernels launches or preparing)
   double GetSumOfEventsTimeMs() const;
 
   // This label will be used for all subsequent dispatches.

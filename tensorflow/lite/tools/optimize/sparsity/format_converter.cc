@@ -275,7 +275,7 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
     for (; i < indices.size(); i++) {
       int orig_dim = block_map_[traversal_order_[i] - orig_rank];
       orig_idx[orig_dim] =
-          orig_idx[orig_dim] * blocked_shape_[orig_dim] + indices[i];
+          orig_idx[orig_dim] * block_size_[orig_dim] + indices[i];
     }
 
     data_[GetFlattenedIndex(orig_idx, dense_shape_)] = src_data[*src_data_ptr];
@@ -285,10 +285,12 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
   }
 
   const int metadata_idx = 2 * level;
+  const int shape_of_level = dim_metadata_[metadata_idx][0];
   if (format_[level] == kTfLiteDimDense) {
-    for (int i = 0; i < dim_metadata_[metadata_idx][0]; i++) {
+    for (int i = 0; i < shape_of_level; i++) {
       indices[level] = i;
-      Populate(src_data, indices, level + 1, i, src_data_ptr);
+      Populate(src_data, indices, level + 1, prev_idx * shape_of_level + i,
+               src_data_ptr);
     }
   } else {
     const auto& array_segments = dim_metadata_[metadata_idx];
@@ -304,7 +306,7 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
 template <typename T>
 TfLiteStatus FormatConverter<T>::SparseToDense(const T* src_data) {
   data_.resize(dense_size_);
-  std::fill(data_.begin(), data_.end(), 0);
+  std::fill(data_.begin(), data_.end(), T(0));
 
   int total_rank = traversal_order_.size();
   int src_data_ptr = 0;

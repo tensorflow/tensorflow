@@ -159,7 +159,7 @@ DeviceAssignment MakeDeviceAssn(std::vector<int64> devices) {
 }
 
 // Shorter alias for this function.
-absl::flat_hash_set<int> OpenNcclChannels() {
+absl::flat_hash_set<GlobalDeviceId> OpenNcclChannels() {
   return gpu::NcclAllReduceThunk::DevicesWithOpenNcclChannels();
 }
 
@@ -366,6 +366,55 @@ XLA_TEST_F(CollectiveOpsTest, AllReduce_ManyConcurrentAllReduces) {
     });
   }
   done.Wait();
+}
+
+// Runs the same executable many times concurrently.  The all-reduces should not
+// conflict with one another.
+XLA_TEST_F(CollectiveOpsTest, AllReduce_CombinableAllReduces) {
+  std::string hlo_string = R"(
+    HloModule test
+
+    apply_op {
+      x = f32[] parameter(0)
+      y = f32[] parameter(1)
+      ROOT apply_op = f32[] add(x, y)
+    }
+
+    ENTRY test_computation {
+      p0 = f32[5] parameter(0)
+      p1 = f32[5] parameter(1)
+      crs0 = f32[5] all-reduce(p0), replica_groups={}, to_apply=apply_op
+      crs1 = f32[5] all-reduce(p1), replica_groups={}, to_apply=apply_op
+      ROOT out = (f32[5], f32[5]) tuple(f32[5] crs0, f32[5] crs1)
+    }
+  )";
+  static constexpr int kNumReplicas = 2;
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(kNumReplicas);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, config));
+
+  std::vector<float> input0_vec = {1., 2., 3., 4., 5.};
+  auto input0_literal = LiteralUtil::CreateR1<float>(input0_vec);
+  std::vector<float> input1_vec = {7., 3., 4., 1., 2.};
+  auto input1_literal = LiteralUtil::CreateR1<float>(input1_vec);
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::vector<Literal> results,
+      ExecuteReplicated(std::move(module), {&input0_literal, &input1_literal},
+                        /*num_replicas=*/kNumReplicas,
+                        /*use_threads=*/true));
+  std::vector<float> expected0_vec = {2., 4., 6., 8., 10.};
+  auto expected0_literal = LiteralUtil::CreateR1<float>(expected0_vec);
+  std::vector<float> expected1_vec = {14., 6., 8., 2., 4.};
+  auto expected1_literal = LiteralUtil::CreateR1<float>(expected1_vec);
+  for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+    auto rs = results[replica_idx].DecomposeTuple();
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected0_literal, rs[0],
+                                             ErrorSpec{1e-5, 1e-5}));
+    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected1_literal, rs[1],
+                                             ErrorSpec{1e-5, 1e-5}));
+  }
 }
 
 // Runs an all-reduce with three partitions:

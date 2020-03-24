@@ -23,7 +23,7 @@ namespace {
 
 mutex mu(LINKER_INITIALIZED);
 
-std::vector<ProfilerFactory>* GetFactories() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+std::vector<ProfilerFactory>* GetFactories() TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
   static auto factories = new std::vector<ProfilerFactory>();
   return factories;
 }

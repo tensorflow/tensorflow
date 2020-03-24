@@ -30,7 +30,7 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
+    const OperationDef& op_def, const LinearStorage& biases,
     const std::vector<ElementwiseOperation*>& linked_operations,
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
     int2 padding, int3 work_group_launch_order) {
@@ -82,7 +82,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += "    " + weights_space + " FLT4* filters,\n";
-  c += "    __read_only image2d_t biases";
+  c += biases.GetDeclaration();
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
@@ -240,7 +240,7 @@ std::string GenerateConvolutionTransposedCode(
     c += "  if (DST_X >= dst_size.x || DST_Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
-  c += "  FLT4 bias_val = READ_IMAGE(biases, (int2)(Z, 0));\n";
+  c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   for (int y = 0; y < 2; ++y) {
     for (int x = 0; x < 2; ++x) {
       const std::string s_x = std::to_string(x);
@@ -307,7 +307,7 @@ ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
 Status ConvolutionTransposed3x3::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, linked_operations_, weights_upload_type_, padding_,
+      definition_, biases_, linked_operations_, weights_upload_type_, padding_,
       work_group_launch_order_);
 
   std::vector<CompilerOptions> options;
@@ -387,6 +387,7 @@ Status CreateConvolutionTransposed3x3(
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition.GetDataType();
+  create_info.name = "biases";
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));

@@ -569,9 +569,6 @@ def tf_additional_lib_hdrs():
         ],
     })
 
-def tf_additional_monitoring_hdrs():
-    return []
-
 def tf_additional_env_hdrs():
     return []
 
@@ -755,9 +752,6 @@ def tf_platform_alias(name):
 
 def tf_logging_deps():
     return ["//tensorflow/core/platform/default:logging"]
-
-def tf_monitoring_deps():
-    return ["//tensorflow/core/platform/default:monitoring"]
 
 def tf_resource_deps():
     return ["//tensorflow/core/platform/default:resource"]

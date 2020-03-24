@@ -30,7 +30,7 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
+    const OperationDef& op_def, const LinearStorage& biases,
     const std::vector<ElementwiseOperation*>& linked_operations,
     ConvolutionTransposed4x4::WeightsUploadType weights_upload_type) {
   std::string c = GetCommonDefines(op_def.precision);
@@ -81,7 +81,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += "    " + weights_space + " FLT4* filters,\n";
-  c += "    __read_only image2d_t biases";
+  c += biases.GetDeclaration();
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
@@ -231,7 +231,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   c += "  Y = Y * 2 - 1;\n";
   c += "\n";
-  c += "  FLT4 bias_val = READ_IMAGE(biases, smp_none, (int2)(Z, 0));\n";
+  c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  if (X >= 0 && Y >= 0) {\n";
   c += "    FLT4 result = TO_FLT4(r0) + bias_val;\n";
   LinkingContext context{"result", "X", "Y", "Z"};
@@ -304,7 +304,7 @@ ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
 Status ConvolutionTransposed4x4::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, linked_operations_, weights_upload_type_);
+      definition_, biases_, linked_operations_, weights_upload_type_);
 
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -369,6 +369,7 @@ Status CreateConvolutionTransposed4x4(
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition.GetDataType();
+  create_info.name = "biases";
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));

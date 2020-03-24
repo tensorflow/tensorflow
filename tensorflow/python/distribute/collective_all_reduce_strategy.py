@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import weakref
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -95,6 +96,7 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
         TFConfigClusterResolver which is instantiated from the TF_CONFIG env
         var.
     """
+    # TODO(b/150151677): consider move communication to CollectiveHints.
     super(CollectiveAllReduceStrategy, self).__init__(
         CollectiveAllReduceExtended(
             self,
@@ -165,13 +167,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                container_strategy,
                communication,
                cluster_resolver):
-    cluster_resolver = cluster_resolver or TFConfigClusterResolver()
+    self._cluster_resolver = cluster_resolver or TFConfigClusterResolver()
     distribute_lib.StrategyExtendedV1.__init__(self, container_strategy)
     assert isinstance(
         communication,
         cross_device_ops_lib.CollectiveCommunication)
     self._communication = communication
-    self._initialize_strategy(cluster_resolver)
+    self._initialize_strategy(self._cluster_resolver)
+    self._cfer_fn_cache = weakref.WeakKeyDictionary()
     assert isinstance(self._get_cross_device_ops(),
                       cross_device_ops_lib.CollectiveAllReduce)
 
@@ -505,7 +508,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     return updated_config
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -526,7 +529,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, len(self.worker_devices))
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

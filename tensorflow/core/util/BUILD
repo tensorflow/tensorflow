@@ -20,6 +20,10 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
 )
+load(
+    "//tensorflow/core/platform:build_config_root.bzl",
+    "if_static",
+)
 
 package(
     default_visibility = [
@@ -47,6 +51,10 @@ filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
         "overflow.h",
+        "padding.cc",
+        "padding.h",
+        "tensor_format.cc",
+        "tensor_format.h",
     ],
 )
 
@@ -81,8 +89,6 @@ filegroup(
         "matmul_bcast.h",
         "mirror_pad_mode.cc",
         "mirror_pad_mode.h",
-        "padding.cc",
-        "padding.h",
         "port.cc",
         "port.h",
         "presized_cuckoo_map.h",
@@ -94,8 +100,6 @@ filegroup(
         "stat_summarizer.h",
         "strided_slice_op.cc",
         "strided_slice_op.h",
-        "tensor_format.cc",
-        "tensor_format.h",
         "tensor_ops_util.h",
         "tensor_slice_reader.cc",
         "tensor_slice_reader.h",
@@ -444,6 +448,7 @@ cc_library(
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
     copts = tf_copts(),
+    alwayslink = if_static(0, 1),
 )
 
 cc_library(
@@ -465,7 +470,6 @@ cc_library(
     deps = [
         ":tensor_format",
         "//tensorflow/core/framework:attr_value_proto_cc",
-        "//tensorflow/core/framework:node_def_util",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:status",
     ],
@@ -543,7 +547,6 @@ tf_cc_tests(
     srcs = [
         "bcast_test.cc",
         "command_line_flags_test.cc",
-        "debug_events_writer_test.cc",
         "device_name_utils_test.cc",
         "dump_graph_test.cc",
         "equal_graph_def_test.cc",
@@ -603,6 +606,27 @@ tf_cc_tests(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "debug_events_writer_test",
+    size = "small",
+    srcs = ["debug_events_writer_test.cc"],
+    linkopts = select({
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
+        "//conditions:default": [],
+    }),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_windows"],  # b/150411480
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

@@ -28,6 +28,8 @@ tf_cuda_library(
         "c_api_debug.cc",
         "c_api_experimental.h",
         "c_api_internal.h",
+        "operation_interface.cc",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     hdrs = ["c_api.h"],
@@ -56,6 +58,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
+            "//tensorflow/core/platform:casts",
             "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
@@ -92,6 +95,8 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "dlpack.h",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     visibility = [
@@ -104,6 +109,7 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = [
         "c_api_experimental.h",
+        "operation_interface.h",
         "tensor_handle_interface.h",
     ],
     hdrs = ["c_api_internal.h"],
@@ -128,6 +134,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:kernel_and_device",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/container:fixed_array",
     ],
 )
 
@@ -199,6 +206,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/platform:casts",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -321,8 +329,32 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "dlpack.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "dlpack",
+    srcs = ["dlpack.cc"],
+    hdrs = ["dlpack.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_internal",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "@dlpack",
+    ],
+    alwayslink = 1,
 )
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime
@@ -338,6 +370,7 @@ filegroup(
         exclude = [
             "c_api_experimental.cc",
             "*test*",
+            "*dlpack*",
         ],
     ),
     visibility = ["//visibility:public"],

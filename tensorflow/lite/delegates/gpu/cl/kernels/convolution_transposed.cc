@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
+#include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -220,6 +221,7 @@ std::string GenerateConvolutionTransposedCode(
   }
   c += "      for (int s = 0; s < src_size.z; ++s) {\n";
   const auto mode = GetFastestZeroMode(device);
+  const bool conditional_read = device.IsMali();
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     for (int x = 0; x < block_size.x; ++x) {
@@ -229,9 +231,15 @@ std::string GenerateConvolutionTransposedCode(
         c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
              "; addr_" + id + " += dz_" + id + ";\n";
       } else if (manual_clamp) {
-        c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
-             " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" + id +
-             " += dz;\n";
+        if (conditional_read) {
+          c += "        FLT4 src" + id + " = in_x" + xindex + " && in_y" +
+               yindex + " ? " + src_tensor.Read("addr_" + id) +
+               " : (FLT4)(0.0f); addr_" + id + " += dz;\n";
+        } else {
+          c += "        FLT4 src" + id + " = " + src_tensor.Read("addr_" + id) +
+               " * (FLT)(in_x" + xindex + " && in_y" + yindex + "); addr_" +
+               id + " += dz;\n";
+        }
       } else {
         c += "        FLT4 src" + id + " = " +
              src_tensor.ReadWHSB("sx" + xindex, "sy" + yindex, "s", batch_id,
@@ -304,7 +312,24 @@ ConvolutionTransposed::ConvolutionTransposed(
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.stride.w, attr.stride.h),
       padding_(attr.padding.prepended.w, attr.padding.prepended.h),
-      block_size_(2, 2, 2) {}
+      block_size_(2, 2, 2) {
+  const bool is_f16 = definition.precision == CalculationsPrecision::F16;
+  if (device.IsMali()) {
+    MaliInfo mali_info = device.GetInfo().mali_info;
+    if (mali_info.IsMidgard()) {
+      block_size_ = is_f16 ? int3(2, 1, 2) : int3(2, 1, 1);
+    } else {
+      block_size_ = is_f16 ? int3(2, 2, 2) : int3(2, 2, 1);
+    }
+  }
+  const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  if (dst_depth == 1 || dst_depth == 3) {
+    if (!device.IsMali()) {
+      block_size_.y *= block_size_.z;
+    }
+    block_size_.z = 1;
+  }
+}
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
     : GPUOperation(std::move(operation)),

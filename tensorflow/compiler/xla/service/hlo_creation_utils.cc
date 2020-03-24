@@ -33,6 +33,15 @@ limitations under the License.
 namespace xla {
 using absl::StrCat;
 
+StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
+                                       HloInstruction* operand) {
+  HloComputation* computation = operand->parent();
+  TF_ASSIGN_OR_RETURN(Shape unary_op_shape,
+                      ShapeInference::InferUnaryOpShape(opcode, operand));
+  return computation->AddInstruction(
+      HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
+}
+
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   HloComputation* computation = lhs->parent();
@@ -342,6 +351,15 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
   return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
       scalar_shape, operand, init_value, all_dims, reduce_computation));
+}
+
+StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
+                                         absl::Span<const int64> dimensions) {
+  HloComputation* computation = operand->parent();
+  TF_ASSIGN_OR_RETURN(Shape reverse_shape, ShapeInference::InferReverseShape(
+                                               operand->shape(), dimensions));
+  return computation->AddInstruction(
+      HloInstruction::CreateReverse(reverse_shape, operand, dimensions));
 }
 
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,

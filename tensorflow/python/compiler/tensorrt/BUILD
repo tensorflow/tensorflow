@@ -36,8 +36,8 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/compiler/tf2tensorrt:_pywrap_py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
-        "//tensorflow/compiler/tf2tensorrt:wrap_py_utils",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
@@ -135,8 +135,7 @@ cuda_py_tests(
         "test/rank_two_test.py",
         "test/reshape_transpose_test.py",
         "test/topk_test.py",
-        # TODO(bixia): Reenable when b/149570314 is resolved.
-        # "test/trt_mode_test.py",
+        "test/trt_mode_test.py",
         "test/unary_test.py",
         "test/vgg_block_nchw_test.py",
         "test/vgg_block_test.py",

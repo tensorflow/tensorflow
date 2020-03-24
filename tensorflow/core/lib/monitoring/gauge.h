@@ -58,13 +58,13 @@ class GaugeCell {
   ~GaugeCell() {}
 
   // Atomically sets the value.
-  void Set(const T& value) LOCKS_EXCLUDED(mu_);
+  void Set(const T& value) TF_LOCKS_EXCLUDED(mu_);
 
   // Retrieves the current value.
-  T value() const LOCKS_EXCLUDED(mu_);
+  T value() const TF_LOCKS_EXCLUDED(mu_);
 
  private:
-  T value_ GUARDED_BY(mu_);
+  T value_ TF_GUARDED_BY(mu_);
   mutable mutex mu_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GaugeCell);
@@ -152,7 +152,7 @@ class Gauge {
   // Retrieves the cell for the specified labels, creating it on demand if not
   // already present.
   template <typename... Labels>
-  GaugeCell<ValueType>* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  GaugeCell<ValueType>* GetCell(const Labels&... labels) TF_LOCKS_EXCLUDED(mu_);
 
   Status GetStatus() { return status_; }
 
@@ -188,7 +188,7 @@ class Gauge {
   std::unique_ptr<CollectionRegistry::RegistrationHandle> registration_handle_;
 
   using LabelArray = std::array<string, NumLabels>;
-  std::map<LabelArray, GaugeCell<ValueType> > cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, GaugeCell<ValueType> > cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(Gauge);
 };
@@ -232,7 +232,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
 template <typename ValueType, int NumLabels>
 template <typename... Labels>
 GaugeCell<ValueType>* Gauge<ValueType, NumLabels>::GetCell(
-    const Labels&... labels) LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(

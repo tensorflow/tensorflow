@@ -1712,20 +1712,41 @@ def reduce_sum(input_tensor, axis=None, keepdims=False, name=None):
 
   For example:
 
-  ```python
-  x = tf.constant([[1, 1, 1], [1, 1, 1]])
-  tf.reduce_sum(x)  # 6
-  tf.reduce_sum(x, 0)  # [2, 2, 2]
-  tf.reduce_sum(x, 1)  # [3, 3]
-  tf.reduce_sum(x, 1, keepdims=True)  # [[3], [3]]
-  tf.reduce_sum(x, [0, 1])  # 6
-  ```
+  >>> # x has a shape of (2, 3) (two rows and three columns):
+  >>> x = tf.constant([[1, 1, 1], [1, 1, 1]])
+  >>> x.numpy()
+  array([[1, 1, 1],
+         [1, 1, 1]], dtype=int32)
+  >>> # sum all the elements
+  >>> # 1 + 1 + 1 + 1 + 1+ 1 = 6
+  >>> tf.reduce_sum(x).numpy()
+  6
+  >>> # reduce along the first dimension
+  >>> # the result is [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+  >>> tf.reduce_sum(x, 0).numpy()
+  array([2, 2, 2], dtype=int32)
+  >>> # reduce along the second dimension
+  >>> # the result is [1, 1] + [1, 1] + [1, 1] = [3, 3]
+  >>> tf.reduce_sum(x, 1).numpy()
+  array([3, 3], dtype=int32)
+  >>> # keep the original dimensions
+  >>> tf.reduce_sum(x, 1, keepdims=True).numpy()
+  array([[3],
+         [3]], dtype=int32)
+  >>> # reduce along both dimensions
+  >>> # the result is 1 + 1 + 1 + 1 + 1 + 1 = 6
+  >>> # or, equivalently, reduce along rows, then reduce the resultant array
+  >>> # [1, 1, 1] + [1, 1, 1] = [2, 2, 2]
+  >>> # 2 + 2 + 2 = 6
+  >>> tf.reduce_sum(x, [0, 1]).numpy()
+  6
+
 
   Args:
     input_tensor: The tensor to reduce. Should have numeric type.
     axis: The dimensions to reduce. If `None` (the default), reduces all
       dimensions. Must be in the range `[-rank(input_tensor),
-      rank(input_tensor))`.
+      rank(input_tensor)]`.
     keepdims: If true, retains reduced dimensions with length 1.
     name: A name for the operation (optional).
 
@@ -4668,3 +4689,27 @@ def sobol_sample(dim, num_results, skip=0, dtype=dtypes.float32, name=None):
   """
   with ops.name_scope(name, "sobol", [dim, num_results, skip]):
     return gen_math_ops.sobol_sample(dim, num_results, skip, dtype=dtype)
+
+
+@tf_export("math.rsqrt", v1=["math.rsqrt", "rsqrt"])
+@deprecation.deprecated_endpoints("rsqrt")
+@dispatch.add_dispatch_support
+def rsqrt(x, name=None):
+  """Computes reciprocal of square root of x element-wise.
+
+  For example:
+
+  >>> x = tf.constant([2., 0., -2.])
+  >>> tf.math.rsqrt(x)
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([0.707, inf, nan], dtype=float32)>
+
+  Args:
+    x: A `tf.Tensor`. Must be one of the following types: `bfloat16`, `half`,
+      `float32`, `float64`. `int32`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `tf.Tensor`. Has the same type as `x`.
+  """
+  return gen_math_ops.rsqrt(x, name)

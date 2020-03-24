@@ -255,7 +255,7 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        "control_dep",
+        # "control_dep", # b/150647401
         "conv",
         "conv_relu",
         "conv_relu1",
@@ -388,8 +388,12 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return []
-    return []
+        return [
+            "merged_models",  # b/150647401
+        ]
+    return [
+        "merged_models",  # b/150647401
+    ]
 
 def generated_test_models_successful(conversion_mode):
     """Returns the list of successful test models.

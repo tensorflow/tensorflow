@@ -98,14 +98,14 @@ class ProcessState : public ProcessStateInterface {
 
   // Indexed by numa_node.  If we want numa-specific allocators AND a
   // non-specific allocator, maybe should index by numa_node+1.
-  std::vector<Allocator*> cpu_allocators_ GUARDED_BY(mu_);
-  std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ GUARDED_BY(mu_);
-  std::vector<SubAllocator::Visitor> cpu_free_visitors_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_allocators_ TF_GUARDED_BY(mu_);
+  std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ TF_GUARDED_BY(mu_);
+  std::vector<SubAllocator::Visitor> cpu_free_visitors_ TF_GUARDED_BY(mu_);
 
   // Optional RecordingAllocators that wrap the corresponding
   // Allocators for runtime attribute use analysis.
   MDMap mem_desc_map_;
-  std::vector<Allocator*> cpu_al_ GUARDED_BY(mu_);
+  std::vector<Allocator*> cpu_al_ TF_GUARDED_BY(mu_);
 };
 
 namespace internal {

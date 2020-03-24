@@ -19,6 +19,7 @@ limitations under the License.
 #include <thread>  // NOLINT
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -167,13 +168,17 @@ EventType ClassifyGpuEvent(absl::string_view event_name,
   return ClassifyDeviceCompute(event_name, tensor_shapes);
 }
 
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id) {
+EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+                           bool has_device) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD") ||
       absl::StrContains(event_name, "Infeed"))
     return HOST_TO_DEVICE;
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoH")) return HOST_TO_HOST;
-  if (correlation_id >= 0 ||
-      absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process")) {
+  // TODO(b/150420972): Separate runtime overhead from actual compute for
+  // CPU-only.
+  if (has_device &&
+      (correlation_id >= 0 ||
+       absl::StartsWithIgnoreCase(event_name, "ExecutorState::Process"))) {
     return HOST_PREPARE;
   }
   if (absl::StartsWithIgnoreCase(event_name, "IteratorGetNext"))
@@ -219,9 +224,20 @@ std::string PrintEventTypeSpan(const EventTypeSpan& event_type_span) {
                       event_type_span.span.DebugString(), ")");
 }
 
+absl::string_view PrintStepMarkerType(StepMarkerType type) {
+  switch (type) {
+    case StepMarkerType::kExplicitHostStepMarker:
+      return "ExplicitHostStepMarker";
+    case StepMarkerType::kImplicitHostStepMarker:
+      return "ImplicitHostStepMarker";
+    case StepMarkerType::kDeviceStepMarker:
+      return "DeviceStepMarker";
+  }
+}
+
 std::string PrintStepMarker(const StepMarker& step_marker) {
-  std::string device_or_host = step_marker.on_device ? "device" : "host";
-  return absl::StrCat("(", device_or_host, ", ", step_marker.event_name, ", ",
+  return absl::StrCat("(", PrintStepMarkerType(step_marker.type), ", ",
+                      step_marker.event_name, ", ",
                       step_marker.span.DebugString(), ")");
 }
 
@@ -287,15 +303,28 @@ void StepDetails::AppendEvents(const std::vector<EventTypeSpan>& other_events) {
 }
 
 Timespan StepDetails::StepTime() const {
-  // If there are multiple step-markers, uses the one that has the maximum
-  // duration.
-  Timespan max_steptime;
+  Timespan max_host_step_time;
+  Timespan max_device_step_time;
   for (const auto& marker : markers_) {
-    const Timespan& timespan = marker.span;
-    if (timespan.duration_ps() > max_steptime.duration_ps())
-      max_steptime = timespan;
+    Timespan& cur_max_step_time =
+        marker.type == StepMarkerType::kDeviceStepMarker ? max_device_step_time
+                                                         : max_host_step_time;
+    const Timespan& new_step_time = marker.span;
+    if (new_step_time.duration_ps() > cur_max_step_time.duration_ps())
+      cur_max_step_time = new_step_time;
   }
-  return max_steptime;
+  // CPU-only profile.
+  if (max_device_step_time.Empty()) {
+    return max_host_step_time;
+  }
+
+  // If the host step time includes the device step time, use the host step
+  // time. This covers the case where the device is synchronized at the end of
+  // each step.
+  if (max_host_step_time.Includes(max_device_step_time)) {
+    return max_host_step_time;
+  }
+  return max_device_step_time;
 }
 
 std::string StepDetails::DebugString() const {

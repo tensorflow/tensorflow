@@ -44,6 +44,9 @@ upper_tabs:
         path: /lite/convert/rnn
       - title: "1.x compatibility"
         path: /lite/convert/1x_compatibility
+      - title: "Add metadata"
+        path: /lite/convert/metadata
+        status: experimental
 
       - heading: "Inference"
       - title: "Overview"
@@ -59,24 +62,18 @@ upper_tabs:
         status: experimental
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
+      - title: "Generate code from metadata"
+        path: /lite/guide/codegen
+        status: experimental
 
       - heading: "Performance"
       - title: "Best practices"
         path: /lite/performance/best_practices
       - title: "Benchmarks"
         path: /lite/performance/benchmarks
-      - title: "Model optimization"
-        path: /lite/performance/model_optimization
-      - title: "Post-training quantization"
-        path: /lite/performance/post_training_quantization
-      - title: "Post-training weight quantization"
-        path: /lite/performance/post_training_quant
-      - title: "Post-training integer quantization"
-        path: /lite/performance/post_training_integer_quant
-      - title: "Post-training float16 quantization"
-        path: /lite/performance/post_training_float16_quant
       - title: "Delegates"
         path: /lite/performance/delegates
+        status: experimental
       - title: "GPU delegate"
         path: /lite/performance/gpu
       - title: "Advanced GPU"
@@ -86,6 +83,18 @@ upper_tabs:
       - title: "Hexagon delegate"
         path: /lite/performance/hexagon_delegate
         status: experimental
+
+      - heading: "Optimize a model"
+      - title: "Overview"
+        path: /lite/performance/model_optimization
+      - title: "Post-training quantization"
+        path: /lite/performance/post_training_quantization
+      - title: "Post-training weight quantization"
+        path: /lite/performance/post_training_quant
+      - title: "Post-training integer quantization"
+        path: /lite/performance/post_training_integer_quant
+      - title: "Post-training float16 quantization"
+        path: /lite/performance/post_training_float16_quant
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 

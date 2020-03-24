@@ -99,6 +99,7 @@ objc_library(
         "//tensorflow/lite/delegates/gpu/metal:api",
         "//tensorflow/lite/delegates/gpu/metal:buffer_convert",
         "//tensorflow/lite/delegates/gpu/metal:compiled_model",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:inference_context",
         "@com_google_absl//absl/types:span",
     ],

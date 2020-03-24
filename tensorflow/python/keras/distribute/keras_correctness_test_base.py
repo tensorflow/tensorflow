@@ -67,8 +67,7 @@ def graph_mode_test_configuration():
 def all_strategy_and_input_config_combinations():
   return (combinations.times(
       combinations.combine(
-          distribution=all_strategies,
-          experimental_run_tf_function=[True, False]),
+          distribution=all_strategies),
       eager_mode_test_configuration() + graph_mode_test_configuration()))
 
 
@@ -100,12 +99,10 @@ def test_combinations_for_embedding_model():
 
   return (combinations.times(
       combinations.combine(
-          distribution=strategies_for_embedding_models(),
-          experimental_run_tf_function=[True, False]),
+          distribution=strategies_for_embedding_models()),
       (graph_mode_test_configuration())) + combinations.times(
           combinations.combine(
-              distribution=eager_mode_strategies,
-              experimental_run_tf_function=[False]),
+              distribution=eager_mode_strategies),
           (eager_mode_test_configuration())))
 
 
@@ -249,13 +246,11 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
 def fit_eval_and_predict(initial_weights,
                          input_fn,
                          model_fn,
-                         experimental_run_tf_function=None,
                          distribution=None,
                          is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
   training_inputs, eval_inputs, predict_inputs = input_fn()
   model = model_fn(
-      experimental_run_tf_function=experimental_run_tf_function,
       initial_weights=initial_weights,
       distribution=distribution,
       input_shapes=get_shapes(training_inputs['x']))
@@ -426,7 +421,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
   def get_model(self,
                 distribution=None,
-                experimental_run_tf_function=None,
                 input_shapes=None):
     raise NotImplementedError
 
@@ -434,7 +428,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            distribution,
                            use_numpy,
                            use_validation_data,
-                           experimental_run_tf_function=None,
                            with_batch_norm=None,
                            is_stateful_model=False,
                            partial_last_batch=None,
@@ -457,7 +450,6 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
       # This is used to initialize the model for both the distribution and
       # non-distribution run.
       model = self.get_model(
-          experimental_run_tf_function=experimental_run_tf_function,
           input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
 
@@ -489,14 +481,12 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=distribution,
           is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=None,
           is_stateful_model=is_stateful_model)
 
@@ -538,14 +528,12 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
     return training_input, None, None
 
   def run_dynamic_lr_test(self,
-                          distribution,
-                          experimental_run_tf_function=None):
+                          distribution):
     with self.cached_session():
       self.set_up_test_config()
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(
-          experimental_run_tf_function=experimental_run_tf_function,
           input_shapes=get_shapes(x_train))
       initial_weights = model.get_weights()
       update_freq = None
@@ -587,13 +575,11 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
           initial_weights,
           input_fn=ds_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=distribution)
       results_without_ds = fit_eval_and_predict(
           initial_weights,
           input_fn=nods_input_fn,
           model_fn=self.get_model,
-          experimental_run_tf_function=experimental_run_tf_function,
           distribution=None)
       compare_results(
           results_with_ds, results_without_ds, distribution, testcase=self)

@@ -336,7 +336,7 @@ static const char* const kResidualBytes =
     "residual bytes: The memory not de-allocated after the operation finishes.";
 static const char* const kOutputBytes =
     "output bytes: The memory that is output from the operation (not "
-    "necessarilty allocated by the operation)";
+    "necessarily allocated by the operation)";
 static const char* const kOccurrence =
     "occurrence: The number of times it occurs";
 static const char* const kInputShapes =

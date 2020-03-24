@@ -5,19 +5,14 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/tools/pip_package:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-filegroup(
-    name = "testdata",
-    srcs = [
-        "testdata/repeated_vocab.txt",
-        "testdata/vocab.txt",
-    ],
-)
 
 py_library(
     name = "preprocessing",
@@ -284,7 +279,6 @@ tf_py_test(
     name = "index_lookup_test",
     size = "medium",
     srcs = ["index_lookup_test.py"],
-    data = [":testdata"],
     python_version = "PY3",
     deps = [
         ":index_lookup",

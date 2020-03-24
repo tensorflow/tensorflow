@@ -77,7 +77,7 @@ class RedzoneAllocator : public ScratchAllocator {
 
     std::string RedzoneFailureMsg() const;
 
-    string buffer_name = {};
+    std::string buffer_name = {};
     void* user_buffer_address = nullptr;
     int64 offset = 0;
     uint64 expected_value = 0;

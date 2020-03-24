@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/threadpool.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
@@ -183,6 +184,7 @@ class OpsTestBase : public ::testing::Test {
 
   std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  std::unique_ptr<thread::ThreadPool> thread_pool_;
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(OpsTestBase);

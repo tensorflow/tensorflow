@@ -28,13 +28,13 @@ tf_module {
     name: "SequenceEnqueuer"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "custom_object_scope"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "convert_all_kernels_in_model"
     argspec: "args=[\'model\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "custom_object_scope"
-    argspec: "args=[], varargs=args, keywords=None, defaults=None"
   }
   member_method {
     name: "deserialize_keras_object"

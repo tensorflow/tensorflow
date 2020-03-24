@@ -42,7 +42,6 @@ ARM_SRCS = [
 # Platform-specific sources and headers
 LINUX_SRCS = [
     "src/linux/cpulist.c",
-    "src/linux/current.c",
     "src/linux/multiline.c",
     "src/linux/processors.c",
     "src/linux/smallfile.c",

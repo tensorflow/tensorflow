@@ -15,8 +15,6 @@ limitations under the License.
 
 package org.tensorflow.lite.support.common;
 
-import android.text.TextUtils;
-import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** Static error checking util methods. */
@@ -28,7 +26,7 @@ public final class SupportPreconditions {
    * @return the non-null reference that was validated
    * @throws NullPointerException if {@code reference} is null
    */
-  public static <T extends @NonNull Object> T checkNotNull(T reference) {
+  public static <T extends Object> T checkNotNull(T reference) {
     if (reference == null) {
       throw new NullPointerException("The object reference is null.");
     }
@@ -44,8 +42,7 @@ public final class SupportPreconditions {
    * @return the non-null reference that was validated
    * @throws NullPointerException if {@code reference} is null
    */
-  public static <T extends @NonNull Object> T checkNotNull(
-      T reference, @Nullable Object errorMessage) {
+  public static <T extends Object> T checkNotNull(T reference, @Nullable Object errorMessage) {
     if (reference == null) {
       throw new NullPointerException(String.valueOf(errorMessage));
     }
@@ -60,7 +57,7 @@ public final class SupportPreconditions {
    * @throws IllegalArgumentException if {@code string} is null or empty
    */
   public static String checkNotEmpty(String string) {
-    if (TextUtils.isEmpty(string)) {
+    if (string == null || string.length() == 0) {
       throw new IllegalArgumentException("Given String is empty or null.");
     }
     return string;
@@ -76,7 +73,7 @@ public final class SupportPreconditions {
    * @throws IllegalArgumentException if {@code string} is null or empty
    */
   public static String checkNotEmpty(String string, Object errorMessage) {
-    if (TextUtils.isEmpty(string)) {
+    if (string == null || string.length() == 0) {
       throw new IllegalArgumentException(String.valueOf(errorMessage));
     }
     return string;

@@ -110,8 +110,7 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
 
   constexpr char kUserMetadataMarker = '#';
   for (TraceMeRecorder::ThreadEvents& thread : events_) {
-    uint32_t thread_id = thread.thread.tid;
-    thread_names->insert({thread_id, thread.thread.name});
+    thread_names->insert({thread.thread.tid, thread.thread.name});
     for (TraceMeRecorder::Event& event : thread.events) {
       if (event.start_time && event.end_time) {
         NodeExecStats* ns = dev_stats->add_node_stats();
@@ -131,7 +130,7 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
         ns->set_all_start_micros(event.start_time / EnvTime::kMicrosToNanos);
         ns->set_all_end_rel_micros((event.end_time - event.start_time) /
                                    EnvTime::kMicrosToNanos);
-        ns->set_thread_id(thread_id);
+        ns->set_thread_id(thread.thread.tid);
       }
     }
   }

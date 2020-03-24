@@ -13,6 +13,7 @@ def distribute_py_test(
         size = "medium",
         args = [],
         tpu_args = [],
+        tpu_tags = None,
         shard_count = 1,
         full_precision = False,
         disable_v2 = False,
@@ -30,6 +31,7 @@ def distribute_py_test(
         size: size of test, to control timeout.
         args: arguments to the non-tpu tests.
         tpu_args: arguments for the tpu tests.
+        tpu_tags: tags for the tpu tests. If unspecified, uses value of `tags`.
         shard_count: number of shards to split the tests across.
         full_precision: unused.
         disable_v2: whether tests for TPU version 2 should be generated.
@@ -37,6 +39,7 @@ def distribute_py_test(
         **kwargs: extra keyword arguments to the non-tpu test.
     """
     _ignore = (full_precision)
+    tpu_tags = tags if (tpu_tags == None) else tpu_tags
 
     cuda_py_test(
         name = name,
@@ -62,7 +65,7 @@ def distribute_py_test(
             args = tpu_args,
             shard_count = shard_count,
             deps = deps,
-            tags = tags,
+            tags = tpu_tags,
             disable_v2 = disable_v2,
             disable_v3 = disable_v3,
         )

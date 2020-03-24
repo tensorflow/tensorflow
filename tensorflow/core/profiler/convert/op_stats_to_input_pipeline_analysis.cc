@@ -400,9 +400,9 @@ std::string MakeDocLink(absl::string_view doc_link, absl::string_view text) {
                       "</a>");
 }
 
-// Returns the HTML link to the introduction to the Dataset API.
+// Returns the HTML link to the introduction to the tf.data API.
 std::string DatasetIntroDoc() {
-  return "https://www.tensorflow.org/programmers_guide/datasets";
+  return "https://www.tensorflow.org/guide/data";
 }
 
 }  // namespace
@@ -489,7 +489,7 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       " or preprocess the data OFFLINE.");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files in advance: you may tune parameters in the "
-      "following Dataset API (",
+      "following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch size"),
       ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"),
@@ -497,13 +497,13 @@ InputPipelineAnalysisRecommendation GenerateRecommendation() {
       ", ", AnchorElement(kTfRecordDataset, "reader buffer_size"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Reading data from files on demand: you should read data IN ADVANCE "
-      "using the following Dataset API (",
+      "using the following tf.data API (",
       AnchorElement(absl::StrCat(kDatasetTopic, "prefetch"), "prefetch"), ", ",
       AnchorElement(absl::StrCat(kDatasetTopic, "interleave"), "interleave"),
       ", ", AnchorElement(kTfRecordDataset, "reader buffer"), ")");
   *recommendation.add_details() = absl::StrCat(
       "Other data reading or processing: you may consider using the ",
-      AnchorElement(kDatasetIntro, "Dataset API"),
+      AnchorElement(kDatasetIntro, "tf.data API"),
       " (if you are not using it now)");
 
   return recommendation;

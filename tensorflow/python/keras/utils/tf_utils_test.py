@@ -18,18 +18,20 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TestIsSymbolicTensor(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class TestIsSymbolicTensor(test.TestCase, parameterized.TestCase):
 
   def test_default_behavior(self):
     if context.executing_eagerly():
@@ -79,6 +81,8 @@ class TestIsSymbolicTensor(test.TestCase):
       self.assertTrue(tf_utils.is_symbolic_tensor(CustomClass()))
 
   def test_enables_nontensor_plumbing(self):
+    if context.executing_eagerly():
+      self.skipTest('`compile` functionality changed.')
     # Setup.
 
     class Foo(object):

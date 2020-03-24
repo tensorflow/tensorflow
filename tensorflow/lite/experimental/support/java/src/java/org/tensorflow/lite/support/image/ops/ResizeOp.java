@@ -16,6 +16,7 @@ limitations under the License.
 package org.tensorflow.lite.support.image.ops;
 
 import android.graphics.Bitmap;
+import android.graphics.PointF;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.support.image.ImageOperator;
 import org.tensorflow.lite.support.image.TensorImage;
@@ -68,5 +69,21 @@ public class ResizeOp implements ImageOperator {
         Bitmap.createScaledBitmap(image.getBitmap(), targetWidth, targetHeight, useBilinear);
     image.load(scaled);
     return image;
+  }
+
+  @Override
+  public int getOutputImageHeight(int inputImageHeight, int inputImageWidth) {
+    return targetHeight;
+  }
+
+  @Override
+  public int getOutputImageWidth(int inputImageHeight, int inputImageWidth) {
+    return targetWidth;
+  }
+
+  @Override
+  public PointF inverseTransform(PointF point, int inputImageHeight, int inputImageWidth) {
+    return new PointF(
+        point.x * inputImageWidth / targetWidth, point.y * inputImageHeight / targetHeight);
   }
 }

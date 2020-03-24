@@ -58,7 +58,7 @@ class FakeAllocator {
   AllocatorRetry retry_;
   void* good_ptr_ = reinterpret_cast<void*>(0xdeadbeef);
   mutex mu_;
-  size_t memory_capacity_ GUARDED_BY(mu_);
+  size_t memory_capacity_ TF_GUARDED_BY(mu_);
   int millis_to_wait_;
 };
 
@@ -100,7 +100,7 @@ class AlternatingBarrier {
   }
 
  private:
-  void IncrementTurn() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  void IncrementTurn() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     int skipped = 0;
     while (skipped < num_users_) {
       next_turn_ = (next_turn_ + 1) % num_users_;
@@ -112,8 +112,8 @@ class AlternatingBarrier {
   mutex mu_;
   condition_variable cv_;
   int num_users_;
-  int next_turn_ GUARDED_BY(mu_);
-  std::vector<bool> done_ GUARDED_BY(mu_);
+  int next_turn_ TF_GUARDED_BY(mu_);
+  std::vector<bool> done_ TF_GUARDED_BY(mu_);
 };
 
 class GPUAllocatorRetryTest : public ::testing::Test {
@@ -174,8 +174,8 @@ class GPUAllocatorRetryTest : public ::testing::Test {
   std::vector<int> consumer_count_;
   Notification notifier_;
   mutex mu_;
-  bool has_failed_ GUARDED_BY(mu_) = false;
-  int count_ GUARDED_BY(mu_) = 0;
+  bool has_failed_ TF_GUARDED_BY(mu_) = false;
+  int count_ TF_GUARDED_BY(mu_) = 0;
 };
 
 // Verifies correct retrying when memory is slightly overcommitted but

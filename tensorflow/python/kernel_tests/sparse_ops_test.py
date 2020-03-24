@@ -705,9 +705,6 @@ class SparseReduceTest(test_util.TensorFlowTestCase):
 
   @test_util.run_deprecated_v1
   def testGradient(self):
-    if np.__version__ == "1.13.0":
-      self.skipTest("numpy 1.13.0 bug")
-
     np.random.seed(8161)
     test_dims = [(11, 1, 5, 7, 1), (2, 2)]
     with self.session(use_gpu=False):

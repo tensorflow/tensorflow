@@ -261,12 +261,12 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
   const int32 filter_height = filter_shape.Dims(1);
   const int32 filter_width = filter_shape.Dims(2);
 
-  bool supported =
-      stride == params.stride_height && stride <= 2 && padding <= 1 &&
-      filter_width == 3 && filter_height == 3 && params.output_shift <= 0 &&
-      params.dilation_width_factor == 1 && params.dilation_height_factor == 1 &&
-      (((input_depth % 8) == 0 && depth_multiplier == 1) ||
-       (input_depth == 1 && depth_multiplier > 1));
+  bool supported = stride == params.stride_height && stride <= 2 &&
+                   padding <= 1 && filter_width == 3 && filter_height == 3 &&
+                   params.dilation_width_factor == 1 &&
+                   params.dilation_height_factor == 1 &&
+                   (((input_depth % 8) == 0 && depth_multiplier == 1) ||
+                    (input_depth == 1 && depth_multiplier > 1));
 
   if (!supported) {
     return DotProduct3x3KernelType::kNone;
@@ -277,15 +277,11 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
   }
 
   if (quantization_type == QuantizationType::kPerChannelInt8) {
-    const int32 output_depth = output_shape.Dims(3);
     if (output_shift_ptr == nullptr) {
       return DotProduct3x3KernelType::kNone;
     }
-    for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] > 0) {
-        return DotProduct3x3KernelType::kNone;
-      }
-    }
+  } else if (params.output_shift > 0) {
+    return DotProduct3x3KernelType::kNone;
   }
 
   if (params.depth_multiplier == 1) {
@@ -453,7 +449,6 @@ inline bool Fast3x3FilterKernelSupported(
   const int32 filter_width = filter_shape.Dims(2);
   const int32 output_height = output_shape.Dims(1);
   const int32 output_width = output_shape.Dims(2);
-  const int32 output_depth = output_shape.Dims(3);
 
   bool supported =
       filter_width == 3 && filter_height == 3 && depth_multiplier == 1 &&
@@ -466,14 +461,6 @@ inline bool Fast3x3FilterKernelSupported(
 
   if (!supported) {
     return false;
-  }
-
-  if (quantization_type == QuantizationType::kPerChannelInt8) {
-    for (int i = 0; i < output_depth; ++i) {
-      if (output_shift_ptr[i] > 0) {
-        return false;
-      }
-    }
   }
 
   // Handle case where padding is zero but padding type is not kValid.

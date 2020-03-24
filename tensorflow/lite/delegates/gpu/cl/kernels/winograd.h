@@ -30,8 +30,7 @@ namespace cl {
 
 // You can read https://arxiv.org/pdf/1509.09308.pdf for understanding of basic
 // principles. In this kernels used different matrices for transformations than
-// in original work. Matrices received with method described here
-// https://openreview.net/pdf?id=H1ZaRZVKg
+// in original work.
 class Winograd4x4To36 : public GPUOperation {
  public:
   Winograd4x4To36() = default;
@@ -54,6 +53,9 @@ class Winograd4x4To36 : public GPUOperation {
                                       Winograd4x4To36* result);
 
   Status UploadBt(CLContext* context);
+
+  // Must be called after kernel compilation
+  int3 SelectBestWorkGroup();
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -91,6 +93,9 @@ class Winograd36To4x4 : public GPUOperation {
       Winograd36To4x4* result);
 
   Status UploadAt(CLContext* context);
+
+  // Must be called after kernel compilation
+  int3 SelectBestWorkGroup();
 
   Status BindArguments();
   int3 GetGridSize() const;

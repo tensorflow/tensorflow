@@ -51,12 +51,28 @@ class Adadelta(optimizer_v2.OptimizerV2):
   $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
   $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
   $$x_t := x_{t-1} + \Delta x_{t}$$
-  
+
+  Adadelta is a more robust extension of Adagrad that adapts learning rates
+  based on a moving window of gradient updates, instead of accumulating all
+  past gradients. This way, Adadelta continues learning even when many updates
+  have been done. Compared to Adagrad, in the original version of Adadelta you
+  don't have to set an initial learning rate. In this version, initial
+  learning rate can be set, as in most other Keras optimizers.
+
+  @compatibility(eager)
+  When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
+  each be a callable that takes no arguments and returns the actual value to
+  use. This can be useful for changing these values across different
+  invocations of optimizer functions.
+  @end_compatibility
+
   References
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
 
   """
+
+  _HAS_ALL_REDUCE_SUM_GRAD = True
 
   def __init__(self,
                learning_rate=0.001,
@@ -65,13 +81,6 @@ class Adadelta(optimizer_v2.OptimizerV2):
                name='Adadelta',
                **kwargs):
     """Construct a new Adadelta optimizer.
-
-    Adadelta is a more robust extension of Adagrad that adapts learning rates
-    based on a moving window of gradient updates, instead of accumulating all
-    past gradients. This way, Adadelta continues learning even when many updates
-    have been done. Compared to Adagrad, in the original version of Adadelta you
-    don't have to set an initial learning rate. In this version, initial
-    learning rate can be set, as in most other Keras optimizers.
 
     Args:
       learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -87,13 +96,6 @@ class Adadelta(optimizer_v2.OptimizerV2):
         gradients by value, `decay` is included for backward compatibility to
         allow time inverse decay of learning rate. `lr` is included for backward
         compatibility, recommended to use `learning_rate` instead.
-
-    @compatibility(eager)
-    When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
-    each be a callable that takes no arguments and returns the actual value to
-    use. This can be useful for changing these values across different
-    invocations of optimizer functions.
-    @end_compatibility
     
     The learning rate and epsilon according to the original paper uses learning rate as 1.0 and epsilon as 1e-6.
   

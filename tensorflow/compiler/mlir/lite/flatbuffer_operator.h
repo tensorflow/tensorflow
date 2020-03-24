@@ -23,12 +23,12 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
@@ -44,6 +44,7 @@ llvm::Optional<tflite::BuiltinOperator> GetBuiltinOpCode(Operation *mlir_op);
 llvm::Optional<flatbuffers::Offset<tflite::Operator>> CreateFlatBufferOperator(
     Operation *mlir_op, uint32_t opcode_index,
     const std::vector<int32_t> &operands, const std::vector<int32_t> &results,
+    const std::vector<int32_t> &intermediates,
     flatbuffers::FlatBufferBuilder *fbb);
 
 // Populates the array of mlir::NamedAttributes corresponding to the given

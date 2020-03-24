@@ -76,11 +76,11 @@ class PercentileSamplerCell {
   mutable mutex mu_;
   UnitOfMeasure unit_of_measure_;
   const std::vector<double> percentiles_;
-  std::vector<Sample> samples_ GUARDED_BY(mu_);
-  size_t num_samples_ GUARDED_BY(mu_);
-  size_t next_position_ GUARDED_BY(mu_);
-  size_t total_samples_ GUARDED_BY(mu_);
-  long double accumulator_ GUARDED_BY(mu_);
+  std::vector<Sample> samples_ TF_GUARDED_BY(mu_);
+  size_t num_samples_ TF_GUARDED_BY(mu_);
+  size_t next_position_ TF_GUARDED_BY(mu_);
+  size_t total_samples_ TF_GUARDED_BY(mu_);
+  long double accumulator_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSamplerCell);
 };
@@ -120,7 +120,8 @@ class PercentileSampler {
   // Retrieves the cell for the specified labels, creating it on demand if
   // not already present.
   template <typename... Labels>
-  PercentileSamplerCell* GetCell(const Labels&... labels) LOCKS_EXCLUDED(mu_);
+  PercentileSamplerCell* GetCell(const Labels&... labels)
+      TF_LOCKS_EXCLUDED(mu_);
 
   Status GetStatus() { return status_; }
 
@@ -187,7 +188,7 @@ class PercentileSampler {
   // we need a container here that guarantees pointer stability of the value,
   // namely, the pointer of the value should remain valid even after more cells
   // are inserted.
-  std::map<LabelArray, PercentileSamplerCell> cells_ GUARDED_BY(mu_);
+  std::map<LabelArray, PercentileSamplerCell> cells_ TF_GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PercentileSampler);
 };
@@ -205,7 +206,7 @@ PercentileSampler<NumLabels>* PercentileSampler<NumLabels>::New(
 template <int NumLabels>
 template <typename... Labels>
 PercentileSamplerCell* PercentileSampler<NumLabels>::GetCell(
-    const Labels&... labels) LOCKS_EXCLUDED(mu_) {
+    const Labels&... labels) TF_LOCKS_EXCLUDED(mu_) {
   // Provides a more informative error message than the one during array
   // construction below.
   static_assert(

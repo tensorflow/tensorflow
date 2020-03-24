@@ -24,7 +24,8 @@ from absl.testing import parameterized
 import numpy as np
 import six
 
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
@@ -97,7 +98,8 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
-  def testMultiDeviceFunctionAmbiguousDevice(self):
+  # TODO(b/148235520): Re-enable this test.
+  def DISABLED_testMultiDeviceFunctionAmbiguousDevice(self):
 
     @def_function.function
     def ambiguous_device(i):
@@ -154,6 +156,106 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertIn('Dimensions must be equal', cm.exception.args[0])
 
+  def testClientVarible(self):
+    var = variables.Variable(initial_value=0)
+
+    @def_function.function
+    def func():
+      with ops.device('/job:localhost/task:0'):
+        read = var.read_value()
+      return read + 1
+
+    with ops.device('/job:worker/task:0'):
+      self.assertAllEqual(func(), 1)
+
+
+class RemoteAsyncTest(test.TestCase):
+
+  def setUp(self):
+    super(RemoteAsyncTest, self).setUp()
+
+    workers, _ = test_util.create_local_cluster(1, 0)
+    remote.connect_to_remote_host(workers[0].target)
+
+  def tearDown(self):
+    super(RemoteAsyncTest, self).tearDown()
+
+    # Reset the context to avoid polluting other test cases.
+    context._reset_context()
+
+  def test_out_of_range_with_while_loop(self):
+
+    with ops.device('/job:worker/task:0'):
+      dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0])
+      dataset = dataset.batch(1, drop_remainder=False)
+      iterator = iter(dataset)
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(iterator):
+      i = next(iterator)
+      v.assign_add(math_ops.reduce_mean(i))
+
+    while True:
+      try:
+        with ops.device('/job:worker/task:0'):
+          train_step(iterator)
+      except (errors.OutOfRangeError, errors.InternalError):
+        context.async_clear_error()
+        break
+
+    self.assertAllEqual(v.numpy(), 4.0)
+
+  def test_out_of_range_with_for_loop(self):
+
+    with ops.device('/job:worker/task:0'):
+      dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0])
+      dataset = dataset.batch(1, drop_remainder=False)
+      iterator = iter(dataset)
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(iterator):
+      i = next(iterator)
+      v.assign_add(math_ops.reduce_mean(i))
+
+    num_steps = 3
+    for i in range(num_steps):
+      try:
+        with ops.device('/job:worker/task:0'):
+          train_step(iterator)
+        if i == num_steps - 1:
+          context.async_wait()
+      except errors.OutOfRangeError:
+        context.async_clear_error()
+        break
+
+    self.assertAllEqual(v.numpy(), 4.0)
+
+  def test_out_of_range_with_async_scope(self):
+
+    with ops.device('/job:worker/task:0'):
+      dataset = dataset_ops.Dataset.from_tensor_slices([1.0, 2.0])
+      dataset = dataset.batch(1, drop_remainder=False)
+      iterator = iter(dataset)
+      v = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(iterator):
+      i = next(iterator)
+      v.assign_add(math_ops.reduce_mean(i))
+
+    num_steps = 3
+    try:
+      with context.async_scope():
+        for _ in range(num_steps):
+          with ops.device('/job:worker/task:0'):
+            train_step(iterator)
+    except errors.OutOfRangeError:
+      context.async_clear_error()
+
+    self.assertAllEqual(v.numpy(), 4.0)
+
 
 class MultiWorkersTest(test.TestCase, parameterized.TestCase):
 
@@ -198,6 +300,42 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
       return c
 
     self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testMultiDeviceFunctionOnRemoteDeviceWithWait(self):
+    with ops.device('/job:worker/replica:0/task:1'):
+      variable_b = variables.Variable([1.0])
+
+    @def_function.function
+    def remote_function(i):
+      x = array_ops.ones([1000, 1000])
+      for _ in range(1, 1000):
+        x = x * x
+      variable_b.assign_add(i)
+      a = 1.0 + variable_b
+      return a
+
+    @def_function.function
+    def remote_function2(i):
+      variable_b.assign_add(i)
+      a = 1.0 + variable_b
+      return a
+
+    # Runs first function:
+    # - on remote device
+    # - needs remote input
+    # - is side impacting
+    # - runs much slower
+    with ops.device('/job:worker/replica:0/task:0'):
+      remote_function(constant_op.constant([2.0]))
+
+    # Runs second function:
+    # - on remote device
+    # - is side impacting
+    # There should be a sync point here and the next function will be executed
+    # only after the first function has completed.
+    with ops.device('/job:worker/replica:0/task:2'):
+      self.assertAllEqual(remote_function2(constant_op.constant([3.0])), [7.0])
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnRemoteDevice(self):
@@ -327,8 +465,9 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  # TODO(b/152224115): Re-enable this test.
   @test_util.eager_lazy_remote_copy_on_and_off
-  def testSimpleParameterServerWithDeviceFilters(self):
+  def DISABLED_testSimpleParameterServerWithDeviceFilters(self):
     cluster_device_filters = server_lib.ClusterDeviceFilters()
     for i in range(2):
       cluster_device_filters.set_device_filters('my_worker', i, ['/job:my_ps'])

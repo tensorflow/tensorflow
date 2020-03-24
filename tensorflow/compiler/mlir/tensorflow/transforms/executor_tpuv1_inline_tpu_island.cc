@@ -13,18 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/InliningUtils.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/InliningUtils.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
@@ -70,10 +71,20 @@ void TPUBridgeExecutorIslandInlining::runOnModule() {
       call_op.emitOpError() << "Failed to inline\n";
       return WalkResult::interrupt();
     }
+    called_func.erase();
     call_op.erase();
     return WalkResult::advance();
   });
   if (walk_result.wasInterrupted()) return signalPassFailure();
+  // Move all remaining nested functions back into the parent module.
+  Block &nested_block = nested_module->getRegion(0).front();
+  for (FuncOp func_op :
+       llvm::make_early_inc_range(nested_block.getOps<FuncOp>())) {
+    if (!symbol_table.lookupSymbolIn(getModule(), func_op.getName())) {
+      nested_block.getOperations().remove(func_op.getOperation());
+      symbol_table.insert(func_op.getOperation());
+    }
+  }
   nested_module->erase();
 }
 

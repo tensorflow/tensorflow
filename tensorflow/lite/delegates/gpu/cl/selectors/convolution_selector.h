@@ -34,6 +34,13 @@ Status SelectConvolution(const Convolution2DAttributes& attr,
                          const OperationDef& op_def, ModelHints hints,
                          std::unique_ptr<GPUOperation>* ptr);
 
+Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
+                                    const BHWC& dst_shape,
+                                    const CreationContext& creation_context,
+                                    const OperationDef& op_def,
+                                    ModelHints hints,
+                                    std::unique_ptr<GPUOperation>* ptr);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

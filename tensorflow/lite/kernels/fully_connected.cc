@@ -42,7 +42,7 @@ namespace fully_connected {
 
 namespace {
 bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
-  if (sparsity.dim_metadata[0].format == kTfLiteDimSparseCSR &&
+  if (sparsity.dim_metadata[0].format == kTfLiteDimDense &&
       sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
     return true;
   }
@@ -195,6 +195,11 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
         &data->output_activation_max));
   }
 
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate a temporary
   // buffer to store the intermediate quantized values.
@@ -246,7 +251,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_size_array = nullptr;
   if (params->keep_num_dims) {
     // When number of dimensions are kept the filter operates along the last
-    // dimenions. In other words, for an input tensor with shape
+    // dimensions. In other words, for an input tensor with shape
     // [batch_size, ..., n_inputs] and a filter of shape [n_inputs, n_units]
     // this Op produces an output of shape [batch_size, ..., n_units].
     TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1],
@@ -313,8 +318,7 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
   // Compute output += weight * input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       GetTensorData<float>(filter), num_units, input_size,
-      GetTensorData<float>(input), batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      GetTensorData<float>(input), batch_size, GetTensorData<float>(output));
 
   // Apply activation function
   tensor_utils::ApplyActivationToVector(
@@ -379,12 +383,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
       batch_size, scratch, GetTensorData<float>(output),
-      /*result_stride=*/1, CpuBackendContext::GetFromContext(context));
+      CpuBackendContext::GetFromContext(context));
 #else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
-      batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      batch_size, GetTensorData<float>(output));
 #endif
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(
@@ -432,9 +435,7 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
                          const TfLiteTensor* filter, const TfLiteTensor* bias,
                          TfLiteTensor* output) {
   FullyConnectedParams op_params;
-  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data->output_multiplier;
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;

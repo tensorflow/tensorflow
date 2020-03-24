@@ -86,7 +86,7 @@ class SimpleRendezvous : public RendezvousInterface {
   typedef std::unordered_map<string, Tensor> Table;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -157,17 +157,13 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   params.device = device_;
   params.function_library = function_library;
   const int producer = graph_to_run->versions().producer();
-  params.create_kernel = [this, function_library, producer](const NodeDef& ndef,
-                                                            OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, function_library, ndef, producer,
+  params.create_kernel = [this, function_library, producer](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, function_library, props, producer,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
-  };
 
   Executor* executor;
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));

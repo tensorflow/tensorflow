@@ -151,7 +151,7 @@ class FileSystem {
   /// This function provides the equivalent of posix fnmatch, however it is
   /// implemented without fnmatch to ensure that this can be used for cloud
   /// filesystems on windows. For windows filesystems, it uses PathMatchSpec.
-  virtual bool Match(const string& filename, const string& pattern);
+  virtual bool Match(const std::string& filename, const std::string& pattern);
 
   /// \brief Obtains statistics for the given path.
   virtual tensorflow::Status Stat(const string& fname,
@@ -225,7 +225,7 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  virtual string TranslateName(const string& name) const;
+  virtual std::string TranslateName(const std::string& name) const;
 
   /// \brief Returns whether the given path is a directory or not.
   ///
@@ -236,6 +236,18 @@ class FileSystem {
   ///  * PERMISSION_DENIED - Insufficient permissions.
   ///  * UNIMPLEMENTED - The file factory doesn't support directories.
   virtual tensorflow::Status IsDirectory(const string& fname);
+
+  /// \brief Returns whether the given path is on a file system
+  /// that has atomic move capabilities. This can be used
+  /// to determine if there needs to be a temp location to safely write objects.
+  /// The second boolean argument has_atomic_move contains this information.
+  ///
+  /// Returns one of the following status codes (not guaranteed exhaustive):
+  ///  * OK - The path is on a recognized file system,
+  ///         so has_atomic_move holds the above information.
+  ///  * UNIMPLEMENTED - The file system of the path hasn't been implemented in
+  ///  TF
+  virtual Status HasAtomicMove(const string& path, bool* has_atomic_move);
 
   /// \brief Flushes any cached filesystem objects from memory.
   virtual void FlushCaches();
@@ -276,16 +288,16 @@ class FileSystem {
   /// invoke any system calls (getcwd(2)) in order to resolve relative
   /// paths with respect to the actual working directory.  That is, this is
   /// purely string manipulation, completely independent of process state.
-  string CleanPath(StringPiece path) const;
+  std::string CleanPath(StringPiece path) const;
 
   /// \brief Creates a URI from a scheme, host, and path.
   ///
   /// If the scheme is empty, we just return the path.
-  string CreateURI(StringPiece scheme, StringPiece host,
-                   StringPiece path) const;
+  std::string CreateURI(StringPiece scheme, StringPiece host,
+                        StringPiece path) const;
 
   ///  \brief Creates a temporary file name with an extension.
-  string GetTempFilename(const string& extension) const;
+  std::string GetTempFilename(const std::string& extension) const;
 
   /// \brief Return true if path is absolute.
   bool IsAbsolutePath(tensorflow::StringPiece path) const;
@@ -307,12 +319,13 @@ class FileSystem {
   /// string path = io::JoinPath(FLAGS_test_srcdir, filename);
   /// string path = io::JoinPath("/full", "path", "to", "filename");
   template <typename... T>
-  string JoinPath(const T&... args) {
+  std::string JoinPath(const T&... args) {
     return JoinPathImpl({args...});
   }
 #endif /* SWIG */
 
-  string JoinPathImpl(std::initializer_list<tensorflow::StringPiece> paths);
+  std::string JoinPathImpl(
+      std::initializer_list<tensorflow::StringPiece> paths);
 
   /// \brief Populates the scheme, host, and path from a URI.
   ///

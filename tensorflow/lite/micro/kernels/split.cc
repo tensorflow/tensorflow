@@ -74,7 +74,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 1);
 
   // Dynamic output tensors are needed if axis tensor is not constant.
-  // But Micro doesn't support dynamic memeory allocation, so we only support
+  // But Micro doesn't support dynamic memory allocation, so we only support
   // constant axis tensor for now.
   TF_LITE_ENSURE_MSG(context, IsConstantTensor(axis),
                      "Non constant axis tensor not supported");
