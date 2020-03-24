@@ -21,7 +21,6 @@ namespace tensorflow {
 namespace profiler {
 
 namespace py = ::pybind11;
-using tensorflow::profiler::TraceMe;
 
 template <typename T>
 int ProfileFunction(PyObject* obj, PyFrameObject* frame, int what,
