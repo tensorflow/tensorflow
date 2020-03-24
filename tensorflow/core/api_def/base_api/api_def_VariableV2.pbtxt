@@ -40,5 +40,22 @@ END
 Outputs a ref to the tensor state so it may be read or modified.
 TODO(zhifengc/mrry): Adds a pointer to a more detail document
 about sharing states in tensorflow.
+
+Note here that tensorflow converts every variable to tensors. So, if states
+of your model are `VarHandleOp`, you don't need to convert it to `VariableV2`.
+For example, if we check the type of both, they are just tensors.
+
+```python
+    v2_tensor = tf.raw_ops.VariableV2(shape=(1,),dtype=tf.float64)
+    vh_tensor = tf.raw_ops.VarHandleOp(shape=(1,),dtype=tf.float64)
+    print(type(v2_tensor))
+    print(type(vh_tensor))
+``` 
+
+Above python code prints results as:
+
+    <class '...tensorflow.python.framework.ops.Tensor'>
+    <class '...tensorflow.python.framework.ops.Tensor'>
+
 END
 }
