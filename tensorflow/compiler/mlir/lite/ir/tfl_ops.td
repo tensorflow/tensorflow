@@ -480,7 +480,10 @@ Note this is a custom op that is not supported in the standard runtime.
 }
 
 def TFL_AveragePool2DOp:
-    TFL_Op<"average_pool_2d", [NoSideEffect, SameOperandsAndResultsScale]> {
+    TFL_Op<"average_pool_2d",
+           [NoSideEffect,
+            SameOperandsAndResultsScale,
+            TFL_GpuTargetOp]> {
   let summary = "Average_pool_2d operator";
 
   let description = [{

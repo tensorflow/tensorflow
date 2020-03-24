@@ -53,6 +53,8 @@ class TensorFlowLiteDialect : public Dialect {
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops_interface.h.inc"
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h.inc"
+// Include all specializes estimators below this line
+#include "tensorflow/compiler/mlir/lite/experimental/estimators/gpu_estimator.h.inc"
 
 }  // end namespace TFL
 }  // end namespace mlir

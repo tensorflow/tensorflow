@@ -206,6 +206,7 @@ cc_library(
     name = "tensorflow_lite",
     srcs = [
         "experimental/estimators/estimator.h",
+        "experimental/estimators/gpu_estimator.h.inc",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
