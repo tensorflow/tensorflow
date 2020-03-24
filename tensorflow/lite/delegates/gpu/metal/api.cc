@@ -51,6 +51,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
+
 bool IsWidthBroadcastedForSecondInput(
     const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
   return inputs.size() == 2 &&
@@ -232,7 +233,7 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
                                             op_type, broadcast);
         } else {
-          return absl::UnimplementedError(
+          return UnimplementedError(
               "No support of multiply with more than 2 inputs");
         }
       }
