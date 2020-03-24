@@ -38,10 +38,50 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/utils/xplane_builder.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
+#include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
+
+namespace {
+// Set the all XLines of specified XPlane to starting walltime.
+// Events time in both host and device planes are CUTPI timestamps.
+// We set initial RocmTracer timestamp as start time for all lines to reflect
+// this fact. Eventually we change line start time to corresponding
+// start_walltime_ns to normalize with CPU wall time.
+static void NormalizeTimeStamps(XPlaneBuilder* plane,
+                                uint64 start_walltime_ns) {
+  plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+    line.SetTimestampNs(start_walltime_ns);
+  });
+}
+
+void GetDeviceCapabilities(int32 device_ordinal, XPlaneBuilder* device_plane) {
+  // TODO(rocm)
+}
+
+bool IsHostEvent(const RocmTracerEvent& event) {
+  // TODO(rocm)
+  // Classify all events as GPU events for now
+  return false;
+}
+
+std::string GetDeviceXLineName(
+    int64 stream_id, absl::flat_hash_set<RocmTracerEventType>& event_types) {
+  std::string line_name = absl::StrCat("Stream #", stream_id);
+  event_types.erase(RocmTracerEventType::Unsupported);
+  if (event_types.empty()) return line_name;
+  std::vector<const char*> type_names;
+  for (const auto event_type : event_types) {
+    type_names.emplace_back(GetRocmTracerEventTypeName(event_type));
+  }
+  return absl::StrCat(line_name, "(", absl::StrJoin(type_names, ","), ")");
+}
+
+}  // namespace
 
 class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
  public:
@@ -146,7 +186,22 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                                       step_stats);
     }
   }
-  void Export(XSpace* space) {}
+
+  void Export(XSpace* space) {
+    uint64 end_gputime_ns = RocmTracer::GetTimestamp();
+    XPlaneBuilder host_plane(GetOrCreatePlane(space, kRocmTracerPlaneName));
+    for (int i = 0; i < options_.num_gpus; ++i) {
+      std::string name = absl::StrCat(kGpuPlanePrefix, i);
+      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
+      device_plane.SetId(kGpuPlaneBaseId + i);
+      per_device_collector_[i].Export(start_walltime_ns_, start_gputime_ns_,
+                                      end_gputime_ns, &device_plane,
+                                      &host_plane);
+      GetDeviceCapabilities(i, &device_plane);
+      NormalizeTimeStamps(&device_plane, start_walltime_ns_);
+    }
+    NormalizeTimeStamps(&host_plane, start_walltime_ns_);
+  }
 
  private:
   std::atomic<int> num_callback_events_;
@@ -311,6 +366,139 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
             break;
         }
       }
+      events.clear();
+    }
+
+    void CreateXEvent(const RocmTracerEvent& event, XPlaneBuilder* plane,
+                      uint64 start_gpu_ns, uint64 end_gpu_ns,
+                      XLineBuilder* line) {
+      if (event.start_time_ns < start_gpu_ns ||
+          event.end_time_ns > end_gpu_ns ||
+          event.start_time_ns > event.end_time_ns) {
+        VLOG(2) << "events have abnormal timestamps:" << event.name
+                << " start time(ns): " << event.start_time_ns
+                << " end time(ns): " << event.end_time_ns;
+        return;
+      }
+      std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
+      if (kernel_name.empty()) {
+        kernel_name = GetRocmTracerEventTypeName(event.type);
+      }
+      XEventMetadata* event_metadata =
+          plane->GetOrCreateEventMetadata(std::move(kernel_name));
+      XEventBuilder xevent = line->AddEvent(*event_metadata);
+      xevent.SetTimestampNs(event.start_time_ns);
+      xevent.SetEndTimestampNs(event.end_time_ns);
+      if (event.correlation_id != RocmTracerEvent::kInvalidCorrelationId) {
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kCorrelationId)),
+                            event.correlation_id);
+      }
+      if (!event.annotation.empty()) {
+        xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                GetStatTypeStr(StatType::kKernelAnnotation)),
+                            event.annotation);
+      }
+      switch (event.type) {
+        case RocmTracerEventType::Kernel: {
+          const std::string kernel_details = absl::StrFormat(
+              "regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u",
+              event.kernel_info.registers_per_thread,
+              event.kernel_info.static_shared_memory_usage,
+              event.kernel_info.grid_x, event.kernel_info.grid_y,
+              event.kernel_info.grid_z, event.kernel_info.block_x,
+              event.kernel_info.block_y, event.kernel_info.block_z);
+          xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                  GetStatTypeStr(StatType::kKernelDetails)),
+                              kernel_details);
+        } break;
+
+        case RocmTracerEventType::MemcpyD2H:
+        case RocmTracerEventType::MemcpyH2D:
+        case RocmTracerEventType::MemcpyD2D:
+        case RocmTracerEventType::MemcpyP2P:
+        case RocmTracerEventType::MemcpyOther: {
+          const auto& memcpy_info = event.memcpy_info;
+          std::string memcpy_details =
+              absl::StrFormat("size:%u dest:%u async:%u", memcpy_info.num_bytes,
+                              memcpy_info.destination, memcpy_info.async);
+          xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                  GetStatTypeStr(StatType::kMemcpyDetails)),
+                              memcpy_details);
+        } break;
+        case RocmTracerEventType::MemoryAlloc: {
+          std::string memalloc_details =
+              absl::StrFormat("num_bytes:%u", event.memalloc_info.num_bytes);
+          xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
+                                  GetStatTypeStr(StatType::kMemallocDetails)),
+                              memalloc_details);
+        } break;
+        case RocmTracerEventType::StreamSynchronize: {
+          // TODO(rocm)
+          // Don't yet know what to do here
+        } break;
+        case RocmTracerEventType::Generic: {
+          // TODO(rocm)
+          // Don't yet know what to do here
+        } break;
+        default:
+          DCHECK(false);
+          break;
+      }
+
+      std::vector<Annotation> annotation_stack =
+          ParseAnnotationStack(event.annotation);
+      // If multiple metadata have the same key name, show the values from the
+      // top of the stack (innermost annotation). Concatenate the values from
+      // "hlo_op".
+      absl::flat_hash_set<absl::string_view> key_set;
+      std::vector<absl::string_view> hlo_op_names;
+      for (auto annotation = annotation_stack.rbegin();
+           annotation != annotation_stack.rend(); ++annotation) {
+        for (const Annotation::Metadata& metadata : annotation->metadata) {
+          if (metadata.key == "tf_op") {
+            continue;  // ignored, obtained from HLO proto via DebugInfoMap
+          } else if (key_set.insert(metadata.key).second) {
+            xevent.ParseAndAddStatValue(
+                *plane->GetOrCreateStatMetadata(metadata.key), metadata.value);
+          }
+        }
+      }
+      // TODO(profiler): we should get rid of kLevel0, it is based on the
+      // assumption that those op-related ScopedAnnotation are at the very TOP
+      // level.
+      if (!annotation_stack.empty()) {
+        xevent.AddStatValue(
+            *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
+            annotation_stack.begin()->name);
+      }
+    }
+
+    void Export(uint64 start_walltime_ns, uint64 start_gputime_ns,
+                uint64 end_gputime_ns, XPlaneBuilder* device_plane,
+                XPlaneBuilder* host_plane) {
+      mutex_lock lock(events_mutex);
+      // Tracking event types per line.
+      absl::flat_hash_map<int64, absl::flat_hash_set<RocmTracerEventType>>
+          events_types_per_line;
+      for (const RocmTracerEvent& event : events) {
+        DumpRocmTracerEvent(event, start_walltime_ns, start_gputime_ns);
+        bool is_host_event = IsHostEvent(event);
+        int64 line_id = is_host_event ? static_cast<int64>(event.thread_id)
+                                      : event.stream_id;
+        if (line_id == RocmTracerEvent::kInvalidThreadId ||
+            line_id == RocmTracerEvent::kInvalidStreamId)
+          continue;
+        auto* plane = is_host_event ? host_plane : device_plane;
+        XLineBuilder line = plane->GetOrCreateLine(line_id);
+        line.SetTimestampNs(start_gputime_ns);
+        CreateXEvent(event, plane, start_gputime_ns, end_gputime_ns, &line);
+        events_types_per_line[line_id].emplace(event.type);
+      }
+      device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+        line.SetName(
+            GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
+      });
       events.clear();
     }
 

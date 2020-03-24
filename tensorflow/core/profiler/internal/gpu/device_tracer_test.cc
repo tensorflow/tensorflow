@@ -259,9 +259,6 @@ TEST_F(DeviceTracerTest, RunWithTraceOption) {
   EXPECT_GE(run_metadata.step_stats().dev_stats_size(), 1);
 }
 
-#if GOOGLE_CUDA
-// Skip this test on the ROCm platform until we add ROCm support
-// for exporting trace evetns to XSpace
 TEST_F(DeviceTracerTest, TraceToXSpace) {
   profiler::ProfilerOptions options;
   auto tracer = CreateGpuTracer(options);
@@ -286,9 +283,15 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   XSpace space;
   TF_ASSERT_OK(tracer->CollectData(&space));
   // At least one gpu plane and one host plane for launching events.
+#if GOOGLE_CUDA
   const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
   EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
+#elif GOOGLE_CUDA
+  const XPlane* host_plane = FindPlaneWithName(space, kRocmTracerPlaneName);
+  ASSERT_NE(host_plane, nullptr);
+  EXPECT_EQ(host_plane->id(), kRocmTracerPlaneId);
+#endif
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));
@@ -296,12 +299,14 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   EXPECT_EQ(device_plane->id(), kGpuPlaneBaseId);
   // Check if device capacity is serialized.
   XPlaneVisitor plane = CreateTfXPlaneVisitor(device_plane);
+#if GOOGLE_CUDA
   EXPECT_NE(plane.GetStats(kDevCapClockRateKHz), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapCoreCount), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapMemoryBandwidth), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapMemorySize), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMajor), nullptr);
   EXPECT_NE(plane.GetStats(kDevCapComputeCapMinor), nullptr);
+#endif
 
   // Check if the device events timestamps are set.
   plane.ForEachLine([&](const tensorflow::profiler::XLineVisitor& line) {
@@ -311,7 +316,6 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
     });
   });
 }
-#endif  // GOOGLE_CUDA
 
 }  // namespace
 }  // namespace profiler
