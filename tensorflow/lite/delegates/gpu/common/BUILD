@@ -258,6 +258,17 @@ cc_test(
 )
 
 cc_library(
+    name = "winograd_util",
+    srcs = ["winograd_util.cc"],
+    hdrs = ["winograd_util.h"],
+    deps = [
+        ":data_type",
+        ":shape",
+        ":tensor",
+    ],
+)
+
+cc_library(
     name = "workgroup_selection",
     srcs = ["workgroup_selection.cc"],
     hdrs = ["workgroup_selection.h"],
