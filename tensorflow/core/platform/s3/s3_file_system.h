@@ -52,6 +52,10 @@ class S3FileSystem : public FileSystem {
   Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
 
+  Status NewRandomAccessFile(
+      const string& fname, std::unique_ptr<RandomAccessFile>* result,
+      bool use_multi_part_download);
+
   Status NewWritableFile(const string& fname,
                          std::unique_ptr<WritableFile>* result) override;
 
@@ -101,8 +105,9 @@ class S3FileSystem : public FileSystem {
   std::shared_ptr<Aws::S3::S3Client> s3_client_;
 
   // Returns the member transfer manager, initializing as-needed.
-  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager();
-  std::shared_ptr<Aws::Transfer::TransferManager> transfer_manager_;
+  std::shared_ptr<Aws::Transfer::TransferManager> GetTransferManager(const Aws::Transfer::TransferDirection& direction);
+  void InitializeTransferManagers();
+  std::map<Aws::Transfer::TransferDirection, std::shared_ptr<Aws::Transfer::TransferManager> >transfer_managers_;
 
   // Returns the member executor for transfer manager, initializing as-needed.
   std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> GetExecutor();
@@ -132,8 +137,11 @@ class S3FileSystem : public FileSystem {
   // Lock held when checking for s3_client_ and transfer_manager_ initialization
   mutex initialization_lock_;
 
-  // size to split objects during multipart copy
-  uint64 multi_part_copy_part_size_;
+  // size to split objects during multipart upload/download/copy
+  std::map<Aws::Transfer::TransferDirection, uint64> multi_part_chunk_size_;
+
+  bool use_multi_part_download_;
+
 };
 
 /// S3 implementation of a file system with retry on failures.
@@ -145,6 +153,17 @@ class RetryingS3FileSystem : public RetryingFileSystem<S3FileSystem> {
             RetryConfig(100000 /* init_delay_time_us */,
                         32000000 /* max_delay_time_us */, 10 /* max_retries */
                         )) {}
+};
+
+
+  // AWS Streams destroy the buffer (buf) passed, so creating a new
+  // IOStream that retains the buffer so the calling function
+  // can control it's lifecycle
+class TFS3UnderlyingStream : public Aws::IOStream {
+  public:
+    using Base = Aws::IOStream;
+    TFS3UnderlyingStream(std::streambuf* buf) : Base(buf) {}
+    virtual ~TFS3UnderlyingStream() = default;
 };
 
 }  // namespace tensorflow

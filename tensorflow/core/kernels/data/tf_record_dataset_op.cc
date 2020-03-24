@@ -39,7 +39,9 @@ namespace data {
 constexpr char kCurrentFileIndex[] = "current_file_index";
 constexpr char kOffset[] = "offset";
 constexpr char kGcsFsPrefix[] = "gs://";
+constexpr char kS3FsPrefix[] = "s3://";
 constexpr int64 kCloudTpuBlockSize = 127LL << 20;  // 127MB.
+constexpr int64 kS3BlockSize = kCloudTpuBlockSize;
 
 bool is_cloud_tpu_gcs_fs() {
 #if defined(PLATFORM_CLOUD_TPU) && defined(TPU_GCS_FS)
@@ -237,12 +239,14 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
       errors::InvalidArgument("`filenames` must be a scalar or a vector."));
 
   bool is_gcs_fs = true;
+  bool is_s3_fs = true;
   std::vector<string> filenames;
   filenames.reserve(filenames_tensor->NumElements());
   for (int i = 0; i < filenames_tensor->NumElements(); ++i) {
     VLOG(2) << "Reading file: " << filenames_tensor->flat<tstring>()(i);
     filenames.push_back(filenames_tensor->flat<tstring>()(i));
     is_gcs_fs &= absl::StartsWith(filenames[i], kGcsFsPrefix);
+    is_s3_fs &= absl::StartsWith(filenames[i], kS3FsPrefix);
   }
 
   tstring compression_type;
@@ -255,7 +259,7 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES(ctx, buffer_size >= 0,
               errors::InvalidArgument(
                   "`buffer_size` must be >= 0 (0 == no buffering)"));
-
+  
   if (is_gcs_fs && is_cloud_tpu_gcs_fs() && buffer_size < kCloudTpuBlockSize) {
     VLOG(2) << "User buffer size is too small for reading Cloud TPU "
             << "TFRecords stored in GCS. Overriding " << buffer_size
@@ -264,6 +268,14 @@ void TFRecordDatasetOp::MakeDataset(OpKernelContext* ctx,
     buffer_size = kCloudTpuBlockSize;
   }
 
+  if (is_s3_fs && buffer_size < kS3BlockSize) {
+    VLOG(2) << "User buffer size is too small for reading "
+            << "TFRecords stored in S3. Overriding " << buffer_size
+            << " to the minimum recommended buffer_size = "
+            << kS3BlockSize;
+    buffer_size = kS3BlockSize;
+  }
+  
   *output =
       new Dataset(ctx, std::move(filenames), compression_type, buffer_size);
 }

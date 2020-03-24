@@ -6,14 +6,9 @@ load("//third_party:repo.bzl", "third_party_http_archive")
 # the  copts field of the //third_party/aws:aws target
 
 def repo():
-    third_party_http_archive(
+    native.new_local_repository(
         name = "aws",
-        urls = [
-            "https://mirror.bazel.build/github.com/aws/aws-sdk-cpp/archive/1.7.266.tar.gz",
-            "https://github.com/aws/aws-sdk-cpp/archive/1.7.266.tar.gz",
-        ],
-        sha256 = "39fd8a2999260d2b8fcbc8187f1ed5299972c2b8bd14adb7850fd674fea67fb7",
-        strip_prefix = "aws-sdk-cpp-1.7.266",
+        path="/home/ubuntu/aws-sdk-cpp",
         build_file = "//third_party/aws:BUILD.bazel",
     )
 
