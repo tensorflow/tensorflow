@@ -333,7 +333,8 @@ class Policy(object):
     self._loss_scale = keras_loss_scale_module.get(loss_scale)
 
     if name in ('mixed_float16', 'mixed_bloat16'):
-      device_compatibility_check.log_device_compatibility_check(name)
+      device_compatibility_check.log_device_compatibility_check(name,
+                                                                skip_local=True)
 
   def _parse_name(self, name):
     """Parses a Policy name into a compute and variable dtype.
