@@ -299,7 +299,7 @@ inline int64 ConvolveScratchSize() {
   return convolve_scratch_size;
 }
 
-// Finds the best convolutiun algorithm for the given ConvLaunch (cuda
+// Finds the best convolution algorithm for the given ConvLaunch (cuda
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.

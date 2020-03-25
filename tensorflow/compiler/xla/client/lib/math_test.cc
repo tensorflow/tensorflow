@@ -298,6 +298,30 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, SinhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
+  Sinh(x);
+  std::vector<float> expected = {1e-3, 1e-5, 1e-7, 1e-9, 1e-11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, AsinhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
+  Asinh(x);
+  std::vector<float> expected = {1e-3, 1e-5, 1e-7, 1e-9, 1e-11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, AtanhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-8, 1e-9, 1e-10, 1e-11});
+  Atanh(x);
+  std::vector<float> expected = {1e-8, 1e-9, 1e-10, 1e-11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
 XLA_TEST_F(MathTest, Lgamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 0.5, 1.5,

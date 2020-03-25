@@ -4,7 +4,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = [
+        # Remove this deps to integration test.
+        "//tensorflow/lite/experimental/tf_runtime:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -42,7 +46,7 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
-    shard_count = 32,
+    shard_count = 36,
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",

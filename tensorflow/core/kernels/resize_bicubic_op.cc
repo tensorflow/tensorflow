@@ -169,22 +169,22 @@ class CachedInterpolationCalculator {
                      const int64 x_3) {
     // We use 2 hands and walk through, copying from one to another where
     // we already have values.
-    // Invariant, new_indicies_hand <= cached_values_hand
+    // Invariant, new_indices_hand <= cached_values_hand
     const std::array<int64, 4> new_x_indices{{x_0, x_1, x_2, x_3}};
     int cached_values_hand = 0;
-    int new_indicies_hand = 0;
+    int new_indices_hand = 0;
     while (cached_values_hand < 4) {
-      if (indexes_[cached_values_hand] == new_x_indices[new_indicies_hand]) {
-        if (new_indicies_hand < cached_values_hand) {
-          indexes_[new_indicies_hand] = indexes_[cached_values_hand];
+      if (indexes_[cached_values_hand] == new_x_indices[new_indices_hand]) {
+        if (new_indices_hand < cached_values_hand) {
+          indexes_[new_indices_hand] = indexes_[cached_values_hand];
         }
         cached_values_hand++;
-        new_indicies_hand++;
+        new_indices_hand++;
       } else {
         cached_values_hand++;
       }
     }
-    switch (new_indicies_hand) {
+    switch (new_indices_hand) {
       case 0:
         indexes_[0] = x_0;
         TF_FALLTHROUGH_INTENDED;
@@ -198,7 +198,7 @@ class CachedInterpolationCalculator {
         indexes_[3] = x_3;
         break;
     }
-    return new_indicies_hand;
+    return new_indices_hand;
   }
 
  private:

@@ -54,9 +54,12 @@ class WindowDatasetOp::Dataset : public DatasetBase {
         output_dtypes_(input_->output_dtypes().size(), {DT_VARIANT}),
         output_shapes_(input_->output_shapes().size(), TensorShape({})),
         traceme_metadata_(
-            {{"window_size", strings::Printf("%lld", window_size)},
-             {"window_shift", strings::Printf("%lld", window_shift)},
-             {"window_stride", strings::Printf("%lld", window_stride)}}) {
+            {{"window_size",
+              strings::Printf("%lld", static_cast<long long>(window_size))},
+             {"window_shift",
+              strings::Printf("%lld", static_cast<long long>(window_shift))},
+             {"window_stride", strings::Printf("%lld", static_cast<long long>(
+                                                           window_stride))}}) {
     input_->Ref();
   }
 
@@ -252,12 +255,13 @@ class WindowDatasetOp::Dataset : public DatasetBase {
                                        dataset()->window_shift_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
       // Save buffer.
       TF_RETURN_IF_ERROR(
@@ -321,7 +325,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
 
     Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
                              const Status& status)
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
           CodeKey(index), static_cast<int64>(status.code())));
       if (!status.ok()) {
@@ -332,7 +336,7 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     }
 
     Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
-                            Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                            Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       int64 code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
       error::Code code = static_cast<error::Code>(code_int);
@@ -362,8 +366,8 @@ class WindowDatasetOp::Dataset : public DatasetBase {
     }
 
     mutex mu_;
-    std::deque<InvocationResult> buffer_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    std::deque<InvocationResult> buffer_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   const DatasetBase* const input_;

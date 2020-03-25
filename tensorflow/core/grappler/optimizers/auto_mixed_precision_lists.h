@@ -194,9 +194,6 @@ class AutoMixedPrecisionLists {
     if (IsPseudoFastMath()) {
       return gtl::FlatSet<string>{};
     }
-    // Note: if a data structure op (such as TensorListPopBack) is added to the
-    // clearlist, the AutoMixedPrecisionImpl class must also be modified to call
-    // AddDataStructureOpsToMap() with that op.
     string to_add, to_remove;
     TF_CHECK_OK(ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "", &to_add));
@@ -294,11 +291,13 @@ class AutoMixedPrecisionLists {
         "StridedSliceGrad",
         "Switch",
         "TensorListConcat",
+        "TensorListConcatLists",
         "TensorListConcatV2",
         "TensorListGather",
         "TensorListGetItem",
         "TensorListPopBack",
         "TensorListPushBack",
+        "TensorListPushBackBatch",
         "TensorListFromTensor",
         "TensorListScatter",
         "TensorListScatterV2",

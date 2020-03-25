@@ -86,6 +86,15 @@ PyObject* IsNamedtuple(PyObject* o, bool strict);
 //   True if the sequence subclasses mapping.
 bool IsMapping(PyObject* o);
 
+// Returns a true if its input is a collections.MutableMapping.
+//
+// Args:
+//   seq: the input to be checked.
+//
+// Returns:
+//   True if the sequence subclasses mapping.
+bool IsMutableMapping(PyObject* o);
+
 // Returns a true if its input is a (possibly wrapped) tuple.
 //
 // Args:

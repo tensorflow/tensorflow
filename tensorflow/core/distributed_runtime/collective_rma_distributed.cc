@@ -129,6 +129,9 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         }
         AllocatorAttributes cpu_attr;
         cpu_attr.set_gpu_compatible(true);
+        MEMDEBUG_CACHE_OP(
+            "CollectiveRemoteAccessDistributed::RecvFromPeer"
+            "::recv_buf_callback");
         Tensor* cpu_tensor = new Tensor(cpu_dev->GetAllocator(cpu_attr),
                                         to_tensor->dtype(), to_tensor->shape());
         PopulateTensorFromExtra(extra, cpu_tensor);

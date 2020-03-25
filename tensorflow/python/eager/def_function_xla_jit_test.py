@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -31,6 +32,25 @@ from tensorflow.python.platform import test
 
 
 class DefFunctionTest(test.TestCase):
+
+  def testAutoclusteringWithTfFunction(self):
+
+    @def_function.function(experimental_compile=False)
+    def outer(a, b, c):
+      return a * inner(b, c) + c
+
+    @def_function.function(experimental_compile=True)
+    def inner(b, c):
+      return b + c * b
+
+    i1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+    i2 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+    i3 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0])
+
+    with context.collect_graphs(optimized=True) as graphs:
+      outer(i1, i2, i3)
+
+    self.assertIn('_XlaRun', [n.op for n in graphs[0].node])
 
   def testBasic(self):
 

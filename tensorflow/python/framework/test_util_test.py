@@ -33,6 +33,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -467,6 +468,21 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual([0] * 3, k)
 
   @test_util.run_in_graph_and_eager_modes
+  def testAssertNotAllEqual(self):
+    i = variables.Variable([100], dtype=dtypes.int32, name="i")
+    j = constant_op.constant([20], dtype=dtypes.int32, name="j")
+    k = math_ops.add(i, j, name="k")
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertNotAllEqual([100] * 3, i)
+    self.assertNotAllEqual([120] * 3, k)
+    self.assertNotAllEqual([20] * 3, j)
+
+    with self.assertRaisesRegexp(
+        AssertionError, r"two values are equal at all elements.*extra message"):
+      self.assertNotAllEqual([120], k, msg="extra message")
+
+  @test_util.run_in_graph_and_eager_modes
   def testAssertNotAllClose(self):
     # Test with arrays
     self.assertNotAllClose([0.1], [0.2])
@@ -740,6 +756,11 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                        arg=True))
   @test_util.run_in_graph_and_eager_modes
   def test_run_in_graph_and_eager_works_with_parameterized_keyword(self, arg):
+    self.assertEqual(arg, True)
+
+  @combinations.generate(combinations.combine(arg=True))
+  @test_util.run_in_graph_and_eager_modes
+  def test_run_in_graph_and_eager_works_with_combinations(self, arg):
     self.assertEqual(arg, True)
 
   def test_build_as_function_and_v1_graph(self):

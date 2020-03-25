@@ -751,7 +751,7 @@ Status HloCostAnalysis::HandleRngBitGenerator(const HloInstruction* random) {
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
   current_properties_[kTranscendentalsKey] =
-      ShapeUtil::ElementsIn(random->shape());
+      ShapeUtil::ElementsInRecursive(random->shape());
   return Status::OK();
 }
 

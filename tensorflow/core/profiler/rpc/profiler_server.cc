@@ -21,7 +21,6 @@ limitations under the License.
 #include "grpcpp/grpcpp.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -29,11 +28,10 @@ namespace tensorflow {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
   string server_address = absl::StrCat("0.0.0.0:", port);
-  std::unique_ptr<grpc::ProfilerService::Service> service =
-      CreateProfilerService();
+  service_ = CreateProfilerService();
   ::grpc::ServerBuilder builder;
   builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
-  builder.RegisterService(service.get());
+  builder.RegisterService(service_.get());
   server_ = builder.BuildAndStart();
   LOG(INFO) << "Profiling Server listening on " << server_address;
 }

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
 #include "tensorflow/lite/delegates/gpu/cl/inference_context.h"
+#include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
 #include "tensorflow/lite/delegates/gpu/cl/opencl_wrapper.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
@@ -122,7 +123,9 @@ Status RunModelSample(const std::string& model_name) {
   RETURN_IF_ERROR(CreateEnvironment(&env));
 
   InferenceContext::CreateInferenceInfo create_info;
-  create_info.precision = CalculationsPrecision::F16;
+  create_info.precision = env.IsSupported(CalculationsPrecision::F16)
+                              ? CalculationsPrecision::F16
+                              : CalculationsPrecision::F32;
   create_info.storage_type = GetFastestStorageType(env.device());
   std::cout << "Precision: " << ToString(create_info.precision) << std::endl;
   std::cout << "Storage type: " << ToString(create_info.storage_type)

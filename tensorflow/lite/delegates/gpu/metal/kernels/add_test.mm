@@ -90,7 +90,7 @@ using ::tflite::gpu::metal::SingleOpModel;
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
-- (void)testInputTensorWithConstandBroadcast {
+- (void)testInputTensorWithConstantBroadcast {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;

@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet models for Keras."""
+"""ResNet models for Keras.
+
+Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -61,12 +66,20 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.resnet.preprocess_input` for an example.
 
   Arguments:
     stack_fn: a function that returns output tensor for the
@@ -103,14 +116,18 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
   if 'layers' in kwargs:
     global layers
@@ -167,7 +184,9 @@ def ResNet(stack_fn,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -498,6 +517,17 @@ def ResNet152(include_top=True,
 @keras_export('keras.applications.resnet50.preprocess_input',
               'keras.applications.resnet.preprocess_input')
 def preprocess_input(x, data_format=None):
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments
+    x: A 4D numpy array consists of RGB values within [0, 255].
+
+  Returns
+    Preprocessed array.
+
+  Raises
+    ValueError: In case of unknown `data_format` argument.
+  """
   return imagenet_utils.preprocess_input(
       x, data_format=data_format, mode='caffe')
 
@@ -505,10 +535,32 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.resnet50.decode_predictions',
               'keras.applications.resnet.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
+
 DOC = """
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+  (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is

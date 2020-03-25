@@ -168,9 +168,8 @@ class CardinalityTest(test_base.DatasetTestBase, parameterized.TestCase):
       combinations.times(test_base.default_test_combinations(),
                          _test_combinations()))
   def testCardinality(self, dataset_fn, expected_result):
-    with self.cached_session() as sess:
-      self.assertEqual(
-          sess.run(cardinality.cardinality(dataset_fn())), expected_result)
+    self.assertEqual(
+        self.evaluate(cardinality.cardinality(dataset_fn())), expected_result)
 
 
 if __name__ == "__main__":

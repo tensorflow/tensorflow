@@ -37,9 +37,9 @@ unzip -j /tmp/ovic.zip -d tensorflow/lite/java/ovic/src/testdata/
 You can run test with Bazel as below. This helps to ensure that the installation is correct.
 
 ```sh
-bazel test --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
+bazel test //tensorflow/lite/java/ovic:OvicClassifierTest --cxxopt=-Wno-all --test_output=all
 
-bazel test --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:OvicDetectorTest --cxxopt=-Wno-all --test_output=all
+bazel test //tensorflow/lite/java/ovic:OvicDetectorTest --cxxopt=-Wno-all --test_output=all
 ```
 
 ### Test your submissions
@@ -51,7 +51,7 @@ Once you have a submission that follows the instructions from the [competition s
 You can call the validator binary below to verify that your model fits the format requirements. This often helps you to catch size mismatches (e.g. output for classification should be [1, 1001] instead of [1,1,1,1001]). Let say the submission file is located at `/path/to/my_model.lite`, then call:
 
 ```sh
-bazel build --cxxopt=--std=c++11 //tensorflow/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
+bazel build //tensorflow/lite/java/ovic:ovic_validator --cxxopt=-Wno-all
 bazel-bin/tensorflow/lite/java/ovic/ovic_validator /path/to/my_model.lite classify
 ```
 
@@ -160,7 +160,7 @@ Note: You'll need ROOT access to the phone to change processor affinity.
 * Build and install the app.
 
 ```
-bazel build -c opt --cxxopt=--std=c++11 --cxxopt=-Wno-all //tensorflow/lite/java/ovic/demo/app:ovic_benchmarker_binary
+bazel build -c opt --cxxopt=-Wno-all //tensorflow/lite/java/ovic/demo/app:ovic_benchmarker_binary
 adb install -r bazel-bin/tensorflow/lite/java/ovic/demo/app/ovic_benchmarker_binary.apk
 ```
 

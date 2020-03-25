@@ -38,6 +38,7 @@ enum class CompilerOptions {
   //   This define is actually -qcom-accelerate-16-bit, but it controls SIMD
   //   size.
   ADRENO_FULL_SIMD_LINE,
+  ADRENO_MORE_WAVES,
   POWERVR_FP16,
   CL_OPT_DISABLE
 };
@@ -63,7 +64,7 @@ class CLProgram {
 
   // Return the cl_device_id associated with the program object.
   // This can be the device associated with context on which the program object
-  // has been created or can be device that was specified when a progam object
+  // has been created or can be device that was specified when a program object
   // was created using clCreateProgramWithBinary.
   cl_device_id GetDeviceId() const { return device_id_; }
 

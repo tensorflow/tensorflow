@@ -36,7 +36,7 @@ class SessionState {
   // Store a tensor in the session state.
   Status AddTensor(const string& handle, const Tensor& tensor);
 
-  // Delete a tensdor from the session state.
+  // Delete a tensor from the session state.
   Status DeleteTensor(const string& handle);
 
   int64 GetNewId();
@@ -75,15 +75,15 @@ class TensorStore {
                      SessionState* session_state);
 
   // Returns true if no tensors have been added to this store.
-  bool empty() NO_THREAD_SAFETY_ANALYSIS { return !dirty_; }
+  bool empty() TF_NO_THREAD_SAFETY_ANALYSIS { return !dirty_; }
 
  private:
   mutex lock_;
-  std::atomic<bool> dirty_ GUARDED_BY(lock_){false};
+  std::atomic<bool> dirty_ TF_GUARDED_BY(lock_){false};
 
   // The tensors that will be saved to session state when this run completes.
   // A map from tensor string name to tensor.
-  std::unordered_map<string, TensorAndKey> tensors_ GUARDED_BY(lock_);
+  std::unordered_map<string, TensorAndKey> tensors_ TF_GUARDED_BY(lock_);
 };
 
 }  // namespace tensorflow

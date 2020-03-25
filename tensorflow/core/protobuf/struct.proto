@@ -123,6 +123,7 @@ message TypeSpecProto {
     OPTIONAL_SPEC = 7;        // tf.OptionalSpec
     PER_REPLICA_SPEC = 8;     // PerReplicaSpec from distribute/values.py
     VARIABLE_SPEC = 9;        // tf.VariableSpec
+    ROW_PARTITION_SPEC = 10;  // RowPartitionSpec from ragged/row_partition.py
   }
   TypeSpecClass type_spec_class = 1;
 

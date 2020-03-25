@@ -149,7 +149,7 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
  private:
   mutable mutex mu_;
-  std::unordered_map<K, V> table_ GUARDED_BY(mu_);
+  std::unordered_map<K, V> table_ TF_GUARDED_BY(mu_);
 };
 
 // Lookup table that wraps an unordered_map. Behaves identical to
@@ -289,7 +289,7 @@ class MutableHashTableOfTensors final : public LookupInterface {
   TensorShape value_shape_;
   mutable mutex mu_;
   typedef gtl::InlinedVector<V, 4> ValueArray;
-  std::unordered_map<K, ValueArray> table_ GUARDED_BY(mu_);
+  std::unordered_map<K, ValueArray> table_ TF_GUARDED_BY(mu_);
 };
 
 namespace {
@@ -375,13 +375,13 @@ class MutableDenseHashTable final : public LookupInterface {
     OP_REQUIRES_OK(ctx, AllocateBuckets(ctx, initial_num_buckets));
   }
 
-  size_t size() const override LOCKS_EXCLUDED(mu_) {
+  size_t size() const override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return num_entries_;
   }
 
   Status Find(OpKernelContext* ctx, const Tensor& key, Tensor* value,
-              const Tensor& default_value) override LOCKS_EXCLUDED(mu_) {
+              const Tensor& default_value) override TF_LOCKS_EXCLUDED(mu_) {
     const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64 key_size = key_shape_.num_elements();
     const int64 value_size = value_shape_.num_elements();
@@ -450,7 +450,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status Insert(OpKernelContext* ctx, const Tensor& key,
-                const Tensor& value) override LOCKS_EXCLUDED(mu_) {
+                const Tensor& value) override TF_LOCKS_EXCLUDED(mu_) {
     const int64 batch_size = (key.dims() == 0) ? 1 : key.dim_size(0);
     if (key.NumElements() != batch_size * key_shape_.num_elements()) {
       TensorShape expected_shape({batch_size});
@@ -476,7 +476,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status Remove(OpKernelContext* ctx, const Tensor& key) override
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     if (key.NumElements() != key.dim_size(0) * key_shape_.num_elements()) {
       TensorShape expected_shape({key.dim_size(0)});
       expected_shape.AppendShape(key_shape_);
@@ -489,7 +489,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status ImportValues(OpKernelContext* ctx, const Tensor& keys,
-                      const Tensor& values) override LOCKS_EXCLUDED(mu_) {
+                      const Tensor& values) override TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     num_buckets_ = keys.dim_size(0);
     key_buckets_ = PersistentTensor(keys);
@@ -515,7 +515,7 @@ class MutableDenseHashTable final : public LookupInterface {
     return Status::OK();
   }
 
-  Status ExportValues(OpKernelContext* ctx) override LOCKS_EXCLUDED(mu_) {
+  Status ExportValues(OpKernelContext* ctx) override TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     Tensor key_buckets_tensor = *key_buckets_.AccessTensor(ctx);
     Tensor value_buckets_tensor = *value_buckets_.AccessTensor(ctx);
@@ -566,7 +566,7 @@ class MutableDenseHashTable final : public LookupInterface {
  private:
   Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,
                   bool ignore_empty_and_deleted_key)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const int64 num_elements = (key.dims() == 0) ? 1 : key.dim_size(0);
     const int64 value_size = value_shape_.num_elements();
     const int64 key_size = key_shape_.num_elements();
@@ -637,7 +637,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status DoRemove(OpKernelContext* ctx, const Tensor& key)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const int64 num_elements = key.dim_size(0);
     const int64 key_size = key_shape_.num_elements();
     const auto key_matrix = key.shaped<K, 2>({num_elements, key_size});
@@ -690,7 +690,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status AllocateBuckets(OpKernelContext* ctx, int64 new_num_buckets)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     if (new_num_buckets < 4 ||
         ((new_num_buckets & (new_num_buckets - 1)) != 0)) {
       return errors::InvalidArgument(
@@ -731,7 +731,7 @@ class MutableDenseHashTable final : public LookupInterface {
   }
 
   Status Rebucket(OpKernelContext* ctx, int64 num_new_buckets)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     Tensor old_key_buckets = *key_buckets_.AccessTensor(ctx);
     Tensor old_value_buckets = *value_buckets_.AccessTensor(ctx);
     TF_RETURN_IF_ERROR(AllocateBuckets(ctx, num_new_buckets));
@@ -766,10 +766,10 @@ class MutableDenseHashTable final : public LookupInterface {
   TensorShape value_shape_;
   float max_load_factor_;
   mutable mutex mu_;
-  int64 num_entries_ GUARDED_BY(mu_);
-  int64 num_buckets_ GUARDED_BY(mu_);
-  PersistentTensor key_buckets_ GUARDED_BY(mu_);
-  PersistentTensor value_buckets_ GUARDED_BY(mu_);
+  int64 num_entries_ TF_GUARDED_BY(mu_);
+  int64 num_buckets_ TF_GUARDED_BY(mu_);
+  PersistentTensor key_buckets_ TF_GUARDED_BY(mu_);
+  PersistentTensor value_buckets_ TF_GUARDED_BY(mu_);
   PersistentTensor empty_key_;
   uint64 empty_key_hash_;
   PersistentTensor deleted_key_;

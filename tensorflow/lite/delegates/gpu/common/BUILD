@@ -92,6 +92,7 @@ cc_library(
         ":tensor",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:any",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -120,6 +121,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",

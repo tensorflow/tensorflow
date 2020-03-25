@@ -403,8 +403,7 @@ class MirroredStrategy(distribute_lib.Strategy):
 
       total_result = 0
       for x in dataset:
-        per_replica_result = my_strategy.experimental_run_v2(replica_fn,
-                                                             args=(x,))
+        per_replica_result = my_strategy.run(replica_fn, args=(x,))
         total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
                                            per_replica_result, axis=None)
       return total_result
@@ -578,7 +577,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       with ops.device(colocate_with.device):
         return next_creator(**kwargs)
     else:
-      devices = colocate_with.devices
+      devices = colocate_with._devices  # pylint: disable=protected-access
 
     def _real_mirrored_creator(**kwargs):  # pylint: disable=g-missing-docstring
       value_list = []
@@ -660,6 +659,14 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
         self._input_workers,
         input_contexts,
         self._container_strategy())
+
+  def _experimental_distribute_values_from_function(self, value_fn):
+    per_replica_values = []
+    for replica_id in range(self._num_replicas_in_sync):
+      per_replica_values.append(value_fn(
+          distribute_lib.ValueContext(replica_id,
+                                      self._num_replicas_in_sync)))
+    return values.regroup(per_replica_values, always_wrap=True)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
@@ -744,13 +751,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return wrapped(args, kwargs)
 
     if context.executing_eagerly():
-      logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
-                          "overhead currently. We will be working on improving "
-                          "this in the future, but for now please wrap "
-                          "`call_for_each_replica` or `experimental_run` or "
-                          "`experimental_run_v2` inside a tf.function to get "
-                          "the best performance." %
-                          self._container_strategy().__class__.__name__, 5)
+      logging.log_first_n(
+          logging.WARN, "Using %s eagerly has significant "
+          "overhead currently. We will be working on improving "
+          "this in the future, but for now please wrap "
+          "`call_for_each_replica` or `experimental_run` or "
+          "`run` inside a tf.function to get the best performance." %
+          self._container_strategy().__class__.__name__, 5)
     else:
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at
@@ -788,7 +795,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _get_cross_device_ops(self):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     if (isinstance(value, values.Mirrored) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
@@ -801,11 +808,16 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._get_cross_device_ops().reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     return self._get_cross_device_ops().batch_reduce(reduce_op,
-                                                     value_destination_pairs)
+                                                     value_destination_pairs,
+                                                     experimental_hints)
 
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
@@ -842,7 +854,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
-      return val.values
+      return val._values  # pylint: disable=protected-access
     return (val,)
 
   def value_container(self, val):

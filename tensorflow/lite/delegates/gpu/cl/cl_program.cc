@@ -82,6 +82,12 @@ std::string CompilerOptionToString(const CLDevice& device,
       } else {
         return "-qcom-accelerate-16-bit=true";
       }
+    case CompilerOptions::ADRENO_MORE_WAVES:
+      if (device.GetInfo().adreno_info.gpu_version >= 500) {
+        return "-qcom-accelerate-16-bit=false";
+      } else {
+        return "";
+      }
     case CompilerOptions::POWERVR_FP16:
       return "-cl-fast-relaxed-math";
     case CompilerOptions::CL_OPT_DISABLE:

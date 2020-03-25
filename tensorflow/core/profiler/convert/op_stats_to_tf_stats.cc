@@ -88,7 +88,7 @@ TfStatsTable GenerateTfStatsTable(const OpMetricsDb& host_tf_metrics_db,
 TfStatsDatabase ConvertOpStatsToTfStats(const OpStats& op_stats) {
   const OpMetricsDb& host_tf_metrics_db = op_stats.host_op_metrics_db();
   OpMetricsDb device_tf_metrics_db =
-      CreateTfMetricsDbFromHloMetricsDb(op_stats.device_op_metrics_db());
+      CreateTfMetricsDbFromDeviceOpMetricsDb(op_stats.device_op_metrics_db());
   double ridge_point = op_stats.perf_env().ridge_point();
   TfStatsDatabase tf_stats_db;
   *tf_stats_db.mutable_with_idle() =

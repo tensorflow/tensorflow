@@ -129,12 +129,12 @@ class LocalDeviceState {
   static constexpr int kNumDeviceToDeviceStreams = 4;
 
   absl::Mutex mu_;
-  int next_device_to_host_stream_ GUARDED_BY(mu_) = 0;
-  int next_device_to_device_stream_ GUARDED_BY(mu_) = 0;
+  int next_device_to_host_stream_ TF_GUARDED_BY(mu_) = 0;
+  int next_device_to_device_stream_ TF_GUARDED_BY(mu_) = 0;
 
-  std::random_device prng_seed_device_ GUARDED_BY(mu_);
-  std::mt19937 prng_seed_generator_ GUARDED_BY(mu_);
-  std::uniform_int_distribution<> prng_seed_distribution_ GUARDED_BY(mu_);
+  std::random_device prng_seed_device_ TF_GUARDED_BY(mu_);
+  std::mt19937 prng_seed_generator_ TF_GUARDED_BY(mu_);
+  std::uniform_int_distribution<> prng_seed_distribution_ TF_GUARDED_BY(mu_);
 
   // Callback stream is used for running short host-side callbacks after device
   // side events, without preventing the device-side stream from doing useful

@@ -10,11 +10,12 @@ import "tensorflow/compiler/xla/xla_data.proto";
 message DeviceAssignment {
   message ComputationDevice {
     message DeviceMeshCoordinates {
-      // The mesh coordinates for the device. Usually (X, Y, Core), in the order
-      // in which they are returned in the TopologyProto.
+      // The mesh coordinates for the device. Usually (X, Y, Z, Core), in the
+      // order in which they are returned in the TopologyProto.
       //  X    = value(0)
       //  Y    = value(1)
-      //  Core = value(2)
+      //  Z    = value(2)
+      //  Core = value(3)
       repeated int32 value = 1;
     }
     // As many replicas as there are in the replicated computation.

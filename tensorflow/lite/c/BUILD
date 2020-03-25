@@ -128,6 +128,7 @@ cc_library(
 # For use with library targets that can't use relative paths.
 exports_files([
     "c_api.h",
+    "c_api_experimental.h",
     "common.h",
 ])
 

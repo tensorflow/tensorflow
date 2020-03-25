@@ -111,10 +111,12 @@ class MultiPlatformManager {
   // Ownership of the platform is NOT transferred to the caller --
   // the MultiPlatformManager owns the platforms in a singleton-like fashion.
   static port::StatusOr<Platform*> InitializePlatformWithName(
-      absl::string_view target, const std::map<string, string>& options);
+      absl::string_view target,
+      const std::map<std::string, std::string>& options);
 
   static port::StatusOr<Platform*> InitializePlatformWithId(
-      const Platform::Id& id, const std::map<string, string>& options);
+      const Platform::Id& id,
+      const std::map<std::string, std::string>& options);
 
   // Retrieves the platforms satisfying the given filter, i.e. returns true.
   // Returned Platforms are always initialized.

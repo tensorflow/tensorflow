@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
+#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
@@ -184,6 +185,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("auto_mixed_precision",
          new AutoMixedPrecision(cfg_.auto_mixed_precision()));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
+  MK_OPT("common_subgraph_elimination",
+         new CommonSubgraphElimination(cfg_.common_subgraph_elimination()));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
   MK_OPT("loop", new LoopOptimizer(cfg_.loop_optimization(), cpu_device_));
@@ -223,6 +226,11 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(MakeUnique<FunctionOptimizer>(
         cfg_.function_optimization(),
         /*lower_control_flow=*/!IsSingleThreadedExecutor()));
+  }
+  if (cfg_.common_subgraph_elimination() != RewriterConfig::OFF &&
+      cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<CommonSubgraphElimination>(
+        cfg_.common_subgraph_elimination()));
   }
   if (cfg_.debug_stripper() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<DebugStripper>());
@@ -371,7 +379,7 @@ void MetaOptimizer::InitializeVerifiers(
   }
 }
 
-Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
+Status MetaOptimizer::OptimizeGraph(Cluster* cluster, GrapplerItem&& item,
                                     GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
                                                     : cfg_.min_graph_nodes();
@@ -418,8 +426,8 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   // Invariant: optimized_graph contains the most recently optimized version of
   // the graph.
-  GrapplerItem optimized_item = item;
-  optimized_graph->Swap(&optimized_item.graph);
+  auto original_producer = item.graph.versions().producer();
+  optimized_graph->Swap(&item.graph);
 
   GraphOptimizationResult optimization_result(item.id);
   GraphOptimizer* sa_optimizer = nullptr;
@@ -457,7 +465,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
         continue;
       }
 
-      TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &optimized_item,
+      TF_RETURN_IF_ERROR(RunOptimizer(optimizer.get(), cluster, &item,
                                       optimized_graph, &optimization_result));
 
       if (iteration == 0 && optimizer->name() == "model_pruner") {
@@ -490,7 +498,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   // ScopedAllocatorOptimizer must run last.
   if (sa_optimizer != nullptr) {
-    TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &optimized_item,
+    TF_RETURN_IF_ERROR(RunOptimizer(sa_optimizer, cluster, &item,
                                     optimized_graph, &optimization_result));
     GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
   }
@@ -508,8 +516,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.
-    DCHECK_EQ(optimized_graph->versions().producer(),
-              item.graph.versions().producer());
+    DCHECK_EQ(optimized_graph->versions().producer(), original_producer);
   }
 
   return Status::OK();
@@ -582,8 +589,8 @@ Status MetaOptimizer::RunOptimizer(
   return Status::OK();
 }
 
-Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
-                               GraphDef* optimized_graph) {
+Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
+                                          GraphDef* optimized_graph) {
   VLOG(1) << "Starting optimization for grappler item: " << item.id;
   optimization_results_.clear();
 
@@ -601,21 +608,21 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   // remove all the unreachable functions.
   // TODO(ezhulenev): Construct reachable function library definition directly
   // from the proto without constructing temporary FunctionLibraryDefinition.
-  GraphDef trimmed_graph;  // do not copy graph with a potentially huge library
-  *trimmed_graph.mutable_node() = item.graph.node();
-  *trimmed_graph.mutable_versions() = item.graph.versions();
-  *trimmed_graph.mutable_library() = minimized_flib(item.graph).ToProto();
-
-  GrapplerItem trimmed_item = item.WithGraph(std::move(trimmed_graph));
+  *item.graph.mutable_library() = minimized_flib(item.graph).ToProto();
 
   VLOG(1) << absl::Substitute(
       "Deleted $0 unreachable functions from the graph (library size = $1)",
       item.graph.library().function_size() -
-          trimmed_item.graph.library().function_size(),
-      trimmed_item.graph.library().function_size());
+          item.graph.library().function_size(),
+      item.graph.library().function_size());
+
+  // Save a few small fields from item before we move it.
+  bool optimize_function_library =
+      item.optimization_options().optimize_function_library;
+  const auto producer = item.graph.versions().producer();
 
   // 1. Optimize main graph
-  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, trimmed_item, optimized_graph));
+  TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(item), optimized_graph));
   VLOG(1) << "Optimized main graph.";
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
@@ -667,9 +674,6 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
-  bool optimize_function_library =
-      item.optimization_options().optimize_function_library;
-
   while (optimize_function_library) {
     optimize_function_library = false;
 
@@ -703,8 +707,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
       // Make a GrapplerItem from a FunctionDef.
       GrapplerFunctionItem func_item;
-      TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(
-          func, flib, trimmed_item.graph.versions().producer(), &func_item));
+      TF_RETURN_IF_ERROR(
+          MakeGrapplerFunctionItem(func, flib, producer, &func_item));
 
       // If we need to compute the gradient of optimized function at runtime, we
       // can't perform non-differentiable rewrites.
@@ -737,7 +741,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         // TPU metadata and Grappler passes could prune that away. Grappler
         // passes could also cause issues around shape inference. Since the
         // desired and existing behavior is to not optimize TPU functions with
-        // Grappler, this check preserves that. The only execption is
+        // Grappler, this check preserves that. The only exception is
         // implementation selector what is required to swap in some TPU specific
         // lowering code and is verified the work correctly on TPUs.
         ImplementationSelector implementation_selector;
@@ -752,8 +756,9 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
         TF_RETURN_IF_ERROR(implementation_selector.Optimize(
             cluster, func_item, &optimized_func_graph));
       } else {
-        TF_RETURN_IF_ERROR(
-            OptimizeGraph(cluster, func_item, &optimized_func_graph));
+        GrapplerFunctionItem func_item_copy = func_item;
+        TF_RETURN_IF_ERROR(OptimizeGraph(cluster, std::move(func_item_copy),
+                                         &optimized_func_graph));
       }
 
       // Function body optimization might have created new specialized
@@ -812,6 +817,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.constant_folding() != RewriterConfig::OFF ||
          rewrite_cfg.shape_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.remapping() != RewriterConfig::OFF ||
+         rewrite_cfg.common_subgraph_elimination() != RewriterConfig::OFF ||
          rewrite_cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.loop_optimization() != RewriterConfig::OFF ||
          rewrite_cfg.dependency_optimization() != RewriterConfig::OFF ||
@@ -825,13 +831,14 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          !rewrite_cfg.custom_optimizers().empty();
 }
 
-Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
+Status RunMetaOptimizer(GrapplerItem&& item, const ConfigProto& cfg,
                         DeviceBase* cpu_device, Cluster* cluster,
                         GraphDef* optimized_graph) {
   MetaOptimizer optimizer(cpu_device, cfg);
   optimizer.set_deadline_usec(
       DeadlineMicroSeconds(cfg.graph_options().rewrite_options()));
-  return optimizer.Optimize(cluster, item, optimized_graph);
+  return optimizer.OptimizeConsumeItem(cluster, std::move(item),
+                                       optimized_graph);
 }
 
 Status OptimizeGraph(
@@ -874,7 +881,7 @@ Status OptimizeGraph(
   // TODO(nareshmodi): Consider adding and using the more generic GraphOptions
   // proto (which also contain the OptimizerOptions).
   TF_RETURN_IF_ERROR(tensorflow::grappler::RunMetaOptimizer(
-      item, config_proto, cpu_device, &cluster, &out_graph));
+      std::move(item), config_proto, cpu_device, &cluster, &out_graph));
 
   std::unique_ptr<tensorflow::Graph> optimized_graph(
       new tensorflow::Graph(OpRegistry::Global()));

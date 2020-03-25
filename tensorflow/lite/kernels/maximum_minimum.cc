@@ -119,6 +119,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteInt64:
         TFLiteOperation<int64_t, OpType>(context, node, op_context);
         break;
+      case kTfLiteInt16:
+        TFLiteOperation<int16_t, OpType>(context, node, op_context);
+        break;
       default:
         context->ReportError(context,
                              "Type %d is currently not supported by Maximum.",

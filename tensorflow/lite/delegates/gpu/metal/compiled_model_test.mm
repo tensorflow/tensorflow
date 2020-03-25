@@ -248,6 +248,16 @@ static std::vector<ComputeTaskDescriptorPtr> Add2Linkable(int id, ValueId input_
   XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
 }
 
+- (void)testAddOperationFused {
+  auto graph = Add(1, 1, 3);
+  auto graph2 = Add2Linkable(2, 2, 3, 4);
+  graph.insert(graph.end(), graph2.begin(), graph2.end());
+  std::vector<ComputeTaskDescriptorPtr> model;
+  auto status = ValidateOptimizeModel({1, 2}, {4}, graph, &model);
+  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(model.size() == 1, @"Not fused, more than one task descriptor.");
+}
+
 - (void)testBinaryOperationSuccess {
   auto graph = Add(1, 1, 3);
   auto graph2 = Add(2, 2, 4);

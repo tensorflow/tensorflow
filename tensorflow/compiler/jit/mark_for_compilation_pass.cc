@@ -161,6 +161,11 @@ class MarkForCompilationPassImpl {
     // The ID of the cluster as represented in `cycles_graph_`.
     int cycles_graph_node_id() const { return cycles_graph_node_id_; }
 
+    // Sets the ID of the cluster as represented in `cycles_graph_`.
+    void set_cycles_graph_node_id(int cycles_graph_node_id) {
+      cycles_graph_node_id_ = cycles_graph_node_id;
+    }
+
     // The size of the cluster excluding constant and identity nodes.
     int effective_cluster_size() const { return effective_cluster_size_; }
 
@@ -381,14 +386,16 @@ class MarkForCompilationPassImpl {
   // R, B} cluster.
   string DescribePotentialCycle(int from, int to);
 
-  // Merge the clusters `cluster_from` and `cluster_to`.  After this step the
-  // larger combined cluster is represented by `cluster_from`'s ID in
-  // `cycles_graph_`.
+  // Merge the clusters `cluster_from` and `cluster_to`. After this step the
+  // larger combined cluster is represented by `cluster_from`, but can have
+  // `cycles_graph_`'s ID of either `cluster_from` or `cluster_to` depending on
+  // which way will require less operations.
   bool MergeClusters(Cluster* cluster_from, Cluster* cluster_to) {
     int from = cluster_from->cycles_graph_node_id();
     int to = cluster_to->cycles_graph_node_id();
 
-    if (!cycles_graph_.ContractEdge(from, to)) {
+    auto optional_merged_node = cycles_graph_.ContractEdge(from, to);
+    if (!optional_merged_node.has_value()) {
       VLOG(3) << "Could not contract " << cluster_from->DebugString(*graph_)
               << " -> " << cluster_to->DebugString(*graph_)
               << " because contracting the edge would create a cycle via "
@@ -398,6 +405,8 @@ class MarkForCompilationPassImpl {
 
     // Merge the clusters.
     cluster_from->Merge(cluster_to);
+    // Update `cycle_graph_`'s ID.
+    cluster_from->set_cycles_graph_node_id(optional_merged_node.value());
 
     // Merge the UnionFind<Cluster*>.
     cluster_for_node_[from].Merge(&cluster_for_node_[to]);
@@ -963,6 +972,22 @@ absl::optional<string> MarkForCompilationPassImpl::GetXlaScope(Node* node) {
   return absl::nullopt;
 }
 
+// Returns true iff the attribute `attr_name` is attached to either the node or
+// to it's callee.
+static bool GetNodeOrFuncAttr(Node* node, FunctionLibraryDefinition* flib_def,
+                              const char* attr_name) {
+  bool out = false;
+  bool attr_value;
+  if (TryGetNodeAttr(node->attrs(), attr_name, &attr_value)) {
+    out |= attr_value;
+  }
+
+  if (flib_def->GetAttr(*node, attr_name, &attr_value).ok()) {
+    out |= attr_value;
+  }
+  return out;
+}
+
 Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
   auto ignore_resource_ops = [&](const Node& n, bool* ignore) {
     return IgnoreResourceOpForSafetyAnalysis(&device_info_cache_, n, ignore);
@@ -1016,16 +1041,9 @@ Status MarkForCompilationPassImpl::BuildInitialClusterSet() {
       resource_var_operation_node_id = node->id();
     }
 
-    bool is_xla_compile_attr_true = false;
-
-    bool xla_compile_attr;
-    if (TryGetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr)) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
-
-    if (flib_def_->GetAttr(*node, kXlaCompileAttr, &xla_compile_attr).ok()) {
-      is_xla_compile_attr_true |= xla_compile_attr;
-    }
+    bool is_xla_compile_attr_true =
+        GetNodeOrFuncAttr(node, flib_def_, kXlaCompileAttr) ||
+        GetNodeOrFuncAttr(node, flib_def_, kXlaMustCompileAttr);
 
     DeviceSet devices;
     devices.Insert(device);
@@ -1874,6 +1892,8 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "EmptyTensorList",
                                      "ExtractImagePatches",
                                      "Igamma",
+                                     "IgammaGradA",
+                                     "RandomGammaGrad",
                                      "Igammac",
                                      "FFT",
                                      "FFT2D",
@@ -1900,6 +1920,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "LinSpace",
                                      "ListDiff",
                                      "LogMatrixDeterminant",
+                                     "LowerBound",
                                      "MatMul",
                                      "MatrixBandPart",
                                      "MatrixDiag",
@@ -2026,6 +2047,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "TensorScatterUpdate",
                                      "TridiagonalSolve",
                                      "TruncatedNormal",
+                                     "UpperBound",
                                      "UnsortedSegmentMax",
                                      "UnsortedSegmentMin",
                                      "UnsortedSegmentProd",

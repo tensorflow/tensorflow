@@ -77,7 +77,7 @@ class GlSync {
 // Waits until GPU is done with processing.
 Status GlSyncWait();
 
-// Waits until all comands are flushed and then performs active waiting by
+// Waits until all commands are flushed and then performs active waiting by
 // spinning a thread and checking sync status. It leads to shorter wait time
 // (up to tens of ms) but consumes more CPU.
 Status GlActiveSyncWait();

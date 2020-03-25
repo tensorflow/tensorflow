@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 
 #include <memory>
+#include <vector>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -64,25 +65,41 @@ void deallocate_buffer(void* data, size_t len, void* arg) {
 }
 }  // namespace tensorflow
 
+namespace {
+TF_Tensor* CreateTensor(TF_ManagedBuffer* buf, TF_DataType dtype,
+                        const int64_t* dims, int num_dims, size_t len) {
+  std::vector<tensorflow::int64> dimvec(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
+  }
+
+  // TODO(gjn): Make the choice of interface a compile-time configuration.
+  tensorflow::TensorInterface ret(
+      Tensor(static_cast<tensorflow::DataType>(dtype),
+             tensorflow::TensorShape(dimvec), buf));
+  buf->Unref();
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
+    return nullptr;
+  }
+  return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(ret)};
+}
+}  // namespace
 
 TF_Tensor* TF_AllocateTensor(TF_DataType dtype, const int64_t* dims,
                              int num_dims, size_t len) {
   void* data = tensorflow::allocate_tensor("TF_AllocateTensor", len,
                                            tensorflow::cpu_allocator());
-  return TF_NewTensor(dtype, dims, num_dims, data, len,
-                      tensorflow::deallocate_buffer,
-                      tensorflow::cpu_allocator());
+  TF_ManagedBuffer* buf =
+      new TF_ManagedBuffer(data, len, tensorflow::deallocate_buffer,
+                           tensorflow::cpu_allocator(), /*owns_memory=*/true);
+  return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
 TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
                         void* data, size_t len,
                         void (*deallocator)(void* data, size_t len, void* arg),
                         void* deallocator_arg) {
-  std::vector<tensorflow::int64> dimvec(num_dims);
-  for (int i = 0; i < num_dims; ++i) {
-    dimvec[i] = static_cast<tensorflow::int64>(dims[i]);
-  }
-
   TF_ManagedBuffer* buf = nullptr;
   if (dtype != TF_STRING && dtype != TF_RESOURCE &&
       tensorflow::DataTypeCanUseMemcpy(
@@ -97,24 +114,17 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     // Other types have the same representation, so copy only if it is safe to
     // do so.
     buf = new TF_ManagedBuffer(tensorflow::allocate_tensor("TF_NewTensor", len),
-                               len, tensorflow::deallocate_buffer, nullptr);
+                               len, tensorflow::deallocate_buffer, nullptr,
+                               /*owns_memory=*/true);
     std::memcpy(buf->data(), data, len);
     // Free the original buffer.
     deallocator(data, len, deallocator_arg);
   } else {
-    buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg);
+    buf = new TF_ManagedBuffer(data, len, deallocator, deallocator_arg,
+                               /*owns_memory=*/false);
   }
 
-  // TODO(gjn): Make the choice of interface a compile-time configuration.
-  tensorflow::TensorInterface ret(
-      Tensor(static_cast<tensorflow::DataType>(dtype),
-             tensorflow::TensorShape(dimvec), buf));
-  buf->Unref();
-  size_t elem_size = TF_DataTypeSize(dtype);
-  if (elem_size > 0 && len < (elem_size * ret.NumElements())) {
-    return nullptr;
-  }
-  return new TF_Tensor{std::make_unique<tensorflow::TensorInterface>(ret)};
+  return CreateTensor(buf, dtype, dims, num_dims, len);
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* t) {

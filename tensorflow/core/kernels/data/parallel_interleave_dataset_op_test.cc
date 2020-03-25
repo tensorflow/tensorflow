@@ -374,7 +374,7 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams10() {
       /*node_name=*/kNodeName);
 }
 
-ParallelInterleaveDatasetParams LongCycleDeteriministicParams() {
+ParallelInterleaveDatasetParams LongCycleDeterministicParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/{CreateTensor<tstring>(
           TensorShape{3, 3, 1}, {"a", "b", "c", "d", "e", "f", "g", "h", "i"})},
@@ -593,7 +593,7 @@ GetNextTestCases() {
                {{"a"}, {"b"}, {"c"}, {"d"}, {"e"}, {"f"}, {"g"}, {"h"}, {"i"}}),
            /*compare_order=*/false},
           {/*dataset_params=*/
-           LongCycleDeteriministicParams(),
+           LongCycleDeterministicParams(),
            /*expected_outputs=*/
            CreateTensors<tstring>(
                TensorShape{1},

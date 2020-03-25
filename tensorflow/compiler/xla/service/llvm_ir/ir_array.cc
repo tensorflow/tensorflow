@@ -188,16 +188,13 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64 stride = strides[i];
-    auto type = multidim_[i]->getType();
-
     if (stride != 1) {
       source_multi_index[i] = builder->CreateAdd(
-          builder->CreateMul(multidim_[i],
-                             llvm::ConstantInt::get(type, stride)),
-          llvm::ConstantInt::get(type, starts[i]));
+          builder->CreateMul(multidim_[i], GetConstantWithIndexType(stride)),
+          GetConstantWithIndexType(starts[i]));
     } else {
-      source_multi_index[i] = builder->CreateAdd(
-          multidim_[i], llvm::ConstantInt::get(type, starts[i]));
+      source_multi_index[i] =
+          builder->CreateAdd(multidim_[i], GetConstantWithIndexType(starts[i]));
     }
   }
   return Index(source_multi_index, operand_shape, index_type_);
@@ -205,8 +202,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
 
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
-    absl::Span<const int64> dimension_mapping,
-    llvm::IRBuilder<>* builder) const {
+    absl::Span<const int64> dimension_mapping) const {
   std::vector<llvm::Value*> operand_multidim_index =
       Permute(dimension_mapping, multidim());
 
@@ -223,11 +219,19 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     const Shape& shape, const Shape& operand_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK(LayoutUtil::HasLayout(shape) && LayoutUtil::HasLayout(operand_shape));
+
   // In case the bitcast is just a reshape, we can use SourceIndexOfReshape()
   // instead. This will reuse linear() if possible, so we don't have to build a
   // new 'linear_index'.
   if (ShapeUtil::ReshapeIsBitcast(operand_shape, shape)) {
     return SourceIndexOfReshape(shape, operand_shape, builder);
+  }
+
+  // If we have a linear index, we can definitely use it because we know the
+  // operation is a bitcast. This will recompute the multi-dimensional index for
+  // the operand based on the linear index.
+  if (linear() != nullptr) {
+    return Index(linear(), operand_shape, builder);
   }
 
   // First linearize the index coming from the output of the bitcast. We want

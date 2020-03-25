@@ -28,5 +28,5 @@ else
   NO_JOB=1
 fi
 
-make -j ${NO_JOB} TARGET=aarch64 -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile
+make -j ${NO_JOB} TARGET=aarch64 -C "${TENSORFLOW_DIR}" -f tensorflow/lite/tools/make/Makefile $@
 

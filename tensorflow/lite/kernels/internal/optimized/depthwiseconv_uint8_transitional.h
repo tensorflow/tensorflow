@@ -37,18 +37,6 @@ namespace depthwise_conv {
 
 #ifdef USE_NEON
 
-inline int8x16_t util_vld1q_x8(const uint8* data_addr) {
-  return vreinterpretq_s8_u8(vld1q_u8(data_addr));
-}
-inline int8x16_t util_vld1q_x8(const int8* data_addr) {
-  return vld1q_s8(data_addr);
-}
-inline int8x8_t util_vld1_x8(const uint8* data_addr) {
-  return vreinterpret_s8_u8(vld1_u8(data_addr));
-}
-inline int8x8_t util_vld1_x8(const int8* data_addr) {
-  return vld1_s8(data_addr);
-}
 inline void util_vst1_x8(uint8* data_addr, int8x8_t reg) {
   return vst1_u8(data_addr, vreinterpret_u8_s8(reg));
 }
@@ -1999,7 +1987,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
     if (copy_size >= 16) {
       const int copy_remaining = (copy_size + start_width) & 0x7;
-      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+      padding_mask = vreinterpret_s8_s64(vshl_s64(
+          vreinterpret_s64_s8(padding_mask), vdup_n_s64(8 * copy_remaining)));
 
       for (int k_height = 0; k_height < copy_block_height; ++k_height) {
         // Work through one slice, by row, at a time.
@@ -2057,10 +2046,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg = util_vld1_x8(input_block_data + input_block_offset +
                                        copy_size - 8);
 
-          half_work_reg =
-              vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
-          half_work_reg =
-              vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_s64(vreinterpret_s64_s8(half_work_reg),
+                       vdup_n_s64(-8 * (8 - copy_remaining))));
+          half_work_reg = vbsl_s8(vreinterpret_u8_s8(padding_mask),
+                                  vget_low_s8(padding_reg), half_work_reg);
 
           if (quantization_type == QuantizationType::kNonPerChannelUint8) {
             half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
@@ -2078,7 +2068,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
       }
     } else if (copy_size >= 4) {
       const int copy_remaining = (copy_size + start_width) & 0x3;
-      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+      padding_mask = vreinterpret_s8_s64(vshl_s64(
+          vreinterpret_s64_s8(padding_mask), vdup_n_s64(8 * copy_remaining)));
 
       for (int k_height = 0; k_height < copy_block_height; ++k_height) {
         // Work through one slice, by row, at a time.
@@ -2130,10 +2121,11 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               input_block_data + input_block_offset + copy_size - 4,
               half_work_reg, 0);
 
-          half_work_reg =
-              vshl_u64(half_work_reg, vdup_n_s64(-8 * (4 - copy_remaining)));
-          half_work_reg =
-              vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_s64(vreinterpret_s64_s8(half_work_reg),
+                       vdup_n_s64(-8 * (4 - copy_remaining))));
+          half_work_reg = vbsl_s8(vreinterpret_u8_s8(padding_mask),
+                                  vget_low_s8(padding_reg), half_work_reg);
 
           if (quantization_type == QuantizationType::kNonPerChannelUint8) {
             half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
@@ -2199,24 +2191,27 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     } else {
       TFLITE_DCHECK_EQ(width_overall_micro_repeats, 1);
       const int copy_remaining = (copy_size + start_width) & 0x3;
-      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+      padding_mask = vreinterpret_s8_s64(vshl_s64(
+          vreinterpret_s64_s8(padding_mask), vdup_n_s64(8 * copy_remaining)));
       if (leading_width_padding) {
         padding_mask = vset_lane_u8(255, padding_mask, 0);
       }
 
       for (int k_height = 0; k_height < copy_block_height; ++k_height) {
         for (int i = 0; i < copy_size; ++i) {
-          half_work_reg = vshl_n_u64(half_work_reg, 8);
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_n_s64(vreinterpret_s64_s8(half_work_reg), 8));
           half_work_reg = vld1_lane_s8(
               reinterpret_cast<const int8*>(
                   input_block_data + input_block_offset + copy_size - 1 - i),
               half_work_reg, 0);
         }
         if (leading_width_padding) {
-          half_work_reg = vshl_n_s64(half_work_reg, 8);
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_n_s64(vreinterpret_s64_s8(half_work_reg), 8));
         }
-        half_work_reg =
-            vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+        half_work_reg = vbsl_s8(vreinterpret_u8_s8(padding_mask),
+                                vget_low_s8(padding_reg), half_work_reg);
 
         if (quantization_type == QuantizationType::kNonPerChannelUint8) {
           half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
@@ -2376,8 +2371,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
           half_work_reg = util_vld1_x8(input_block_data + input_block_offset +
                                        copy_size - 8);
 
-          half_work_reg =
-              vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_s64(vreinterpret_s64_s8(half_work_reg),
+                       vdup_n_s64(-8 * (8 - copy_remaining))));
 
           if (quantization_type == QuantizationType::kNonPerChannelUint8) {
             half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
@@ -2432,8 +2428,9 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
               input_block_data + input_block_offset + copy_size - 4,
               half_work_reg, 0);
 
-          half_work_reg =
-              vshl_u64(half_work_reg, vdup_n_s64(-8 * (4 - copy_remaining)));
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_s64(vreinterpret_s64_s8(half_work_reg),
+                       vdup_n_s64(-8 * (4 - copy_remaining))));
 
           if (quantization_type == QuantizationType::kNonPerChannelUint8) {
             half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
@@ -2456,7 +2453,8 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
 
       for (int k_height = 0; k_height < copy_block_height; ++k_height) {
         for (int i = 0; i < copy_size; ++i) {
-          half_work_reg = vshl_n_u64(half_work_reg, 8);
+          half_work_reg = vreinterpret_s8_s64(
+              vshl_n_s64(vreinterpret_s64_s8(half_work_reg), 8));
           half_work_reg = vld1_lane_s8(
               reinterpret_cast<const int8*>(
                   input_block_data + input_block_offset + copy_size - 1 - i),

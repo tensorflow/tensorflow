@@ -45,7 +45,7 @@ TEST(Writer, FloatModelTest) {
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);
 
-  InterpreterWriter writer(&interpreter);
+  SubgraphWriter writer(&interpreter.primary_subgraph());
   writer.Write("/tmp/test_float.tflite");
   std::unique_ptr<FlatBufferModel> model =
       FlatBufferModel::BuildFromFile("/tmp/test_float.tflite");
@@ -75,7 +75,7 @@ TEST(Writer, PerTensorQuantizedModelTest) {
   interpreter.AddNodeWithParameters({0, 1}, {2}, initial_data, 0,
                                     reinterpret_cast<void*>(builtin_data), reg);
 
-  InterpreterWriter writer(&interpreter);
+  SubgraphWriter writer(&interpreter.primary_subgraph());
   writer.Write("/tmp/test_uint8.tflite");
   std::unique_ptr<FlatBufferModel> model =
       FlatBufferModel::BuildFromFile("/tmp/test_uint8.tflite");

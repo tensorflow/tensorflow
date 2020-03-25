@@ -332,7 +332,7 @@ struct LaunchBatchMatrixTriangularSolve<GPUDevice, Scalar> {
     // output' = rhs' / matrix' (' stands for transpose)
     // Upper/lower needs to be swapped for this.
 
-    uplo = lower ? rocblas_fill_upper : rocblas_fill_upper;
+    uplo = lower ? rocblas_fill_upper : rocblas_fill_lower;
     trans = adjoint ? rocblas_operation_conjugate_transpose
                     : rocblas_operation_none;
     auto solver = absl::make_unique<ROCmSolver>(context);

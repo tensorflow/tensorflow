@@ -91,15 +91,9 @@ void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
-      deferred_bytes_threshold_(gpu_options.deferred_deletion_bytes()
-                                    ? gpu_options.deferred_deletion_bytes()
-                                    : 8 * 1048576),
       polling_active_delay_usecs_(gpu_options.polling_active_delay_usecs()
                                       ? gpu_options.polling_active_delay_usecs()
                                       : 10),
-      accumulated_stream_(nullptr),
-      accumulated_tensors_(new TensorReferenceVector),
-      accumulated_tensor_bytes_(0),
       threadpool_(Env::Default(), "GPU_Event_Manager", kNumThreads) {
   gpu_event_mgr::InitThreadpoolLabels(&threadpool_);
   StartPollingLoop();
@@ -112,27 +106,9 @@ EventMgr::~EventMgr() {
   for (auto& e : free_events_) {
     delete e;
   }
-  for (auto& t : *(accumulated_tensors_)) {
-    t.Unref();
-  }
-  delete accumulated_tensors_;
   while (!used_events_.empty()) {
     InUse* ue = &used_events_[0];
     delete ue->event;
-    if (ue->mem != nullptr) {
-      for (auto& t : *(ue->mem)) {
-        t.Unref();
-      }
-      delete ue->mem;
-    }
-    if (ue->bufrec.buf) {
-      if (LogMemory::IsEnabled()) {
-        LogMemory::RecordRawDeallocation(ue->bufrec.operation,
-                                         ue->bufrec.step_id, ue->bufrec.buf,
-                                         ue->bufrec.alloc, false);
-      }
-      ue->bufrec.alloc->DeallocateRaw(ue->bufrec.buf);
-    }
     if (ue->func != nullptr) threadpool_.Schedule(ue->func);
     used_events_.pop_front();
   }
@@ -158,35 +134,6 @@ void EventMgr::StopPollingLoop() {
     polling_stopped_->WaitForNotification();
     polling_stopped_.reset(nullptr);
   }
-}
-
-void EventMgr::ThenDeleteTensors(se::Stream* stream,
-                                 const TensorReferenceVector& tensors) {
-  mutex_lock l(mu_);
-  // TODO(jeff): We currently keep one accumulated_tensors_ object.
-  // If we start to use multiple streams heavily, we might want to keep
-  // separate vectors/byte counters per stream
-  if (!accumulated_tensors_->empty() && stream != accumulated_stream_) {
-    FlushAccumulatedTensors();
-  }
-  accumulated_stream_ = stream;
-  for (const auto& t : tensors) {
-    // accumulated_tensors_ takes over ownership of the reference to "t"
-    accumulated_tensors_->push_back(t);
-    accumulated_tensor_bytes_ += t.TotalBytes();
-  }
-  if (accumulated_tensor_bytes_ >= deferred_bytes_threshold_) {
-    FlushAccumulatedTensors();
-  }
-}
-
-void EventMgr::FlushAccumulatedTensors() {
-  DCHECK(!accumulated_tensors_->empty());
-  DCHECK(accumulated_stream_ != nullptr);
-  QueueTensors(accumulated_stream_, accumulated_tensors_);
-  accumulated_tensors_ = new TensorReferenceVector;
-  accumulated_tensor_bytes_ = 0;
-  accumulated_stream_ = nullptr;
 }
 
 // A polling loop to detect completion of GPU events.
@@ -218,7 +165,7 @@ void EventMgr::PollLoop() {
   polling_stopped_->Notify();
 }
 
-void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
+void EventMgr::QueueInUse(se::Stream* stream, InUse in_use) {
   VLOG(2) << "QueueInUse  free_events_ " << free_events_.size()
           << " used_events_ " << used_events_.size();
   // Events are created on demand, and repeatedly reused.  There is no
@@ -230,9 +177,9 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
   se::Event* e = free_events_.back();
   free_events_.pop_back();
   stream->ThenRecordEvent(e);
-  iu.event = e;
+  in_use.event = e;
   bool was_empty = used_events_.empty();
-  used_events_.push_back(iu);
+  used_events_.push_back(in_use);
   // Maybe wake up the polling thread
   if (was_empty) events_pending_.notify_all();
 }

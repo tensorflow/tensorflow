@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/platform/resource_loader.h"
 
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/path.h"
 #include "tools/cpp/runfiles/runfiles.h"
 
 using bazel::tools::cpp::runfiles::Runfiles;
@@ -30,8 +31,7 @@ std::string GetDataDependencyFilepath(const std::string& relative_path) {
     LOG(FATAL) << "Unable to access the data dependencies of this test.\n"
                   "Make sure you are running this test using bazel.";
   }
-  string root_dir = "org_tensorflow/";
-  return runfiles->Rlocation(root_dir + relative_path);
+  return runfiles->Rlocation(io::JoinPath("org_tensorflow", relative_path));
 }
 
 }  // namespace tensorflow

@@ -40,6 +40,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import compile_utils
 from tensorflow.python.keras.engine import input_layer as input_layer_module
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.engine import training_utils
@@ -50,6 +51,8 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
@@ -156,7 +159,8 @@ class Network(base_layer.Layer):
   # The key of _layer_call_argspecs is a layer. tf.Module._flatten will fail to
   # flatten the key since it is trying to convert Trackable/Layer to a string.
   _TF_MODULE_IGNORED_PROPERTIES = frozenset(itertools.chain(
-      ('_layer_call_argspecs', '_compiled_trainable_state'),
+      ('_layer_call_argspecs', '_compiled_trainable_state',
+       '_output_mask_cache', '_output_tensor_cache', '_output_shape_cache'),
       base_layer.Layer._TF_MODULE_IGNORED_PROPERTIES
   ))
 
@@ -200,7 +204,10 @@ class Network(base_layer.Layer):
 
     super(Network, self).__init__(name=name, **kwargs)
 
+    self.output_names = None
+    self.input_names = None
     self._is_compiled = False
+    self._saved_model_inputs_spec = None
 
     # This is True for Sequential networks and Functional networks.
     self._compute_output_and_mask_jointly = False
@@ -234,6 +241,14 @@ class Network(base_layer.Layer):
     self._nested_inputs = inputs
     self.inputs = nest.flatten(inputs)
     self.outputs = nest.flatten(outputs)
+
+    # Models constructed with a single Tensor or list of Tensors can
+    # be called with a dict, where the keys of the dict are the names
+    # of the `Input` objects. Extra keys are ignored.
+    self._enable_dict_to_input_mapping = (
+        not nest.is_sequence(self._nested_inputs) or
+        (isinstance(self._nested_inputs, (list, tuple)) and
+         not any(nest.is_sequence(t) for t in self._nested_inputs)))
 
     if any(not hasattr(tensor, '_keras_history') for tensor in self.outputs):
       base_layer_utils.create_keras_history(self._nested_outputs)
@@ -326,6 +341,7 @@ class Network(base_layer.Layer):
         self._feed_inputs.append(layer.input)
 
     self._compute_tensor_usage_count()
+    self._set_save_spec(self._nested_inputs)
 
   def _set_output_names(self):
     """Assigns unique names to the Network's outputs.
@@ -354,8 +370,8 @@ class Network(base_layer.Layer):
     self._autocast = kwargs.get('autocast',
                                 base_layer_utils.v2_dtype_behavior_enabled())
     self._supports_ragged_inputs = None
-    self.outputs = []
-    self.inputs = []
+    self.outputs = None
+    self.inputs = None
     self.built = False
     self._build_input_shape = None
 
@@ -377,7 +393,7 @@ class Network(base_layer.Layer):
 
     weight_layer_index = 0
 
-    dependencies = {}
+    dependencies = collections.OrderedDict()
     for layer_index, layer in enumerate(self.layers):
       try:
         if layer.weights:
@@ -573,26 +589,9 @@ class Network(base_layer.Layer):
         A list of `InputSpec` instances (one per input to the model)
             or a single instance if the model has only one input.
     """
-    # If subclassed model, can't assume anything.
-    if not self._is_graph_network:
-      return None
+    return
 
-    specs = []
-    for layer in self._input_layers:
-      if layer.input_spec is None:
-        specs.append(None)
-      else:
-        if not isinstance(layer.input_spec, list):
-          raise TypeError('Layer ' + layer.name +
-                          ' has an input_spec attribute that '
-                          'is not a list. We expect a list. '
-                          'Found input_spec = ' + str(layer.input_spec))
-        specs += layer.input_spec
-    if len(specs) == 1:
-      return specs[0]
-    return specs
-
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape):
     """Builds the model based on input shapes received.
 
@@ -648,6 +647,11 @@ class Network(base_layer.Layer):
         if isinstance(input_shape, list):
           x = [base_layer_utils.generate_placeholders_from_shape(shape)
                for shape in input_shape]
+        elif isinstance(input_shape, dict):
+          x = {
+              k: base_layer_utils.generate_placeholders_from_shape(shape)
+              for k, shape in input_shape.items()
+          }
         else:
           x = base_layer_utils.generate_placeholders_from_shape(input_shape)
 
@@ -726,10 +730,17 @@ class Network(base_layer.Layer):
                        ': model has ' + str(len(self._input_layers)) +
                        ' tensor inputs.')
 
-    cache_key = generic_utils.object_list_uid(input_shape)
-    if cache_key in self._output_shape_cache:
-      # Cache hit. Return shapes as TensorShapes.
-      return self._output_shape_cache[cache_key]
+    # Use the tuple of TensorShape as the cache key, since tuple is hashable
+    # and can be used as hash key.
+    try:
+      cache_key = tuple(tf_utils.convert_shapes(input_shape, to_tuples=True))
+      if cache_key in self._output_shape_cache:
+        # Cache hit. Return shapes as TensorShapes.
+        return self._output_shape_cache[cache_key]
+    except ValueError:
+      # In case there are unknown TensorShape, eg for sparse tensor input,
+      # We skip the caching since the shape is unknown.
+      pass
 
     layers_to_output_shapes = {}
     for layer, shape in zip(self._input_layers, nest.flatten(input_shape)):
@@ -812,38 +823,20 @@ class Network(base_layer.Layer):
     # use masking, it does not interfere with regular behavior at all and you
     # can ignore it.
 
-    if isinstance(inputs, dict) and isinstance(self._nested_inputs,
-                                               (list, tuple)):
-      # Backwards compat: Allows passing a dict to a Model constructed with a
-      # list. Matches dict keys to input names.
-      inputs = [
-          inputs[inp._keras_history.layer.name] for inp in self._nested_inputs
-      ]
-    else:
-      inputs = nest.flatten(inputs)
-
+    inputs = self._flatten_to_reference_inputs(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
-      masks = nest.flatten(mask)
-
+      masks = self._flatten_to_reference_inputs(mask)
     for input_t, mask in zip(inputs, masks):
       input_t._keras_mask = mask
 
     # Dictionary mapping reference tensors to computed tensors.
     tensor_dict = {}
-
     for x, y in zip(self.inputs, inputs):
+      y = self._conform_to_reference_input(y, ref_input=x)
       x_id = str(id(x))
       tensor_dict[x_id] = [y] * self._tensor_usage_count[x_id]
-      if isinstance(x, ops.Tensor) and isinstance(y, ops.Tensor):
-        try:
-          y.set_shape(y.shape.merge_with(x.shape))
-        except ValueError:
-          logging.warning(
-              'Model was constructed with shape {} for input {}, but it was '
-              're-called on a Tensor with incompatible shape {}.'
-              .format(x, x.shape, y.shape))
 
     depth_keys = list(self._nodes_by_depth.keys())
     depth_keys.sort(reverse=True)
@@ -871,10 +864,13 @@ class Network(base_layer.Layer):
 
           argspec = self._layer_call_argspecs[layer].args
           if 'training' in argspec:
-            kwargs.setdefault('training', training)
-            if (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
-                any([kwargs['training'] is x
-                     for x in backend._GRAPH_LEARNING_PHASES.values()])):
+            if 'training' not in kwargs or kwargs['training'] is None:
+              kwargs['training'] = training
+            elif (type(kwargs['training']) is ops.Tensor and  # pylint: disable=unidiomatic-typecheck
+                  any([
+                      kwargs['training'] is x
+                      for x in backend._GRAPH_LEARNING_PHASES.values()
+                  ])):
               kwargs['training'] = training  # Materialize placeholder.
 
           # Map Keras tensors in kwargs to their computed value.
@@ -907,12 +903,68 @@ class Network(base_layer.Layer):
 
     if output_shapes is not None:
       input_shapes = [x.shape for x in inputs]
-      cache_key = generic_utils.object_list_uid(input_shapes)
-      self._output_shape_cache[cache_key] = nest.pack_sequence_as(
-          self._nested_outputs, output_shapes)
+      try:
+        cache_key = tuple(tf_utils.convert_shapes(input_shapes, to_tuples=True))
+        self._output_shape_cache[cache_key] = nest.pack_sequence_as(
+            self._nested_outputs, output_shapes)
+      except ValueError:
+        # In case there are unknown TensorShape, eg for sparse tensor input,
+        # We skip the caching since the shape is unknown.
+        pass
 
     output_tensors = nest.pack_sequence_as(self._nested_outputs, output_tensors)
     return output_tensors
+
+  def _flatten_to_reference_inputs(self, tensors):
+    """Maps `tensors` to their respective `keras.Input`."""
+    if self._enable_dict_to_input_mapping and isinstance(tensors, dict):
+      ref_inputs = self._nested_inputs
+      if not nest.is_sequence(ref_inputs):
+        ref_inputs = [self._nested_inputs]
+
+      try:
+        # Flatten in the order `Input`s were passed during Model construction.
+        return [tensors[inp._keras_history.layer.name] for inp in ref_inputs]
+      except KeyError:
+        # TODO(b/151582614)
+        return nest.flatten(tensors)
+
+    # Otherwise both self.inputs and tensors will already be in same order.
+    return nest.flatten(tensors)
+
+  def _conform_to_reference_input(self, tensor, ref_input):
+    """Set shape and dtype based on `keras.Input`s."""
+    # Shape handling (only for non-CompositeTensors).
+    if isinstance(tensor, ops.Tensor) and isinstance(ref_input, ops.Tensor):
+      # Allow (None,) and (None, 1) Tensors to be passed interchangably. Use the
+      # shape specified by the `keras.Input`.
+      if tensor.shape.rank is not None and ref_input.shape.rank is not None:
+        should_squeeze_last_dim = (
+            tensor.shape.rank == ref_input.shape.rank + 1 and
+            tensor.shape[-1] == 1)
+        should_expand_last_dim = (
+            tensor.shape.rank == ref_input.shape.rank - 1 and
+            ref_input.shape[-1] == 1)
+        if should_squeeze_last_dim:
+          tensor = array_ops.squeeze_v2(tensor, axis=-1)
+        elif should_expand_last_dim:
+          tensor = array_ops.expand_dims_v2(tensor, axis=-1)
+
+      # Add shape hints to Tensors that might have None shape dims but have
+      # shapes defined by the `keras.Input`.
+      try:
+        tensor.set_shape(tensor.shape.merge_with(ref_input.shape))
+      except ValueError:
+        logging.warning(
+            'Model was constructed with shape {} for input {}, but it was '
+            'called on an input with incompatible shape {}.'.format(
+                ref_input.shape, ref_input, tensor.shape))
+
+    # Dtype handling.
+    if isinstance(ref_input, (ops.Tensor, composite_tensor.CompositeTensor)):
+      tensor = math_ops.cast(tensor, dtype=ref_input.dtype)
+
+    return tensor
 
   def get_config(self):
     if not self._is_graph_network:
@@ -1532,6 +1584,32 @@ class Network(base_layer.Layer):
     new_nodes.extend(add_metric_layer.inbound_nodes)
     new_layers.append(add_metric_layer)
     self._insert_layers(new_layers, new_nodes)
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_save_spec(self, inputs):
+    if self._saved_model_inputs_spec is not None:
+      return  # Already set.
+
+    input_names = self.input_names
+    if not input_names:
+      input_names = compile_utils.create_pseudo_input_names(inputs)
+
+    flat_inputs = nest.flatten(inputs)
+    specs = []
+    for name, tensor in zip(input_names, flat_inputs):
+      specs.append(
+          tf_utils.get_tensor_spec(tensor, dynamic_batch=False, name=name))
+    specs = nest.pack_sequence_as(inputs, specs)
+
+    self._saved_model_inputs_spec = specs
+
+  def _get_save_spec(self, dynamic_batch=True):
+    if self._saved_model_inputs_spec is None:
+      return None
+
+    return nest.map_structure(
+        lambda t: tf_utils.get_tensor_spec(t, dynamic_batch=dynamic_batch),
+        self._saved_model_inputs_spec)
 
   @property
   def _trackable_saved_model_saver(self):

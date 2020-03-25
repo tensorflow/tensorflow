@@ -117,10 +117,10 @@ class Batch {
   mutable mutex mu_;
 
   // The tasks in the batch.
-  std::vector<std::unique_ptr<TaskType>> tasks_ GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<TaskType>> tasks_ TF_GUARDED_BY(mu_);
 
   // The sum of the sizes of the tasks in 'tasks_'.
-  size_t size_ GUARDED_BY(mu_) = 0;
+  size_t size_ TF_GUARDED_BY(mu_) = 0;
 
   // Whether the batch has been closed.
   Notification closed_;

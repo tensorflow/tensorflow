@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 71
+// Next ID: 72
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -178,6 +178,10 @@ message HloInstructionProto {
   // Deprecated, but keeping it for backward compatibility. Use channel_id.
   // Non-positive all_reduce_id is equivalent to no all_reduce_id.
   int64 all_reduce_id = 45 [deprecated = true];
+
+  // If true, interprets ids in ReplicaGroup as global device ids, which is
+  // a linearized id of `replica_id * partition_count + partition_id`.
+  bool use_global_device_ids = 71;
 
   // Whether this Send/Recv instruction transfers data to/from the host. Only
   // present for Send and Recv instructions and their SendDone and RecvDone

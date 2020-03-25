@@ -757,6 +757,84 @@ using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedMatMulOpTest,
                               MklFusedMatMulDataTypes);
 
+// Test the performance of MklFusedMatMul weight cache.
+// For the first time B matrix will be reordered and cached which will be
+// used for subsequent runs
+class MklFusedMatMulCacheTest : public OpsTestBase {};
+
+TEST_F(MklFusedMatMulCacheTest, WeightCached) {
+  const int num_args = 1;
+  const std::vector<string>& fused_ops = {"BiasAdd"};
+
+  TF_ASSERT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(num_args, DT_FLOAT))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(num_args, DT_UINT8))
+                   .Attr("T", DT_FLOAT)
+                   .Attr("transpose_a", false)
+                   .Attr("transpose_b", false)
+                   .Attr("num_args", num_args)
+                   .Attr("fused_ops", fused_ops)
+                   .Attr("epsilon", 0.0001)
+                   .Attr("_kernel", "MklLayoutDependentOp")
+                   .Finalize(node_def()));
+
+  TF_EXPECT_OK(InitOp());
+  // The tensor shape of (1,3) is selected to allow the mkldnn expected
+  // weight format to be made as OI rather than IO for BS > 1
+  // A matrix is:
+  // |  1 |  2 |  3 |
+  AddInputFromArray<float>(TensorShape({1, 3}), {1, 2, 3});
+  // B matrix is:
+  // |  7 |  8 |  9 | 10 |
+  // | 11 | 12 | 13 | 14 |
+  // | 15 | 16 | 17 | 18 |
+  AddInputFromArray<float>(TensorShape({3, 4}),
+                           {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  // Bias vector.
+  AddInputFromArray<float>(TensorShape({4}), {1, 2, 3, 4});
+  // Add MKL meta input for input, filter and bias.
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+
+  int64 start_time = Env::Default()->NowMicros();
+  TF_ASSERT_OK(RunOpKernel());
+  int64 end_time = Env::Default()->NowMicros();
+  int64 total_duration_unopt = end_time - start_time;
+
+  // Final result after Bias addition:
+  // | 75 | 82 | 89 | 96 |
+  Tensor expected(DT_FLOAT, TensorShape({1, 4}));
+  test::FillValues<float>(&expected, {75, 82, 89, 96});
+
+  const Tensor& output = *GetOutput(0);
+  const Tensor& mkl_shape_tensor = *GetOutput(1);
+  CommonTestUtilities<float> test_util;
+  test_util.ConvertAndCompare(DT_FLOAT, output, mkl_shape_tensor, expected);
+
+  // Test for the second time to use the cached weight
+  start_time = Env::Default()->NowMicros();
+  TF_ASSERT_OK(RunOpKernel());
+  end_time = Env::Default()->NowMicros();
+  int64 total_duration_opt = end_time - start_time;
+  LOG(INFO) << " Time taken by first call : " << total_duration_unopt
+            << ", Time taken after Caching : " << total_duration_opt;
+
+  // Cached call should be at least 20% faster.
+  EXPECT_LT(total_duration_opt, total_duration_unopt * 0.8);
+
+  // Compare the result with expected result
+  CommonTestUtilities<float> test_util_new;
+  const Tensor& output_new = *GetOutput(0);
+  const Tensor& mkl_shape_tensor_new = *GetOutput(1);
+  test_util_new.ConvertAndCompare(DT_FLOAT, output_new, mkl_shape_tensor_new,
+                                  expected);
+}
+
 class BiasCacheTest : public OpsTestBase {
  public:
   template <typename T>

@@ -20,11 +20,12 @@ limitations under the License.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -110,17 +111,20 @@ void MakeShapeOpInvariant(tf_device::ReplicateOp replicate_op, int num_replicas,
 
 // Checks if op and inner op operands are all replicate invariant.
 bool IsOpReplicateInvariant(Region* replicate_region, Operation* op) {
-  auto result = op->walk([&](Operation* inner_op) {
-    for (Value operand : inner_op->getOperands()) {
-      Region* parent_region = operand.getParentRegion();
-      if (!parent_region || !parent_region->isProperAncestor(replicate_region))
-        return WalkResult::interrupt();
-    }
+  auto ancestor_of_replicate = [&](Region* region) {
+    return region && region->isProperAncestor(replicate_region);
+  };
 
-    return WalkResult::advance();
+  for (Value operand : op->getOperands())
+    if (!ancestor_of_replicate(operand.getParentRegion())) return false;
+
+  bool has_replicate_operands = false;
+  visitUsedValuesDefinedAbove(op->getRegions(), [&](OpOperand* operand) {
+    if (!ancestor_of_replicate(operand->get().getParentRegion()))
+      has_replicate_operands = true;
   });
 
-  return !result.wasInterrupted();
+  return !has_replicate_operands;
 }
 
 // Hoists replicate invariant ops out of associated `tf_device.replicate` op.

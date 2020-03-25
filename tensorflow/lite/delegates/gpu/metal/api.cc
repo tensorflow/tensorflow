@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/resize.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/space_to_depth.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
@@ -50,37 +51,23 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 namespace {
-
-std::vector<ComputeTaskDescriptorPtr> SelectConvolution(
-    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
-    const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
-  // Special precise version, in case we cover dst_shape poorly with standard
-  // work group size.
-  auto gpu_type = GetGpuType();
-  bool a11_12 = gpu_type == GpuType::kA11 || gpu_type == GpuType::kA12;
-  const auto dst_shape = graph.FindOutputs(id)[0]->tensor.shape;
-  if (GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
-    // Special version for PowerVR >= IPhone6S/SE
-    // Metal has bad driver for PowerVR in IPhone6, so for Iphone6 we should use
-    // default kernel with shared memory.
-    if ((gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10) &&
-        CheckConvolutionPrecise1x1Support(attr)) {
-      return ConvolutionPrecise1x1PowerVR(id, input_id, output_id, attr,
-                                          options);
-    }
-    if (a11_12 && GetThreadsRatioUsualToPreciseConvolution(dst_shape) >= 1.2f) {
-      return ConvolutionPrecise(id, input_id, output_id, attr, options);
-    }
-  }
-  if (a11_12) {
-    if (CheckConvolution1x1Support(attr)) {
-      return Convolution1x1(id, input_id, output_id, attr, options);
-    } else {
-      return ConvolutionGeneric(id, input_id, output_id, attr, options);
-    }
-  } else {
-    return Convolution(id, input_id, output_id, attr, options);
-  }
+bool IsWidthBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.w != inputs[1]->tensor.shape.w &&
+         inputs[1]->tensor.shape.w == 1;
+}
+bool IsHeightBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.h != inputs[1]->tensor.shape.h &&
+         inputs[1]->tensor.shape.h == 1;
+}
+bool IsChannelsBroadcastedForSecondInput(
+    const std::vector<Value<TensorRef<BHWC>>*>& inputs) {
+  return inputs.size() == 2 &&
+         inputs[0]->tensor.shape.c != inputs[1]->tensor.shape.c &&
+         inputs[1]->tensor.shape.c == 1;
 }
 
 std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
@@ -93,6 +80,17 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
     return DepthWiseConv3x3Stride2(id, input_id, output_id, attr, options);
   } else {
     return DepthWiseConvolution(id, input_id, output_id, attr, options);
+  }
+}
+
+std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
+    int id, ValueId input_id, ValueId output_id,
+    const ConvolutionTransposedAttributes& attr,
+    const metal::RuntimeOptions& options) {
+  if (CheckConvolutionTransposed4x4Support(attr)) {
+    return ConvolutionTransposed4x4(id, input_id, output_id, attr, options);
+  } else {
+    return ConvolutionTransposed(id, input_id, output_id, attr, options);
   }
 }
 
@@ -137,6 +135,12 @@ std::vector<ComputeTaskDescriptorPtr> SelectSoftmax(const GraphFloat32& graph,
   }
 }
 
+std::vector<ComputeTaskDescriptorPtr> SelectSpaceToDepth(
+    const GraphFloat32& graph, int id, ValueId input_id, ValueId output_id,
+    const SpaceToDepthAttributes& attr) {
+  return SpaceToDepth(id, input_id, output_id, attr);
+}
+
 Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                           const std::vector<ValueId>& inputs,
                           const std::vector<ValueId>& outputs,
@@ -148,11 +152,22 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
   int node_id = static_cast<int>(node->id);
   auto op_type = OperationTypeFromString(node->operation.type);
   switch (op_type) {
-    case OperationType::ADD:
-      *tasks = Add(node_id, inputs, outputs[0],
-                   absl::any_cast<AddAttributes>(node->operation.attributes),
-                   options);
+    case OperationType::ADD: {
+      const auto srcs = graph.FindInputs(node_id);
+      ElementwiseBroadcastSettings broadcast;
+      broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+      broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+      broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+      if (broadcast.width || broadcast.height || broadcast.channels) {
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
+                                          broadcast);
+      } else {
+        *tasks = Add(node_id, inputs, outputs[0],
+                     absl::any_cast<AddAttributes>(node->operation.attributes),
+                     options);
+      }
       break;
+    }
     case OperationType::CONCAT: {
       std::vector<BHWC> input_shapes;
       for (auto& input : graph.FindInputs(node->id)) {
@@ -164,18 +179,20 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                  input_shapes);
       break;
     }
-    case OperationType::CONVOLUTION_2D:
-      *tasks = SelectConvolution(
-          graph, node_id, inputs[0], outputs[0],
-          absl::any_cast<Convolution2DAttributes>(node->operation.attributes),
-          options);
+    case OperationType::CONVOLUTION_2D: {
+      const auto dst_shape = graph.FindOutputs(node_id)[0]->tensor.shape;
+      auto attr =
+          absl::any_cast<Convolution2DAttributes>(node->operation.attributes);
+      *tasks = ConvolutionGeneric(node_id, inputs[0], outputs[0], dst_shape,
+                                  attr, options);
       break;
+    }
     case OperationType::CONVOLUTION_TRANSPOSED:
-      *tasks =
-          ConvolutionTransposed(node_id, inputs[0], outputs[0],
-                                absl::any_cast<ConvolutionTransposedAttributes>(
-                                    node->operation.attributes),
-                                options);
+      *tasks = SelectConvolutionTransposed(
+          node_id, inputs[0], outputs[0],
+          absl::any_cast<ConvolutionTransposedAttributes>(
+              node->operation.attributes),
+          options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
       *tasks =
@@ -206,7 +223,18 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
             absl::any_cast<MultiplyAttributes>(node->operation.attributes),
             options);
       } else {
-        *tasks = ApplyMask(node_id, inputs[0], inputs[1], outputs[0], options);
+        if (inputs.size() == 2) {
+          const auto srcs = graph.FindInputs(node_id);
+          ElementwiseBroadcastSettings broadcast;
+          broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+          broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+          broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+          *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0],
+                                            op_type, broadcast);
+        } else {
+          return absl::UnimplementedError(
+              "No support of multiply with more than 2 inputs");
+        }
       }
       break;
     case OperationType::PAD: {
@@ -254,8 +282,14 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = SelectSoftmax(graph, node_id, inputs[0], outputs[0]);
       break;
     }
+    case OperationType::SPACE_TO_DEPTH:
+      *tasks = SelectSpaceToDepth(
+          graph, node_id, inputs[0], outputs[0],
+          absl::any_cast<SpaceToDepthAttributes>(node->operation.attributes));
+      break;
     case OperationType::ABS:
     case OperationType::COS:
+    case OperationType::EXP:
     case OperationType::HARD_SWISH:
     case OperationType::LOG:
     case OperationType::RSQRT:
@@ -266,16 +300,32 @@ Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     case OperationType::TANH:
       *tasks = ElementwiseWithOneInput(node_id, inputs[0], outputs[0], op_type);
       break;
-    case OperationType::SUB:
     case OperationType::DIV:
+    case OperationType::MAXIMUM:
+    case OperationType::MINIMUM:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
-      *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type);
-      break;
+    case OperationType::SUB: {
+      const ElementwiseAttributes* attr =
+          absl::any_cast<ElementwiseAttributes>(&node->operation.attributes);
+      if (attr) {
+        *tasks = ElementwiseWithOneInputAndConstantArguent(
+            node_id, inputs[0], outputs[0], options, op_type, *attr);
+      } else {
+        const auto srcs = graph.FindInputs(node_id);
+        ElementwiseBroadcastSettings broadcast;
+        broadcast.width = IsWidthBroadcastedForSecondInput(srcs);
+        broadcast.height = IsHeightBroadcastedForSecondInput(srcs);
+        broadcast.channels = IsChannelsBroadcastedForSecondInput(srcs);
+        *tasks = ElementwiseWithTwoInputs(node_id, inputs, outputs[0], op_type,
+                                          broadcast);
+      }
+    } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
     case OperationType::CONST:
     case OperationType::LSTM:
+    case OperationType::QUANTIZE_AND_DEQUANTIZE:
     case OperationType::SPACE_TO_BATCH:
     case OperationType::TRANSPOSE:
     case OperationType::UNKNOWN:
@@ -310,6 +360,9 @@ Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
             node->operation.type, custom_status.error_message(),
             primary_status.error_message()));
       }
+    }
+    for (auto task : tasks) {
+      task->description = node->operation.type + "_" + std::to_string(node->id);
     }
     compiled_model->insert(compiled_model->end(), tasks.begin(), tasks.end());
   }

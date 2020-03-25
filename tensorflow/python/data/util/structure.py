@@ -67,7 +67,7 @@ def _RaggedTensorStructure(dtype, shape, ragged_rank):
 
 # TODO(jsimsa): Remove the special-case for `TensorArray` pass-through once
 # it is a subclass of `CompositeTensor`.
-def normalize_element(element):
+def normalize_element(element, dtypes=None):
   """Normalizes a nested structure of element components.
 
   * Components matching `SparseTensorSpec` are converted to `SparseTensor`.
@@ -78,6 +78,10 @@ def normalize_element(element):
 
   Args:
     element: A nested structure of individual components.
+    dtypes: (Optional.) A nested structure of `tf.DType` objects corresponding
+      to each component of `element`. If specified, it will be used to set the
+      exact type of output tensor when converting input components which
+      are not tensors themselves (e.g. numpy arrays, native python types, etc.)
 
   Returns:
     A nested structure of `Tensor`, `Dataset`, `SparseTensor`, `RaggedTensor`,
@@ -85,17 +89,21 @@ def normalize_element(element):
   """
   components = nest.flatten(element)
   normalized_components = []
+  if dtypes is None:
+    flattened_dtypes = [None] * len(components)
+  else:
+    flattened_dtypes = nest.flatten(dtypes)
   with ops.name_scope("normalize_element"):
     # Imported here to avoid circular dependency.
     from tensorflow.python.data.ops import dataset_ops  # pylint: disable=g-import-not-at-top
-    for i, t in enumerate(components):
+    for i, (t, dtype) in enumerate(zip(components, flattened_dtypes)):
       try:
         spec = type_spec_from_value(t, use_fallback=False)
       except TypeError:
         # TypeError indicates it was not possible to compute a `TypeSpec` for
         # the value. As a fallback try converting the value to a tensor.
         normalized_components.append(
-            ops.convert_to_tensor(t, name="component_%d" % i))
+            ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
       else:
         if isinstance(spec, sparse_tensor.SparseTensorSpec):
           normalized_components.append(sparse_tensor.SparseTensor.from_value(t))
@@ -106,11 +114,13 @@ def normalize_element(element):
         elif isinstance(
             spec, (tensor_array_ops.TensorArraySpec, dataset_ops.DatasetSpec)):
           normalized_components.append(t)
+        elif isinstance(spec, NoneTensorSpec):
+          normalized_components.append(NoneTensor())
         elif isinstance(t, composite_tensor.CompositeTensor):
           normalized_components.append(t)
         else:
           normalized_components.append(
-              ops.convert_to_tensor(t, name="component_%d" % i))
+              ops.convert_to_tensor(t, name="component_%d" % i, dtype=dtype))
   return nest.pack_sequence_as(element, normalized_components)
 
 
@@ -462,3 +472,65 @@ def type_spec_from_value(element, use_fallback=True):
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (element, type(element).__name__))
+
+
+# TODO(b/149584798): Move this to framework and add tests for non-tf.data
+# functionality.
+class NoneTensor(composite_tensor.CompositeTensor):
+  """Composite tensor representation for `None` value."""
+
+  @property
+  def _type_spec(self):
+    return NoneTensorSpec()
+
+
+# TODO(b/149584798): Move this to framework and add tests for non-tf.data
+# functionality.
+class NoneTensorSpec(type_spec.BatchableTypeSpec):
+  """Type specification for `None` value."""
+
+  @property
+  def value_type(self):
+    return NoneTensor
+
+  def _serialize(self):
+    return ()
+
+  @property
+  def _component_specs(self):
+    return []
+
+  def _to_components(self, value):
+    return []
+
+  def _from_components(self, components):
+    return
+
+  def _to_tensor_list(self, value):
+    return []
+
+  @staticmethod
+  def from_value(value):
+    return NoneTensorSpec()
+
+  def _batch(self, batch_size):
+    return NoneTensorSpec()
+
+  def _unbatch(self):
+    return NoneTensorSpec()
+
+  def _to_batched_tensor_list(self, value):
+    return []
+
+  def _to_legacy_output_types(self):
+    return self
+
+  def _to_legacy_output_shapes(self):
+    return self
+
+  def _to_legacy_output_classes(self):
+    return self
+
+
+type_spec.register_type_spec_from_value_converter(type(None),
+                                                  NoneTensorSpec.from_value)

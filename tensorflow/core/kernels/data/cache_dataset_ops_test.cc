@@ -182,8 +182,8 @@ TEST_P(ParameterizedGetNextTest, GetNext) {
 
   // Test the read mode.
   TF_ASSERT_OK(dataset_->MakeIterator(
-      iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-      &iterator_));
+      iterator_ctx_.get(), /*parent=*/nullptr,
+      test_case.dataset_params.iterator_prefix(), &iterator_));
   end_of_sequence = false;
   out_tensors.clear();
   while (!end_of_sequence) {
@@ -322,8 +322,8 @@ TEST_P(ParameterizedIteratorSaveAndRestoreTest, SaveAndRestore) {
     end_of_sequence = false;
     out_tensors.clear();
     TF_ASSERT_OK(dataset_->MakeIterator(
-        iterator_ctx_.get(), test_case.dataset_params.iterator_prefix(),
-        &iterator_));
+        iterator_ctx_.get(), /*parent=*/nullptr,
+        test_case.dataset_params.iterator_prefix(), &iterator_));
   }
 
   std::unique_ptr<SerializationContext> serialization_ctx;

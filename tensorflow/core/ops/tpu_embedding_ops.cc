@@ -58,69 +58,6 @@ namespace tensorflow {
 // saving a checkpoint, the model must Retrieve the parameters back into the
 // host CPU memory.
 
-namespace {
-
-void RegisterPerTableLoadAndRetrieveOps();
-
-class RegisterPerTableLoadAndRetrieveOpsOnConstruction {
- public:
-  RegisterPerTableLoadAndRetrieveOpsOnConstruction() {
-    RegisterPerTableLoadAndRetrieveOps();
-  }
-};
-
-// Object whose constructor does registrations.
-RegisterPerTableLoadAndRetrieveOpsOnConstruction
-    register_per_table_load_and_retrieve_ops_var;
-
-void RegisterPerTableLoadAndRetrieveOps() {
-  // Load ops
-  for (tpu::OptimizationAlgorithm alg : tpu::GetOptimizationAlgorithms()) {
-    bool internal;
-    TF_CHECK_OK(tpu::IsOptimizationAlgorithmInternal(alg, &internal));
-    if (!internal) {
-      OpRegistry::Global()->Register(
-          [alg](OpRegistrationData* op_reg_data) -> Status {
-            return tpu::RegisterPerTableLoadOpsForAlgorithmBody(alg, false,
-                                                                op_reg_data);
-          });
-      tpu::GradientAccumulationSupport grad_accum_support;
-      TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
-      if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-        OpRegistry::Global()->Register(
-            [alg](OpRegistrationData* op_reg_data) -> Status {
-              return tpu::RegisterPerTableLoadOpsForAlgorithmBody(alg, true,
-                                                                  op_reg_data);
-            });
-      }
-    }
-  }
-
-  // Retrieve ops
-  for (tpu::OptimizationAlgorithm alg : tpu::GetOptimizationAlgorithms()) {
-    bool internal;
-    TF_CHECK_OK(tpu::IsOptimizationAlgorithmInternal(alg, &internal));
-    if (!internal) {
-      OpRegistry::Global()->Register(
-          [alg](OpRegistrationData* op_reg_data) -> Status {
-            return tpu::RegisterPerTableRetrieveOpsForAlgorithmBody(
-                alg, false, op_reg_data);
-          });
-      tpu::GradientAccumulationSupport grad_accum_support;
-      TF_CHECK_OK(GetGradientAccumulationSupport(alg, &grad_accum_support));
-      if (grad_accum_support == tpu::GradientAccumulationSupport::kSupported) {
-        OpRegistry::Global()->Register(
-            [alg](OpRegistrationData* op_reg_data) -> Status {
-              return tpu::RegisterPerTableRetrieveOpsForAlgorithmBody(
-                  alg, true, op_reg_data);
-            });
-      }
-    }
-  }
-}
-
-}  // namespace
-
 REGISTER_OP("RecvTPUEmbeddingActivations")
     .Output("outputs: num_outputs * float32")
     .Attr("num_outputs: int >= 1")

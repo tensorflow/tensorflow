@@ -50,23 +50,20 @@ class MathTest(PForTestCase, parameterized.TestCase):
           x = math_ops.complex(x, y)
 
       # pylint: disable=cell-var-from-loop
-      output_dtypes = []
 
       def loop_fn(i):
         with g:
-          x1 = array_ops.gather(x, i)
-          y1 = op(x1)
-          outputs = [op(x), y1]
-          if y1.dtype == dtypes.float32:
-            loss = math_ops.reduce_sum(y1 * y1)
-          else:
-            loss = None
-        if loss is not None:
-          grad = g.gradient(loss, x1)
-          if grad is not None:
-            outputs.append(grad)
-        del output_dtypes[:]
-        output_dtypes.extend(t.dtype for t in outputs)
+          y = op(x)
+          x_i = array_ops.gather(x, i)
+          y_i = op(x_i)
+          outputs = [y_i]
+          # Build cross product of loop variant/invariant outputs and gradients.
+          for out in (y, y_i):
+            if out.dtype == dtypes.float32:
+              for output_gradients in (None, out * math_ops.cast(i, out.dtype)):
+                grad = g.gradient(out, x_i, output_gradients=output_gradients)
+                if grad is not None:
+                  outputs.append(grad)
         return outputs
 
       # pylint: enable=cell-var-from-loop
@@ -131,6 +128,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         nn.elu,
         nn.relu,
         nn.relu6,
+        lambda t: nn.leaky_relu(t, alpha=0.1),
         nn.selu,
         nn.softplus,
         nn.softsign,
@@ -373,6 +371,24 @@ class MathTest(PForTestCase, parameterized.TestCase):
           # pylint: enable=cell-var-from-loop
 
           self._test_loop_fn(loop_fn, 2)
+
+  def test_bucketize(self):
+    x = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      a = array_ops.gather(x, i)
+      return math_ops.bucketize(a, [-1, 0.5, 1])
+
+    self._test_loop_fn(loop_fn, 2)
+
+  def test_clip_by_value(self):
+    x = random_ops.random_uniform([2, 3, 4])
+
+    def loop_fn(i):
+      a = array_ops.gather(x, i)
+      return clip_ops.clip_by_value(a, 0.5, 1.0)
+
+    self._test_loop_fn(loop_fn, 2)
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])

@@ -1321,6 +1321,61 @@ TEST_P(MemorySpaceAssignmentTest,
   }
 }
 
+TEST_P(MemorySpaceAssignmentTest, SendDoneShouldHaveSendOperand) {
+  // Ensure that SendDone has only a Send operand.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, SendAndSendDoneShouldGetSameAllocation) {
+  // Ensure that Send and SendDone have the same allocation.
+  absl::string_view hlo_string = R"(
+  HloModule SendRecv, is_scheduled=true
+
+  ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+    %p0 = f32[3]{0} parameter(0)
+    %p1 = f32[3]{0} parameter(1)
+    %after-all = token[] after-all()
+    %send = (f32[3]{0}, u32[], token[]) send(f32[3]{0} %p0, token[] %after-all), channel_id=2
+    %neg0 = f32[3]{0} negate(f32[3]{0} %p1)
+    %neg1 = f32[3]{0} negate(f32[3]{0} %neg0)
+    %neg2 = f32[3]{0} negate(f32[3]{0} %neg1)
+    %neg3 = f32[3]{0} negate(f32[3]{0} %neg2)
+    %neg4 = f32[3]{0} negate(f32[3]{0} %neg3)
+    %neg5 = f32[3]{0} negate(f32[3]{0} %neg4)
+    %neg6 = f32[3]{0} negate(f32[3]{0} %neg5)
+    %send-done = token[] send-done((f32[3]{0}, u32[], token[]) %send), channel_id=2
+    ROOT %add = f32[3]{0} add(f32[3]{0} %p0, f32[3]{0} %neg6)
+  }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/10, /*min_prefetch_interval=*/4);
+}
+
 TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
@@ -2825,6 +2880,100 @@ TEST_P(MemorySpaceAssignmentTest,
     EXPECT_NE(position.instruction, p1);
     EXPECT_NE(position.instruction, add);
   }
+}
+
+TEST_P(MemorySpaceAssignmentTest, PendingChunkMemoryCorruptionBug) {
+  // Tests a memory corruption bug where the allocated chunk overlaps with a
+  // pending chunk. To test this, we provide a new buffer interval compare where
+  // we prioritize the allocation of sine, cosine, and tanh to create the
+  // situation:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //      +------------+
+  //      |     b      |
+  //      +------------+
+  //  +-------+
+  //  |       |
+  //  |       |
+  //  |   a   |
+  //  |       |                 +------------+
+  //  |       |                 |     n      |
+  //  +-------+                 +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  //
+  // Then allocating for buffer d, we have these two prefetch buffers
+  // overlapping:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //      +------------+ +----------+
+  //      |     b      | | prefetch |
+  //      +------------+ | for o    |
+  //  +-------+     +---------+     |
+  //  |       |     |    |    |     |
+  //  |       |     |    |    |     |
+  //  |   a   |     |    +----|-----+
+  //  |       |     | prefetch| +------------+
+  //  |       |     | for m   | |     n      |
+  //  +-------+     +---------+ +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY %Entry {
+    %param0 = f32[8,3] parameter(0)
+    %param1 = f32[2,4] parameter(1)
+    %a = f32[8,3] sine(%param0)
+    %b = f32[2,4] cosine(%param1)
+    %d = f32[8,3] tanh(%a)
+    %c = f32[8,3] negate(%a)
+    %e = f32[2,4] negate(%b)
+    %f = f32[2,4] negate(%e)
+    %g = f32[2,4] negate(%f)
+    %h = f32[2,4] negate(%g)
+    %i = f32[2,4] negate(%h)
+    %j = f32[2,4] negate(%i)
+    %k = f32[2,4] negate(%j)
+    %l = f32[2,4] negate(%k)
+    %m = f32[8,3] negate(%d)
+    %n = f32[2,4] sine(%l)
+    %o = f32[8,3] negate(%d)
+    %p = f32[2,4] negate(%n)
+    %q = f32[8,3] negate(%m)
+    ROOT %tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(%p, %q, %o)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            case HloOpcode::kTanh:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {

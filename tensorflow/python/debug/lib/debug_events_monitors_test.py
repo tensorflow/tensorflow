@@ -66,6 +66,7 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("ConciseHealth", "CONCISE_HEALTH"),
+      ("FullHealth", "FULL_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testOnExecutionIsCalled(self, tensor_debug_mode):
@@ -96,6 +97,12 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertLen(execution.debug_tensor_values, 1)
         # [tensor_id, element_count, neg_inf_count, pos_inf_count, nan_count].
         self.assertLen(execution.debug_tensor_values[0], 5)
+      elif tensor_debug_mode == "FULL_HEALTH":
+        self.assertLen(execution.debug_tensor_values, 1)
+        # [tensor_id, device_id, dtype, rank, element_count,
+        #  neg_inf_count, pos_inf_count, nan_count,
+        #  neg_finite_count, zero_count, pos_finite_count].
+        self.assertLen(execution.debug_tensor_values[0], 11)
       elif tensor_debug_mode == "FULL_TENSOR":
         # Full tensor values are not stored in the debug_tensor_values field.
         self.assertIsNone(execution.debug_tensor_values)
@@ -104,6 +111,7 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
 
   @parameterized.named_parameters(
       ("ConciseHealth", "CONCISE_HEALTH"),
+      ("FullHealth", "FULL_HEALTH"),
       ("FullTensor", "FULL_TENSOR"),
   )
   def testOnGraphExecutionTraceIsCalled(self, tensor_debug_mode):
@@ -149,6 +157,21 @@ class DebugEventsMonitorTest(dumping_callback_test_lib.DumpingCallbackTestBase,
         self.assertLen(traces[0].debug_tensor_value, 5)
         self.assertLen(traces[1].debug_tensor_value, 5)
         self.assertLen(traces[2].debug_tensor_value, 5)
+      elif tensor_debug_mode == "FULL_HEALTH":
+        self.assertLen(traces, 3)  # [Placeholder:0, Unique:0 , Sum:0].
+        self.assertEqual(traces[0].op_type, "Placeholder")
+        self.assertEqual(traces[0].output_slot, 0)
+        self.assertEqual(traces[1].op_type, "Unique")
+        self.assertEqual(traces[1].output_slot, 0)
+        # Unique:1 is not traced under FULL_HEALTH mode, as it's int-dtype.
+        self.assertEqual(traces[2].op_type, "Sum")
+        self.assertEqual(traces[2].output_slot, 0)
+        # [tensor_id, device_id, dtype, rank, element_count,
+        #  neg_inf_count, pos_inf_count, nan_count,
+        #  neg_finite_count, zero_count, pos_finite_count].
+        self.assertLen(traces[0].debug_tensor_value, 11)
+        self.assertLen(traces[1].debug_tensor_value, 11)
+        self.assertLen(traces[2].debug_tensor_value, 11)
       elif tensor_debug_mode == "FULL_TENSOR":
         self.assertLen(traces, 4)  # [Placeholder:0, Unique:0, Unique:1, Sum:0].
         self.assertEqual(traces[0].op_type, "Placeholder")
@@ -236,21 +259,37 @@ class InfNanMonitorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(alert.execution_index, 50)
     self.assertIsNone(alert.graph_execution_trace_index)
 
-  def testInfNanMonitorOnExecutionUnderConciseHealthMode(self):
+  @parameterized.named_parameters(
+      ("ConciseHealth",
+       debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+       # [tensor_id, size, num_neg_inf, num_pos_inf, num_nan].
+       [[-1, 10, 1, 2, 3],
+        [-1, 100, 0, 0, 0]]),
+      ("FullHealth",
+       debug_event_pb2.TensorDebugMode.FULL_HEALTH,
+       # [tensor_id, device_id, dtype, rank, element_count,
+       #  neg_inf_count, pos_inf_count, nan_count,
+       #  neg_finite_count, zero_count, pos_finite_count].
+       [[-1, -1, 1, 1, 10, 1, 2, 3, 0, 0, 0],
+        [-1, -1, 1, 1, 100, 0, 0, 0, 10, 30, 60]]),
+  )
+  def testInfNanMonitorOnExecutionUnderHealthMode(self,
+                                                  tensor_debug_mode,
+                                                  debug_tensor_values):
     mock_reader = test.mock.MagicMock()
     monitor = debug_events_monitors.InfNanMonitor(mock_reader)
     execution_digest = debug_events_reader.ExecutionDigest(
         1234, 1, "BarOp", output_tensor_device_ids=[0, 1])
+
     execution = debug_events_reader.Execution(
         execution_digest,
         "worker01",
         ["a1", "b2", "e3"],
-        debug_event_pb2.TensorDebugMode.CONCISE_HEALTH,
+        tensor_debug_mode,
         graph_id=None,
         input_tensor_ids=[12, 34],
         output_tensor_ids=[56, 78],
-        # [tensor_id, size, num_neg_inf, num_pos_inf, num_nan].
-        debug_tensor_values=[[-1, 10, 1, 2, 3], [-1, 100, 0, 0, 0]])
+        debug_tensor_values=debug_tensor_values)
     monitor.on_execution(60, execution)
 
     self.assertLen(monitor.alerts(), 1)
@@ -264,6 +303,35 @@ class InfNanMonitorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(alert.num_nan, 3)
     self.assertEqual(alert.execution_index, 60)
     self.assertIsNone(alert.graph_execution_trace_index)
+
+  @parameterized.named_parameters(
+      ("Shape",
+       debug_event_pb2.TensorDebugMode.SHAPE,
+       # [tensor_id, dtype, rank, element_cont, ...shape_truncate_6]
+       [[-1, 1, 2, 6, 3, 2, 0, 0, 0, 0],
+        [-1, 10, 1, 7, 7, 0, 0, 0, 0, 0]]),
+  )
+  def testInfNanMonitorOnExecutionUnderModeWithNoInfNanInfo(
+      self,
+      tensor_debug_mode,
+      debug_tensor_values):
+    mock_reader = test.mock.MagicMock()
+    monitor = debug_events_monitors.InfNanMonitor(mock_reader)
+    execution_digest = debug_events_reader.ExecutionDigest(
+        1234, 1, "BarOp", output_tensor_device_ids=[0, 1])
+
+    execution = debug_events_reader.Execution(
+        execution_digest,
+        "worker01",
+        ["a1", "b2", "e3"],
+        tensor_debug_mode,
+        graph_id=None,
+        input_tensor_ids=[12, 34],
+        output_tensor_ids=[56, 78],
+        debug_tensor_values=debug_tensor_values)
+    monitor.on_execution(60, execution)
+
+    self.assertEmpty(monitor.alerts())
 
   @parameterized.named_parameters(
       ("FloatsScalarWithInfAndNan", np.inf, np.float32, 1, 0, 1, 0),

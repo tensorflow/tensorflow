@@ -162,17 +162,8 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
-    string remote_task;
-    if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
-      return errors::InvalidArgument(
-          "Unable to find remote task corresponding to device ", device_name);
-    }
-    auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
-        in.op_id(), in.output_num(), remote_task, parent_->GetContextId(),
-        parent_);
-    remote_handle_data->ReleaseRemoteTensorHandle();
-    TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-        std::move(remote_handle_data), in.dtype(), device, parent_, out));
+    TF_RETURN_IF_ERROR(TensorHandle::CreateLazyRemoteHandle(
+        in.op_id(), in.output_num(), in.dtype(), device, parent_, out));
     TensorHandle::ResourceHandleInfo resource_handle_info;
     std::vector<DtypeAndPartialTensorShape>* dtypes_and_shapes =
         &resource_handle_info.dtypes_and_shapes;

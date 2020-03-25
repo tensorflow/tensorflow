@@ -43,17 +43,22 @@ enum class OperationType {
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
   LOG,
   LSTM,
+  MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MINIMUM,
   MUL,
   PAD,
   POOLING_2D,
   POW,
   PRELU,
+  // Used to accurately run inference on quantized models.
+  QUANTIZE_AND_DEQUANTIZE,
   RELU,
   RESHAPE,
   RESIZE,
@@ -63,6 +68,7 @@ enum class OperationType {
   SLICE,
   SOFTMAX,
   SPACE_TO_BATCH,
+  SPACE_TO_DEPTH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
@@ -74,6 +80,9 @@ enum class OperationType {
 std::string ToString(enum OperationType op);
 
 OperationType OperationTypeFromString(const std::string& name);
+
+typedef absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
+    TensorOrScalar;
 
 struct Padding2D {
   Padding2D() = default;
@@ -352,8 +361,7 @@ struct LstmAttributes {
 };
 
 struct MultiplyAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+  TensorOrScalar param;
 };
 
 enum class SamplingType {
@@ -435,8 +443,7 @@ struct SliceAttributes {
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr);
 
 struct AddAttributes {
-  absl::variant<absl::monostate, Tensor<Linear, DataType::FLOAT32>, float>
-      param;
+  TensorOrScalar param;
 };
 
 struct FullyConnectedAttributes {
@@ -452,6 +459,10 @@ BHWC CalculateOutputShape(const BHWC& input,
 // @return shape of a tensor after Mean operation is applied to the given input.
 BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
+struct ElementwiseAttributes {
+  TensorOrScalar param;
+};
+
 struct ReshapeAttributes {
   BHWC new_shape;
 };
@@ -464,6 +475,18 @@ struct TransposeAttributes {
 // @return shape of a tensor after Transpose operation is applied to
 // the given input.
 BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
+
+struct SpaceToDepthAttributes {
+  int block_size;
+};
+
+// These help perform a combination of Quantize & Dequantize to adjust float
+// values like quantized inference would.
+struct QuantizeAndDequantizeAttributes {
+  float min = 0;
+  float max = 0;
+  float scale = 0;
+};
 
 }  // namespace gpu
 }  // namespace tflite

@@ -94,7 +94,7 @@ class FailTestRMA : public CollectiveRemoteAccessLocal {
   }
 
   mutex mu_;
-  int fail_after_ GUARDED_BY(mu_);
+  int fail_after_ TF_GUARDED_BY(mu_);
 };
 
 std::unique_ptr<OpKernel> GetKernel(const NodeDef& node,
@@ -528,7 +528,7 @@ class RingGathererTest : public ::testing::Test {
   std::unique_ptr<tensorflow::DeviceMgr> dev_mgr_;
   std::unique_ptr<string> gpu_ring_order_;
   mutex mu_;
-  int32 gather_counter_ GUARDED_BY(mu_) = 0;
+  int32 gather_counter_ TF_GUARDED_BY(mu_) = 0;
 };
 
 CollectiveParams SetUpCollectiveParams(const int num_devs_per_task,

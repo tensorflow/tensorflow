@@ -975,8 +975,9 @@ Status CopyInsertion::AddCopiesToResolveInterference(HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, can_share_buffer_));
 
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
+  for (HloComputation* computation : module->MakeComputationPostOrder()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
       if (instruction->opcode() == HloOpcode::kWhile) {
         TF_RETURN_IF_ERROR(AddCopiesForWhile(*alias_analysis, instruction));
       } else if (instruction->opcode() == HloOpcode::kConditional) {
@@ -1043,15 +1044,31 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
     HloInstruction* root = computation->root_instruction();
 
     // Mark nondistinct/ambiguous indices.
-    absl::flat_hash_set<const HloBuffer*> seen;
+    absl::flat_hash_map<const HloBuffer*, ShapeIndex> seen;
     ShapeUtil::ForEachSubshape(
         root->shape(), [&](const Shape& /*subshape*/, const ShapeIndex& index) {
           std::vector<const HloBuffer*> buffers_at_index =
               alias_analysis->ComputeBuffersAt(root, index);
           bool buffer_seen_before = false;
           for (const HloBuffer* buffer : buffers_at_index) {
-            buffer_seen_before |= !seen.insert(buffer).second;
+            buffer_seen_before |= !seen.emplace(buffer, index).second;
           }
+
+          if (buffer_seen_before && policy.copy_root_replicated_buffers &&
+              computation == module->entry_computation() &&
+              module->input_output_alias_config().OutputHasAlias(index) &&
+              buffers_at_index.size() == 1) {
+            absl::optional<HloInputOutputAliasConfig::Alias> alias =
+                module->input_output_alias_config().GetAliasedParameter(index);
+            CHECK(alias) << "Alias does not exist";
+            const ShapeIndex& other_index = seen[buffers_at_index[0]];
+            VLOG(2) << "Output indices " << index.ToString() << " and "
+                    << other_index.ToString() << " are both aliased to "
+                    << alias->parameter_number << " copying " << other_index;
+            add_index_to_copy(root, other_index);
+            return;
+          }
+
           if (buffers_at_index.size() > 1 ||
               (buffer_seen_before && policy.copy_root_replicated_buffers)) {
             VLOG(2) << "Index " << index << " of computation "
@@ -1097,6 +1114,18 @@ Status CopyInsertion::AddSpecialCaseCopies(const CallGraph& call_graph,
   return Status::OK();
 }
 
+static int64 GetNumExistingCopies(const HloModule* module) {
+  int64 num_existing_copies = 0;
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kCopy) {
+        ++num_existing_copies;
+      }
+    }
+  }
+  return num_existing_copies;
+}
+
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
@@ -1112,13 +1141,24 @@ Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
   }
 
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
-  for (HloComputation* computation : module->computations()) {
-    for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() == HloOpcode::kCopy &&
-          copy_remover.TryElideCopy(instruction)) {
-        TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
-        TF_RETURN_IF_ERROR(
-            instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+
+  int64 num_existing_copies = GetNumExistingCopies(module);
+  bool changed = true;
+  int64 num_iterations = -1;
+  while (changed) {
+    CHECK_LE(++num_iterations, num_existing_copies);
+    changed = false;
+    VLOG(2) << "Running fixpoint iteration " << num_iterations
+            << " of copy elision";
+    for (HloComputation* computation : module->computations()) {
+      for (HloInstruction* instruction : computation->instructions()) {
+        if (instruction->opcode() == HloOpcode::kCopy &&
+            copy_remover.TryElideCopy(instruction)) {
+          changed = true;
+          TF_RETURN_IF_ERROR(StripControlDependenciesFrom(instruction));
+          TF_RETURN_IF_ERROR(
+              instruction->ReplaceAllUsesWith(instruction->mutable_operand(0)));
+        }
       }
     }
   }
@@ -1156,17 +1196,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         "Call graph must be flattened before copy insertion.");
   }
 
-  int64 num_existing_copies = 0;
-  if (VLOG_IS_ON(1)) {
-    for (HloComputation* computation : module->computations()) {
-      for (HloInstruction* instruction : computation->instructions()) {
-        if (instruction->opcode() == HloOpcode::kCopy) {
-          ++num_existing_copies;
-        }
-      }
-    }
-  }
-
   TF_RETURN_IF_ERROR(AddCopiesToResolveInterference(module));
 
   // Simplify the tuple structures introduced by the deep copies. This should be
@@ -1185,7 +1214,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
       RemoveUnnecessaryCopies(DependencyHloOrdering(module), module));
   DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
                                    *module);
-
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
   DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
                                    *module);
@@ -1202,7 +1230,8 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
         }
       }
     }
-    VLOG(1) << "Num copies before copy-insertion: " << num_existing_copies;
+    VLOG(1) << "Num copies before copy-insertion: "
+            << GetNumExistingCopies(module);
     VLOG(1) << "Num copies after copy-insertion: " << num_total_copies;
   }
 

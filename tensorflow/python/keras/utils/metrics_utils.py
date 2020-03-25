@@ -471,7 +471,7 @@ def _filter_top_k(x, k):
   """
   _, top_k_idx = nn_ops.top_k(x, k, sorted=False)
   top_k_mask = math_ops.reduce_sum(
-      array_ops.one_hot(top_k_idx, x.shape[-1], axis=-1), axis=-2)
+      array_ops.one_hot(top_k_idx, array_ops.shape(x)[-1], axis=-1), axis=-2)
   return x * top_k_mask + NEG_INF * (1 - top_k_mask)
 
 

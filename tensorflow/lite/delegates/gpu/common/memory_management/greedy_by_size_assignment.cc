@@ -67,7 +67,7 @@ Status GreedyBySizeAssignment(
   assignment->offsets.resize(num_tensors);
   assignment->total_size = 0;
 
-  // Ordered records are to be sorted by size of corrseponding tensor.
+  // Ordered records are to be sorted by size of corresponding tensor.
   std::vector<TensorUsageWithIndex<size_t>> ordered_records;
   for (size_t i = 0; i < num_tensors; ++i) {
     ordered_records.emplace_back(&usage_records[i], i);
@@ -133,7 +133,7 @@ Status GreedyBySizeAssignment(
 // - We have tensor usage records of all intermideate tensors as an input. Each
 // record consists of tensor size, first and last tasks, that use it. Let's call
 // [first_task..last_task] a tensor usage interval;
-// - Distance between two usage intervals is the absoulte difference between
+// - Distance between two usage intervals is the absolute difference between
 // closest tasks in their intervals. If two usage intervals don't intersect,
 // than the distance between them is positive;
 // - Calculate positional maximums vector, e.g. the vector of lower bounds on

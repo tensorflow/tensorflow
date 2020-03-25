@@ -130,7 +130,7 @@ class MklReshapeOp : public OpKernel {
                                 " values, but the requested shape has ",
                                 shape.num_elements()));
 
-    if (input_in_mkl_format) {
+    if (input_in_mkl_format && !SkipReorder(mkl_shape_input, shape)) {
       TensorShape& shape_to = shape;
       TensorShape shape_from = mkl_shape_input.GetTfShape();
       if (shape_from == shape_to) {
@@ -145,74 +145,40 @@ class MklReshapeOp : public OpKernel {
           // tensor data in different layout than that specified by Tensorflow.
           // If MKLDNN maintains input tensor in different layout than that
           // specified by Tensorflow, we will need to reorder tensor and then
-          // put it in the shape expected by Tensorflow. But if MKLDNN has
-          // maintained input tensor in the same layout as it is expected by
-          // Tensorflow, we don't need to reorder tensor contents, we just
-          // need to update MklDnnShape object associated with the input
-          // tensor to reflect the shape change expected by reshape.
-          if (!SkipReorder(mkl_shape_input, shape_to)) {
-            // If dimensions that are being expanded or collapsed are not
-            // maintained contiguously by MKLDNN, then we use reorder.
+          // put it in the shape expected by Tensorflow.
 
-            // Get Mkl layout of input tensor.
-            auto input_mkl_md = mkl_shape_input.GetMklLayout();
-            // Set input Mkl layout as the user layout.
-            dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
-            // Get expected Tensorflow layout of input tensor.
-            auto output_tf_md = mkl_shape_input.GetTfLayout();
+          // If dimensions that are being expanded or collapsed are not
+          // maintained contiguously by MKLDNN, then we use reorder.
+
+          // Get Mkl layout of input tensor.
+          auto input_mkl_md = mkl_shape_input.GetMklLayout();
+          // Set input Mkl layout as the user layout.
+          dnn_data_input.SetUsrMem(input_mkl_md, &input_tensor);
+          // Get expected Tensorflow layout of input tensor.
+          auto output_tf_md = mkl_shape_input.GetTfLayout();
 #ifndef ENABLE_MKLDNN_V1
-            auto output_tf_pd =
-                memory::primitive_desc(output_tf_md, cpu_engine);
+          auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
 #endif  // !ENABLE_MKLDNN_V1
 
-            Tensor* output_tensor = nullptr;
-            MklDnnShape mkl_shape_output;
-            mkl_shape_output.SetMklTensor(false);
-            // We allocate output tensor in the shape expected by Reshape.
-            AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
-                                      shape_to, mkl_shape_output);
+          Tensor* output_tensor = nullptr;
+          MklDnnShape mkl_shape_output;
+          mkl_shape_output.SetMklTensor(false);
+          // We allocate output tensor in the shape expected by Reshape.
+          AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
+                                    shape_to, mkl_shape_output);
 
-            // Insert reorder between Mkl layout and TensorFlow layout if
-            // needed. If reorder is not needed but reshape is needed (since
-            // shape_from != shape_to), then we just copy input tensor to
-            // output tensor with target shape (we cannot forward Mkl layout
-            // in such case because shape has changed.)
-            if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD,
-                                                   output_tensor)) {
-            } else {
-              OP_REQUIRES(
-                  context, output_tensor->CopyFrom(input_tensor, shape_to),
-                  errors::InvalidArgument("invalid input tensor shape"));
-            }
-            return;
+          // Insert reorder between Mkl layout and TensorFlow layout if
+          // needed. If reorder is not needed but reshape is needed (since
+          // shape_from != shape_to), then we just copy input tensor to
+          // output tensor with target shape (we cannot forward Mkl layout
+          // in such case because shape has changed.)
+          if (dnn_data_input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor)) {
           } else {
-            // If dimensions that are being expanded or collapsed are
-            // maintained contiguously by MKLDNN, then we skip reorder, just
-            // update MklDnnShape object for the tensorflow tensor, and forward
-            // Tensorflow tensor as it is to the output.
-            auto output_dims = TFShapeToMklDnnDims(shape_to);
-            auto output_strides = CalculateTFStrides(output_dims);
-            auto output_tf_md = MklDnnData<T>::CreateBlockedMemDesc(
-                output_dims, output_strides);
-#ifndef ENABLE_MKLDNN_V1
-            auto output_tf_pd =
-                memory::primitive_desc(output_tf_md, cpu_engine);
-#endif  // !ENABLE_MKLDNN_V1
-
-            // Set MklDnnShape
-            MklDnnShape mkl_shape_output;
-            mkl_shape_output.SetMklTensor(true);
-            mkl_shape_output.SetMklLayout(&OUTPUT_TF_MD);
-            mkl_shape_output.SetElemType(MklDnnType<T>());
-            mkl_shape_output.SetTfLayout(output_dims.size(), output_dims,
-                                         MKL_TENSOR_FORMAT_BLOCKED);
-
-            // We now simply forward input Mkl tensor to output and change its
-            // output MklDnnShape object.
-            ForwardMklTensorInToOutWithMklShape(
-                context, kInputSlotIdx, kOutputSlotIdx, mkl_shape_output);
-            return;
+            OP_REQUIRES(context,
+                        output_tensor->CopyFrom(input_tensor, shape_to),
+                        errors::InvalidArgument("invalid input tensor shape"));
           }
+          return;
         } catch (mkldnn::error& e) {
           string error_msg = "Status: " + std::to_string(e.status) +
                              ", message: " + string(e.message) + ", in file " +

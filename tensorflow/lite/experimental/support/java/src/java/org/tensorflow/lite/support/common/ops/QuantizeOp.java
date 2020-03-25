@@ -25,6 +25,12 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
  * math on top of input. The data type of output tensor is always {@code FLOAT32} except that the Op
  * is effectively an identity Op (in this case, the output tensor is the same instance as the
  * input). To connect with quantized model, a {@link CastOp} is probably needed.
+ *
+ * <p>If both {@code zeroPoint} and {@code scale} are 0, the {@link QuantizeOp} will be bypassed,
+ * which is equivalent to setting {@code zeroPoint} to 0 and {@code scale} to 1. This can be useful
+ * when passing in the quantization parameters that are extracted directly from the TFLite model
+ * flatbuffer. If the tensor is not quantized, both {@code zeroPoint} and {@code scale} will be read
+ * as 0.
  */
 public class QuantizeOp extends NormalizeOp implements TensorOperator {
 

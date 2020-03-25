@@ -229,7 +229,7 @@ bool IsArrayQuantizedRangeSubset(GraphTransformation* transformation,
       ChooseQuantizationParamsForArrayAndQuantizedDataType(
           array, quantized_data_type, &quantization_params);
       transformation->AddMessageF(
-          "No quantization params - infering from data type %s with minmax "
+          "No quantization params - inferring from data type %s with minmax "
           "%g,%g as zero_point=%g, scale=%g",
           ArrayDataTypeName(quantized_data_type), array.minmax->min,
           array.minmax->max, quantization_params.zero_point,

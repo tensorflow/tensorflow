@@ -4,6 +4,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.compiler.tensorrt.trt_convert.TrtConversionParams\'>"
   is_instance: "<type \'tuple\'>"
   member {
+    name: "allow_build_at_runtime"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "is_dynamic_op"
     mtype: "<type \'property\'>"
   }

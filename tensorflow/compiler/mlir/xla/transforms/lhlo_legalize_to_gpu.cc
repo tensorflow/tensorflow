@@ -19,21 +19,21 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // TF:llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // TF:llvm-project
-#include "mlir/Dialect/LoopOps/LoopOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
+#include "mlir/Dialect/LoopOps/LoopOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 
@@ -48,7 +48,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
  public:
   using OpConversionPattern::OpConversionPattern;
 
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       ReduceOp reduce_op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = reduce_op.getLoc();
@@ -57,11 +57,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     for (auto result : reduce_op.out()) {
       auto shaped_type = result.getType().dyn_cast<ShapedType>();
       if (!shaped_type || shaped_type.getRank() != 1) {
-        return matchFailure();
+        return failure();
       }
       auto dim_size = shaped_type.getDimSize(0);
       if (size && size != dim_size) {
-        return matchFailure();
+        return failure();
       }
       size = dim_size;
     }
@@ -73,7 +73,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     for (auto input : reduce_op.operands()) {
       auto shaped_type = input.getType().dyn_cast<ShapedType>();
       if (!shaped_type || !shaped_type.hasStaticShape()) {
-        return matchFailure();
+        return failure();
       }
       reduce_dim_size =
           shaped_type.getDimSize(reducing_dimension.getSExtValue());
@@ -164,7 +164,7 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
     }
 
     rewriter.eraseOp(reduce_op);
-    return matchSuccess();
+    return success();
   };
 };
 

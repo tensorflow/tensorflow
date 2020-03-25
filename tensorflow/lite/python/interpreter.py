@@ -37,7 +37,7 @@ if not __file__.endswith('tflite_runtime/interpreter.py'):
   _interpreter_wrapper = LazyLoader(
       "_interpreter_wrapper", globals(),
       "tensorflow.lite.python.interpreter_wrapper."
-      "tensorflow_wrap_interpreter_wrapper")
+      '_pywrap_tensorflow_interpreter_wrapper')
   # pylint: enable=g-inconsistent-quotes
 
   del LazyLoader
@@ -200,7 +200,7 @@ class Interpreter(object):
       self._custom_op_registerers = []
     if model_path and not model_content:
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromFile(
+          _interpreter_wrapper.CreateWrapperFromFile(
               model_path, self._custom_op_registerers))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
@@ -210,9 +210,9 @@ class Interpreter(object):
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
-          _interpreter_wrapper.InterpreterWrapper_CreateWrapperCPPFromBuffer(
+          _interpreter_wrapper.CreateWrapperFromBuffer(
               model_content, self._custom_op_registerers))
-    elif not model_path and not model_path:
+    elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
       raise ValueError('Can\'t both provide `model_path` and `model_content`')
@@ -325,6 +325,8 @@ class Interpreter(object):
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
     tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
         tensor_index)
+    tensor_sparsity_params = self._interpreter.TensorSparsityParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -340,7 +342,8 @@ class Interpreter(object):
             'scales': tensor_quantization_params[0],
             'zero_points': tensor_quantization_params[1],
             'quantized_dimension': tensor_quantization_params[2],
-        }
+        },
+        'sparsity_parameters': tensor_sparsity_params
     }
 
     return details
@@ -514,7 +517,7 @@ class Interpreter(object):
 class InterpreterWithCustomOps(Interpreter):
   """Interpreter interface for TensorFlow Lite Models that accepts custom ops.
 
-  The interface provided by this class is experimenal and therefore not exposed
+  The interface provided by this class is experimental and therefore not exposed
   as part of the public API.
 
   Wraps the tf.lite.Interpreter class and adds the ability to load custom ops

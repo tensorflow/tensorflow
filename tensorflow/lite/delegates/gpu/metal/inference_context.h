@@ -35,7 +35,7 @@ limitations under the License.
 /// 2. Model compilation. Global list of ComputeTaskDescriptors is transformed
 ///    into the sorted list of sets of descriptors. A set can be transformed
 ///    later into a single GPU task.
-/// 3. GPU compute tasks generation. Shader code generation happes here.
+/// 3. GPU compute tasks generation. Shader code generation happens here.
 /// 4. Intermediate resource allocation.
 /// Inference.
 @interface TFLInferenceContext : NSObject
@@ -72,11 +72,11 @@ limitations under the License.
 /// Inserts all GPU compute tasks into the command encoder.
 /// @param inputOutputBuffers Must be created and passed into the method with pairs ID:buffer
 /// @param encoderBlock User-defined block to take control over command encoder. Can be nil.
-///             The block can be used, for example, for fine-graned benchmarking where end encoding
+///             The block can be used, for example, for fine-grained benchmarking where end encoding
 ///             is performed and command buffer is committed with completion block. A new command
 ///             buffer must be created and new command encoder must be returned by the block.
 ///             The block is called after every dispatch encoding.
-/// @discussion No GPU sychronization functions are used inside. All GPU resources must be created
+/// @discussion No GPU synchronization functions are used inside. All GPU resources must be created
 ///             with the same device which has been used in compileModelWithDevice() method.
 - (void)encodeWithEncoder:(id<MTLComputeCommandEncoder>)commandEncoder
        inputOutputBuffers:(const std::map<::tflite::gpu::ValueId, id<MTLBuffer>>&)inputOutputBuffers

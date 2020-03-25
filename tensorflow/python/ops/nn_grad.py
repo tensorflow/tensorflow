@@ -883,7 +883,7 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     }
     if version == 2:
       args["reserve_space_3"] = op.outputs[5]
-    return grad_fun(**args)
+    dx, dscale, doffset, _, _ = grad_fun(**args)
   else:
     pop_mean = op.inputs[3]
     pop_var = op.inputs[4]
@@ -905,7 +905,8 @@ def _BaseFusedBatchNormGrad(op, version, *grad):
     dx, dscale, doffset, _, _ = grad_fun(**args)
     if data_format == b"NCHW":
       dx = array_ops.transpose(dx, [0, 3, 1, 2])
-    return dx, dscale, doffset, None, None
+  return dx, dscale, doffset, None, None
+
 
 @ops.RegisterGradient("FusedBatchNorm")
 def _FusedBatchNormGrad(op, *grad):

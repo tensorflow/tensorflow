@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -23,6 +25,7 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+template <class T>
 class MaxMinOpModel : public SingleOpModel {
  public:
   MaxMinOpModel(tflite::BuiltinOperator op, const TensorData& input1,
@@ -35,20 +38,28 @@ class MaxMinOpModel : public SingleOpModel {
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
 
-  template <class T>
+  MaxMinOpModel(tflite::BuiltinOperator op, const TensorData& input1,
+                std::initializer_list<T> input1_values,
+                const TensorData& input2,
+                std::initializer_list<T> input2_values,
+                const TensorType& output) {
+    input1_ = AddConstInput<T>(input1, input1_values);
+    input2_ = AddConstInput<T>(input2, input2_values);
+    output_ = AddOutput(output);
+    SetBuiltinOp(op, BuiltinOptions_MaximumMinimumOptions,
+                 CreateMaximumMinimumOptions(builder_).Union());
+    BuildInterpreter({GetShape(input1_), GetShape(input2_)});
+  }
+
   void SetInput1(std::initializer_list<T> data) {
     PopulateTensor(input1_, data);
   }
 
-  template <class T>
   void SetInput2(std::initializer_list<T> data) {
     PopulateTensor(input2_, data);
   }
 
-  template <class T>
-  std::vector<T> GetOutput() {
-    return ExtractVector<T>(output_);
-  }
+  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
  protected:
@@ -62,28 +73,22 @@ void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
                const TensorData& input2, const TensorData& output,
                std::initializer_list<data_type> input1_values,
                std::initializer_list<data_type> input2_values,
-               std::initializer_list<data_type> output_values) {
-  MaxMinOpModel m(op, input1, input2, output.type);
-  m.SetInput1<data_type>(input1_values);
-  m.SetInput2<data_type>(input2_values);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(output.shape));
-  EXPECT_THAT(m.GetOutput<data_type>(), ElementsAreArray(output_values));
-}
+               std::initializer_list<data_type> output_values,
+               int is_constant = false) {
+  std::unique_ptr<MaxMinOpModel<data_type>> m;
+  if (is_constant) {
+    m = std::make_unique<MaxMinOpModel<data_type>>(
+        op, input1, input1_values, input2, input2_values, output.type);
+  } else {
+    m = std::make_unique<MaxMinOpModel<data_type>>(op, input1, input2,
+                                                   output.type);
+    m->SetInput1(input1_values);
+    m->SetInput2(input2_values);
+  }
 
-template <>
-void TestModel(tflite::BuiltinOperator op, const TensorData& input1,
-               const TensorData& input2, const TensorData& output,
-               std::initializer_list<float> input1_values,
-               std::initializer_list<float> input2_values,
-               std::initializer_list<float> output_values) {
-  MaxMinOpModel m(op, input1, input2, output.type);
-  m.SetInput1<float>(input1_values);
-  m.SetInput2<float>(input2_values);
-  m.Invoke();
-  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray(output.shape));
-  EXPECT_THAT(m.GetOutput<float>(),
-              ElementsAreArray(ArrayFloatNear(output_values)));
+  m->Invoke();
+  EXPECT_THAT(m->GetOutputShape(), ElementsAreArray(output.shape));
+  EXPECT_THAT(m->GetOutput(), ElementsAreArray(output_values));
 }
 
 TEST(MaximumOpTest, FloatTest) {
@@ -123,6 +128,19 @@ TEST(MaxMinOpTest, Int8Test) {
                     data1, data2, {0, 0, 1, 11, 2, 1});
 }
 
+TEST(MaxMinOpTest, Int16Test) {
+  std::initializer_list<int16_t> data1 = {-32768, 0, 2, 11, 2, 23};
+  std::initializer_list<int16_t> data2 = {0, 0, 1, 32767, 123, 1};
+  TestModel<int16_t>(BuiltinOperator_MAXIMUM, {TensorType_INT16, {3, 1, 2}},
+                     {TensorType_INT16, {3, 1, 2}},
+                     {TensorType_INT16, {3, 1, 2}}, data1, data2,
+                     {0, 0, 2, 32767, 123, 23});
+  TestModel<int16_t>(BuiltinOperator_MINIMUM, {TensorType_INT16, {3, 1, 2}},
+                     {TensorType_INT16, {3, 1, 2}},
+                     {TensorType_INT16, {3, 1, 2}}, data1, data2,
+                     {-32768, 0, 1, 11, 2, 1});
+}
+
 TEST(MaximumOpTest, FloatWithBroadcastTest) {
   std::initializer_list<float> data1 = {1.0, 0.0, -1.0, -2.0, -1.44, 11.0};
   std::initializer_list<float> data2 = {0.5, 2.0};
@@ -134,15 +152,39 @@ TEST(MaximumOpTest, FloatWithBroadcastTest) {
                    data1, data2, {0.5, 0.0, -1.0, -2.0, -1.44, 2.0});
 }
 
+TEST(MaximumOpTest, FloatWithBroadcastTest_ScalarY) {
+  std::initializer_list<float> data1 = {1.0, 0.0, -1.0, -2.0, -1.44, 11.0};
+  std::initializer_list<float> data2 = {0.5};
+  TestModel<float>(BuiltinOperator_MAXIMUM, {TensorType_FLOAT32, {3, 1, 2}},
+                   {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {3, 1, 2}},
+                   data1, data2, {1.0, 0.5, 0.5, 0.5, 0.5, 11.0},
+                   /*is_constant=*/true);
+  TestModel<float>(BuiltinOperator_MINIMUM, {TensorType_FLOAT32, {3, 1, 2}},
+                   {TensorType_FLOAT32, {}}, {TensorType_FLOAT32, {3, 1, 2}},
+                   data1, data2, {0.5, 0.0, -1.0, -2.0, -1.44, 0.5},
+                   /*is_constant=*/true);
+}
+
 TEST(MaximumOpTest, Int32WithBroadcastTest) {
   std::initializer_list<int32_t> data1 = {1, 0, -1, -2, 3, 11};
   std::initializer_list<int32_t> data2 = {2};
   TestModel<int32_t>(BuiltinOperator_MAXIMUM, {TensorType_INT32, {3, 1, 2}},
-                   {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
-                   data1, data2, {2, 2, 2, 2, 3, 11});
+                     {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
+                     data1, data2, {2, 2, 2, 2, 3, 11});
   TestModel<int32_t>(BuiltinOperator_MINIMUM, {TensorType_INT32, {3, 1, 2}},
-                   {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
-                   data1, data2, {1, 0, -1, -2, 2, 2});
+                     {TensorType_INT32, {1}}, {TensorType_INT32, {3, 1, 2}},
+                     data1, data2, {1, 0, -1, -2, 2, 2});
+}
+
+TEST(MaximumOpTest, Int32WithBroadcastTest_ScalarY) {
+  std::initializer_list<int32_t> data1 = {1, 0, -1, -2, 3, 11};
+  std::initializer_list<int32_t> data2 = {2};
+  TestModel<int32_t>(BuiltinOperator_MAXIMUM, {TensorType_INT32, {3, 1, 2}},
+                     {TensorType_INT32, {}}, {TensorType_INT32, {3, 1, 2}},
+                     data1, data2, {2, 2, 2, 2, 3, 11}, /*is_constant=*/true);
+  TestModel<int32_t>(BuiltinOperator_MINIMUM, {TensorType_INT32, {3, 1, 2}},
+                     {TensorType_INT32, {}}, {TensorType_INT32, {3, 1, 2}},
+                     data1, data2, {1, 0, -1, -2, 2, 2}, /*is_constant=*/true);
 }
 }  // namespace
 }  // namespace tflite

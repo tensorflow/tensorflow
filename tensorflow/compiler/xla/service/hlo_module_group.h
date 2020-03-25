@@ -64,6 +64,15 @@ class HloModuleGroup {
 
   string ToString() const;
 
+  // Deallocate removed instructions in each module.
+  void Cleanup() {
+    for (auto& module : modules_) {
+      module->Cleanup();
+    }
+  }
+
+  uint64 Hash() const;
+
   // Serialize the module group to/from a proto.
   HloModuleGroupProto ToProto() const;
   static StatusOr<HloModuleGroup> CreateFromProto(
