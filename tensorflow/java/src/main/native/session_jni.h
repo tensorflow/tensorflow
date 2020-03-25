@@ -56,6 +56,39 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
     JNIEnv *, jclass, jlong, jbyteArray, jlongArray, jlongArray, jintArray,
     jlongArray, jintArray, jlongArray, jboolean, jlongArray);
 
+/*
+ * Class:     org_tensorflow_Session
+ * Method:    run
+ * Signature: (J[B[J[J[I[J[I[JZ[J)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
+    JNIEnv *, jclass, jlong, jbyteArray, jlongArray, jlongArray, jintArray,
+    jlongArray, jintArray, jlongArray, jboolean, jlongArray);
+
+/*
+ * Class:     org_tensorflow_Session
+ * Method:    getGPUDeviceName
+ * Signature: -
+ */
+JNIEXPORT jstring JNICALL Java_org_tensorflow_Session_getGPUDeviceName(
+    JNIEnv*, jclass, jlong handle);
+
+/*
+ * Class:     org_tensorflow_Session
+ * Method:    makeCallable
+ * Signature: -
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_makeCallable(
+    JNIEnv*, jclass, jlong, jbyteArray);
+
+/*
+ * Class:     org_tensorflow_Session
+ * Method:    runCallable
+ * Signature: -
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_runCallable(
+    JNIEnv*, jclass, jlong, jlong, jlongArray, jlongArray);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
