@@ -438,7 +438,7 @@ LogicalResult RefineShapeForControlFlowFunc(FuncOp func,
   auto func_uses = SymbolTable::getSymbolUses(func, &module.getBodyRegion());
   int num_uses = std::distance(func_uses->begin(), func_uses->end());
   if (num_uses != 1) {
-    func.emitError(llvm::formatv(
+    func.emitWarning(llvm::formatv(
         "expected control flow function {0} to have exactly 1 use, found {1}.",
         func.getName(), num_uses));
     return failure();
