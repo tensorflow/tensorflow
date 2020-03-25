@@ -1724,6 +1724,10 @@ class WhileContext(ControlFlowContext):
     We move any external control dependencies of the op to the loop pivot, to
     ensure they get executed.
     """
+    # This is needed to prevent frame mismatch errors where there are Const
+    # nodes inside tf.function in v1 while_loop and inlining is turned on.
+    if op.type in ["PartitionedCall", "StatefulPartitionedCall"]:
+      op._add_control_input(self.GetControlPivot().op)  # pylint: disable=protected-access
     if not op.inputs:
       # Remove any external control dependency on this op
       control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
