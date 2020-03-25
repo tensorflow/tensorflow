@@ -150,6 +150,22 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(JNIEnv *,
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv *, jclass,
                                                               jlong, jobject);
 
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    allocateGPU
+ * Signature: -
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv *, jclass,
+                                                               jlongArray, jint);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    getGPUPointer
+ * Signature: -
+ */
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_getGPUPointer(JNIEnv*, jclass,
+                                                                 jlong);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
