@@ -410,6 +410,18 @@ class KerasLayerTest(keras_parameterized.TestCase):
     self.assertEqual(layer.v.dtype, 'float32')
     self.assertEqual(self.evaluate(y), 1.)
 
+  def test_unsupported_strategy(self):
+    strategy = create_central_storage_strategy()
+    with strategy.scope(), self.assertRaisesRegexp(
+        ValueError, 'Mixed precision is not supported with the '
+                    'tf.distribute.Strategy: CentralStorageStrategy. Either '
+                    'stop using mixed precision by removing the use of the '
+                    '"mixed_float16" policy or use a different Strategy, e.g. '
+                    'a MirroredStrategy.'):
+      mp_test_util.MultiplyLayer(dtype=policy.Policy('mixed_float16'))
+    # Non-mixed policies are fine
+    mp_test_util.MultiplyLayer(dtype=policy.Policy('float64'))
+
 
 class KerasModelTest(keras_parameterized.TestCase):
   """Test mixed precision with Keras models."""
@@ -484,11 +496,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'save_format': 'h5',
           'use_regularizer': True,
-      }, {
-          'testcase_name': 'central_storage',
-          'strategy_fn': create_central_storage_strategy,
-          'use_regularizer': True,
-          'save_format': 'tf'
       })
   def test_model(self,
                  strategy_fn,
@@ -736,10 +743,6 @@ class KerasModelTest(keras_parameterized.TestCase):
           'strategy_fn': create_mirrored_strategy,
           'get_config': True,
           'pass_loss_scale_to_policy': True,
-      }, {
-          'testcase_name': 'central_storage',
-          'strategy_fn': create_central_storage_strategy,
-          'get_config': True,
       })
   def test_dynamic_loss_scaling(self,
                                 strategy_fn,

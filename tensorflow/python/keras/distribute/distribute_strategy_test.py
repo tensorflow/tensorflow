@@ -1746,6 +1746,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.train_begin_batches, [0, 10, 20, 30, 40])
     self.assertEqual(bc.train_end_batches, [9, 19, 29, 39, 49])
 
+    model.evaluate(x, y, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.test_begin_batches, [0, 10, 20, 30, 40])
+    self.assertEqual(bc.test_end_batches, [9, 19, 29, 39, 49])
+
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
   def test_host_training_loop_last_partial_execution(self, distribution):
@@ -1761,6 +1765,10 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.fit(x, y, batch_size=2, epochs=1, callbacks=[bc])
     self.assertEqual(bc.train_begin_batches, [0, 20, 40])
     self.assertEqual(bc.train_end_batches, [19, 39, 49])
+
+    model.evaluate(x, y, batch_size=2, callbacks=[bc])
+    self.assertEqual(bc.test_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.test_end_batches, [19, 39, 49])
 
   @combinations.generate(
       combinations.combine(distribution=all_strategies, mode=['eager']))
@@ -1780,10 +1788,18 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
       model.fit(ds, epochs=2, callbacks=[bc])
 
-    ds = ds.repeat(2)
-    model.fit(ds, steps_per_epoch=50, epochs=2, callbacks=[bc])
+    train_ds = ds.repeat(2)
+    model.fit(train_ds, steps_per_epoch=50, epochs=2, callbacks=[bc])
     self.assertEqual(bc.train_begin_batches, [0, 20, 40, 0, 20, 40])
     self.assertEqual(bc.train_end_batches, [19, 39, 49, 19, 39, 49])
+
+    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+      model.evaluate(ds, callbacks=[bc])
+
+    test_ds = ds.repeat(2)
+    model.evaluate(test_ds, steps=50, callbacks=[bc])
+    self.assertEqual(bc.test_begin_batches, [0, 20, 40])
+    self.assertEqual(bc.test_end_batches, [19, 39, 49])
 
   @combinations.generate(
       combinations.times(

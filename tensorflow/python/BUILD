@@ -639,6 +639,7 @@ tf_python_pybind_extension(
             "//tensorflow/core:eager_service_proto_cc",
             "//tensorflow/core:master_proto_cc",
             "//tensorflow/core:worker_proto_cc",
+            "//tensorflow/core:version_lib",
         ],
         otherwise = [
             "//tensorflow/core:eager_service_proto_cc_headers_only",

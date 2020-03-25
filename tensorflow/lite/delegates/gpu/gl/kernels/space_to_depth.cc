@@ -31,8 +31,8 @@ namespace {
 
 class SpaceToDepth : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     const auto attr =
         absl::any_cast<SpaceToDepthAttributes>(ctx.node->operation.attributes);
     const auto& input_data_0 = ctx.graph->FindInputs(ctx.node->id)[0]->tensor;
@@ -60,7 +60,7 @@ class SpaceToDepth : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 }  // namespace

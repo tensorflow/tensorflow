@@ -1176,14 +1176,8 @@ class DataHandler(object):
       yield
       context.async_wait()
     except (StopIteration, errors.OutOfRangeError):
-      context.async_clear_error()
       if self._inferred_steps is None:
-        # The input passed by the user ran out of batches.
-        # Now we know the cardinality of the input(dataset or generator).
-        if self._model is not None:
-          self._inferred_steps = self._model._train_counter.numpy().item()  # pylint: disable=protected-access
-        else:
-          self._inferred_steps = self._current_step
+        self._inferred_steps = self._current_step
       else:
         self._insufficient_data = True
         total_epochs = self._epochs - self._initial_epoch

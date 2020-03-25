@@ -2147,9 +2147,9 @@ void TensorFlowMaximumMinimum(const T* input1_data, const Dims<4>& input1_dims,
                               const T* input2_data, const Dims<4>& input2_dims,
                               T* output_data, const Dims<4>& output_dims,
                               Op op) {
-  MaximumMinimumBroadcast4DSlow(DimsToShape(input1_dims), input1_data,
-                                DimsToShape(input2_dims), input2_data,
-                                DimsToShape(output_dims), output_data, op);
+  MaximumMinimumBroadcastSlow(DimsToShape(input1_dims), input1_data,
+                              DimsToShape(input2_dims), input2_data,
+                              DimsToShape(output_dims), output_data, op);
 }
 
 template <typename T1, typename T2, typename T3>

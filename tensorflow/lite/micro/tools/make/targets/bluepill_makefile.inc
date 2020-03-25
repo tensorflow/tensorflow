@@ -38,6 +38,7 @@ ifeq ($(TARGET), bluepill)
     -Wno-unused-parameter \
     -Wno-write-strings \
     -fno-delete-null-pointer-checks \
+    -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
     -nostdlib \

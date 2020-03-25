@@ -46,7 +46,7 @@ namespace gpu {
 //
 //   3. Shared object size may increase when tensor requests larger size.
 template <typename TensorSizeT>
-Status GreedyInOrderAssignment(
+absl::Status GreedyInOrderAssignment(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment,
     const UsageGraph* reallocation_graph = nullptr) {
@@ -111,7 +111,7 @@ Status GreedyInOrderAssignment(
       }
       // best_it can't be equal to pool.end(), because pool is not empty
       if (best_it == pool.end()) {
-        return InternalError(
+        return absl::InternalError(
             "No shared object is found in non-empty pool in "
             "GreedyInOrderAssignment.");
       }
@@ -135,14 +135,14 @@ Status GreedyInOrderAssignment(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // The same algorithm as above, but for multidimensional case. The only
 // difference is that shared object dimensions can't be increased to be reused
 // for tensor, that is larger (at least by one dimension).
 template <typename TensorSizeT>
-Status GreedyInOrderAssignmentMultidimensional(
+absl::Status GreedyInOrderAssignmentMultidimensional(
     const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
     ObjectsAssignment<TensorSizeT>* assignment) {
   size_t num_records = usage_records.size();
@@ -198,7 +198,7 @@ Status GreedyInOrderAssignmentMultidimensional(
           {usage_records[i].last_task, assignment->object_ids[i]});
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

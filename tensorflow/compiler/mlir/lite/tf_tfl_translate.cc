@@ -195,6 +195,7 @@ int main(int argc, char **argv) {
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
+  pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
   // Currently we only do shape inference for saved model import.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {

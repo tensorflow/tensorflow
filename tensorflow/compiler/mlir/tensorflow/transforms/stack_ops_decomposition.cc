@@ -89,82 +89,12 @@ struct StackOpsDecompositionPass
   void runOnModule() override;
 };
 
-// Creates a ReadVariableOp on a local variable.
-Value ReadLocalVariable(Value local_var, OpBuilder builder, Location loc) {
-  return builder
-      .create<TF::ReadVariableOp>(
-          loc,
-          ArrayRef<Type>{getElementTypeOrSelf(local_var.getType())
-                             .cast<TF::ResourceType>()
-                             .getSubtypes()[0]},
-          ArrayRef<Value>{local_var}, ArrayRef<NamedAttribute>{})
-      .value();
-}
-
-// Creates an AssignVariableOp on a local variable.
-TF::AssignVariableOp WriteLocalVariable(Value local_var, Value value,
-                                        OpBuilder builder, Location loc) {
-  return builder.create<TF::AssignVariableOp>(loc, ArrayRef<Type>{},
-                                              ArrayRef<Value>{local_var, value},
-                                              ArrayRef<NamedAttribute>{});
-}
-
 // Returns the type of the local variable for the stack size.
 Type GetSizeVarType(OpBuilder builder) {
   auto size_type = cutil::GetSizeType(builder);
   return RankedTensorType::get(
       {}, TF::ResourceType::get(ArrayRef<TensorType>{size_type},
                                 builder.getContext()));
-}
-
-// Tries to infer the stack element type with full shape based on its uses.
-llvm::Optional<RankedTensorType> GetStackElementType(Value stack,
-                                                     ModuleOp module) {
-  for (auto& use : stack.getUses()) {
-    if (auto push = llvm::dyn_cast<TF::StackPushV2Op>(use.getOwner())) {
-      auto elem_type = push.elem().getType().dyn_cast<RankedTensorType>();
-      if (elem_type && elem_type.hasStaticShape()) {
-        return elem_type;
-      }
-    } else if (auto while_op = llvm::dyn_cast<TF::WhileOp>(use.getOwner())) {
-      auto body = module.lookupSymbol<FuncOp>(while_op.body());
-      assert(body);
-      auto type_from_body =
-          GetStackElementType(body.getArgument(use.getOperandNumber()), module);
-      if (type_from_body.hasValue()) return type_from_body;
-    } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(use.getOwner())) {
-      auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-      auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
-      assert(then_branch && else_branch);
-      auto type_from_then = GetStackElementType(
-          then_branch.getArgument(use.getOperandNumber() - 1), module);
-      if (type_from_then.hasValue()) return type_from_then;
-      auto type_from_else = GetStackElementType(
-          else_branch.getArgument(use.getOperandNumber() - 1), module);
-      if (type_from_else.hasValue()) return type_from_else;
-    } else if (auto pcall =
-                   llvm::dyn_cast<TF::PartitionedCallOp>(use.getOwner())) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) continue;
-      auto callee = module.lookupSymbol<FuncOp>(pcall.f().getRootReference());
-      assert(callee);
-      auto type_from_callee = GetStackElementType(
-          callee.getArgument(use.getOperandNumber()), module);
-      if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (auto spcall = llvm::dyn_cast<TF::StatefulPartitionedCallOp>(
-                   use.getOwner())) {
-      auto callee = module.lookupSymbol<FuncOp>(spcall.f());
-      assert(callee);
-      auto type_from_callee = GetStackElementType(
-          callee.getArgument(use.getOperandNumber()), module);
-      if (type_from_callee.hasValue()) return type_from_callee;
-    } else if (llvm::isa<TF::IdentityOp>(use.getOwner()) ||
-               llvm::isa<TF::IdentityNOp>(use.getOwner())) {
-      auto type_from_alias = GetStackElementType(
-          use.getOwner()->getResult(use.getOperandNumber()), module);
-      if (type_from_alias.hasValue()) return type_from_alias;
-    }
-  }
-  return llvm::None;
 }
 
 // Returns the aliasing argument number of a fucntion return value if it simply
@@ -459,7 +389,12 @@ LogicalResult HandleStackV2Op(
     TF::StackV2Op stack, ModuleOp module,
     llvm::SmallDenseMap<Value, Value>* data_var_to_size_var) {
   // Create a buffer variable and a size variable to replace the stack.
-  auto elem_type = GetStackElementType(stack.handle(), module);
+  auto elem_type = cutil::GetElementTypeFromAccess(
+      stack.handle(), module, [](Operation* user) -> llvm::Optional<Type> {
+        auto push = llvm::dyn_cast<TF::StackPushV2Op>(user);
+        if (!push) return llvm::None;
+        return push.elem().getType();
+      });
   if (!elem_type.hasValue()) {
     return stack.emitOpError("cannot infer element shape of stack");
   }
@@ -482,10 +417,10 @@ LogicalResult HandleStackV2Op(
       stack.getLoc(), ArrayRef<Type>{size_var_type}, ArrayRef<Value>{},
       ArrayRef<NamedAttribute>{});
   // Zero-initialize the local vars.
-  WriteLocalVariable(local_size_var,
-                     cutil::GetR1Const({0LL}, builder, stack.getLoc()), builder,
-                     stack.getLoc());
-  WriteLocalVariable(local_var, buffer, builder, stack.getLoc());
+  cutil::WriteLocalVariable(local_size_var,
+                            cutil::GetR1Const({0LL}, builder, stack.getLoc()),
+                            builder, stack.getLoc());
+  cutil::WriteLocalVariable(local_var, buffer, builder, stack.getLoc());
   stack.handle().replaceAllUsesWith(local_var);
   (*data_var_to_size_var)[local_var] = local_size_var;
   stack.erase();
@@ -503,17 +438,19 @@ LogicalResult HandleStackPushV2Op(
   push.replaceAllUsesWith(push.elem());
   OpBuilder builder(push);
   // Read the current buffer and size.
-  auto stack_val = ReadLocalVariable(push.handle(), builder, push.getLoc());
-  auto index = ReadLocalVariable(it->getSecond(), builder, push.getLoc());
+  auto stack_val =
+      cutil::ReadLocalVariable(push.handle(), builder, push.getLoc());
+  auto index =
+      cutil::ReadLocalVariable(it->getSecond(), builder, push.getLoc());
   stack_val =
       cutil::SetElement(index, stack_val, push.elem(), builder, push.getLoc());
   // Assign the new buffer and size.
-  WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
+  cutil::WriteLocalVariable(push.handle(), stack_val, builder, push.getLoc());
   index = builder.create<TF::AddV2Op>(
       push.getLoc(), ArrayRef<Type>{index.getType()},
       ArrayRef<Value>{index, cutil::GetR1Const({1}, builder, push.getLoc())},
       ArrayRef<NamedAttribute>{});
-  WriteLocalVariable(it->getSecond(), index, builder, push.getLoc());
+  cutil::WriteLocalVariable(it->getSecond(), index, builder, push.getLoc());
   push.erase();
   return success();
 }
@@ -527,8 +464,9 @@ LogicalResult HandleStackPopV2Op(
   }
   OpBuilder builder(pop);
   // Read the current buffer and size.
-  auto stack_val = ReadLocalVariable(pop.handle(), builder, pop.getLoc());
-  auto size = ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
+  auto stack_val =
+      cutil::ReadLocalVariable(pop.handle(), builder, pop.getLoc());
+  auto size = cutil::ReadLocalVariable(it->getSecond(), builder, pop.getLoc());
   auto new_size = builder.create<TF::SubOp>(
       pop.getLoc(), ArrayRef<Type>{size.getType()},
       ArrayRef<Value>{size, cutil::GetR1Const({1}, builder, pop.getLoc())},
@@ -536,7 +474,7 @@ LogicalResult HandleStackPopV2Op(
   auto pop_val = cutil::GetElement(new_size, stack_val, builder, pop.getLoc());
   pop.replaceAllUsesWith(pop_val);
   // Update the size.
-  WriteLocalVariable(it->getSecond(), new_size, builder, pop.getLoc());
+  cutil::WriteLocalVariable(it->getSecond(), new_size, builder, pop.getLoc());
   pop.erase();
   return success();
 }

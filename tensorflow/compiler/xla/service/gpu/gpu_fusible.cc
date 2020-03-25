@@ -239,13 +239,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-  // We can't fuse library calls, so if a user of such an op could become a
-  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
-  // further rationale.
-  if (producer.CouldBeBitcast() &&
-      ImplementedAsLibraryCall(*producer.operand(0))) {
-    return false;
-  }
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //

@@ -26,10 +26,10 @@ namespace gpu {
 namespace cl {
 namespace {
 
-Status SelectDWConvolutionAdreno(const DepthwiseConvolution2DAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectDWConvolutionAdreno(
+    const DepthwiseConvolution2DAttributes& attr,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    std::unique_ptr<GPUOperation>* ptr) {
   if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
     DepthWiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
@@ -41,13 +41,13 @@ Status SelectDWConvolutionAdreno(const DepthwiseConvolution2DAttributes& attr,
         CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
     *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectDWConvolutionPowerVR(const DepthwiseConvolution2DAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def,
-                                  std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectDWConvolutionPowerVR(
+    const DepthwiseConvolution2DAttributes& attr,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    std::unique_ptr<GPUOperation>* ptr) {
   if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
     DepthWiseConv3x3 dw_conv;
     RETURN_IF_ERROR(
@@ -59,13 +59,13 @@ Status SelectDWConvolutionPowerVR(const DepthwiseConvolution2DAttributes& attr,
         CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
     *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status SelectDWConvolutionMali(const DepthwiseConvolution2DAttributes& attr,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def,
-                               std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectDWConvolutionMali(
+    const DepthwiseConvolution2DAttributes& attr,
+    const CreationContext& creation_context, const OperationDef& op_def,
+    std::unique_ptr<GPUOperation>* ptr) {
   const auto storage_type = op_def.src_tensors[0].storage_type;
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
@@ -83,14 +83,14 @@ Status SelectDWConvolutionMali(const DepthwiseConvolution2DAttributes& attr,
         CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
     *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 }  // namespace
 
-Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                           const CreationContext& creation_context,
-                           const OperationDef& op_def,
-                           std::unique_ptr<GPUOperation>* ptr) {
+absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
+                                 const CreationContext& creation_context,
+                                 const OperationDef& op_def,
+                                 std::unique_ptr<GPUOperation>* ptr) {
   switch (creation_context.device->vendor()) {
     case Vendor::QUALCOMM:
       return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
