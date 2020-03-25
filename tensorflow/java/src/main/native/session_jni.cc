@@ -201,3 +201,97 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   TF_DeleteStatus(status);
   return ret;
 }
+
+JNIEXPORT jstring JNICALL Java_org_tensorflow_Session_getGPUDeviceName(JNIEnv* env,
+                                                                       jclass clazz,
+                                                                       jlong handle) {
+  TF_Session* session = requireHandle(env, handle);
+  if (session == nullptr) return env->NewStringUTF("");
+
+  using namespace tensorflow;
+
+  std::vector<DeviceAttributes> devices;
+  TF_CHECK_OK(session->session->ListDevices(&devices));
+
+  for (const DeviceAttributes& d : devices) {
+    LOG(INFO) << "Device: " << d.name();
+    if (d.device_type() == "GPU" || d.device_type() == "gpu") {
+      return env->NewStringUTF(d.name().c_str());
+    }
+  }
+  return env->NewStringUTF("");
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_makeCallable(
+    JNIEnv* env, jclass clazz, jlong session_handle, jbyteArray config) {
+
+    TF_Session* session = requireHandle(env, session_handle);
+    if (session == nullptr) return -2;
+
+    using namespace tensorflow;
+
+    CallableOptions opts;
+
+    jbyte* cconfig = nullptr;
+    if (config != nullptr) {
+        cconfig = env->GetByteArrayElements(config, nullptr);
+        opts.ParseFromArray(cconfig, static_cast<size_t>(env->GetArrayLength(config)));
+    }
+
+    Session::CallableHandle handle;
+    auto runStatus = session->session->MakeCallable(opts, &handle);
+
+    if (!runStatus.ok()){
+        std::cout << "It is with a heavy heart I inform you that makeCallable has failed. Here's the error message. Please, read carefully:" << std::endl;
+        std::cout << runStatus.error_message() << std::endl;
+        return -1;
+    }
+    return reinterpret_cast<jlong>((long) handle);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_runCallable(
+    JNIEnv* env, jclass clazz, jlong session_handle, jlong callable_handle,
+    jlongArray input_tensor_handles, jlongArray output_tensor_handles) {
+
+    TF_Session* session = requireHandle(env, session_handle);
+    if (session == nullptr) return nullptr;
+
+    using namespace tensorflow;
+
+    Session::CallableHandle handle = (Session::CallableHandle) reinterpret_cast<long>(callable_handle);
+
+    const jint ninputs = env->GetArrayLength(input_tensor_handles);
+    const jint noutputs = env->GetArrayLength(output_tensor_handles);
+
+    std::unique_ptr<TF_Tensor* []> input_values(new TF_Tensor*[ninputs]);
+    std::unique_ptr<TF_Tensor* []> output_values(new TF_Tensor*[noutputs]);
+
+    std::vector<Tensor> inputs(ninputs);
+    std::vector<Tensor> outputs(noutputs);
+
+    resolveHandles(env, "input Tensors", input_tensor_handles, input_values.get(), ninputs);
+
+    for (int i = 0; i < ninputs; ++i) {
+        TF_TensorToTensor(input_values[i],&inputs[i]);
+    }
+
+    auto runStatus = session->session->RunCallable(handle, {inputs}, &outputs, nullptr);
+
+    if (!runStatus.ok()){
+        std::cout << "It is with a heavy heart I inform you that RunCallable has failed. Here's the error message. Please, read carefully:" << std::endl;
+        std::cout << runStatus.error_message() << std::endl;
+        return nullptr;
+    }
+
+    jlong* t = env->GetLongArrayElements(output_tensor_handles, nullptr);
+    // TF_TensorFromTensor will not chew nullptr.
+    TF_Status* status = TF_NewStatus();
+
+    for (int i = 0; i < noutputs; ++i) {
+        output_values[i] = TF_TensorFromTensor(outputs[i], status);
+        t[i] = reinterpret_cast<jlong>(output_values[i]);
+    }
+    env->ReleaseLongArrayElements(output_tensor_handles, t, 0);
+    jbyteArray ret = nullptr;
+    return ret;
+}
