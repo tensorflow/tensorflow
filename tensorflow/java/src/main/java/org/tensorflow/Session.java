@@ -81,6 +81,18 @@ public final class Session implements AutoCloseable {
     graphRef = g.ref();
   }
 
+  public long makeCallable(byte[] config){
+    return makeCallable(this.nativeHandle, config);
+  }
+
+  /**
+   * Pull the following string into Java: '/job:localhost/replica:0/task:0/device:GPU:0'
+   * to be able to assign the feed/fetch allocation in CallableOptions
+   */
+  public String GPUDeviceName(){
+    return getGPUDeviceName(this.nativeHandle);
+  }
+
   /**
    * Release resources associated with the Session.
    *
@@ -355,6 +367,58 @@ public final class Session implements AutoCloseable {
       return ret;
     }
 
+    public List<Tensor<?>> runCallable(long handle) {
+        return runCallableHelper(handle).outputs;
+    }
+
+    private Run runCallableHelper(long handle) {
+
+        long[] inputTensorHandles = new long[inputTensors.size()];
+        long[] outputTensorHandles = new long[outputs.size()];
+
+        System.out.println("Number of input handles: "+inputTensors.size());
+        System.out.println("Number of output handles: "+outputs.size());
+
+        // It's okay to use Operation.getUnsafeNativeHandle() here since the safety depends on the
+        // validity of the Graph and graphRef ensures that.
+        int idx = 0;
+        for (Tensor<?> t : inputTensors) {
+          inputTensorHandles[idx++] = t.getNativeHandle();
+        }
+
+        Reference runRef = new Reference();
+        byte[] metadata = null;
+        try {
+          metadata =
+              Session.runCallable(
+                  nativeHandle,
+                  handle,
+                  inputTensorHandles,
+                  outputTensorHandles);
+        } finally {
+          runRef.close();
+        }
+
+        List<Tensor<?>> outputs = new ArrayList<Tensor<?>>();
+
+        for (long h : outputTensorHandles) {
+          try {
+            outputs.add(Tensor.fromHandle(h));
+          } catch (Exception e) {
+            for (Tensor<?> t : outputs) {
+              t.close();
+            }
+            outputs.clear();
+            throw e;
+          }
+        }
+
+        Run ret = new Run();
+        ret.outputs = outputs;
+        ret.metadata = metadata;
+        return ret;
+    }
+
     private class Reference implements AutoCloseable {
       public Reference() {
         synchronized (nativeHandleLock) {
@@ -487,5 +551,37 @@ public final class Session implements AutoCloseable {
       int[] outputOpIndices,
       long[] targetOpHandles,
       boolean wantRunMetadata,
+      long[] outputTensorHandles);
+
+  /**
+   * Get GPU device string:
+   *
+   * @param handle to the C API TF_Session object (Session.nativeHandle)
+   * @return GPU device string '/job:localhost/replica:0/task:0/device:GPU:0'
+   */
+  private native String getGPUDeviceName(long handle);
+
+  /**
+   * Create callable and return its handle
+   *
+   * @param nativeHandle to the C API TF_Session object (Session.nativeHandle)
+   * @param config serialized representation of a CallableOptions protocol buffer
+   * @return 2
+   */
+  private static native long makeCallable(long nativeHandle, byte[] config);
+
+  /**
+   * Run
+   *
+   * @param sessionHandle to the C API TF_Session object (Session.nativeHandle)
+   * @param
+   * @param
+   * @param
+   * @return
+   */
+  private static native byte[] runCallable(
+      long sessionHandle,
+      long callableHandle,
+      long[] inputTensorHandles,
       long[] outputTensorHandles);
 }
