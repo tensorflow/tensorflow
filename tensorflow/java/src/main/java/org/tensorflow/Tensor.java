@@ -155,6 +155,19 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   /**
+   * Create a Tensor of data type in GPU
+   */
+  public static Tensor<?> createGPU(long[] shape, DataType dtype){
+    @SuppressWarnings("rawtypes")
+    Tensor<?> t = new Tensor(dtype);
+    t.shapeCopy = shape;
+    long nativeHandle;
+    nativeHandle = allocateGPU(t.shapeCopy,t.dtype.c());
+    t.nativeRef = new NativeReference(nativeHandle);
+    return t;
+  }
+
+  /**
    * Create a {@link Integer} Tensor with data from the given buffer.
    *
    * <p>Creates a Tensor with the given shape by copying elements from the buffer (starting from its
@@ -406,6 +419,13 @@ public final class Tensor<T> implements AutoCloseable {
    */
   public byte[] bytesValue() {
     return scalarBytes(getNativeHandle());
+  }
+
+  /**
+   * Return the pointer to GPU memory
+   */
+  public long GPUPointer(){
+    return getGPUPointer(getNativeHandle());
   }
 
   /**
@@ -833,6 +853,10 @@ public final class Tensor<T> implements AutoCloseable {
   private static native byte[] scalarBytes(long handle);
 
   private static native void readNDArray(long handle, Object value);
+
+  private static native long allocateGPU(long[] shape, int dtype);
+
+  private static native long getGPUPointer(long handle);
 
   static {
     TensorFlow.init();
