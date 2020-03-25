@@ -16,7 +16,7 @@ func @testCos(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Cos input
 func @testCosWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{tfl.cos' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.cos"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   return %0#0 : tensor<?xi32>
 }
@@ -103,7 +103,7 @@ func @testAddN(tensor<? x f32>, tensor<? x f32>, tensor<? x f32>) -> tensor<? x 
 // test invalid AddN
 func @testAddNWrongOperandResultType(tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16> {
 ^bb0(%arg0: tensor<? x f16>, %arg1: tensor<? x f16>, %arg2: tensor<? x f16>):
-  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit signless integer or QI16 type or QUI16 type values}}
+  // expected-error @+1 {{'tfl.add_n' op operand #0 must be tensor of 32-bit float or 32-bit signless integer}}
   %0 = "tfl.add_n"(%arg0, %arg1, %arg2): (tensor<? x f16>, tensor<? x f16>, tensor<? x f16>) -> tensor<? x f16>
   return %0 : tensor<? x f16>
 }
@@ -147,7 +147,7 @@ func @testSin(tensor<? x f32>) -> tensor<? x f32> {
 // test invalid Sin input
 func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{tfl.sin' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.sin"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   return %0#0 : tensor<?xi32>
 }
@@ -157,7 +157,7 @@ func @testSinWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 // test invalid Sqrt input
 func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{tfl.sqrt' op operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{tfl.sqrt' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.sqrt"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -167,7 +167,7 @@ func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 // test invalid Square input
 func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -425,7 +425,7 @@ func @testTileF32(%arg0: tensor<4 x 1 x f32>, %arg1: tensor<4 x i32>) -> tensor<
 // -----
 
 func @testEluI32(%arg0: tensor<? x i32>) -> tensor<? x i32> {
-  // expected-error @+1 {{operand #0 must be tensor of floating-point values}}
+  // expected-error @+1 {{op operand #0 must be tensor of 32-bit float values}}
   %0 = "tfl.elu"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -531,11 +531,11 @@ func @testMaxUnpooling2D(%arg0: tensor<1x8x8x128xf32>, %arg1: tensor<1x8x8x128xf
 // -----
 
 // CHECK-LABEL: testLogistic
-func @testLogistic(tensor<1x2x3x4x5xbf16>) -> tensor<1x2x3x4x5xbf16> {
-^bb0(%arg0: tensor<1x2x3x4x5xbf16>):
+func @testLogistic(tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32> {
+^bb0(%arg0: tensor<1x2x3x4x5xf32>):
   // CHECK: "tfl.logistic"(%arg0)
-  %0 = "tfl.logistic"(%arg0): (tensor<1x2x3x4x5xbf16>) -> tensor<1x2x3x4x5xbf16>
-  return %0 : tensor<1x2x3x4x5xbf16>
+  %0 = "tfl.logistic"(%arg0): (tensor<1x2x3x4x5xf32>) -> tensor<1x2x3x4x5xf32>
+  return %0 : tensor<1x2x3x4x5xf32>
 }
 
 // -----
@@ -543,7 +543,7 @@ func @testLogistic(tensor<1x2x3x4x5xbf16>) -> tensor<1x2x3x4x5xbf16> {
 // test invalid Logistic input
 func @testLogisticWithWrongInputType(tensor<?xi32>) -> tensor<?xi32> {
 ^bb0(%arg0: tensor<?xi32>):
-  // expected-error @+1 {{tfl.logistic' op operand #0 must be tensor of floating-point or QI8 type or QUI8 type or QI16 type or QUI16 type values}}
+  // expected-error @+1 {{tfl.logistic' op operand #0 must be tensor of 32-bit float or QI8 type or QUI8 type or QI16 type or QUI16 type values}}
   %0 = "tfl.logistic"(%arg0): (tensor<?xi32>) -> tensor<?xi32>
   return %0#0 : tensor<?xi32>
 }
