@@ -621,3 +621,55 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
   readNDArray(env, dtype, static_cast<const char*>(data), sz, num_dims,
               static_cast<jarray>(value));
 }
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlongArray shape,
+                                                               jint dtype) {
+    using namespace tensorflow;
+
+    DataType dt_dtype = static_cast<DataType>(dtype);
+
+    // Actually, don't need TF_*
+    //TF_DataType tf_dtype = static_cast<TF_DataType>(dtype);
+    //size_t tf_dtype_size = TF_DataTypeSize(tf_dtype);
+
+    const int num_dims = static_cast<int>(env->GetArrayLength(shape));
+    //int64_t* dims = new int64_t[num_dims];
+    std::vector<tensorflow::int64> dims(num_dims);
+    int64_t num_elements = 1;
+    {
+      jlong* jdims = env->GetLongArrayElements(shape, nullptr);
+      for (int i = 0; i < num_dims; ++i) {
+        dims[i] = static_cast<int64>(jdims[i]);
+        num_elements *= dims[i];
+      }
+      env->ReleaseLongArrayElements(shape, jdims, JNI_ABORT);
+    }
+
+    TensorShape ts_shape = tensorflow::TensorShape(dims);
+
+    tensorflow::PlatformGpuId platform_gpu_id(0);
+
+    tensorflow::GPUMemAllocator *sub_allocator =
+        new tensorflow::GPUMemAllocator(
+            tensorflow::GpuIdUtil::ExecutorForPlatformGpuId(platform_gpu_id).ValueOrDie(),
+            platform_gpu_id, false, {}, {});
+
+    tensorflow::GPUBFCAllocator *allocator =
+            new tensorflow::GPUBFCAllocator(sub_allocator, num_elements * sizeof(dt_dtype), "GPU_0_bfc");
+
+    Tensor t_gpu = Tensor(allocator, dt_dtype, ts_shape);
+
+    TF_Status* status = TF_NewStatus();
+    TF_Tensor* t = TF_TensorFromTensor(t_gpu,status);
+    return reinterpret_cast<jlong>(t);
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_getGPUPointer(JNIEnv* env,
+                                                                 jclass clazz,
+                                                                 jlong handle) {
+    TF_Tensor* t = requireHandle(env, handle);
+    if (t == nullptr) return -1;
+    return reinterpret_cast<jlong>(t->tensor.tensor_data().data());
+}
