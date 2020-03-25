@@ -33,6 +33,7 @@ ifeq ($(TARGET), riscv32_mcu)
     -fno-delete-null-pointer-checks \
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
+    -fno-use-cxa-atexit \
     -Os
 
   CXXFLAGS += $(PLATFORM_FLAGS) \

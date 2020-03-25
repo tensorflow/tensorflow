@@ -64,6 +64,7 @@ $(MAKEFILE_DIR)/downloads/$(AM_SDK_DEST)/$(SF_BSPS_DEST): $(MAKEFILE_DIR)/downlo
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -ggdb \
     -O3

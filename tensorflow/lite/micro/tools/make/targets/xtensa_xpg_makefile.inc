@@ -16,6 +16,7 @@ ifeq ($(TARGET), xtensa-xpg)
     -ffunction-sections \
     -fno-exceptions \
     -fno-unwind-tables \
+    -fno-use-cxa-atexit \
     -fmessage-length=0 \
     -fno-threadsafe-statics
 

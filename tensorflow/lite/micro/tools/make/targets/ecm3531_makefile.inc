@@ -51,6 +51,7 @@ ifeq ($(TARGET), ecm3531)
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -nostdlib \
     -g \
     -Os

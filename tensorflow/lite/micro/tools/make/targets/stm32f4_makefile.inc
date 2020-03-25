@@ -34,6 +34,7 @@ ifeq ($(TARGET), stm32f4)
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
     -fpermissive \
+    -fno-use-cxa-atexit \
     -g \
     -Os
   CXXFLAGS += $(PLATFORM_FLAGS)
