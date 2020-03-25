@@ -25,6 +25,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
@@ -216,7 +217,8 @@ strategies_minus_default_minus_tpu = [
     strategy_combinations.one_device_strategy,
     strategy_combinations.one_device_strategy_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+    strategy_combinations.central_storage_strategy_with_gpu_and_cpu
 ]
 
 strategies_minus_tpu = [
@@ -224,7 +226,8 @@ strategies_minus_tpu = [
     strategy_combinations.one_device_strategy,
     strategy_combinations.one_device_strategy_gpu,
     strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-    strategy_combinations.mirrored_strategy_with_two_gpus
+    strategy_combinations.mirrored_strategy_with_two_gpus,
+    strategy_combinations.central_storage_strategy_with_gpu_and_cpu
 ]
 
 tpu_strategies = [
@@ -482,6 +485,9 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
 
   @combinations.generate(all_strategy_combinations_plus_run_distributed())
   def test_calling_model_with_mixed_precision(self, distribution):
+    if isinstance(distribution.extended,
+                  parameter_server_strategy.ParameterServerStrategyExtended):
+      self.skipTest('b/152097775')
     if isinstance(distribution,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       policy_name = 'mixed_bfloat16'
@@ -529,6 +535,10 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
     # AutoCastVariable to a tensor on a TPU, where the variable was the LHS of
     # the '+' operator, used to cause the gradient w.r.t. the variable to be
     # None.
+    if isinstance(distribution.extended,
+                  parameter_server_strategy.ParameterServerStrategyExtended):
+      self.skipTest('b/152097775')
+
     if isinstance(distribution,
                   (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
       policy_name = 'mixed_bfloat16'

@@ -26,6 +26,7 @@ import functools
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
@@ -490,6 +491,14 @@ class OptimizerV2(trackable.Trackable):
             "`apply_gradients() cannot be called in cross-replica context. "
             "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
+
+      strategy = distribute_ctx.get_strategy()
+      if (not experimental_aggregate_gradients and strategy and isinstance(
+          strategy.extended,
+          parameter_server_strategy.ParameterServerStrategyExtended)):
+        raise NotImplementedError(
+            "`experimental_aggregate_gradients=False is not supported for "
+            "ParameterServerStrategy and CentralStorageStrategy")
 
       apply_state = self._prepare(var_list)
       if experimental_aggregate_gradients:
