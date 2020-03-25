@@ -36,19 +36,5 @@ END
   description: <<END
 Note here that tensorflow converts every variable to tensors. So, if states
 of your model are `VariableV2`, you don't need to convert it to `VarHandleOp`.
-For example, if we check the type of both, they are just tensors.
-
-```python
-    v2_tensor = tf.raw_ops.VariableV2(shape=(1,),dtype=tf.float64)
-    vh_tensor = tf.raw_ops.VarHandleOp(shape=(1,),dtype=tf.float64)
-    print(type(v2_tensor))
-    print(type(vh_tensor))
-``` 
-
-Above python code prints results as:
-
-    <class '...tensorflow.python.framework.ops.Tensor'>
-    <class '...tensorflow.python.framework.ops.Tensor'>
-
 END
 }
