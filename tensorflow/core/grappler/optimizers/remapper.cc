@@ -1513,7 +1513,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  return is_conv2d_candidate() || is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+  return is_conv2d_candidate() || is_batch_norm_candidate() ||
+         is_batch_norm_fusion_candidate();
 }
 
 }  // namespace
