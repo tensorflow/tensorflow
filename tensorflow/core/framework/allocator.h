@@ -114,7 +114,7 @@ struct AllocatorStats {
         bytes_reserved(0),
         peak_bytes_reserved(0) {}
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Allocator is an abstract interface for allocating and deallocating
@@ -127,7 +127,7 @@ class Allocator {
   virtual ~Allocator();
 
   // Return a string identifying this allocator
-  virtual string Name() = 0;
+  virtual std::string Name() = 0;
 
   // Return an uninitialized block of memory that is "num_bytes" bytes
   // in size.  The returned pointer is guaranteed to be aligned to a
@@ -242,7 +242,7 @@ class AllocatorWrapper : public Allocator {
   // Returns the wrapped allocator to which all calls are delegated.
   Allocator* wrapped() const { return wrapped_; }
 
-  string Name() override { return wrapped_->Name(); }
+  std::string Name() override { return wrapped_->Name(); }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return wrapped_->AllocateRaw(alignment, num_bytes);
@@ -336,7 +336,7 @@ struct AllocatorAttributes {
   int32 scope_id = 0;
 
   // Returns a human readable representation of this.
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.
