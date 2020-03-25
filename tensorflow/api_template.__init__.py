@@ -41,6 +41,10 @@ import sys as _sys
 from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
+# Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
+from tensorflow.python import tf2 as _tf2
+_tf2.enable()
+
 # API IMPORTS PLACEHOLDER
 
 # WRAPPER_PLACEHOLDER
