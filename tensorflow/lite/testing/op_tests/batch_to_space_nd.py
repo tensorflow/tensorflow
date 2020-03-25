@@ -55,6 +55,15 @@ def make_batch_to_space_nd_tests(options):
           "constant_block_shape": [True, False],
           "constant_crops": [True, False],
       },
+      # 3D use case.
+      {
+          "dtype": [tf.float32],
+          "input_shape": [[1, 3, 3]],
+          "block_shape": [[1]],
+          "crops": [[[0, 0]], [[1, 1]]],
+          "constant_block_shape": [True],
+          "constant_crops": [True],
+      },
   ]
 
   def build_graph(parameters):

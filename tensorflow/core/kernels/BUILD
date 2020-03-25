@@ -288,6 +288,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//third_party/eigen3",
     ],
     alwayslink = 0,
@@ -983,13 +984,6 @@ ARRAY_DEPS = [
     "//third_party/eigen3",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
-cc_library(
-    name = "array_not_windows",
-    deps = [
-        ":immutable_constant_op",
-    ],
-)
-
 tf_kernel_library(
     name = "immutable_constant_op",
     prefix = "immutable_constant_op",
@@ -1035,6 +1029,7 @@ cc_library(
         ":host_constant_op",
         ":identity_n_op",
         ":identity_op",
+        ":immutable_constant_op",
         ":inplace_ops",
         ":listdiff_op",
         ":matrix_band_part_op",
@@ -2626,6 +2621,7 @@ tf_kernel_library(
     deps = DYNAMIC_DEPS + [
         ":fill_functor",
         ":gather_functor",
+        "//tensorflow/core:framework_internal",
     ] + if_cuda(["@cub_archive//:cub"]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -3028,7 +3024,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(
@@ -3576,6 +3572,7 @@ tf_kernel_library(
     visibility = [":friends"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -3919,13 +3916,6 @@ MATH_DEPS = [
     "//third_party/eigen3",
 ]
 
-cc_library(
-    name = "math_not_windows",
-    deps = [
-        ":sparse_matmul_op",
-    ],
-)
-
 tf_kernel_library(
     name = "sparse_matmul_op",
     defines = select({
@@ -3964,6 +3954,7 @@ cc_library(
         ":scan_ops",
         ":segment_reduction_ops",
         ":sequence_ops",
+        ":sparse_matmul_op",
         "//tensorflow/core/kernels/special_math:special_math_op",
     ],
 )
@@ -4081,7 +4072,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "check_numerics_op",
     prefix = "check_numerics_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + ["//tensorflow/core:framework_internal"],
 )
 
 tf_kernel_library(

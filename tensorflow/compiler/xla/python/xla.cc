@@ -344,9 +344,7 @@ void BuildOpsSubmodule(py::module* m) {
           py::arg("precision_config") = nullptr);
   ops.def("ConvertElementType", &ConvertElementType, py::arg("operand"),
           py::arg("new_element_type"));
-  // TODO(phawkins): remove CustomCall after callers are updated to use
-  // CustomCallWithLayout.
-  ops.def("CustomCall", &CustomCallWithLayout);
+  ops.def("CustomCall", &CustomCall);
   ops.def("CustomCallWithLayout", &CustomCallWithLayout);
   ops.def("Dot", &Dot, py::arg("lhs"), py::arg("rhs"),
           py::arg("precision_config") = nullptr);
@@ -962,23 +960,6 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("argument"), py::arg("client"), py::arg("device"),
           py::arg("force_copy") = false)
-      .def_static(
-          "make_tuple",
-          [](const std::vector<PyLocalBuffer*> buffers,
-             std::shared_ptr<PyLocalClient> client,
-             Device* device) -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
-            CHECK(device != nullptr);
-            auto iter = client->id_to_device().find(device->id());
-            if (iter->second != device) {
-              return InvalidArgument(
-                  "Cannot make tuple on device '%s' with '%s' backend",
-                  device->DebugString(), client->platform_name());
-            }
-            TF_ASSIGN_OR_RETURN(
-                std::unique_ptr<PyLocalBuffer> buffer,
-                PyLocalBuffer::MakeTuple(buffers, client.get(), device));
-            return WrapWithClient(std::move(client), std::move(buffer));
-          })
       .def("copy_to_device",
            [](PyLocalBuffer* buffer, const ClientAndPtr<Device>& dst_device)
                -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
@@ -990,20 +971,6 @@ PYBIND11_MODULE(xla_extension, m) {
              return WrapWithClient(dst_device.client, std::move(out));
            })
       .def("delete", &PyLocalBuffer::Delete)
-      .def("destructure",
-           [](const PyLocalBuffer& buffer)
-               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
-             TF_ASSIGN_OR_RETURN(
-                 std::vector<std::unique_ptr<PyLocalBuffer>> parts,
-                 buffer.DestructureTuple());
-             std::vector<ClientAndUniquePtr<PyLocalBuffer>> output;
-             output.reserve(parts.size());
-             for (auto& part : parts) {
-               output.push_back(WrapWithClient(
-                   buffer.client()->shared_from_this(), std::move(part)));
-             }
-             return std::move(output);
-           })
       .def("block_host_until_ready",
            [](PyLocalBuffer* buffer) {
              GlobalPyRefManager()->CollectGarbage();
@@ -1138,24 +1105,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(
           "Execute",
           [](const PyLocalExecutable& executable,
-             absl::Span<PyLocalBuffer* const> args)
-              -> StatusOr<ClientAndUniquePtr<PyLocalBuffer>> {
-            py::gil_scoped_release gil_release;
-            TF_ASSIGN_OR_RETURN(std::unique_ptr<PyLocalBuffer> output,
-                                executable.Execute(args));
-            return WrapWithClient(executable.client()->shared_from_this(),
-                                  std::move(output));
-          },
-          py::arg("arguments"))
-      .def(
-          "ExecuteOnLocalDevices",
-          [](const PyLocalExecutable& executable,
-             absl::Span<const std::vector<PyLocalBuffer*>> args)
+             absl::Span<PyLocalBuffer* const> args, bool tuple_arguments)
               -> StatusOr<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> {
             py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
             TF_ASSIGN_OR_RETURN(
                 std::vector<std::unique_ptr<PyLocalBuffer>> output_buffers,
-                executable.ExecuteOnLocalDevices(args));
+                executable.Execute(args, options));
             std::vector<ClientAndUniquePtr<PyLocalBuffer>> outputs;
             outputs.reserve(output_buffers.size());
             for (auto& buffer : output_buffers) {
@@ -1164,7 +1122,35 @@ PYBIND11_MODULE(xla_extension, m) {
             }
             return outputs;
           },
-          py::arg("arguments"))
+          py::arg("arguments"), py::arg("tuple_arguments"))
+      .def(
+          "ExecuteOnLocalDevices",
+          [](const PyLocalExecutable& executable,
+             absl::Span<const std::vector<PyLocalBuffer*>> args,
+             bool tuple_arguments)
+              -> StatusOr<
+                  std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>>> {
+            py::gil_scoped_release gil_release;
+            ExecuteOptions options;
+            options.tuple_arguments = tuple_arguments;
+            options.untuple_result = true;
+            TF_ASSIGN_OR_RETURN(
+                std::vector<std::vector<std::unique_ptr<PyLocalBuffer>>>
+                    output_buffers,
+                executable.ExecuteOnLocalDevices(args, options));
+            std::vector<std::vector<ClientAndUniquePtr<PyLocalBuffer>>> outputs;
+            outputs.resize(output_buffers.size());
+            for (int computation = 0; computation < output_buffers.size();
+                 ++computation) {
+              for (auto& buffer : output_buffers[computation]) {
+                outputs[computation].push_back(
+                    WrapWithClient(executable.client()->shared_from_this(),
+                                   std::move(buffer)));
+              }
+            }
+            return outputs;
+          },
+          py::arg("arguments"), py::arg("tuple_arguments"))
       .def(
           "get_hlo_modules",
           [](const PyLocalExecutable& executable)

@@ -164,7 +164,6 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
-        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/losses:loss_reduction",
         "//tensorflow/tools/docs:doc_controls",
@@ -415,6 +414,9 @@ cuda_py_test(
     srcs = [
         "multi_worker_continuous_run_test.py",
     ],
+    tags = [
+        "notsan",  # TODO(b/151841995)
+    ],
     deps = [
         ":collective_all_reduce_strategy",
         ":multi_process_runner",
@@ -571,6 +573,7 @@ tpu_py_test(
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -792,7 +795,9 @@ distribute_py_test(
     main = "input_lib_test.py",
     shard_count = 10,
     tags = [
+        "manual",
         "multi_and_single_gpu",
+        "notap",  # TODO(b/151467526)
     ],
     deps = [
         ":collective_all_reduce_strategy",
@@ -931,8 +936,10 @@ py_library(
 
 distribute_py_test(
     name = "values_test",
+    size = "medium",
     srcs = ["values_test.py"],
     main = "values_test.py",
+    shard_count = 5,
     tags = [
         "multi_and_single_gpu",
     ],

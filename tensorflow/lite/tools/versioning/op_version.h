@@ -52,6 +52,13 @@ typedef struct {
     struct {
       int32_t num_dims;
     } strided_slice;
+    struct {
+      int32_t num_dims;
+    } space_batch;
+    struct {
+      int32_t num_dims;
+      bool need_broadcast;
+    } broadcast;
   } options;
 } OpSignature;
 

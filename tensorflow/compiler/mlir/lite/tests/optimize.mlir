@@ -683,6 +683,18 @@ func @InvalidFuseTileWithBinaryOp(%arg0: tensor<2x3xf32>) -> tensor<2x6xf32> {
   // CHECK: %[[TILE:[0-9].*]] = "tfl.tile"
 }
 
+// CHECK-LABEL: InvalidFuseTileAlreadyBroadcastAlongTileDim
+func @InvalidFuseTileAlreadyBroadcastAlongTileDim(%arg0: tensor<1x1x1x1xf32>) -> tensor<1x6x8x1xf32> {
+  %cst_1 = constant dense<[1, 6, 8, 1]> : tensor<4xi32>
+  %cst_2 = constant dense<[1, 1, 1, 46]> : tensor<4xi32>
+  %cst_20 = constant dense<4.600000e+01> : tensor<f32>
+  %0 = "tfl.tile"(%arg0, %cst_1) : (tensor<1x1x1x1xf32>, tensor<4xi32>) -> tensor<1x6x8x1xf32>
+  %1 = "tfl.mul"(%0, %cst_20) {fused_activation_function = "NONE"} : (tensor<1x6x8x1xf32>, tensor<f32>) -> tensor<1x6x8x1xf32>
+  return %1 : tensor<1x6x8x1xf32>
+
+  // CHECK: %[[TILE:[0-9].*]] = "tfl.tile"
+}
+
 // CHECK-LABEL: FuseHardswish
 func @FuseHardswish(%arg0: tensor<1x112x112x16xf32>) -> tensor<1x56x56x16xf32> {
   %cst_0 = constant dense<3.0> : tensor<f32>

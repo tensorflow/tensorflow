@@ -1538,14 +1538,14 @@ def concat(values, axis, name="concat"):
 
   >>> t1 = [[1, 2, 3], [4, 5, 6]]
   >>> t2 = [[7, 8, 9], [10, 11, 12]]
-  >>> concat([t1, t2], 0)
+  >>> tf.concat([t1, t2], 0)
   <tf.Tensor: shape=(4, 3), dtype=int32, numpy=
   array([[ 1,  2,  3],
          [ 4,  5,  6],
          [ 7,  8,  9],
          [10, 11, 12]], dtype=int32)>
 
-  >>> concat([t1, t2], 1)
+  >>> tf.concat([t1, t2], 1)
   <tf.Tensor: shape=(2, 6), dtype=int32, numpy=
   array([[ 1,  2,  3,  7,  8,  9],
          [ 4,  5,  6, 10, 11, 12]], dtype=int32)>
@@ -4391,14 +4391,14 @@ def reverse_sequence(input,
          [5, 4, 3, 2, 1, 6, 7, 8]], dtype=int32)>
 
   Args:
-    `input`: A `Tensor`. The input to reverse.
-    `seq_lengths`: A `Tensor`. Must be one of the following types: `int32`,
+    input: A `Tensor`. The input to reverse.
+    seq_lengths: A `Tensor`. Must be one of the following types: `int32`,
       `int64`. 1-D with length `input.dims(batch_dim)` and `max(seq_lengths) <=
       input.dims(seq_dim)`
-    `seq_axis`: An `int`. The dimension which is partially reversed.
-    `batch_axis`: An optional `int`. Defaults to `0`. The dimension along which
+    seq_axis: An `int`. The dimension which is partially reversed.
+    batch_axis: An optional `int`. Defaults to `0`. The dimension along which
       reversal is performed.
-    `name`: A name for the operation (optional).
+    name: A name for the operation (optional).
 
   Returns:
     A Tensor. Has the same type as input.
@@ -5511,17 +5511,24 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # If `axis` is negative, then convert it to a positive value.
     axis = get_positive_axis(axis, data.shape.rank, ndims_name="rank(data)")
 
+    # If we know that `repeats` is a scalar, then we can just tile & reshape.
+    if repeats.shape.num_elements() == 1:
+      repeats = reshape(repeats, [])
+      expanded = expand_dims(data, axis + 1)
+      tiled = tile_one_dimension(expanded, axis + 1, repeats)
+      result_shape = concat([
+          data_shape[:axis], [repeats * data_shape[axis]], data_shape[axis + 1:]
+      ],
+                            axis=0)
+      return reshape(tiled, result_shape)
+
+
     # Check data Tensor shapes.
     if repeats.shape.ndims == 1:
       data.shape.dims[axis].assert_is_compatible_with(repeats.shape[0])
 
-    # If we know that `repeats` is a scalar, then we can just tile & reshape.
-    if repeats.shape.ndims == 0:
-      expanded = expand_dims(data, axis + 1)
-      tiled = tile_one_dimension(expanded, axis + 1, repeats)
-      result_shape = concat([data_shape[:axis], [-1], data_shape[axis + 1:]],
-                            axis=0)
-      return reshape(tiled, result_shape)
+    repeats = broadcast_to(repeats, [data_shape[axis]])
+    repeats_original = repeats
 
     # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
     if repeats.shape.ndims != axis + 1:
@@ -5552,8 +5559,12 @@ def repeat_with_axis(data, repeats, axis, name=None):
     if axis == 0:
       result = masked
     else:
-      result_shape = concat([data_shape[:axis], [-1], data_shape[axis + 1:]],
-                            axis=0)
+      repeated_dim_size = gen_math_ops._sum(
+          repeats_original,
+          axis=gen_math_ops._range(0, rank(repeats_original), 1))
+      result_shape = concat(
+          [data_shape[:axis], [repeated_dim_size], data_shape[axis + 1:]],
+          axis=0)
       result = reshape(masked, result_shape)
 
     # Preserve shape information.

@@ -62,6 +62,7 @@ cc_library(
     hdrs = ["dw_convolution_selector.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv",
         "//tensorflow/lite/delegates/gpu/cl/kernels:depth_wise_conv_3x3",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
@@ -131,6 +132,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:padding",
         "//tensorflow/lite/delegates/gpu/cl/kernels:pooling",
         "//tensorflow/lite/delegates/gpu/cl/kernels:prelu",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:quantize_and_dequantize",
         "//tensorflow/lite/delegates/gpu/cl/kernels:relu",
         "//tensorflow/lite/delegates/gpu/cl/kernels:reshape",
         "//tensorflow/lite/delegates/gpu/cl/kernels:reshapex4",

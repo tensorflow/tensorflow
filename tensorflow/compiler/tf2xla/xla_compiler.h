@@ -375,14 +375,6 @@ class XlaCompiler {
       std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
       CompilationResult* result);
 
-  // Compiles a single Op, given by `node_def`, into an
-  // xla::XlaComputation. Similar to CompileFunction but takes a single Op as
-  // input.
-  Status CompileSingleOp(const CompileOptions& options, const NodeDef& node_def,
-                         absl::Span<const Argument> args,
-                         absl::Span<const DataType> result_types,
-                         CompilationResult* result);
-
   // Returns the shape of the XLA parameter for an argument 'arg'.
   // See the class comment for more details about the argument passing
   // convention.
@@ -525,6 +517,12 @@ class XlaCompiler {
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };
+
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape);
 
 }  // namespace tensorflow
 

@@ -364,6 +364,7 @@ cc_library(
         "//tensorflow/core/platform",
         "//tensorflow/core/platform:stacktrace",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

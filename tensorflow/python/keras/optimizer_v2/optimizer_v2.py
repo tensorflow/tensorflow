@@ -160,8 +160,8 @@ class OptimizerV2(trackable.Trackable):
   `tf.keras.losses.Reduction.SUM` for not.
 
   To aggregate gradients yourself, call `apply_gradients` with
-  `all_reduce_sum_gradients` set to False. This is useful if you need to process
-  aggregated gradients.
+  `experimental_aggregate_gradients` set to False. This is useful if you need to
+  process aggregated gradients.
 
   If you are not using these and you want to average gradients, you should use
   `tf.math.reduce_sum` to add up your per-example losses and then divide by the
@@ -230,13 +230,13 @@ class OptimizerV2(trackable.Trackable):
   """
 
   # Subclasses should set this to True unless they override `apply_gradients`
-  # with a version that does not have the `all_reduce_sum_gradients` argument.
-  # Older versions of Keras did not have this argument so custom optimizers may
-  # have overridden `apply_gradients` without the `all_reduce_sum_gradients`
-  # argument. Keras only passes `all_reduce_sum_gradients` if this attribute is
-  # True.
+  # with a version that does not have the `experimental_aggregate_gradients`
+  # argument.  Older versions of Keras did not have this argument so custom
+  # optimizers may have overridden `apply_gradients` without the
+  # `experimental_aggregate_gradients` argument. Keras only passes
+  # `experimental_aggregate_gradients` if this attribute is True.
   # Note: This attribute will likely be removed in an upcoming release.
-  _HAS_ALL_REDUCE_SUM_GRAD = False
+  _HAS_AGGREGATE_GRAD = False
 
   def __init__(self, name, **kwargs):
     """Create a new Optimizer.
@@ -343,15 +343,16 @@ class OptimizerV2(trackable.Trackable):
         raise ValueError("Gradient clipping in the optimizer "
                          "(by setting clipnorm or clipvalue) is currently "
                          "unsupported when using a distribution strategy.")
-      grads = [clip_ops.clip_by_norm(g, self.clipnorm) for g in grads]
+      grads = [None if g is None else clip_ops.clip_by_norm(g, self.clipnorm)
+               for g in grads]
     if self.clipvalue is not None:
       if distribute_ctx.has_strategy():
         raise ValueError("Gradient clipping in the optimizer "
                          "(by setting clipnorm or clipvalue) is currently "
                          "unsupported when using a distribution strategy.")
+      v = self.clipvalue
       grads = [
-          clip_ops.clip_by_value(g, -self.clipvalue, self.clipvalue)
-          for g in grads
+          None if g is None else clip_ops.clip_by_value(g, -v, v) for g in grads
       ]
     return grads
 
@@ -432,7 +433,7 @@ class OptimizerV2(trackable.Trackable):
   def apply_gradients(self,
                       grads_and_vars,
                       name=None,
-                      all_reduce_sum_gradients=True):
+                      experimental_aggregate_gradients=True):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -440,7 +441,7 @@ class OptimizerV2(trackable.Trackable):
 
     The method sums gradients from all replicas in the presence of
     `tf.distribute.Strategy` by default. You can aggregate gradients yourself by
-    passing `all_reduce_sum_gradients=False`.
+    passing `experimental_aggregate_gradients=False`.
 
     Example:
 
@@ -448,7 +449,8 @@ class OptimizerV2(trackable.Trackable):
     grads = tape.gradient(loss, vars)
     grads = tf.distribute.get_replica_context().all_reduce('sum', grads)
     # Processing aggregated gradients.
-    optimizer.apply_gradients(zip(grads, vars), all_reduce_sum_gradients=False)
+    optimizer.apply_gradients(zip(grads, vars),
+        experimental_aggregate_gradients=False)
 
     ```
 
@@ -456,7 +458,7 @@ class OptimizerV2(trackable.Trackable):
       grads_and_vars: List of (gradient, variable) pairs.
       name: Optional name for the returned operation. Default to the name passed
         to the `Optimizer` constructor.
-      all_reduce_sum_gradients: Whether to sum gradients from different
+      experimental_aggregate_gradients: Whether to sum gradients from different
         replicas in the presense of `tf.distribute.Strategy`. If False, it's
         user responsibility to aggregate the gradients. Default to True.
 
@@ -486,11 +488,11 @@ class OptimizerV2(trackable.Trackable):
       if distribute_ctx.in_cross_replica_context():
         raise RuntimeError(
             "`apply_gradients() cannot be called in cross-replica context. "
-            "Use `tf.distribute.Strategy.experimental_run_v2` to enter replica "
+            "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
 
       apply_state = self._prepare(var_list)
-      if all_reduce_sum_gradients:
+      if experimental_aggregate_gradients:
         reduced_grads = self._aggregate_gradients(grads_and_vars)
         var_list = [v for _, v in grads_and_vars]
         grads_and_vars = list(zip(reduced_grads, var_list))
@@ -511,6 +513,7 @@ class OptimizerV2(trackable.Trackable):
       A list of all-reduced gradients.
     """
     grads_and_vars = list(grads_and_vars)
+    filtered_grads_and_vars = _filter_grads(grads_and_vars)
     def all_reduce_fn(distribution, grads_and_vars):
       return distribution.extended.batch_reduce_to(
           ds_reduce_util.ReduceOp.SUM, grads_and_vars)
@@ -519,9 +522,22 @@ class OptimizerV2(trackable.Trackable):
     # replica context.
     # TODO(b/150507409): Do not switch to a cross-replica context once the bug
     # is fixed.
-    if grads_and_vars:
-      return distribute_ctx.get_replica_context().merge_call(
-          all_reduce_fn, args=(grads_and_vars,))
+    if filtered_grads_and_vars:
+      reduced = distribute_ctx.get_replica_context().merge_call(
+          all_reduce_fn, args=(filtered_grads_and_vars,))
+    else:
+      reduced = []
+    # Copy 'reduced' but add None gradients back in
+    reduced_with_nones = []
+    reduced_pos = 0
+    for g, _ in grads_and_vars:
+      if g is None:
+        reduced_with_nones.append(None)
+      else:
+        reduced_with_nones.append(reduced[reduced_pos])
+        reduced_pos += 1
+    assert reduced_pos == len(reduced), "Failed to add all gradients"
+    return reduced_with_nones
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
@@ -699,8 +715,10 @@ class OptimizerV2(trackable.Trackable):
   def _prepare(self, var_list):
     keys = set()
     for var in var_list:
-      var_devices = (getattr(var, "devices", None) or  # Distributed
-                     [var.device])                     # Regular
+      if isinstance(var, ds_values.DistributedValues):
+        var_devices = var._devices   # pylint: disable=protected-access
+      else:
+        var_devices = [var.device]
       var_dtype = var.dtype.base_dtype
       for var_device in var_devices:
         keys.add((var_device, var_dtype))

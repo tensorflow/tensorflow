@@ -113,6 +113,9 @@ TF_LITE_MICRO_TEST(TestZeroVersionRegistration) {
   MicroOpResolver<1> micro_op_resolver;
   micro_op_resolver.AddCustom("mock_custom", &r,
                               tflite::MicroOpResolverAnyVersion());
+
+  TF_LITE_MICRO_EXPECT_EQ(1, micro_op_resolver.GetRegistrationLength());
+
   OpResolver* resolver = &micro_op_resolver;
 
   const TfLiteRegistration* registration = resolver->FindOp("mock_custom", 0);

@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/conv_buffer_1x1.h"
 
 #include <array>
-#include <cfloat>
 #include <string>
 #include <utility>
 
@@ -202,74 +201,6 @@ std::string GenerateConvBuffer1x1(
   return c;
 }
 
-// task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
-                                   const OperationDef& definition,
-                                   int task_size) {
-  const float task_size_per_cu =
-      task_size / static_cast<float>(device.GetInfo().compute_units_count);
-  int block_size = 1;
-  float threshold_1 = FLT_MAX;
-  float threshold_2 = FLT_MAX;
-  float threshold_4 = FLT_MAX;
-  if (!device.IsMali()) {
-    return 1;
-  }
-  MaliInfo mali_info = device.GetInfo().mali_info;
-  switch (definition.precision) {
-    case CalculationsPrecision::F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-        threshold_4 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-        threshold_4 = 256.0f * 16.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 6.0f;
-        threshold_4 = 256.0f * 16.0f;
-      }
-      break;
-    case CalculationsPrecision::F32_F16:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 3.0f;
-        threshold_4 = 256.0f * 32.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 256.0f * 2.0f;
-        threshold_2 = 256.0f * 8.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 8.0f;
-      }
-      break;
-    case CalculationsPrecision::F32:
-      if (mali_info.IsBifrostGen1()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen2()) {
-        threshold_1 = 128.0f;
-        threshold_2 = 256.0f * 4.0f;
-      } else if (mali_info.IsBifrostGen3()) {
-        threshold_1 = 256.0f;
-        threshold_2 = 256.0f * 12.0f;
-      }
-      break;
-  }
-  if (task_size_per_cu <= threshold_1) {
-    block_size = 1;
-  } else if (task_size_per_cu <= threshold_2) {
-    block_size = 2;
-  } else if (task_size_per_cu <= threshold_4) {
-    block_size = 4;
-  } else {
-    block_size = 8;
-  }
-  return block_size;
-}
-
 ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
                                         const OperationDef& definition,
                                         const BHWC& shape, int src_depth,
@@ -295,7 +226,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
   int block_size =
-      GetRecommendedBlockSizeForConv(device, definition, task_size);
+      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;
@@ -360,16 +291,16 @@ ConvBuffer1x1& ConvBuffer1x1::operator=(ConvBuffer1x1&& operation) {
   return *this;
 }
 
-Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
+absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
   std::string code =
       GenerateConvBuffer1x1(definition_, conv_params_, linked_operations_);
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvBuffer1x1::BindArguments() {
+absl::Status ConvBuffer1x1::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -382,7 +313,7 @@ Status ConvBuffer1x1::BindArguments() {
                        src_width_elements * src_[0]->Height());
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_size));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHSB()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 ConvBuffer1x1::GetGridSize() const {
@@ -397,13 +328,13 @@ int3 ConvBuffer1x1::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvBuffer1x1::Tune(const TuningParameters& params) {
+absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroupConv(params, kernel_, GetGridSize(),
                               &conv_params_.work_group_size);
 }
 
-Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvBuffer1x1::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(),
                                  conv_params_.work_group_size);
@@ -420,12 +351,12 @@ bool IsConvBuffer1x1Supported(const OperationDef& definition,
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const Convolution2DAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const Convolution2DAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   if (!IsConvBuffer1x1Supported(definition, attr)) {
-    return InvalidArgumentError("ConvBuffer1x1 doesn't supported");
+    return absl::InvalidArgumentError("ConvBuffer1x1 doesn't supported");
   }
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
@@ -441,10 +372,10 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1(const CreationContext& creation_context,
-                           const OperationDef& definition,
-                           const FullyConnectedAttributes& attr,
-                           ConvBuffer1x1* result, const BHWC* shape) {
+absl::Status CreateConvBuffer1x1(const CreationContext& creation_context,
+                                 const OperationDef& definition,
+                                 const FullyConnectedAttributes& attr,
+                                 ConvBuffer1x1* result, const BHWC* shape) {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;
@@ -461,11 +392,10 @@ Status CreateConvBuffer1x1(const CreationContext& creation_context,
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
-Status CreateConvBuffer1x1Wino4x4To6x6(const CreationContext& creation_context,
-                                       const OperationDef& definition,
-                                       const Convolution2DAttributes& attr,
-                                       ConvBuffer1x1* result,
-                                       const BHWC* shape) {
+absl::Status CreateConvBuffer1x1Wino4x4To6x6(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const Convolution2DAttributes& attr, ConvBuffer1x1* result,
+    const BHWC* shape) {
   const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
   ConvBuffer1x1::ConvParams conv_params;

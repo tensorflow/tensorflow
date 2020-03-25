@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_XLA_CONVERT_OP_FOLDER_H_
 #define TENSORFLOW_COMPILER_MLIR_XLA_CONVERT_OP_FOLDER_H_
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 
 namespace mlir {
 namespace xla {

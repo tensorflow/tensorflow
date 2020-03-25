@@ -1,11 +1,11 @@
 // RUN: tf-opt %s -tf-layout-assignment=force-data-format=NHWC -verify-diagnostics | FileCheck %s --dump-input=always
 
+// IMPORTANT: Tensor shapes do not match convolution parameters (stride,
+// dilations, etc...). This test only verifies that changing convolution data
+// layout will update all the attributes.
+
 // CHECK-LABEL: func @transposeConv2D
 func @transposeConv2D(%input: tensor<1x3x32x32xf32>, %filter: tensor<1x1x3x8xf32>) -> tensor<1x8x32x32xf32> {
-
-  // IMPORTANT: Tensor shapes do not match convolution parameters (stride,
-  // dilations, etc...). This test only verifies that changing convolution data
-  // layout will update all the attributes.
 
   // CHECK: %[[ARG_PERM:[0-9]*]] = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>}
   // CHECK: %[[ARG_TRANSPOSE:[0-9]*]] = "tf.Transpose"(%arg0, %[[ARG_PERM]])

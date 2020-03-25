@@ -36,7 +36,6 @@ from tensorflow.python.autograph.impl.testing import pybind_for_testing
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.keras.engine import training
 from tensorflow.python.platform import test
 
 
@@ -127,11 +126,6 @@ class ConversionTest(test.TestCase):
       # Note: currently, native bindings are whitelisted by a separate check.
       self.assertFalse(conversion.is_whitelisted(test_object.method))
 
-  def test_convert_entity_to_ast_unsupported_types(self):
-    with self.assertRaises(NotImplementedError):
-      program_ctx = self._simple_program_ctx()
-      conversion.convert_entity_to_ast('dummy', program_ctx)
-
   def test_convert_entity_to_ast_callable(self):
     b = 2
 
@@ -173,53 +167,6 @@ class ConversionTest(test.TestCase):
     nodes, _, _ = conversion.convert_entity_to_ast(f, program_ctx)
     f_node, = nodes
     self.assertEqual('tf__f', f_node.name)
-
-  def test_convert_entity_to_ast_class_hierarchy(self):
-
-    class TestBase(object):
-
-      def __init__(self, x='base'):
-        self.x = x
-
-      def foo(self):
-        return self.x
-
-      def bar(self):
-        return self.x
-
-    class TestSubclass(TestBase):
-
-      def __init__(self, y):
-        super(TestSubclass, self).__init__('sub')
-        self.y = y
-
-      def foo(self):
-        return self.y
-
-      def baz(self):
-        return self.y
-
-    program_ctx = self._simple_program_ctx()
-    with self.assertRaisesRegex(NotImplementedError, 'classes.*whitelisted'):
-      conversion.convert_entity_to_ast(TestSubclass, program_ctx)
-
-  def test_convert_entity_to_ast_class_hierarchy_whitelisted(self):
-
-    class TestSubclass(training.Model):
-
-      def __init__(self, y):
-        super(TestSubclass, self).__init__()
-        self.built = False
-
-      def call(self, x):
-        return 3 * x
-
-    program_ctx = self._simple_program_ctx()
-    (import_node, class_node), name, _ = conversion.convert_entity_to_ast(
-        TestSubclass, program_ctx)
-    self.assertEqual(import_node.names[0].name, 'Model')
-    self.assertEqual(name, 'TfTestSubclass')
-    self.assertEqual(class_node.name, 'TfTestSubclass')
 
   def test_convert_entity_to_ast_lambda(self):
     b = 2

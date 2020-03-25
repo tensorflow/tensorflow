@@ -47,6 +47,7 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "sub.cc",
         "svdf.cc",
         "unpack.cc",
     ],
@@ -118,6 +119,7 @@ cc_library(
         "softmax.cc",
         "split.cc",
         "strided_slice.cc",
+        "sub.cc",
         "svdf.cc",
         "unpack.cc",
     ],
@@ -347,6 +349,19 @@ tflite_micro_cc_test(
     name = "mul_test",
     srcs = [
         "mul_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "sub_test",
+    srcs = [
+        "sub_test.cc",
     ],
     deps = [
         ":all_ops_resolver",

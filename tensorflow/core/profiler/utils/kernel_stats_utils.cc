@@ -79,10 +79,9 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
   // turing_fp16_s1688cudnn_fp16
   bool possible_tensor_kernel = absl::StrContains(kernel_name, "884") ||
                                 absl::StrContains(kernel_name, "1688");
-#if defined(VLOG_IF)
-  VLOG_IF(1, possible_tensor_kernel)
-      << "Possible tensor kernel: " << kernel_name << "\n";
-#endif  // defined(VLOG_IF)
+  if (possible_tensor_kernel) {
+    VLOG(1) << "Possible tensor kernel: " << kernel_name << "\n";
+  }
 
   return (absl::StartsWith(kernel_name, "volta_i884") ||
           absl::StartsWith(kernel_name, "volta_h884") ||
@@ -100,8 +99,44 @@ bool IsKernelUsingTensorCore(absl::string_view kernel_name) {
 
 // This list is not exhaustive.
 bool IsOpTensorCoreEligible(absl::string_view tf_op_name) {
-  return (absl::StrContains(tf_op_name, "Conv") ||
-          absl::StrContains(tf_op_name, "Einsum"));
+  // Disable formatting to keep inline comments vertically aligned.
+  // clang-format off
+  return false
+      // Using EndsWith to match Fused operations.
+      || absl::EndsWith(tf_op_name, "Conv2D")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropFilter")
+      || absl::EndsWith(tf_op_name, "Conv2DBackpropInput")
+      || absl::EndsWith(tf_op_name, "Conv3D")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNative")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropFilter")
+      || absl::EndsWith(tf_op_name, "DepthwiseConv2dNativeBackpropInput")
+      // Using Contains to match V2/V3 suffixes.
+      || absl::StrContains(tf_op_name, "BatchMatMul")
+      // MatMul requires exact matching.
+      || absl::EndsWith(tf_op_name, "/MatMul")
+      || absl::EndsWith(tf_op_name, "FusedMatMul")
+      // cuDNN operations.
+      || absl::EndsWith(tf_op_name, "/CudnnRNN")
+      || absl::StrContains(tf_op_name, "CudnnRNNV")
+      || absl::StrContains(tf_op_name, "CudnnRNNForward")
+      || absl::StrContains(tf_op_name, "CudnnRNNBackprop")
+      // Special cases.
+      || absl::EndsWith(tf_op_name, "XlaDot");
+  // clang-format on
+}
+
+bool IsEinsumTensorCoreEligible(absl::string_view equation) {
+  if (equation.empty()) {
+    return false;
+  }
+  const std::vector<absl::string_view> input_output =
+      absl::StrSplit(equation, "->");
+  if (input_output.size() != 2) {
+    return false;
+  }
+  const std::vector<absl::string_view> lhs_rhs =
+      absl::StrSplit(input_output[0], ',');
+  return lhs_rhs.size() == 2;
 }
 
 bool KernelReportLessThanComparator::operator()(const KernelReport& lhs,

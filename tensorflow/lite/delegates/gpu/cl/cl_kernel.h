@@ -48,17 +48,17 @@ class CLKernel {
 
   cl_kernel kernel() const { return kernel_; }
 
-  Status CreateFromProgram(const CLProgram& program,
-                           const std::string& function_name);
+  absl::Status CreateFromProgram(const CLProgram& program,
+                                 const std::string& function_name);
 
-  Status SetMemory(int index, cl_mem memory);
-  Status SetMemoryAuto(cl_mem memory);
+  absl::Status SetMemory(int index, cl_mem memory);
+  absl::Status SetMemoryAuto(cl_mem memory);
   template <typename T>
-  Status SetBytes(int index, const T& value) const {
+  absl::Status SetBytes(int index, const T& value) const {
     return SetBytes(index, static_cast<const void*>(&value), sizeof(T));
   }
   template <typename T>
-  Status SetBytesAuto(const T& value) {
+  absl::Status SetBytesAuto(const T& value) {
     return SetBytesAuto(static_cast<const void*>(&value), sizeof(T));
   }
 
@@ -69,12 +69,12 @@ class CLKernel {
 
   // Do not use this function
   // workaround for Mali memory leak
-  Status ReInit() const;
+  absl::Status ReInit() const;
 
  private:
   void Release();
-  Status SetBytes(int index, const void* ptr, int length) const;
-  Status SetBytesAuto(const void* ptr, int length);
+  absl::Status SetBytes(int index, const void* ptr, int length) const;
+  absl::Status SetBytesAuto(const void* ptr, int length);
 
   int private_memory_size_;
   int max_work_group_size_;
@@ -87,22 +87,22 @@ class CLKernel {
 };
 
 template <>
-Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const;
+absl::Status CLKernel::SetBytes<FLT>(int index, const FLT& value) const;
 
 template <>
-Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const;
+absl::Status CLKernel::SetBytes<FLT2>(int index, const FLT2& value) const;
 
 template <>
-Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const;
+absl::Status CLKernel::SetBytes<FLT4>(int index, const FLT4& value) const;
 
 template <>
-Status CLKernel::SetBytesAuto<FLT>(const FLT& value);
+absl::Status CLKernel::SetBytesAuto<FLT>(const FLT& value);
 
 template <>
-Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value);
+absl::Status CLKernel::SetBytesAuto<FLT2>(const FLT2& value);
 
 template <>
-Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value);
+absl::Status CLKernel::SetBytesAuto<FLT4>(const FLT4& value);
 
 }  // namespace cl
 }  // namespace gpu

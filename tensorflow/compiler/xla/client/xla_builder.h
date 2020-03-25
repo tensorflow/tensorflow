@@ -380,7 +380,7 @@ class XlaBuilder {
     return Parameter(parameter_number, shape, name, empty_bools);
   }
 
-  XlaOp ConstantLiteral(const LiteralSlice& literal);
+  virtual XlaOp ConstantLiteral(const LiteralSlice& literal);
 
   XlaOp Broadcast(XlaOp operand, absl::Span<const int64> broadcast_sizes);
 

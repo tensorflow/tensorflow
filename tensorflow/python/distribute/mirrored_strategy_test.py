@@ -127,7 +127,8 @@ class MirroredTwoDeviceDistributionTest(
       def replica_squared_fn(dtype=dtype):
         # Lists with different lengths on different replicas.
         replica_id = _replica_id_as_int()
-        return math_ops.cast([replica_id] * (replica_id + 1), dtype)
+        return array_ops.identity(
+            math_ops.cast([replica_id] * (replica_id + 1), dtype))
 
       self.reduce_axis_helper(distribution, replica_squared_fn)
 
@@ -1368,7 +1369,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
           return t.gradient(loss, [w, b])
 
       def step_fn():
-        return distribution.experimental_run_v2(replica_fn)
+        return distribution.run(replica_fn)
 
       context.enable_run_metadata()
       g1, g2 = step_fn()
@@ -1399,18 +1400,14 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       def replica_fn():
         return f()
 
-      distribution.experimental_run_v2(replica_fn)
+      distribution.run(replica_fn)
 
 
 def _replica_id():
   replica_id = ds_context.get_replica_context().replica_id_in_sync_group
   if not isinstance(replica_id, ops.Tensor):
     replica_id = constant_op.constant(replica_id)
-  # TODO(b/149852830): Workaround for small Tensor caching (which is only on
-  # CPU) to ensure the value is on the correct device.
-  replica_id = math_ops.cast(replica_id, dtypes.float32)
-  replica_id = math_ops.cast(replica_id, dtypes.int32)
-  return replica_id
+  return array_ops.identity(replica_id)
 
 
 def _replica_id_as_int():

@@ -99,8 +99,7 @@ Status XlaCompileOnDemandOp::MustArgumentBeConstant(
   // TODO(jmolloy): This could be expensive, so memoize.
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      op_kernel, &constant_input_indices, flib_runtime,
-      /*cached_arg_indices=*/nullptr));
+      op_kernel, &constant_input_indices, flib_runtime));
   *result = absl::c_binary_search(constant_input_indices, argument_idx);
   return Status::OK();
 }

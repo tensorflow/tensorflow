@@ -49,7 +49,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
         loss_metric.update_state(loss)
         loss_metric_2.update_state(loss)
 
-      distribution.experimental_run_v2(step_fn)
+      distribution.run(step_fn)
 
     train_step()
     self.assertEqual(loss_metric.result().numpy(),
@@ -73,7 +73,7 @@ class KerasMetricsTest(test.TestCase, parameterized.TestCase):
       metric.update_state(i)
 
     for i in dataset:
-      distribution.experimental_run_v2(step_fn, args=(i,))
+      distribution.run(step_fn, args=(i,))
 
     # This should be the mean of integers 0-9 which has a sum of 45 and a count
     # of 10 resulting in mean of 4.5.

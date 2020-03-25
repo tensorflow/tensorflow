@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/modify_model_interface.h"
 
+#include <memory>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/model.h"
@@ -22,6 +25,8 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 namespace {
+
+using ::testing::ElementsAreArray;
 
 // Create a model with 1 quant, 1 FC, 1 dequant
 std::unique_ptr<ModelT> CreateModelSingleInputOutput() {
@@ -238,7 +243,53 @@ std::unique_ptr<ModelT> CreateModelMultipleInputOutput() {
   return model;
 }
 
-TEST(ModelInference, Uint8SingleInputOutput) {
+// Create a model with 1 FC.
+std::unique_ptr<ModelT> CreateFloatModel() {
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<tflite::SubGraphT>();
+  auto buffer = absl::make_unique<tflite::BufferT>();
+  auto fc_op_code = absl::make_unique<OperatorCodeT>();
+  auto fc_op = absl::make_unique<OperatorT>();
+
+  model->subgraphs.push_back(std::move(subgraph));
+
+  // Op code
+  fc_op_code->builtin_code = BuiltinOperator_FULLY_CONNECTED;
+  fc_op_code->version = 2;
+
+  // Op.
+  fc_op->opcode_index = 0;
+  fc_op->inputs = {0};
+  fc_op->outputs = {1};
+
+  model->subgraphs[0]->operators.push_back(std::move(fc_op));
+  model->operator_codes.push_back(std::move(fc_op_code));
+
+  // Model input/otuput.
+  model->subgraphs[0]->inputs = {0};
+  model->subgraphs[0]->outputs = {1};
+
+  // Tensors
+  auto tensor_0 = absl::make_unique<TensorT>();
+  tensor_0->name = "tensor_0";
+  tensor_0->shape = {};
+  tensor_0->type = TensorType_FLOAT32;
+
+  auto tensor_1 = absl::make_unique<TensorT>();
+  tensor_1->name = "tensor_1";
+  tensor_1->shape = {};
+  tensor_1->type = TensorType_FLOAT32;
+
+  model->subgraphs[0]->tensors.push_back(std::move(tensor_0));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor_1));
+
+  // Buffer
+  model->buffers.push_back(std::move(buffer));
+
+  return model;
+}
+
+TEST(ModelInterface, Uint8SingleInputOutput) {
   auto model = CreateModelSingleInputOutput();
 
   // Ops.
@@ -277,7 +328,7 @@ TEST(ModelInference, Uint8SingleInputOutput) {
   EXPECT_EQ(model->subgraphs[0]->operators[2]->opcode_index, 0);
 }
 
-TEST(ModelInference, Int8SingleInputOutput) {
+TEST(ModelInterface, Int8SingleInputOutput) {
   auto model = CreateModelSingleInputOutput();
 
   // Change model type.
@@ -299,7 +350,7 @@ TEST(ModelInference, Int8SingleInputOutput) {
   EXPECT_EQ(model->subgraphs[0]->outputs[0], 2);
 }
 
-TEST(ModelInference, Uint8MutipleInputOutput) {
+TEST(ModelInterface, Uint8MutipleInputOutput) {
   auto model = CreateModelMultipleInputOutput();
 
   // Ops.
@@ -362,7 +413,7 @@ TEST(ModelInference, Uint8MutipleInputOutput) {
   EXPECT_EQ(model->subgraphs[0]->operators[4]->opcode_index, 0);
 }
 
-TEST(ModelInference, Int8MutipleInputOutput) {
+TEST(ModelInterface, Int8MutipleInputOutput) {
   auto model = CreateModelMultipleInputOutput();
 
   // Change model type.
@@ -411,6 +462,72 @@ TEST(ModelInference, Int8MutipleInputOutput) {
 
   // Ops.
   EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
+}
+
+TEST(ModelInterface, Float) {
+  // Create the model.
+  std::unique_ptr<ModelT> input_model_t = CreateFloatModel();
+  flatbuffers::FlatBufferBuilder builder_temp;
+  flatbuffers::Offset<Model> output_model_location =
+      Model::Pack(builder_temp, input_model_t.get());
+  FinishModelBuffer(builder_temp, output_model_location);
+  const uint8_t* buffer_temp = builder_temp.GetBufferPointer();
+  const Model* input_model = GetModel(buffer_temp);
+
+  // Change model type.
+  flatbuffers::FlatBufferBuilder builder;
+  EXPECT_EQ(Uint8QuantizeModelInputsOutputs(&builder, input_model,
+                                            {{"tensor_0", {0.4, 2}}},
+                                            {{"tensor_1", {0.5, -5}}}),
+            kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  std::unique_ptr<ModelT> model;
+  model.reset(output_model->UnPack());
+
+  // Verify results.
+  EXPECT_EQ(model->operator_codes.size(), 3);
+  EXPECT_EQ(model->subgraphs.size(), 1);
+  EXPECT_EQ(model->subgraphs[0]->operators.size(), 3);
+  EXPECT_EQ(model->subgraphs[0]->tensors.size(), 4);
+  EXPECT_EQ(model->buffers.size(), 1);
+
+  // Ops.
+  EXPECT_EQ(model->operator_codes[0]->builtin_code,
+            BuiltinOperator_FULLY_CONNECTED);
+  EXPECT_EQ(model->operator_codes[1]->builtin_code, BuiltinOperator_DEQUANTIZE);
+  EXPECT_EQ(model->operator_codes[2]->builtin_code, BuiltinOperator_QUANTIZE);
+
+  EXPECT_EQ(model->subgraphs[0]->operators[0]->opcode_index, 1);
+  EXPECT_EQ(model->subgraphs[0]->operators[1]->opcode_index, 0);
+  EXPECT_EQ(model->subgraphs[0]->operators[2]->opcode_index, 2);
+
+  EXPECT_THAT(model->subgraphs[0]->operators[0]->inputs, ElementsAreArray({2}));
+  EXPECT_THAT(model->subgraphs[0]->operators[0]->outputs,
+              ElementsAreArray({0}));
+  EXPECT_THAT(model->subgraphs[0]->operators[1]->inputs, ElementsAreArray({0}));
+  EXPECT_THAT(model->subgraphs[0]->operators[1]->outputs,
+              ElementsAreArray({1}));
+  EXPECT_THAT(model->subgraphs[0]->operators[2]->inputs, ElementsAreArray({1}));
+  EXPECT_THAT(model->subgraphs[0]->operators[2]->outputs,
+              ElementsAreArray({3}));
+
+  // Tensors.
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->name, "tensor_0");
+  EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_FLOAT32);
+  EXPECT_EQ(model->subgraphs[0]->tensors[1]->name, "tensor_1");
+  EXPECT_EQ(model->subgraphs[0]->tensors[1]->type, TensorType_FLOAT32);
+
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->name, "tensor_0_uint8");
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->type, TensorType_UINT8);
+  EXPECT_FLOAT_EQ(model->subgraphs[0]->tensors[2]->quantization->scale[0], 0.4);
+  EXPECT_EQ(model->subgraphs[0]->tensors[2]->quantization->zero_point[0], 2);
+
+  EXPECT_EQ(model->subgraphs[0]->tensors[3]->name, "tensor_1_uint8");
+  EXPECT_EQ(model->subgraphs[0]->tensors[3]->type, TensorType_UINT8);
+  EXPECT_FLOAT_EQ(model->subgraphs[0]->tensors[3]->quantization->scale[0], 0.5);
+  EXPECT_EQ(model->subgraphs[0]->tensors[3]->quantization->zero_point[0], -5);
 }
 
 }  // namespace

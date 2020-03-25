@@ -191,7 +191,7 @@ class CLDevice {
   DeviceInfo info_;
 };
 
-Status CreateDefaultGPUDevice(CLDevice* result);
+absl::Status CreateDefaultGPUDevice(CLDevice* result);
 
 template <typename T>
 T GetDeviceInfo(cl_device_id id, cl_device_info info) {
@@ -204,12 +204,12 @@ T GetDeviceInfo(cl_device_id id, cl_device_info info) {
 }
 
 template <typename T>
-Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
+absl::Status GetDeviceInfo(cl_device_id id, cl_device_info info, T* result) {
   cl_int error = clGetDeviceInfo(id, info, sizeof(T), result, nullptr);
   if (error != CL_SUCCESS) {
-    return InvalidArgumentError(CLErrorCodeToString(error));
+    return absl::InvalidArgumentError(CLErrorCodeToString(error));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

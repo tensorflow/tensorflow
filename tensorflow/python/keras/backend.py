@@ -1497,7 +1497,8 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
 
   Example:
 
-  >>> kvar = tf.keras.backend.random_uniform_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_uniform_variable(shape=(2,3),
+  ... low=0.0, high=1.0)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
@@ -1531,7 +1532,8 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
 
   Example:
 
-  >>> kvar = tf.keras.backend.random_normal_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_normal_variable(shape=(2,3),
+  ... mean=0.0, scale=1.0)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
@@ -5671,6 +5673,14 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor with normal distribution of values.
+
+  Example:
+
+  >>> random_normal_tensor = tf.keras.backend.random_normal(shape=(2,3),
+  ... mean=0.0, stddev=1.0)
+  >>> random_normal_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5695,6 +5705,14 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> random_uniform_tensor = tf.keras.backend.random_uniform(shape=(2,3),
+  ... minval=0.0, maxval=1.0)
+  >>> random_uniform_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5723,6 +5741,14 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> random_binomial_tensor = tf.keras.backend.random_binomial(shape=(2,3),
+  ... p=0.5)
+  >>> random_binomial_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()

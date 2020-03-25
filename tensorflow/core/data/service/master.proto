@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/service/common.proto";
+
+message RegisterWorkerRequest {
+  // The address of the registering worker.
+  string worker_address = 1;
+}
+
+message RegisterWorkerResponse {
+  // An id for the worker.
+  int64 worker_id = 1;
+  // Tasks to begin processing.
+  repeated TaskDef tasks = 2;
+}
+
+message GetOrRegisterDatasetRequest {
+  // The dataset to register.
+  DatasetDef dataset = 1;
+}
+
+message GetOrRegisterDatasetResponse {
+  // The id for the registered dataset.
+  int64 dataset_id = 1;
+}
+
+message BeginEpochRequest {
+  // The id of the dataset to iterate over.
+  int64 dataset_id = 1;
+}
+
+message BeginEpochResponse {
+  // The id for the created epoch.
+  int64 epoch_id = 1;
+}
+
+message GetTasksRequest {
+  // The epoch to look up tasks for.
+  int64 epoch_id = 1;
+}
+
+message TaskInfo {
+  // The address of the worker processing the task.
+  string worker_address = 1;
+  // The task id.
+  int64 id = 2;
+}
+
+message GetTasksResponse {
+  // A list of all tasks for an epoch.
+  repeated TaskInfo task_info = 1;
+}
+
+service MasterService {
+  // Registers a worker with the master.
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
+
+  // Registers a dataset with the server, or returns its id if it is already
+  // registered.
+  //
+  // The dataset is constructed in a new graph, so it must not refer to
+  // external resources or variables.
+  rpc GetOrRegisterDataset(GetOrRegisterDatasetRequest)
+      returns (GetOrRegisterDatasetResponse);
+
+  // Begins an epoch over a dataset.
+  rpc BeginEpoch(BeginEpochRequest) returns (BeginEpochResponse);
+
+  // Reports a list of all tasks for an epoch.
+  rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);
+}

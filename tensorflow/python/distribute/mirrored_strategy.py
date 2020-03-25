@@ -403,8 +403,7 @@ class MirroredStrategy(distribute_lib.Strategy):
 
       total_result = 0
       for x in dataset:
-        per_replica_result = my_strategy.experimental_run_v2(replica_fn,
-                                                             args=(x,))
+        per_replica_result = my_strategy.run(replica_fn, args=(x,))
         total_result += my_strategy.reduce(tf.distribute.ReduceOp.SUM,
                                            per_replica_result, axis=None)
       return total_result
@@ -752,13 +751,13 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       return wrapped(args, kwargs)
 
     if context.executing_eagerly():
-      logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
-                          "overhead currently. We will be working on improving "
-                          "this in the future, but for now please wrap "
-                          "`call_for_each_replica` or `experimental_run` or "
-                          "`experimental_run_v2` inside a tf.function to get "
-                          "the best performance." %
-                          self._container_strategy().__class__.__name__, 5)
+      logging.log_first_n(
+          logging.WARN, "Using %s eagerly has significant "
+          "overhead currently. We will be working on improving "
+          "this in the future, but for now please wrap "
+          "`call_for_each_replica` or `experimental_run` or "
+          "`run` inside a tf.function to get the best performance." %
+          self._container_strategy().__class__.__name__, 5)
     else:
       # When a tf.function is wrapped to trigger _call_for_each_replica (see
       # the other branch above), AutoGraph stops conversion at

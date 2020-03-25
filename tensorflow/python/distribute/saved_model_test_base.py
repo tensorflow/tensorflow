@@ -112,7 +112,7 @@ def load_and_run_with_saved_model_api(distribution, saved_dir, predict_dataset,
     dist_predict_dataset = distribution.experimental_distribute_dataset(
         predict_dataset)
     per_replica_predict_data = next(iter(dist_predict_dataset))
-    result = distribution.experimental_run_v2(
+    result = distribution.run(
         func.signatures[_DEFAULT_FUNCTION_KEY],
         args=(per_replica_predict_data,))
     result = result[output_name]

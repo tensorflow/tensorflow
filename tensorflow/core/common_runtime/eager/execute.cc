@@ -736,7 +736,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
                                               ctx.GetContextViewId()));
         }
       }
-      auto* input_handle = remote_op->add_inputs();
+      auto* input_handle = remote_op->add_op_inputs()->mutable_remote_handle();
       TF_RETURN_IF_ERROR(ctx.RemoteMgr()->SerializeRemoteTensorHandle(
           input, input_handle, input_device, *input_device_name,
           serialize_resource_dtype_and_shape));
@@ -863,6 +863,9 @@ Status MaybeUpdateOpDevice(EagerOperation* op) {
                           : absl::get<Device*>(op->Device());
   for (int i = 0; i < op->Inputs().size(); ++i) {
     TensorHandle* tensor_handle = op->Inputs()[i];
+    if (VariantDeviceIsCustom(tensor_handle->DeviceOrHostCPU(ctx))) {
+      continue;  // Do not try to let custom devices influence op placement.
+    }
     if (tensor_handle->dtype == DT_RESOURCE) {
       Device* resource_device = tensor_handle->resource_device();
       DVLOG(2) << "for op " << op->Name() << " input " << i << " "

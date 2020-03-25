@@ -770,6 +770,10 @@ class CategoricalAccuracy(MeanMetricWrapper):
 class SparseCategoricalAccuracy(MeanMetricWrapper):
   """Calculates how often predictions matches integer labels.
 
+  ```python
+  acc = np.dot(sample_weight, np.equal(y_true, np.argmax(y_pred, axis=1))
+  ```
+  
   You can provide logits of classes as `y_pred`, since argmax of
   logits and probabilities are same.
 
@@ -784,12 +788,12 @@ class SparseCategoricalAccuracy(MeanMetricWrapper):
   Usage:
 
   >>> m = tf.keras.metrics.SparseCategoricalAccuracy()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]])
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([[2], [1]], [[0.1, 0.9, 0.8], [0.05, 0.95, 0]],
+  >>> _ = m.update_state([[2], [1]], [[0.1, 0.6, 0.3], [0.05, 0.95, 0]],
   ...                    sample_weight=[0.7, 0.3])
   >>> m.result().numpy()
   0.3
@@ -1191,6 +1195,18 @@ class Precision(Metric):
   >>> m.result().numpy()
   1.0
 
+  >>> # With top_k=2, it will calculate precision over y_true[:2] and y_pred[:2]
+  >>> m = tf.keras.metrics.Precision(top_k=2)
+  >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
+  >>> m.result().numpy()
+  0.0
+
+  >>> # With top_k=4, it will calculate precision over y_true[:4] and y_pred[:4]
+  >>> m = tf.keras.metrics.Precision(top_k=4)
+  >>> _ = m.update_state([0, 0, 1, 1], [1, 1, 1, 1])
+  >>> m.result().numpy()
+  0.5
+
   Usage with tf.keras API:
 
   ```python
@@ -1479,10 +1495,35 @@ class SensitivitySpecificityBase(Metric):
     K.batch_set_value(
         [(v, np.zeros((num_thresholds,))) for v in self.variables])
 
+  def _find_max_under_constraint(self, constrained, dependent, predicate):
+    """Returns the maximum of dependent_statistic that satisfies the constraint.
+
+    Args:
+      constrained: Over these values the constraint
+        is specified. A rank-1 tensor.
+      dependent: From these values the maximum that satiesfies the
+        constraint is selected. Values in this tensor and in
+        `constrained` are linked by having the same threshold at each
+        position, hence this tensor must have the same shape.
+      predicate: A binary boolean functor to be applied to arguments
+      `constrained` and `self.value`, e.g. `tf.greater`.
+
+    Returns maximal dependent value, if no value satiesfies the constraint 0.0.
+    """
+    feasible = array_ops.where(predicate(constrained, self.value))
+    feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
+
+    def get_max():
+      return math_ops.reduce_max(array_ops.gather(dependent, feasible))
+
+    return control_flow_ops.cond(feasible_exists, get_max, lambda: 0.0)
+
 
 @keras_export('keras.metrics.SensitivityAtSpecificity')
 class SensitivityAtSpecificity(SensitivitySpecificityBase):
-  """Computes the sensitivity at a given specificity.
+  """Computes best sensitivity where specificity is >= specified value.
+
+  the sensitivity at a given specificity.
 
   `Sensitivity` measures the proportion of actual positives that are correctly
   identified as such (tp / (tp + fn)).
@@ -1502,16 +1543,16 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
 
   Usage:
 
-  >>> m = tf.keras.metrics.SensitivityAtSpecificity(0.4, num_thresholds=1)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m = tf.keras.metrics.SensitivityAtSpecificity(0.5)
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
   0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
-  ...                    sample_weight=[1, 0, 0, 1])
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  ...                    sample_weight=[1, 1, 2, 2, 1])
   >>> m.result().numpy()
-  1.0
+  0.333333
 
   Usage with tf.keras API:
 
@@ -1542,20 +1583,12 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
         specificity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
   def result(self):
-    # Calculate specificities at all the thresholds.
     specificities = math_ops.div_no_nan(
         self.true_negatives, self.true_negatives + self.false_positives)
-
-    # Find the index of the threshold where the specificity is closest to the
-    # given specificity.
-    min_index = math_ops.argmin(
-        math_ops.abs(specificities - self.value), axis=0)
-    min_index = math_ops.cast(min_index, dtypes.int32)
-
-    # Compute sensitivity at that index.
-    return math_ops.div_no_nan(
-        self.true_positives[min_index],
-        self.true_positives[min_index] + self.false_negatives[min_index])
+    sensitivities = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_negatives)
+    return self._find_max_under_constraint(
+        specificities, sensitivities, math_ops.greater_equal)
 
   def get_config(self):
     config = {
@@ -1568,7 +1601,7 @@ class SensitivityAtSpecificity(SensitivitySpecificityBase):
 
 @keras_export('keras.metrics.SpecificityAtSensitivity')
 class SpecificityAtSensitivity(SensitivitySpecificityBase):
-  """Computes the specificity at a given sensitivity.
+  """Computes best specificity where sensitivity is >= specified value.
 
   `Sensitivity` measures the proportion of actual positives that are correctly
   identified as such (tp / (tp + fn)).
@@ -1588,16 +1621,16 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
 
   Usage:
 
-  >>> m = tf.keras.metrics.SpecificityAtSensitivity(0.8, num_thresholds=1)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m = tf.keras.metrics.SpecificityAtSensitivity(0.5)
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
-  1.0
+  0.66666667
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
-  ...                    sample_weight=[1, 0, 0, 1])
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  ...                    sample_weight=[1, 1, 2, 2, 2])
   >>> m.result().numpy()
-  1.0
+  0.5
 
   Usage with tf.keras API:
 
@@ -1628,20 +1661,12 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
         sensitivity, num_thresholds=num_thresholds, name=name, dtype=dtype)
 
   def result(self):
-    # Calculate sensitivities at all the thresholds.
     sensitivities = math_ops.div_no_nan(
         self.true_positives, self.true_positives + self.false_negatives)
-
-    # Find the index of the threshold where the sensitivity is closest to the
-    # requested value.
-    min_index = math_ops.argmin(
-        math_ops.abs(sensitivities - self.value), axis=0)
-    min_index = math_ops.cast(min_index, dtypes.int32)
-
-    # Compute specificity at that index.
-    return math_ops.div_no_nan(
-        self.true_negatives[min_index],
-        self.true_negatives[min_index] + self.false_positives[min_index])
+    specificities = math_ops.div_no_nan(
+        self.true_negatives, self.true_negatives + self.false_positives)
+    return self._find_max_under_constraint(
+        sensitivities, specificities, math_ops.greater_equal)
 
   def get_config(self):
     config = {
@@ -1654,7 +1679,7 @@ class SpecificityAtSensitivity(SensitivitySpecificityBase):
 
 @keras_export('keras.metrics.PrecisionAtRecall')
 class PrecisionAtRecall(SensitivitySpecificityBase):
-  """Computes the precision at a given recall.
+  """Computes best precision where recall is >= specified value.
 
   This metric creates four local variables, `true_positives`, `true_negatives`,
   `false_positives` and `false_negatives` that are used to compute the
@@ -1666,16 +1691,16 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
 
   Usage:
 
-  >>> m = tf.keras.metrics.PrecisionAtRecall(0.8, num_thresholds=1)
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
+  >>> m = tf.keras.metrics.PrecisionAtRecall(0.5)
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8])
   >>> m.result().numpy()
-  1.0
+  0.5
 
   >>> m.reset_states()
-  >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9],
-  ...                    sample_weight=[1, 0, 0, 1])
+  >>> _ = m.update_state([0, 0, 0, 1, 1], [0, 0.3, 0.8, 0.3, 0.8],
+  ...                    sample_weight=[2, 2, 2, 1, 1])
   >>> m.result().numpy()
-  1.0
+  0.33333333
 
   Usage with tf.keras API:
 
@@ -1709,20 +1734,12 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
         dtype=dtype)
 
   def result(self):
-    # Calculate recall at all the thresholds.
     recalls = math_ops.div_no_nan(
         self.true_positives, self.true_positives + self.false_negatives)
-
-    # Find the index of the threshold where the recall is closest to the
-    # requested value.
-    min_index = math_ops.argmin(
-        math_ops.abs(recalls - self.value), axis=0)
-    min_index = math_ops.cast(min_index, dtypes.int32)
-
-    # Compute precision at that index.
-    return math_ops.div_no_nan(
-        self.true_positives[min_index],
-        self.true_positives[min_index] + self.false_positives[min_index])
+    precisions = math_ops.div_no_nan(
+        self.true_positives, self.true_positives + self.false_positives)
+    return self._find_max_under_constraint(
+        recalls, precisions, math_ops.greater_equal)
 
   def get_config(self):
     config = {'num_thresholds': self.num_thresholds, 'recall': self.recall}
@@ -1732,7 +1749,7 @@ class PrecisionAtRecall(SensitivitySpecificityBase):
 
 @keras_export('keras.metrics.RecallAtPrecision')
 class RecallAtPrecision(SensitivitySpecificityBase):
-  """Computes the maximally achievable recall at a required precision.
+  """Computes best recall where precision is >= specified value.
 
   For a given score-label-distribution the required precision might not
   be achievable, in this case 0.0 is returned as recall.
@@ -1747,7 +1764,7 @@ class RecallAtPrecision(SensitivitySpecificityBase):
 
   Usage:
 
-  >>> m = tf.keras.metrics.RecallAtPrecision(0.8, num_thresholds=1)
+  >>> m = tf.keras.metrics.RecallAtPrecision(0.8)
   >>> _ = m.update_state([0, 0, 1, 1], [0, 0.5, 0.3, 0.9])
   >>> m.result().numpy()
   0.5
@@ -1790,21 +1807,12 @@ class RecallAtPrecision(SensitivitySpecificityBase):
         dtype=dtype)
 
   def result(self):
-    # Calculate precision and recall at all the thresholds.
-    # All recalls are computed, because they are not a monotoneous function of
-    # precision and we want to search for the highest feasible recall.
     precisions = math_ops.div_no_nan(
         self.true_positives, self.true_positives + self.false_positives)
     recalls = math_ops.div_no_nan(
         self.true_positives, self.true_positives + self.false_negatives)
-    # Find best recall where the precision is as good as required.
-    feasible = array_ops.where(math_ops.greater_equal(precisions, self.value))
-    feasible_exists = math_ops.greater(array_ops.size(feasible), 0)
-    best_recall = control_flow_ops.cond(
-        feasible_exists,
-        lambda: math_ops.reduce_max(array_ops.gather(recalls, feasible)),
-        lambda: 0.0)
-    return best_recall
+    return self._find_max_under_constraint(
+        precisions, recalls, math_ops.greater_equal)
 
   def get_config(self):
     config = {'num_thresholds': self.num_thresholds,

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -117,6 +117,14 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
 // Converts tensor list operations into operations on buffers and sizes. Needs
 // static shapes and known max element count.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass();
+
+// Converts tensor array ops into operations on local variables, which can later
+// be removed by resource lifting. Requires known sizes and known element shapes
+// (either defined in TensorArrayV3 or implied in the first write).
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass();
+
+// Create a pass that legalize HLO to TF dialect.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass();
 }  // namespace TF
 
 namespace TFControlFlow {
