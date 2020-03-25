@@ -96,6 +96,94 @@ TfLiteStatus AllocateVariables(
   return kTfLiteOk;
 }
 
+// Helper function to print model flatbuffer data. This function is not called
+// by default. Hence it's not linked in to the final binary code.
+void PrintModelData(const Model* model, ErrorReporter* error_reporter) {
+  auto* subgraphs = model->subgraphs();
+  const SubGraph* subgraph = (*subgraphs)[0];
+  const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
+      subgraph->tensors();
+  const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+      model->buffers();
+  TF_LITE_REPORT_ERROR(error_reporter, "==== Model info: =====");
+  for (int i = 0; i < tensors->size(); ++i) {
+    const tflite::Tensor& flatbuffer_tensor = *tensors->Get(i);
+    auto* quantization = flatbuffer_tensor.quantization();
+    size_t type_size, tensor_size;
+    auto* buffer = (*buffers)[flatbuffer_tensor.buffer()];
+    auto* array = buffer->data();
+    int array_size = 0;
+    if (array) {
+      array_size = array->size();
+    }
+    BytesRequiredForTensor(flatbuffer_tensor, &tensor_size, &type_size,
+                           error_reporter);
+    TF_LITE_REPORT_ERROR(
+        error_reporter, "Tensor index: %d arena tensor %d size %d", i,
+        !array_size && !flatbuffer_tensor.is_variable(), tensor_size);
+  }
+}
+
+// Helper function to check flatbuffer metadata correctness. This function is
+// not called by default. Hence it's not linked in to the final binary code.
+TfLiteStatus CheckOfflinePlannedOffsets(const Model* model,
+                                        ErrorReporter* error_reporter) {
+  if (model->metadata()) {
+    for (int i = 0; i < model->metadata()->size(); ++i) {
+      auto metadata = model->metadata()->Get(i);
+      if (strncmp(metadata->name()->c_str(), "OfflineMemoryAllocation",
+                  strlen("OfflineMemoryAllocation")) == 0) {
+        auto* subgraphs = model->subgraphs();
+        const SubGraph* subgraph = (*subgraphs)[0];
+        const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors =
+            subgraph->tensors();
+        const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
+            model->buffers();
+        int nbr_tflite_tensors = tensors->size();
+        auto* buffer = (*buffers)[metadata->buffer()];
+        auto* array = buffer->data();
+        const uint32_t* metadata_buffer = (uint32_t*)array->data();
+        int version = metadata_buffer[0];
+        int subgraph_idx = metadata_buffer[1];
+        const int nbr_offline_offsets = metadata_buffer[2];
+        int* offline_planner_offsets = (int*)&metadata_buffer[3];
+
+        TF_LITE_REPORT_ERROR(error_reporter, "==== Model metadata info: =====");
+        TF_LITE_REPORT_ERROR(error_reporter,
+                             "Offline planner metadata found, version %d, "
+                             "subgraph %d, nbr offline offsets %d",
+                             version, subgraph_idx, nbr_offline_offsets);
+        for (int i = 0; i < nbr_offline_offsets; ++i) {
+          TF_LITE_REPORT_ERROR(
+              error_reporter,
+              "Offline planner tensor index %d, offline offset: %d", i,
+              offline_planner_offsets[i]);
+        }
+
+        if (version != 1) {
+          TF_LITE_REPORT_ERROR(error_reporter, "Version not supported! (%d)\n",
+                               version);
+          return kTfLiteError;
+        }
+        if (subgraph_idx != 0) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Only 1 subgraph supported! Subgraph idx (%d)\n",
+                               subgraph_idx);
+          return kTfLiteError;
+        }
+        if (nbr_tflite_tensors != nbr_offline_offsets) {
+          TF_LITE_REPORT_ERROR(error_reporter,
+                               "Nbr of offline buffer offsets (%d) in metadata "
+                               "not equal nbr tensors (%d)\n",
+                               nbr_offline_offsets, nbr_tflite_tensors);
+          return kTfLiteError;
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
 // A helper class to construct AllocationInfo array. This array contains the
 // lifetime of tensors / scratch_buffer and will be used to calculate the memory
 // plan. Methods need to be called in order from `Init`, `Add*`, to `Finish`.
