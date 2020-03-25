@@ -1562,10 +1562,6 @@ class HloInstruction {
   // Returns the module for this instruction.
   HloModule* GetModule() const;
 
-  // Returns whether we could assign input and output layouts to this
-  // instruction to make it a bitcast.
-  bool CouldBeBitcast() const;
-
   // Get/Set the number of partitions per outer dimension (in order, starting
   // with outer-most dimension first). Currently used by the parallel cpu
   // backend to partition HLOs into parallel tasks.
