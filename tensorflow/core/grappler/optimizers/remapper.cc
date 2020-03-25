@@ -1476,6 +1476,13 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return true;
   };
 
+  const auto is_conv2d_candidate = [&]() -> bool {
+    if (!IsConv2D(*node_def)) return false;
+    if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
+
+    return true;
+  };
+
   // Candidate for a FusedBatchNorm fusion.
   const auto is_batch_norm_fusion_candidate = [&]() -> bool {
     if (!IsRelu(*node_def)) return false;
@@ -1506,7 +1513,7 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     return false;
   };
 
-  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+  return is_conv2d_candidate() || is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
 }
 
 }  // namespace
@@ -1564,6 +1571,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 #endif  //! INTEL_MKL
 
+    // Infer properties lazily in case they are not needed.
+    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
+          assume_valid_feeds,
+          /*aggressive_shape_inference=*/false,
+          /*include_input_tensor_values=*/true,
+          /*include_output_tensor_values=*/false));
+      ctx.inferred_graph_properties = true;
+    }
+
     // Remap {Conv2D,MatMul}+BiasAdd into the _Fused{Conv2D,MatMul}
     ContractionWithBiasAdd contract_with_bias;
     if (allow_non_differentiable_rewrites &&
@@ -1592,6 +1610,7 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
 // Remove this once TF-MKL supports _FusedConv2D with these operations.
 #ifndef INTEL_MKL
     // Remap Conv2D+Squeeze+BiasAdd into the _FusedConv2D+Squeeze.
+
     ContractionWithSqueezeAndBiasAdd contract_with_squeeze_and_bias;
     if (allow_non_differentiable_rewrites &&
         FindConv2DWithSqueezeAndBias(ctx, i, &contract_with_squeeze_and_bias)) {
@@ -1624,16 +1643,6 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
 #endif  // !INTEL_MKL
 
-    // Infer properties lazily in case they are not needed.
-    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
-      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
-      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
-          assume_valid_feeds,
-          /*aggressive_shape_inference=*/false,
-          /*include_input_tensor_values=*/true,
-          /*include_output_tensor_values=*/false));
-      ctx.inferred_graph_properties = true;
-    }
 
     // Remap FusedBatchNorm+<SideInput>+<Activation> into the _FusedBatchNormEx.
     FusedBatchNormEx fused_batch_norm_ex;
