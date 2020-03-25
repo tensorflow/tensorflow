@@ -166,6 +166,8 @@ class PolicyTest(test.TestCase, parameterized.TestCase):
           'not passing any loss_scale instead.')
 
     for policy_name in 'float16', 'mixed_float16':
+      # Trigger any other warnings that occur only once
+      mp_policy.Policy(policy_name, loss_scale=2.)
       with test.mock.patch.object(tf_logging, 'warn') as mock_warn:
         mp_policy.Policy(policy_name, loss_scale=2.)
         mock_warn.assert_not_called()
