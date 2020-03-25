@@ -310,7 +310,8 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>]> {
+    TFL_ChannelDimIndexInterface, AffineOpCoefficient<index, 1>,
+    TFL_GpuTargetOp]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -1552,7 +1553,8 @@ def MaxPoolOperandAndResultConstraints : PredOpTrait<"MaxPool2D operand and "
 def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
     NoSideEffect,
     MaxPoolOperandAndResultConstraints,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    TFL_GpuTargetOp]> {
   let summary = "Max Pool 2D op";
 
   let description = [{
