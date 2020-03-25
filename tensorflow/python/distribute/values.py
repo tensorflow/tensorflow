@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import weakref
 
 from tensorflow.python.distribute import device_util
@@ -404,8 +403,23 @@ def _assign_sub_on_device(device, variable, tensor):
     return variable.assign_sub(tensor)
 
 
-DistributedVarOp = collections.namedtuple(
-    "DistributedVarOp", ["name", "graph", "traceback", "type"])
+class DistributedVarOp(object):
+  """A class that looks like `tf.Operation`."""
+
+  def __init__(self, name, graph, traceback, typ):
+    self.name = name
+    self.graph = graph
+    self.traceback = traceback
+    self.type = typ
+
+  def __eq__(self, o):
+    if not isinstance(o, self.__class__):
+      raise NotImplementedError
+    return (self.name == o.name and self.graph == o.graph and
+            self.traceback == o.traceback and self.type == o.type)
+
+  def __hash__(self):
+    return hash((self.name, self.graph, self.traceback, self.type))
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable):
