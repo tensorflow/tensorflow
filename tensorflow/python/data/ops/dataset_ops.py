@@ -1619,9 +1619,10 @@ name=None))
     >>> list(d.as_numpy_iterator())
     [b'HELLO', b'WORLD']
 
-    3) Use `tf.numpy_function`, which allows you to write arbitrary python
-    code. Note here that `tf.py_function` accepts `tf.Tensor` whereas
-    `tf.numpy_function` accepts numpy arrays. For example:
+    3) Use `tf.numpy_function`, which also allows you to write arbitrary
+    Python code. Note here that `tf.py_function` accepts `tf.Tensor` whereas
+    `tf.numpy_function` accepts numpy arrays and returns only numpy arrays.
+    For example:
 
     >>> d = tf.data.Dataset.from_tensor_slices(['hello', 'world'])
     >>> def upper_case_fn(t: np.ndarray):
