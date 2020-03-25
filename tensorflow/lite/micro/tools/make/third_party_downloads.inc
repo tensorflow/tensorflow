@@ -8,13 +8,8 @@
 GEMMLOWP_URL := "https://github.com/google/gemmlowp/archive/719139ce755a0f31cbf1c37f7f98adcc7fc9f425.zip"
 GEMMLOWP_MD5 := "7e8191b24853d75de2af87622ad293ba"
 
-ifeq ($(HOST_OS),windows)
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.zip"
-  FLATBUFFERS_MD5 := "a1afdbf114dec01a861c1b8c917d0fc7"
-else
-  FLATBUFFERS_URL := "http://mirror.tensorflow.org/github.com/google/flatbuffers/archive/v1.12.0.tar.gz"
-  FLATBUFFERS_MD5 := "c62ffefb3d4548b127cca14ce047f16c"
-endif
+FLATBUFFERS_URL := "https://github.com/google/flatbuffers/archive/dca12522a9f9e37f126ab925fd385c807ab4f84e.zip"
+FLATBUFFERS_MD5 := aa9adc93eb9b33fa1a2a90969e48baee
 
 ifeq ($(HOST_OS),osx)
   GCC_EMBEDDED_URL := "http://mirror.tensorflow.org/developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
