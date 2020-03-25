@@ -495,28 +495,6 @@ class DynamicClusterTest(test.TestCase, parameterized.TestCase):
       context.check_alive("/job:remote_device/replica:0/task:10")
 
 
-class DynamicClusterWithoutLazyRemoteInputsCopyTest(DynamicClusterTest):
-
-  @classmethod
-  def setUpClass(cls):
-    super(DynamicClusterWithoutLazyRemoteInputsCopyTest, cls).setUpClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = False
-
-  @classmethod
-  def tearDownClass(cls):
-    super(DynamicClusterWithoutLazyRemoteInputsCopyTest, cls).tearDownClass()
-    context._reset_context()
-    context.context().lazy_remote_inputs_copy = True
-
-  # TODO(haoyuzhang): When lazyh remote inputs copy is disabled, we use the
-  # WorkerService RunGraph request to execute component functions in distributed
-  # function execution. We currently do not have access control in WorkerService
-  # to allow concurrent cluster update and function execution.
-  def testMultiThreadPendingNodesLockFree(self):
-    self.skipTest("Unsupported case")
-
-
 if __name__ == "__main__":
   ops.enable_eager_execution()
   test.main()

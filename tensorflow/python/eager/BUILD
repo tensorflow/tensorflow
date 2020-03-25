@@ -891,7 +891,7 @@ cuda_py_test(
     srcs = ["remote_cluster_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
         "notsan",  # TODO(b/152075365)
