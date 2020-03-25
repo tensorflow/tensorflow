@@ -22,13 +22,6 @@ package_group(
 )
 
 tf_proto_library(
-    name = "op_profile_proto",
-    srcs = ["op_profile.proto"],
-    cc_api_version = 2,
-    visibility = [":internal"],
-)
-
-tf_proto_library(
     name = "profiler_service_monitor_result_proto",
     srcs = ["profiler_service_monitor_result.proto"],
     cc_api_version = 2,
