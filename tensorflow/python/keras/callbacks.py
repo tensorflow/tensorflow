@@ -968,14 +968,18 @@ class ProgbarLogger(Callback):
     else:
       add_seen = num_steps * batch_size
       self.seen += add_seen
-    self.progbar.update(self.seen, list(logs.items()), finalize=False)
+    items=list(logs.items())
+    items.sort()
+    self.progbar.update(self.seen, items, finalize=False)
 
   def _finalize_progbar(self, logs):
     if self.target is None:
       self.target = self.seen
       self.progbar.target = self.seen
     logs = logs or {}
-    self.progbar.update(self.seen, list(logs.items()), finalize=True)
+    items=list(logs.items())
+    items.sort()
+    self.progbar.update(self.seen, items, finalize=True)
 
 
 @keras_export('keras.callbacks.History')
