@@ -148,12 +148,12 @@ class TestIOUtils(keras_parameterized.TestCase):
     if sys.version_info >= (3, 6):
       from pathlib import Path
       # conversion of PathLike
-      self.assertEqual(path_to_string(Path("path")), "path")
-      self.assertEqual(path_to_string(PathLikeDummy()), "dummypath")
+      self.assertEqual(io_utils.path_to_string(Path("path")), "path")
+      self.assertEqual(io_utils.path_to_string(PathLikeDummy()), "dummypath")
 
     # pass-through, works for all versions of python
-    self.assertEqual(path_to_string("path"), "path")
-    self.assertTrue(path_to_string(dummy) is dummy)
+    self.assertEqual(io_utils.path_to_string("path"), "path")
+    self.assertTrue(io_utils.path_to_string(dummy) is dummy)
 
 
 if __name__ == '__main__':
