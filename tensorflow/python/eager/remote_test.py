@@ -98,7 +98,6 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(
         remote_output(constant_op.constant([1]))[0].numpy(), 2)
 
-  # TODO(b/148235520): Re-enable this test.
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
     @def_function.function
