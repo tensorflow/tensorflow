@@ -1004,11 +1004,7 @@ class CTCLossTestV3(test.TestCase, parameterized.TestCase):
     self.assertAllClose(grad, ref_grad, atol=2e-6)
 
   def testCtcLossAlgorithmFallback(self):
-    """Testing GPU CTC loss algorithm fallback.
-
-
-    testing if GPU CTC loss will fallback to the correct algorithm
-    """
+    """Test if GPU CTC loss can fallback to the correct algorithm."""
     if not test.is_gpu_available():
       self.skipTest("Need GPU for testing.")
     random_seed.set_random_seed(5)
