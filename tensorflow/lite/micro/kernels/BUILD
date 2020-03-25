@@ -36,6 +36,7 @@ cc_library(
         "comparisons.cc",
         "concatenation.cc",
         "dequantize.cc",
+        "detection_postprocess.cc",
         "elementwise.cc",
         "ethosu.cc",
         "floor.cc",
@@ -162,6 +163,20 @@ tflite_micro_cc_test(
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/micro:op_resolvers",
         "//tensorflow/lite/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "detection_postprocess_test",
+    srcs = [
+        "detection_postprocess_test.cc",
+    ],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:tensor",
+        "//tensorflow/lite/micro:micro_framework",
+        "//tensorflow/lite/micro/testing:micro_test",
+        "@flatbuffers",
     ],
 )
 
