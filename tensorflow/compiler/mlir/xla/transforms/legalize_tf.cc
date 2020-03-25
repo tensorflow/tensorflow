@@ -941,7 +941,7 @@ class ConvertBroadcastToOp : public OpRewritePattern<TF::BroadcastToOp> {
     auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
     auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
     if (!input_type || !output_type) {
-      return failure();
+      return rewriter.notifyMatchFailure(op, "requires ranked shape");
     }
     auto rank_diff = output_type.getRank() - input_type.getRank();
     // The tf.BroadcastTo op performs "right-aligned" numpy-style broadcasting.
