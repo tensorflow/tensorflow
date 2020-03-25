@@ -6409,6 +6409,9 @@ cuda_py_test(
     size = "small",
     srcs = ["client/timeline_test.py"],
     python_version = "PY3",
+    tags = [
+        "gpu_cupti",
+    ],
     xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
     deps = [
         ":client",
