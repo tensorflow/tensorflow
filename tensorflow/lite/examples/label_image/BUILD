@@ -39,11 +39,11 @@ cc_binary(
         "@com_google_absl//absl/memory",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//tensorflow:android_arm64": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
@@ -67,11 +67,11 @@ cc_library(
         "//tensorflow/lite/schema:schema_fbs",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//tensorflow:android_arm64": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
             "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
