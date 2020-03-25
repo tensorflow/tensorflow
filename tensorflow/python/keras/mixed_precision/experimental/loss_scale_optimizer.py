@@ -107,6 +107,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   0.25
   """
 
+  _HAS_AGGREGATE_GRAD = True
+
   def __init__(self, optimizer, loss_scale):
     """Initializes this loss scale optimizer.
 
@@ -271,9 +273,12 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   def _apply_gradients(self, grads, wrapped_vars, name,
                        experimental_aggregate_gradients):
+    # TODO(reedwm): This will raise a fairly cryptic error message if
+    # self._optimizer.apply_gradients does not take
+    # experimental_aggregate_gradients.
     return self._optimizer.apply_gradients(
         list(zip(grads, wrapped_vars.value)), name,
-        experimental_aggregate_gradients)
+        experimental_aggregate_gradients=experimental_aggregate_gradients)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
