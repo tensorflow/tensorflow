@@ -195,8 +195,8 @@ cc_library(
     deps = [
         ":cpu_check",
         ":types",
-        "@gemmlowp//:fixedpoint",
         "//tensorflow/core/platform:macros",
+        "@gemmlowp//:fixedpoint",
     ],
 )
 
