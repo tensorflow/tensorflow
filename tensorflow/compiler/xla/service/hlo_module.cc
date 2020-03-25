@@ -263,7 +263,9 @@ HloModuleProto HloModule::ToProto() const {
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
   *proto.mutable_dynamic_parameter_binding() =
       dynamic_parameter_binding().ToProto();
-  for (auto [parameter, indices] : CrossProgramPrefetches()) {
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
     auto* prefetch = proto.mutable_cross_program_prefetches()->Add();
     prefetch->set_parameter(parameter);
     for (auto index : indices) {
