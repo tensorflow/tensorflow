@@ -81,13 +81,14 @@ public final class Session implements AutoCloseable {
     graphRef = g.ref();
   }
 
+  /** wrap native method */
   public long makeCallable(byte[] config){
     return makeCallable(this.nativeHandle, config);
   }
 
   /**
    * Pull the following string into Java: '/job:localhost/replica:0/task:0/device:GPU:0'
-   * to be able to assign the feed/fetch allocation in CallableOptions
+   * to be able to assign the feed/fetch tensors allocation in CallableOptions
    */
   public String GPUDeviceName(){
     return getGPUDeviceName(this.nativeHandle);
@@ -566,18 +567,20 @@ public final class Session implements AutoCloseable {
    *
    * @param nativeHandle to the C API TF_Session object (Session.nativeHandle)
    * @param config serialized representation of a CallableOptions protocol buffer
-   * @return 2
+   * @return callable handle
    */
   private static native long makeCallable(long nativeHandle, byte[] config);
 
   /**
-   * Run
+   * Run callable. This method is derived from run().
    *
    * @param sessionHandle to the C API TF_Session object (Session.nativeHandle)
-   * @param
-   * @param
-   * @param
-   * @return
+   * @param callableHandle callable handle
+   * @param inputTensorHandles specifies the values
+   *     that are being "fed" (do not need to be computed) during graph execution.
+   *     see run() above
+   * @param outputTensorHandles will be filled in with handles to the outputs requested.
+   * @return nullptr
    */
   private static native byte[] runCallable(
       long sessionHandle,
