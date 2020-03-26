@@ -802,7 +802,12 @@ void ActivityCallback(const char* begin, const char* end, void* user_data) {
 }
 
 void RocmTracer::ActivityCallbackHandler(const char* begin, const char* end) {
-  if (activity_tracing_enabled_) (*activity_cb_impl_)(begin, end);
+  if (activity_tracing_enabled_) {
+    (*activity_cb_impl_)(begin, end);
+  } else {
+    LOG(WARNING) << "ActivityCallbackHandler called when "
+                    "activity_tracing_enabled_ is false";
+  }
 }
 
 Status RocmTracer::EnableActivityTracing() {
@@ -845,6 +850,18 @@ Status RocmTracer::EnableActivityTracing() {
 
 Status RocmTracer::DisableActivityTracing() {
   if (!activity_tracing_enabled_) return Status::OK();
+
+  // Flush the activity buffer BEFORE setting the activity_tracing_enable_
+  // flag to FALSE. This is because the activity record callback routine is
+  // gated by the same flag
+  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
+  RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
+
+  // Also it seems that the above call to flush the activity buffer is not
+  // guranteed to be blocking, i.e. it can return before the activity callback
+  // handler has been called (tends to happen, when you run a bunch of tests
+  // concurrently on a node with multiple GPUs, and tracing is enabled for all
+  // of them). do not know how to fix that for now.
   activity_tracing_enabled_ = false;
 
   for (auto& iter : options_->activity_tracing) {
@@ -865,9 +882,6 @@ Status RocmTracer::DisableActivityTracing() {
       }
     }
   }
-
-  VLOG(kRocmTracerVlog) << "Flushing roctracer activity buffer";
-  RETURN_IF_ROCTRACER_ERROR(roctracer_flush_activity());
 
   return Status::OK();
 }
