@@ -23,6 +23,7 @@ import copy
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -470,7 +471,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     #   self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     # The _minimize call does a few extra steps unnecessary in most cases,
     # such as loss scaling and gradient clipping.
-    _minimize(tape, self.optimizer, loss, self.trainable_variables)
+    _minimize(self.distribute_strategy, tape, self.optimizer, loss,
+              self.trainable_variables)
 
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
@@ -1695,7 +1697,7 @@ def _tpu_multi_host_concat(v, strategy):
   return concat(ordered_replicas)
 
 
-def _minimize(tape, optimizer, loss, trainable_variables):
+def _minimize(strategy, tape, optimizer, loss, trainable_variables):
   """Minimizes loss for one step by updating `trainable_variables`.
 
   This is roughly equivalent to
@@ -1709,6 +1711,7 @@ def _minimize(tape, optimizer, loss, trainable_variables):
   optimizer is a LossScaleOptimizer.
 
   Args:
+    strategy: `tf.distribute.Strategy`.
     tape: A gradient tape. The loss must have been computed under this tape.
     optimizer: The optimizer used to minimize the loss.
     loss: The loss tensor.
@@ -1722,7 +1725,15 @@ def _minimize(tape, optimizer, loss, trainable_variables):
 
   gradients = tape.gradient(loss, trainable_variables)
 
-  if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
+  # Whether to aggregate gradients outside of optimizer. This requires support
+  # of the optimizer and doesn't work with ParameterServerStrategy and
+  # CentralStroageStrategy.
+  aggregate_grads_outside_optimizer = (
+      optimizer._HAS_AGGREGATE_GRAD and  # pylint: disable=protected-access
+      not isinstance(strategy.extended,
+                     parameter_server_strategy.ParameterServerStrategyExtended))
+
+  if aggregate_grads_outside_optimizer:
     # We aggregate gradients before unscaling them, in case a subclass of
     # LossScaleOptimizer all-reduces in fp16. All-reducing in fp16 can only be
     # done on scaled gradients, not unscaled gradients, for numeric stability.
@@ -1732,8 +1743,9 @@ def _minimize(tape, optimizer, loss, trainable_variables):
     gradients = optimizer.get_unscaled_gradients(gradients)
   gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
   if trainable_variables:
-    if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
-      optimizer.apply_gradients(zip(gradients, trainable_variables),
-                                all_reduce_sum_gradients=False)
+    if aggregate_grads_outside_optimizer:
+      optimizer.apply_gradients(
+          zip(gradients, trainable_variables),
+          experimental_aggregate_gradients=False)
     else:
       optimizer.apply_gradients(zip(gradients, trainable_variables))
