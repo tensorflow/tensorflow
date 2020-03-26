@@ -42,6 +42,7 @@ from tensorflow.python.tools import module_util as _module_util
 from tensorflow.python.util.lazy_loader import LazyLoader as _LazyLoader
 
 # Make sure code inside the TensorFlow codebase can use tf2.enabled() at import.
+_os.environ['TF2_BEHAVIOR'] = '1'
 from tensorflow.python import tf2 as _tf2
 _tf2.enable()
 
