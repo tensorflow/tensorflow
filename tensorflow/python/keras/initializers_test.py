@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import tf2
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
@@ -201,15 +200,6 @@ class KerasInitializersTest(test.TestCase):
     tn = initializers.get('truncated_normal')
     self.assertEqual(tn.mean, 0.0)
     self.assertEqual(tn.stddev, 0.05)
-
-  def test_initializer_v2_get(self):
-    tf2_force_enabled = tf2._force_enable  # pylint: disable=protected-access
-    try:
-      tf2.enable()
-      rn = initializers.get('random_normal')
-      self.assertIn('init_ops_v2', rn.__class__.__module__)
-    finally:
-      tf2._force_enable = tf2_force_enabled  # pylint: disable=protected-access
 
   def test_custom_initializer_saving(self):
 
