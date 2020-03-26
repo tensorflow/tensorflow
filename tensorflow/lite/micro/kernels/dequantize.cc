@@ -49,11 +49,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  tflite::DequantizationParams op_params;
-  op_params.zero_point = input->params.zero_point;
-  op_params.scale = static_cast<double>(input->params.scale);
-
   if (output->type == kTfLiteFloat32) {
+    tflite::DequantizationParams op_params;
+    op_params.zero_point = input->params.zero_point;
+    op_params.scale = static_cast<double>(input->params.scale);
     switch (input->type) {
       case kTfLiteUInt8:
         reference_ops::Dequantize(
