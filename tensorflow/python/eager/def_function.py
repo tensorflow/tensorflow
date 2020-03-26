@@ -555,6 +555,29 @@ class Function(object):
   def experimental_get_tracing_count(self):
     """
     Return the tracing count in the recent calls.
+
+    ```python
+    def mul(x, y):
+      return x * y
+    mul_fn = tf.function(mul)
+    mul_fn(2, 3)
+    mul_fn.experimental_get_tracing_count()   # return 1
+    mul_fn(2, 3)
+    mul_fn.experimental_get_tracing_count()   # return 1
+    mul_fn(2, 4)
+    mul_fn.experimental_get_tracing_count()   # return 2
+
+    def dot(x, y):
+      return tf.matmul(x, y)
+    dot_fn = tf.function(dot)
+    dot_fn(tf.ones((2, 3)), tf.ones((3, 3)))
+    mul_fn.experimental_get_tracing_count()   # return 1
+    dot_fn(tf.zeros((2, 3)), tf.zeros((3, 3)))
+    mul_fn.experimental_get_tracing_count()   # return 1
+    dot_fn(tf.ones((3, 4)), tf.ones((4, 5)))
+    mul_fn.experimental_get_tracing_count()   # return 2
+    ```
+
     """
     result = self._stateless_fn.tracing_count if self._stateless_fn else 0
     result += self._stateful_fn.tracing_count if self._stateful_fn else 0

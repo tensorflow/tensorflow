@@ -84,6 +84,32 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(fn(constant_op.constant(4.0)), 8.0)
 
+  def testGetTracingCountForScalar(self):
+    
+    def mul(x, y):
+      return x * y
+
+    mul_fn = def_function.function(mul)
+    mul_fn(2, 3)
+    self.assertAllEqual(mul_fn.experimental_get_tracing_count(), 1)   
+    mul_fn(2, 3)
+    self.assertAllEqual(mul_fn.experimental_get_tracing_count(), 1)   
+    mul_fn(2, 4)
+    self.assertAllEqual(mul_fn.experimental_get_tracing_count(), 2) 
+
+  def testGetTracingCountForTensor(self):
+
+    def dot(x, y):
+      return tf.matmul(x, y)
+
+    dot_fn = def_function.function(dot)
+    dot_fn(tf.ones((2, 3)), tf.ones((3, 3)))
+    self.assertAllEqual(dot_fn.experimental_get_tracing_count(), 1)
+    dot_fn(tf.zeros((2, 3)), tf.zeros((3, 3)))
+    self.assertAllEqual(dot_fn.experimental_get_tracing_count(), 1) 
+    dot_fn(tf.ones((3, 4)), tf.ones((4, 5)))
+    self.assertAllEqual(dot_fn.experimental_get_tracing_count(), 2) 
+
   def testFailIfVariablesAreCreatedMoreThanOnce(self):
 
     @def_function.function
