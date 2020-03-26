@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow import raw_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -77,6 +78,99 @@ def variable_op_v2(shape, dtype, name="Variable", container="", shared_name=""):
       name=name,
       container=container,
       shared_name=shared_name)
+
+
+@tf_export("raw_ops.VariableV2")
+def VariableV2(dtype,
+               shape,
+               container='',
+               shared_name='',
+               allowed_devices=[],
+               name=None):
+  """Holds state in the form of a tensor that persists across steps.
+
+  Outputs a ref to the tensor state so it may be read or modified.
+
+  Note here that tensorflow converts every variable to tensors. So, if states
+  of your model are `VarHandleOp`, you don't need to convert it to
+  `VariableV2`. For example, if we check the type of both, they are just
+  tensors.
+
+  >>> v2_tensor = tf.raw_ops.VariableV2(shape=(1,),dtype=tf.float64)
+  >>> type(v2_tensor)
+  <class '...tensorflow.python.framework.ops.Tensor'>
+  >>> vh_tensor = tf.raw_ops.VarHandleOp(shape=(1,),dtype=tf.float64)
+  >>> type(vh_tensor)
+  <class '...tensorflow.python.framework.ops.Tensor'>
+
+  Args:
+    shape: A `tf.TensorShape` or list of `ints`. The shape of the variable
+      tensor.
+    dtype: A `tf.DType`. The type of elements in the variable tensor.
+    container: An optional `string`. Defaults to `""`. If non-empty, this
+      variable is placed in the given container. Otherwise, a default
+      container is used.
+    shared_name: An optional `string`. Defaults to `""`. If non-empty, this
+      variable is named in the given bucket with this `shared_name`.
+      Otherwise, the node name is used instead.
+    name: A name for the operation (optional).
+
+  Returns:
+    A mutable `Tensor` of type `dtype`.
+  """
+  return raw_ops.VariableV2(dtype,
+                            shape,
+                            container=container,
+                            shared_name=shared_name,
+                            allowed_devices=allowed_devices,
+                            name=name)
+
+
+@tf_export("raw_ops.VarHandleOp")
+def VarHandleOp(dtype,
+                shape,
+                container='',
+                shared_name='',
+                allowed_devices=[],
+                name=None):
+  """Creates a handle to a Variable resource.
+
+  Note here that tensorflow converts every variable to tensors. So,
+  if states of your model are `VariableV2`, you don't need to convert
+  it to `VarHandleOp`.
+  For example, if we check the type of both, they are just tensors.
+
+  >>> vh_tensor = tf.raw_ops.VarHandleOp(shape=(1,),dtype=tf.float64)
+  >>> type(vh_tensor)
+  <class '...tensorflow.python.framework.ops.Tensor'>
+  >>> v2_tensor = tf.raw_ops.VariableV2(shape=(1,),dtype=tf.float64)
+  >>> type(v2_tensor)
+  <class '...tensorflow.python.framework.ops.Tensor'>
+
+  Args:
+    dtype: A `tf.DType`. the type of this variable. Must agree with
+      the dtypes of all ops using this variable.
+    shape: A `tf.TensorShape` or list of `ints`. The
+      (possibly partially specified) shape of this variable.
+    container: An optional `string`. Defaults to `""`. The container
+      this variable is placed in.
+    shared_name: An optional `string`. Defaults to `""`. The name by
+      which this variable is referred to.
+    allowed_devices: An optional list of `strings`. Defaults to `[]`.
+      The allowed devices containing the resource variable. Set when
+      the output ResourceHandle represents a per-replica/partitioned
+      resource variable.
+    name: A name for the operation (optional).
+
+  Returns:
+    A Tensor of type resource.
+  """
+  return raw_ops.VarHandleOp(dtype,
+                             shape,
+                             container=container,
+                             shared_name=shared_name,
+                             allowed_devices=allowed_devices,
+                             name=name)
 
 
 def init_variable(v, init, name="init"):
