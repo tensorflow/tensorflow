@@ -360,7 +360,10 @@ an output element, this operation computes \\(y = |x|\\).
   let hasFolder = 1;
 }
 
-def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
+def TFL_AddOp : TFL_Op<"add", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               Commutative,
+                               TFL_GpuTargetOp]> {
   let summary = "Addition operator";
 
   let description = [{
@@ -1869,7 +1872,10 @@ def TFL_MinimumOp : TFL_Op<"minimum", [
   let hasOptions = 0;
 }
 
-def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape, NoSideEffect, Commutative]> {
+def TFL_MulOp : TFL_Op<"mul", [ResultsBroadcastableShape,
+                               NoSideEffect,
+                               Commutative,
+                               TFL_GpuTargetOp]> {
   let summary = "Multiplication operator";
 
   let description = [{
@@ -2102,7 +2108,8 @@ def TFL_RankOp: TFL_Op<"rank", [NoSideEffect]> {
 
 def TFL_ReluOp: TFL_Op<"relu", [NoSideEffect,
                                 SameOperandsAndResultShape,
-                                SameOperandsAndResultsScale]> {
+                                SameOperandsAndResultsScale,
+                                TFL_GpuTargetOp]> {
   let summary = "Relu operator";
 
   let description = [{
