@@ -43,9 +43,13 @@ namespace tensorflow {
 //   entry computation.
 // return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
-Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
-                                   xla::XlaComputation* xla_computation,
-                                   bool use_tuple_args, bool return_tuple);
+// shape_representation_fn: when this is set, this shape representation function
+//   will be used to determine argument and result shapes. Otherwise the
+//   original shape will be used as is.
+Status ConvertMLIRToXlaComputation(
+    mlir::ModuleOp module_op, xla::XlaComputation* xla_computation,
+    bool use_tuple_args, bool return_tuple,
+    const XlaCompiler::ShapeRepresentationFn shape_representation_fn = nullptr);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
