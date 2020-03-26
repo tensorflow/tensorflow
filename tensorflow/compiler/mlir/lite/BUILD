@@ -17,8 +17,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
+        "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
