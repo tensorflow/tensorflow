@@ -63,6 +63,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "op_profile_proto",
+    srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "op_stats_proto",
     srcs = ["op_stats.proto"],
     cc_api_version = 2,

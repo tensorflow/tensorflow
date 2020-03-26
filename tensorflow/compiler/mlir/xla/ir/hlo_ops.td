@@ -802,6 +802,7 @@ def HLO_DynamicBroadcastInDimOp : HLO_Op<"dynamic_broadcast_in_dim",
 
   let results = (outs HLO_Tensor);
 
+  let hasCanonicalizer = 1;
   // Cannot be exported to legacy formats.
   let hasCustomHLOConverter = 1;
 }

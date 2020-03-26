@@ -3011,6 +3011,25 @@ class ControlFlowTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(f(), 4. * 2.**3)  # 4 * x_init ^ 3
 
+  @test_util.run_deprecated_v1
+  def testTfFunctionInV1WhileLoop(self):
+
+    # This test specifically tests that creating a Const node inside a
+    # tf.function inside a v1 while_loop while inlining is turned on works.
+    config = opt_cfg()
+    assert config.graph_options.optimizer_options.do_function_inlining
+    with session.Session(config=config):
+
+      @def_function.function
+      def loop_body(i):
+        # Here we create the const.
+        return i + 1.
+
+      loop_cond = lambda i: True
+      x = control_flow_ops.while_loop(
+          loop_cond, loop_body, [0.], maximum_iterations=5)
+      self.assertAllEqual(x, 5.)
+
   def _testNestedWhileCondWhileGrad(self, use_gpu):
 
     with self.cached_session(use_gpu=use_gpu):

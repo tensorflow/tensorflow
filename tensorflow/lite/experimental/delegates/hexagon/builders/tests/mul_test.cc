@@ -26,8 +26,9 @@ class MulOpModel : public SingleOpModelWithHexagon {
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
-    SetBuiltinOp(BuiltinOperator_MUL, BuiltinOptions_MulOptions,
-                 CreateMulOptions(builder_, activation_type).Union());
+    SetBuiltinOp(
+        BuiltinOperator_MUL, BuiltinOptions_MulOptions,
+        CreateMulOptions(builder_, ActivationFunctionType_NONE).Union());
     BuildInterpreter({GetShape(input1_), GetShape(input2_)});
   }
 

@@ -1342,7 +1342,7 @@ class TrainingTest(keras_parameterized.TestCase):
     class _Optimizer(optimizer_v2.gradient_descent.SGD):
       """Mock optimizer to check if _aggregate_gradient is called."""
 
-      _HAS_ALL_REDUCE_SUM_GRAD = True
+      _HAS_AGGREGATE_GRAD = True
 
       def __init__(self):
         self.aggregate_gradients_called = False
@@ -1367,10 +1367,10 @@ class TrainingTest(keras_parameterized.TestCase):
       """Override apply_gradients.
 
       To test the case where the optimizer does not define the
-      all_reduce_sum_gradients parameter.
+      experimental_aggregate_gradients parameter.
       """
 
-      _HAS_ALL_REDUCE_SUM_GRAD = False
+      _HAS_AGGREGATE_GRAD = False
 
       def apply_gradients(self, grads_and_vars, name=None):  # pylint: disable=useless-super-delegation
         return super(_OptimizerOverrideApplyGradients,
@@ -1453,7 +1453,7 @@ class LossWeightingTest(keras_parameterized.TestCase):
     batch_size = 5
     epochs = 10
     weighted_class = 3
-    weight = 10.
+    weight = .5
     train_samples = 1000
     test_samples = 1000
     input_dim = 5

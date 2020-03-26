@@ -18,39 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.core import naming
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.platform import test
 
 
 class NamerTest(test.TestCase):
-
-  def test_function_name_tracks_names(self):
-    namer = naming.Namer({})
-    self.assertEqual('tf__foo', namer.function_name('foo'))
-    self.assertEqual('tf__bar', namer.function_name('bar'))
-    self.assertItemsEqual(('tf__bar', 'tf__foo'), namer.generated_names)
-
-  def test_function_name_consistent(self):
-    namer = naming.Namer({})
-    self.assertEqual('tf__foo', namer.function_name('foo'))
-    self.assertEqual('tf__foo', namer.function_name('foo'))
-
-  def test_function_name_unsanitized_fqn(self):
-    namer = naming.Namer({})
-    self.assertEqual('tf__foo_bar', namer.function_name('foo.bar'))
-    self.assertEqual('tf__foo_bar_baz', namer.function_name(('foo.bar', 'baz')))
-
-  def test_class_name_basic(self):
-    namer = naming.Namer({})
-    self.assertEqual('TfFooBar', namer.class_name(('foo', 'Bar')))
-
-  def test_class_name_unsanitized_fqn(self):
-    namer = naming.Namer({})
-    self.assertEqual('TfFooBarBaz', namer.class_name(('foo.bar', 'Baz')))
-
-  def test_function_name_avoids_global_conflicts(self):
-    namer = naming.Namer({'tf__foo': 1})
-    self.assertEqual('tf__foo_1', namer.function_name('foo'))
 
   def test_new_symbol_tracks_names(self):
     namer = naming.Namer({})

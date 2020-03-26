@@ -23,6 +23,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
+
+const absl::string_view kIdle = "IDLE";
+
 namespace {
 
 class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
@@ -85,9 +88,9 @@ uint64 IdleTimePs(const OpMetricsDb& metrics_db) {
 void AddIdleOp(OpMetricsDb* db) {
   uint64 idle_time_ps = IdleTimePs(*db);
   OpMetrics* metrics = db->add_metrics_db();
-  metrics->set_name("IDLE");
-  metrics->set_category("IDLE");
-  metrics->set_occurrences(1);
+  metrics->set_name(string(kIdle));
+  metrics->set_category(string(kIdle));
+  metrics->set_occurrences(0);
   metrics->set_time_ps(idle_time_ps);
   metrics->set_self_time_ps(idle_time_ps);
 }
@@ -102,9 +105,9 @@ OpMetricsDb CreateTfMetricsDbFromDeviceOpMetricsDb(
       builder.UpdateTfOpMetricsWithDeviceOpMetrics(tf_op.name, tf_op.type,
                                                    device_op_metrics);
     } else {
-      DCHECK_EQ(device_op_metrics.name(), "IDLE");
+      DCHECK(IsIdleOp(device_op_metrics));
       if (with_idle) {
-        builder.UpdateTfOpMetricsWithDeviceOpMetrics("IDLE", "IDLE",
+        builder.UpdateTfOpMetricsWithDeviceOpMetrics(kIdle, kIdle,
                                                      device_op_metrics);
       }
     }

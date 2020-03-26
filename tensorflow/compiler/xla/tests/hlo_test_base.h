@@ -203,6 +203,11 @@ class HloTestBase : public ::testing::Test {
       const std::function<void(HloModule*)>& reference_preprocessor = nullptr)
       TF_MUST_USE_RESULT;
 
+  // Executes an hlo module with fake inputs and checks that the execution is
+  // successful.
+  ::testing::AssertionResult Run(std::unique_ptr<HloModule> module,
+                                 bool run_hlo_passes) TF_MUST_USE_RESULT;
+
   // Convenient wrappers for executing and comparing an hlo module with fake
   // input. Module can be passed in directly, or parsed from an hlo_string,
   // or loaded from a file.

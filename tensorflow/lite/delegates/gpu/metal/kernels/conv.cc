@@ -24,11 +24,13 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/substitute.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/compute_task_descriptor.h"
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
@@ -53,6 +55,7 @@ struct ConvParams {
   bool linear_wh;
   bool linear_whs;
   WeightsUploadType weights_upload_type;
+  bool different_weights_for_height = false;
   bool x_kernel_is_1;
   bool y_kernel_is_1;
 };
@@ -264,9 +267,16 @@ kernel void ComputeFunction(
     if (!params.need_dst_loop) {
       c += "  " + addr_space + " FLT4* tmp = filters;\n";
     } else {
-      c += "  " + addr_space +
-           " FLT4* tmp = filters + Z * 4 * params.src_size.w" + kern_x +
-           kern_y + ";\n";
+      if (params.different_weights_for_height) {
+        c += "  " + addr_space +
+             " FLT4* tmp = filters + (Z * params.src_size.y + Y * " +
+             std::to_string(params.block_size.z) +
+             ") * 4 * params.src_size.w;\n";
+      } else {
+        c += "  " + addr_space +
+             " FLT4* tmp = filters + Z * 4 * params.src_size.w" + kern_x +
+             kern_y + ";\n";
+      }
     }
   }
   if (!params.x_kernel_is_1) {
@@ -498,30 +508,29 @@ kernel void ComputeFunction(
   return c;
 }
 
-std::vector<float> ReorderWeightsForConv(const Convolution2DAttributes& params,
-                                         int z_out) {
-  const int dst_depth = IntegralDivideRoundUp(params.weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
-  std::vector<float> weights_reordered(
-      params.weights.shape.w * params.weights.shape.h *
-      AlignByN(dst_depth, z_out) * 4 * src_depth * 4);
+std::vector<float> ReorderWeightsForConv(
+    const tflite::gpu::Tensor<OHWI, DataType::FLOAT32>& weights, int z_out) {
+  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
+  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
+  std::vector<float> weights_reordered(weights.shape.w * weights.shape.h *
+                                       AlignByN(dst_depth, z_out) * 4 *
+                                       src_depth * 4);
   int counter = 0;
   for (int d = 0; d < IntegralDivideRoundUp(dst_depth, z_out); ++d) {
-    for (int y = 0; y < params.weights.shape.h; ++y) {
-      for (int x = 0; x < params.weights.shape.w; ++x) {
+    for (int y = 0; y < weights.shape.h; ++y) {
+      for (int x = 0; x < weights.shape.w; ++x) {
         for (int s = 0; s < src_depth; ++s) {
           for (int k = 0; k < z_out; ++k) {
             for (int j = 0; j < 4; ++j) {
               for (int i = 0; i < 4; ++i) {
                 int src_ch = s * 4 + i;
                 int dst_ch = (d * z_out + k) * 4 + j;
-                if (src_ch >= params.weights.shape.i ||
-                    dst_ch >= params.weights.shape.o) {
+                if (src_ch >= weights.shape.i || dst_ch >= weights.shape.o) {
                   weights_reordered[counter++] = 0.0f;
                 } else {
                   const size_t f_index =
-                      params.weights.shape.LinearIndex({dst_ch, y, x, src_ch});
-                  weights_reordered[counter++] = params.weights.data[f_index];
+                      weights.shape.LinearIndex({dst_ch, y, x, src_ch});
+                  weights_reordered[counter++] = weights.data[f_index];
                 }
               }
             }
@@ -556,6 +565,40 @@ std::vector<uint8_t> GetUniformBuffer(const BHWC& src_size,
       attr.weights.shape.h,
       attr.dilations.w,
       attr.dilations.h,
+      grid_x,
+      grid_x * grid_y,
+      0,  // dummy, for alignment
+      0,  // dummy, for alignment
+      params.work_group_size.x,
+      params.work_group_size.y,
+      params.work_group_size.z,
+      0,  // dummy, for alignment
+  };
+  return GetByteBuffer(uniform_params);
+}
+
+std::vector<uint8_t> GetUniformBufferForWinograd(const BHWC& src_size,
+                                                 const BHWC& dst_size,
+                                                 const ConvParams& params) {
+  const int grid_x = IntegralDivideRoundUp(dst_size.w, params.block_size.x);
+  const int grid_y = IntegralDivideRoundUp(dst_size.h, params.block_size.y);
+  std::vector<int> uniform_params = {
+      src_size.w,
+      src_size.h,
+      src_size.w * src_size.h,
+      IntegralDivideRoundUp(src_size.c, 4),
+      dst_size.w,
+      dst_size.h,
+      dst_size.w * dst_size.h,
+      IntegralDivideRoundUp(dst_size.c, 4),
+      1,
+      1,
+      0,
+      0,
+      1,
+      1,
+      1,
+      1,
       grid_x,
       grid_x * grid_y,
       0,  // dummy, for alignment
@@ -811,6 +854,38 @@ ConvParams GetConvParams(const Convolution2DAttributes& attr,
   }
 }
 
+std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
+                                         const BHWC& shape) {
+  const int dst_slices = IntegralDivideRoundUp(shape.c, 4);
+
+  int grid_x = IntegralDivideRoundUp(shape.w, params.block_size.x);
+  int grid_y = IntegralDivideRoundUp(shape.h, params.block_size.y);
+  int grid_z = IntegralDivideRoundUp(dst_slices, params.block_size.z);
+
+  const uint3 group_size(params.work_group_size.x, params.work_group_size.y,
+                         params.work_group_size.z);
+  int3 wg;
+  uint3 groups_count;
+  if (params.linear_whs) {
+    wg.x = IntegralDivideRoundUp(grid_x * grid_y * grid_z,
+                                 params.work_group_size.x);
+    groups_count = uint3(wg.x, 1, 1);
+  } else if (params.linear_wh) {
+    wg.x = IntegralDivideRoundUp(grid_x * grid_y, params.work_group_size.x);
+    wg.y = IntegralDivideRoundUp(grid_z, params.work_group_size.y);
+    groups_count = uint3(wg[params.work_group_launch_order.x],
+                         wg[params.work_group_launch_order.y], 1);
+  } else {
+    wg.x = IntegralDivideRoundUp(grid_x, params.work_group_size.x);
+    wg.y = IntegralDivideRoundUp(grid_y, params.work_group_size.y);
+    wg.z = IntegralDivideRoundUp(grid_z, params.work_group_size.z);
+    groups_count = uint3(wg[params.work_group_launch_order.x],
+                         wg[params.work_group_launch_order.y],
+                         wg[params.work_group_launch_order.z]);
+  }
+  return std::make_pair(group_size, groups_count);
+}
+
 }  // namespace
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
@@ -835,7 +910,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
         return out_shape;
       }};
 
-  auto weights_reordered = ReorderWeightsForConv(attr, params.block_size.z);
+  auto weights_reordered =
+      ReorderWeightsForConv(attr.weights, params.block_size.z);
   std::string addr_space =
       params.weights_upload_type == WeightsUploadType::CONSTANT_MEM ? "constant"
                                                                     : "device";
@@ -861,35 +937,79 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
 
   desc->resize_function = [output_id,
                            params](const std::map<ValueId, BHWC>& buffers) {
-    const auto& output_dims = buffers.find(output_id)->second;
-    const int dst_slices = IntegralDivideRoundUp(output_dims.c, 4);
+    return GetDispatchSizes(params, buffers.find(output_id)->second);
+  };
 
-    int grid_x = IntegralDivideRoundUp(output_dims.w, params.block_size.x);
-    int grid_y = IntegralDivideRoundUp(output_dims.h, params.block_size.y);
-    int grid_z = IntegralDivideRoundUp(dst_slices, params.block_size.z);
+  return {desc};
+}
 
-    const uint3 group_size(params.work_group_size.x, params.work_group_size.y,
-                           params.work_group_size.z);
-    int3 wg;
-    uint3 groups_count;
-    if (params.linear_whs) {
-      wg.x = IntegralDivideRoundUp(grid_x * grid_y * grid_z,
-                                   params.work_group_size.x);
-      groups_count = uint3(wg.x, 1, 1);
-    } else if (params.linear_wh) {
-      wg.x = IntegralDivideRoundUp(grid_x * grid_y, params.work_group_size.x);
-      wg.y = IntegralDivideRoundUp(grid_z, params.work_group_size.y);
-      groups_count = uint3(wg[params.work_group_launch_order.x],
-                           wg[params.work_group_launch_order.y], 1);
-    } else {
-      wg.x = IntegralDivideRoundUp(grid_x, params.work_group_size.x);
-      wg.y = IntegralDivideRoundUp(grid_y, params.work_group_size.y);
-      wg.z = IntegralDivideRoundUp(grid_z, params.work_group_size.z);
-      groups_count = uint3(wg[params.work_group_launch_order.x],
-                           wg[params.work_group_launch_order.y],
-                           wg[params.work_group_launch_order.z]);
-    }
-    return std::make_pair(group_size, groups_count);
+std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
+    int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
+    const Convolution2DAttributes& attr, const RuntimeOptions& options) {
+  const int dst_slices = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+  ConvParams params;
+  params.work_group_launch_order = int3(2, 0, 1);
+  params.src_depth_loop_size = 1;
+  params.need_src_loop = true;
+  params.need_dst_loop = true;
+  params.linear_wh = false;
+  params.linear_whs = false;
+  params.different_weights_for_height = true;
+  params.x_kernel_is_1 = true;
+  params.y_kernel_is_1 = true;
+  auto gpu_type = GetGpuType();
+  if (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8) {
+    params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    params.work_group_size = int3(32, 1, 1);
+    params.block_size = int3(4, 1, 4);
+  } else {
+    params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+    params.work_group_size = int3(8, 4, 1);
+    params.block_size = int3(4, 1, 4);
+  }
+
+  auto desc = std::make_shared<ComputeTaskDescriptor>();
+  desc->id = id;
+  desc->is_linkable = false;
+  desc->shader_source = GenerateConvolution(params);
+
+  desc->input_buffers = {
+      {input_id, "device FLT4* const src_buffer"},
+  };
+
+  desc->output_buffer = {
+      output_id, "device FLT4* dst_buffer",
+      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
+        const auto src_shape = buffers.find(input_id)->second;
+        return BHWC(src_shape.b, src_shape.h, src_shape.w,
+                    attr.weights.shape.o);
+      }};
+
+  ::tflite::gpu::Tensor<OHWI, DataType::FLOAT32> wino_weights;
+  RearrangeWeightsToWinograd4x4To6x6Weights(attr.weights, &wino_weights);
+  auto weights_reordered =
+      ReorderWeightsForConv(wino_weights, params.block_size.z);
+  std::vector<float> dummy_biases(AlignByN(dst_slices, params.block_size.z) * 4,
+                                  0.0f);
+  desc->immutable_buffers = {
+      {"device FLT4* const filters",
+       GetByteBufferConverted(weights_reordered, options.storage_precision)},
+      {"device FLT4* const biases",
+       GetByteBufferConverted(dummy_biases, options.storage_precision)},
+  };
+
+  desc->uniform_buffers = {
+      {"constant uniforms& params",
+       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
+         const auto& src_shape = buffers.find(input_id)->second;
+         const auto& dst_shape = buffers.find(output_id)->second;
+         return GetUniformBufferForWinograd(src_shape, dst_shape, params);
+       }},
+  };
+
+  desc->resize_function = [output_id,
+                           params](const std::map<ValueId, BHWC>& buffers) {
+    return GetDispatchSizes(params, buffers.find(output_id)->second);
   };
 
   return {desc};

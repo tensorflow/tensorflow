@@ -1389,7 +1389,7 @@ cc_library(
         full = [],
         lite = ["TENSORFLOW_LITE_PROTOS"],
     ) + if_chromiumos(["IS_MOBILE_PLATFORM"]) + tf_defines_nortti_if_lite_protos(),
-    linkopts = if_android(["-lz"]),
+    linkopts = if_android(["-lz"]) + if_ios(["-lz"]),
     tags = [
         "manual",
         "notap",
@@ -1442,7 +1442,7 @@ cc_library(
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
-    copts = tf_copts() + ["-Os"],
+    copts = tf_copts() + tf_opts_nortti_if_lite_protos() + ["-Os"],
     visibility = ["//visibility:public"],
     deps = [
         ":portable_tensorflow_lib_lite",

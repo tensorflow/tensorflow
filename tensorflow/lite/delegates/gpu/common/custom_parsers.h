@@ -27,9 +27,9 @@ namespace gpu {
 
 // Matches the custom operation by the string name and parses attributes stored
 // as flexbuffers.
-Status ParseCustomAttributes(absl::string_view op_name, const void* data,
-                             uint32_t data_size, absl::any* attr,
-                             BHWC* output_shape);
+absl::Status ParseCustomAttributes(absl::string_view op_name, const void* data,
+                                   uint32_t data_size, absl::any* attr,
+                                   BHWC* output_shape);
 
 }  // namespace gpu
 }  // namespace tflite

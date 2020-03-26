@@ -17,7 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.keras import backend
@@ -27,6 +30,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
+from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -104,6 +108,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   0.25
   """
 
+  _HAS_AGGREGATE_GRAD = True
+
   def __init__(self, optimizer, loss_scale):
     """Initializes this loss scale optimizer.
 
@@ -128,6 +134,7 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
       raise ValueError('LossScaleOptimizer does not support wrapping '
                        'optimizers with a clipvalue. Optimizer %s has '
                        'clipvalue %s' % (optimizer, optimizer.clipvalue))
+    self._raise_if_strategy_unsupported()
 
     self.clipnorm = None
     self.clipvalue = None
@@ -225,17 +232,23 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     grads = self._optimizer.get_gradients(loss, params)
     return self.get_unscaled_gradients(grads)
 
-  def apply_gradients(self, grads_and_vars, name=None,
-                      all_reduce_sum_gradients=True):
+  def apply_gradients(self,
+                      grads_and_vars,
+                      name=None,
+                      experimental_aggregate_gradients=True):
     if distribution_strategy_context.in_cross_replica_context():
       raise ValueError('apply_gradients() must be called in a replica context.')
+    # We check for the strategy here despite already checking in the constructor
+    # as frequently the optimizer is created outside the strategy's scope.
+    self._raise_if_strategy_unsupported()
+
     grads_and_vars = tuple(grads_and_vars)
     return distribution_strategy_context.get_replica_context().merge_call(
         self._apply_gradients_cross_replica,
-        args=(grads_and_vars, name, all_reduce_sum_gradients))
+        args=(grads_and_vars, name, experimental_aggregate_gradients))
 
   def _apply_gradients_cross_replica(self, distribution, grads_and_vars, name,
-                                     all_reduce_sum_gradients):
+                                     experimental_aggregate_gradients):
     grads = [g for g, _ in grads_and_vars]
     loss_scale_update_op, should_apply_grads = self._loss_scale.update(grads)
 
@@ -247,8 +260,8 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
       # MirroredVariables.
       wrapped_vars = _UnwrapPreventer([v for _, v in grads_and_vars])
       return distribution.extended.call_for_each_replica(
-          self._apply_gradients, args=(grads, wrapped_vars, name,
-                                       all_reduce_sum_gradients))
+          self._apply_gradients,
+          args=(grads, wrapped_vars, name, experimental_aggregate_gradients))
 
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
@@ -260,9 +273,13 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,
-                       all_reduce_sum_gradients):
-    return self._optimizer.apply_gradients(list(zip(grads, wrapped_vars.value)),
-                                           name, all_reduce_sum_gradients)
+                       experimental_aggregate_gradients):
+    # TODO(reedwm): This will raise a fairly cryptic error message if
+    # self._optimizer.apply_gradients does not take
+    # experimental_aggregate_gradients.
+    return self._optimizer.apply_gradients(
+        list(zip(grads, wrapped_vars.value)), name,
+        experimental_aggregate_gradients=experimental_aggregate_gradients)
 
   def get_config(self):
     serialized_optimizer = optimizers.serialize(self._optimizer)
@@ -280,6 +297,14 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
     config['loss_scale'] = keras_loss_scale_module.deserialize(
         config['loss_scale'], custom_objects=custom_objects)
     return cls(**config)
+
+  def _raise_if_strategy_unsupported(self):
+    if not strategy_supports_loss_scaling():
+      strategy = distribution_strategy_context.get_strategy()
+      raise ValueError('Loss scaling is not supported with the '
+                       'tf.distribute.Strategy: %s. Try using a different '
+                       'Strategy, e.g. a MirroredStrategy' %
+                       strategy.__class__.__name__)
 
   # Delegations: We delegate most OptimizerV2 methods to the wrapped optimizer
   # below.
@@ -363,6 +388,11 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   # optimizer being used.
 
 
+# pylint: disable=protected-access
+mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
+                                                LossScaleOptimizer)
+
+
 def _multiply_gradient(gradient, scale):
   """Multiply a (possibly sparse) gradient by the given scale factor."""
   scale = math_ops.cast(scale, gradient.dtype)
@@ -373,3 +403,25 @@ def _multiply_gradient(gradient, scale):
         dense_shape=gradient.dense_shape)
   else:
     return gradient * scale
+
+
+def strategy_supports_loss_scaling():
+  """Returns True if the current Strategy supports loss scaling."""
+  if not distribution_strategy_context.has_strategy():
+    return True
+  strategy = distribution_strategy_context.get_strategy()
+  # Strategies are supported if either there is only one replica or if variables
+  # are replicated per device. Otherwise, the current model.fit() implementation
+  # and most custom training loops incorrectly unscale the gradients. Currently,
+  # gradients are unscaled once per compute replica, but they should be unscaled
+  # once per variable replica. When there is one variable replica for each
+  # compute replica, this works fine, but otherwise issues will occur.
+  # TODO(reedwm): Support all strategies.
+  return isinstance(strategy, (
+      collective_all_reduce_strategy.CollectiveAllReduceStrategy,
+      collective_all_reduce_strategy.CollectiveAllReduceStrategyV1,
+      one_device_strategy.OneDeviceStrategy,
+      one_device_strategy.OneDeviceStrategyV1,
+      mirrored_strategy.MirroredStrategy,
+      mirrored_strategy.MirroredStrategyV1,
+  ))

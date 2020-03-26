@@ -16,8 +16,8 @@ C99OPTS = [
 # Source code common to all platforms.
 COMMON_SRCS = [
     "src/api.c",
-    "src/cache.c",
     "src/init.c",
+    "src/cache.c",
 ]
 
 # Architecture-specific sources and headers.
@@ -59,10 +59,6 @@ EMSCRIPTEN_SRCS = [
     "src/emscripten/init.c",
 ]
 
-PNACL_SRCS = [
-    "src/pnacl/init.c",
-]
-
 LINUX_X86_SRCS = [
     "src/x86/linux/cpuinfo.c",
     "src/x86/linux/init.c",
@@ -101,6 +97,7 @@ cc_library(
     name = "cpuinfo_impl",
     srcs = select({
         ":linux_x86_64": COMMON_SRCS + X86_SRCS + LINUX_SRCS + LINUX_X86_SRCS,
+        ":linux_aarch64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS,
         ":macos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":android_armv7": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM32_SRCS + ANDROID_ARM_SRCS,
         ":android_arm64": COMMON_SRCS + ARM_SRCS + LINUX_SRCS + LINUX_ARM64_SRCS + ANDROID_ARM_SRCS,
@@ -115,6 +112,8 @@ cc_library(
         ":watchos_x86": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
         ":watchos_armv7k": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":watchos_arm64_32": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
+        ":tvos_x86_64": COMMON_SRCS + X86_SRCS + MACH_SRCS + MACH_X86_SRCS,
+        ":tvos_arm64": COMMON_SRCS + MACH_SRCS + MACH_ARM_SRCS,
         ":emscripten_wasm": COMMON_SRCS + EMSCRIPTEN_SRCS,
     }),
     copts = C99OPTS + [
@@ -161,7 +160,11 @@ cc_library(
 config_setting(
     name = "linux_x86_64",
     values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "linux_aarch64",
+    values = {"cpu": "aarch64"},
 )
 
 config_setting(

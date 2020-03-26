@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
@@ -35,6 +36,7 @@ from tensorflow.python.saved_model import nested_structure_coder
 class NestedStructureTest(test.TestCase):
 
   def setUp(self):
+    super(NestedStructureTest, self).setUp()
     self._coder = nested_structure_coder.StructureCoder()
 
   def testEncodeDecodeList(self):
@@ -270,6 +272,54 @@ class NestedStructureTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, "The type 'FutureTensorSpec' is not supported"):
       self._coder.decode_proto(encoded)
+
+  def testEncodeDecodeBoundedTensorSpec(self):
+    structure = [
+        tensor_spec.BoundedTensorSpec([1, 2, 3], dtypes.int64, 0, 10,
+                                      "hello-0-10")
+    ]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    expected = struct_pb2.StructuredValue()
+    expected_list = expected.list_value
+    expected_tensor_spec = expected_list.values.add().bounded_tensor_spec_value
+    expected_tensor_spec.shape.dim.add().size = 1
+    expected_tensor_spec.shape.dim.add().size = 2
+    expected_tensor_spec.shape.dim.add().size = 3
+    expected_tensor_spec.name = "hello-0-10"
+    expected_tensor_spec.dtype = dtypes.int64.as_datatype_enum
+    expected_tensor_spec.minimum.CopyFrom(
+        tensor_util.make_tensor_proto([0], dtype=dtypes.int64, shape=[]))
+    expected_tensor_spec.maximum.CopyFrom(
+        tensor_util.make_tensor_proto([10], dtype=dtypes.int64, shape=[]))
+    self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeBoundedTensorSpecNoName(self):
+    structure = [
+        tensor_spec.BoundedTensorSpec((28, 28, 3), dtypes.float64, -2,
+                                      (1, 1, 20))
+    ]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    expected = struct_pb2.StructuredValue()
+    expected_list = expected.list_value
+    expected_tensor_spec = expected_list.values.add().bounded_tensor_spec_value
+    expected_tensor_spec.shape.dim.add().size = 28
+    expected_tensor_spec.shape.dim.add().size = 28
+    expected_tensor_spec.shape.dim.add().size = 3
+    expected_tensor_spec.name = ""
+    expected_tensor_spec.dtype = dtypes.float64.as_datatype_enum
+    expected_tensor_spec.minimum.CopyFrom(
+        tensor_util.make_tensor_proto([-2], dtype=dtypes.float64, shape=[]))
+    expected_tensor_spec.maximum.CopyFrom(
+        tensor_util.make_tensor_proto([1, 1, 20],
+                                      dtype=dtypes.float64,
+                                      shape=[3]))
+    self.assertEqual(expected, encoded)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
 
   def testEncodeDataSetSpec(self):
     structure = [dataset_ops.DatasetSpec(

@@ -15,14 +15,14 @@ func @while() -> tensor<1xf32>
   %0:2 = "tfl.while"(%cst0, %cst1) ( {
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
       // CHECK: call @WhileOp_cond
-      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>)
       %cst_0 = constant dense<0> : tensor<i32>
       %1 = "tfl.greater"(%arg2, %cst_0) : (tensor<*xi32>, tensor<i32>) -> tensor<i1>
       "tfl.yield"(%1) : (tensor<i1>) -> ()
   },  {
     ^bb0(%arg2: tensor<*xi32>, %arg3: tensor<*xf32>):
       // CHECK: call @WhileOp_body
-      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>, tensor<i32>)
+      // CHECK-SAME: (tensor<*xi32>, tensor<*xf32>)
       %1 = "tfl.sub"(%arg2, %cst) {fused_activation_function = "NONE"} :
         (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
       %2 = tfl.add %arg3, %arg3 {fused_activation_function = "NONE"} : tensor<*xf32>
@@ -40,8 +40,7 @@ func @while() -> tensor<1xf32>
 
 // CHECK-LABEL: func @while2
 // Verify that while body//cond with implicitly captured values result in changing while operands/results.
-func @while2() -> tensor<1xf32> attributes {tf.entry_function = {outputs = "result"}} {
-  %cst = constant dense<1> : tensor<i32>
+func @while2(%cst : tensor<i32>) -> tensor<1xf32> attributes {tf.entry_function = {outputs = "result"}} {
   %cst_0 = constant dense<5> : tensor<i32>
   %cst_1 = constant dense<3.000000e+00> : tensor<1xf32>
   // Verifies 3 operands post outlining.
@@ -148,22 +147,21 @@ func @rnn(%arg0: tensor<4x4x3xf32> {tf.device = "/device:CPU:0"}) -> tensor<4x?x
 // CHECK:           tfl.while
 // CHECK:             tfl.yield
 // CHECK-SAME:  (tensor<i1>) -> ()
-// CHECK:             [[VAL_41:%.*]]:18 =
+// CHECK:             [[VAL_30:%.*]]:7 =
 // CHECK: call @tfl.while_body
 // CHECK:             tfl.yield
-// CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<4x4x3xf32>, tensor<8x5xf32>, tensor<8xf32>, tensor<f32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>) -> ()
+// CHECK-SAME: (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>) -> ()
 
 // CHECK-LABEL:   func @tfl.while_cond(
-// CHECK-SAME:                         [[VAL_56:%.*]]: tensor<i32>, [[VAL_57:%.*]]: tensor<i32>, [[VAL_58:%.*]]: tensor<*xf32>, [[VAL_59:%.*]]: tensor<4x2xf32>, [[VAL_60:%.*]]: tensor<4x2xf32>, [[VAL_61:%.*]]: tensor<*xf32>, [[VAL_62:%.*]]: tensor<i32>, [[VAL_63:%.*]]: tensor<i32>, [[VAL_64:%.*]]: tensor<4x4x3xf32>, [[VAL_65:%.*]]: tensor<8x5xf32>, [[VAL_66:%.*]]: tensor<8xf32>, [[VAL_67:%.*]]: tensor<f32>, [[VAL_68:%.*]]: tensor<1xi32>, [[VAL_69:%.*]]: tensor<i32>, [[VAL_70:%.*]]: tensor<1xi32>, [[VAL_71:%.*]]: tensor<1xi32>, [[VAL_72:%.*]]: tensor<i32>, [[VAL_73:%.*]]: tensor<1xi32>) -> tensor<i1> attributes {sym_visibility = "private"} {
+// CHECK-SAME:                         [[VAL_35:%.*]]: tensor<i32>, [[VAL_36:%.*]]: tensor<i32>, [[VAL_37:%.*]]: tensor<*xf32>, [[VAL_38:%.*]]: tensor<4x2xf32>, [[VAL_39:%.*]]: tensor<4x2xf32>, [[VAL_40:%.*]]: tensor<*xf32>, [[VAL_41:%.*]]: tensor<4x4x3xf32>) -> tensor<i1> attributes {sym_visibility = "private"} {
 // CHECK:           return
 // CHECK-SAME:        tensor<i1>
 // CHECK:         }
 
 // CHECK-LABEL:   func @tfl.while_body(
-// CHECK-SAME:                         [[VAL_77:%.*]]: tensor<i32>, [[VAL_78:%.*]]: tensor<i32>, [[VAL_79:%.*]]: tensor<*xf32>, [[VAL_80:%.*]]: tensor<4x2xf32>, [[VAL_81:%.*]]: tensor<4x2xf32>, [[VAL_82:%.*]]: tensor<*xf32>, [[VAL_83:%.*]]: tensor<i32>, [[VAL_84:%.*]]: tensor<i32>, [[VAL_85:%.*]]: tensor<4x4x3xf32>, [[VAL_86:%.*]]: tensor<8x5xf32>, [[VAL_87:%.*]]: tensor<8xf32>, [[VAL_88:%.*]]: tensor<f32>, [[VAL_89:%.*]]: tensor<1xi32>, [[VAL_90:%.*]]: tensor<i32>, [[VAL_91:%.*]]: tensor<1xi32>, [[VAL_92:%.*]]: tensor<1xi32>, [[VAL_93:%.*]]: tensor<i32>, [[VAL_94:%.*]]: tensor<1xi32>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<4x4x3xf32>, tensor<8x5xf32>, tensor<8xf32>, tensor<f32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>) attributes {sym_visibility = "private"} {
-// CHECK:           [[VAL_123:%.*]] = "tfl.cast"
+// CHECK-SAME:                         [[VAL_46:%.*]]: tensor<i32>, [[VAL_47:%.*]]: tensor<i32>, [[VAL_48:%.*]]: tensor<*xf32>, [[VAL_49:%.*]]: tensor<4x2xf32>, [[VAL_50:%.*]]: tensor<4x2xf32>, [[VAL_51:%.*]]: tensor<*xf32>, [[VAL_52:%.*]]: tensor<4x4x3xf32>) -> (tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>) attributes {sym_visibility = "private"} {
+// CHECK:           [[VAL_91:%.*]] = "tfl.cast"
 // CHECK:           return
-// CHECK-SAME:        [[VAL_123]], [[VAL_83]], [[VAL_84]], [[VAL_85]], [[VAL_86]], [[VAL_87]], [[VAL_88]], [[VAL_89]], [[VAL_90]], [[VAL_91]], [[VAL_92]], [[VAL_93]], [[VAL_94]] : tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<i32>, tensor<i32>, tensor<4x4x3xf32>, tensor<8x5xf32>, tensor<8xf32>, tensor<f32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>, tensor<1xi32>, tensor<i32>, tensor<1xi32>
+// CHECK-SAME:       [[VAL_91]], [[VAL_52]] : tensor<i32>, tensor<i32>, tensor<*xf32>, tensor<4x2xf32>, tensor<4x2xf32>, tensor<*xf32>, tensor<4x4x3xf32>
 // CHECK:         }
 // CHECK:       }
-

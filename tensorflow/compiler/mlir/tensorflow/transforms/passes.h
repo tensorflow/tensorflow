@@ -118,6 +118,11 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
 // static shapes and known max element count.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass();
 
+// Converts tensor array ops into operations on local variables, which can later
+// be removed by resource lifting. Requires known sizes and known element shapes
+// (either defined in TensorArrayV3 or implied in the first write).
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass();
+
 // Create a pass that legalize HLO to TF dialect.
 std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass();
 }  // namespace TF

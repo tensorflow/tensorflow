@@ -65,10 +65,13 @@ Status OpDefForOp(const string& op_name, const OpDef** op_def) {
 
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
                         bool* is_function) {
+  {
+    tf_shared_lock l(g_op_name_to_attr_type_map_lock);
+    *is_function = false;
+    *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
+    if (*out != nullptr) return Status::OK();
+  }
   mutex_lock l(g_op_name_to_attr_type_map_lock);
-  *is_function = false;
-  *out = gtl::FindPtrOrNull(*OpNameToAttrTypeMap(), op_name);
-  if (*out != nullptr) return Status::OK();
   const OpDef* op_def = nullptr;
   Status s = OpDefForOp(op_name, &op_def);
   if (errors::IsNotFound(s)) {

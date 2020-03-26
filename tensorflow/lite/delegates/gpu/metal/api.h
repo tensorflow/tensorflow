@@ -26,8 +26,8 @@ namespace gpu {
 namespace metal {
 
 // Builds CompiledModel out of GraphFloat32 graph using provided RuntimeOptions.
-Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
-               CompiledModel* compiled_model);
+absl::Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
+                     CompiledModel* compiled_model);
 
 }  // namespace metal
 }  // namespace gpu

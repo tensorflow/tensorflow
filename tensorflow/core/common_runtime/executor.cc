@@ -134,6 +134,10 @@ struct EdgeInfo {
   int input_slot;
 };
 
+struct ControlEdgeInfo {
+  int dst_id;
+};
+
 // Time the execution of kernels (in CPU cycles).  Used to dynamically identify
 // inexpensive kernels which can be dispatched inline.
 struct KernelTimer {
@@ -190,25 +194,28 @@ struct NodeItem {
   // for this node.
   int input_start = 0;
 
-  // Number of output edges.
-  size_t num_output_edges;
+  // Number of output edges, excluding control edges.
+  int32 num_output_edges;
+
+  // Number of output control edges.
+  int32 num_output_control_edges;
 
   // If non-null, contains an array of num_outputs bools, where the ith bool
   // is true if and only if the ith output is consumed by another node.
   std::unique_ptr<bool[]> outputs_required;
 
-  const EdgeInfo* output_edge_list() const { return output_edge_base(); }
-
-  // ith output edge.
-  const EdgeInfo& output_edge(int i) const {
-    DCHECK_GE(i, 0);
-    DCHECK_LT(i, num_output_edges);
-    return output_edge_base()[i];
+  gtl::MutableArraySlice<EdgeInfo> mutable_output_edges() {
+    return gtl::MutableArraySlice<EdgeInfo>(output_edge_base(),
+                                            num_output_edges);
   }
-  EdgeInfo& output_edge(int i) {
-    DCHECK_GE(i, 0);
-    DCHECK_LT(i, num_output_edges);
-    return output_edge_base()[i];
+
+  gtl::ArraySlice<EdgeInfo> output_edges() const {
+    return gtl::ArraySlice<EdgeInfo>(output_edge_base(), num_output_edges);
+  }
+
+  gtl::ArraySlice<ControlEdgeInfo> output_control_edges() const {
+    return gtl::ArraySlice<const ControlEdgeInfo>(output_control_edge_base(),
+                                                  num_output_control_edges);
   }
 
   DataType input_type(int i) const {
@@ -260,22 +267,33 @@ struct NodeItem {
   EdgeInfo* output_edge_base() const {
     return reinterpret_cast<EdgeInfo*>(var());
   }
+
+  ControlEdgeInfo* output_control_edge_base() const {
+    return reinterpret_cast<ControlEdgeInfo*>(var() + sizeof(EdgeInfo) *
+                                                          num_output_edges);
+  }
+
   AllocatorAttributes* output_attr_base() const {
-    return reinterpret_cast<AllocatorAttributes*>(var() + sizeof(EdgeInfo) *
-                                                              num_output_edges);
+    return reinterpret_cast<AllocatorAttributes*>(
+        var() + sizeof(EdgeInfo) * num_output_edges +
+        sizeof(ControlEdgeInfo) * num_output_control_edges);
   }
   int* forward_from_base() const {
     return reinterpret_cast<int*>(var() + sizeof(EdgeInfo) * num_output_edges +
+                                  sizeof(ControlEdgeInfo) *
+                                      num_output_control_edges +
                                   sizeof(AllocatorAttributes) * num_outputs);
   }
   uint8* input_type_base() const {
     return reinterpret_cast<uint8*>(
         var() + sizeof(EdgeInfo) * num_output_edges +
+        sizeof(ControlEdgeInfo) * num_output_control_edges +
         sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs);
   }
   uint8* output_type_base() const {
     return reinterpret_cast<uint8*>(
         var() + sizeof(EdgeInfo) * num_output_edges +
+        sizeof(ControlEdgeInfo) * num_output_control_edges +
         sizeof(AllocatorAttributes) * num_outputs + sizeof(int) * num_outputs +
         sizeof(uint8) * num_inputs);
   }
@@ -292,11 +310,11 @@ class GraphView {
   GraphView() : space_(nullptr) {}
   ~GraphView();
 
-  void Initialize(const Graph* g);
+  Status Initialize(const Graph* g);
   Status SetAllocAttrs(const Graph* g, const Device* device);
   void SetScopedAllocatorAttrs(const std::vector<const Node*>& sa_nodes);
 
-  NodeItem* node(size_t id) const {
+  NodeItem* node(int32 id) const {
     DCHECK_GE(id, 0);
     DCHECK_LT(id, num_nodes_);
     uint32 offset = node_offsets_[id];
@@ -506,11 +524,27 @@ GraphView::~GraphView() {
   delete[] space_;
 }
 
-size_t GraphView::NodeItemBytes(const Node* n) {
-  size_t num_output_edges = n->out_edges().size();
+typedef std::tuple<int32, int32> OutputAndControlEdges;
+
+static OutputAndControlEdges CountOutputEdges(const Node* n) {
+  DCHECK_LE(n->out_edges().size(), kint32max);
+  int32 num_output_edges = 0;
+  int32 num_output_control_edges = 0;
   for (auto e : n->out_edges()) {
-    if (IsSink(e->dst())) --num_output_edges;
+    if (IsSink(e->dst())) continue;
+    if (e->IsControlEdge()) {
+      ++num_output_control_edges;
+    } else {
+      ++num_output_edges;
+    }
   }
+  return OutputAndControlEdges(num_output_edges, num_output_control_edges);
+}
+
+size_t GraphView::NodeItemBytes(const Node* n) {
+  int32 num_output_edges;
+  int32 num_output_control_edges;
+  std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -520,6 +554,8 @@ size_t GraphView::NodeItemBytes(const Node* n) {
   const size_t raw_bytes =
       sizeof(NodeItem)                             // Fixed
       + num_output_edges * sizeof(EdgeInfo)        // output_edges[...]
+      + num_output_control_edges *                 //
+            sizeof(ControlEdgeInfo)                // output_control_edges[...]
       + num_outputs * sizeof(AllocatorAttributes)  // output_attr[...]
       + num_outputs * sizeof(int)                  // forward_from[num_outputs]
       + num_inputs * sizeof(uint8)                 // input_type[num_inputs]
@@ -529,6 +565,8 @@ size_t GraphView::NodeItemBytes(const Node* n) {
                 "NodeItem must be aligned with kItemAlignment");
   static_assert(kItemAlignment % alignof(EdgeInfo) == 0,
                 "EdgeInfo must be aligned with kItemAlignment");
+  static_assert(kItemAlignment % alignof(ControlEdgeInfo) == 0,
+                "ControlEdgeInfo must be aligned with kItemAlignment");
   static_assert(kItemAlignment % alignof(AllocatorAttributes) == 0,
                 "AllocatorAttributes must be aligned with kItemAlignment");
   static_assert(sizeof(NodeItem) % alignof(EdgeInfo) == 0,
@@ -561,10 +599,9 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   node_offsets_[id] = offset;
   ptr += bytes;
 
-  size_t num_output_edges = n->out_edges().size();
-  for (auto e : n->out_edges()) {
-    if (IsSink(e->dst())) --num_output_edges;
-  }
+  int32 num_output_edges;
+  int32 num_output_control_edges;
+  std::tie(num_output_edges, num_output_control_edges) = CountOutputEdges(n);
   const int num_inputs = n->num_inputs();
   const int num_outputs = n->num_outputs();
 
@@ -572,6 +609,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   item->num_inputs = num_inputs;
   item->num_outputs = num_outputs;
   item->num_output_edges = num_output_edges;
+  item->num_output_control_edges = num_output_control_edges;
 
   // Fill output edges.
   // Keep track of the last EdgeInfo in the EdgeInfo array that references
@@ -581,7 +619,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   gtl::InlinedVector<EdgeInfo*, 4> last_indices(num_outputs, nullptr);
   EdgeInfo* dst_edge = item->output_edge_base();
   for (auto e : n->out_edges()) {
-    if (IsSink(e->dst())) continue;
+    if (e->IsControlEdge()) continue;
     dst_edge->dst_id = e->dst()->id();
     CHECK_LE(e->src_output(), 0x3FFFFFFF);  // Must fit in 31 bits
     dst_edge->output_slot = e->src_output();
@@ -599,6 +637,12 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
     if (edge_info != nullptr) {
       edge_info->is_last = true;
     }
+  }
+  ControlEdgeInfo* dst_control_edge = item->output_control_edge_base();
+  for (auto e : n->out_edges()) {
+    if (!e->IsControlEdge() || IsSink(e->dst())) continue;
+    dst_control_edge->dst_id = e->dst()->id();
+    dst_control_edge++;
   }
 
   AllocatorAttributes* output_attrs = item->output_attr_base();
@@ -657,12 +701,18 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   return ptr;
 }
 
-void GraphView::Initialize(const Graph* g) {
+Status GraphView::Initialize(const Graph* g) {
   CHECK(node_offsets_ == nullptr);
   const int num_nodes = g->num_node_ids();
   num_nodes_ = num_nodes;
   size_t total_bytes = 0;
   for (const Node* n : g->nodes()) {
+    if (n->out_edges().size() > kint32max) {
+      return errors::InvalidArgument(
+          "The executor cannot handle nodes with more than ", kint32max,
+          " output edges. Node ", n->name(), " had ", n->out_edges().size(),
+          " output edges.");
+    }
     total_bytes += NodeItemBytes(n);
   }
 
@@ -677,6 +727,7 @@ void GraphView::Initialize(const Graph* g) {
     ptr = InitializeNode(ptr, n);
   }
   CHECK_EQ(ptr, space_ + total_bytes);
+  return Status::OK();
 }
 
 void GetMaxPendingCounts(const Node* n, size_t* max_pending,
@@ -703,7 +754,7 @@ void GetMaxPendingCounts(const Node* n, size_t* max_pending,
 }
 
 Status ExecutorImpl::Initialize(const Graph& graph) {
-  gview_.Initialize(&graph);
+  TF_RETURN_IF_ERROR(gview_.Initialize(&graph));
 
   // Build the information about frames in this subgraph.
   ControlFlowInfo cf_info;
@@ -798,7 +849,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     // Record information about whether each output of the op is used.
     std::unique_ptr<bool[]> outputs_required(new bool[n->num_outputs()]);
     std::fill(&outputs_required[0], &outputs_required[n->num_outputs()], false);
-    size_t unused_outputs = n->num_outputs();
+    int32 unused_outputs = n->num_outputs();
     for (const Edge* e : n->out_edges()) {
       if (IsSink(e->dst())) continue;
       if (e->src_output() >= 0) {
@@ -825,9 +876,7 @@ Status ExecutorImpl::Initialize(const Graph& graph) {
     const int id = n->id();
     NodeItem* item = gview_.node(id);
 
-    for (size_t out_index = 0; out_index < item->num_output_edges;
-         out_index++) {
-      EdgeInfo& e = item->output_edge(out_index);
+    for (EdgeInfo& e : item->mutable_output_edges()) {
       const int dst_id = e.dst_id;
       NodeItem* dst_item = gview_.node(dst_id);
       e.input_slot += dst_item->input_start;
@@ -2356,10 +2405,11 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   profiler::TraceMe activity(
       [&]() {
-        return strings::StrCat("ExecutorPropagateOutputs#", "id=", step_id_,
-                               ",kernel_name=", item->kernel->name_view(),
-                               ",num_output_edges=", item->num_output_edges,
-                               "#");
+        return strings::StrCat(
+            "ExecutorPropagateOutputs#", "id=", step_id_,
+            ",kernel_name=", item->kernel->name_view(),
+            ",num_output_edges=", item->num_output_edges,
+            ",num_output_control_edges=", item->num_output_control_edges, "#");
       },
       profiler::GetTFTraceMeLevel(/*is_expensive=*/false));
 
@@ -2894,41 +2944,61 @@ void ExecutorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
     mutex_lock parent_frame_lock(parent_frame->mu);
     // Propagate all the dead exits to the parent frame.
     mutex_lock this_frame_lock(frame->mu);
+
     for (const NodeItem* item : frame->dead_exits) {
       auto parent_iter_state = parent_frame->GetIteration(parent_iter);
-      for (int i = 0; i < item->num_output_edges; ++i) {
-        const EdgeInfo& e = item->output_edge(i);
 
-        const NodeItem& dst_item = *impl_->gview_.node(e.dst_id);
-        const auto dst_pending_id = impl_->pending_ids_[e.dst_id];
-
-        bool dst_dead = true;
-        bool dst_ready = false;
-        // We know this is a dead input to dst.
-        if (dst_item.is_merge) {
-          if (e.output_slot == Graph::kControlSlot) {
-            parent_iter_state->decrement_pending(dst_pending_id, 2);
-            int count = parent_iter_state->pending(dst_pending_id);
-            int dead_cnt = parent_iter_state->dead_count(dst_pending_id);
-            dst_dead = (dead_cnt == dst_item.num_inputs);
-            dst_ready = (count == 0) || ((count == 1) && dst_dead);
-          } else {
-            parent_iter_state->increment_dead_count(dst_pending_id);
-            const int dead_cnt = parent_iter_state->dead_count(dst_pending_id);
-            dst_dead = (dead_cnt == dst_item.num_inputs);
-            dst_ready =
-                (parent_iter_state->pending(dst_pending_id) == 1) && dst_dead;
-          }
-        } else {
-          parent_iter_state->increment_dead_count(dst_pending_id);
-          dst_ready =
-              (parent_iter_state->decrement_pending(dst_pending_id, 1) == 0);
-        }
+      auto maybe_add_to_ready = [&](const NodeItem& dst_item, bool dst_ready,
+                                    bool dst_dead) {
         if (dst_ready) {
           if (dst_item.is_control_trigger) dst_dead = false;
           ready->emplace_back(&dst_item, parent_frame, parent_iter, dst_dead);
           parent_iter_state->outstanding_ops++;
         }
+      };
+
+      auto propagate_to_non_merge = [&](PendingCounts::Handle dst_pending_id) {
+        parent_iter_state->increment_dead_count(dst_pending_id);
+        return parent_iter_state->decrement_pending(dst_pending_id, 1) == 0;
+      };
+
+      for (const EdgeInfo& e : item->output_edges()) {
+        const NodeItem& dst_item = *impl_->gview_.node(e.dst_id);
+        const auto dst_pending_id = impl_->pending_ids_[e.dst_id];
+
+        bool dst_dead = true;
+        bool dst_ready;
+        // We know this is a dead input to dst.
+        if (dst_item.is_merge) {
+          parent_iter_state->increment_dead_count(dst_pending_id);
+          const int dead_cnt = parent_iter_state->dead_count(dst_pending_id);
+          dst_dead = (dead_cnt == dst_item.num_inputs);
+          dst_ready =
+              (parent_iter_state->pending(dst_pending_id) == 1) && dst_dead;
+        } else {
+          dst_ready = propagate_to_non_merge(dst_pending_id);
+        }
+        maybe_add_to_ready(dst_item, dst_ready, dst_dead);
+      }
+
+      for (const ControlEdgeInfo& e : item->output_control_edges()) {
+        const NodeItem& dst_item = *impl_->gview_.node(e.dst_id);
+        const auto dst_pending_id = impl_->pending_ids_[e.dst_id];
+
+        bool dst_dead;
+        bool dst_ready;
+        // We know this is a dead input to dst.
+        if (dst_item.is_merge) {
+          parent_iter_state->decrement_pending(dst_pending_id, 2);
+          int count = parent_iter_state->pending(dst_pending_id);
+          int dead_cnt = parent_iter_state->dead_count(dst_pending_id);
+          dst_dead = (dead_cnt == dst_item.num_inputs);
+          dst_ready = (count == 0) || ((count == 1) && dst_dead);
+        } else {
+          dst_dead = true;
+          dst_ready = propagate_to_non_merge(dst_pending_id);
+        }
+        maybe_add_to_ready(dst_item, dst_ready, dst_dead);
       }
     }
   }
@@ -2973,43 +3043,43 @@ void ExecutorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
   // can take a fast path that avoids accessing the destination NodeItem.
   const GraphView& gview = executor->gview_;
   IterationState* iter_state = GetIteration(iter);
-  const size_t num_output_edges = item->num_output_edges;
-  const EdgeInfo* edges = item->output_edge_list();
-  Entry* input_tensors = iter_state->input_tensors;
 
-  for (size_t out_index = 0; out_index < num_output_edges; out_index++) {
-    const EdgeInfo& e = edges[out_index];
-    const int dst_id = e.dst_id;
-    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
-    const int src_slot = e.output_slot;
-
-    // True iff this input for dst is needed. We only set this input for
-    // dst if this flag is true. This is needed to make the thread safety
-    // analysis happy.
-    const bool is_control_edge = (src_slot == Graph::kControlSlot);
-    const bool dst_need_input = !is_control_edge;
-
-    const bool increment_dead =
-        (is_dead || (!is_control_edge &&
-                     (*outputs)[src_slot].state == Entry::State::NO_VALUE));
-    const PendingCounts::AdjustResult adjust_result =
-        iter_state->adjust_for_activation(dst_pending_id, increment_dead);
-
-    if (dst_need_input) {
-      const int dst_loc = e.input_slot;
-      if (e.is_last) {
-        input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
-      } else {
-        input_tensors[dst_loc] = (*outputs)[src_slot];
-      }
-    }
-
+  auto maybe_add_to_ready = [&](int dst_id,
+                                PendingCounts::AdjustResult adjust_result) {
     // Add dst to the ready queue if it's ready
     if (!adjust_result.any_pending) {
       const NodeItem* dst_item = gview.node(dst_id);
       ready->emplace_back(dst_item, this, iter, adjust_result.any_dead);
       iter_state->outstanding_ops++;
     }
+  };
+
+  Entry* input_tensors = iter_state->input_tensors;
+
+  for (const EdgeInfo& e : item->output_edges()) {
+    const int dst_id = e.dst_id;
+    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
+    const int src_slot = e.output_slot;
+
+    const bool increment_dead =
+        (is_dead || ((*outputs)[src_slot].state == Entry::State::NO_VALUE));
+    const PendingCounts::AdjustResult adjust_result =
+        iter_state->adjust_for_activation(dst_pending_id, increment_dead);
+    const int dst_loc = e.input_slot;
+    if (e.is_last) {
+      input_tensors[dst_loc] = std::move((*outputs)[src_slot]);
+    } else {
+      input_tensors[dst_loc] = (*outputs)[src_slot];
+    }
+    maybe_add_to_ready(dst_id, adjust_result);
+  }
+
+  for (const ControlEdgeInfo& e : item->output_control_edges()) {
+    const int dst_id = e.dst_id;
+    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
+    const PendingCounts::AdjustResult adjust_result =
+        iter_state->adjust_for_activation(dst_pending_id, is_dead);
+    maybe_add_to_ready(dst_id, adjust_result);
   }
 }
 
@@ -3023,12 +3093,20 @@ void ExecutorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
   // to take.
   const GraphView& gview = executor->gview_;
   IterationState* iter_state = GetIteration(iter);
-  const size_t num_output_edges = item->num_output_edges;
-  const EdgeInfo* edges = item->output_edge_list();
+
+  auto maybe_add_to_ready = [&](int dst_id, const NodeItem* dst_item,
+                                bool dst_ready, bool dst_dead) {
+    // Add dst to the ready queue if it's ready
+    if (dst_ready) {
+      if (dst_item->is_control_trigger) dst_dead = false;
+      ready->emplace_back(dst_item, this, iter, dst_dead);
+      iter_state->outstanding_ops++;
+    }
+  };
+
   Entry* input_tensors = iter_state->input_tensors;
 
-  for (size_t out_index = 0; out_index < num_output_edges; out_index++) {
-    const EdgeInfo& e = edges[out_index];
+  for (const EdgeInfo& e : item->output_edges()) {
     const int dst_id = e.dst_id;
     const NodeItem* dst_item = gview.node(dst_id);
     const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
@@ -3036,53 +3114,41 @@ void ExecutorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
 
     bool dst_dead = false;
     bool dst_ready = false;
-    // True iff this input for dst is needed. We only set this input for
-    // dst if this flag is true. This is needed to make the thread safety
-    // analysis happy.
-    const bool is_control_edge = (src_slot == Graph::kControlSlot);
-    bool dst_need_input = !is_control_edge;
+    bool dst_need_input = true;
+
     if (dst_item->is_merge) {
       // A merge node is ready if all control inputs have arrived and either
       // a) a live data input becomes available or b) all data inputs are
       // dead. For Merge, pending's LSB is set iff a live data input has
       // arrived.
-      if (is_control_edge) {
-        iter_state->decrement_pending(dst_pending_id, 2);
+      if ((*outputs)[src_slot].state != Entry::State::NO_VALUE) {
+        // This is a live data input.
         int count = iter_state->pending(dst_pending_id);
-        int dead_cnt = iter_state->dead_count(dst_pending_id);
-        dst_dead = (dead_cnt == dst_item->num_inputs);
-        dst_ready = (count == 0) || ((count == 1) && dst_dead);
+        iter_state->mark_live(dst_pending_id);
+        // Only the first live edge sets the input and (potentially)
+        // triggers execution. The low bit of count is set if and
+        // only if no live input has been used yet (mark_live clears
+        // it). The node should be started if and only if this is
+        // the first live input and there are no pending control
+        // edges, i.e. count == 1.
+        dst_ready = (count == 1);
+        dst_need_input = ((count & 0x1) == 1);
       } else {
-        if ((*outputs)[src_slot].state != Entry::State::NO_VALUE) {
-          // This is a live data input.
-          int count = iter_state->pending(dst_pending_id);
-          iter_state->mark_live(dst_pending_id);
-          // Only the first live edge sets the input and (potentially)
-          // triggers execution. The low bit of count is set if and
-          // only if no live input has been used yet (mark_live clears
-          // it). The node should be started if and only if this is
-          // the first live input and there are no pending control
-          // edges, i.e. count == 1.
-          dst_ready = (count == 1);
-          dst_need_input = ((count & 0x1) == 1);
-        } else {
-          // This is a dead data input. Note that dst_node is dead if node is
-          // a dead enter. We need this to handle properly a while loop on
-          // the untaken branch of a conditional.
-          // TODO(yuanbyu): This is a bit hacky, but a good solution for
-          // now.
-          iter_state->increment_dead_count(dst_pending_id);
-          const int dead_cnt = iter_state->dead_count(dst_pending_id);
-          dst_dead = (dead_cnt == dst_item->num_inputs) || item->is_enter;
-          dst_ready = (iter_state->pending(dst_pending_id) == 1) && dst_dead;
-          dst_need_input = false;
-        }
+        // This is a dead data input. Note that dst_node is dead if node is
+        // a dead enter. We need this to handle properly a while loop on
+        // the untaken branch of a conditional.
+        // TODO(yuanbyu): This is a bit hacky, but a good solution for
+        // now.
+        iter_state->increment_dead_count(dst_pending_id);
+        const int dead_cnt = iter_state->dead_count(dst_pending_id);
+        dst_dead = (dead_cnt == dst_item->num_inputs) || item->is_enter;
+        dst_ready = (iter_state->pending(dst_pending_id) == 1) && dst_dead;
+        dst_need_input = false;
       }
     } else {
       // Handle all other (non-merge) nodes.
       const bool increment_dead =
-          (is_dead || (!is_control_edge &&
-                       (*outputs)[src_slot].state == Entry::State::NO_VALUE));
+          (is_dead || ((*outputs)[src_slot].state == Entry::State::NO_VALUE));
       const PendingCounts::AdjustResult adjust_result =
           iter_state->adjust_for_activation(dst_pending_id, increment_dead);
       dst_dead = adjust_result.any_dead;
@@ -3098,12 +3164,34 @@ void ExecutorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
       }
     }
 
-    // Add dst to the ready queue if it's ready
-    if (dst_ready) {
-      if (dst_item->is_control_trigger) dst_dead = false;
-      ready->emplace_back(dst_item, this, iter, dst_dead);
-      iter_state->outstanding_ops++;
+    maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);
+  }
+
+  for (const ControlEdgeInfo& e : item->output_control_edges()) {
+    const int dst_id = e.dst_id;
+    const NodeItem* dst_item = gview.node(dst_id);
+    const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
+
+    bool dst_dead;
+    bool dst_ready;
+    if (dst_item->is_merge) {
+      // A merge node is ready if all control inputs have arrived and either
+      // a) a live data input becomes available or b) all data inputs are
+      // dead. For Merge, pending's LSB is set iff a live data input has
+      // arrived.
+      iter_state->decrement_pending(dst_pending_id, 2);
+      int count = iter_state->pending(dst_pending_id);
+      int dead_cnt = iter_state->dead_count(dst_pending_id);
+      dst_dead = (dead_cnt == dst_item->num_inputs);
+      dst_ready = (count == 0) || ((count == 1) && dst_dead);
+    } else {
+      // Handle all other (non-merge) nodes.
+      const PendingCounts::AdjustResult adjust_result =
+          iter_state->adjust_for_activation(dst_pending_id, is_dead);
+      dst_dead = adjust_result.any_dead;
+      dst_ready = !adjust_result.any_pending;
     }
+    maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);
   }
 }
 

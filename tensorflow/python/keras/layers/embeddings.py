@@ -112,6 +112,9 @@ class Embedding(Layer):
     super(Embedding, self).__init__(dtype=dtype, **kwargs)
 
     self.input_dim = input_dim
+    if self.input_dim <= 0:
+      raise ValueError('The argument `input_dim` should be greater than zero. '
+                       'Received: %s' % input_dim)
     self.output_dim = output_dim
     self.embeddings_initializer = initializers.get(embeddings_initializer)
     self.embeddings_regularizer = regularizers.get(embeddings_regularizer)

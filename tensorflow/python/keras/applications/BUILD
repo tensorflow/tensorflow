@@ -47,6 +47,7 @@ tf_py_test(
     size = "medium",
     srcs = ["applications_test.py"],
     shard_count = 36,
+    tags = ["no_rocm"],
     deps = [
         ":applications",
         "//tensorflow/python:client_testlib",

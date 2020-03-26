@@ -37,6 +37,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "//tensorflow/core/profiler/utils:op_metrics_db_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
         "//tensorflow/core/profiler/utils:xplane_schema",
@@ -103,6 +104,7 @@ cc_library(
     hdrs = ["op_stats_to_input_pipeline_analysis.h"],
     deps = [
         ":op_metrics_to_record",
+        ":step_events_to_steps_db",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:logging",
