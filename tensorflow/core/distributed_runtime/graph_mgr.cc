@@ -139,8 +139,15 @@ Status GraphMgr::InitItem(
   item->proc_flr.reset(new ProcessFunctionLibraryRuntime(
       device_mgr_, worker_env_->env, /*config=*/&config_proto,
       gdef.versions().producer(), item->lib_def.get(),
-      graph_options.optimizer_options(), worker_env_->compute_pool,
-      cluster_flr));
+      graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
+      /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
+      [this, session](const int64 step_id, const DeviceMgr*,
+                      Rendezvous** r) -> Status {
+        auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
+        TF_RETURN_IF_ERROR(remote_r->Initialize(session));
+        *r = remote_r;
+        return Status::OK();
+      }));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());
@@ -257,14 +264,6 @@ Status GraphMgr::InitItem(
         delete kernel;
       }
     };
-    params.rendezvous_factory = [this, session](const int64 step_id,
-                                                const DeviceMgr*,
-                                                Rendezvous** r) -> Status {
-      auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
-      TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-      *r = remote_r;
-      return Status::OK();
-    };
 
     optimizer.Optimize(lib, worker_env_->env, params.device, &subgraph,
                        /*shape_map=*/nullptr);
@@ -304,7 +303,8 @@ Status GraphMgr::Register(
   // Inserts one item into table_.
   {
     mutex_lock l(mu_);
-    *graph_handle = strings::Printf("%016llx", ++next_id_);
+    *graph_handle =
+        strings::Printf("%016llx", static_cast<long long>(++next_id_));
     item->handle = *graph_handle;
     CHECK(table_.insert({*graph_handle, item}).second);
   }

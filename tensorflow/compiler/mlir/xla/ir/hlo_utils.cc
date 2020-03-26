@@ -17,19 +17,21 @@ limitations under the License.
 
 #include <numeric>
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
 
 namespace mlir {
 namespace xla {
 
-DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y) {
+DenseIntElementsAttr getBroadcastDimensionsAttr(Builder *b, Value x, Value y,
+                                                bool allow_empty) {
   TensorType xType = x.getType().dyn_cast<RankedTensorType>();
   TensorType yType = y.getType().dyn_cast<RankedTensorType>();
-  if (xType == yType || !xType || !yType) return {};
+  if (!xType || !yType) return {};
+  if (allow_empty && xType == yType) return {};
 
   // If the shapes have the same rank, then there is nothing to do.
   auto xRank = xType.getRank(), yRank = yType.getRank();
-  if (xRank == yRank) return {};
+  if (allow_empty && xRank == yRank) return {};
 
   // Otherwise if the ranks of the inputs don't match, TensorFlow automatically
   // reshapes the smaller by padding with dimensions of size 1 as a prefix. In

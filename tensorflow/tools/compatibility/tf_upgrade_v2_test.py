@@ -25,7 +25,7 @@ import tempfile
 
 from absl.testing import parameterized
 import six
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 # OSS TF V2 import placeholder.
 
 from tensorflow.python.framework import test_util

@@ -135,6 +135,8 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
 // NOTE: There is currently no guarantee that the hash of a subgraph will stay
 // the same between TensorFlow builds.
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash);
+Status HashNode(const GraphDef& graph, const NodeDef& node,
+                const FunctionLibraryDefinition& flib_def, uint64* hash);
 
 // Returns a stable hash of the given tensor.
 //
@@ -187,6 +189,13 @@ class DeterminismPolicy {
  private:
   Type determinism_;
 };
+
+// Resolves non-deterministic seeds if necessary, returning either the original
+// seeds or the resolved seeds.
+//
+// By TensorFlow convention, if both seeds are 0, they should be replaced with
+// non-deterministically chosen seeds.
+std::pair<int64, int64> MaybeOverrideSeeds(std::pair<int64, int64> seeds);
 
 // Helper class for reading data from a vector of VariantTensorData objects.
 class VariantTensorDataReader : public IteratorStateReader {

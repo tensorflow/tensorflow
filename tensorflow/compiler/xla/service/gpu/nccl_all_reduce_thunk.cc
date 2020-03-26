@@ -492,7 +492,7 @@ void RendezvousNcclAllReduce::CleanupImpl(std::shared_ptr<NcclClique> handle,
 // lives, which is how we avoid expensive reinitialization of NCCL cliques.
 struct NcclAllReduceThunk::AuxData {
   tensorflow::mutex mu;
-  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques GUARDED_BY(mu);
+  absl::flat_hash_set<std::shared_ptr<NcclClique>> cliques TF_GUARDED_BY(mu);
 };
 
 /*static*/ bool NcclAllReduceThunk::CanImplement(const HloInstruction* crs) {

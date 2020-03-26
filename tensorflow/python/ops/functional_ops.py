@@ -1181,6 +1181,9 @@ def partitioned_call(args,
   outputs = op.outputs
   if hasattr(f, "graph"):
     _set_read_only_resource_inputs_attr(op, f.graph)
+    if hasattr(f.graph, "collective_manager_ids_used"):
+      ops.set_int_list_attr(
+          op, acd.COLLECTIVE_MANAGER_IDS, f.graph.collective_manager_ids_used)
   return outputs if outputs else op
 
 
@@ -1193,11 +1196,6 @@ def _set_read_only_resource_inputs_attr(op, func_graph):
     op: PartitionedCall Operation.
     func_graph: FuncGraph.
   """
-  read_only_indices = []
-  for i in range(len(op.inputs)):
-    handle = func_graph.inputs[i]
-    if handle.dtype != dtypes.resource or acd.resource_has_writes(handle):
-      continue
-    read_only_indices.append(i)
+  read_only_indices = acd.get_read_only_resource_input_indices_graph(func_graph)
   ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
                         read_only_indices)

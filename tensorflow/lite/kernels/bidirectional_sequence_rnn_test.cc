@@ -1346,7 +1346,7 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestCrossLinkingAuxInputOnlyTimeMajor) {
 }
 
 // Same as BlackBox test, but the input tensor and weights tensor are split
-// along the last dimension and passed to both regular and auxiliry inputs and
+// along the last dimension and passed to both regular and auxiliary inputs and
 // weights. The output in this case is the same. To understand this, let's
 // define W and V as regular input weights matrix and auxiliary input weights
 // matrix correspondingly. It's easy to see that this is equivalent to a regular

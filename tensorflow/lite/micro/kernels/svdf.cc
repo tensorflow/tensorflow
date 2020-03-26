@@ -116,14 +116,11 @@ static inline void ApplyTimeWeightsBiasAndActivation(
   }
 }
 
-inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
-                          const TfLiteTensor* input,
-                          const TfLiteTensor* weights_feature,
-                          const TfLiteTensor* weights_time,
-                          const TfLiteTensor* bias,
-                          const TfLiteSVDFParams* params, TfLiteTensor* scratch,
-                          TfLiteTensor* activation_state,
-                          TfLiteTensor* output) {
+inline void EvalFloatSVDF(
+    TfLiteContext* context, TfLiteNode* node, const TfLiteTensor* input,
+    const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
+    const TfLiteTensor* bias, const TfLiteSVDFParams* params,
+    TfLiteTensor* activation_state, TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -137,24 +134,25 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const float* input_ptr = GetTensorData<float>(input);
 
   float* state_ptr = GetTensorData<float>(activation_state);
-  float* scratch_ptr = GetTensorData<float>(scratch);
+
+  // TODO(b/132070898): Move this temp variable to the new scratch buffer API
+  // when ready.
+  float scratch_tensor[kScratchTensorMaxSize];
+  float* scratch_ptr = scratch_tensor;
 
   float* output_ptr = GetTensorData<float>(output);
 
   // Left shift the activation_state.
-  for (int b = 0; b < batch_size; ++b) {
-    float* state_ptr_batch = state_ptr + b * memory_size * num_filters;
-    for (int f = 0; f < num_filters; ++f) {
-      // Shift the vector left:
-      float* batch_ptr = state_ptr_batch;
-      float* batch_start = state_ptr_batch + 1;
-      float* batch_end = state_ptr_batch + memory_size;
-      while (batch_start != batch_end) {
-        *batch_ptr++ = *batch_start++;
-      }
-      state_ptr_batch += memory_size;
+  {
+    float* new_state_start = state_ptr;
+    const float* old_state_start = state_ptr + 1;
+    const float* old_state_end =
+        state_ptr + batch_size * num_filters * memory_size;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
     }
   }
+
   // Note: no need to clear the latest activation, matmul is not accumulative.
 
   // Compute conv1d(inputs, weights_feature).
@@ -206,24 +204,20 @@ void EvalIntegerSVDF(
   int32_t scratch_tensor[kScratchTensorMaxSize];
   int32_t scratch_output_tensor[kScratchTensorMaxSize];
 
-  // Shift states. No need to set last state, the matmul is not accumulative.
+  // Shift states.
+  int16_t* const state_ptr = GetTensorData<int16_t>(activation_state_tensor);
+
+  // Left shift the activation_state.
   {
-    for (int b = 0; b < n_batch; ++b) {
-      int16_t* state_ptr_batch =
-          GetTensorData<int16_t>(activation_state_tensor) +
-          b * n_memory * n_filter;
-      for (int f = 0; f < n_filter; ++f) {
-        // Shift the vector left:
-        int16_t* batch_ptr = state_ptr_batch;
-        int16_t* batch_start = state_ptr_batch + 1;
-        int16_t* batch_end = state_ptr_batch + n_memory;
-        while (batch_start != batch_end) {
-          *batch_ptr++ = *batch_start++;
-        }
-        state_ptr_batch += n_memory;
-      }
+    int16_t* new_state_start = state_ptr;
+    const int16_t* old_state_start = state_ptr + 1;
+    const int16_t* old_state_end = state_ptr + n_batch * n_filter * n_memory;
+    while (old_state_start != old_state_end) {
+      *new_state_start++ = *old_state_start++;
     }
   }
+
+  // Note: no need to clear the latest activation, matmul is not accumulative.
 
   // Feature matmul.
   {
@@ -428,7 +422,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Validate output tensor:
     TF_LITE_ENSURE_EQ(context, output->type, kTfLiteInt8);
   } else {
-    TF_LITE_ENSURE_EQ(context, node->inputs->size, 6);
+    TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
 
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
@@ -443,15 +437,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // [0] = Holds dot-product of time-forward calculations in
     //       ApplyTimeWeightsBiasAndActivation():
     //         float/int32, {2, batch_size, num_filters}
-    // TODO(b/132070898): Use input tensor as variable until scratch tensor
-    // allocation has been implemented (b/132070898) TfLiteTensor*
-    // scratch_tensor = GetTemporary(context, node, 0);
-    TfLiteTensor* scratch_tensor = &context->tensors[node->inputs->data[5]];
-    TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteFloat32);
-
-    TF_LITE_ENSURE_EQ(context, NumDimensions(scratch_tensor), 2);
-    TF_LITE_ENSURE_EQ(context, scratch_tensor->dims->data[0], batch_size);
-    TF_LITE_ENSURE_EQ(context, scratch_tensor->dims->data[1], num_filters);
+    // TODO(b/132070898): Scratch values are used as stack variables in
+    // EvalIntegerSVDF().
 
     // Full-float SVDF only uses the one shared scratch tensor (see above for
     // usage).
@@ -482,11 +469,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (weights_feature->type) {
     case kTfLiteFloat32: {
       // TODO(b/132070898): Use input tensor as variable until scratch tensor
-      // allocation has been implemented. TfLiteTensor* scratch =
-      // GetTemporary(context, node, /*index=*/0);
-      TfLiteTensor* scratch = &context->tensors[node->inputs->data[5]];
+      // allocation has been implemented.
+      // TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
       EvalFloatSVDF(context, node, input, weights_feature, weights_time, bias,
-                    params, scratch, activation_state, output);
+                    params, activation_state, output);
       return kTfLiteOk;
       break;
     }

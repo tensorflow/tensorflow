@@ -24,6 +24,7 @@ from tensorflow.python.keras.saving.saved_model import constants
 from tensorflow.python.keras.saving.saved_model import save_impl
 from tensorflow.python.keras.saving.saved_model import serialized_attributes
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import nest
 
 
@@ -50,7 +51,8 @@ class LayerSavedModelSaver(base_serialization.SavedModelSaver):
         trainable=self.obj.trainable,
         expects_training_arg=self.obj._expects_training_arg,  # pylint: disable=protected-access
         dtype=policy.serialize(self.obj._dtype_policy),  # pylint: disable=protected-access
-        batch_input_shape=getattr(self.obj, '_batch_input_shape', None))
+        batch_input_shape=getattr(self.obj, '_batch_input_shape', None),
+        stateful=self.obj.stateful)
 
     metadata.update(get_config(self.obj))
     if self.obj.input_spec is not None:
@@ -140,3 +142,19 @@ class InputLayerSavedModelSaver(base_serialization.SavedModelSaver):
 
   def functions_to_serialize(self, serialization_cache):
     return {}
+
+
+class RNNSavedModelSaver(LayerSavedModelSaver):
+  """RNN layer serialization."""
+
+  @property
+  def object_identifier(self):
+    return '_tf_keras_rnn_layer'
+
+  def _get_serialized_attributes_internal(self, serialization_cache):
+    objects, functions = (
+        super(RNNSavedModelSaver, self)._get_serialized_attributes_internal(
+            serialization_cache))
+
+    objects['states'] = data_structures.wrap_or_unwrap(self.obj.states)
+    return objects, functions

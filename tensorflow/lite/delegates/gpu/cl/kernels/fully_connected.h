@@ -37,9 +37,9 @@ namespace cl {
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -49,17 +49,16 @@ class FullyConnected : public GPUOperation {
 
  private:
   explicit FullyConnected(const OperationDef& definition);
-  friend Status CreateFullyConnected(const CreationContext& creation_context,
-                                     const OperationDef& definition,
-                                     const FullyConnectedAttributes& attr,
-                                     FullyConnected* result);
+  friend absl::Status CreateFullyConnected(
+      const CreationContext& creation_context, const OperationDef& definition,
+      const FullyConnectedAttributes& attr, FullyConnected* result);
 
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType T, typename S>
-  void RearrangeWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+  void RearrangeWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
                         absl::Span<S> dst);
 
   Buffer weights_;
@@ -69,8 +68,8 @@ class FullyConnected : public GPUOperation {
 };
 
 template <DataType T>
-Status FullyConnected::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+absl::Status FullyConnected::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
 
@@ -94,7 +93,7 @@ Status FullyConnected::UploadWeights(
 
 template <DataType T, typename S>
 void FullyConnected::RearrangeWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
+    const tflite::gpu::Tensor<OHWI, T>& weights, absl::Span<S> dst) {
   const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
   int counter = 0;
@@ -123,10 +122,10 @@ void FullyConnected::RearrangeWeights(
   }
 }
 
-Status CreateFullyConnected(const CreationContext& creation_context,
-                            const OperationDef& definition,
-                            const FullyConnectedAttributes& attr,
-                            FullyConnected* result);
+absl::Status CreateFullyConnected(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  FullyConnected* result);
 
 }  // namespace cl
 }  // namespace gpu

@@ -21,15 +21,15 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status EglSync::NewFence(EGLDisplay display, EglSync* sync) {
+absl::Status EglSync::NewFence(EGLDisplay display, EglSync* sync) {
   EGLSyncKHR egl_sync;
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglCreateSyncKHR, &egl_sync, display,
                                       EGL_SYNC_FENCE_KHR, nullptr));
   if (egl_sync == EGL_NO_SYNC_KHR) {
-    return InternalError("Returned empty KHR EGL sync");
+    return absl::InternalError("Returned empty KHR EGL sync");
   }
   *sync = EglSync(display, egl_sync);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 EglSync& EglSync::operator=(EglSync&& sync) {
@@ -48,22 +48,23 @@ void EglSync::Invalidate() {
   }
 }
 
-Status EglSync::ServerWait() {
+absl::Status EglSync::ServerWait() {
   EGLint result;
   RETURN_IF_ERROR(
       TFLITE_GPU_CALL_EGL(eglWaitSyncKHR, &result, display_, sync_, 0));
-  return result == EGL_TRUE ? OkStatus() : InternalError("eglWaitSync failed");
+  return result == EGL_TRUE ? absl::OkStatus()
+                            : absl::InternalError("eglWaitSync failed");
 }
 
-Status EglSync::ClientWait() {
+absl::Status EglSync::ClientWait() {
   EGLint result;
   // TODO(akulik): make it active wait for better performance
   RETURN_IF_ERROR(TFLITE_GPU_CALL_EGL(eglClientWaitSyncKHR, &result, display_,
                                       sync_, EGL_SYNC_FLUSH_COMMANDS_BIT_KHR,
                                       EGL_FOREVER_KHR));
   return result == EGL_CONDITION_SATISFIED_KHR
-             ? OkStatus()
-             : InternalError("eglClientWaitSync failed");
+             ? absl::OkStatus()
+             : absl::InternalError("eglClientWaitSync failed");
 }
 
 }  // namespace cl

@@ -29,6 +29,19 @@ from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
 
+# Image preprocessing layers.
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import CenterCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomCrop
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomFlip
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomContrast
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomHeight
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomRotation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomTranslation
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomWidth
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import RandomZoom
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Resizing
+from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
+
 # Preprocessing layers.
 if tf2.enabled():
   from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
@@ -44,7 +57,6 @@ else:
   from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization
   from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization as TextVectorizationV2
   TextVectorizationV1 = TextVectorization
-from tensorflow.python.keras.layers.preprocessing.image_preprocessing import Rescaling
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU

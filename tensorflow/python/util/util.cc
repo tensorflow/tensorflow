@@ -189,7 +189,7 @@ class CachedTypeCheck {
   std::function<int(PyObject*)> ternary_predicate_;
   mutex type_to_sequence_map_mu_;
   std::unordered_map<PyTypeObject*, bool> type_to_sequence_map_
-      GUARDED_BY(type_to_sequence_map_mu_);
+      TF_GUARDED_BY(type_to_sequence_map_mu_);
 };
 
 // Returns 1 if 'obj' is an instance of 'type_name'

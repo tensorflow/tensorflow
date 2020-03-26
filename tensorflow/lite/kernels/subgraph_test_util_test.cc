@@ -36,7 +36,7 @@ class SubgraphBuilderTest : public ::testing::Test {
   }
 
  protected:
-  void TestAccumelateLoopBody(int input1, int input2, int output1,
+  void TestAccumulateLoopBody(int input1, int input2, int output1,
                               int output2) {
     interpreter_.reset(new Interpreter);
     builder_->BuildAccumulateLoopBodySubgraph(
@@ -140,9 +140,9 @@ TEST_F(SubgraphBuilderTest, TestBuildLessEqualCondSubgraph) {
 }
 
 TEST_F(SubgraphBuilderTest, TestBuildAccumulateLoopBodySubgraph) {
-  TestAccumelateLoopBody(1, 1, 2, 3);
-  TestAccumelateLoopBody(2, 3, 3, 6);
-  TestAccumelateLoopBody(3, 6, 4, 10);
+  TestAccumulateLoopBody(1, 1, 2, 3);
+  TestAccumulateLoopBody(2, 3, 3, 6);
+  TestAccumulateLoopBody(3, 6, 4, 10);
 }
 
 TEST_F(SubgraphBuilderTest, TestBuildPadLoopBodySubgraph) {

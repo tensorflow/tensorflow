@@ -4,7 +4,13 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python:__pkg__",
+        "//tensorflow/python/distribute:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+        "//tensorflow/python/training/tracking:__pkg__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
@@ -34,6 +40,7 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend",
@@ -75,6 +82,7 @@ cuda_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -94,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -113,6 +122,7 @@ cuda_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -132,6 +142,7 @@ cuda_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -170,6 +181,7 @@ cuda_py_test(
         "//tensorflow/python:resources",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -213,6 +225,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -226,6 +239,7 @@ cuda_py_test(
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
@@ -248,6 +262,7 @@ cuda_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/keras:combinations",
         "@absl_py//absl/testing:parameterized",
     ],
 )

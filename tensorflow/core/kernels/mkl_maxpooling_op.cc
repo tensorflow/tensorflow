@@ -143,12 +143,12 @@ class MklMaxPoolingOp : public MklPoolingForwardOpBase<T> {
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
           padding_right, ALGORITHM::pooling_max, pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_));
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), input_md);
 #else
       MklPoolingParams fwdParams(
           src_dims, output_dims_mkl_order, filter_dims, strides, padding_left,
           padding_right, ALGORITHM::pooling_max, pooling_prop_kind,
-          static_cast<MEMORY_FORMAT>(input_md.data.format));
+          static_cast<MEMORY_FORMAT>(input_md.data.format), input_md);
 #endif
       pooling_fwd = MklPoolingFwdPrimitiveFactory<T>::Get(fwdParams);
       // Allocate output tensor.
@@ -303,13 +303,13 @@ class MklMaxPoolingGradOp : public MklPoolingBackwardOpBase<T> {
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, ALGORITHM::pooling_max,
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_));
+          static_cast<MEMORY_FORMAT>(this->data_format_mkldnn_), src_md);
 #else
       MklPoolingParams bwdParams(
           orig_input_dims_mkl_order, output_dims_mkl_order, filter_dims,
           strides, padding_left, padding_right, ALGORITHM::pooling_max,
           prop_kind::forward_training,
-          static_cast<MEMORY_FORMAT>(src_md.data.format));
+          static_cast<MEMORY_FORMAT>(src_md.data.format), src_md);
 #endif
       MklPoolingBwdPrimitive<T>* pooling_bwd =
           MklPoolingBwdPrimitiveFactory<T>::Get(bwdParams);

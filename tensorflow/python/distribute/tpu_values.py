@@ -112,7 +112,7 @@ class TPUVariableMixin(object):
   def handle(self):
     # If we're in a tpu.rewrite(), return the replicated handle.
     tpu_context = enclosing_tpu_context()
-    if tpu_context is None:
+    if tpu_context is None or context.executing_eagerly():
       return self._get_closest().handle
     else:
       return tpu_context.get_replicated_var_handle(self._handle_id,
@@ -186,30 +186,51 @@ def enclosing_tpu_context():
 class TPUMirroredVariable(TPUVariableMixin, values.MirroredVariable):
   """Holds a map from replica to TPU variables whose values are kept in sync."""
 
-  def _assign_func(self, *args, **kwargs):
+  def _mirrored_update(self, update_fn, *args, **kwargs):
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
       if (ds_context.in_cross_replica_context() and
           (enclosing_tpu_context() is not None)):
-        f = kwargs.pop("f")
         return self._distribute_strategy.extended.update(
-            self, f, args=args, kwargs=kwargs)
+            self, update_fn, args=args, kwargs=kwargs)
       else:
-        return values.MirroredVariable._assign_func(self, *args, **kwargs)
+        return values.MirroredVariable._mirrored_update(self, update_fn, *args,
+                                                        **kwargs)
 
   def assign_sub(self, *args, **kwargs):
     assign_sub_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_sub_variable_op)
-    return self._assign_func(f=assign_sub_fn, *args, **kwargs)
+    return self._mirrored_update(assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
     assign_add_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_add_variable_op)
-    return self._assign_func(f=assign_add_fn, *args, **kwargs)
+    return self._mirrored_update(assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
     assign_fn = _make_raw_assign_fn(
         gen_resource_variable_ops.assign_variable_op)
-    return self._assign_func(f=assign_fn, *args, **kwargs)
+    return self._mirrored_update(assign_fn, *args, **kwargs)
+
+  def scatter_sub(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_add(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_max(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_min(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_mul(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_div(self, *args, **kwargs):
+    raise NotImplementedError
+
+  def scatter_update(self, *args, **kwargs):
+    raise NotImplementedError
 
   def _is_mirrored(self):
     return True

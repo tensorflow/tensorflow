@@ -37,9 +37,8 @@ def epsilon():
       A float.
 
   Example:
-  ```python
-  keras.backend.epsilon() >>>1e-07
-  ```
+  >>> tf.keras.backend.epsilon()
+  1e-07
   """
   return _EPSILON
 
@@ -50,8 +49,14 @@ def set_epsilon(value):
 
   Arguments:
       value: float. New value of epsilon.
-  Example: ```python from keras import backend as K K.epsilon() >>> 1e-07
-    K.set_epsilon(1e-05) K.epsilon() >>> 1e-05 ```
+
+  Example:
+  >>> tf.keras.backend.epsilon()
+  1e-07
+  >>> tf.keras.backend.set_epsilon(1e-5)
+  >>> tf.keras.backend.epsilon()
+  1e-05
+   >>> tf.keras.backend.set_epsilon(1e-7)
   """
   global _EPSILON
   _EPSILON = value
@@ -61,15 +66,14 @@ def set_epsilon(value):
 def floatx():
   """Returns the default float type, as a string.
 
-  E.g. 'float16', 'float32', 'float64'.
+  E.g. `'float16'`, `'float32'`, `'float64'`.
 
   Returns:
       String, the current default float type.
 
   Example:
-  ```python
-  keras.backend.floatx() >>> 'float32'
-  ```
+  >>> tf.keras.backend.floatx()
+  'float32'
   """
   return _FLOATX
 
@@ -78,10 +82,23 @@ def floatx():
 def set_floatx(value):
   """Sets the default float type.
 
+  Note: It is not recommended to set this to float16 for training, as this will
+  likely cause numeric stability issues. Instead, mixed precision, which is
+  using a mix of float16 and float32, can be used by calling
+  `tf.keras.mixed_precision.experimental.set_policy('mixed_float16')`. See the
+  [mixed precision
+  guide](https://www.tensorflow.org/guide/keras/mixed_precision) for details.
+
   Arguments:
-      value: String; 'float16', 'float32', or 'float64'.
-  Example: ```python from keras import backend as K K.floatx() >>> 'float32'
-    K.set_floatx('float16') K.floatx() >>> 'float16' ```
+      value: String; `'float16'`, `'float32'`, or `'float64'`.
+
+  Example:
+  >>> tf.keras.backend.floatx()
+  'float32'
+  >>> tf.keras.backend.set_floatx('float64')
+  >>> tf.keras.backend.floatx()
+  'float64'
+  >>> tf.keras.backend.set_floatx('float32')
 
   Raises:
       ValueError: In case of invalid value.
@@ -100,9 +117,8 @@ def image_data_format():
       A string, either `'channels_first'` or `'channels_last'`
 
   Example:
-  ```python
-  keras.backend.image_data_format() >>> 'channels_first'
-  ```
+  >>> tf.keras.backend.image_data_format()
+  'channels_last'
   """
   return _IMAGE_DATA_FORMAT
 
@@ -113,9 +129,14 @@ def set_image_data_format(data_format):
 
   Arguments:
       data_format: string. `'channels_first'` or `'channels_last'`.
-  Example: ```python from keras import backend as K K.image_data_format() >>>
-    'channels_first' K.set_image_data_format('channels_last')
-    K.image_data_format() >>> 'channels_last' ```
+
+  Example:
+  >>> tf.keras.backend.image_data_format()
+  'channels_last'
+  >>> tf.keras.backend.set_image_data_format('channels_first')
+  >>> tf.keras.backend.image_data_format()
+  'channels_first'
+  >>> tf.keras.backend.set_image_data_format('channels_last')
 
   Raises:
       ValueError: In case of invalid `data_format` value.

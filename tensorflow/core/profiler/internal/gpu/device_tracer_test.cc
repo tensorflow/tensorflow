@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/direct_session.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"

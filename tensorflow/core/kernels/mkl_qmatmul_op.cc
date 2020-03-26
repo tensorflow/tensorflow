@@ -62,7 +62,7 @@ limitations under the License.
 // where, 1 denotes a row vector matching the outermost dim of Wf32.
 //
 // The QuantizedMatMulWithBias op calculates 32bit integer output as below:
-//  - with SCALE activation quantizaiton:
+//  - with SCALE activation quantization:
 //    Xs32 = Au8 * Ws8 + 1' * Bs32
 //         = Qa * Qw * Af32 * Wf32  + Qa * Qw * 1' * Bf32
 //         = Qa * Qw * (Af32 * Wf32 + 1' * Bf32) = Qa * Qw * Xf32,
@@ -269,11 +269,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Tweight, Toutput> {
           }
 #ifdef ENABLE_MKLDNN_V1
           weight_data = this->GetCachedWeight(
-              context, static_cast<int32>(weight_mkl_shape.GetTfDataFormat()));
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd));
 #else
           weight_data = this->GetCachedWeight(
-              context, matmul_fwd->GetWeightMemoryFormat());
-#endif  // ENABLE_MKLDNN_V1
+              context, GET_WEIGHTS_DESC_FROM_OP_PD(matmul_fwd_pd).desc());
+#endif
           is_weight_cached = (weight_data != nullptr);
         }
 

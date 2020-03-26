@@ -69,6 +69,9 @@ MACs stands for Multiply Adds
 | [mobilenet_v2_0.35_128] | 20  | 1.66 |          50.8 | 75.0 |
 | [mobilenet_v2_0.35_96]  | 11  | 1.66 |          45.5 | 70.4 |
 
+  Reference paper:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
+  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division

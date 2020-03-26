@@ -77,8 +77,10 @@ class XlaJitCompiledCpuFunction {
   // nonempty_*_names_, and hold arrays of pointers in *_names_ for the static
   // data to refer to.
   std::vector<string> nonempty_arg_names_;
+  std::vector<string> nonempty_variable_names_;
   std::vector<string> nonempty_result_names_;
   std::vector<const char*> arg_names_;
+  std::vector<const char*> variable_names_;
   std::vector<const char*> result_names_;
 
   // The backing data for the program shape. The proto form of program shape is

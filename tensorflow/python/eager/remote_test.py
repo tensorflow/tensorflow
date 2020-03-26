@@ -25,7 +25,7 @@ import numpy as np
 import six
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
@@ -154,6 +154,18 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       self.assertIn('Dimensions must be equal', cm.exception.message)
     else:
       self.assertIn('Dimensions must be equal', cm.exception.args[0])
+
+  def testClientVarible(self):
+    var = variables.Variable(initial_value=0)
+
+    @def_function.function
+    def func():
+      with ops.device('/job:localhost/task:0'):
+        read = var.read_value()
+      return read + 1
+
+    with ops.device('/job:worker/task:0'):
+      self.assertAllEqual(func(), 1)
 
 
 class RemoteAsyncTest(test.TestCase):
@@ -452,8 +464,9 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     with ops.device('/job:my_worker/task:1/device:CPU:0'):
       self.assertAllEqual(worker_fn(), 8)
 
+  # TODO(b/152224115): Re-enable this test.
   @test_util.eager_lazy_remote_copy_on_and_off
-  def testSimpleParameterServerWithDeviceFilters(self):
+  def DISABLED_testSimpleParameterServerWithDeviceFilters(self):
     cluster_device_filters = server_lib.ClusterDeviceFilters()
     for i in range(2):
       cluster_device_filters.set_device_filters('my_worker', i, ['/job:my_ps'])

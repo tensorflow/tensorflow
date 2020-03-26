@@ -24,14 +24,14 @@ opt<std::string> input_file_name(llvm::cl::Positional,
                                  llvm::cl::init("-"));
 
 // NOLINTNEXTLINE
-opt<bool> import_saved_model(
-    "savedmodel-to-mlir",
+opt<bool> import_saved_model_object_graph(
+    "savedmodel-objectgraph-to-mlir",
     llvm::cl::desc("Import a saved model to its MLIR representation"),
     llvm::cl::value_desc("dir"));
 
 // NOLINTNEXTLINE
-opt<bool> import_saved_model_v1(
-    "savedmodel-v1-to-mlir",
+opt<bool> import_saved_model_signature_defs(
+    "savedmodel-signaturedefs-to-mlir",
     llvm::cl::desc("Import a saved model V1 to its MLIR representation"),
     llvm::cl::value_desc("dir"));
 
@@ -105,14 +105,7 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::init(""));
 
 // NOLINTNEXTLINE
-opt<bool> inline_functions(
-    "inline",
-    llvm::cl::desc("Inline function calls within the main function "
-                   "before legalization to TFLite."),
-    llvm::cl::init(true));
-
-// NOLINTNEXTLINE
-opt<bool> legalize_while(
-    "legalize-tf-while",
+opt<bool> convert_tf_while_to_tfl_while(
+    "convert_tf_while_to_tfl_while",
     llvm::cl::desc("Whether to legalize TF While to TFL While."),
-    llvm::cl::init(false));
+    llvm::cl::init(true));

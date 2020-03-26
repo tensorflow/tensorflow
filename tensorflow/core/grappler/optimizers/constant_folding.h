@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_CONSTANT_FOLDING_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -80,7 +81,11 @@ class ConstantFolding : public GraphOptimizer {
                                  const GraphProperties& properties);
   Status MaterializeConstants(const GraphProperties& properties);
 
-  bool IsFoldable(const NodeDef& node, const GraphProperties* properties) const;
+  bool IsFoldable(const NodeDef& node, const GraphProperties* properties);
+  bool IsFoldableUncached(const NodeDef& node,
+                          const GraphProperties* properties) const;
+  bool MaybeFoldable(const NodeDef& node,
+                     const GraphProperties* properties) const;
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -126,8 +131,8 @@ class ConstantFolding : public GraphOptimizer {
   Status SimplifyNode(bool use_shape_info, NodeDef* node,
                       GraphDef* optimized_graph, GraphProperties* properties);
 
-  Status RunOptimizationPass(Cluster* cluster, const GrapplerItem& item,
-                             GraphDef* output);
+  Status RunOptimizationPass(Cluster* cluster, GrapplerItem* item,
+                             GraphDef* optimized_graph);
 
   // Applies partial constant folding for Concat which is not commutative.
   // Returns true if the transformation applied successfully.
@@ -308,8 +313,10 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef* graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::unordered_set<string> nodes_to_preserve_;
-  std::unordered_set<string> nodes_whitelist_;
-  std::unordered_set<string> feed_nodes_;
+  // TODO(rmlarsen): Could these be keyed on absl::string_view?
+  absl::flat_hash_set<string> nodes_whitelist_;
+  absl::flat_hash_set<string> feed_nodes_;
+  absl::flat_hash_map<string, bool> maybe_foldable_nodes_;
   bool has_fetch_;
   bool graph_modified_;
   bool graph_contains_assign_or_inplace_op_;

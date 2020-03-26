@@ -63,6 +63,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "op_profile_proto",
+    srcs = ["op_profile.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "op_stats_proto",
     srcs = ["op_stats.proto"],
     cc_api_version = 2,
@@ -83,7 +90,7 @@ tf_proto_library(
     visibility = [":friends"],
 )
 
-# This proto is deprecating and not guarenteed to be compatible across versions.
+# This proto is deprecating and not guaranteed to be compatible across versions.
 # Please don't refer in new project unless you are double confirmed.
 tf_proto_library(
     name = "tf_stats_proto",

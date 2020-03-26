@@ -123,7 +123,15 @@ class TRTEngineOp : public AsyncOpKernel {
   // input and 2) The index of the IExecutionContext compatible with the input.
   StatusOr<std::pair<EngineContext*, int>> GetEngine(
       const std::vector<TensorShape>& input_concrete_shapes,
-      OpKernelContext* ctx, TRTEngineCacheResource* cache_res);
+      OpKernelContext* ctx, TRTEngineCacheResource* cache_resource);
+
+  // Builds and returns a cuda engine for the input shapes. If building the
+  // engine fails, enters a dummy entry into the cache_resource cache so we
+  // don't continually try to build the same failing engine.
+  StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> BuildEngine(
+      const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
+      bool use_calibration, TRTInt8Calibrator* calibrator,
+      TRTEngineCacheResource* cache_resource);
 
   // Verify that the input shapes are consistent and can be handled by this op.
   Status VerifyInputShapes(const std::vector<TensorShape>& shapes);
@@ -152,6 +160,10 @@ class TRTEngineOp : public AsyncOpKernel {
 
   // Whether to use implicit batch dimension for TensorRT.
   bool use_implicit_batch_;
+
+  // Whether to collect optimization profiles for TensorRT, only used when
+  // use_implicit_batch_=false.
+  bool profile_generation_mode_;
 
   // Whether to build TensorRT engines at runtime.
   bool allow_build_at_runtime_;
@@ -322,7 +334,19 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
     use_implicit_batch_ = true;
   }
 #endif
+  status =
+      context->GetAttr("_profile_generation_mode", &profile_generation_mode_);
+  if (status.code() == tensorflow::error::NOT_FOUND) {
+    VLOG(2) << "Not found _profile_generation_mode in "
+            << context->device()->name()
+            << ", thus setting _profile_generation_mode=false";
+    profile_generation_mode_ = false;
+  }
   if (use_implicit_batch_) {
+    OP_REQUIRES(context, !profile_generation_mode_,
+                errors::InvalidArgument(
+                    "profile_generation_mode_=true is only supported if "
+                    "use_implicit_batch=false"));
     if (input_partial_shapes_.empty()) {
       VLOG(1) << "Attribute input_shapes is not set. This happens probably "
               << "because you are using a model that is already converted "
@@ -547,11 +571,21 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   OP_REQUIRES_OK_ASYNC(ctx, VerifyInputShapes(input_concrete_shapes), *helper);
 
   if (!use_implicit_batch_) {
-    if (cache_res->profiles_.GetNumProfiles() == 0) {
-      // Create a single profile from the current input shape. In the future we
-      // will collect a set of input shapes during build mode and create
-      // profiles for each of them.
+    if (profile_generation_mode_) {
+      // Collecting new shapes for profiles can be only done once. After the
+      // shapes are converted to TRT profiles, no shapes can be collected
+      // anymore.
+      OP_REQUIRES(ctx, cache_res->profiles_.GetNumProfiles() == 0,
+                  errors::Unimplemented("Cannot collect new shapes when "
+                                        "profiles are already created."));
+      // Just collect the input shape info and return. The shapes are used to
+      // generate optimization profiles during engine creation.
       cache_res->profiles_.AddShape(input_concrete_shapes);
+      VLOG(1) << "Native segment is used during collecting shapes for profiles";
+      ExecuteNativeSegment(ctx, helper);
+      return;
+    } else if (cache_res->profiles_.GetNumProfiles() == 0) {
+      // Create profiles out of collected shapes during profile generation.
       cache_res->profiles_.InitProfiles();
     }
   }
@@ -855,6 +889,40 @@ Status TRTEngineOp::GetEngineCacheResource(OpKernelContext* ctx,
       }});
 }
 
+StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
+    const std::vector<TensorShape>& input_concrete_shapes, int batch_size,
+    bool use_calibration, TRTInt8Calibrator* calibrator,
+    TRTEngineCacheResource* cache_resource) {
+  VLOG(1) << "Building a new TensorRT engine for " << name()
+          << " with input shapes: "
+          << TensorShapeUtils::ShapeListString(input_concrete_shapes);
+
+  // Use concrete shapes for implicit batch mode and partial shapes for
+  // explicit batch mode.
+  const std::vector<PartialTensorShape>& conversion_input_shapes =
+      use_implicit_batch_
+          ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
+                                            input_concrete_shapes.end())
+          : input_partial_shapes_;
+  TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
+  auto status = convert::ConvertGraphDefToEngine(
+      segment_graph_def_, precision_mode_, batch_size, workspace_size_,
+      conversion_input_shapes, &logger, cache_resource->allocator_.get(),
+      calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
+      &cache_resource->profiles_);
+  if (!status.ok()) {
+    LOG(WARNING) << "Engine creation for " << name() << " failed. "
+                 << "The native segment will be used instead. "
+                 << "Reason: " << status;
+    // Store an empty engine in the cache for these input shapes so we don't try
+    // to build the same failing engine again.
+    cache_resource->cache_.emplace(input_concrete_shapes,
+                                   absl::make_unique<EngineContext>());
+    return status;
+  }
+  return engine;
+}
+
 StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
     const std::vector<TensorShape>& input_concrete_shapes, OpKernelContext* ctx,
     TRTEngineCacheResource* cache_res) {
@@ -892,7 +960,32 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
         infer->deserializeCudaEngine(serialized_segment_.c_str(),
                                      serialized_segment_.size(), nullptr));
     if (!static_engine) {
-      return std::pair<EngineContext*, int>(&empty_context, 0);
+      if (!allow_build_at_runtime_) {
+        // Store an empty engine in the cache so we don't try to load the same
+        // failing engine again.
+        cache.emplace(input_concrete_shapes,
+                      absl::make_unique<EngineContext>());
+        return std::pair<EngineContext*, int>(&empty_context, 0);
+      }
+      if (segment_graph_def_.node().empty()) {
+        FunctionLibraryRuntime* lib = ctx->function_library();
+        auto status = ConstructFunctionHandle(lib, ctx->device()->name());
+        if (status.ok()) {
+          status =
+              FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_);
+        }
+        if (!status.ok()) {
+          LOG(WARNING) << "Getting segment graph for " << name() << " failed. "
+                       << "Reason: " << status;
+        }
+      }
+      auto result = BuildEngine(input_concrete_shapes, batch_size,
+                                /*use_calibration=*/false,
+                                /*calibrator=*/nullptr, cache_res);
+      if (!result.ok()) {
+        return std::pair<EngineContext*, int>(&empty_context, 0);
+      }
+      static_engine = std::move(result.ValueOrDie());
     }
     auto raw_static_engine = static_engine.get();
     const auto max_batch_size = raw_static_engine->getMaxBatchSize();
@@ -951,36 +1044,16 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
       cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
-    TrtUniquePtrType<nvinfer1::ICudaEngine> engine;
-    bool convert_successfully = false;
-    LOG(INFO) << "Building a new TensorRT engine for " << name()
-              << " with input shapes: "
-              << TensorShapeUtils::ShapeListString(input_concrete_shapes);
-
-    // Use concrete shapes for implicit batch mode and partial shapes for
-    // explicit batch mode.
-    const std::vector<PartialTensorShape>& conversion_input_shapes =
-        use_implicit_batch_
-            ? std::vector<PartialTensorShape>(input_concrete_shapes.begin(),
-                                              input_concrete_shapes.end())
-            : input_partial_shapes_;
 
     // Up to this point, calibrator_ can never be empty, since otherwise it
     // means calibration_mode_ is true and this path won't get executed.
-    auto status = convert::ConvertGraphDefToEngine(
-        segment_graph_def_, precision_mode_, batch_size, workspace_size_,
-        conversion_input_shapes, &logger, allocator, calibrator_.get(), &engine,
-        use_calibration_, use_implicit_batch_, &convert_successfully,
-        &cache_res->profiles_);
-    if (!status.ok()) {
-      LOG(WARNING) << "Engine creation for " << name() << " failed. "
-                   << "The native segment will be used instead. "
-                   << "Reason: " << status;
-      // Store an empty engine in the cache for these input shapes so we don't
-      // try to build the same failing engine again.
-      cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
+    auto result = BuildEngine(input_concrete_shapes, batch_size,
+                              use_calibration_, calibrator_.get(), cache_res);
+    if (!result.ok()) {
       return std::pair<EngineContext*, int>(&empty_context, 0);
     }
+    TrtUniquePtrType<nvinfer1::ICudaEngine> engine =
+        std::move(result.ValueOrDie());
     std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> exec_context;
     TF_RETURN_IF_ERROR(cache_res->profiles_.CreateExecutionContexts(
         engine.get(), exec_context));

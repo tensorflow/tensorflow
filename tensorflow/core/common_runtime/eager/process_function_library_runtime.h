@@ -39,16 +39,7 @@ namespace eager {
 class EagerProcessFunctionLibraryRuntime
     : public ProcessFunctionLibraryRuntime {
  public:
-  EagerProcessFunctionLibraryRuntime(
-      const DeviceMgr* device_mgr, Env* env, const ConfigProto* config,
-      int graph_def_version, const FunctionLibraryDefinition* lib_def,
-      const OptimizerOptions& optimizer_options,
-      thread::ThreadPool* thread_pool = nullptr,
-      DistributedFunctionLibraryRuntime* parent = nullptr,
-      const CustomKernelCreator* custom_kernel_creator = nullptr)
-      : ProcessFunctionLibraryRuntime(
-            device_mgr, env, config, graph_def_version, lib_def,
-            optimizer_options, thread_pool, parent, custom_kernel_creator) {}
+  using ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime;
 
 #if !defined(IS_MOBILE_PLATFORM)
   void Run(const FunctionLibraryRuntime::Options& opts,
@@ -59,8 +50,8 @@ class EagerProcessFunctionLibraryRuntime
  private:
   void RunRemoteDevice(
       const FunctionLibraryRuntime::Options& opts,
-      FunctionLibraryRuntime::Handle local_handle, const InternalArgsView& args,
-      std::vector<Tensor>* rets,
+      FunctionLibraryRuntime::Handle local_handle,
+      gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
       FunctionLibraryRuntime::DoneCallback done) const override;
 #endif  // IS_MOBILE_PLATFORM
 };

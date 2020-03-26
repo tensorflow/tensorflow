@@ -41,7 +41,6 @@ random_channel_shift = image.random_channel_shift
 apply_brightness_shift = image.apply_brightness_shift
 random_brightness = image.random_brightness
 apply_affine_transform = image.apply_affine_transform
-load_img = image.load_img
 
 
 @keras_export('keras.preprocessing.image.array_to_img')
@@ -156,6 +155,44 @@ def save_img(path,
                  data_format=data_format,
                  file_format=file_format,
                  scale=scale, **kwargs)
+
+
+def load_img(path, grayscale=False, color_mode='rgb', target_size=None,
+             interpolation='nearest'):
+  """Loads an image into PIL format.
+
+  Usage:
+
+  ```
+  image = tf.keras.preprocessing.image.load_img(image_path)
+  input_arr = keras.preprocessing.image.img_to_array(image)
+  input_arr = np.array([input_arr])  # Convert single image to a batch.
+  predictions = model.predict(input_arr)
+  ```
+
+  Arguments:
+      path: Path to image file.
+      grayscale: DEPRECATED use `color_mode="grayscale"`.
+      color_mode: One of "grayscale", "rgb", "rgba". Default: "rgb".
+          The desired image format.
+      target_size: Either `None` (default to original size)
+          or tuple of ints `(img_height, img_width)`.
+      interpolation: Interpolation method used to resample the image if the
+          target size is different from that of the loaded image.
+          Supported methods are "nearest", "bilinear", and "bicubic".
+          If PIL version 1.1.3 or newer is installed, "lanczos" is also
+          supported. If PIL version 3.4.0 or newer is installed, "box" and
+          "hamming" are also supported. By default, "nearest" is used.
+
+  Returns:
+      A PIL Image instance.
+
+  Raises:
+      ImportError: if PIL is not available.
+      ValueError: if interpolation method is not supported.
+  """
+  return image.load_img(path, grayscale=grayscale, color_mode=color_mode,
+                        target_size=target_size, interpolation=interpolation)
 
 
 @keras_export('keras.preprocessing.image.Iterator')

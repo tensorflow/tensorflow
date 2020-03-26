@@ -126,7 +126,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
         "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
         "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "//tensorflow/lite/delegates/gpu/metal:environment",
         "//tensorflow/lite/delegates/gpu/metal:runtime_options",
         "@com_google_absl//absl/strings",
     ],
@@ -140,6 +142,7 @@ objc_library(
     deps = [
         ":conv",
         ":test_util",
+        ":winograd",
     ],
 )
 
@@ -836,6 +839,47 @@ objc_library(
     ],
 )
 
+cc_library(
+    name = "winograd",
+    srcs = ["winograd.cc"],
+    hdrs = ["winograd.h"],
+    deps = [
+        "//tensorflow/lite/delegates/gpu/common:model",
+        "//tensorflow/lite/delegates/gpu/common:operations",
+        "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:types",
+        "//tensorflow/lite/delegates/gpu/common:util",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
+        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+objc_library(
+    name = "winograd_test_lib",
+    testonly = 1,
+    srcs = ["winograd_test.mm"],
+    sdk_frameworks = ["XCTest"],
+    deps = [
+        ":test_util",
+        ":winograd",
+        "//tensorflow/lite/delegates/gpu/common:winograd_util",
+    ],
+)
+
+ios_unit_test(
+    name = "winograd_test",
+    testonly = 1,
+    minimum_os_version = "10.0",
+    runner = tflite_ios_lab_runner("IOS_LATEST"),
+    tags = tf_gpu_tests_tags() + [
+        "notap",
+        "tflite_not_portable_android",
+    ],
+    deps = [":winograd_test_lib"],
+)
+
 objc_library(
     name = "kernel_tests_lib",
     testonly = 1,
@@ -857,6 +901,7 @@ objc_library(
         "slice_test.mm",
         "softmax_test.mm",
         "transpose_conv_test.mm",
+        "winograd_test.mm",
     ],
     hdrs = [
     ],

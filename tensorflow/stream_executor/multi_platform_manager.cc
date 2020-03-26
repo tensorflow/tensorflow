@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
-#include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/string_view.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 
@@ -30,43 +30,44 @@ namespace {
 class MultiPlatformManagerImpl {
  public:
   port::Status RegisterPlatform(std::unique_ptr<Platform> platform)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithName(absl::string_view target)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> PlatformWithId(const Platform::Id& id)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<Platform*> InitializePlatformWithName(
       absl::string_view target,
-      const std::map<std::string, std::string>& options) LOCKS_EXCLUDED(mu_);
+      const std::map<std::string, std::string>& options) TF_LOCKS_EXCLUDED(mu_);
   port::StatusOr<Platform*> InitializePlatformWithId(
       const Platform::Id& id, const std::map<std::string, std::string>& options)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   port::StatusOr<std::vector<Platform*>> PlatformsWithFilter(
-      const std::function<bool(const Platform*)>& filter) LOCKS_EXCLUDED(mu_);
+      const std::function<bool(const Platform*)>& filter)
+      TF_LOCKS_EXCLUDED(mu_);
 
   using Listener = MultiPlatformManager::Listener;
   port::Status RegisterListener(std::unique_ptr<Listener> listener)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // Looks up the platform object with the given name.  Assumes the Platforms
   // mutex is held.
   port::StatusOr<Platform*> LookupByNameLocked(absl::string_view target)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Looks up the platform object with the given id.  Assumes the Platforms
   // mutex is held.
   port::StatusOr<Platform*> LookupByIdLocked(const Platform::Id& id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   absl::Mutex mu_;
-  std::vector<std::unique_ptr<Listener>> listeners_ GUARDED_BY(mu_);
-  absl::flat_hash_map<Platform::Id, Platform*> id_map_ GUARDED_BY(mu_);
-  absl::flat_hash_map<std::string, Platform*> name_map_ GUARDED_BY(mu_);
+  std::vector<std::unique_ptr<Listener>> listeners_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<Platform::Id, Platform*> id_map_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, Platform*> name_map_ TF_GUARDED_BY(mu_);
 };
 
 port::Status MultiPlatformManagerImpl::RegisterPlatform(

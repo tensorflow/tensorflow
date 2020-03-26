@@ -59,6 +59,19 @@ TfLiteStatus Get4DShape(unsigned int* batch_size, unsigned int* height_size,
   return kTfLiteOk;
 }
 
+// We maintain an op-version whitelist here to ensure we don't accept unintended
+// ops.
+bool CheckOpVersion(const TfLiteRegistration* registration) {
+  switch (registration->builtin_code) {
+    case kTfLiteBuiltinAveragePool2d:
+    case kTfLiteBuiltinDepthwiseConv2d:
+    case kTfLiteBuiltinSoftmax:
+      return registration->version <= 2;
+    default:
+      return registration->version == 1;
+  }
+}
+
 bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
                               const TfLiteNode* node, TfLiteContext* context) {
   // Ensure all inputs & outputs have dim <= 4.
@@ -74,15 +87,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
     if (tensor.dims->size > 4) return false;
   }
 
-  // Most hexagon kernels are not compatible with op versions > 1.
-  // We maintain a 'whitelist' here to ensure we don't accept unintended nodes.
-  if (registration->version > 1) {
-    if (registration->builtin_code == kTfLiteBuiltinDepthwiseConv2d &&
-        registration->version == 2) {
-      return true;
-    }
-    return false;
-  }
+  if (!CheckOpVersion(registration)) return false;
 
   switch (registration->builtin_code) {
     case kTfLiteBuiltinAdd: {
@@ -120,7 +125,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (
           node->inputs->size == 2 &&
           InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteInt32}) &&
-          IsConstantTensor(&context->tensors[node->inputs->data[1]]));
+          IsConstantTensor(GetInput(context, node, 1)));
     }
     case kTfLiteBuiltinFullyConnected: {
       if (!InputsWithCorrectTypes(node, context,
@@ -154,8 +159,9 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return pool_params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinAveragePool2d: {
-      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8})) return false;
-      // AvgPool works fine for filter dim <=7.
+      if (!InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) &&
+          !InputsWithCorrectTypes(node, context, {kTfLiteInt8}))
+        return false;
       const TfLitePoolParams* pool_params =
           reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
       return (node->inputs->size == 1 &&
@@ -188,6 +194,8 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       if (!InputsWithCorrectTypes(node, context,
                                   {kTfLiteUInt8, kTfLiteUInt8, kTfLiteInt32}))
         return false;
+
+      // Check dilation.
       const TfLiteDepthwiseConvParams* conv_params =
           reinterpret_cast<const TfLiteDepthwiseConvParams*>(
               node->builtin_data);
@@ -198,10 +206,19 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         if (conv_params->stride_height != 1 || conv_params->stride_width != 1)
           return false;
       }
+
+      // We currently only support depth_multiplier > 1 when:
+      // 1. dilation_factor == 1 AND
+      // 2. input_depth == 1
+      // TODO(b/143759564): Add support for general case.
+      const auto& input = context->tensors[node->inputs->data[0]];
+      const bool supported_depth_multiplier =
+          conv_params->depth_multiplier == 1 ||
+          (!dilation && input.dims->size == 4 && input.dims->data[3] == 1);
+
       return (IsActivationReluOrNone(conv_params->activation) &&
               conv_params->stride_height <= 3 &&
-              conv_params->stride_width <= 3 &&
-              conv_params->depth_multiplier == 1);
+              conv_params->stride_width <= 3 && supported_depth_multiplier);
     }
     case kTfLiteBuiltinReshape: {
       if (node->inputs->size > 2 ||
@@ -209,7 +226,10 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
         return false;
       return true;
     }
-    case kTfLiteBuiltinSoftmax:
+    case kTfLiteBuiltinSoftmax: {
+      return (InputsWithCorrectTypes(node, context, {kTfLiteUInt8}) ||
+              InputsWithCorrectTypes(node, context, {kTfLiteInt8}));
+    }
     case kTfLiteBuiltinRelu:
     case kTfLiteBuiltinRelu6:
     case kTfLiteBuiltinTanh:
@@ -237,12 +257,12 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       const bool is_four_dim_or_less = input_tensor.dims->size < 5;
       // We need splitting axis to be constant, so Hexagon knows output shapes.
       return is_four_dim_or_less &&
-             IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+             IsConstantTensor(GetInput(context, node, 0));
     }
     case kTfLiteBuiltinResizeBilinear: {
       if (!InputsWithCorrectTypes(node, context,
                                   {kTfLiteUInt8, kTfLiteInt32}) ||
-          !IsConstantTensor(&context->tensors[node->inputs->data[1]])) {
+          !IsConstantTensor(GetInput(context, node, 1))) {
         return false;
       }
       const auto& size_tensor = context->tensors[node->inputs->data[1]];

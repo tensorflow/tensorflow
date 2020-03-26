@@ -343,11 +343,14 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
 // TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
 // right way to share this.
 static bool RequireDeterminism() {
-  bool deterministic_ops = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
-                                             /*default_val=*/false,
-                                             &deterministic_ops));
-  return deterministic_ops;
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
 }
 
 Status GpuCompiler::OptimizeHloPostLayoutAssignment(

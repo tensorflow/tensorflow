@@ -273,7 +273,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       //
       // The algorithm itself can handle size that is not power-of-two. Note
       // that in each round we sum up elements that are contiguous. So we can
-      // use their flattened structure to gain vectorinization efficiency.
+      // use their flattened structure to gain vectorization efficiency.
       do {
         int64 right_size = remaining_size / 2;
         int64 left_size = remaining_size - right_size;
@@ -324,7 +324,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
     // Similar to the reduction case, a straightforward implementation of this
     // does not utilize vectorization well because of the small channel size.
     // This algorithm repeatedly increases the area to be copied, and leads to
-    // much better vectorinizations in the copy.
+    // much better vectorizations in the copy.
     for (int64 i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
       // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
@@ -354,7 +354,7 @@ class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
       int64 copied = 1;
       while (copied < image_size) {
         // Repeatedly increases the number of elements to copy so they have
-        // better vectorinizations. However, the source of the copy has to be
+        // better vectorizations. However, the source of the copy has to be
         // not too large to stay in the cache.
         const int64 kMaxToCopy = 1024;
         int64 to_copy = std::min({copied, image_size - copied, kMaxToCopy});

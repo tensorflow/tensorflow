@@ -52,6 +52,11 @@ def InceptionResNetV2(include_top=True,
                       **kwargs):
   """Instantiates the Inception-ResNet v2 architecture.
 
+  Reference paper:
+  - [Inception-v4, Inception-ResNet and the Impact of
+     Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
+    (AAAI 2017)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.

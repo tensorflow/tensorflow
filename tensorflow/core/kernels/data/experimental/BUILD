@@ -106,7 +106,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/data:dataset",
     ],
 )
 
@@ -135,11 +134,28 @@ tf_kernel_library(
 tf_kernel_library(
     name = "directed_interleave_dataset_op",
     srcs = ["directed_interleave_dataset_op.cc"],
+    hdrs = ["directed_interleave_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:name_utils",
         "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "directed_interleave_dataset_op_test",
+    size = "small",
+    srcs = ["directed_interleave_dataset_op_test.cc"],
+    deps = [
+        ":directed_interleave_dataset_op",
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels/data:dataset_test_base",
+        "//tensorflow/core/kernels/data:range_dataset_op",
+        "//tensorflow/core/kernels/data:tensor_slice_dataset_op",
     ],
 )
 
@@ -239,7 +255,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core/kernels/data:dataset",
     ],
 )
 
@@ -320,6 +335,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:dataset_utils",
     ],
 )
 
@@ -364,6 +380,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "//tensorflow/core/kernels/data:name_utils",
     ],
 )
@@ -430,10 +447,28 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "snapshot_util",
+    srcs = ["snapshot_util.cc"],
+    hdrs = ["snapshot_util.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:coding",
+        "//tensorflow/core/platform:random",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+)
+
 tf_kernel_library(
     name = "snapshot_dataset_op",
     srcs = ["snapshot_dataset_op.cc"],
     deps = [
+        ":snapshot_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

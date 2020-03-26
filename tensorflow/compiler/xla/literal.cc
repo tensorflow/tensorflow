@@ -133,8 +133,9 @@ void Literal::SetPiece(const Shape& shape, Piece* piece, bool allocate_arrays) {
   } else if (shape.IsArray()) {
     if (allocate_arrays) {
       // Literals can be used as DMA targets, which can require alignment. We
-      // force a 16-byte minimum alignment.
-      constexpr int kMinimumAlignment = 16;
+      // force a tensorflow::Allocator::kAllocatorAlignment-byte minimum
+      // alignment.
+      constexpr int kMinimumAlignment = 64;
       piece->set_buffer(static_cast<char*>(tensorflow::port::AlignedMalloc(
           piece->size_bytes(), kMinimumAlignment)));
     }

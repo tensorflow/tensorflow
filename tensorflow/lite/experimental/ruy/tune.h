@@ -129,16 +129,16 @@ class TuningResolver {
   // access to that.
   friend class TuneTool;
   // Actually runs a nano-benchmark, producing a real number called 'ratio'
-  // whose meaning is generally opaque / implemenation defined. Typically,
+  // whose meaning is generally opaque / implementation defined. Typically,
   // this would be the ratio between the latencies of two different
   // pieces of asm code differing only by the ordering of instructions,
   // revealing whether the CPU cares about such ordering details.
-  // An implemenation may just return a dummy value if it is not based on
+  // An implementation may just return a dummy value if it is not based on
   // such nanobenchmarking / ratio evaluation.
   float EvalRatio();
   // Empirically determined threshold on ratio values delineating
   // out-of-order (ratios closer to 1) from in-order (ratios farther from 1).
-  // An implemenation may just return a dummy value if it is not based on
+  // An implementation may just return a dummy value if it is not based on
   // such nanobenchmarking / ratio evaluation.
   float ThresholdRatio();
   // Perform the tuning resolution now. That may typically use EvalRatio and

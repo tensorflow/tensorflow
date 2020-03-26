@@ -147,7 +147,7 @@ constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
 
 // This size will work for both the hotword (5) and ambient music (2):
-constexpr int kMaxOpDataSize = 5;
+constexpr int kMaxOpDataSize = 7;
 static int kStaticOpDataCounter = 0;
 static OpData kStaticOpData[kMaxOpDataSize];
 

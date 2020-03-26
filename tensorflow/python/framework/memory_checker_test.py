@@ -140,14 +140,17 @@ class MemoryCheckerTest(test.TestCase):
       foo = Foo()  # pylint: disable=unused-variable
       memory_checker.record_snapshot()
 
-    # TODO(kkb): `{'builtins.weakref': 1}` is unexpected, locate and fix it.
+    # TODO(kkb): `{'builtins.weakref': 1, 'builtins.function': 1}` is
+    # unexpected, locate and fix it.
     memory_checker.assert_no_new_python_objects(threshold={
         '__main__.Foo': 1,
-        'builtins.weakref': 1
+        'builtins.weakref': 1,
+        'builtins.function': 1,
     })
     memory_checker.assert_no_new_python_objects(threshold={
         '__main__.Foo': 2,
-        'builtins.weakref': 1
+        'builtins.weakref': 1,
+        'builtins.function': 1,
     })
 
   def testKerasBasic(self):

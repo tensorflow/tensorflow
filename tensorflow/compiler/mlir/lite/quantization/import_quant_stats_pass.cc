@@ -23,18 +23,18 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/QuantOps/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/AffineExpr.h"  // TF:llvm-project
-#include "mlir/IR/AffineMap.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/AffineExpr.h"  // from @llvm-project
+#include "mlir/IR/AffineMap.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/Functional.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_info.pb.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/import_utils.h"

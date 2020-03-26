@@ -38,7 +38,7 @@ export TF_NEED_CUDA=0
 export PYTHON_BIN_PATH=`which python3`
 yes "" | $PYTHON_BIN_PATH configure.py
 
-# Get parameters from command-line rather than from env
+# Get parameters from command-line rather than from env.
 # Setting OMP_THREADS for low performing benchmarks.
 #   Default value(=core count) degrades performance of some benchmark cases.
 #   Optimal thread count is case specific.
@@ -56,7 +56,7 @@ if [[ $# -ge 1 ]]; then
     echo "number of OM_NUM_THREADS. Exiting..."
     exit 1
   fi
-else # No parameters were passed in so set default values
+else  # No parameters were passed in so set default values.
   CONFIG="${DEFAULT_CONFIG}"
   OMPTHREADS="--action_env=OMP_NUM_THREADS=${DEFAULT_OMP_NUM_THREADS}"
 fi
@@ -66,9 +66,9 @@ echo "Bazel will test with CONFIG=${CONFIG} and OMPTHREADS=${OMPTHREADS}"
 echo ""
 
 # Run bazel test command. Double test timeouts to avoid flakes.
-# Setting KMP_BLOCKTIME to 0 lets OpenMP threads to sleep right after parallel execution
-# in an MKL primitive. This reduces the effects of an oversubscription of OpenMP threads
-# caused by executing multiple tests concurrently.
+# Setting KMP_BLOCKTIME to 0 lets OpenMP threads to sleep right after parallel
+# execution in an MKL primitive. This reduces the effects of an oversubscription
+# of OpenMP threads caused by executing multiple tests concurrently.
 bazel test \
     --test_tag_filters=-no_oss,-no_oss_py2,-oss_serial,-gpu,-tpu,-benchmark-test,-v1only \
     --test_lang_filters=cc,py \

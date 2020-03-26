@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import values
@@ -397,6 +398,9 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
               optimizer=strategy_combinations
               .gradient_descent_optimizer_keras_v2_fn)))
   def test_batchnorm_correctness(self, distribution, fused, optimizer):
+    if isinstance(distribution.extended,
+                  parameter_server_strategy.ParameterServerStrategyExtended):
+      self.skipTest('b/152353796')
     with self.cached_session():
       with distribution.scope():
         model = keras.models.Sequential()

@@ -44,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -136,46 +135,6 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
-}
-
-// Rewrites the layout of xla_shape if there is tiled sharding.
-Status RewriteLayoutWithShardedShape(
-    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
-    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
-    xla::Shape* xla_shape) {
-  if (sharding && !sharding->IsTileMaximal()) {
-    // After sharding, per core shape might have different layout. For example,
-    // before sharding, a shape [128, 128] will be assigned default
-    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
-    // the sharded shapes will have minor-to-major {0, 1}.
-    //
-    // As a result, for sharded shapes, we set their layout to per core shape's
-    // layout.
-    //
-    // TODO(endlessroad): for variable input & update, we might have
-    // different layouts which will prevent input output aliasing and
-    // increase memory usage. Investigate such cases.
-    int64 device = *sharding->tile_assignment().begin();
-    std::vector<int64> offset =
-        sharding->TileOffsetForDevice(*xla_shape, device);
-    std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
-    std::vector<int64> dimensions(xla_shape->rank());
-    for (int64 i = 0; i < xla_shape->rank(); ++i) {
-      dimensions[i] = limit[i] - offset[i];
-    }
-    xla::Shape per_device_xla_shape =
-        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
-    TensorShape per_device_tensor_shape;
-    TF_RETURN_IF_ERROR(
-        XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
-    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
-                                            xla_shape->element_type()));
-    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
-                        shape_representation_fn(per_device_tensor_shape, dtype,
-                                                use_fast_memory));
-    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
-  }
   return Status::OK();
 }
 
@@ -1174,51 +1133,6 @@ Status XlaCompiler::BuildArguments(
   return Status::OK();
 }
 
-Status XlaCompiler::CompileSingleOp(
-    const XlaCompiler::CompileOptions& options, const NodeDef& node_def,
-    absl::Span<const XlaCompiler::Argument> args,
-    absl::Span<const DataType> result_types, CompilationResult* result) {
-  // TODO(b/74182462): We implement this by creating a new dummy Graph including
-  // _Arg nodes, and let CompileGraph walk it. This could be optimized.
-  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
-
-  Status status;
-  // First create the actual node we care about computing.
-  Node* main_node = graph->AddNode(node_def, &status);
-  TF_RETURN_IF_ERROR(status);
-
-  // Create dummy _Arg nodes. Link these to `node` and also via a control
-  // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < args.size(); ++i) {
-    Node* node;
-    string arg_name = absl::StrCat("_arg", i);
-    Status status =
-        NodeBuilder(arg_name, FunctionLibraryDefinition::kArgOp)
-            .ControlInput(graph->source_node())
-            .Attr("T", args[i].kind == Argument::kResource ? DT_RESOURCE
-                                                           : args[i].type)
-            .Attr("index", i)
-            .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-    graph->AddEdge(node, 0, main_node, i);
-  }
-
-  // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < result_types.size(); ++i) {
-    Node* node;
-    string retval_name = absl::StrCat("_retval", i);
-    Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
-                        .Input(main_node, i)
-                        .Attr("T", result_types[i])
-                        .Attr("index", i)
-                        .Finalize(graph.get(), &node);
-    TF_RETURN_IF_ERROR(status);
-  }
-  FixupSourceAndSinkEdges(graph.get());
-
-  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
-}
-
 namespace {
 
 // Check that the ops of all non-functional nodes have been registered.
@@ -1586,6 +1500,46 @@ xla::StatusOr<xla::XlaOp> XlaCompiler::GetNodeToken(const string& node_name) {
                                       node_name);
   }
   return iter->second;
+}
+
+// Rewrites the layout of xla_shape if there is tiled sharding.
+Status RewriteLayoutWithShardedShape(
+    const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    xla::Shape* xla_shape) {
+  if (sharding && !sharding->IsTileMaximal()) {
+    // After sharding, per core shape might have different layout. For example,
+    // before sharding, a shape [128, 128] will be assigned default
+    // minor-to-major {1, 0}. But after we shard this shape to [128, 64] * 2,
+    // the sharded shapes will have minor-to-major {0, 1}.
+    //
+    // As a result, for sharded shapes, we set their layout to per core shape's
+    // layout.
+    //
+    // TODO(endlessroad): for variable input & update, we might have
+    // different layouts which will prevent input output aliasing and
+    // increase memory usage. Investigate such cases.
+    int64 device = *sharding->tile_assignment().begin();
+    std::vector<int64> offset =
+        sharding->TileOffsetForDevice(*xla_shape, device);
+    std::vector<int64> limit = sharding->TileLimitForDevice(*xla_shape, device);
+    std::vector<int64> dimensions(xla_shape->rank());
+    for (int64 i = 0; i < xla_shape->rank(); ++i) {
+      dimensions[i] = limit[i] - offset[i];
+    }
+    xla::Shape per_device_xla_shape =
+        xla::ShapeUtil::MakeShape(xla_shape->element_type(), dimensions);
+    TensorShape per_device_tensor_shape;
+    TF_RETURN_IF_ERROR(
+        XLAShapeToTensorShape(per_device_xla_shape, &per_device_tensor_shape));
+    TF_ASSIGN_OR_RETURN(DataType dtype, EncodePrimitiveTypeAsDataType(
+                                            xla_shape->element_type()));
+    TF_ASSIGN_OR_RETURN(per_device_xla_shape,
+                        shape_representation_fn(per_device_tensor_shape, dtype,
+                                                use_fast_memory));
+    *xla_shape->mutable_layout() = per_device_xla_shape.layout();
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

@@ -262,7 +262,7 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
   // FirstReady for _Send and _Recv (separately),
   // Globally (among the LIFO-selected ops from each device and _Send and
   // _Recv) FirstReady,
-  // Priorty order: _Send, _Recv, and then the rest, if time_ready is equal.
+  // Priority order: _Send, _Recv, and then the rest, if time_ready is equal.
   std::vector<std::pair<const NodeDef*, Costs::Duration>> candidates;
   for (auto& ops_lifo : ops_lifo_map_) {
     if (!ops_lifo.second.Empty()) {
@@ -294,7 +294,7 @@ const NodeDef* CompositeNodeManager::GetCurrNode() {
             // Both are normal ops; use node name as tie breaker.
             return a.first->name().compare(b.first->name()) < 0;
           } else {
-            // Priortize by op type: _Send, _Recv, and normap ops.
+            // Prioritize by op type: _Send, _Recv, and normap ops.
             return a_score > b_score;
           }
         } else {
@@ -989,7 +989,7 @@ Costs VirtualScheduler::Summary() const {
     std::map<string, int64> op_to_memory;
     // First profile only persistent memory usage.
     int64 persistent_memory_usage = 0;
-    std::set<string> persisent_ops;
+    std::set<string> persistent_ops;
     for (const auto& node_port : state.persistent_nodes) {
       const auto* node = node_port.first;
       const auto port = node_port.second;
@@ -997,7 +997,7 @@ Costs VirtualScheduler::Summary() const {
           CalculateOutputSize(node_map_.at(node).output_properties, port);
       persistent_memory_usage += output_size;
       op_to_memory[node->op()] += output_size;
-      persisent_ops.insert(node->op());
+      persistent_ops.insert(node->op());
     }
     int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
     critical_path_costs.estimated_max_memory_per_device[name] =
@@ -1076,7 +1076,7 @@ Costs VirtualScheduler::Summary() const {
                        memory_cost, intermediate_memory_cost)
                 << " (" << HumanReadableNumBytes(op_mem_usage) << " ["
                 << mem_usage_percent << "%] "
-                << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
+                << (persistent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }
 

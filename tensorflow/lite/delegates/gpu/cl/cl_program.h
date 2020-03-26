@@ -64,11 +64,11 @@ class CLProgram {
 
   // Return the cl_device_id associated with the program object.
   // This can be the device associated with context on which the program object
-  // has been created or can be device that was specified when a progam object
+  // has been created or can be device that was specified when a program object
   // was created using clCreateProgramWithBinary.
   cl_device_id GetDeviceId() const { return device_id_; }
 
-  Status GetBinary(std::vector<uint8_t>* result) const;
+  absl::Status GetBinary(std::vector<uint8_t>* result) const;
 
  private:
   void Release();
@@ -79,15 +79,15 @@ class CLProgram {
   cl_device_id device_id_ = nullptr;
 };
 
-Status CreateCLProgram(const std::string& code,
-                       const std::string& compiler_options,
-                       const CLContext& context, const CLDevice& device,
-                       CLProgram* result);
+absl::Status CreateCLProgram(const std::string& code,
+                             const std::string& compiler_options,
+                             const CLContext& context, const CLDevice& device,
+                             CLProgram* result);
 
-Status CreateCLProgramFromBinary(const CLContext& context,
-                                 const CLDevice& device,
-                                 absl::Span<const uint8_t> binary,
-                                 CLProgram* result);
+absl::Status CreateCLProgramFromBinary(const CLContext& context,
+                                       const CLDevice& device,
+                                       absl::Span<const uint8_t> binary,
+                                       CLProgram* result);
 
 }  // namespace cl
 }  // namespace gpu

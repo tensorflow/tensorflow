@@ -23,7 +23,17 @@ message Operation {
   // future.
   int64 id = 1;
   string name = 2;
+  // TODO(b/150963957): Deprecate this.
   repeated RemoteTensorHandle inputs = 3;
+
+  message Input {
+    oneof item {
+      RemoteTensorHandle remote_handle = 1;
+      TensorProto tensor = 2;
+    }
+  }
+
+  repeated Input op_inputs = 10;
 
   // Control Operation IDs that will be respected when ops are re-ordered by
   // async execution. If async execution (+ op re-ordering) is not enabled, this

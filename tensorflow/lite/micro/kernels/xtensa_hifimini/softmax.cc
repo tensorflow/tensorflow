@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -161,24 +160,22 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
 }  // namespace
 
-void Softmax2DQuantized(const TfLiteTensor* input, TfLiteTensor* output,
-                        TfLiteSoftmaxParams* params, OpData* data) {
-  const int batch_size = input->dims->data[0];
-  const int input_size = input->dims->data[1];
-  const int32_t shape_data[4] = {batch_size, 1, 1, input_size};
-  RuntimeShape shape(4, shape_data);
+void SoftmaxQuantized(const TfLiteTensor* input, TfLiteTensor* output,
+                      TfLiteSoftmaxParams* params, OpData* data) {
   SoftmaxParams op_params;
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
 
   if (output->type == kTfLiteInt16) {
-    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
-                              shape, GetTensorData<int16_t>(output));
+    xtensa::hifimini::Softmax(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int16_t>(output));
 
   } else {
-    xtensa::hifimini::Softmax(op_params, shape, GetTensorData<int8_t>(input),
-                              shape, GetTensorData<int8_t>(output));
+    xtensa::hifimini::Softmax(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   }
 }
 
@@ -191,8 +188,11 @@ void Free(TfLiteContext* context, void* buffer) {}
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteSoftmaxParams*>(node->builtin_data);
 
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   TfLiteTensor* output = GetOutput(context, node, 0);
+  TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
@@ -214,17 +214,12 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (input->type) {
     case kTfLiteInt8: {
-      if (NumDimensions(input) == 2) {
-        Softmax2DQuantized(input, output, params, op_data);
-        return kTfLiteOk;
-      }
-      TF_LITE_KERNEL_LOG(context,
-                         "Only 2D tensors supported currently, got %dD.",
-                         NumDimensions(input));
-      return kTfLiteError;
+      SoftmaxQuantized(input, output, params, op_data);
+      return kTfLiteOk;
     }
     default:
-      TF_LITE_KERNEL_LOG(context, "Only int8_t supported currently, got %d.",
+      TF_LITE_KERNEL_LOG(context,
+                         "Only int8_t input supported currently, got %d.",
                          input->type);
       return kTfLiteError;
   }

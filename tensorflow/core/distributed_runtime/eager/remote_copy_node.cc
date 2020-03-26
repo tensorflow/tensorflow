@@ -101,12 +101,10 @@ Status RemoteCopyNode::RunLocalSend(EagerOperation* op) {
   core::RefCountPtr<KernelAndDevice> kernel;
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
-  gtl::InlinedVector<TensorValue, 4> input_vector(1);
-  TF_RETURN_IF_ERROR(src_->TensorValue(
-      &input_vector[0],
-      ctx_->CanonicalDevice(absl::get<Device*>(op->Device()))));
+  EagerKernelArgs args(1);
+  Device* d = ctx_->CanonicalDevice(absl::get<Device*>(op->Device()));
+  TF_RETURN_IF_ERROR(src_->TensorValue(d, args.MutableInput(0)));
 
-  EagerKernelArgs args(std::move(input_vector));
   return kernel->Run(args, /*outputs=*/nullptr,
                      /*cancellation_manager=*/nullptr,
                      /*remote_func_params=*/absl::nullopt);
@@ -147,7 +145,8 @@ void RemoteCopyNode::StartSend() {
     request.set_context_id(ctx_->GetContextId());
     auto* remote_op = request.add_queue()->mutable_operation();
     status = ctx_->RemoteMgr()->SerializeRemoteTensorHandle(
-        src_, remote_op->add_inputs(), absl::get<Device*>(src_->device()),
+        src_, remote_op->add_op_inputs()->mutable_remote_handle(),
+        absl::get<Device*>(src_->device()),
         absl::get<Device*>(src_->DeviceOrHostCPU(*ctx_))->name());
     if (!status.ok()) {
       captured_state_->SetSendStatus(status);

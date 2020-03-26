@@ -51,10 +51,13 @@ def TF_LayoutSensitiveInterface : OpInterface<"LayoutSensitiveInterface"> {
       "SmallVector<unsigned, 4>", "GetLayoutDependentResults", (ins)
     >,
     InterfaceMethod<
+      [{Returns the optimal data layout based on the available devices.}],
+      "StringRef", "GetOptimalLayout", (ins "const RuntimeDevices&":$devices)
+    >,
+    InterfaceMethod<
       [{Updates operation attributes and operands to account for the updated
         data format. If data format is not supported, must return failure.}],
-      "LogicalResult", "UpdateDataFormat",
-      (ins "StringRef":$data_format)
+      "LogicalResult", "UpdateDataFormat", (ins "StringRef":$data_format)
     >,
   ];
 

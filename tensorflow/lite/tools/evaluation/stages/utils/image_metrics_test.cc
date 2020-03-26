@@ -128,7 +128,7 @@ TEST(ImageMetricsTest, BBoxAPwithIgnoredGroundTruth) {
 
   pd.push_back({false, 100, 0.95, {{0.9, 1.9}, {0.9, 1.9}}});
 
-  // Two gt and three pd, one pair get ignored. So it's actuallly one gt with
+  // Two gt and three pd, one pair get ignored. So it's actually one gt with
   // two pd.
   EXPECT_NEAR(0.5, AveragePrecision().FromBoxes(gt, pd), 1e-6);
   gt[0].ignore = kIgnoreAllMatches;

@@ -354,6 +354,7 @@ cc_library(
         "//tensorflow/core:lib",
         "@dlpack",
     ],
+    alwayslink = 1,
 )
 
 # TODO(karllessard): only used by //tensorflow/core:mobile_srcs_only_runtime

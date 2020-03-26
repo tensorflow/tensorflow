@@ -58,6 +58,13 @@ TEST_F(LhloGenTest, Copy) {
           "copy.hlo"));
 }
 
+TEST_F(LhloGenTest, CopyTranspose) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "copy_transpose.hlo"));
+}
+
 TEST_F(LhloGenTest, Select) {
   CompileAndVerifyIr(
       /*hlo_text_filename=*/tensorflow::io::JoinPath(
@@ -168,6 +175,12 @@ TEST_F(LhloGenTest, Neg) {
                                               "neg.hlo"));
 }
 
+TEST_F(LhloGenTest, ReduceWindow) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "reduce_window.hlo"));
+}
+
 TEST_F(LhloGenTest, Rem) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",
@@ -180,10 +193,23 @@ TEST_F(LhloGenTest, Rsqrt) {
                                               "rsqrt.hlo"));
 }
 
+TEST_F(LhloGenTest, SelectAndScatter) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "select_and_scatter.hlo"));
+}
+
 TEST_F(LhloGenTest, Sign) {
   CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
                                               "service", "mlir_gpu", "tests",
                                               "rsqrt.hlo"));
+}
+
+TEST_F(LhloGenTest, Sqrt) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "sqrt.hlo"));
 }
 
 TEST_F(LhloGenTest, Tanh) {

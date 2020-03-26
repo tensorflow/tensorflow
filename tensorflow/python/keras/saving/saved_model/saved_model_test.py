@@ -44,7 +44,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras import testing_utils
@@ -661,8 +661,46 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
                         predictions)
 
+  @parameterized.named_parameters([
+      # TODO(b/148491963): Unrolling does not work with SavedModel
+      # ('with_unrolling', True),
+      ('no_unrolling', False)
+  ])
+  def testSaveStatefulRNN(self, unroll):
+    batch = 12
+    timesteps = 10
+    input_dim = 8
+    input_arr = np.ones((batch, timesteps, input_dim)).astype('float32')
 
-class TestLayerCallTracing(test.TestCase):
+    cells = [keras.layers.LSTMCell(32), keras.layers.LSTMCell(64)]
+    if unroll:
+      x = keras.Input(batch_shape=(batch, timesteps, input_dim))
+    else:
+      x = keras.Input(batch_shape=(batch, None, input_dim))
+    layer = keras.layers.RNN(cells, stateful=True, unroll=unroll)
+    y = layer(x)
+
+    model = keras.Model(x, y)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(
+        np.zeros((batch, timesteps, input_dim)).astype('float32'),
+        np.zeros((batch, 64)).astype('float32'))
+
+    saved_model_dir = self._save_model_dir()
+    tf_save.save(model, saved_model_dir)
+
+    loaded = keras_load.load(saved_model_dir)
+    loaded_layer = loaded.layers[1]
+
+    if not context.executing_eagerly():
+      keras.backend.get_session()  # force variable initialization
+
+    self.assertAllClose(layer.states, loaded_layer.states)
+    self.assertAllClose(model(input_arr), loaded(input_arr))
+
+
+class TestLayerCallTracing(test.TestCase, parameterized.TestCase):
 
   def test_functions_have_same_trace(self):
 
@@ -735,7 +773,7 @@ class TestLayerCallTracing(test.TestCase):
 
     assert_num_traces(LayerWithChildLayer, training_keyword=False)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_maintains_losses(self):
     layer = LayerWithLoss()
     layer(np.ones((2, 3)))
@@ -748,7 +786,7 @@ class TestLayerCallTracing(test.TestCase):
     self.assertAllEqual(previous_losses, layer.losses)
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class MetricTest(test.TestCase, parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -832,28 +870,30 @@ class MetricTest(test.TestCase, parameterized.TestCase):
         # while returning nothing.
         super(CustomMetric, self).update_state(*args)
 
-    metric = CustomMetric()
-    save_dir = self._save_model_dir('first_save')
+    with self.cached_session():
+      metric = CustomMetric()
+      save_dir = self._save_model_dir('first_save')
 
-    if requires_build:
-      metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
+      if requires_build:
+        metric(*self.generate_inputs(num_tensor_args))  # pylint: disable=not-callable
 
-    self.evaluate([v.initializer for v in metric.variables])
+      self.evaluate([v.initializer for v in metric.variables])
 
-    with self.assertRaisesRegexp(ValueError, 'Unable to restore custom object'):
-      self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
-    with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
-      loaded = self._test_metric_save_and_load(
-          metric,
-          save_dir,
-          num_tensor_args,
-          test_sample_weight=False)
+      with self.assertRaisesRegexp(ValueError,
+                                   'Unable to restore custom object'):
+        self._test_metric_save_and_load(metric, save_dir, num_tensor_args)
+      with generic_utils.CustomObjectScope({'CustomMetric': CustomMetric}):
+        loaded = self._test_metric_save_and_load(
+            metric,
+            save_dir,
+            num_tensor_args,
+            test_sample_weight=False)
 
-      self._test_metric_save_and_load(
-          loaded,
-          self._save_model_dir('second_save'),
-          num_tensor_args,
-          test_sample_weight=False)
+        self._test_metric_save_and_load(
+            loaded,
+            self._save_model_dir('second_save'),
+            num_tensor_args,
+            test_sample_weight=False)
 
   def test_custom_metric_wrapped_call(self):
 

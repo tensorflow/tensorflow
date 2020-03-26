@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 
 namespace mlir {
 
@@ -43,8 +43,17 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateMaterializePassthroughOpPass();
 // Performs Shape Inference on the TensorFlow dialect using the global registry.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 
+// Optional pass which will unroll BatchMatMul and use only MatMul
+std::unique_ptr<OpPassBase<FuncOp>> CreateUnrollBatchMatMulPassPass();
+
+// Optional pass which will map TF BatchMatMul to TF Einsum
+std::unique_ptr<OpPassBase<FuncOp>> CreateBatchMatMulToEinsumPass();
+
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
+
+// Performs specific fusion for GPU targets.
+std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass();
 
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
@@ -99,6 +108,23 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateSimpleTFDeviceAssignmentPass(
 // Performs resource lifting on the function body to hoist resource variable
 // accesses outside all control flow statements.
 LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function);
+
+// Converts stack ops into operations on local variables, which can later be
+// removed by resource lifting. Requires known maximum sizes of stacks and
+// known element shapes of push ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateStackOpsDecompositionPass();
+
+// Converts tensor list operations into operations on buffers and sizes. Needs
+// static shapes and known max element count.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorListOpsDecompositionPass();
+
+// Converts tensor array ops into operations on local variables, which can later
+// be removed by resource lifting. Requires known sizes and known element shapes
+// (either defined in TensorArrayV3 or implied in the first write).
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTensorArrayOpsDecompositionPass();
+
+// Create a pass that legalize HLO to TF dialect.
+std::unique_ptr<OpPassBase<FuncOp>> CreateLegalizeHloToTfPass();
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -209,6 +235,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 // ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 
+// Creates a pass that identifies XLASharding ops in launch op for TPU
+// computation.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUShardingIdentificationPass();
+
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
@@ -231,6 +261,9 @@ namespace tf_saved_model {
 
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
+
+// Creates a pass that freezes tf_saved_model.global_tensor ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateFreezeGlobalTensorsPass();
 
 // Creates a pass that uses tf_saved_model dialect linkage information
 // to mark function visibility. That is, exported functions are marked with

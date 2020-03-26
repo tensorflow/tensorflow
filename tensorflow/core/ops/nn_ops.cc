@@ -14,7 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cmath>
+
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -556,10 +558,11 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShapeWithExplicitPadding);
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Input("input_sizes: int32")
@@ -568,7 +571,8 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -586,7 +590,8 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -2524,6 +2529,7 @@ REGISTER_OP("_MklFusedBatchNorm")
     .Attr("T: numbertype")
     .Attr("epsilon: float = 0.0001")
     .Attr("data_format: string = 'NHWC'")
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle x;
@@ -2673,6 +2679,7 @@ REGISTER_OP("_MklFusedBatchNormV2")
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("exponential_avg_factor: float = 1.0")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormShape);
 

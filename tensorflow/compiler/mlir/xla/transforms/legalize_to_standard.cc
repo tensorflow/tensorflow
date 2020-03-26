@@ -16,10 +16,10 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
@@ -35,19 +35,19 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+                                PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
+    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
 
     if (!lhs_type.getElementType().isSignlessInteger() ||
         !rhs_type.getElementType().isSignlessInteger())
-      return matchFailure();
+      return failure();
 
     auto comparison_direction = op.comparison_direction();
     auto compare_predicate =
@@ -60,11 +60,11 @@ class CompareIConvert : public OpRewritePattern<xla_hlo::CompareOp> {
             .Case("GE", CmpIPredicate::sge)
             .Default(llvm::None);
 
-    if (!compare_predicate.hasValue()) return matchFailure();
+    if (!compare_predicate.hasValue()) return failure();
 
     rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
                                         rhs);
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -72,36 +72,36 @@ class CompareFConvert : public OpRewritePattern<xla_hlo::CompareOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::CompareOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::CompareOp op,
+                                PatternRewriter &rewriter) const override {
     auto lhs = op.lhs();
     auto rhs = op.rhs();
     auto lhs_type = lhs.getType().cast<TensorType>();
     auto rhs_type = rhs.getType().cast<TensorType>();
 
     // Broadcasting not supported by this rewrite.
-    if (lhs_type.getShape() != rhs_type.getShape()) return matchFailure();
+    if (lhs_type.getShape() != rhs_type.getShape()) return failure();
 
     if (!lhs_type.getElementType().isa<FloatType>() ||
         !rhs_type.getElementType().isa<FloatType>())
-      return matchFailure();
+      return failure();
 
     auto comparison_direction = op.comparison_direction();
-    CmpFPredicate compare_predicate =
-        llvm::StringSwitch<CmpFPredicate>(comparison_direction)
+    auto compare_predicate =
+        llvm::StringSwitch<Optional<CmpFPredicate>>(comparison_direction)
             .Case("EQ", CmpFPredicate::OEQ)
             .Case("NE", CmpFPredicate::UNE)
             .Case("LT", CmpFPredicate::OLT)
             .Case("LE", CmpFPredicate::OLE)
             .Case("GT", CmpFPredicate::OGT)
             .Case("GE", CmpFPredicate::OGE)
-            .Default(CmpFPredicate::NumPredicates);
+            .Default(llvm::None);
 
-    if (compare_predicate == CmpFPredicate::NumPredicates)
-      return matchFailure();
+    if (!compare_predicate.hasValue()) return failure();
 
-    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate, lhs, rhs);
-    return matchSuccess();
+    rewriter.replaceOpWithNewOp<CmpFOp>(op, compare_predicate.getValue(), lhs,
+                                        rhs);
+    return success();
   }
 };
 
@@ -113,8 +113,8 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
  public:
   using OpRewritePattern::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(xla_hlo::IotaOp op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(xla_hlo::IotaOp op,
+                                PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     auto output_size = output_type.getNumElements();
     auto dimension = op.iota_dimension().getSExtValue();
@@ -159,7 +159,7 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
     // For int/float types we are done, replace op and return.
     if (!complex_ty) {
       rewriter.replaceOp(op, iota_const.getResult());
-      return matchSuccess();
+      return success();
     }
 
     // For complex types, generate a constant tensor of zeroes for the imaginary
@@ -170,7 +170,7 @@ class ConvertIotaOp : public OpRewritePattern<xla_hlo::IotaOp> {
         rewriter.create<ConvertOp>(loc, int_or_float_shape_ty, zeroes);
     rewriter.replaceOpWithNewOp<xla_hlo::ComplexOp>(op, iota_const,
                                                     imag_zeroes);
-    return matchSuccess();
+    return success();
   }
 };
 

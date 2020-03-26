@@ -96,7 +96,6 @@ class TestIOUtils(keras_parameterized.TestCase):
     out_eval = model.evaluate(x_test, y_test, batch_size=32, verbose=False)
 
     self.assertEqual(out_pred.shape, (50, 1))
-    self.assertEqual(out_eval.shape, ())
     self.assertGreater(out_eval, 0)
 
     # test slicing for shortened array
