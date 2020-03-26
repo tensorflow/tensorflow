@@ -43,7 +43,7 @@ struct uniforms {
     int4 src_size;
     int4 dst_size;
     int2 padding;
-    int2 dummy0;
+    int2 tiles_count;
 };
 )";
   auto bt_mat = BtMatrixForWinograd4x4To6x6();
@@ -65,7 +65,7 @@ kernel void ComputeFunction($1
 {
   int3 gid = int3(ugid.x * 4, ugid.y * 4, ugid.z);
 
-  if (gid.x >= U.src_size.x || gid.y >= U.src_size.y) return;
+  if (ugid.x >= U.tiles_count.x || ugid.y >= U.tiles_count.y) return;
 
   FLT4 I[6][6];
   for (int y = 0; y < 6; ++y) {
@@ -107,7 +107,7 @@ kernel void ComputeFunction($1
   }
   c += R"(
 
-  int dst_x = ugid.y * (U.src_size.x + 3) / 4 + ugid.x;
+  int dst_x = ugid.y * U.tiles_count.x + ugid.x;
   int dst_adress = gid.z * U.dst_size.y * U.dst_size.x + dst_x;
   for (int y = 0; y < 6; ++y) {
     dst_buffer[dst_adress] = I[y][0] + Bt[2] * I[y][2] + Bt[4] * I[y][4];
@@ -156,15 +156,14 @@ $0
 kernel void ComputeFunction($1
                             uint3 global_ids[[thread_position_in_grid]])
 {
-  int3 gid = int3(global_ids.x, global_ids.y, global_ids.z);
-
   int tile_id = global_ids.x;
+  int Z = static_cast<int>(global_ids.z);
   int tiles_count_x = (U.dst_size.x + 3) / 4;
   int tile_x = (tile_id % tiles_count_x) * 4;
   int tile_y = (tile_id / tiles_count_x) * 4;
   if (tile_x >= U.dst_size.x || tile_y >= U.dst_size.y) return;
 
-  int src_adress = gid.z * U.src_size.y * U.src_size.x + gid.x;
+  int src_adress = Z * U.src_size.y * U.src_size.x + tile_id;
   FLT4 I[4][6];
   for (int y = 0; y < 4; ++y) {
     for (int x = 0; x < 6; ++x) {
@@ -181,15 +180,15 @@ kernel void ComputeFunction($1
     }
   }
 
-  FLT4 bias_val = biases[gid.z];
-  int dst_adress = (gid.z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
+  FLT4 bias_val = biases[Z];
+  int dst_adress = (Z * U.dst_size.y + tile_y) * U.dst_size.x + tile_x;
   for (int y = 0; y < 4 && tile_y + y < U.dst_size.y; ++y) {
     FLT4 t0 = I[y][1] + I[y][2];
     FLT4 t1 = I[y][3] + I[y][4];
     if (tile_x < U.dst_size.x) {
       FLT4 value = I[y][0] + t0 + t1 + bias_val;
       int linear_index = dst_adress;
-      uint3 ugid = uint3(tile_x, tile_y + y, global_ids.z);
+      uint3 gid = uint3(tile_x, tile_y + y, global_ids.z);
       $2
       dst_buffer[linear_index] = value;
     }
@@ -198,20 +197,20 @@ kernel void ComputeFunction($1
     if (tile_x + 1 < U.dst_size.x) {
       FLT4 value = t2 * At[7] + t3 * At[9] + bias_val;
       int linear_index = dst_adress + 1;
-      uint3 ugid = uint3(tile_x + 1, tile_y + y, global_ids.z);
+      uint3 gid = uint3(tile_x + 1, tile_y + y, global_ids.z);
       $2
       dst_buffer[linear_index] = value;
     }
     if (tile_x + 2 < U.dst_size.x) {
       FLT4 value = t0 * At[13] + t1 * At[15] + bias_val;
       int linear_index = dst_adress + 2;
-      uint3 ugid = uint3(tile_x + 2, tile_y + y, global_ids.z);
+      uint3 gid = uint3(tile_x + 2, tile_y + y, global_ids.z);
       $2
       dst_buffer[linear_index] = value;
     }
     if (tile_x + 3 < U.dst_size.x) {
       FLT4 value = t2 * At[19] + t3 * At[21] + I[y][5] + bias_val;
-      uint3 ugid = uint3(tile_x + 3, tile_y + y, global_ids.z);
+      uint3 gid = uint3(tile_x + 3, tile_y + y, global_ids.z);
       int linear_index = dst_adress + 3;
       $2
       dst_buffer[linear_index] = value;
@@ -236,24 +235,34 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
       {input_id, "device FLT4* const src_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* dst_buffer",
-                         [input_id](const std::map<ValueId, BHWC>& buffers) {
-                           const auto src_shape =
-                               buffers.find(input_id)->second;
-                           BHWC dst_shape;
-                           dst_shape.b = src_shape.b;
-                           dst_shape.h = 36;
-                           dst_shape.w = IntegralDivideRoundUp(src_shape.w, 4) *
-                                         IntegralDivideRoundUp(src_shape.h, 4);
-                           dst_shape.c = src_shape.c;
-                           return dst_shape;
-                         }};
+  desc->output_buffer = {
+      output_id, "device FLT4* dst_buffer",
+      [input_id, attr](const std::map<ValueId, BHWC>& buffers) {
+        const auto src_shape = buffers.find(input_id)->second;
+        int new_width = src_shape.w + attr.padding.prepended.w +
+                        attr.padding.appended.w - 2;
+        int new_height = src_shape.h + attr.padding.prepended.h +
+                         attr.padding.appended.h - 2;
+        BHWC dst_shape;
+        dst_shape.b = src_shape.b;
+        dst_shape.h = 36;
+        dst_shape.w = IntegralDivideRoundUp(new_width, 4) *
+                      IntegralDivideRoundUp(new_height, 4);
+        dst_shape.c = src_shape.c;
+        return dst_shape;
+      }};
 
   desc->uniform_buffers = {
       {"constant uniforms& U",
        [input_id, output_id, attr](const std::map<ValueId, BHWC>& buffers) {
          const auto& src_shape = buffers.find(input_id)->second;
          const auto& dst_shape = buffers.find(output_id)->second;
+         int new_width = src_shape.w + attr.padding.prepended.w +
+                         attr.padding.appended.w - 2;
+         int new_height = src_shape.h + attr.padding.prepended.h +
+                          attr.padding.appended.h - 2;
+         int tiles_x = IntegralDivideRoundUp(new_width, 4);
+         int tiles_y = IntegralDivideRoundUp(new_height, 4);
          std::vector<int> sizes = {
              src_shape.w,
              src_shape.h,
@@ -265,18 +274,23 @@ std::vector<ComputeTaskDescriptorPtr> Winograd4x4To36(
              0,
              -attr.padding.prepended.w,
              -attr.padding.prepended.h,
-             0,
-             0,
+             tiles_x,
+             tiles_y,
          };
          return GetByteBuffer(sizes);
        }},
   };
 
-  desc->resize_function = [input_id](const std::map<ValueId, BHWC>& buffers) {
+  desc->resize_function = [input_id,
+                           attr](const std::map<ValueId, BHWC>& buffers) {
     const uint3 groups_size{8, 4, 1};
     const auto& src_shape = buffers.find(input_id)->second;
-    int grid_x = IntegralDivideRoundUp(src_shape.w, 4);
-    int grid_y = IntegralDivideRoundUp(src_shape.h, 4);
+    int new_width =
+        src_shape.w + attr.padding.prepended.w + attr.padding.appended.w - 2;
+    int new_height =
+        src_shape.h + attr.padding.prepended.h + attr.padding.appended.h - 2;
+    int grid_x = IntegralDivideRoundUp(new_width, 4);
+    int grid_y = IntegralDivideRoundUp(new_height, 4);
     int grid_z = IntegralDivideRoundUp(src_shape.c, 4);
     int groups_x = IntegralDivideRoundUp(grid_x, groups_size.x);
     int groups_y = IntegralDivideRoundUp(grid_y, groups_size.y);
