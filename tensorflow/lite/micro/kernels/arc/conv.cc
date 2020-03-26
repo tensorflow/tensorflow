@@ -201,16 +201,16 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     }
 
     // for height slicing
-    const int heightDimension = 1;
-    int inSliceHeight = 0;
-    int outSliceHeight = 0;
-    const int kernelHeight = static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
-    const int overlap = kernelHeight - cfg.stride_height;
+    const int height_dimension = 1;
+    int in_slice_height = 0;
+    int out_slice_height = 0;
+    const int kernel_height = static_cast<int>(mli_weights.shape[KRNL_H_DIM_HWC]);
+    const int overlap = kernel_height - cfg.stride_height;
 
     // for weight slicing (on output channels)
-    const int weightOutChDimension = 0; // NHWC layout for weigths, output channel dimension is the first dimension.
-    int sliceChannels = static_cast<int>(mli_weights.shape[weightOutChDimension]);
-    const int outTensorChDimension = 3; // Batch-Height-Width-Channel layout means last dimension is output channels.
+    const int weight_out_ch_dimension = 0; // NHWC layout for weigths, output channel dimension is the first dimension.
+    int slice_channels = static_cast<int>(mli_weights.shape[weight_out_ch_dimension]);
+    const int out_tensor_ch_dimension = 3; // Batch-Height-Width-Channel layout means last dimension is output channels.
 
     // Tensors for data in fast (local) memory and config to copy data from external to local memory
     mli_tensor weights_local = mli_weights;
@@ -220,8 +220,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     mli_mov_cfg_t copy_config;
     mli_mov_cfg_for_copy(&copy_config);
     TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &inSliceHeight, &outSliceHeight));
-    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, &sliceChannels));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernel_height, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &in_slice_height, &out_slice_height));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, weight_out_ch_dimension, &slice_channels));
 
     /* is_local indicates that the tensor is already in local memory,
        so in that case the original tensor can be used,
@@ -231,14 +231,15 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     const bool w_is_local = weights_local.data == mli_weights.data;
     const bool b_is_local = bias_local.data == mli_bias.data;
 
-    TensorSlicer w_slice(&mli_weights, weightOutChDimension, sliceChannels);
-    TensorSlicer b_slice(&mli_bias, weightOutChDimension, sliceChannels);
-    TensorSlicer out_ch_slice(&mli_out, outTensorChDimension, sliceChannels, 0, 0, 0, true);
+    TensorSlicer w_slice(&mli_weights, weight_out_ch_dimension, slice_channels);
+    TensorSlicer b_slice(&mli_bias, weight_out_ch_dimension, slice_channels);
+    TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension, slice_channels, 0, 0, 0, true);
 
     mli_tensor *w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
     mli_tensor *b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
 
-    void *inputBufferPtr = NULL;
+    void *input_buffer_ptr = NULL;
+    int input_buffer_size = 0;
 
     while (!w_slice.Done()){
       mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
@@ -249,12 +250,12 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
       The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
       in chunks of 'sliceHeight' */
-      TensorSlicer in_slice(&mli_in, heightDimension, inSliceHeight, cfg.padding_top, cfg.padding_bottom, overlap);
+      TensorSlicer in_slice(&mli_in, height_dimension, in_slice_height, cfg.padding_top, cfg.padding_bottom, overlap);
 
       /* output tensor is alreade sliced in the output channel dimension. out_ch_slice.Sub() is the tensor for the amount of
       output channels of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch and
       height dimension. */
-      TensorSlicer out_slice(out_ch_slice.Sub(), heightDimension, outSliceHeight);
+      TensorSlicer out_slice(out_ch_slice.Sub(), height_dimension, out_slice_height);
 
       /* setup the pointers to the local or remote tensor to make the code inside the loop easier. */
       mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
@@ -266,9 +267,10 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         cfg.padding_bottom = in_slice.GetPaddingPost();
 
         // if same input copy as previous iteration, skip the copy of input
-        if (in_slice.Sub()->data != inputBufferPtr) {
+        if ((in_slice.Sub()->data != input_buffer_ptr) || (mli_hlp_count_elem_num(in_slice.Sub(), 0) != input_buffer_size)) {
           mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
-          inputBufferPtr = in_slice.Sub()->data;
+          input_buffer_ptr = in_slice.Sub()->data;
+          input_buffer_size = mli_hlp_count_elem_num(in_slice.Sub(), 0);
         }
         mli_krn_conv2d_nhwc_sa8_sa8_sa32(in_ptr, w_ptr, b_ptr, &cfg, out_ptr);
         mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
@@ -282,7 +284,6 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_ENSURE(context, in_slice.Done());
     }
 
-    free_arc_scratch_buffers();
   } else {
     ConvParams op_params;
     op_params.input_offset = -input->params.zero_point;

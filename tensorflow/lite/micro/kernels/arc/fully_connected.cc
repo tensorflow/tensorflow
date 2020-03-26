@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_slicers.h"
 
 #include "mli_api.h"
 
@@ -100,44 +101,80 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
     ConvertToMliTensor<int32_t>(bias, &mli_bias);
     ConvertToMliTensor<int8_t>(output, &mli_out);
 
-    mli_point_to_subtsr_cfg subtsr_cfg_in = {{0, 0}, 2, static_cast<uint8_t>(mli_in.shape[1])};
-    mli_point_to_subtsr_cfg subtsr_cfg_out = {{0, 0}, 2, static_cast<uint8_t>(mli_out.shape[1])};
-    mli_tensor sub_mli_in = {0};
-    mli_tensor sub_mli_out = {0};
-    mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-    mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
+    /* The input tensor can have more than 2 dimensions. for the compute this doesn't make any difference
+       because all the inputs or a batch entry will be used anyway. because the MLI kernel doesn't recognize
+       the multiple dimensions, the tensor shape is casted to a {batchnum, inputsize} shape. */
+    mli_in.shape[0] = mli_out.shape[0];
+    mli_in.shape[1] = mli_weights.shape[1];
+    mli_in.shape[2] = 0;
+    mli_in.shape[3] = 0;
+    mli_in.rank = 2;
 
     // Tensors for data in fast (local) memory and config to copy data from external to local memory
     mli_tensor weights_local = mli_weights;
     mli_tensor bias_local = mli_bias;
-    mli_tensor in_local = sub_mli_in;
-    mli_tensor out_local = sub_mli_out;
+    mli_tensor in_local = mli_in;
+    mli_tensor out_local = mli_out;
     mli_mov_cfg_t copy_config;
     mli_mov_cfg_for_copy(&copy_config);
-    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    bool in_is_local = in_local.data == sub_mli_in.data;
-    bool out_is_local = out_local.data == sub_mli_out.data;
+    const int weight_out_dimension = 0;
+    const int out_tensor_dimension = 1;
+    const int batch_dimension = 0;
+    int slice_size = mli_weights.shape[weight_out_dimension];
 
-    mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
-    mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
+    /* allocate the local buffers, and compute the slice size */
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_fully_connect_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, weight_out_dimension, &slice_size));
+    int max_out_slice_size = out_local.capacity / mli_hlp_tensor_element_size(&out_local);
+    if (slice_size > max_out_slice_size) slice_size = max_out_slice_size;
 
-    const int batches =
-        MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    /* is_local indicates that the tensor is already in local memory,
+       so in that case the original tensor can be used,
+       and there is no need to copy it to the local tensor*/
+    const bool in_is_local = in_local.data == mli_in.data;
+    const bool out_is_local = out_local.data == mli_out.data;
+    const bool w_is_local = weights_local.data == mli_weights.data;
+    const bool b_is_local = bias_local.data == mli_bias.data;
 
-    for (int i = 0; i < batches; i++) {
-      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
-      mli_krn_fully_connected_sa8_sa8_sa32(&in_local, &weights_local, &bias_local, &out_local);
-      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
-      subtsr_cfg_in.start_coord[0]++;
-      subtsr_cfg_out.start_coord[0]++;
-      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
-      if (in_is_local) {
-        in_local.data = sub_mli_in.data;
+    TensorSlicer w_slice(&mli_weights, weight_out_dimension, slice_size);
+    TensorSlicer b_slice(&mli_bias, weight_out_dimension, slice_size);
+    TensorSlicer out_ch_slice(&mli_out, out_tensor_dimension, slice_size, 0, 0, 0, true);
+
+    mli_tensor *w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
+    mli_tensor *b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
+
+    void *input_buffer_ptr = NULL;
+
+    while (!w_slice.Done()){
+      mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
+      mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
+
+      TensorSlicer in_slice(&mli_in, batch_dimension, 1);
+
+      /* output tensor is alreade sliced in the output size dimension. out_ch_slice.Sub() is the tensor for the amount of
+      output size of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch */
+      TensorSlicer out_slice(out_ch_slice.Sub(), batch_dimension, 1);
+
+      /* setup the pointers to the local or remote tensor to make the code inside the loop easier. */
+      mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+      mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+
+      while (!out_slice.Done()) {
+
+        // if same input copy as previous iteration, skip the copy of input
+        if (in_slice.Sub()->data != input_buffer_ptr) {
+          mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+          input_buffer_ptr = in_slice.Sub()->data;
+        }
+        mli_krn_fully_connected_sa8_sa8_sa32(in_ptr, w_ptr, b_ptr, out_ptr);
+        mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+        in_slice.Next();
+        out_slice.Next();
       }
-      if (out_is_local) {
-        out_local.data = sub_mli_out.data;
-      }
+      w_slice.Next();
+      b_slice.Next();
+      out_ch_slice.Next();
     }
   } else {
     FullyConnectedParams op_params;

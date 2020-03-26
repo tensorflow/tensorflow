@@ -191,11 +191,20 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       cfg.padding_bottom = data->padding.height + data->padding.height_offset;
     }
 
+    // for height slicing
     const int heightDimension = 1;
     int inSliceHeight = 0;
     int outSliceHeight = 0;
     const int kernelHeight = static_cast<int>(mli_weights.shape[KRNL_DW_H_DIM_HWC]); 
     const int overlap = kernelHeight - cfg.stride_height;
+
+    // for weight slicing (on output channels)
+    const int weight_out_ch_dimension = 3; // HWCN layout for weigths, output channel dimension is the first dimension.
+    const int bias_out_ch_dimension = 0; // bias has only 1 dimension
+    const int out_tensor_ch_dimension = 3; // Batch-Height-Width-Channel layout means last dimension is output channels.
+    const int32_t in_channels = mli_in.shape[out_tensor_ch_dimension];
+    const int32_t out_channels = mli_out.shape[out_tensor_ch_dimension];
+    int slice_channels = static_cast<int>(mli_weights.shape[weight_out_ch_dimension]);
 
     // Tensors for data in fast (local) memory and config to copy data from external to local memory
     mli_tensor weights_local = mli_weights;
@@ -206,38 +215,83 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
     mli_mov_cfg_for_copy(&copy_config);
 
     TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_conv_tensors(context, &in_local, &weights_local, &bias_local, &out_local));
-    /* if the tensor is already in local memory, is_local is true */
+    /* is_local indicates that the tensor is already in local memory,
+       so in that case the original tensor can be used,
+       and there is no need to copy it to the local tensor*/
     const bool in_is_local = in_local.data == mli_in.data;
     const bool out_is_local = out_local.data == mli_out.data;
+    const bool w_is_local = weights_local.data == mli_weights.data;
+    const bool b_is_local = bias_local.data == mli_bias.data;
 
     TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, kernelHeight, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &inSliceHeight, &outSliceHeight));
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_weights(&weights_local, &bias_local, weight_out_ch_dimension, &slice_channels));
 
-    /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
-       because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
-       on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
-       The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
-       in chunks of 'sliceHeight' */
-    TensorSlicer in_slice(&mli_in, heightDimension, inSliceHeight, cfg.padding_top, cfg.padding_bottom, overlap);
-    TensorSlicer out_slice(&mli_out, heightDimension, outSliceHeight);
-
-    mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
-    mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
-
-    mli_mov_tensor_sync(&mli_weights, &copy_config, &weights_local);
-    mli_mov_tensor_sync(&mli_bias, &copy_config, &bias_local);
-
-    while (!out_slice.Done()) {
-      cfg.padding_top = in_slice.GetPaddingPre();
-      cfg.padding_bottom = in_slice.GetPaddingPost();
-
-      mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
-      mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32(in_ptr, &weights_local, &bias_local, &cfg, out_ptr);
-      mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
-
-      in_slice.Next();
-      out_slice.Next();
+    /* if input channels is not equal to output channels, a channel multiplier is used.
+       in this case the slice channels needs to be rounded down to a multiple of the input channels */
+    if (in_channels != out_channels) {
+      slice_channels = (slice_channels / in_channels) * in_channels;
     }
-    free_arc_scratch_buffers();
+
+    TensorSlicer w_slice(&mli_weights, weight_out_ch_dimension, slice_channels, 0, 0, 0, true);
+    TensorSlicer b_slice(&mli_bias, bias_out_ch_dimension, slice_channels);
+    TensorSlicer out_ch_slice(&mli_out, out_tensor_ch_dimension, slice_channels, 0, 0, 0, true);
+    TensorSlicer in_ch_slice(&mli_in, out_tensor_ch_dimension, slice_channels, 0, 0, 0, true);
+
+    mli_tensor *w_ptr = w_is_local ? w_slice.Sub() : &weights_local;
+    mli_tensor *b_ptr = b_is_local ? b_slice.Sub() : &bias_local;
+
+    void *input_buffer_ptr = NULL;
+    int input_buffer_size = 0;
+    int padding_top = cfg.padding_top;
+    int padding_bottom = cfg.padding_bottom;
+
+    while (!w_slice.Done()){
+      mli_mov_tensor_sync(w_slice.Sub(), &copy_config, w_ptr);
+      mli_mov_tensor_sync(b_slice.Sub(), &copy_config, b_ptr);
+
+      /* input tensor is alreade sliced in the  channel dimension. out_ch_slice.Sub() is the tensor for the amount of
+      channels of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch and
+      height dimension.
+      in_ch_slice.Sub() tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
+      because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
+      on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
+      The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
+      in chunks of 'sliceHeight' */
+      TensorSlicer in_slice(in_ch_slice.Sub(), heightDimension, inSliceHeight, padding_top, padding_bottom, overlap);
+
+      /* output tensor is alreade sliced in the output channel dimension. out_ch_slice.Sub() is the tensor for the amount of
+      output channels of this itteration of the weight slice loop. This tensor needs to be further sliced over the batch and
+      height dimension. */
+      TensorSlicer out_slice(out_ch_slice.Sub(), heightDimension, outSliceHeight);
+
+      /* setup the pointers to the local or remote tensor to make the code inside the loop easier. */
+      mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+      mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+
+      while (!out_slice.Done()) {
+        TF_LITE_ENSURE(context, !in_slice.Done());
+        cfg.padding_top = in_slice.GetPaddingPre();
+        cfg.padding_bottom = in_slice.GetPaddingPost();
+
+        // if same input copy as previous iteration, skip the copy of input
+        if ((in_slice.Sub()->data != input_buffer_ptr) || (mli_hlp_count_elem_num(in_slice.Sub(), 0) != input_buffer_size)) {
+          mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+          input_buffer_ptr = in_slice.Sub()->data;
+          input_buffer_size = mli_hlp_count_elem_num(in_slice.Sub(), 0);
+        }
+        mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32(in_ptr, w_ptr, b_ptr, &cfg, out_ptr);
+        mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+        in_slice.Next();
+        out_slice.Next();
+      }
+      w_slice.Next();
+      b_slice.Next();
+      out_ch_slice.Next();
+      in_ch_slice.Next();
+      TF_LITE_ENSURE(context, in_slice.Done());
+    }
+
   } else {
     DepthwiseParams op_params;
     op_params.padding_type = PaddingType::kSame;
