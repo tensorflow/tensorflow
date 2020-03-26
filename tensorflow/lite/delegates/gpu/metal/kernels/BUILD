@@ -37,6 +37,7 @@ cc_library(
         ":softmax",
         ":space_to_depth",
         ":transpose_conv",
+        ":winograd",
     ],
 )
 
