@@ -376,7 +376,7 @@ void HexagonDelegateKernel::PrintPerformanceData(Profiler* profiler) {
     if (node_id != -1 && op_type_id >= 0) {
       profiler->AddEvent((op_type_id < 0 ? "" : op_name.data()),
                          Profiler::EventType::OPERATOR_INVOKE_EVENT, node_id, 0,
-                         counter);
+                         counter / 1000);
     }
   }
 }
