@@ -117,16 +117,6 @@ def Assert(condition, data, summarize=None, name=None):
   If `condition` evaluates to false, print the list of tensors in `data`.
   `summarize` determines how many entries of the tensors to print.
 
-  NOTE: In graph mode, to ensure that Assert executes, one usually attaches
-  a dependency:
-
-  ```python
-  # Ensure maximum element of x is smaller or equal to 1
-  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
-  with tf.control_dependencies([assert_op]):
-    ... code using x ...
-  ```
-
   Args:
     condition: The condition to evaluate.
     data: The tensors to print out when condition is false.
@@ -141,8 +131,17 @@ def Assert(condition, data, summarize=None, name=None):
     @end_compatibility
 
   Raises:
-    @compatibility(eager)
-    `tf.errors.InvalidArgumentError` if `condition` is not true
+    @compatibility(TF1)
+    When in TF V1 mode (that is, outside `tf.function`) Assert needs a control
+    dependency on the output to ensure the assertion executes:
+
+  ```python
+  # Ensure maximum element of x is smaller or equal to 1
+  assert_op = tf.Assert(tf.less_equal(tf.reduce_max(x), 1.), [x])
+  with tf.control_dependencies([assert_op]):
+    ... code using x ...
+  ```
+
     @end_compatibility
   """
   if context.executing_eagerly():
