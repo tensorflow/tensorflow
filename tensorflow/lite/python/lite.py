@@ -174,8 +174,8 @@ class TFLiteConverterBase(object):
     self.optimizations = []
     self.representative_dataset = None
     self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
-    self.experimental_new_quantizer = False
-    self.experimental_calibrate_only = False
+    self._experimental_new_quantizer = False
+    self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
     # in the `GraphDef` to the converter.
     self._debug_info = None
@@ -259,7 +259,7 @@ class TFLiteConverterBase(object):
                                 inference_output_type):
     allow_float = not self._is_int8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
-    if self.experimental_calibrate_only:
+    if self._experimental_calibrate_only:
       return calibrate_quantize.calibrate(self.representative_dataset.input_gen)
     else:
       return calibrate_quantize.calibrate_and_quantize(
@@ -317,11 +317,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
       dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python
@@ -609,11 +604,6 @@ class TFLiteConverter(TFLiteConverterBase):
       the dataset to evaluate different optimizations.
     experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-    experimental_new_quantizer: Experimental flag, subject to change.
-      Enables MLIR-based post-training quantization.
-    experimental_calibrate_only: Experimental flag, subject to change.
-      Calibrates the converted model with representative dataset, but not
-      quantize it.
   Example usage:
 
     ```python
