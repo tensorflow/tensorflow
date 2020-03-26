@@ -236,6 +236,40 @@ bool PassThroughOperandTypes(OperandRange operands, ResultRange results) {
   return changed;
 }
 
+// Infers the shape from a (Stateful)PartionedCall operation by looking up the
+// called function and propagating the return type.
+bool InferShapeForCall(Operation* op) {
+  auto call_op = cast<CallOpInterface>(op);
+  CallInterfaceCallable callable = call_op.getCallableForCallee();
+  SymbolRefAttr sym = callable.dyn_cast<SymbolRefAttr>();
+  if (!sym) return false;
+  FuncOp func =
+      dyn_cast<mlir::FuncOp>(SymbolTable::lookupNearestSymbolFrom(op, sym));
+  if (!func) return false;
+
+  bool changed = false;
+  // Map each of the results of the call to the returned type of the
+  // function.
+  for (auto result : llvm::zip(op->getResults(), func.getType().getResults())) {
+    if (std::get<0>(result).getType() == std::get<1>(result)) continue;
+    // Skip already statically shaped results.
+    auto shaped_type = std::get<0>(result).getType().dyn_cast<ShapedType>();
+    if (!shaped_type || shaped_type.hasStaticShape()) continue;
+
+    auto new_type = std::get<1>(result).dyn_cast<RankedTensorType>();
+    if (!new_type) continue;
+
+    // Inserts a cast back to the original type if any user is not in the
+    // TF dialect.
+    AddCastBackForUnsupportedNonTFUses(op, std::get<0>(result),
+                                       op->getDialect(), shaped_type);
+    // Finally we inferred the shape and replace the type for this result.
+    std::get<0>(result).setType(new_type);
+    changed = true;
+  }
+  return changed;
+}
+
 }  // namespace
 
 bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
@@ -263,6 +297,11 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
                             << op->getName() << "'.\n";);
     return false;
   }
+
+  // Handle call operations by looking up callee and infering return shape as
+  // needed.
+  if (isa<PartitionedCallOp>(op) || isa<StatefulPartitionedCallOp>(op))
+    return InferShapeForCall(op);
 
   // tf.Cast are only inferred if they have at least one user in the tf dialect.
   // This is necessary to avoid reprocessing the tf.Cast that are inserted at
