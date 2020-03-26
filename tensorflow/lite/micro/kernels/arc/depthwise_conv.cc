@@ -231,7 +231,7 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
       cfg.padding_bottom = in_slice.GetPaddingPost();
 
       mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
-      mli_krn_depthwise_conv2d_hwc_sa8_sa8_sa32(in_ptr, &weights_local, &bias_local, &cfg, out_ptr);
+      mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32(in_ptr, &weights_local, &bias_local, &cfg, out_ptr);
       mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
 
       in_slice.Next();
