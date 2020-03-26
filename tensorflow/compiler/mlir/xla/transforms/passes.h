@@ -55,7 +55,7 @@ std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
 
 // Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
 // buffers if necessary.
-std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
 
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
