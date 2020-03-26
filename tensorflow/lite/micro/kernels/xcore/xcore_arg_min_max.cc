@@ -1,4 +1,8 @@
-#include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
+
+#include "lib_ops/api/arg_min_max.h"
 
 namespace tflite {
 namespace ops {
@@ -6,40 +10,42 @@ namespace micro {
 namespace xcore {
 namespace argmax {
 
-    TfLiteStatus Prepare_ArgMax_16(TfLiteContext* context, TfLiteNode* node) {
-        TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
-        TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  ::xcore::arg_min_max::ArgMax16* op = new ::xcore::arg_min_max::ArgMax16();
 
-        return kTfLiteOk;
-    }
+  return op;
+}
 
-    TfLiteStatus Eval_ArgMax_16(TfLiteContext* context, TfLiteNode* node) {
-        const TfLiteTensor* input = GetInput(context, node, 0);
+void Free(TfLiteContext* context, void* buffer) {
+  auto* op = reinterpret_cast<::xcore::arg_min_max::ArgMax16*>(buffer);
+  delete op;
+}
 
-        int32_t N = input->bytes / sizeof(int16_t);
+TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
-        TfLiteTensor* output = GetOutput(context, node, 0);
+  return kTfLiteOk;
+}
 
-        argmax_16(
-            input->data.i16,
-            output->data.i32,
-            N
-        );
+TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  int32_t length = input->bytes / sizeof(int16_t);
 
-        return kTfLiteOk;
-    }
+  auto* op = reinterpret_cast<::xcore::arg_min_max::ArgMax16*>(node->user_data);
+
+  op->Eval(input->data.i16, output->data.i32, length);
+
+  return kTfLiteOk;
+}
 
 }  // namespace argmax
 
-
 TfLiteRegistration* Register_ArgMax_16() {
-    static TfLiteRegistration r = {
-        nullptr,
-        nullptr,
-        argmax::Prepare_ArgMax_16,
-        argmax::Eval_ArgMax_16
-    };
-    return &r;
+  static TfLiteRegistration r = {argmax::Init, argmax::Free, argmax::Prepare,
+                                 argmax::Eval};
+  return &r;
 }
 
 }  // namespace xcore

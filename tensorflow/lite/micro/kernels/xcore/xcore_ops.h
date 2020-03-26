@@ -1,16 +1,6 @@
 #ifndef XCORE_OPS_H_
 #define XCORE_OPS_H_
 
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
-#include "flatbuffers/flexbuffers.h"
-
-extern "C" {
-    #include "nn_operator.h"
-    #include "nn_types.h"
-}
-
 namespace tflite {
 namespace ops {
 namespace micro {
