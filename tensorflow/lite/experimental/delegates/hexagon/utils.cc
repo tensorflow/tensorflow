@@ -67,6 +67,8 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinDepthwiseConv2d:
     case kTfLiteBuiltinSoftmax:
       return registration->version <= 2;
+    case kTfLiteBuiltinRelu:
+      return registration->version >= 2;
     default:
       return registration->version == 1;
   }
