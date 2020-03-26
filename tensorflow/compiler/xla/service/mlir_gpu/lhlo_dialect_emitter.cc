@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/lhlo_dialect_emitter.h"
+#include <utility>
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -251,6 +252,20 @@ Status LhloDialectEmitter::HandleBroadcast(HloInstruction* instr) {
   func_builder.create<lhlo::BroadcastInDimOp>(
       getLocation(instr), function.getArgument(0), function.getArgument(1),
       broadcast_dim);
+  return Status::OK();
+}
+
+Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
+  mlir::IntegerAttr concatenate_dim = builder_.getI64IntegerAttr(
+      static_cast<HloConcatenateInstruction*>(instr)->concatenate_dimension());
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
+                                         function.args_end()};
+  Value result_memref = function.getArgument(function.getNumArguments() - 1);
+  func_builder.create<lhlo::ConcatenateOp>(
+      getLocation(instr), arg_values, result_memref, concatenate_dim);
   return Status::OK();
 }
 
