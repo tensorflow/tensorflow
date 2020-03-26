@@ -1481,15 +1481,15 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       if ragged_rank > 1:
         if tensor.shape.is_fully_defined():
           input_shape = tensor.shape.as_list()
-          new_shape = [-1] + input_shape[ragged_rank:]
           # The total number of elements in each  dimension.  E.g., if
           # input_shape=[3, 4, 5, 6], then dim[2] has 3*4*5 elements in total.
           dim_size = np.cumprod(input_shape)
+          new_shape = [dim_size[ragged_rank - 1]] + input_shape[ragged_rank:]
         else:
-          neg_one = constant_op.constant([-1], row_splits_dtype)
-          new_shape = array_ops.concat([neg_one, input_shape[ragged_rank:]],
-                                       axis=0)
           dim_size = math_ops.cumprod(input_shape)
+          new_shape = array_ops.concat([[dim_size[ragged_rank]],
+                                        input_shape[ragged_rank:]],
+                                       axis=0)
         flattened = array_ops.reshape(tensor, new_shape)
         result = cls.from_tensor(
             flattened, lengths, padding, row_splits_dtype=row_splits_dtype)
@@ -1563,7 +1563,8 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       # If neither padding nor lengths were specified, then create a splits
       # vector that contains no default values, and reshape the input tensor
       # to form the values for the RaggedTensor.
-      values_shape = array_ops.concat([[-1], input_shape[2:]], axis=0)
+      values_shape = array_ops.concat([[input_shape[0] * input_shape[1]],
+                                       input_shape[2:]], axis=0)
       values = array_ops.reshape(tensor, values_shape)
       const_nrows = tensor_shape.dimension_at_index(tensor.shape, 0).value
       const_ncols = tensor_shape.dimension_at_index(tensor.shape, 1).value
