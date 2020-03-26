@@ -100,6 +100,13 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "trace_events_proto",
+    srcs = ["trace_events.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
     name = "hardware_types_proto",
     srcs = ["hardware_types.proto"],
     cc_api_version = 2,

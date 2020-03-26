@@ -216,6 +216,7 @@ cuda_py_test(
     deps = [
         ":profiler",
         ":test",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/profiler:traceme",
     ],

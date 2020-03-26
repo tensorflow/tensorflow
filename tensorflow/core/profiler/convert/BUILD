@@ -159,7 +159,7 @@ cc_library(
     hdrs = ["trace_events_to_json.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@jsoncpp_git//:jsoncpp",
@@ -172,9 +172,9 @@ tf_cc_test(
     deps = [
         ":trace_events_to_json",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -305,7 +305,7 @@ cc_library(
     hdrs = ["xplane_to_trace_events.h"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",

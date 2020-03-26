@@ -199,7 +199,6 @@ COMMON_PROTO_SRCS = [
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
     "protobuf/verifier_config.proto",
-    "protobuf/trace_events.proto",
 ]
 
 EXAMPLE_PROTO_SRCS = [
