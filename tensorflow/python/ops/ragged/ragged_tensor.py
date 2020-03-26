@@ -1621,12 +1621,29 @@ class RaggedTensor(composite_tensor.CompositeTensor):
         default_value = array_ops.zeros((), self.dtype)
 
       shape_tensor = _shape_as_tensor(shape, row_partition_tensors[0].dtype)
-      return gen_ragged_conversion_ops.ragged_tensor_to_tensor(
+      tensor = gen_ragged_conversion_ops.ragged_tensor_to_tensor(
           shape=shape_tensor,
           values=self.flat_values,
           default_value=default_value,
           row_partition_types=row_partition_types,
           row_partition_tensors=row_partition_tensors)
+
+      ragged_shape = self.shape
+
+      if ragged_shape.rank is not None and not isinstance(shape, ops.Tensor):
+        # Merged self.shape and shape, favoring the second one as it takes
+        # into account potential padding added to the output.
+        shape = tensor_shape.as_shape(shape)
+        if shape.rank is None:
+          output_shape = ragged_shape
+        else:
+          # At this point we can assume that hshape.rank == ragged_shape.rank
+          # because otherwise it would have failed earlier.
+          output_shape = [s1 if s1 is not None else s2 for (s1, s2)
+                          in zip(shape.as_list(), ragged_shape.as_list())]
+        tensor.set_shape(output_shape)
+
+      return tensor
 
   @classmethod
   def from_sparse(cls, st_input, name=None, row_splits_dtype=dtypes.int64):
