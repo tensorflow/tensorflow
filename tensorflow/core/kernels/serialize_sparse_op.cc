@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -216,6 +217,36 @@ struct SerializeGroups<T, tstring> {
 };
 
 template <typename T>
+void CopyValues(const T* src, T* dest, int64 num_values) {
+  static_assert(is_simple_type<T>::value, "Memcpy requires a simple type.");
+  memcpy(dest, src, num_values * sizeof(T));
+}
+
+template <>
+void CopyValues<tstring>(const tstring* src, tstring* dest, int64 num_values) {
+  std::copy_n(src, num_values, dest);
+}
+
+template <>
+void CopyValues<Variant>(const Variant* src, Variant* dest, int64 num_values) {
+  std::copy_n(src, num_values, dest);
+}
+
+template <>
+void CopyValues<ResourceHandle>(const ResourceHandle* src, ResourceHandle* dest,
+                                int64 num_values) {
+  std::copy_n(src, num_values, dest);
+}
+
+template <>
+void CopyValues<Eigen::half>(const Eigen::half* src, Eigen::half* dest,
+                             int64 num_values) {
+  return CopyValues(reinterpret_cast<const char*>(src),
+                    reinterpret_cast<char*>(dest),
+                    num_values * sizeof(Eigen::half));
+}
+
+template <typename T>
 struct SerializeGroups<T, Variant> {
   Status operator()(sparse::GroupIterable* minibatch,
                     const Tensor& output_shape, int64 N, int rank,
@@ -263,16 +294,30 @@ struct SerializeGroups<T, Variant> {
       Tensor& output_values = serialized_sparse_t(b, 1).emplace<Tensor>(
           T_type, TensorShape({num_entries}));
 
-      auto output_indices_t = output_indices.matrix<int64>();
-      auto output_values_t = output_values.vec<T>();
+      int64* output_indices_ptr =
+          static_cast<int64*>(DMAHelper::base(&output_indices));
+      const int64* indices_ptr = indices.data();
 
-      for (int i = 0; i < num_entries; ++i) {
-        for (int d = 1; d < rank; ++d) {
-          output_indices_t(i, d - 1) = indices(i, d);
+      T* output_values_ptr = static_cast<T*>(DMAHelper::base(&output_values));
+      const T* values_ptr = values.data();
+
+      // TODO(mrry): Consider adding a template-based specialization for higher
+      // ranks.
+      if (rank == 2) {
+        for (int i = 0; i < num_entries; ++i) {
+          output_indices_ptr[i] = indices_ptr[(2 * i) + 1];
         }
-        output_values_t(i) = values(i);
+      } else {
+        for (int i = 0; i < num_entries; ++i) {
+          // Skip the first index in each row.
+          ++indices_ptr;
+          for (int d = 1; d < rank; ++d) {
+            *output_indices_ptr++ = *indices_ptr++;
+          }
+        }
       }
 
+      CopyValues(values_ptr, output_values_ptr, num_entries);
       serialized_sparse_t(b, 2).emplace<Tensor>(output_shape);
     }
 

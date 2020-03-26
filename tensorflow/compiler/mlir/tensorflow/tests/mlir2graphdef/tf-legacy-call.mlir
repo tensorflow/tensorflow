@@ -16,11 +16,10 @@ func @foo0(%arg0: tensor<*xi32>) -> tensor<*xi32> {
 }
 
 // CHECK: node {
-// CHECK:  name: "_tf.LegacyCall"
+// CHECK:  name: "tf.LegacyCall"
 // CHECK-NEXT:  op: "foo0"
 
 // CHECK: library {
 // CHECK-NEXT:  function {
 // CHECK-NEXT:    signature {
 // CHECK-NEXT:      name: "foo0"
-

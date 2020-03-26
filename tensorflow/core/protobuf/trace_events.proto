@@ -6,6 +6,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "TraceEventsProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // A 'Trace' contains metadata for the individual traces of a system.
 message Trace {

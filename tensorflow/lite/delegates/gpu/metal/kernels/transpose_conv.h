@@ -37,6 +37,14 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
     const ConvolutionTransposedAttributes& params,
     const RuntimeOptions& options);
 
+std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
+    int id, ValueId input_id, ValueId output_id,
+    const ConvolutionTransposedAttributes& params,
+    const RuntimeOptions& options);
+
+bool CheckConvolutionTransposed4x4Support(
+    const ConvolutionTransposedAttributes& attr);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite

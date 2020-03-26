@@ -40,6 +40,7 @@ TEST_F(FusedBatchNormOpTest, Training) {
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
+                   .Attr("exponential_avg_factor", 1.0)
                    .Attr("epsilon", 0.001)
                    .Attr("is_training", true)
                    .Finalize(node_def()));
@@ -67,6 +68,41 @@ TEST_F(FusedBatchNormOpTest, Training) {
   test::ExpectTensorNear<float>(expected_variance, *GetOutput(2), 0.01);
 }
 
+TEST_F(FusedBatchNormOpTest, TrainingRunningMean) {
+  TF_EXPECT_OK(NodeDefBuilder("batch_norm_op", "FusedBatchNorm")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("exponential_avg_factor", 0.5)
+                   .Attr("epsilon", 0.001)
+                   .Attr("is_training", true)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 1, 6, 2}),
+                           {5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15});
+  AddInputFromArray<float>(TensorShape({2}), {4.0, 4.0});
+  AddInputFromArray<float>(TensorShape({2}), {2.0, 2.0});
+  AddInputFromArray<float>(TensorShape({2}), {6.0, 6.0});
+  AddInputFromArray<float>(TensorShape({2}), {16.0, 16.0});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 6, 2}));
+  test::FillValues<float>(&expected, {-3.86, -3.86, -1.51, -1.51, 0.83, 0.83,
+                                      3.17, 3.17, 5.51, 5.51, 7.86, 7.86});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
+
+  Tensor expected_mean(allocator(), DT_FLOAT, TensorShape({2}));
+  test::FillValues<float>(&expected_mean, {8, 8});
+  test::ExpectTensorNear<float>(expected_mean, *GetOutput(1), 0.01);
+
+  Tensor expected_variance(allocator(), DT_FLOAT, TensorShape({2}));
+  test::FillValues<float>(&expected_variance, {15.00, 15.00});
+  test::ExpectTensorNear<float>(expected_variance, *GetOutput(2), 0.01);
+}
+
 TEST_F(FusedBatchNormOpTest, Inference) {
   TF_EXPECT_OK(NodeDefBuilder("batch_norm_op", "FusedBatchNorm")
                    .Input(FakeInput(DT_FLOAT))
@@ -74,6 +110,33 @@ TEST_F(FusedBatchNormOpTest, Inference) {
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
+                   .Attr("epsilon", 0.001)
+                   .Attr("is_training", false)
+                   .Finalize(node_def()));
+  TF_EXPECT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({1, 1, 6, 2}),
+                           {5, 5, 7, 7, 9, 9, 11, 11, 13, 13, 15, 15});
+  AddInputFromArray<float>(TensorShape({2}), {4.0, 4.0});
+  AddInputFromArray<float>(TensorShape({2}), {2.0, 2.0});
+  AddInputFromArray<float>(TensorShape({2}), {10, 10});
+  AddInputFromArray<float>(TensorShape({2}), {11.67f, 11.67f});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 6, 2}));
+  test::FillValues<float>(&expected, {-3.86, -3.86, -1.51, -1.51, 0.83, 0.83,
+                                      3.17, 3.17, 5.51, 5.51, 7.86, 7.86});
+  test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.01);
+}
+
+TEST_F(FusedBatchNormOpTest, InferenceIgnoreAvgFactor) {
+  TF_EXPECT_OK(NodeDefBuilder("batch_norm_op", "FusedBatchNorm")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("exponential_avg_factor", 0.5)
                    .Attr("epsilon", 0.001)
                    .Attr("is_training", false)
                    .Finalize(node_def()));

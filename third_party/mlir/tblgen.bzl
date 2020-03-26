@@ -57,12 +57,15 @@ def gentbl(name, tblgen, td_file, tbl_outs, td_srcs = [], td_includes = [], stri
         )
 
         # Optionally generate rule to test tblgen invocation.
+        # Disable these on windows, because $(location ...) does not seem to
+        # work as expected on windows.
         if test:
             native.sh_test(
                 name = "%s_%s_genrule_test" % (name, rule_suffix),
                 srcs = ["%s.gen.sh" % name],
                 args = base_args,
                 data = srcs + [tblgen],
+                tags = ["no_windows"],
             )
 
     # List of opts that do not generate cc files.

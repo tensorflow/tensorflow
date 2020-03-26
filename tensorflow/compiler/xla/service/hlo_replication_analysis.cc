@@ -254,6 +254,16 @@ bool HloReplicationAnalysis::ComputeHloReplicationOnComputation(
       shape_tree.CopySubtreeFrom(hlo_replication_[inst->operand(0)],
                                  {inst->tuple_index()}, {});
       changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
+    } else if (inst->opcode() == HloOpcode::kInfeed && cross_partition_spmd_) {
+      ShapeTree<bool> shape_tree(inst->shape(), false);
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding().GetAsShapeTree(inst->shape());
+        shape_tree.ForEachMutableElement(
+            [&sharding](const ShapeIndex& index, bool* data) {
+              *data = sharding.element(index).IsReplicated();
+            });
+      }
+      changed |= assign_or_combine_shapetree(std::move(shape_tree), inst);
     } else {
       if (mark_everything_not_replicated) {
         changed |= assign_or_combine_shapetree(

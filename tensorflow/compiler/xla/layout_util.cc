@@ -66,7 +66,7 @@ void SetDefaultLayoutToContainer(T* minor_to_major) {
   for (Tile tile : tiles) {
     for (int64 dim : tile.dimensions()) {
       if (dim < 0 && dim != Tile::kCombineDimension) {
-        LOG(FATAL) << "Tile dimension size needs to be mininum int64 value if "
+        LOG(FATAL) << "Tile dimension size needs to be minimum int64 value if "
                       "it's negative. Value is "
                    << dim;
       }

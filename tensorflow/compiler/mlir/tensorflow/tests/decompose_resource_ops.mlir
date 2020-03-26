@@ -1,4 +1,24 @@
-// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s
+// RUN: tf-opt %s -split-input-file -tf-device-decompose-resource-ops | FileCheck %s --dump-input=fail
+
+// Tests that resources with subtypes are used if present.
+
+// CHECK-LABEL: func @decompose_use_subtype
+func @decompose_use_subtype() {
+
+  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<2x8xi32>>>
+
+  // CHECK:      %[[ONE:[0-9]*]] = "tf.Const"() {value = dense<1> : tensor<i32>}
+  // CHECK:      %[[RES_READ_VAL:[0-9]*]] = "tf.ReadVariableOp"
+  // CHECK-SAME: (tensor<*x!tf.resource<tensor<2x8xi32>>>) -> tensor<2x8xi32>
+  // CHECK:      "tf.AddV2"(%[[RES_READ_VAL]], %[[ONE]])
+  // CHECK-SAME: (tensor<2x8xi32>, tensor<i32>) -> tensor<2x8xi32>
+  // CHECK:      "tf.AssignVariableOp"
+
+  %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  "tf.AssignAddVariableOp"(%0, %1) {dtype = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<2x8xi32>>>, tensor<i32>) -> ()
+
+  return
+}
 
 // -----
 
@@ -221,6 +241,60 @@ func @decompose_resource_apply_adam_nesterov(%arg0: tensor<f32>, %arg1: tensor<f
   %2 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
 
   "tf.ResourceApplyAdam"(%0, %1, %2, %arg0, %arg1, %arg2, %arg3, %arg4, %arg5, %arg6) {use_locking = false, use_nesterov = true} : (tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<*x!tf.resource>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>, tensor<f32>) -> ()
+
+  return
+}
+
+// -----
+
+// Tests that composite tf.ResourceGather operation is decomposed.
+
+// CHECK-LABEL: @decompose_resource_gather_op
+// CHECK-SAME: [[INDEX:%.+]]: tensor<?xi32>
+func @decompose_resource_gather_op(%indices : tensor<?xi32>) -> tensor<*xi32> {
+  // CHECK: [[ZERO:%.+]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+
+  // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[READVAR:%.+]] = "tf.ReadVariableOp"([[VAR]])
+  // CHECK: [[GATHER:%.+]] = "tf.GatherV2"([[READVAR]], [[INDEX]], [[ZERO]]) {batch_dims = 0 : i64} : (tensor<*xi32>, tensor<?xi32>, tensor<i64>) -> tensor<*xi32>
+  // CHECK: return [[GATHER]]
+  %0 = "tf.ResourceGather"(%resource, %indices) : (tensor<*x!tf.resource>, tensor<?xi32>) -> (tensor<*xi32>)
+
+  return %0: tensor<*xi32>
+}
+
+
+// -----
+
+// Tests that resource subtype is correctly propagated when decomposing tf.ResourceGather.
+
+// CHECK-LABEL: @decompose_resource_gather_op
+func @decompose_resource_gather_op(%indices : tensor<5xi32>) -> tensor<2x5x16xi32> {
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<2x8x16xi32>>>
+
+  // CHECK: "tf.GatherV2"({{.+}}, {{.+}}, {{.+}}) {batch_dims = 1 : i64} : (tensor<2x8x16xi32>, tensor<5xi32>, tensor<i64>) -> tensor<2x5x16xi32>
+  %0 = "tf.ResourceGather"(%resource, %indices) {batch_dims = 1} : (tensor<*x!tf.resource<tensor<2x8x16xi32>>>, tensor<5xi32>) -> (tensor<2x5x16xi32>)
+
+  return %0: tensor<2x5x16xi32>
+}
+
+// -----
+
+// Tests that composite tf.ResourceScatterUpdate operation is decomposed.
+
+
+// CHECK-LABEL: @decompose_resource_scatter_update_op
+// CHECK-SAME: ([[INDEX:%.+]]: tensor<2x?xi32>, [[UPDATE:%.+]]: tensor<?x?x?xi32>)
+func @decompose_resource_scatter_update_op(%indices : tensor<2x?xi32>, %updates: tensor<?x?x?xi32>) {
+  // CHECK: [[VAR:%.+]] = "tf.VarHandleOp"
+  %resource = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
+
+  // CHECK: [[READ:%.+]] = "tf.ReadVariableOp"([[VAR]])
+  // CHECK: [[TENSOR:%.+]] = "tf.TensorScatterUpdate"([[READ]], [[INDEX]], [[UPDATE]]) : (tensor<*xi32>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> tensor<*xi32>
+  // CHECK: "tf.AssignVariableOp"([[VAR]], [[TENSOR]])
+  "tf.ResourceScatterUpdate"(%resource, %indices, %updates) : (tensor<*x!tf.resource>, tensor<2x?xi32>, tensor<?x?x?xi32>) -> ()
 
   return
 }

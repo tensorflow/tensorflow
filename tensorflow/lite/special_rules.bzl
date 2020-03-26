@@ -22,3 +22,7 @@ def ios_visibility_whitelist():
 def tflite_extra_gles_deps():
     """This is a no-op outside of Google."""
     return []
+
+def tflite_ios_lab_runner(version):
+    """This is a no-op outside of Google."""
+    return None

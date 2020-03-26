@@ -269,7 +269,8 @@ class CSVDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
                                                current_file_index_));
@@ -336,7 +337,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       // when fields are included in the record.
       Status ReadRecord(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                         bool select_all, const std::vector<int64>& selected)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           // At the end of the file, this will return errors::OutOfRange
           TF_RETURN_IF_ERROR(FillBuffer(&buffer_));
@@ -375,7 +376,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status ParseOneField(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_record, bool include)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           // If we get here, this means the previous field's end coincided
           // with the end of the buffer. We can fill the buffer without abandon.
@@ -418,7 +419,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       // 0.
       Status SaveAndFillBuffer(std::vector<Piece>* earlier_pieces,
                                size_t* start, bool include)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         tstring temp_buffer;
 
         buffer_.swap(temp_buffer);
@@ -438,7 +439,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status ParseQuotedField(IteratorContext* ctx,
                               std::vector<Tensor>* out_tensors,
                               bool* end_of_record, bool include)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<Piece> earlier_pieces;
         size_t start = pos_;
         pos_++;  // Starting quotation mark
@@ -509,7 +510,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status QuotedFieldToOutput(IteratorContext* ctx, StringPiece field,
                                  std::vector<Tensor>* out_tensors,
                                  const std::vector<Piece>& earlier_pieces,
-                                 bool include) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                 bool include)
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!include) return Status::OK();
 
         if (earlier_pieces.empty()) {
@@ -571,7 +573,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status ParseUnquotedField(IteratorContext* ctx,
                                 std::vector<Tensor>* out_tensors,
                                 bool* end_of_record, bool include)
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         std::vector<Piece> earlier_pieces;
         size_t start = pos_;
         Status parse_result;
@@ -622,7 +624,7 @@ class CSVDatasetOp : public DatasetOpKernel {
         }
       }
 
-      Status FillBuffer(tstring* result) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status FillBuffer(tstring* result) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         result->clear();
         ++num_buffer_reads_;
         Status s = input_stream_->ReadNBytes(
@@ -739,7 +741,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       // Records can be delimited by "\r\n" line breaks. When we encounter a
       // '\r', we have to check the next character to see if it is part of the
       // linebreak, and ignore it if so.
-      void SkipNewLineIfNecessary() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void SkipNewLineIfNecessary() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (pos_ >= buffer_.size()) {
           Status s = FillBuffer(&buffer_);
           pos_ = 0;
@@ -758,7 +760,8 @@ class CSVDatasetOp : public DatasetOpKernel {
       Status UnquotedFieldToOutput(IteratorContext* ctx, StringPiece field,
                                    std::vector<Tensor>* out_tensors,
                                    const std::vector<Piece>& earlier_pieces,
-                                   bool include) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                                   bool include)
+          TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (!include) return Status::OK();
 
         if (earlier_pieces.empty()) {
@@ -781,7 +784,7 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       // Sets up reader streams to read from the file at `current_file_index_`.
-      Status SetupStreamsLocked(Env* env) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status SetupStreamsLocked(Env* env) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         if (current_file_index_ >= dataset()->filenames_.size()) {
           return errors::InvalidArgument(
               "current_file_index_:", current_file_index_,
@@ -821,22 +824,23 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
       // Resets all reader streams.
-      void ResetStreamsLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      void ResetStreamsLocked() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         input_stream_.reset();
         file_.reset();
       }
 
       mutex mu_;
-      tstring buffer_ GUARDED_BY(mu_);  // Maintain our own buffer
-      size_t pos_ GUARDED_BY(
+      tstring buffer_ TF_GUARDED_BY(mu_);  // Maintain our own buffer
+      size_t pos_ TF_GUARDED_BY(
           mu_);  // Index into the buffer must be maintained between iters
-      size_t num_buffer_reads_ GUARDED_BY(mu_);
+      size_t num_buffer_reads_ TF_GUARDED_BY(mu_);
       std::shared_ptr<io::RandomAccessInputStream> random_access_input_stream_
-          GUARDED_BY(mu_);
-      std::shared_ptr<io::InputStreamInterface> input_stream_ GUARDED_BY(mu_);
-      size_t current_file_index_ GUARDED_BY(mu_) = 0;
+          TF_GUARDED_BY(mu_);
+      std::shared_ptr<io::InputStreamInterface> input_stream_
+          TF_GUARDED_BY(mu_);
+      size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
       std::unique_ptr<RandomAccessFile> file_
-          GUARDED_BY(mu_);  // must outlive input_stream_
+          TF_GUARDED_BY(mu_);  // must outlive input_stream_
     };                      // class Iterator
 
     const std::vector<string> filenames_;

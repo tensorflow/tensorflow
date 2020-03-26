@@ -59,7 +59,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     int num_dimensions = NumDimensions(input);
 
     if (num_dimensions > 4) {
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Op Concatenation does not currently support num dimensions >4 "
           "Tensor '%s' has %d dimensions.",
@@ -98,7 +98,7 @@ inline void GetAllTensorShapes(const TfLiteContext& context,
 // Get shape pointers from a list of shapes.
 inline void GetShapesPointers(const RuntimeShape* shapes, size_t num,
                               const RuntimeShape* pointers[]) {
-  for (int i = 0; i < num; ++i) {
+  for (size_t i = 0; i < num; ++i) {
     pointers[i] = &shapes[i];
   }
 }
@@ -202,7 +202,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context, "Op Concatenation does not currently support Type '%s'.",
           TfLiteTypeGetName(output_type));
       return kTfLiteError;
@@ -214,9 +214,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION() {
-  static TfLiteRegistration r = {/* init */ nullptr,
-                                 /* free */ nullptr, concatenation::Prepare,
-                                 concatenation::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = concatenation::Prepare;
+  r.invoke = concatenation::Eval;
   return &r;
 }
 

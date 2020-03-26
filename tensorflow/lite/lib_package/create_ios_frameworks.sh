@@ -45,7 +45,7 @@ if [ $USE_GPU_DELEGATE == "true" ] ; then
   for filename in metal_delegate.h libmetal_delegate.a ; do
     if [[ ! -f "${TFLITE_DIR}/delegates/gpu/${filename}" ]] ; then
       echo "File ${TFLITE_DIR}/delegates/gpu/${filename} doesn't exist."
-      echo "It's requried for building TFLite Framework with GPU. Aborting."
+      echo "It's required for building TFLite Framework with GPU. Aborting."
       exit 1
     fi
   done

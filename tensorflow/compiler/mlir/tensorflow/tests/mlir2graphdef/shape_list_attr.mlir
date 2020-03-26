@@ -27,6 +27,9 @@
 
 
 func @main() {
-  %0:3 = "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4x?xf32>, tensor<*xi16>)
+  tf_executor.graph {
+    %0:4 = tf_executor.island wraps "tf.InfeedDequeueTuple"() : () -> (tensor<3xi32>, tensor<4x?xf32>, tensor<*xi16>)
+    tf_executor.fetch
+  }
   return
 }

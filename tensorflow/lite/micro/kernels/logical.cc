@@ -68,17 +68,16 @@ TfLiteStatus LogicalAndEval(TfLiteContext* context, TfLiteNode* node) {
 TfLiteRegistration* Register_LOGICAL_OR() {
   // Init, Free, Prepare, Eval are satisfying the Interface required by
   // TfLiteRegistration.
-  static TfLiteRegistration r = {/* init */ nullptr, /* free */ nullptr,
-                                 /* prepare */ nullptr, logical::LogicalOrEval};
+  static TfLiteRegistration r = {};
+  r.invoke = logical::LogicalOrEval;
   return &r;
 }
 
 TfLiteRegistration* Register_LOGICAL_AND() {
   // Init, Free, Prepare, Eval are satisfying the Interface required by
   // TfLiteRegistration.
-  static TfLiteRegistration r = {/* init */ nullptr, /* free */ nullptr,
-                                 /* prepare */ nullptr,
-                                 logical::LogicalAndEval};
+  static TfLiteRegistration r = {};
+  r.invoke = logical::LogicalAndEval;
   return &r;
 }
 

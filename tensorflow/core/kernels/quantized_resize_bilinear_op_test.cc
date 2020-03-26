@@ -395,7 +395,7 @@ void RunBenchmarkResizeBilinearTwoDims() {
 }  // namespace tensorflow
 
 #define RUN_TEST(t) \
-  TEST(QuantizationResizeBilenarTest, t) { tensorflow::t(); }
+  TEST(QuantizationResizeBilinearTest, t) { tensorflow::t(); }
 
 RUN_TEST(TestResizeBilinearOneDim);
 RUN_TEST(TestResizeBilinearTwoDims);
@@ -407,7 +407,7 @@ RUN_TEST(RunBenchmarkResizeBilinearTwoDims);
 #endif  // __ANDROID__
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
+  // On Linux, add: absl::SetFlag(&FLAGS_logtostderr, true);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

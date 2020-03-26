@@ -25,7 +25,6 @@ namespace micro {
 namespace reshape {
 
 constexpr int kInputTensor = 0;
-constexpr int kShapeTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
@@ -70,18 +69,20 @@ TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumInputs(node) == 1 || NumInputs(node) == 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, ReshapeOutput(context, node), kTfLiteOk);
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  if (ReshapeOutput(context, node) != kTfLiteOk) {
-    return kTfLiteError;
-  }
 
-  for (int i = 0; i < input->bytes; ++i) {
-    output->data.raw[i] = input->data.raw[i];
+  // Do nothing for in-place reshape.
+  if (input->data.raw != output->data.raw) {
+    // Otherwise perform reshape with copy.
+    for (size_t i = 0; i < input->bytes; ++i) {
+      output->data.raw[i] = input->data.raw[i];
+    }
   }
   return kTfLiteOk;
 }
@@ -89,8 +90,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace reshape
 
 TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {nullptr, nullptr, reshape::Prepare,
-                                 reshape::Eval};
+  static TfLiteRegistration r = {};
+  r.prepare = reshape::Prepare;
+  r.invoke = reshape::Eval;
   return &r;
 }
 

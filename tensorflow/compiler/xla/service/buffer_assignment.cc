@@ -1352,11 +1352,14 @@ Status BufferAssigner::AssignPresetBuffers(
   absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*,
                       LogicalBuffer::Color::Hasher>
       preset_allocations;
-  for (auto& color_and_size : preset_assignments_->sizes()) {
-    LogicalBuffer::Color color(color_and_size.first);
+  for (auto& color_and_info : preset_assignments_->assignment_informations()) {
+    LogicalBuffer::Color color(color_and_info.first);
     auto inserted = preset_allocations.emplace(
-        color, assignment->NewEmptyAllocation(color_and_size.second, color));
+        color,
+        assignment->NewEmptyAllocation(color_and_info.second.size, color));
     BufferAllocation* inserted_allocation = inserted.first->second;
+    inserted_allocation->AddHeapTrace(
+        color_and_info.second.heap_simulator_trace);
     VLOG(3) << "Created preset buffer allocation "
             << inserted_allocation->index()
             << ", color: " << inserted_allocation->color()

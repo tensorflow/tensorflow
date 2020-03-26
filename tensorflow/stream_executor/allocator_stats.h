@@ -51,7 +51,7 @@ struct AllocatorStats {
         bytes_reserved(0),
         peak_bytes_reserved(0) {}
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 }  // namespace stream_executor

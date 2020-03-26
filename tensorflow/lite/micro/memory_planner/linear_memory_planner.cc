@@ -25,7 +25,8 @@ TfLiteStatus LinearMemoryPlanner::AddBuffer(
     tflite::ErrorReporter* error_reporter, int size, int first_time_used,
     int last_time_used) {
   if (current_buffer_count_ >= kMaxBufferCount) {
-    error_reporter->Report("Too many buffers (max is %d)", kMaxBufferCount);
+    TF_LITE_REPORT_ERROR(error_reporter, "Too many buffers (max is %d)",
+                         kMaxBufferCount);
     return kTfLiteError;
   }
   buffer_offsets_[current_buffer_count_] = next_free_offset_;
@@ -34,15 +35,16 @@ TfLiteStatus LinearMemoryPlanner::AddBuffer(
   return kTfLiteOk;
 }
 
-int LinearMemoryPlanner::GetMaximumMemorySize() { return next_free_offset_; }
+size_t LinearMemoryPlanner::GetMaximumMemorySize() { return next_free_offset_; }
 
 int LinearMemoryPlanner::GetBufferCount() { return current_buffer_count_; }
 
 TfLiteStatus LinearMemoryPlanner::GetOffsetForBuffer(
     tflite::ErrorReporter* error_reporter, int buffer_index, int* offset) {
   if ((buffer_index < 0) || (buffer_index >= current_buffer_count_)) {
-    error_reporter->Report("buffer index %d is outside range 0 to %d",
-                           buffer_index, current_buffer_count_);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "buffer index %d is outside range 0 to %d",
+                         buffer_index, current_buffer_count_);
     return kTfLiteError;
   }
   *offset = buffer_offsets_[buffer_index];

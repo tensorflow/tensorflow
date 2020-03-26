@@ -218,15 +218,30 @@ class LiteralUtil {
   // recursively converts its elements.
   static Literal ConvertBF16ToF32(const LiteralSlice& bf16_literal);
 
+  // If the given literal's data type is bfloat16, converts it to a double
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertBF16ToF64(const LiteralSlice& bf16_literal);
+
   // If the given literal's data type is float, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertF32ToBF16(const LiteralSlice& f32_literal);
 
+  // If the given literal's data type is float, converts it to a double
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertF32ToF64(const LiteralSlice& f32_literal);
+
   // If the given literal's data type is double, converts it to a bfloat16
   // literal; otherwise, returns a copy of it. If the literal is a tuple,
   // recursively converts its elements.
   static Literal ConvertF64ToBF16(const LiteralSlice& f64_literal);
+
+  // If the given literal's data type is double, converts it to a bfloat16
+  // literal; otherwise, returns a copy of it. If the literal is a tuple,
+  // recursively converts its elements.
+  static Literal ConvertF64ToF32(const LiteralSlice& f64_literal);
 
   // Creates a literal with a new shape with the given new dimensions using the
   // data in the given input literal. For reshaping purposes the (flat) data

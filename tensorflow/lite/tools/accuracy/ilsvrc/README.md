@@ -159,7 +159,6 @@ adb shell /data/local/tmp/imagenet_accuracy_eval \
 
 ```
 bazel run -c opt \
-  --cxxopt='--std=c++11' \
   -- \
   //tensorflow/lite/tools/accuracy/ilsvrc:imagenet_accuracy_eval \
   --model_file=mobilenet_quant_v1_224.tflite \

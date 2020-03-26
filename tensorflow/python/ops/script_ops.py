@@ -70,7 +70,7 @@ def _maybe_copy_to_context_device(tensor, device_name):
 class EagerFunc(object):
   """A wrapper for a function owned by an EagerPyFunc."""
 
-  def __init__(self, func, Tout, is_grad_func):
+  def __init__(self, func, Tout, is_grad_func, use_tape_cache=True):
     """Constructs an EagerFunc.
 
     Args:
@@ -79,10 +79,12 @@ class EagerFunc(object):
         None.
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
+      use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
     """
     self._func = func
     self._out_dtypes = Tout
     self._is_grad_func = is_grad_func
+    self._use_tape_cache = use_tape_cache
 
   def _convert(self, value, dtype):
     """Converts `value` to a tensor of type `dtype`, with error checking.
@@ -93,7 +95,7 @@ class EagerFunc(object):
 
     Returns:
       A tensor of type `dtype`, or a zeros tensor if value is None and
-      this function is in fact a grdient function.
+      this function is in fact a gradient function.
 
     Raises:
       RuntimeError: if `value` is a variable.
@@ -108,7 +110,7 @@ class EagerFunc(object):
           "question: %s" % value)
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
-      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # both Tensors and Python Nones. Unfortunately this breaks the
       # OpKernel, so for now we replace None objects with zeros, which is
       # mathematically correct but will prevent short-circuiting gradient
       # computations.
@@ -146,7 +148,8 @@ class EagerFunc(object):
         else:
           outputs = _maybe_copy_to_context_device(
               self._convert(ret, dtype=self._out_dtypes[0]), device_name)
-    tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
+    if self._use_tape_cache:
+      tape_cache[compat.as_bytes(token)] = (tape, args, outputs)
     return outputs
 
 
@@ -276,7 +279,8 @@ def _internal_py_func(func,
                       stateful=None,
                       eager=False,
                       is_grad_func=False,
-                      name=None):
+                      name=None,
+                      use_tape_cache=True):
   """See documentation for py_func and eager_py_func."""
   if not callable(func):
     raise ValueError("Expected func to be callable, got func of type {}".format(
@@ -292,7 +296,7 @@ def _internal_py_func(func,
     Tout = [Tout]
 
   if eager:
-    func = EagerFunc(func, Tout, is_grad_func)
+    func = EagerFunc(func, Tout, is_grad_func, use_tape_cache=use_tape_cache)
 
   # Tying the registered function's lifetime with the current default graph is
   # not reliable. For example, Estimator-based binaries may switch graphs in
@@ -367,6 +371,35 @@ def _EagerPyFuncGrad(op, *dy):
         Tout=[tensor.dtype for tensor in op.inputs],
         eager=True,
         is_grad_func=True)
+
+
+# NOTE(lithuak): this function as a layer of indirection was added with one
+# specific purpose: as a workaround for github issue #35084.
+# It does all the same as `eager_py_func` used to do with one difference:
+# it can be used to instruct underlying EagerFunc not to use `tape_cache`
+# to avoid memory leak. When the issue #35084 is fixed - this function should
+# be removed, its body should be moved back to become the body of
+# `eager_py_func` and all the call sites should be reverted to
+# using `eager_py_func` without `use_tape_cache` argument of any value.
+def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  """Wraps a python function into a TensorFlow op that executes it eagerly."""
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          eager=True,
+          name=name,
+          use_tape_cache=use_tape_cache)
+
+  return _internal_py_func(
+      func=func,
+      inp=inp,
+      Tout=Tout,
+      eager=True,
+      name=name,
+      use_tape_cache=use_tape_cache)
 
 
 @tf_export("py_function")
@@ -449,7 +482,8 @@ def eager_py_func(func, inp, Tout, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
     if `func` returns None.
   """
-  return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
+  return _eager_py_func(
+      func=func, inp=inp, Tout=Tout, name=name, use_tape_cache=True)
 
 
 def py_func_common(func, inp, Tout, stateful=True, name=None):
@@ -509,7 +543,7 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
   if context.executing_eagerly():
-    result = func(*[x.numpy() for x in inp])
+    result = func(*[np.array(x) for x in inp])
     result = nest.flatten(result)
 
     result = [x if x is None else ops.convert_to_tensor(x) for x in result]
@@ -517,6 +551,16 @@ def py_func_common(func, inp, Tout, stateful=True, name=None):
       # Mimic the automatic unwrapping in graph-mode py_func
       result, = result
     return result
+
+  if ops.executing_eagerly_outside_functions():
+    with ops.device(context.context().host_address_space()):
+      return _internal_py_func(
+          func=func,
+          inp=inp,
+          Tout=Tout,
+          stateful=stateful,
+          eager=False,
+          name=name)
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
@@ -588,6 +632,8 @@ def numpy_function(func, inp, Tout, name=None):
     through a numpy_function. If you require something that is differentiable,
     please consider using tf.py_function.
 
+  * The resulting function is assumed stateful and will never be optimized.
+
   Args:
     func: A Python function, which accepts `numpy.ndarray` objects as arguments
       and returns a list of `numpy.ndarray` objects (or a single
@@ -603,10 +649,6 @@ def numpy_function(func, inp, Tout, name=None):
     inp: A list of `tf.Tensor` objects.
     Tout: A list or tuple of tensorflow data types or a single tensorflow data
       type if there is only one, indicating what `func` returns.
-    stateful (bool): If True, the function should be considered stateful. If
-      a function is stateless, when given the same input it will return the same
-      output and have no observable side effects. Optimizations such as common
-      subexpression elimination are only performed on stateless operations.
     name: (Optional) A name for the operation.
 
   Returns:

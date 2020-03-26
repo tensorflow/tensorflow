@@ -26,6 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+
 std::string GetKernelOneLayerTextureArray() {
   return R"(
 
@@ -43,12 +44,12 @@ __kernel void main_function(__write_only image2d_array_t dst) {
 // texture, we will get zeroes instead of actual values.
 // The same kernel will work, if we use texture array with more than one layer.
 // With help of this code we can detect this bug.
-Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
-                                                bool* result) {
+absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
+                                                      bool* result) {
   // No bug on Adreno 6xx
   if (env->device().GetInfo().adreno_info.gpu_version >= 600) {
     *result = true;
-    return OkStatus();
+    return absl::OkStatus();
   }
   CLKernel kernel;
   RETURN_IF_ERROR(env->program_cache()->GetOrCreateCLKernel(
@@ -75,12 +76,12 @@ Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
       break;
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status CreateEnvironment(Environment* result, bool shared,
-                         cl_context_properties egl_context,
-                         cl_context_properties egl_display) {
+absl::Status CreateEnvironment(Environment* result, bool shared,
+                               cl_context_properties egl_context,
+                               cl_context_properties egl_display) {
   CLDevice gpu;
   RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));
 
@@ -107,8 +108,9 @@ Status CreateEnvironment(Environment* result, bool shared,
     }
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
+
 }  // namespace
 
 Environment::Environment(CLDevice&& device, CLContext&& context,
@@ -137,7 +139,7 @@ Environment& Environment::operator=(Environment&& environment) {
   return *this;
 }
 
-Status Environment::Init() {
+absl::Status Environment::Init() {
   if (device().IsAdreno() && device().SupportsTextureArray()) {
     bool supports_one_layer;
     RETURN_IF_ERROR(
@@ -146,7 +148,7 @@ Status Environment::Init() {
       GetDevicePtr()->DisableOneLayerTextureArray();
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 void Environment::SetHighPerformance() const {
@@ -199,14 +201,16 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
 bool Environment::IsSupported(TensorStorageType storage_type) const {
   switch (storage_type) {
     case TensorStorageType::TEXTURE_2D:
+      return !device_.IsAMD();
     case TensorStorageType::BUFFER:
       return true;
     case TensorStorageType::TEXTURE_ARRAY:
-      return device_.SupportsTextureArray();
+      return !device_.IsAMD() && device_.SupportsTextureArray();
     case TensorStorageType::IMAGE_BUFFER:
-      return device_.IsAdreno() && device_.SupportsImageBuffer();
+      return (device_.IsAdreno() || device_.IsAMD() || device_.IsNvidia()) &&
+             device_.SupportsImageBuffer();
     case TensorStorageType::TEXTURE_3D:
-      return device_.SupportsImage3D();
+      return !device_.IsAMD() && device_.SupportsImage3D();
     case TensorStorageType::SINGLE_TEXTURE_2D:
       return false;
     case TensorStorageType::UNKNOWN:
@@ -222,15 +226,49 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
     } else {
       return TensorStorageType::TEXTURE_2D;
     }
-  } else if (gpu.IsPowerVR() || gpu.IsNvidia()) {
+  } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
-    return TensorStorageType::BUFFER;
+    const MaliInfo mali_info = gpu.GetInfo().mali_info;
+    if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
+        mali_info.IsValhall()) {
+      return TensorStorageType::TEXTURE_2D;
+    } else {
+      return TensorStorageType::BUFFER;
+    }
+  } else if (gpu.IsNvidia()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  } else if (gpu.IsAMD()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
   }
   return TensorStorageType::BUFFER;
 }
 
-Status CreateEnvironment(Environment* result) {
+TensorStorageType GetStorageTypeWithMinimalMemoryConsumption(
+    const CLDevice& gpu) {
+  if (gpu.IsAdreno()) {
+    if (gpu.IsAdreno3xx() || gpu.IsAdreno4xx()) {
+      return TensorStorageType::BUFFER;
+    } else {
+      return TensorStorageType::IMAGE_BUFFER;
+    }
+  } else if (gpu.IsPowerVR()) {
+    return TensorStorageType::BUFFER;
+  } else if (gpu.IsMali()) {
+    return TensorStorageType::BUFFER;
+  } else if (gpu.IsNvidia()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  } else if (gpu.IsAMD()) {
+    return gpu.SupportsImageBuffer() ? TensorStorageType::IMAGE_BUFFER
+                                     : TensorStorageType::BUFFER;
+  }
+  return TensorStorageType::BUFFER;
+}
+
+absl::Status CreateEnvironment(Environment* result) {
   CLDevice gpu;
   RETURN_IF_ERROR(CreateDefaultGPUDevice(&gpu));
 

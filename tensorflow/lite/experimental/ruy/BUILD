@@ -1,14 +1,27 @@
 # Ruy is not BLAS
 
-# TODO(b/123403203) actually make TFLite use ruy.
-
-load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42", "ruy_visibility")
+load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_avxvnni", "ruy_copts_base", "ruy_copts_skylake", "ruy_copts_sse42")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
-load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
+load(":ruy_test.bzl", "ruy_benchmark", "ruy_test")
 
 package(
-    default_visibility = ["//visibility:private"],
+    default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
+config_setting(
+    name = "armeabi-v7a",
+    values = {"cpu": "armeabi-v7a"},
+)
+
+config_setting(
+    name = "x86_64",
+    values = {"cpu": "k8"},
 )
 
 config_setting(
@@ -205,7 +218,9 @@ cc_test(
     srcs = ["block_map_test.cc"],
     deps = [
         ":block_map",
+        ":cpu_cache_size",
         ":path",
+        ":side_pair",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -234,7 +249,6 @@ cc_library(
         "thread_pool.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":blocking_counter",
         ":check_macros",
@@ -251,7 +265,6 @@ cc_library(
         "detect_arm.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
 )
 
 cc_library(
@@ -263,7 +276,6 @@ cc_library(
         "detect_x86.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":platform",
     ],
@@ -273,10 +285,19 @@ cc_library(
     name = "path",
     hdrs = ["path.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":platform",
         ":size_util",
+    ],
+)
+
+cc_library(
+    name = "cpu_cache_size",
+    hdrs = ["cpu_cache_size.h"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":path",
+        ":platform",
     ],
 )
 
@@ -301,7 +322,6 @@ cc_library(
     name = "matrix",
     hdrs = ["matrix.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [":check_macros"],
 )
 
@@ -309,8 +329,10 @@ cc_library(
     name = "spec",
     hdrs = ["spec.h"],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
-    deps = [":matrix"],
+    deps = [
+        ":cpu_cache_size",
+        ":matrix",
+    ],
 )
 
 cc_library(
@@ -716,7 +738,6 @@ cc_library(
         "context.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":allocator",
         ":check_macros",
@@ -791,7 +812,6 @@ cc_library(
         "ruy_advanced.h",
     ],
     copts = ruy_copts_base(),
-    visibility = ruy_visibility(),
     deps = [
         ":check_macros",
         ":common",
@@ -846,7 +866,7 @@ cc_library(
     # need defines, not copts, because it's controlling a header, test.h
     defines = ruy_test_ext_defines(),
     linkopts = select({
-        "//tensorflow:windows": [],
+        ":windows": [],
         "//conditions:default": ["-lm"],
     }),
     deps = [
@@ -930,32 +950,5 @@ ruy_test(
     deps = [
         "//tensorflow/lite/experimental/ruy:test_lib",
         "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ruy_benchmark_opt_sets(
-    name = "benchmark_opt_set",
-    srcs = ["benchmark.cc"],
-    copts = ruy_copts_base(),
-    lhs_rhs_accum_dst = [
-        ("f32", "f32", "f32", "f32"),
-        ("u8", "u8", "i32", "u8"),
-    ],
-    opt_sets = [
-        "1",
-        "3",
-        "7",
-        "f",
-        "1f",
-        "3f",
-        "7f",
-        "ff",
-        "1ff",
-        "3ff",
-        "7ff",
-    ],
-    deps = [
-        "//tensorflow/lite/experimental/ruy:test_lib",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
     ],
 )

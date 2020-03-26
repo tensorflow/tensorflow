@@ -22,7 +22,6 @@ limitations under the License.
 #include <type_traits>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -177,11 +176,7 @@ template <typename T>
 struct functor_traits<div_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = true,
-#endif  // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -194,11 +189,7 @@ template <typename T>
 struct functor_traits<mul_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_product_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = true,
-#endif  // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -257,11 +248,7 @@ struct functor_traits<
     scalar_left<Tout, Tin, Binary, is_scalar_in_host_memory>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = functor_traits<Binary>::PacketAccess,
-#endif  // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -312,11 +299,7 @@ struct functor_traits<
     scalar_right<Tout, Tin, Binary, is_scalar_in_host_memory>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = functor_traits<Binary>::PacketAccess,
-#endif  // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -458,11 +441,7 @@ struct functor_traits<google_floor_div<Scalar>> {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
            NumTraits<Scalar>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = packet_traits<Scalar>::HasDiv
-#endif
   };
 };
 
@@ -485,12 +464,8 @@ struct functor_traits<google_floor_div_real<Scalar>> {
     Cost = 2 * Eigen::internal::scalar_div_cost<
                    Scalar, packet_traits<Scalar>::HasDiv>::value +
            2 * NumTraits<Scalar>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess =
         packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasFloor
-#endif
   };
 };
 
@@ -609,13 +584,9 @@ struct functor_traits<scalar_round_half_to_even_op<Scalar>> {
   enum {
     Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
                                                : 4 * NumTraits<Scalar>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = packet_traits<Scalar>::HasFloor &&
                    packet_traits<Scalar>::HasAdd &&
                    packet_traits<Scalar>::HasMul,
-#endif
   };
 };
 
@@ -651,11 +622,7 @@ template <typename Scalar, bool IsInteger>
 struct functor_traits<scalar_round_up_op<Scalar, IsInteger>> {
   enum {
     Cost = IsInteger ? 0 : 4 * NumTraits<Scalar>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = IsInteger || packet_traits<Scalar>::HasFloor
-#endif
   };
 };
 
@@ -708,11 +675,7 @@ struct functor_traits<xlogy_op<Scalar>> {
   enum {
     Cost = functor_traits<scalar_log_op<Scalar>>::Cost +
            Eigen::NumTraits<Scalar>::MulCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = functor_traits<scalar_log_op<Scalar>>::PacketAccess
-#endif
   };
 };
 
@@ -778,11 +741,7 @@ struct functor_traits<xdivy_op<Scalar>> {
         Eigen::NumTraits<Scalar>::AddCost +
         Eigen::internal::scalar_div_cost<Scalar,
                                          packet_traits<Scalar>::HasDiv>::value,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = packet_traits<Scalar>::HasDiv
-#endif
   };
 };
 
@@ -808,11 +767,7 @@ template <typename T>
 struct functor_traits<scalar_erfinv_op<T>> {
   enum {
     Cost = functor_traits<scalar_ndtri_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
     PacketAccess = packet_traits<T>::HasNdtri,
-#endif
   };
 };
 

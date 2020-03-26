@@ -26,22 +26,6 @@ const char kShardingAttribute[] = "_XlaSharding";
 }  // namespace
 
 namespace {
-xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
-    const NodeDef& node_def) {
-  if (!HasNodeAttr(node_def, kShardingAttribute)) {
-    return absl::optional<xla::OpSharding>();
-  }
-  string value;
-  xla::OpSharding sharding;
-  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
-  if (!sharding.ParseFromString(value)) {
-    return xla::InvalidArgument(
-        "Experimental _XlaSharding attribute was not a valid encoded "
-        "xla::OpSharding proto.");
-  }
-  return absl::optional<xla::OpSharding>(sharding);
-}
-
 Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
   return errors::InvalidArgument(
       "Invalid replicated core id: ", core,
@@ -107,4 +91,19 @@ void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   }
 }
 
+xla::StatusOr<absl::optional<xla::OpSharding>> GetShardingFromNodeDef(
+    const NodeDef& node_def) {
+  if (!HasNodeAttr(node_def, kShardingAttribute)) {
+    return absl::optional<xla::OpSharding>();
+  }
+  string value;
+  xla::OpSharding sharding;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  if (!sharding.ParseFromString(value)) {
+    return xla::InvalidArgument(
+        "Experimental _XlaSharding attribute was not a valid encoded "
+        "xla::OpSharding proto.");
+  }
+  return absl::optional<xla::OpSharding>(sharding);
+}
 }  // namespace tensorflow

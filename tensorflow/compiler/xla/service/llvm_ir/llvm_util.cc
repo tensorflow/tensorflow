@@ -580,7 +580,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
   string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
-  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+  DumpToFileInDirOrStdout(hlo_module, "", absl::StrCat(suffix, ".ll"),
                           DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
@@ -588,7 +588,7 @@ void DumpIrIfEnabled(const HloModule& hlo_module,
   // this if we're dumping to stdout; there's no point in duplicating everything
   // when writing to the terminal.
   if (!DumpingToStdout(debug_opts)) {
-    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+    DumpToFileInDir(hlo_module, "", absl::StrCat(suffix, "-noconst.ll"),
                     DumpModuleToString(*DropConstantInitializers(llvm_module)));
   }
 }

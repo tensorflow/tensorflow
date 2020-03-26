@@ -490,8 +490,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
       RuntimeError: If executed in graph mode or outside of function building
       mode.
     """
-    if (not context.executing_eagerly() and
-        not ops.get_default_graph()._building_function):  # pylint: disable=protected-access
+    if not context.executing_eagerly() and not ops.inside_function():
       raise RuntimeError("OwnedMultiDeviceIterator is only supported inside of "
                          "tf.function or when eager execution is enabled.")
     if devices is None:

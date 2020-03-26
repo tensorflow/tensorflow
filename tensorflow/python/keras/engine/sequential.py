@@ -23,7 +23,6 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
-from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
@@ -36,74 +35,88 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.models.Sequential', 'keras.Sequential')
+SINGLE_LAYER_OUTPUT_ERROR_MSG = ('All layers in a Sequential model should have '
+                                 'a single output tensor. For multi-output '
+                                 'layers, use the functional API.')
+
+
+@keras_export('keras.Sequential', 'keras.models.Sequential')
 class Sequential(training.Model):
-  """Linear stack of layers.
+  """`Sequential` groups a linear stack of layers into a `tf.keras.Model`.
 
-  Arguments:
-      layers: list of layers to add to the model.
+  `Sequential` provides training and inference features on this model.
 
-  Example:
+  Examples:
+
+  >>> # Optionally, the first layer can receive an `input_shape` argument:
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8, input_shape=(16,)))
+  >>> # Afterwards, we do automatic shape inference:
+  >>> model.add(tf.keras.layers.Dense(4))
+
+  >>> # This is identical to the following:
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8, input_dim=16))
+
+  >>> # And to the following:
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8, batch_input_shape=(None, 16)))
+
+  >>> # Note that you can also omit the `input_shape` argument.
+  >>> # In that case the model doesn't have any weights until the first call
+  >>> # to a training/evaluation method (since it isn't yet built):
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8))
+  >>> model.add(tf.keras.layers.Dense(4))
+  >>> # model.weights not created yet
+
+  >>> # Whereas if you specify the input shape, the model gets built
+  >>> # continuously as you are adding layers:
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8, input_shape=(16,)))
+  >>> model.add(tf.keras.layers.Dense(4))
+  >>> len(model.weights)
+  4
+
+  >>> # When using the delayed-build pattern (no input shape specified), you can
+  >>> # choose to manually build your model by calling
+  >>> # `build(batch_input_shape)`:
+  >>> model = tf.keras.Sequential()
+  >>> model.add(tf.keras.layers.Dense(8))
+  >>> model.add(tf.keras.layers.Dense(4))
+  >>> model.build((None, 16))
+  >>> len(model.weights)
+  4
 
   ```python
-  # Optionally, the first layer can receive an `input_shape` argument:
-  model = Sequential()
-  model.add(Dense(32, input_shape=(500,)))
-  # Afterwards, we do automatic shape inference:
-  model.add(Dense(32))
-
-  # This is identical to the following:
-  model = Sequential()
-  model.add(Dense(32, input_dim=500))
-
-  # And to the following:
-  model = Sequential()
-  model.add(Dense(32, batch_input_shape=(None, 500)))
-
-  # Note that you can also omit the `input_shape` argument:
-  # In that case the model gets built the first time you call `fit` (or other
-  # training and evaluation methods).
-  model = Sequential()
-  model.add(Dense(32))
-  model.add(Dense(32))
-  model.compile(optimizer=optimizer, loss=loss)
+  # Note that when using the delayed-build pattern (no input shape specified),
+  # the model gets built the first time you call `fit` (or other training and
+  # evaluation methods).
+  model = tf.keras.Sequential()
+  model.add(tf.keras.layers.Dense(8))
+  model.add(tf.keras.layers.Dense(1))
+  model.compile(optimizer='sgd', loss='mse')
   # This builds the model for the first time:
   model.fit(x, y, batch_size=32, epochs=10)
-
-  # Note that when using this delayed-build pattern (no input shape specified),
-  # the model doesn't have any weights until the first call
-  # to a training/evaluation method (since it isn't yet built):
-  model = Sequential()
-  model.add(Dense(32))
-  model.add(Dense(32))
-  model.weights  # returns []
-
-  # Whereas if you specify the input shape, the model gets built continuously
-  # as you are adding layers:
-  model = Sequential()
-  model.add(Dense(32, input_shape=(500,)))
-  model.add(Dense(32))
-  model.weights  # returns list of length 4
-
-  # When using the delayed-build pattern (no input shape specified), you can
-  # choose to manually build your model by calling `build(batch_input_shape)`:
-  model = Sequential()
-  model.add(Dense(32))
-  model.add(Dense(32))
-  model.build((None, 500))
-  model.weights  # returns list of length 4
   ```
   """
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
+    """Creates a `Sequential` model instance.
+
+    Args:
+      layers: Optional list of layers to add to the model.
+      name: Optional name for the model.
+    """
     super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
-    self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
+    self._auto_track_sub_layers = False
 
     self._layer_call_argspecs = {}
 
@@ -188,10 +201,7 @@ class Sequential(training.Model):
       if set_inputs:
         # If an input layer (placeholder) is available.
         if len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) != 1:
-          raise ValueError('All layers in a Sequential model '
-                           'should have a single output tensor. '
-                           'For multi-output layers, '
-                           'use the functional API.')
+          raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
         self.outputs = [
             nest.flatten(layer._inbound_nodes[-1].output_tensors)[0]
         ]
@@ -202,10 +212,7 @@ class Sequential(training.Model):
       # refresh its output.
       output_tensor = layer(self.outputs[0])
       if len(nest.flatten(output_tensor)) != 1:
-        raise TypeError('All layers in a Sequential model '
-                        'should have a single output tensor. '
-                        'For multi-output layers, '
-                        'use the functional API.')
+        raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       self.outputs = [output_tensor]
 
     if self.outputs:
@@ -247,7 +254,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer_utils.default
+  @generic_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -260,6 +267,10 @@ class Sequential(training.Model):
     self.built = True
 
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
+    if self._build_input_shape is None:
+      input_shapes = nest.map_structure(_get_shape_tuple, inputs)
+      self._build_input_shape = input_shapes
+
     if self._is_graph_network:
       if not self.built:
         self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -279,6 +290,8 @@ class Sequential(training.Model):
 
       outputs = layer(inputs, **kwargs)
 
+      if len(nest.flatten(outputs)) != 1:
+        raise ValueError(SINGLE_LAYER_OUTPUT_ERROR_MSG)
       # `outputs` will be the inputs to the next layer.
       inputs = outputs
       mask = outputs._keras_mask
@@ -298,6 +311,7 @@ class Sequential(training.Model):
     outputs = self.call(inputs, mask=mask)
     return outputs._keras_mask
 
+  @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.
 
@@ -320,6 +334,14 @@ class Sequential(training.Model):
                       '(like softmax or sigmoid would).')
     return preds
 
+  @deprecated('2021-01-01',
+              'Please use instead:'
+              '* `np.argmax(model.predict(x), axis=-1)`, '
+              '  if your model does multi-class classification '
+              '  (e.g. if it uses a `softmax` last-layer activation).'
+              '* `(model.predict(x) > 0.5).astype("int32")`, '
+              '  if your model does binary classification '
+              '  (e.g. if it uses a `sigmoid` last-layer activation).')
   def predict_classes(self, x, batch_size=32, verbose=0):
     """Generate class predictions for the input samples.
 
@@ -356,7 +378,7 @@ class Sequential(training.Model):
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)
     }
-    if self._build_input_shape:
+    if self._build_input_shape is not None:
       config['build_input_shape'] = self._build_input_shape
     return config
 
@@ -375,7 +397,8 @@ class Sequential(training.Model):
       layer = layer_module.deserialize(layer_config,
                                        custom_objects=custom_objects)
       model.add(layer)
-    if not model.inputs and build_input_shape:
+    if (not model.inputs and build_input_shape and
+        isinstance(build_input_shape, (tuple, list))):
       model.build(build_input_shape)
     return model
 
@@ -388,3 +411,12 @@ class Sequential(training.Model):
   @property
   def _trackable_saved_model_saver(self):
     return model_serialization.SequentialSavedModelSaver(self)
+
+
+def _get_shape_tuple(t):
+  if hasattr(t, 'shape'):
+    shape = t.shape
+    if shape.rank is not None:
+      return tuple(shape.as_list())
+    return None
+  return None

@@ -151,6 +151,7 @@ class BenchmarkListeners : public BenchmarkListener {
 
 // Benchmark listener that just logs the results of benchmark run.
 class BenchmarkLoggingListener : public BenchmarkListener {
+ public:
   void OnBenchmarkEnd(const BenchmarkResults& results) override;
 };
 

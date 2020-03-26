@@ -57,7 +57,18 @@ def save_model(model,
                options=None):
   """Saves a model as a TensorFlow SavedModel or HDF5 file.
 
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> model.save('/tmp/model')
+  >>> loaded_model = tf.keras.models.load_model('/tmp/model')
+  >>> x = tf.random.uniform((10, 3))
+  >>> assert np.allclose(model.predict(x), loaded_model.predict(x))
+
   The saved model contains:
+
       - the model's configuration (topology)
       - the model's weights
       - the model's optimizer's state (if any)
@@ -131,6 +142,16 @@ def save_model(model,
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> model.save('/tmp/model')
+  >>> loaded_model = tf.keras.models.load_model('/tmp/model')
+  >>> x = tf.random.uniform((10, 3))
+  >>> assert np.allclose(model.predict(x), loaded_model.predict(x))
+
   Note that the model weights may have different scoped names after being
   loaded. Scoped names include the model/layer names, such as
   "dense_1/kernel:0"`. It is recommended that you use the layer properties to
@@ -147,12 +168,11 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
           after loading.
 
   Returns:
-      A Keras model instance. If an optimizer was found
-      as part of the saved model, the model is already
-      compiled. Otherwise, the model is uncompiled and
-      a warning will be displayed. When `compile` is set
-      to False, the compilation is omitted without any
-      warning.
+      A Keras model instance. If the original model was compiled, and saved with
+      the optimizer, then the returned model will be compiled. Otherwise, the
+      model will be left uncompiled. In the case that an uncompiled model is
+      returned, a warning is displayed if the `compile` argument is set to
+      `True`.
 
   Raises:
       ImportError: if loading from an hdf5 file and h5py is not available.

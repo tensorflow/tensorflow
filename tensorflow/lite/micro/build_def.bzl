@@ -7,6 +7,9 @@ load(
     _flatbuffer_cc_library = "flatbuffer_cc_library",
 )
 
+def micro_copts():
+    return []
+
 def cc_library(**kwargs):
     kwargs.pop("build_for_embedded", False)
     _cc_library(**kwargs)

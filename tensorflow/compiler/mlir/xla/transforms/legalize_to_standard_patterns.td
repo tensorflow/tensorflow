@@ -16,7 +16,7 @@ limitations under the License.
 // This is the legalization pattern definition file for XLA to StandardOps.
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//

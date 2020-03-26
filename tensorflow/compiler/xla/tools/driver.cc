@@ -34,6 +34,8 @@ limitations under the License.
 static constexpr int kSeed = 42;
 static constexpr int kUpperBound = 100;
 static constexpr int kLowerBound = -100;
+static constexpr double kLowerBoundFP = -0.1;
+static constexpr double kUpperBoundFP = 0.1;
 static const char* const kUsageString = R"(
 Driver for executing an HLO reproducer in object form in order to let OSS
 users reproduce the miscompiles.
@@ -195,20 +197,36 @@ std::string TupleShapeToString(TupleShape shape) {
 
 // Information about the buffer assignment.
 struct BufferAssignment {
-  // Mapping from buffer indexes (0-based) to buffer size (in bytes).
+  // Mapping from allocation index to buffer size (in bytes).
   std::vector<int> buffers_size;
 
-  // Sparse mapping for shapes.
+  // Mapping from allocation index to its shape.
   std::map<int, TupleShape> buffers_shape;
 
-  // Indexes of buffers which are input parameters.
-  std::vector<int> params_idx;
+  // Mapping from param index to allocation index.
+  std::map<int, int> param_to_alloc_idx;
 
   // Index of the output parameter.
   int output_idx = -1;
 };
 
-// RAII table for the given assignment.
+std::string BufferAssignmentToString(const BufferAssignment& assignment) {
+  std::ostringstream out;
+  for (const auto& p : assignment.param_to_alloc_idx) {
+    int param_idx = p.first;
+    int allocation_idx = p.second;
+    out << "Param: " << param_idx << " (allocation " << allocation_idx << "): ";
+    auto p2 = assignment.buffers_shape.find(allocation_idx);
+    Check(p2 != assignment.buffers_shape.end(),
+          "Shape not found for parameter: " + std::to_string(param_idx));
+    out << TupleShapeToString(p2->second)
+        << ", size = " << assignment.buffers_size[allocation_idx] << "\n";
+  }
+  return out.str();
+}
+
+// RAII table for the given assignment: mapping from a allocation idx to the
+// actual allocation.
 class BufferTable {
  public:
   explicit BufferTable(BufferAssignment assignment) : assignment_(assignment) {
@@ -260,7 +278,8 @@ BufferAssignment ParseBufferAssignment(const std::string& fname) {
   std::ifstream infile(fname);
   std::string line;
   while (std::getline(infile, line)) {
-    std::regex allocation_line_r("allocation ([0-9]): .+, size ([0-9]+), (.+)");
+    std::regex allocation_line_r(
+        "allocation ([0-9]+): .+, size ([0-9]+), (.+)");
     std::smatch match;
     if (std::regex_search(line, match, allocation_line_r)) {
       Log("Matched allocation description: " + line);
@@ -281,7 +300,7 @@ BufferAssignment ParseBufferAssignment(const std::string& fname) {
         std::string output_shape = output_match[1];
         Log("output shape = " + output_shape);
         TupleShape shape = TupleShapeFromString(output_shape);
-        assignment.buffers_shape[assignment.output_idx] = shape;
+        assignment.buffers_shape[allocation_idx] = shape;
         Log("parsed output shape = " + TupleShapeToString(shape));
       }
 
@@ -290,12 +309,12 @@ BufferAssignment ParseBufferAssignment(const std::string& fname) {
       if (std::regex_search(postfix, param_match, parameter_r)) {
         Log("Matched parameter description: " + postfix);
         int param_idx = std::stoi(param_match[1]);
-        assignment.params_idx.push_back(param_idx);
-
+        assignment.param_to_alloc_idx[param_idx] = allocation_idx;
         std::string param_shape = param_match[2];
         TupleShape shape = TupleShapeFromString(param_shape);
         assignment.buffers_shape[allocation_idx] = shape;
-        Log("parsed parameter shape = " + TupleShapeToString(shape));
+        Log("parsed parameter shape for param " + std::to_string(param_idx) +
+            " = " + TupleShapeToString(shape));
       }
     }
   }
@@ -326,7 +345,7 @@ template <typename T,
 void FillFloatT(void* buffer, int num_elements) {
   std::mt19937 generator(kSeed);
   T* casted = static_cast<T*>(buffer);
-  std::uniform_real_distribution<T> distr(kLowerBound, kUpperBound);
+  std::uniform_real_distribution<T> distr(kLowerBoundFP, kUpperBoundFP);
   for (int i = 0; i < num_elements; i++) {
     casted[i] = distr(generator);
   }
@@ -335,7 +354,8 @@ void FillFloatT(void* buffer, int num_elements) {
 void Fill(void* buffer, const ArrayShape& shape) {
   int num_elements = GetNumElements(shape);
   Log("Number of elements = " + std::to_string(num_elements));
-  Log("Shape type = " + ToString(shape.type));
+  Log("Shape type = " + ToString(shape.type) +
+      ", shape = " + ArrayShapeToString(shape));
   switch (shape.type) {
     case S16:
       return FillIntT<short>(buffer, num_elements);  // NOLINT
@@ -440,22 +460,27 @@ int main(int argc, char** argv) {
   }
 
   BufferAssignment assignment = ParseBufferAssignment(arg);
+  Log("Buffer assignment: \n" + BufferAssignmentToString(assignment));
   BufferTable table(assignment);
 
   // Fill out input parameters.
-  for (int param_idx : assignment.params_idx) {
-    TupleShape tuple_shape = assignment.buffers_shape[param_idx];
-    Check(tuple_shape.elements.size() == 1, "Parameters can not be tuples");
+  for (const auto& p : assignment.param_to_alloc_idx) {
+    int param_idx = p.first;
+    int allocation_idx = p.second;
+    TupleShape tuple_shape = assignment.buffers_shape[allocation_idx];
+    Check(tuple_shape.elements.size() == 1,
+          "Parameters can not be tuples, got shape: " +
+              TupleShapeToString(tuple_shape));
     ArrayShape shape = tuple_shape.elements[0];
     Check(GetNumElements(shape) ==
-              assignment.buffers_size[param_idx] / ByteSize(shape.type),
+              assignment.buffers_size[allocation_idx] / ByteSize(shape.type),
           "Unexpected number of elements");
-    Fill(table.AsPtr()[param_idx], shape);
+    Fill(table.AsPtr()[allocation_idx], shape);
 
     if (IsVerbose()) {
       std::cout << "Filled parameter buffer for param " << param_idx << ": "
                 << std::endl;
-      Display(table.AsPtr()[param_idx], shape);
+      Display(table.AsPtr()[allocation_idx], shape);
     }
   }
 

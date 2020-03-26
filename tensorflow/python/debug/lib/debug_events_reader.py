@@ -399,7 +399,10 @@ class DebuggedGraph(object):
       graph_op_creation_digest: A GraphOpCreationDigest data object describing
         the creation of an op inside this graph.
     """
-    assert graph_op_creation_digest.op_name not in self._op_by_name
+    if graph_op_creation_digest.op_name in self._op_by_name:
+      raise ValueError(
+          "Duplicate op name: %s (op type: %s)" %
+          (graph_op_creation_digest.op_name, graph_op_creation_digest.op_type))
     self._op_by_name[
         graph_op_creation_digest.op_name] = graph_op_creation_digest
 
@@ -683,6 +686,42 @@ def _parse_tensor_value(tensor_proto, return_list=False):
     return None
 
 
+def _execution_digest_from_debug_event_proto(debug_event, offset):
+  """Convert a DebugEvent proto into an ExecutionDigest data object."""
+  return ExecutionDigest(
+      debug_event.wall_time,
+      offset,
+      debug_event.execution.op_type,
+      output_tensor_device_ids=(
+          debug_event.execution.output_tensor_device_ids or None))
+
+
+def _execution_from_debug_event_proto(debug_event, offset):
+  """Convert a DebugEvent proto into an Execution data object."""
+  execution_proto = debug_event.execution
+
+  debug_tensor_values = None
+  if (execution_proto.tensor_debug_mode ==
+      debug_event_pb2.TensorDebugMode.FULL_TENSOR):
+    pass  # TODO(cais): Build tensor store.
+  elif (execution_proto.tensor_debug_mode !=
+        debug_event_pb2.TensorDebugMode.NO_TENSOR):
+    debug_tensor_values = []
+    for tensor_proto in execution_proto.tensor_protos:
+      # TODO(cais): Refactor into a helper method.
+      debug_tensor_values.append(
+          _parse_tensor_value(tensor_proto, return_list=True))
+  return Execution(
+      _execution_digest_from_debug_event_proto(debug_event, offset),
+      execution_proto.code_location.host_name,
+      tuple(execution_proto.code_location.stack_frame_ids),
+      execution_proto.tensor_debug_mode,
+      graph_id=execution_proto.graph_id,
+      input_tensor_ids=tuple(execution_proto.input_tensor_ids),
+      output_tensor_ids=tuple(execution_proto.output_tensor_ids),
+      debug_tensor_values=_tuple_or_none(debug_tensor_values))
+
+
 class DebugDataReader(object):
   """A reader that reads structured debugging data in the tfdbg v2 format.
 
@@ -719,6 +758,11 @@ class DebugDataReader(object):
     self._graph_op_digests = []
     # TODO(cais): Implement pagination for memory constraints.
     self._graph_execution_trace_digests = []
+
+    self._monitors = []
+
+  def _add_monitor(self, monitor):
+    self._monitors.append(monitor)
 
   def _load_metadata(self):
     metadata_iter = self._reader.metadata_iterator()
@@ -799,17 +843,60 @@ class DebugDataReader(object):
     """Incrementally load the .graph_execution_traces file."""
     traces_iter = self._reader.graph_execution_traces_iterator()
     for debug_event, offset in traces_iter:
-      trace_proto = debug_event.graph_execution_trace
-      op_name = trace_proto.op_name
-      op_type = self._lookup_op_type(trace_proto.tfdbg_context_id, op_name)
-      digest = GraphExecutionTraceDigest(
-          debug_event.wall_time,
-          offset,
-          op_type,
-          op_name,
-          trace_proto.output_slot,
-          debug_event.graph_execution_trace.tfdbg_context_id)
-      self._graph_execution_trace_digests.append(digest)
+      self._graph_execution_trace_digests.append(
+          self._graph_execution_trace_digest_from_debug_event_proto(
+              debug_event, offset))
+      if self._monitors:
+        graph_execution_trace = (
+            self._graph_execution_trace_from_debug_event_proto(
+                debug_event, offset))
+        for monitor in self._monitors:
+          monitor.on_graph_execution_trace(
+              len(self._graph_execution_trace_digests) - 1,
+              graph_execution_trace)
+
+  def _graph_execution_trace_digest_from_debug_event_proto(self,
+                                                           debug_event,
+                                                           offset):
+    trace_proto = debug_event.graph_execution_trace
+    op_name = trace_proto.op_name
+    op_type = self._lookup_op_type(trace_proto.tfdbg_context_id, op_name)
+    return GraphExecutionTraceDigest(
+        debug_event.wall_time,
+        offset,
+        op_type,
+        op_name,
+        trace_proto.output_slot,
+        debug_event.graph_execution_trace.tfdbg_context_id)
+
+  def _graph_execution_trace_from_debug_event_proto(self,
+                                                    debug_event,
+                                                    offset):
+    """Convert a DebugEvent proto into a GraphExecutionTrace data object."""
+    trace_proto = debug_event.graph_execution_trace
+    graph_ids = [trace_proto.tfdbg_context_id]
+    # Walk up the chain of outer contexts (graphs), so as to include all of
+    # their IDs
+    while True:
+      graph = self.graph_by_id(graph_ids[0])
+      if graph.outer_graph_id:
+        graph_ids.insert(0, graph.outer_graph_id)
+      else:
+        break
+
+    if (trace_proto.tensor_debug_mode ==
+        debug_event_pb2.TensorDebugMode.FULL_TENSOR):
+      debug_tensor_value = None
+    else:
+      debug_tensor_value = _parse_tensor_value(
+          trace_proto.tensor_proto, return_list=True)
+    return GraphExecutionTrace(
+        self._graph_execution_trace_digest_from_debug_event_proto(
+            debug_event, offset),
+        graph_ids=graph_ids,
+        tensor_debug_mode=trace_proto.tensor_debug_mode,
+        debug_tensor_value=debug_tensor_value,
+        device_name=trace_proto.device_name or None)
 
   def _lookup_op_type(self, graph_id, op_name):
     """Lookup the type of an op by name and the immediately enclosing graph.
@@ -827,12 +914,12 @@ class DebugDataReader(object):
     """Incrementally read the .execution file."""
     execution_iter = self._reader.execution_iterator()
     for debug_event, offset in execution_iter:
-      self._execution_digests.append(ExecutionDigest(
-          debug_event.wall_time,
-          offset,
-          debug_event.execution.op_type,
-          output_tensor_device_ids=(
-              debug_event.execution.output_tensor_device_ids or None)))
+      self._execution_digests.append(
+          _execution_digest_from_debug_event_proto(debug_event, offset))
+      if self._monitors:
+        execution = _execution_from_debug_event_proto(debug_event, offset)
+        for monitor in self._monitors:
+          monitor.on_execution(len(self._execution_digests) - 1, execution)
 
   def update(self):
     """Perform incremental read of the file set."""
@@ -966,28 +1053,8 @@ class DebugDataReader(object):
     """Read a detailed Execution object."""
     debug_event = self._reader.read_execution_debug_event(
         execution_digest.offset)
-    execution_proto = debug_event.execution
-
-    debug_tensor_values = None
-    if (execution_proto.tensor_debug_mode ==
-        debug_event_pb2.TensorDebugMode.FULL_TENSOR):
-      pass  # TODO(cais): Build tensor store.
-    elif (execution_proto.tensor_debug_mode !=
-          debug_event_pb2.TensorDebugMode.NO_TENSOR):
-      debug_tensor_values = []
-      for tensor_proto in execution_proto.tensor_protos:
-        # TODO(cais): Refactor into a helper method.
-        debug_tensor_values.append(
-            _parse_tensor_value(tensor_proto, return_list=True))
-    return Execution(
-        execution_digest,
-        execution_proto.code_location.host_name,
-        tuple(execution_proto.code_location.stack_frame_ids),
-        execution_proto.tensor_debug_mode,
-        graph_id=execution_proto.graph_id,
-        input_tensor_ids=tuple(execution_proto.input_tensor_ids),
-        output_tensor_ids=tuple(execution_proto.output_tensor_ids),
-        debug_tensor_values=_tuple_or_none(debug_tensor_values))
+    return _execution_from_debug_event_proto(
+        debug_event, execution_digest.offset)
 
   def read_graph_execution_trace(self, graph_execution_trace_digest):
     """Read the detailed graph execution trace.
@@ -1000,30 +1067,8 @@ class DebugDataReader(object):
     """
     debug_event = self._reader.read_graph_execution_traces_event(
         graph_execution_trace_digest.offset)
-    trace_proto = debug_event.graph_execution_trace
-
-    graph_ids = [trace_proto.tfdbg_context_id]
-    # Exhaust the outer contexts (graphs).
-    while True:
-      graph = self.graph_by_id(graph_ids[0])
-      if graph.outer_graph_id:
-        graph_ids.insert(0, graph.outer_graph_id)
-      else:
-        break
-
-    debug_tensor_value = None
-    if (trace_proto.tensor_debug_mode ==
-        debug_event_pb2.TensorDebugMode.FULL_TENSOR):
-      pass  # TODO(cais): Build tensor store.
-    else:
-      debug_tensor_value = _parse_tensor_value(
-          trace_proto.tensor_proto, return_list=True)
-    return GraphExecutionTrace(
-        graph_execution_trace_digest,
-        graph_ids=graph_ids,
-        tensor_debug_mode=trace_proto.tensor_debug_mode,
-        debug_tensor_value=debug_tensor_value,
-        device_name=trace_proto.device_name or None)
+    return self._graph_execution_trace_from_debug_event_proto(
+        debug_event, graph_execution_trace_digest.offset)
 
   def read_execution_stack_trace(self, execution):
     """Read the stack trace of a given Execution object.

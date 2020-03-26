@@ -28,19 +28,19 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator_range.h"
-#include "mlir/Dialect/StandardOps/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
@@ -115,8 +115,7 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
 
   // Create the new conditional op with tuple inputs.
   SmallVector<Value, 3> operands(op.getOperands());
-  SmallVector<Type, 4> types(op.getResultTypes());
-  auto result_type = builder.getTupleType(types);
+  auto result_type = builder.getTupleType(op.getResultTypes());
   auto conditional = builder.create<xla_hlo::ConditionalOp>(
       loc, result_type, op.cond(), tuple_input, tuple_input);
 
@@ -147,9 +146,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
 
   // Create the new while op with tuple inputs.
   SmallVector<Value, 3> operands(op.getOperands());
-  SmallVector<Type, 4> types(op.getResultTypes());
   auto while_op = builder.create<xla_hlo::WhileOp>(
-      loc, builder.getTupleType(types), tuple_input);
+      loc, builder.getTupleType(op.getResultTypes()), tuple_input);
 
   // Import the regions for both the cond and body. These regions must be
   // updated to tuple the return results together and use the xla hlo return op.

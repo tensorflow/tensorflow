@@ -54,8 +54,22 @@ class XStatsBuilder {
   }
 
   void AddStat(const XStatMetadata& metadata, const XStat& stat) {
-    DCHECK_EQ(metadata.id(), stat.metadata_id());
-    *stats_owner_->add_stats() = stat;
+    XStat* new_stat = stats_owner_->add_stats();
+    *new_stat = stat;
+    new_stat->set_metadata_id(metadata.id());
+  }
+  void AddStat(const XStat& stat) {
+    XStat* new_stat = stats_owner_->add_stats();
+    *new_stat = stat;
+  }
+
+  XStat* FindOrAddMutableStat(int64 metadata_id) {
+    for (auto& stat : *stats_owner_->mutable_stats()) {
+      if (stat.metadata_id() == metadata_id) {
+        return &stat;
+      }
+    }
+    return stats_owner_->add_stats();
   }
 
   void ParseAndAddStatValue(const XStatMetadata& metadata,
@@ -92,6 +106,9 @@ class XEventBuilder : public XStatsBuilder<XEvent> {
   XEventBuilder(const XLine* line, XEvent* event)
       : XStatsBuilder<XEvent>(event), line_(line), event_(event) {}
 
+  int64 OffsetPs() const { return event_->offset_ps(); }
+  int64 MetadataId() const { return event_->metadata_id(); }
+
   void SetOffsetPs(int64 offset_ps) { event_->set_offset_ps(offset_ps); }
 
   void SetOffsetNs(int64 offset_ns) { SetOffsetPs(NanosToPicos(offset_ns)); }
@@ -126,7 +143,10 @@ class XLineBuilder {
  public:
   explicit XLineBuilder(XLine* line) : line_(line) {}
 
+  int64 Id() { return line_->id(); }
   void SetId(int64 id) { line_->set_id(id); }
+
+  int64 NumEvents() { return line_->events_size(); }
 
   void SetName(absl::string_view name) { line_->set_name(string(name)); }
 
@@ -134,9 +154,15 @@ class XLineBuilder {
     if (line_->name().empty()) SetName(name);
   }
 
+  int64 TimestampNs() { return line_->timestamp_ns(); }
+  // This will set the line start timestamp.
+  // WARNING: The offset_ps of existing events will not be altered.
   void SetTimestampNs(int64 timestamp_ns) {
     line_->set_timestamp_ns(timestamp_ns);
   }
+  // This will set the line start timestamp to specific time, and adjust
+  // the offset_ps of all existing events.
+  void SetTimestampNsAndAdjustEventOffsets(int64 timestamp_ns);
 
   void SetDurationPs(int64 duration_ps) { line_->set_duration_ps(duration_ps); }
 
@@ -144,7 +170,14 @@ class XLineBuilder {
     line_->mutable_events()->Reserve(num_events);
   }
 
+  void SetDisplayNameIfEmpty(absl::string_view display_name) {
+    if (line_->display_name().empty()) {
+      line_->set_display_name(std::string(display_name));
+    }
+  }
+
   XEventBuilder AddEvent(const XEventMetadata& metadata);
+  XEventBuilder AddEvent(const XEvent& event);
 
  private:
   XLine* line_;
@@ -156,6 +189,7 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
  public:
   explicit XPlaneBuilder(XPlane* plane);
 
+  int64 Id() { return plane_->id(); }
   void SetId(int64 id) { plane_->set_id(id); }
 
   void SetName(absl::string_view name) { plane_->set_name(string(name)); }
@@ -164,10 +198,21 @@ class XPlaneBuilder : public XStatsBuilder<XPlane> {
     plane_->mutable_lines()->Reserve(num_lines);
   }
 
+  template <typename ForEachLineFunc>
+  void ForEachLine(ForEachLineFunc&& for_each_line) const {
+    for (XLine& line : *plane_->mutable_lines()) {
+      for_each_line(XLineBuilder(&line));
+    }
+  }
+
   XLineBuilder GetOrCreateLine(int64 line_id);
 
   XEventMetadata* GetOrCreateEventMetadata(int64 metadata_id);
   XEventMetadata* GetOrCreateEventMetadata(absl::string_view name);
+  XEventMetadata* GetOrCreateEventMetadata(string&& name);
+  inline XEventMetadata* GetOrCreateEventMetadata(const char* name) {
+    return GetOrCreateEventMetadata(absl::string_view(name));
+  }
 
   XStatMetadata* GetOrCreateStatMetadata(int64 metadata_id);
   XStatMetadata* GetOrCreateStatMetadata(absl::string_view name);

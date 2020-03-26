@@ -18,9 +18,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
@@ -28,6 +29,15 @@ namespace tensorflow {
 // Lowers MLIR module to XLA HLO inside an XlaComputation. The input module
 // should only contain operations in tf dialect. If the input module contains
 // operation in the tf_executor dialect, for example, returns an error.
+//
+// Operations in tf dialect are lowered to XLA HLO through the following steps:
+//   . Legalizes control flow operations.
+//   . Decomposes compound resource operations so that the only remaining
+//     operations on resource variables are resource reads/writes..
+//   . Replaces resource reads/writes with function inputs/outputs and
+//     eliminates the use of resource variables.
+//   . Legalizes the operations to XLA HLO operations.
+//   . Canonicalizes the XLA HLO operations.
 //
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
@@ -41,8 +51,18 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     XlaCompiler::CompilationResult* compilation_result);
+
+// Same as the above but takes input as TensorFlow Graph.
+Status CompileGraphToXlaHlo(
+    const Graph& graph, llvm::ArrayRef<TensorShape> arg_shapes,
+    bool use_tuple_args, const FunctionLibraryDefinition& flib_def,
+    const GraphDebugInfo& debug_info,
+    const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    XlaCompiler::CompilationResult* compilation_result);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_COMPILE_MLIR_UTIL_H_

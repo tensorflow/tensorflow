@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import regularizers
@@ -52,12 +51,17 @@ def create_identity_with_grad_check_fn(expected_gradient, expected_dtype=None):
     """Function that asserts it's gradient has a certain value."""
     x = array_ops.identity(x)
     def grad(dx):
+      """Gradient function that asserts the gradient has a certain value."""
       if expected_dtype:
         assert dx.dtype == expected_dtype, (
             'dx.dtype should be %s but is: %s' % (expected_dtype, dx.dtype))
-      expected_tensor = ops.convert_to_tensor(expected_gradient, dtype=dx.dtype,
-                                              name='expected_gradient')
-      assert_op = check_ops.assert_equal(dx, expected_tensor)
+      expected_tensor = ops.convert_to_tensor_v2(
+          expected_gradient, dtype=dx.dtype, name='expected_gradient')
+      # Control dependency is to ensure input is available. It's possible the
+      # dataset will throw a StopIteration to indicate there is no more data, in
+      # which case we don't want to run the assertion.
+      with ops.control_dependencies([x]):
+        assert_op = check_ops.assert_equal(dx, expected_tensor)
       with ops.control_dependencies([assert_op]):
         dx = array_ops.identity(dx)
       return dx
@@ -90,15 +94,9 @@ def create_identity_with_nan_gradients_fn(have_nan_gradients):
     """Function whose gradient is NaN iff `have_nan_gradients` is True."""
     x = array_ops.identity(x)
     def grad(dx):
-      # We need this control dependency, because otherwise the NaN could be
-      # produced before `dx`. This in turn could cause the final gradient to be
-      # produced because `dx`, causing the loss scale to be updated before `dx`,
-      # which can cause `tf.assert_equal`s to fail.
-      with ops.control_dependencies([dx]):
-        nan_scalar = constant_op.constant(float('NaN'), dtype=dx.dtype)
       return control_flow_ops.cond(
           have_nan_gradients,
-          lambda: array_ops.fill(array_ops.shape(dx), nan_scalar),
+          lambda: dx * float('NaN'),
           lambda: dx
       )
     return x, grad
@@ -127,20 +125,20 @@ class AssertTypeLayer(base_layer.Layer):
             (inp.dtype.name, self._assert_type))
 
 
-class AddLayer(AssertTypeLayer):
-  """A layer which adds it's input to a scalar variable."""
+class MultiplyLayer(AssertTypeLayer):
+  """A layer which multiplies its input by a scalar variable."""
 
   def __init__(self,
                regularizer=None,
                use_operator=False,
                var_name='v',
                **kwargs):
-    """Initializes the AddLayer.
+    """Initializes the MultiplyLayer.
 
     Args:
       regularizer: The regularizer on the scalar variable.
-      use_operator: If True, add using the + operator. If False, add using
-        tf.add.
+      use_operator: If True, add using the * operator. If False, add using
+        tf.multiply.
       var_name: The name of the variable. It can be useful to pass a name other
         than 'v', to test having the attribute name (self.v) being different
         from the variable name.
@@ -152,7 +150,7 @@ class AddLayer(AssertTypeLayer):
                                                    custom_objects=globals())
     self._use_operator = use_operator
     self._var_name = var_name
-    super(AddLayer, self).__init__(**kwargs)
+    super(MultiplyLayer, self).__init__(**kwargs)
 
   def build(self, _):
     self.v = self.add_weight(
@@ -162,16 +160,16 @@ class AddLayer(AssertTypeLayer):
   def call(self, inputs):
     self.assert_input_types(inputs)
     assert inputs.dtype == self.v.dtype
-    return self._add(inputs, self.v)
+    return self._multiply(inputs, self.v)
 
-  def _add(self, x, y):
+  def _multiply(self, x, y):
     if self._use_operator:
-      return x + y
+      return x * y
     else:
-      return math_ops.add(x, y)
+      return math_ops.multiply(x, y)
 
   def get_config(self):
-    config = super(AddLayer, self).get_config()
+    config = super(MultiplyLayer, self).get_config()
     config['regularizer'] = regularizers.serialize(self._regularizer)
     config['use_operator'] = self._use_operator
     config['var_name'] = self._var_name

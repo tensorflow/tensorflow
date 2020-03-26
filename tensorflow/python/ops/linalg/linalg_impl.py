@@ -32,7 +32,6 @@ from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
-from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
@@ -431,7 +430,9 @@ def tridiagonal_solve(diagonals,
 
   Raises:
     ValueError: An unsupported type is provided as input, or when the input
-    tensors have incorrect shapes.
+      tensors have incorrect shapes.
+    UnimplementedError: Whenever `partial_pivoting` is true and the backend is
+      XLA.
 
   [1] Nicholas J. Higham (2002). Accuracy and Stability of Numerical Algorithms:
   Second Edition. SIAM. p. 175. ISBN 978-0-89871-802-7.
@@ -894,10 +895,9 @@ def lu_solve(lower_upper, perm, rhs, validate_args=False, name=None):
         band_part(lower_upper, num_lower=-1, num_upper=0),
         array_ops.ones(
             array_ops.shape(lower_upper)[:-1], dtype=lower_upper.dtype))
-    return linear_operator_util.matrix_triangular_solve_with_broadcast(
+    return triangular_solve(
         lower_upper,  # Only upper is accessed.
-        linear_operator_util.matrix_triangular_solve_with_broadcast(
-            lower, permuted_rhs),
+        triangular_solve(lower, permuted_rhs),
         lower=False)
 
 

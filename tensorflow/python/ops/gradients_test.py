@@ -1447,6 +1447,68 @@ class VariablesGradientTest(test_util.TensorFlowTestCase):
       for g, g_re in zip(grads, grads_re):
         self.assertAllClose(g, g_re)
 
+  @test_util.deprecated_graph_mode_only
+  def testFnRecomputeWithScopeGradientTape(self):
+    """Checks that recompute_grad works with var scope and GradientTape."""
+
+    def TestFn(input_t):
+      with variable_scope.variable_scope("inner_scope"):
+        test_var = variable_scope.get_variable(
+            name="test_var",
+            shape=10,
+            trainable=True,
+        )
+        return input_t * test_var
+
+    test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
+
+    with variable_scope.variable_scope(
+        "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
+      test_fn_re = custom_gradient.recompute_grad(TestFn)
+
+      with backprop.GradientTape(persistent=True) as tape:
+        out_re = test_fn_re(test_input_t)
+        out = TestFn(test_input_t)
+
+    grads_re = tape.gradient(out_re, variables.trainable_variables())
+    grads = tape.gradient(out, variables.trainable_variables())
+
+    grads_re = self.evaluate(grads_re)
+    grads = self.evaluate(grads)
+    for g, g_re in zip(grads, grads_re):
+      self.assertAllClose(g, g_re)
+      self.assertAllClose(g, g_re)
+
+  @test_util.deprecated_graph_mode_only
+  def testFnRecomputeWithScopeGradients(self):
+    """Checks that recompute_grad works with var scope and gradients(..)."""
+
+    def TestFn(input_t):
+      with variable_scope.variable_scope("inner_scope"):
+        test_var = variable_scope.get_variable(
+            name="test_var",
+            shape=10,
+            trainable=True,
+        )
+        return input_t * test_var
+
+    test_input_t = constant(np.zeros((10, 10), dtype=np.float32))
+
+    with variable_scope.variable_scope(
+        "output_scope", reuse=variable_scope.AUTO_REUSE, use_resource=True):
+      test_fn_re = custom_gradient.recompute_grad(TestFn)
+      out_re = test_fn_re(test_input_t)
+      out = TestFn(test_input_t)
+
+    grads_re = gradients.gradients(out_re, variables.trainable_variables())
+    grads = gradients.gradients(out, variables.trainable_variables())
+
+    grads_re = self.evaluate(grads_re)
+    grads = self.evaluate(grads)
+    for g, g_re in zip(grads, grads_re):
+      self.assertAllClose(g, g_re)
+      self.assertAllClose(g, g_re)
+
   @test_util.run_in_graph_and_eager_modes
   def testFnRecomputeSameTensor(self):
     """Check recompute_grad when wrapped f called as f(x, x) - b/147369366."""

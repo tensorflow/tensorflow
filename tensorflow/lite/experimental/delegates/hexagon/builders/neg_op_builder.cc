@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/delegates/hexagon/builders/neg_op_builder.h"
 
+#include <limits>
+
 namespace tflite {
 namespace delegates {
 namespace hexagon {

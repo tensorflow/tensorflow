@@ -278,45 +278,28 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
     }
   }
 
-  // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
-  // memory. We approximate the same behavior for eager execution - keeping
-  // int32 tensors in host memory.
+  // We always generate CPU:0 tensors, but we may need to change the device
+  // slightly, as for example from /job:localhost/... to /job:worker/...
   //
-  // We do so to preclude the need for callers into such kernels from having to
-  // explicitly place the int32 tensors in host memory. For example, without
-  // this, one needed:
-  //
-  // with tf.device('/gpu:0'):
-  //   ...// code here
-  //   with tf.device('/cpu:0'):
-  //     shape = tf.constant(...)
-  //   y = tf.random_uniform(shape)
-  //
-  // Without the CPU device block, tfe.ops.random_uniform would fail since the
-  // kernel expects the shape in host memory.
-  //
-  // With this support, we simplify the code:
-  //
-  // with tf.device('/gpu:0'):
-  //   y = tf.random_uniform(...)
-  //
-  // The approximation is not exact there are GPU kernels which do not require
-  // host memory for int32 tensors. This will lead to a discrepancy between
-  // eager and graph execution.
-  //
-  // To support remote execution copy int32 tensors to another CPU device.
-  // TODO(ashankar): Fix this.
+  // Note that this is a shallow copy and will share the underlying buffer,
+  // because we are copying to the same device.
   if (device_name != nullptr &&
-      (TFE_TensorHandleDataType(handle.get()) != TF_INT32 ||
-       strstr(device_name, "/device:CPU:0") != nullptr)) {
-    // Note that this is a shallow copy and will share the underlying buffer
-    // if copying to the same device.
+      strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
     if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
       return nullptr;
     }
   }
+
+  // We always enable implicit mirroring for constants. Without this, code
+  // written previously under the assumption that
+  //
+  //   with tf.device('GPU:0'): x = tf.constant(1.0)
+  //
+  // will be placed in the GPU will suffer a non-trivial performance regression
+  // (measured at ~20% for certain benchmarks).
+  handle->handle->EnableImplicitMirroring();
 
   return handle.release();
 }
@@ -359,7 +342,7 @@ typedef struct EagerTensor {
   TFE_TensorHandle* handle;
   int64_t id;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
-  // be None for tensors of type other than DT_REOSURCE. For DT_RESOURCE
+  // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
   // inference metadata about shapes and dtypes of resources accessible from
   // this handle.
@@ -660,7 +643,7 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
-static PyGetSetDef EagerTensor_getseters[] = {
+static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("Tensor ID."), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
@@ -758,7 +741,7 @@ PyTypeObject* EagerTensorType = nullptr;
 static PyType_Slot EagerTensor_Type_slots[] = {
     {Py_tp_dealloc, reinterpret_cast<void*>(EagerTensor_dealloc)},
     {Py_tp_methods, reinterpret_cast<void*>(EagerTensor_methods)},
-    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getseters)},
+    {Py_tp_getset, reinterpret_cast<void*>(EagerTensor_getsetters)},
     {Py_tp_init, reinterpret_cast<void*>(EagerTensor_init)},
     {0, nullptr},
 };
@@ -799,7 +782,7 @@ static PyTypeObject _EagerTensorType = {
     nullptr,                            /* tp_iternext */
     EagerTensor_methods,                /* tp_methods */
     EagerTensor_members,                /* tp_members */
-    EagerTensor_getseters,              /* tp_getset */
+    EagerTensor_getsetters,             /* tp_getset */
     nullptr,                            /* tp_base */
     nullptr,                            /* tp_dict */
     nullptr,                            /* tp_descr_get */

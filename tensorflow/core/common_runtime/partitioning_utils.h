@@ -41,7 +41,7 @@ Status PartitionFunctionGraph(
 //
 // More specifically, this function
 //  (1) rewrites the indices of the `Arg` and `Retval` nodes placed
-//      on a particular device.  When a function is parittioned each
+//      on a particular device.  When a function is partitioned each
 //      partition, `subgraph`, get a subset of the arguments and
 //      return values. The `index` attributes of these _Arg and _Retval
 //      nodes reflect the indices of these parameters in the original

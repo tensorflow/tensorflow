@@ -243,7 +243,7 @@ func @with_replicate(
           [%arg0, %arg1] as %r0: tensor<*x!tf.resource<tensor<32xf32>>>,
           [%arg2, %arg3] as %r1: tensor<*x!tf.resource<tensor<32xf32>>>,
           [%u0#0, %u0#1] as %u : tensor<32xf32>)
-          {n = 2 : i32, devices = ["/CPU:0", "/GPU:1"]} {
+          {n = 2 : i32, devices = {CORE_0 = ["/CPU:0", "/GPU:1"]}} {
         %read0 = "tf.ReadVariableOp"(%r0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
         // expected-remark@above {{ID: 1}}
         // expected-remark@above {{Successors: {4}}}

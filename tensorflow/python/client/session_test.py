@@ -808,7 +808,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       sp = array_ops.sparse_placeholder(
           dtype=np.float32, shape=shape, name='placeholder1')
       self.assertAllEqual(sp.dense_shape.eval(session=s), shape)
-      self.assertAllEqual(tensor_util.constant_value(sp.dense_shape), shape)
+      self.assertAllEqual(tensor_util.constant_value(sp.shape), shape)
       sp_indices = array_ops.identity(sp.indices)
       sp_values = array_ops.identity(sp.values)
       sp_shape = array_ops.identity(sp.dense_shape)

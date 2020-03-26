@@ -121,7 +121,8 @@ class ZipDatasetOp::Dataset : public DatasetBase {
       input_impls_.resize(dataset()->inputs_.size());
       for (size_t i = 0; i < input_impls_.size(); ++i) {
         TF_RETURN_IF_ERROR(dataset()->inputs_[i]->MakeIterator(
-            ctx, strings::StrCat(prefix(), "[", i, "]"), &input_impls_[i]));
+            ctx, this, strings::StrCat(prefix(), "[", i, "]"),
+            &input_impls_[i]));
       }
       return Status::OK();
     }
@@ -173,14 +174,15 @@ class ZipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplsEmpty), ""));
       } else {
         for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
       return Status::OK();
     }
@@ -200,7 +202,7 @@ class ZipDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::vector<std::unique_ptr<IteratorBase>> input_impls_ GUARDED_BY(mu_);
+    std::vector<std::unique_ptr<IteratorBase>> input_impls_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<DatasetBase*> inputs_;

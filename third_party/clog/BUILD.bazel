@@ -25,6 +25,7 @@ cc_library(
         "//conditions:default": [
         ],
     }),
+    linkstatic = True,
     strip_include_prefix = "deps/clog/include",
 )
 

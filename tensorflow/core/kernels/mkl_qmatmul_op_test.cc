@@ -45,7 +45,7 @@ class ConvMklToTF : public OpsTestBase {
   template <typename T>
   void ConvertMKL2TF(DataType dtype, const Tensor& first, const Tensor& second,
                      Tensor& output) {
-    // TO-DO : Has to be moved to common uitility file
+    // TO-DO : Has to be moved to common utility file
     // Create an MKL to TF conversion node and execute it
     TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
                      .Input(FakeInput(dtype))     // Input
@@ -391,6 +391,99 @@ TEST_F(QuantizedMatMulTest, Small_withBiasAndReq) {
                                   output_quantized);
 
   test::ExpectTensorEqual<quint8>(expected, output_quantized);
+}
+
+// Two small matrices A of type uint8 and B of type int8  are multiplied
+// and the result is added with int32 bias and Requantization fusion
+TEST_F(QuantizedMatMulTest, Small_withBiasAndDeq) {
+  TF_ASSERT_OK(NodeDefBuilder("quantized_mat_mul_op",
+                              "_MklQuantizedMatMulWithBiasAndDequantize")
+                   .Input(FakeInput(DT_QUINT8))
+                   .Input(FakeInput(DT_QINT8))
+                   .Input(FakeInput(DT_QINT32))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Attr("Toutput", DataTypeToEnum<float>::v())
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  // A matrix is:
+  // |  1 |  2 |  3 |
+  // |  4 |  5 |  6 |
+  AddInputFromArray<quint8>(TensorShape({2, 3}), {1, 2, 3, 4, 5, 6});
+  // B matrix is:
+  // |  7 |  8 |  9 | 10 |
+  // | 11 | 12 | 13 | 14 |
+  // | 15 | 16 | 17 | 18 |
+  AddInputFromArray<qint8>(TensorShape({3, 4}),
+                           {7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
+  AddInputFromArray<qint32>(TensorShape({4}), {10, -20, 30, -40});
+  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<float>(TensorShape({1}), {-127.0f});
+  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+  AddInputFromArray<uint8>(kDummyShape, kDummyTensor);
+
+  TF_ASSERT_OK(RunOpKernel());
+  // Here are the results we expect, from hand calculations:
+  // (1 * 7) + (2 * 11) + (3 * 15) = 74
+  // (1 * 8) + (2 * 12) + (3 * 16) = 80
+  // (1 * 9) + (2 * 13) + (3 * 17) = 86
+  // (1 * 10) + (2 * 14) + (3 * 18) = 92
+  // (4 * 7) + (5 * 11) + (6 * 15) = 173
+  // (4 * 8) + (5 * 12) + (6 * 16) = 188
+  // (4 * 9) + (5 * 13) + (6 * 17) = 203
+  // (4 * 10) + (5 * 14) + (6 * 18) = 218
+  // After Bias addition
+  // 74+10=84, 80-20=60, 86+30=116, 92-40=52,
+  // 173+10=183, 188-20=168, 203+30=233, 218-40=178
+  // After Dequantize
+  // requantscale = scale_int32 / static_cast<float>(1 << 31)
+  // requantscale = 2^31/2^31 ~= 1.0000
+  // 84 * 1.00000 ~= 84
+  // 60 * 1.00000 ~=  60
+  // 116 * 1.00000 ~= 116
+  // 52 * 1.00000 ~= 52
+  // 183 * 1.00000 ~= 183
+  // 168 * 1.00000 ~= 168
+  // 233 * 1.00000 ~= 233
+  // 178 * 1.00000 ~= 178
+
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 4}));
+  test::FillValues<float>(&expected, {84, 60, 116, 52, 183, 168, 233, 178});
+
+  const Tensor& output = *GetOutput(0);
+  const Tensor& mkl_shape_tensor = *GetOutput(1);
+  ConvMklToTF conv_comp;
+  Tensor output_dequantized;
+  conv_comp.ConvertMKL2TF<float>(DT_FLOAT, output, mkl_shape_tensor,
+                                 output_dequantized);
+
+  test::ExpectTensorEqual<float>(expected, output_dequantized);
 }
 
 // Two small matrices A of type uint8 and B of type int8  are multiplied

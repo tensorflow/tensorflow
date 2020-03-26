@@ -53,7 +53,7 @@ void TestQuantize(const int* input_dims_data, const float* input_data,
   };
 
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   // Version 1 of quantize supports int8 and uint8 quantization.
   const TfLiteRegistration* registration =

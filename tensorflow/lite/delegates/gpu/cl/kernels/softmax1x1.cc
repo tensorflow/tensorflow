@@ -37,7 +37,7 @@ std::string GetSoftmaxKernelCode(
                                            "tensor_size.z", "tensor_size.w"},
                                  op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "batch_id" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "batch_id" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -47,7 +47,7 @@ std::string GetSoftmaxKernelCode(
   c += "    int2 size,\n";
   c += "    float4 mask\n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int batch_id = get_global_id(1);\n";
     c += "  if (batch_id >= tensor_size.w) return;\n";
   }
@@ -115,14 +115,14 @@ Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
   return *this;
 }
 
-Status Softmax1x1::Compile(const CreationContext& creation_context) {
+absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
   const auto code = GetSoftmaxKernelCode(definition_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
+absl::Status Softmax1x1::AddToQueue(CLCommandQueue* queue) {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));

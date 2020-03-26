@@ -361,11 +361,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     cf = f.get_concrete_function()
     c = cc[0]
 
-    captured_variables = {v.experimental_ref() for v in (a, b, c)}
-    trainable_variables = {v.experimental_ref() for v in (b, c)}
-    self.assertEqual({v.experimental_ref() for v in cf.variables},
-                     captured_variables)
-    self.assertEqual({v.experimental_ref() for v in cf.trainable_variables},
+    captured_variables = {v.ref() for v in (a, b, c)}
+    trainable_variables = {v.ref() for v in (b, c)}
+    self.assertEqual({v.ref() for v in cf.variables}, captured_variables)
+    self.assertEqual({v.ref() for v in cf.trainable_variables},
                      trainable_variables)
     self.assertEqual(cf.variables, cf.graph.variables)
     self.assertEqual(cf.trainable_variables, cf.graph.trainable_variables)
@@ -1571,10 +1570,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testColocateWithRespected(self):
     # TODO(b/113291792): Use multiple CPUs instead of a GPU.
     with ops.device('cpu:0'):
-      x = constant_op.constant(1.0)
+      x = array_ops.identity(1.0)
 
     with ops.device('gpu:0'):
-      y = constant_op.constant(1.0)
+      y = array_ops.identity(1.0)
 
     @def_function.function
     def foo():
@@ -2889,7 +2888,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
   def testDecoratedMethodVariableCleanup(self):
     m = DefunnedMiniModel()
     m(array_ops.ones([1, 2]))
-    variable_refs = list({v.experimental_ref() for v in m.variables})
+    variable_refs = list({v.ref() for v in m.variables})
     self.assertLen(variable_refs, 2)
     del m
 
@@ -3240,9 +3239,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
       return b, a
 
     with ops.device('/device:CPU:0'):
-      a = constant_op.constant(3.0)
+      a = array_ops.identity(3.0)
     with ops.device('/device:GPU:0'):
-      b = constant_op.constant(5.0)
+      b = array_ops.identity(5.0)
 
     m1, m2 = func(a, b)
     self.assertAllEqual(m1.numpy(), 5.0)
@@ -3307,9 +3306,9 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     devices = ['/device:CPU:0', '/device:GPU:0']
     for dev1, dev2 in itertools.product(devices, devices):
       with ops.device(dev1):
-        a = constant_op.constant(1.0)
+        a = array_ops.identity(1.0)
       with ops.device(dev2):
-        b = constant_op.constant(10.0)
+        b = array_ops.identity(10.0)
 
       ra, rb = func(a, b)
       self.assertEqual(ra.numpy(), 2.0)
@@ -3470,13 +3469,13 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     with ops.device('/device:CPU:0'):
       rc0 = resource_variable_ops.ResourceVariable(2.0)
       rc1 = resource_variable_ops.ResourceVariable(3.0)
-      cc0 = constant_op.constant(5.0)
-      cc1 = constant_op.constant(7.0)
+      cc0 = array_ops.identity(5.0)
+      cc1 = array_ops.identity(7.0)
     with ops.device('/device:GPU:0'):
       rg0 = resource_variable_ops.ResourceVariable(11.0)
       rg1 = resource_variable_ops.ResourceVariable(13.0)
-      cg0 = constant_op.constant(17.0)
-      cg1 = constant_op.constant(19.0)
+      cg0 = array_ops.identity(17.0)
+      cg1 = array_ops.identity(19.0)
 
     # Make sure tensors are on expected devices.
     for tensor in [cc0, cc1]:
@@ -3509,7 +3508,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(r2.numpy(), 34000.0 + 13.0 * 7.0)
 
   @test_util.run_gpu_only
-  def testArgumentPrunning(self):
+  def testArgumentPruning(self):
     """Tests functions taking unnecessary arguments."""
     with ops.device('/device:CPU:0'):
       c1 = constant_op.constant(5.0)

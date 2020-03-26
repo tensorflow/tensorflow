@@ -37,7 +37,7 @@ std::string GetTransposeCode(
       WHSBPoint{"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
       op_def.dst_tensors[0]);
 
-  const std::string batch_id = op_def.batch_support ? "B" : "";
+  const std::string batch_id = op_def.IsBatchSupported() ? "B" : "";
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ);
@@ -48,7 +48,7 @@ std::string GetTransposeCode(
   c += "    int src_channels,          \n";
   c += "    int dst_channels           \n";
   c += ") {\n";
-  if (op_def.batch_support) {
+  if (op_def.IsBatchSupported()) {
     c += "  int linear_id = get_global_id(0);\n";
     c += "  int X = linear_id / dst_size.w;\n";
     c += "  int B = linear_id % dst_size.w;\n";
@@ -72,7 +72,7 @@ std::string GetTransposeCode(
   remap[attr.perm.c] = 3;
   if (attr.perm.c == 3) {  // optimized reading when no channels permutation
     const std::string bhw[] = {"B", "Y", "X"};
-    std::string src_b = op_def.batch_support ? bhw[remap[0]] : "";
+    std::string src_b = op_def.IsBatchSupported() ? bhw[remap[0]] : "";
     c += "  int s_y = " + bhw[remap[1]] + ";\n";
     c += "  int s_x = " + bhw[remap[2]] + ";\n";
     c += "  FLT4 t =" + src_tensor.ReadWHSB("s_x", "s_y", "Z", src_b) + ";\n";
@@ -85,7 +85,7 @@ std::string GetTransposeCode(
     c += "    int dst_channel = Z * 4 + i;\n";
     c += "    if (dst_channel < dst_channels) {;\n";
     const std::string bhwc[] = {"B", "Y", "X", "dst_channel"};
-    std::string src_b = op_def.batch_support ? bhwc[remap[0]] : "";
+    std::string src_b = op_def.IsBatchSupported() ? bhwc[remap[0]] : "";
     c += "      int s_y = " + bhwc[remap[1]] + ";\n";
     c += "      int s_x = " + bhwc[remap[2]] + ";\n";
     c += "      int s_c = " + bhwc[remap[3]] + ";\n";
@@ -99,7 +99,8 @@ std::string GetTransposeCode(
     c += "  }\n";
   }
   c += "  FLT4 result = (FLT4)(temps[0], temps[1], temps[2], temps[3]);\n";
-  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  std::string x_3dcoord =
+      op_def.IsBatchSupported() ? "X * dst_size.w + B" : "X";
   const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
   c += "  " + dst_tensor.WriteWHSB("result", "X", "Y", "Z", batch_id);
@@ -124,14 +125,14 @@ Transpose& Transpose::operator=(Transpose&& operation) {
   return *this;
 }
 
-Status Transpose::Compile(const CreationContext& creation_context) {
+absl::Status Transpose::Compile(const CreationContext& creation_context) {
   const auto code = GetTransposeCode(definition_, attr_, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Transpose::BindArguments() {
+absl::Status Transpose::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -140,8 +141,7 @@ Status Transpose::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHSB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->Channels()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->Channels()));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Transpose::GetGridSize() const {
@@ -151,12 +151,12 @@ int3 Transpose::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Transpose::Tune(const TuningParameters& params) {
+absl::Status Transpose::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status Transpose::AddToQueue(CLCommandQueue* queue) {
+absl::Status Transpose::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }

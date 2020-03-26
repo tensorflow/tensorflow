@@ -47,7 +47,7 @@ bool FLAGS_check_device_leaks = false;
 namespace stream_executor {
 namespace {
 
-string StackTraceIfVLOG10() {
+std::string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
     return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
   } else {
@@ -149,7 +149,7 @@ StreamExecutor::StreamExecutor(
       mem_alloc_bytes_(0),
       memory_limit_bytes_(GetMemoryLimitBytes()),
       allocator_(this) {
-  string name = absl::AsciiStrToLower(platform_->Name());
+  std::string name = absl::AsciiStrToLower(platform_->Name());
   if (name == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
   } else if (name == "rocm") {
@@ -239,7 +239,7 @@ port::Status StreamExecutor::SetDeviceSharedMemoryConfig(
   if (config != SharedMemoryConfig::kDefault &&
       config != SharedMemoryConfig::kFourByte &&
       config != SharedMemoryConfig::kEightByte) {
-    string error_msg = absl::StrFormat(
+    std::string error_msg = absl::StrFormat(
         "Invalid shared memory config specified: %d", static_cast<int>(config));
     LOG(ERROR) << error_msg;
     return port::Status(port::error::INVALID_ARGUMENT, error_msg);
@@ -492,7 +492,7 @@ DeviceMemoryBase StreamExecutor::Allocate(uint64 size, int64 memory_space) {
 }
 
 port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
-    const string &symbol_name, ModuleHandle module_handle) {
+    const std::string &symbol_name, ModuleHandle module_handle) {
   // If failed to get the symbol, opaque/bytes are unchanged. Initialize them to
   // be nullptr/0 for consistency with DeviceMemory semantics.
   void *opaque = nullptr;
@@ -515,7 +515,7 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   }
 }
 
-bool StreamExecutor::GetSymbol(const string &symbol_name,
+bool StreamExecutor::GetSymbol(const std::string &symbol_name,
                                ModuleHandle module_handle, void **mem,
                                size_t *bytes) {
   return implementation_->GetSymbol(symbol_name, module_handle, mem, bytes);

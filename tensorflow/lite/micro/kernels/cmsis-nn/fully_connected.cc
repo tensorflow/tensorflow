@@ -96,7 +96,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
+#if defined(__ARM_FEATURE_DSP)
   const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
   int16_t* buf = nullptr;
   TF_LITE_ENSURE_OK(context, get_cmsis_scratch_buffer(context, &buf, buf_size));
@@ -166,7 +166,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       TF_LITE_FULLY_CONNECTED(int16_t);
       break;
     default:
-      context->ReportError(
+      TF_LITE_KERNEL_LOG(
           context,
           "Quantized FullyConnected expects output data type uint8 or int16");
       return kTfLiteError;
@@ -221,8 +221,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            output);
 
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           filter->type);
+      TF_LITE_KERNEL_LOG(context, "Type %d not currently supported.",
+                         filter->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

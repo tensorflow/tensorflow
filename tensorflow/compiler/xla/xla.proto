@@ -69,6 +69,10 @@ message DebugOptions {
   // Disable multi-streaming in the GPU backend.
   bool xla_gpu_disable_multi_streaming = 63;
 
+  // Debugging feature: if enabled, the GPU backend will assign HLO operators to
+  // randomly chosen streams. This is intended to trigger concurrency bugs.
+  bool xla_gpu_use_random_streams = 134;
+
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
   bool xla_llvm_enable_alias_scope_metadata = 70;
@@ -158,7 +162,7 @@ message DebugOptions {
   bool xla_gpu_crash_on_verification_failures = 101;
 
   // Disable GEMM and Convolution auto-tuning.
-  bool xla_gpu_disable_autotune = 123;
+  int32 xla_gpu_autotune_level = 123;
 
   // Force the host platform to pretend that there are these many host
   // "devices".  All these devices are backed by the same threadpool.  Defaults
@@ -240,6 +244,12 @@ message DebugOptions {
   // directory.
   bool xla_dump_hlo_snapshots = 118;
 
+  // Include a timestamp in the dumped filenames.
+  bool xla_dump_include_timestamp = 131;
+
+  // Max number of hlo module dumps in a directory. Set to < 0 for unbounded.
+  int32 xla_dump_max_hlo_modules = 132;
+
   //
   // END flags controlling dumping HLO modules.
   //
@@ -254,14 +264,15 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 131
+
+  // Next id: 135
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
 
-  reserved 117;  // was xla_dump_to
-  reserved 5;    // Was xla_hlo_dump_as_graphdef
+  reserved 5, 117, 133;  // were xla_hlo_dump_as_graphdef, xla_dump_to, and
+                         // xla_gpu_use_horizontal_fusion
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

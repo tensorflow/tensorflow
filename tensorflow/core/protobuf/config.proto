@@ -2,18 +2,18 @@ syntax = "proto3";
 
 package tensorflow;
 
-option cc_enable_arenas = true;
-option java_outer_classname = "ConfigProtos";
-option java_multiple_files = true;
-option java_package = "org.tensorflow.framework";
-
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ConfigProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 message GPUOptions {
   // Fraction of the available GPU memory to allocate for each process.
@@ -467,6 +467,12 @@ message ConfigProto {
   // enabled, this field is ignored and sessions are always isolated.
   bool isolate_session_state = 15;
 
+  // When true, WorkerSessions are created with device attributes from the
+  // full cluster.
+  // This is helpful when a worker wants to partition a graph
+  // (for example during a PartitionedCallOp).
+  bool share_cluster_devices_in_session = 17;
+
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
@@ -530,10 +536,8 @@ message ConfigProto {
     // CPU usage.
     bool disable_thread_spinning = 9;
 
-    // When true, WorkerSessions are created with device attributes from the
-    // full cluster.
-    // This is helpful when a worker wants to partition a graph
-    // (for example during a PartitionedCallOp).
+    // This was promoted to a non-experimental API. Please use
+    // ConfigProto.share_cluster_devices_in_session instead.
     bool share_cluster_devices_in_session = 10;
 
     // Metadata about the session.
@@ -565,6 +569,13 @@ message ConfigProto {
     // to lower the encapsulated graph to a particular device.
     bool enable_mlir_bridge = 13;
 
+    // Whether to enable the MLIR-based Graph optimizations.
+    //
+    // This will become a part of standard Tensorflow graph optimization
+    // pipeline, currently this is only used for gradual migration and testing
+    // new passes that are replacing existing optimizations in Grappler.
+    bool enable_mlir_graph_optimization = 16;
+
     // If true, the session will not store an additional copy of the graph for
     // each subgraph.
     //
@@ -578,11 +589,11 @@ message ConfigProto {
     // The XLA fusion autotuner can improve performance by executing a heuristic
     // search on the compiler parameters.
     int64 xla_fusion_autotuner_thresh = 15;
-  };
+  }
 
   Experimental experimental = 16;
 
-  // Next: 17
+  // Next: 18
 }
 
 // Options for a single Run() call.
@@ -636,7 +647,14 @@ message RunOptions {
     // and tail) latency.
     // Consider using this option for CPU-bound workloads like inference.
     bool use_run_handler_pool = 2;
-  };
+    // Options for run handler thread pool.
+    message RunHandlerPoolOptions {
+      // Priority of the request. The run handler thread pool will schedule ops
+      // based on the priority number. The larger number means higher priority.
+      int64 priority = 1;
+    }
+    RunHandlerPoolOptions run_handler_pool_options = 3;
+  }
 
   Experimental experimental = 8;
 

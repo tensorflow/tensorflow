@@ -104,7 +104,7 @@ def EquilibrateEigenVectorPhases(x, y):
   """Equilibrate the phase of the Eigenvectors in the columns of `x` and `y`.
 
   Eigenvectors are only unique up to an arbitrary phase. This function rotates x
-  such that it matches y. Precondition: The coluns of x and y differ by a
+  such that it matches y. Precondition: The columns of x and y differ by a
   multiplicative complex phase factor only.
 
   Args:

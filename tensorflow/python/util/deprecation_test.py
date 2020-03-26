@@ -761,7 +761,7 @@ class DeprecatedArgValuesTest(test.TestCase):
       deprecation.deprecated_arg_values(date, None, deprecated=True)
     with self.assertRaisesRegexp(ValueError, "instructions"):
       deprecation.deprecated_arg_values(date, "", deprecated=True)
-    with self.assertRaisesRegexp(ValueError, "argument", deprecated=True):
+    with self.assertRaisesRegexp(ValueError, "argument"):
       deprecation.deprecated_arg_values(date, instructions)
 
   @test.mock.patch.object(logging, "warning", autospec=True)

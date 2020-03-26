@@ -1063,9 +1063,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
       }
     }
   }
-
-  TF_RETURN_IF_ERROR(InsertSliceToDynamicBeforeModuleOutputs(
-      dynamic_dimension_inference, module));
+  if (slice_dynamic_output_) {
+    TF_RETURN_IF_ERROR(InsertSliceToDynamicBeforeModuleOutputs(
+        dynamic_dimension_inference, module));
+  }
 
   // Remove all dynamic dimensions after entry parameter and root instruction --
   // Dynamic padder will produce an equivalent static shaped graph.

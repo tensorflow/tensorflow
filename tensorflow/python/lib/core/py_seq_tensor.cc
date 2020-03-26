@@ -277,7 +277,8 @@ struct Converter {
 
   static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
                         TFE_TensorHandle** h, const char** error) {
-    /* TODO(josh11b): Allocator & attributes? */
+    // TODO(josh11b): Allocator & attributes
+    // TODO(gjn): Use optimized scalar constructors when possible.
     Tensor result(ConverterTraits<T>::kTypeEnum,
                   TensorShape(state->inferred_shape));
     if (state->inferred_shape.empty()) { /* Scalar case */
@@ -294,7 +295,8 @@ struct Converter {
     }
     tensorflow::TensorHandle* handle = nullptr;
     auto status = tensorflow::TensorHandle::CreateLocalHandle(
-        result, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+        std::move(result), /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr,
+        ctx->context, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -609,7 +611,8 @@ TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
   if (cppstatus.ok()) {
     cppstatus = tensorflow::TensorHandle::CreateLocalHandle(
-        t, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &handle);
+        std::move(t), /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr,
+        ctx->context, &handle);
   }
   if (!cppstatus.ok()) {
     PyErr_SetString(PyExc_ValueError,
@@ -803,10 +806,11 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
     case DT_INVALID:  // Only occurs for empty tensors.
     {
       tensorflow::TensorHandle* h = nullptr;
-      Tensor tensor(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
-                    TensorShape(state.inferred_shape));
+      Tensor t(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
+               TensorShape(state.inferred_shape));
       status = tensorflow::TensorHandle::CreateLocalHandle(
-          tensor, /*d=*/nullptr, /*op_device=*/nullptr, ctx->context, &h);
+          std::move(t), /*d=*/ctx->context->HostCPU(), /*op_device=*/nullptr,
+          ctx->context, &h);
       if (!status.ok()) {
         PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
         return nullptr;

@@ -59,8 +59,20 @@ def model_from_config(config, custom_objects=None):
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> try:
+  ...   import yaml
+  ...   config = model.to_yaml()
+  ...   loaded_model = tf.keras.models.model_from_yaml(config)
+  ... except ImportError:
+  ...   pass
+
   Arguments:
-      yaml_string: YAML string encoding a model configuration.
+      yaml_string: YAML string or open file encoding a model configuration.
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
           considered during deserialization.
@@ -80,7 +92,15 @@ def model_from_yaml(yaml_string, custom_objects=None):
 
 @keras_export('keras.models.model_from_json')
 def model_from_json(json_string, custom_objects=None):
-  """Parses a JSON model configuration file and returns a model instance.
+  """Parses a JSON model configuration string and returns a model instance.
+
+  Usage:
+
+  >>> model = tf.keras.Sequential([
+  ...     tf.keras.layers.Dense(5, input_shape=(3,)),
+  ...     tf.keras.layers.Softmax()])
+  >>> config = model.to_json()
+  >>> loaded_model = tf.keras.models.model_from_json(config)
 
   Arguments:
       json_string: JSON string encoding a model configuration.

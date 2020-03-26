@@ -266,9 +266,9 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
     s = lib_runtime->Instantiate(function.name(), AttrSlice(&function.attr()),
                                  &handle);
   }
-
   if (!s.ok()) {
-    std::string uncompilable_reason = "could not instantiate call";
+    std::string uncompilable_reason =
+        absl::StrCat("could not instantiate call: '", function.name(), "'");
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
     VLOG(2) << "Rejecting " << call_def.DebugString() << ": "

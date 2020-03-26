@@ -617,6 +617,9 @@ class FileIoTest(test.TestCase):
       info = np.load(f, allow_pickle=True)
     _ = [i for i in info.items()]
 
+  def testHasAtomicMove(self):
+    self.assertTrue(file_io.has_atomic_move("/a/b/c"))
+
 
 if __name__ == "__main__":
   test.main()

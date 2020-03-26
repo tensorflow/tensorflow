@@ -35,17 +35,17 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -247,7 +247,7 @@ void UpdateLaunchOpResultExternalUses(tf_device::LaunchOp launch_op,
   for (auto ret_vals : llvm::zip(results, launch_op.getResults())) {
     Value old_ret = std::get<0>(ret_vals);
     Value new_ret = std::get<1>(ret_vals);
-    for (auto& use : old_ret.getUses())
+    for (auto& use : llvm::make_early_inc_range(old_ret.getUses()))
       if (!launch_op_block.findAncestorOpInBlock(*use.getOwner()))
         use.set(new_ret);
   }
@@ -331,7 +331,7 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
       return input->emitOpError() << "requires " << num_replicas << " operands";
 
     replicated_inputs.push_back(
-        {input->getOperands(), *input->result_type_begin()});
+        {input->getOperands(), input->getOperand(0).getType()});
     if (llvm::cast<TF::TPUReplicatedInputOp>(input).is_mirrored_variable())
       mirrored_variable_indices.push_back(pos_and_input.index());
   }
@@ -339,7 +339,8 @@ LogicalResult ReplicateCluster(tf_device::LaunchOp launch_op,
   // Create replicate op.
   OpBuilder builder(launch_op);
   auto replicate_op = builder.create<tf_device::ReplicateOp>(
-      launch_op.getLoc(), num_replicas, llvm::ArrayRef<llvm::StringRef>(),
+      launch_op.getLoc(), num_replicas,
+      llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<StringRef, 4>>(),
       replicated_inputs, launch_op.getResultTypes());
   if (!mirrored_variable_indices.empty())
     replicate_op.setAttr(kMirroredVariableIndicesAttr,
@@ -414,10 +415,12 @@ LogicalResult FormClustersInBlock(Block* block,
     auto cluster_metadata = metadata_map.find(cluster.getFirst());
 
     // No TPUReplicateMetadata for a `_tpu_replicate` attribute.
-    if (cluster_metadata == metadata_map.end())
-      return cluster_ops.front()->emitError()
-             << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
-             << "' attribute '" << cluster.getFirst() << "' is missing";
+    if (cluster_metadata == metadata_map.end()) {
+      cluster_ops.front()->emitWarning()
+          << "TPUReplicateMetadata for associated '" << kTPUReplicateAttr
+          << "' attribute '" << cluster.getFirst() << "' is missing";
+      continue;
+    }
 
     llvm::SmallSetVector<Operation*, 8> preceding_users =
         CollectClusterPrecedingUsers(block, cluster_ops);

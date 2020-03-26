@@ -167,7 +167,7 @@ def scan(initial_state, scan_func):
     initial_state: A nested structure of tensors, representing the initial state
       of the accumulator.
     scan_func: A function that maps `(old_state, input_element)` to
-      `(new_state, output_element). It must take two arguments and return a
+      `(new_state, output_element)`. It must take two arguments and return a
       pair of nested structures of tensors. The `new_state` must match the
       structure of `initial_state`.
 

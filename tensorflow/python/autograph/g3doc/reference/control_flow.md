@@ -361,11 +361,19 @@ iterate over a Python `list` (or respectively `tuple`), therefore will be
 executed as normal Python. If you intended to run it as a TensorFlow loop,
 use `tf.stack` or `tf.concat`.
 
-Caution: A `for` loop over a Python `range` will be executed as normal Python.
-If you intended to run it as a TensorFlow loop, `tf.range`.
+Caution: A `for` loop over a Python `range` will execute as normal Python.
+If you intended to run it as a TensorFlow loop, use `tf.range`.
 
 Note: AutoGraph may output a warning when it believes that you are unrolling
 a loop inefficiently. However, the warning thresholds are very conservative.
+The warning is only printed when
+[__debug__](https://docs.python.org/3/library/constants.html#__debug__) is
+`True`.
+
+Note: If `__debug__` is `True`, AutoGraph limits the number of iterations in
+normal Python loops to prevent infinite loops and raise an error if the limits
+are exceeded. However, the iteration limits are very large and may take a while
+to trigger an error.
 
 ### `break` statements
 

@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
 
@@ -95,21 +96,14 @@ TfLiteStatus TfliteInferenceStage::Init() {
   }
   interpreter_->SetNumThreads(params.num_threads());
 
-  if (params.delegate() == TfliteInferenceParams::NNAPI) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateNNAPIDelegate();
-    if (delegate) {
-      delegates_.push_back(std::move(delegate));
-    } else {
-      LOG(WARNING) << "NNAPI not supported";
-    }
-  } else if (params.delegate() == TfliteInferenceParams::GPU) {
-    Interpreter::TfLiteDelegatePtr delegate = CreateGPUDelegate();
-    if (delegate) {
-      delegates_.push_back(std::move(delegate));
-    } else {
-      LOG(WARNING) << "GPU not supported";
-    }
+  std::string error_message;
+  auto delegate = CreateTfLiteDelegate(params, &error_message);
+  if (delegate) {
+    delegates_.push_back(std::move(delegate));
+  } else {
+    LOG(WARNING) << error_message;
   }
+
   for (int i = 0; i < delegates_.size(); ++i) {
     if (interpreter_->ModifyGraphWithDelegate(delegates_[i].get()) !=
         kTfLiteOk) {

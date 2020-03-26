@@ -119,7 +119,8 @@ void TfLiteSparsityFree(TfLiteSparsity* sparsity) {
   }
 
   if (sparsity->dim_metadata) {
-    for (int i = 0; i < sparsity->dim_metadata_size; i++) {
+    int i = 0;
+    for (; i < sparsity->dim_metadata_size; i++) {
       TfLiteDimensionMetadata metadata = sparsity->dim_metadata[i];
       if (metadata.format == kTfLiteDimSparseCSR) {
         TfLiteIntArrayFree(metadata.array_segments);
@@ -139,6 +140,11 @@ void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
+
+  if (t->dims_signature) {
+    TfLiteIntArrayFree((TfLiteIntArray *) t->dims_signature);
+  }
+  t->dims_signature = NULL;
 
   TfLiteQuantizationFree(&t->quantization);
   TfLiteSparsityFree(t->sparsity);
@@ -169,6 +175,7 @@ void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
   if (tensor->allocation_type != kTfLiteDynamic) {
     return;
   }
+  // TODO(b/145340303): Tensor data should be aligned.
   if (!tensor->data.raw) {
     tensor->data.raw = malloc(num_bytes);
   } else if (num_bytes > tensor->bytes) {

@@ -26,6 +26,7 @@ FROM ubuntu:${UBUNTU_VERSION} as base
 RUN apt-get update && apt-get install -y curl
 
 ARG USE_PYTHON_3_NOT_2
+# TODO(angerson) Completely remove Python 2 support
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
@@ -53,7 +54,7 @@ RUN ln -s $(which ${PYTHON}) /usr/local/bin/python
 # Installs the latest version by default.
 ARG TF_PACKAGE=tensorflow
 ARG TF_PACKAGE_VERSION=
-RUN ${PIP} install ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
+RUN ${PIP} install --no-cache-dir ${TF_PACKAGE}${TF_PACKAGE_VERSION:+==${TF_PACKAGE_VERSION}}
 
 # install libnuma, openssh, wget
 RUN ( apt-get update && apt-get install -y --no-install-recommends --fix-missing \

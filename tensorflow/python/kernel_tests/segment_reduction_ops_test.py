@@ -66,7 +66,7 @@ class SegmentReductionHelper(test.TestCase):
         output[index] = op1(output[index], x_flat[i])
       else:
         output[index] = x_flat[i]
-    # zero initialize values that are still uncalcuated.
+    # zero initialize values that are still uncalculated.
     initial_value_slice = np.ones(slice_shape) * initial_value
     output = [o if o is not None else initial_value_slice for o in output]
     if op2 is not None:

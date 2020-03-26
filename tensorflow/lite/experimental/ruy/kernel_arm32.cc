@@ -134,10 +134,10 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         // Load q0, q1
         "vld1.32 {d0, d1}, [%[lhs_ptr]]!\n"
         "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         // Load q2
         "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         "sub sp, sp, #" RUY_STR(RUY_STACK_OFFSET_SIZE) "\n"
 
@@ -195,9 +195,9 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         "vmla.f32 q8, q1, d5[0]\n"
         "vmla.f32 q10, q1, d5[1]\n"
         "vld1.32 {d2, d3}, [%[lhs_ptr]]!\n" // Reload LHS
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n" // Reload RHS
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         "add r1, r1, #1\n"
         "cmp r1, r2\n"
@@ -297,10 +297,10 @@ void KernelFloat32NeonOutOfOrder(const KernelParamsFloat<8, 4>& params) {
         // in the rest of the work on the current block.
         // Load q0, q1
         "vld1.32 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         // Load q2
         "vld1.32 {d4, d5}, [%[rhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         // Perform the bias-addition (per the above, we have just folded into
         // the bias the (depth * lhs_zero_point * rhs_zero_point) term.)
@@ -727,8 +727,8 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         "vpadal.s16 q13, q3\n"
 
         // Prefetch the next 64 bytes of LHS and RHS data.
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         // Each iteration of this loop advances by 16 levels of depth.
         "add r1, r1, #16\n"
@@ -878,9 +878,9 @@ void Kernel8bitNeonOutOfOrder(const KernelParams8bit<4, 2>& params) {
         // each of LHS and RHS, into v0 -- v3, as we don't need v0 -- v3 anymore
         // in the rest of the work on the current block.
         "vld1.8 {d0, d1, d2, d3}, [%[lhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         "vld1.8 {d8, d9, d10, d11}, [%[rhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         // Add to the bias values the product
         // (depth * lhs_zero_point * rhs_zero_point),
@@ -1699,11 +1699,11 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 2>& params) {
         "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
         "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
         "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
         // Skip the other column and advance the pointer.
         "add %[rhs_ptr], %[rhs_ptr], #16\n"
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         // Each iteration of this loop advances by 16 levels of depth.
         "add r1, r1, #16\n"
@@ -1832,11 +1832,11 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 2>& params) {
         "vld1.8 {d2, d3}, [%[lhs_ptr]]!\n"
         "vld1.8 {d4, d5}, [%[lhs_ptr]]!\n"
         "vld1.8 {d6, d7}, [%[lhs_ptr]]!\n"
-        RUY_PREFETCH("pld [%[lhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[lhs_ptr]]\n")
         "vld1.8 {d8, d9}, [%[rhs_ptr]]!\n"
         // Skip the other column and advance the pointer.
         "add %[rhs_ptr], %[rhs_ptr], #16\n"
-        RUY_PREFETCH("pld [%[rhs_ptr]]\n")
+        RUY_PREFETCH_LOAD("pld [%[rhs_ptr]]\n")
 
         // Add to the bias values the product
         // (depth * lhs_zero_point * rhs_zero_point),

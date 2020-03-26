@@ -229,7 +229,7 @@ class SliceAggregator(Aggregator):
   There is, however, some scheduling and context switching overhead which will
   offset the gains from pipelining the slice assignment. Below a given threshold
   it is faster to simply assign in the main thread rather than enqueue the
-  assigmnet in a side thread. The exact threshold will vary from system to
+  assignment in a side thread. The exact threshold will vary from system to
   system, but the time is not very sensitive to the exact transition so a value
   of 2 ** 14 was chosen which should be reasonable on most systems.
   """
@@ -1010,8 +1010,8 @@ def standardize_weights(y,
           'an appropriate class weight could not be determined.')
       class_sample_weight = math_ops.cast(class_sample_weight, K.floatx())
       if sample_weight is not None:
-        sample_weight = math_ops.cast(ops.convert_to_tensor(sample_weight),
-                                      K.floatx())
+        sample_weight = math_ops.cast(
+            ops.convert_to_tensor_v2(sample_weight), K.floatx())
     else:
       y_classes = y
       if len(y.shape) == 2:
@@ -1357,7 +1357,7 @@ def check_steps_argument(input_data, steps, steps_name):
 
 def cast_single_tensor(x, dtype=None):
   if isinstance(x, np.ndarray):
-    x = ops.convert_to_tensor(x)
+    x = ops.convert_to_tensor_v2(x)
   dtype = dtype or K.floatx()
   if x.dtype.is_floating:
     return math_ops.cast(x, dtype=dtype)
@@ -1383,7 +1383,7 @@ def cast_if_floating_dtype_and_mismatch(targets, outputs):
   new_targets = []
   for target, out in zip(targets, outputs):
     if isinstance(target, np.ndarray):
-      target = ops.convert_to_tensor(target)
+      target = ops.convert_to_tensor_v2(target)
     if target.dtype != out.dtype:
       new_targets.append(cast_single_tensor(target, dtype=out.dtype))
     else:
@@ -1506,7 +1506,7 @@ def prepare_loss_functions(loss, output_names):
 def prepare_loss_weights(training_endpoints, loss_weights=None):
   """Converts loss weights to a list of loss weights.
 
-  The result loss weights will be populated on the trainging endpoint.
+  The result loss weights will be populated on the training endpoint.
 
   Arguments:
       training_endpoints: List of model training endpoints.

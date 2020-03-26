@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/builders/op_builder.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/hexagon_implementation.h"
@@ -80,7 +81,8 @@ class HexagonDelegateKernel {
   void PrintLog();
 
   // Prints performance information about the graph including cycles per node.
-  void PrintPerformanceData();
+  // If 'profiler' is not nullptr data will be added to it.
+  void PrintPerformanceData(Profiler* profiler);
 
   // Print debugging information about the graph constructed.
   // Amount of information can be increased with debug level.
@@ -93,6 +95,12 @@ class HexagonDelegateKernel {
   // Indices of nodes in the delegated TfLite subgraph.
   std::vector<int> nodes_;
   ::TfLiteHexagonDelegateOptions params_;
+
+  // Used to support int8 TFLite *input* tensors.
+  // This vector, for every node-input, contains:
+  // 1. Pointer to Uint8 version if tensor is non-constant & type is Int8.
+  // 2. nullptr otherwise.
+  std::vector<TfLiteTensor*> int8_to_uint8_tensors_;
 };
 
 }  // namespace tflite

@@ -65,6 +65,9 @@ int RealMain(const char* argv0, bool do_vlog) {
   std::string command = std::string(argv0);
 #if defined(PLATFORM_GOOGLE)
   command = command + " do_vlog --vmodule=vmodule_test=7 --alsologtostderr";
+#elif defined(PLATFORM_WINDOWS)
+  command = "set TF_CPP_VMODULE=vmodule_test=7,shoobadooba=3 && " + command +
+            " do_vlog";
 #else
   command =
       "TF_CPP_VMODULE=vmodule_test=7,shoobadooba=3 " + command + " do_vlog";

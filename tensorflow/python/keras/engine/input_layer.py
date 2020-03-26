@@ -132,6 +132,7 @@ class InputLayer(base_layer.Layer):
     self.ragged = ragged
     self.batch_size = batch_size
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     if isinstance(input_shape, tensor_shape.TensorShape):
       input_shape = tuple(input_shape.as_list())
@@ -190,7 +191,7 @@ class InputLayer(base_layer.Layer):
     return layer_serialization.InputLayerSavedModelSaver(self)
 
 
-@keras_export('keras.layers.Input', 'keras.Input')
+@keras_export('keras.Input', 'keras.layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -202,19 +203,13 @@ def Input(  # pylint: disable=invalid-name
     **kwargs):
   """`Input()` is used to instantiate a Keras tensor.
 
-  A Keras tensor is a tensor object from the underlying backend
-  (Theano or TensorFlow), which we augment with certain
-  attributes that allow us to build a Keras model
+  A Keras tensor is a TensorFlow symbolic tensor object,
+  which we augment with certain attributes that allow us to build a Keras model
   just by knowing the inputs and outputs of the model.
 
-  For instance, if a, b and c are Keras tensors,
+  For instance, if `a`, `b` and `c` are Keras tensors,
   it becomes possible to do:
   `model = Model(input=[a, b], output=c)`
-
-  The added Keras attribute is:
-      `_keras_history`: Last layer applied to the tensor.
-          the entire layer graph is retrievable from that layer,
-          recursively.
 
   Arguments:
       shape: A shape tuple (integers), not including the batch size.

@@ -293,7 +293,7 @@ class DeviceResDistTest : public ::testing::Test {
   std::vector<CollectiveParams> cp_;
   std::vector<Status> status_;
   mutex mu_;
-  int num_done_ GUARDED_BY(mu_);
+  int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
 };
 

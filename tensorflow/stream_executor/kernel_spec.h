@@ -73,7 +73,7 @@ class KernelLoaderSpec {
   virtual ~KernelLoaderSpec() {}
 
   // Returns the kernel name to load out of the program.
-  const string &kernelname() const { return kernelname_; }
+  const std::string &kernelname() const { return kernelname_; }
 
  protected:
   explicit KernelLoaderSpec(absl::string_view kernelname);
@@ -81,7 +81,7 @@ class KernelLoaderSpec {
  private:
   // The kernel name that should be loaded out of the program description given
   // above.
-  string kernelname_;
+  std::string kernelname_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(KernelLoaderSpec);
 };
@@ -94,7 +94,7 @@ class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
   ~OnDiskKernelLoaderSpec() override {}
 
   // Returns the path to the on-disk loadable kernel file.
-  const string &filename() const { return filename_; }
+  const std::string &filename() const { return filename_; }
 
   // Returns the canonical suffix for this on-disk kernel loader spec format;
   // e.g. PTX files on disk have a canonical suffix of ".ptx".
@@ -104,7 +104,7 @@ class OnDiskKernelLoaderSpec : public KernelLoaderSpec {
   OnDiskKernelLoaderSpec(absl::string_view filename,
                          absl::string_view kernelname);
 
-  string filename_;
+  std::string filename_;
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(OnDiskKernelLoaderSpec);
@@ -128,12 +128,12 @@ class CudaCubinOnDisk : public OnDiskKernelLoaderSpec {
   CudaCubinOnDisk(absl::string_view filename, absl::string_view kernelname);
   ~CudaCubinOnDisk() override {}
 
-  const string &filename() const { return filename_; }
+  const std::string &filename() const { return filename_; }
 
   const char *CanonicalSuffix() const override { return ".cubin"; }
 
  private:
-  string filename_;
+  std::string filename_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudaCubinOnDisk);
 };
@@ -192,7 +192,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
                             int compute_capability_minor) const;
 
   // Decompresses the PTX string using bzip2.
-  static string DecompressPtx(const char *ptx);
+  static std::string DecompressPtx(const char *ptx);
 
  private:
   // PTX translation unit text contents in memory. The key is of as a tuple
@@ -205,7 +205,7 @@ class CudaPtxInMemory : public KernelLoaderSpec {
 
   // Stores all decompressed ptx strings, with original ptx string as keys.
   // It is marked as mutable for lazy decompression.
-  mutable std::map<const char *, string> decompressed_ptx_;
+  mutable std::map<const char *, std::string> decompressed_ptx_;
   mutable absl::Mutex mu_;
 
   // Defines the minimum compute capability possible. Used when PTX has no
@@ -246,11 +246,11 @@ class OpenCLTextInMemory : public KernelLoaderSpec {
   ~OpenCLTextInMemory() override {}
 
   // Returns the OpenCL text contents.
-  const string &text() const { return text_; }
+  const std::string &text() const { return text_; }
 
  private:
   // OpenCL translation unit text contents in memory.
-  string text_;
+  std::string text_;
 
   SE_DISALLOW_COPY_AND_ASSIGN(OpenCLTextInMemory);
 };

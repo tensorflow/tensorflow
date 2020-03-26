@@ -107,7 +107,7 @@ def add_op_callback(callback_fn):
   if not callable(callback_fn):
     raise ValueError(
         "Callback function passed to op_callback() is expected to be callable, "
-        "but is not. Recevied %s" % callback_fn)
+        "but is not. Received %s" % callback_fn)
   ctx = context.context()
   ctx.add_op_callback(callback_fn)
   if ctx.executing_eagerly():

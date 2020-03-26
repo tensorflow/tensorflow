@@ -38,7 +38,7 @@ namespace ruy {
 #ifdef __linux__
 class PerfEvent {
  public:
-  void Start(std::uint32_t type, std::uint64_t config) {
+  PerfEvent(std::uint32_t type, std::uint64_t config) {
     perf_event_attr pe;
     memset(&pe, 0, sizeof(pe));
     pe.size = sizeof(pe);
@@ -47,26 +47,49 @@ class PerfEvent {
     pe.disabled = 1;
     pe.exclude_kernel = 1;
     pe.exclude_hv = 1;
+    pe.inherit = 1;
     fd_ = syscall(__NR_perf_event_open, &pe, 0, -1, -1, 0);
     if (fd_ == -1) {
       fprintf(stderr, "perf_event_open failed for config 0x%lx\n",
               static_cast<unsigned long>(config));
       // abort();
     }
-    ioctl(fd_, PERF_EVENT_IOC_RESET, 0);
-    ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
   }
 
-  void Stop() {
-    ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
-    RUY_CHECK_NE(read(fd_, &count_, sizeof(count_)), -1);
+  ~PerfEvent() {
+    RUY_CHECK(!started_);
     close(fd_);
   }
 
-  std::int64_t Count() const { return count_; }
+  void Start() {
+    RUY_CHECK(!started_);
+    started_ = true;
+    ioctl(fd_, PERF_EVENT_IOC_RESET, 0);
+    ioctl(fd_, PERF_EVENT_IOC_ENABLE, 0);
+    count_at_start_ = Read();
+  }
+
+  void Stop() {
+    RUY_CHECK(started_);
+    started_ = false;
+    ioctl(fd_, PERF_EVENT_IOC_DISABLE, 0);
+    count_at_stop_ = Read();
+  }
+
+  std::int64_t Count() const {
+    RUY_CHECK(!started_);
+    return count_at_stop_ - count_at_start_;
+  }
 
  private:
-  std::int64_t count_ = -1;
+  std::int64_t Read() const {
+    std::int64_t count;
+    RUY_CHECK_NE(read(fd_, &count, sizeof(count)), -1);
+    return count;
+  }
+  std::int64_t count_at_start_ = -1;
+  std::int64_t count_at_stop_ = -1;
+  bool started_ = false;
   int fd_ = -1;
 };
 #else
@@ -74,7 +97,9 @@ class PerfEvent {
 #define PERF_TYPE_RAW 0
 class PerfEvent {
  public:
-  void Start(std::uint32_t, std::uint64_t) {}
+  PerfEvent(std::uint32_t, std::uint64_t) {}
+  ~PerfEvent() {}
+  void Start() {}
   void Stop() {}
   std::int64_t Count() const { return 0; }
 };
@@ -159,13 +184,26 @@ constexpr std::uint16_t L3D_CACHE_REFILL_RD = 0xA2;
 };  // namespace arm_pmuv3
 
 class PmuEventsPrivate {
+ public:
+  PmuEventsPrivate()
+      : l1d_cache_refill(PERF_TYPE_RAW, arm_pmuv3::L1D_CACHE_REFILL),
+        l2d_cache_refill(PERF_TYPE_RAW, arm_pmuv3::L2D_CACHE_REFILL),
+        l3d_cache_refill(PERF_TYPE_RAW, arm_pmuv3::L3D_CACHE_REFILL),
+        ll_cache_miss(PERF_TYPE_RAW, arm_pmuv3::LL_CACHE_MISS),
+        l1d_tlb_refill(PERF_TYPE_RAW, arm_pmuv3::L1D_TLB_REFILL),
+        l2d_tlb_refill(PERF_TYPE_RAW, arm_pmuv3::L2D_TLB_REFILL),
+        stall_frontend(PERF_TYPE_RAW, arm_pmuv3::STALL_FRONTEND),
+        stall_backend(PERF_TYPE_RAW, arm_pmuv3::STALL_BACKEND),
+        br_mis_pred(PERF_TYPE_RAW, arm_pmuv3::BR_MIS_PRED) {}
+
+ private:
   friend class PmuEvents;
   PerfEvent l1d_cache_refill;
   PerfEvent l2d_cache_refill;
   PerfEvent l3d_cache_refill;
+  PerfEvent ll_cache_miss;
   PerfEvent l1d_tlb_refill;
   PerfEvent l2d_tlb_refill;
-  PerfEvent ll_cache_miss;
   PerfEvent stall_frontend;
   PerfEvent stall_backend;
   PerfEvent br_mis_pred;
@@ -175,15 +213,15 @@ PmuEvents::PmuEvents() : priv(new PmuEventsPrivate) {}
 PmuEvents::~PmuEvents() { delete priv; }
 
 void PmuEvents::StartRecording() {
-  priv->l1d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L1D_CACHE_REFILL);
-  priv->l2d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L2D_CACHE_REFILL);
-  priv->l3d_cache_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L3D_CACHE_REFILL);
-  priv->ll_cache_miss.Start(PERF_TYPE_RAW, arm_pmuv3::LL_CACHE_MISS);
-  priv->l1d_tlb_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L1D_TLB_REFILL);
-  priv->l2d_tlb_refill.Start(PERF_TYPE_RAW, arm_pmuv3::L2D_TLB_REFILL);
-  priv->stall_frontend.Start(PERF_TYPE_RAW, arm_pmuv3::STALL_FRONTEND);
-  priv->stall_backend.Start(PERF_TYPE_RAW, arm_pmuv3::STALL_BACKEND);
-  priv->br_mis_pred.Start(PERF_TYPE_RAW, arm_pmuv3::BR_MIS_PRED);
+  priv->l1d_cache_refill.Start();
+  priv->l2d_cache_refill.Start();
+  priv->l3d_cache_refill.Start();
+  priv->ll_cache_miss.Start();
+  priv->l1d_tlb_refill.Start();
+  priv->l2d_tlb_refill.Start();
+  priv->stall_frontend.Start();
+  priv->stall_backend.Start();
+  priv->br_mis_pred.Start();
 }
 
 void PmuEvents::StopRecording() {

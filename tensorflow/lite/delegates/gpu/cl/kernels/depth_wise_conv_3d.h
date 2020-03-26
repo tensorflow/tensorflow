@@ -38,10 +38,10 @@ namespace cl {
 class DepthWiseConvolution3D : public GPUOperation {
  public:
   DepthWiseConvolution3D() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   DepthWiseConvolution3D(DepthWiseConvolution3D&& operation);
@@ -50,7 +50,7 @@ class DepthWiseConvolution3D : public GPUOperation {
   DepthWiseConvolution3D& operator=(const DepthWiseConvolution3D&) = delete;
 
  private:
-  friend Status CreateDepthWiseConvolution3D(
+  friend absl::Status CreateDepthWiseConvolution3D(
       const CreationContext& creation_context, const OperationDef& definition,
       const DepthwiseConvolution3DAttributes& attr,
       DepthWiseConvolution3D* result);
@@ -58,14 +58,14 @@ class DepthWiseConvolution3D : public GPUOperation {
                          const DepthwiseConvolution3DAttributes& attr,
                          const CLDevice& device);
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWDI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWDI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   Texture2D weights_tex2d_;
@@ -85,8 +85,8 @@ class DepthWiseConvolution3D : public GPUOperation {
 };
 
 template <DataType T>
-Status DepthWiseConvolution3D::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+absl::Status DepthWiseConvolution3D::UploadWeights(
+    const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -123,12 +123,12 @@ Status DepthWiseConvolution3D::UploadWeights(
           gpu_data.data(), context, &weights_tex2d_));
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
 void DepthWiseConvolution3D::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -158,7 +158,7 @@ void DepthWiseConvolution3D::RearrangeWeightsData(
   }
 }
 
-Status CreateDepthWiseConvolution3D(
+absl::Status CreateDepthWiseConvolution3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr,
     DepthWiseConvolution3D* result);

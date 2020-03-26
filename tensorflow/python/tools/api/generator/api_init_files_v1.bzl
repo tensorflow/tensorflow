@@ -50,6 +50,7 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "losses/__init__.py",
     "manip/__init__.py",
     "math/__init__.py",
+    "math/special/__init__.py",
     "metrics/__init__.py",
     "mixed_precision/__init__.py",
     "mixed_precision/experimental/__init__.py",

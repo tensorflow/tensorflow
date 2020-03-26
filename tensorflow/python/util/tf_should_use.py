@@ -49,7 +49,7 @@ class _TFShouldUseHelper(object):
     if context.executing_eagerly():
       # If warn_in_eager, sated == False.  Otherwise true.
       self._sated = not warn_in_eager
-    elif ops.get_default_graph()._building_function:  # pylint: disable=protected-access
+    elif ops.inside_function():
       if error_in_function:
         self._sated = False
         ops.add_exit_callback_to_default_func_graph(
@@ -182,7 +182,7 @@ def _add_should_use_warning(x, error_in_function=False, warn_in_eager=False):
   if context.executing_eagerly() and not warn_in_eager:
     return x
 
-  if ops.get_default_graph()._building_function and not error_in_function:  # pylint: disable=protected-access
+  if ops.inside_function() and not error_in_function:
     # We don't currently log warnings in tf.function calls, so just skip it.
     return x
 

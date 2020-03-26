@@ -52,7 +52,7 @@ TfLiteStatus InitializeMicroFeatures(tflite::ErrorReporter* error_reporter) {
   config.log_scale.scale_shift = 6;
   if (!FrontendPopulateState(&config, &g_micro_features_state,
                              kAudioSampleFrequency)) {
-    error_reporter->Report("FrontendPopulateState() failed");
+    TF_LITE_REPORT_ERROR(error_reporter, "FrontendPopulateState() failed");
     return kTfLiteError;
   }
   g_is_first_time = true;

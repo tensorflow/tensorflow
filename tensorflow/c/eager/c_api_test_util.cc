@@ -131,6 +131,21 @@ TFE_TensorHandle* TestMatrixTensorHandle3X2() {
   return th;
 }
 
+TFE_Op* AddOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
+  TF_Status* status = TF_NewStatus();
+
+  TFE_Op* op = TFE_NewOp(ctx, "AddV2", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, a, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, b, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
+  TFE_OpSetAttrType(op, "T", TFE_TensorHandleDataType(a));
+
+  return op;
+}
+
 TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   TF_Status* status = TF_NewStatus();
 

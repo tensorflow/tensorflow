@@ -38,7 +38,8 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
   if ((latest_results->dims->size != 2) ||
       (latest_results->dims->data[0] != 1) ||
       (latest_results->dims->data[1] != kCategoryCount)) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "The results for recognition should contain %d elements, but there are "
         "%d in an %d-dimensional shape",
         kCategoryCount, latest_results->dims->data[1],
@@ -47,7 +48,8 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
   }
 
   if (latest_results->type != kTfLiteUInt8) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "The results for recognition should be uint8 elements, but are %d",
         latest_results->type);
     return kTfLiteError;
@@ -55,7 +57,8 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
 
   if ((!previous_results_.empty()) &&
       (current_time_ms < previous_results_.front().time_)) {
-    error_reporter_->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter_,
         "Results must be fed in increasing time order, but received a "
         "timestamp of %d that was earlier than the previous one of %d",
         current_time_ms, previous_results_.front().time_);

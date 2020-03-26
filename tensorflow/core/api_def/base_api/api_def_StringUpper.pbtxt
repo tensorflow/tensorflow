@@ -3,8 +3,9 @@ op {
   summary: "Converts all lowercase characters into their respective uppercase replacements."
   description: <<END
 Example:
+
 >>> tf.strings.upper("CamelCase string and ALL CAPS")
 <tf.Tensor: shape=(), dtype=string, numpy=b'CAMELCASE STRING AND ALL CAPS'>
-END
 
+END
 }

@@ -467,6 +467,9 @@ tf_cc_test(
     name = "grpc_tensor_coding_test",
     size = "small",
     srcs = ["grpc_tensor_coding_test.cc"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":grpc_tensor_coding",
         ":grpc_testlib",

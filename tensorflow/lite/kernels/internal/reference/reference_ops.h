@@ -52,9 +52,11 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/reference/quantize.h"
 #include "tensorflow/lite/kernels/internal/reference/reduce.h"
+#include "tensorflow/lite/kernels/internal/reference/requantize.h"
 #include "tensorflow/lite/kernels/internal/reference/round.h"
 #include "tensorflow/lite/kernels/internal/reference/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
+#include "tensorflow/lite/kernels/internal/reference/sub.h"
 #include "tensorflow/lite/kernels/internal/round.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -264,30 +266,32 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
 }
 
 template <typename T>
-inline void QuantizeLeakyRelu(const LeakyReluParams& params, T q_alpha,
+inline void QuantizeLeakyRelu(const LeakyReluParams& params,
                               const RuntimeShape& input_shape,
                               const T* input_data,
                               const RuntimeShape& output_shape,
                               T* output_data) {
-  ruy::profiler::ScopeLabel label("LeakyRelu (not fused)");
+  ruy::profiler::ScopeLabel label("Quantized LeakyRelu (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   static const int32 quantized_min = std::numeric_limits<T>::min();
   static const int32 quantized_max = std::numeric_limits<T>::max();
-  static const int32 alpha_value = q_alpha - params.alpha_offset;
   for (int i = 0; i < flat_size; ++i) {
     const int32 input_value = input_data[i] - params.input_offset;
+    int32 unclamped_output;
     if (input_value >= 0) {
-      output_data[i] = input_data[i];
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_identity,
+                             params.output_shift_identity);
     } else {
-      const int32 unclamped_output =
-          params.output_offset + MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                                     input_value * alpha_value,
-                                     params.output_multiplier,
-                                     params.output_shift);
-      const T clamped_output =
-          std::min(quantized_max, std::max(quantized_min, unclamped_output));
-      output_data[i] = static_cast<uint8>(clamped_output);
+      unclamped_output = params.output_offset +
+                         MultiplyByQuantizedMultiplier(
+                             input_value, params.output_multiplier_alpha,
+                             params.output_shift_alpha);
     }
+    const T clamped_output =
+        std::min(quantized_max, std::max(quantized_min, unclamped_output));
+    output_data[i] = static_cast<T>(clamped_output);
   }
 }
 
@@ -295,7 +299,7 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
                             const RuntimeShape& output_shape,
-                            float* output_data) {
+                            float* output_data, float epsilon = 1e-6) {
   const int trailing_dim = input_shape.DimensionsCount() - 1;
   const int outer_size =
       MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
@@ -307,7 +311,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
       const float val = input_data[depth * i + c];
       squared_l2_norm += val * val;
     }
-    const float l2_norm = std::sqrt(squared_l2_norm);
+    float l2_norm = std::sqrt(squared_l2_norm);
+    l2_norm = std::max(l2_norm, epsilon);
     for (int c = 0; c < depth; ++c) {
       output_data[depth * i + c] = input_data[depth * i + c] / l2_norm;
     }
@@ -646,302 +651,6 @@ inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
         }
       }
     }
-  }
-}
-
-inline void SubNonBroadcast(const ArithmeticParams& params,
-                            const RuntimeShape& input1_shape,
-                            const float* input1_data,
-                            const RuntimeShape& input2_shape,
-                            const float* input2_data,
-                            const RuntimeShape& output_shape,
-                            float* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
-  }
-}
-
-inline void SubNonBroadcast(const ArithmeticParams& params,
-                            const RuntimeShape& input1_shape,
-                            const int32* input1_data,
-                            const RuntimeShape& input2_shape,
-                            const int32* input2_data,
-                            const RuntimeShape& output_shape,
-                            int32* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.quantized_activation_min,
-        params.quantized_activation_max);
-  }
-}
-
-// TODO(jiawen): We can implement BroadcastSub on buffers of arbitrary
-// dimensionality if the runtime code does a single loop over one dimension
-// that handles broadcasting as the base case. The code generator would then
-// generate max(D1, D2) nested for loops.
-// TODO(benoitjacob): BroadcastSub is intentionally duplicated from
-// reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
-// is no longer referenced in this file, move NdArrayDesc<T> from types.h to
-// reference_ops.h.
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const float* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const float* input2_data,
-                               const RuntimeShape& output_shape,
-                               float* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/float");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.float_activation_min, params.float_activation_max);
-        }
-      }
-    }
-  }
-}
-
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const uint8* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const uint8* input2_data,
-                               const RuntimeShape& output_shape,
-                               uint8* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/uint8");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          const int32 input1_val =
-              params.input1_offset +
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
-          const int32 input2_val =
-              params.input2_offset +
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-          const int32 shifted_input1_val =
-              input1_val * (1 << params.left_shift);
-          const int32 shifted_input2_val =
-              input2_val * (1 << params.left_shift);
-          const int32 scaled_input1_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input1_val, params.input1_multiplier,
-                  params.input1_shift);
-          const int32 scaled_input2_val =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  shifted_input2_val, params.input2_multiplier,
-                  params.input2_shift);
-          const int32 raw_sub = scaled_input1_val - scaled_input2_val;
-          const int32 raw_output =
-              MultiplyByQuantizedMultiplierSmallerThanOneExp(
-                  raw_sub, params.output_multiplier, params.output_shift) +
-              params.output_offset;
-          const int32 clamped_output =
-              std::min(params.quantized_activation_max,
-                       std::max(params.quantized_activation_min, raw_output));
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              static_cast<uint8>(clamped_output);
-        }
-      }
-    }
-  }
-}
-
-inline void BroadcastSub4DSlow(const ArithmeticParams& params,
-                               const RuntimeShape& input1_shape,
-                               const int32* input1_data,
-                               const RuntimeShape& input2_shape,
-                               const int32* input2_data,
-                               const RuntimeShape& output_shape,
-                               int32* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/int32");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.quantized_activation_min,
-                  params.quantized_activation_max);
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-void BroadcastSub4DSlow(const ArithmeticParams& params,
-                        const RuntimeShape& input1_shape, const T* input1_data,
-                        const RuntimeShape& input2_shape, const T* input2_data,
-                        const RuntimeShape& output_shape, T* output_data) {
-  ruy::profiler::ScopeLabel label("BroadcastSub4DSlow/templated");
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              ActivationFunctionWithMinMax(
-                  input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-                      input2_data[SubscriptToIndex(desc2, b, y, x, c)],
-                  params.quantized_activation_min,
-                  params.quantized_activation_max);
-        }
-      }
-    }
-  }
-}
-
-template <typename T>
-void Sub(const ArithmeticParams& params, const RuntimeShape& input1_shape,
-         const T* input1_data, const RuntimeShape& input2_shape,
-         const T* input2_data, const RuntimeShape& output_shape,
-         T* output_data) {
-  NdArrayDesc<4> desc1;
-  NdArrayDesc<4> desc2;
-  NdArrayDescsForElementwiseBroadcast(input1_shape, input2_shape, &desc1,
-                                      &desc2);
-  const RuntimeShape extended_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-
-  // In Tensorflow, the dimensions are canonically named (batch_number, row,
-  // col, channel), with extents (batches, height, width, depth), with the
-  // trailing dimension changing most rapidly (channels has the smallest stride,
-  // typically 1 element).
-  //
-  // In generated C code, we store arrays with the dimensions reversed. The
-  // first dimension has smallest stride.
-  //
-  // We name our variables by their Tensorflow convention, but generate C code
-  // nesting loops such that the innermost loop has the smallest stride for the
-  // best cache behavior.
-  for (int b = 0; b < extended_output_shape.Dims(0); ++b) {
-    for (int y = 0; y < extended_output_shape.Dims(1); ++y) {
-      for (int x = 0; x < extended_output_shape.Dims(2); ++x) {
-        for (int c = 0; c < extended_output_shape.Dims(3); ++c) {
-          output_data[Offset(extended_output_shape, b, y, x, c)] =
-              input1_data[SubscriptToIndex(desc1, b, y, x, c)] -
-              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
-        }
-      }
-    }
-  }
-}
-
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const int32* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const int32* input2_data,
-                              const RuntimeShape& output_shape,
-                              int32* output_data) {
-  ruy::profiler::ScopeLabel label("SubWithActivation");
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.quantized_activation_min,
-        params.quantized_activation_max);
-  }
-}
-
-inline void SubWithActivation(const ArithmeticParams& params,
-                              const RuntimeShape& input1_shape,
-                              const float* input1_data,
-                              const RuntimeShape& input2_shape,
-                              const float* input2_data,
-                              const RuntimeShape& output_shape,
-                              float* output_data) {
-  const int flat_size =
-      MatchingElementsSize(input1_shape, input2_shape, output_shape);
-  for (int i = 0; i < flat_size; ++i) {
-    output_data[i] = ActivationFunctionWithMinMax(
-        input1_data[i] - input2_data[i], params.float_activation_min,
-        params.float_activation_max);
   }
 }
 
@@ -1766,45 +1475,6 @@ inline void Dequantize(const RuntimeShape& input_shape,
   }
 }
 
-template <typename input_type, typename output_type>
-inline void Requantize(const input_type* input_data, int32_t size,
-                       int32_t effective_scale_multiplier,
-                       int32_t effective_scale_shift, int32_t input_zeropoint,
-                       int32_t output_zeropoint, output_type* output_data) {
-  ruy::profiler::ScopeLabel label("Requantize");
-  const bool same_scale =
-      (effective_scale_multiplier == 1 << 30 && effective_scale_shift == 1);
-  if (same_scale) {
-    const bool mixed_type_int8_uint8 =
-        std::is_same<input_type, int8_t>::value &&
-        std::is_same<output_type, uint8_t>::value;
-    const bool mixed_type_uint8_int8 =
-        std::is_same<input_type, uint8_t>::value &&
-        std::is_same<output_type, int8_t>::value;
-    const int32_t zero_point_diff = input_zeropoint - output_zeropoint;
-    // Fast path to do requantization for the case when just a shift of 128 is
-    // needed.
-    if ((mixed_type_int8_uint8 && zero_point_diff == -128) ||
-        (mixed_type_uint8_int8 && zero_point_diff == 128)) {
-      for (int i = 0; i < size; ++i) {
-        output_data[i] = input_data[i] ^ 0x80;
-      }
-    }
-  }
-  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
-  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
-  for (int i = 0; i < size; ++i) {
-    const int32_t input = input_data[i] - input_zeropoint;
-    const int32_t output =
-        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
-                                      effective_scale_shift) +
-        output_zeropoint;
-    const int32_t clamped_output =
-        std::max(std::min(output, kMaxOutput), kMinOutput);
-    output_data[i] = static_cast<output_type>(clamped_output);
-  }
-}
-
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
@@ -2065,12 +1735,24 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("SpaceToBatchND");
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int depth = input1_shape.Dims(3);
   const int input_width = input1_shape.Dims(2);
@@ -2082,13 +1764,14 @@ inline void SpaceToBatchND(
   const int output_batch_size = output_shape.Dims(0);
 
   const int block_shape_height = block_shape_data[0];
-  const int block_shape_width = block_shape_data[1];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int padding_top = paddings_data[0];
-  const int padding_left = paddings_data[2];
+  const int padding_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? paddings_data[2] : 0;
 
   // For uint8 quantized, the correct padding "zero value" is the output offset.
   const int32_t pad_value = params.output_offset;
-
   for (int out_b = 0; out_b < output_batch_size; ++out_b) {
     int input_batch = out_b % input_batch_size;
     int shift_w = (out_b / input_batch_size) % block_shape_width;
@@ -2123,12 +1806,24 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
   ruy::profiler::ScopeLabel label("BatchToSpaceND");
+  TFLITE_DCHECK_GE(unextended_input1_shape.DimensionsCount(), 3);
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape input1_shape =
-      RuntimeShape::ExtendedShape(4, unextended_input1_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  TFLITE_DCHECK_EQ(unextended_input1_shape.DimensionsCount(),
+                   unextended_output_shape.DimensionsCount());
+
+  // Extends the input/output shape from 3D to 4D if needed, NHC -> NH1C.
+  auto extend_shape = [](const RuntimeShape& shape) {
+    if (shape.DimensionsCount() == 4) {
+      return shape;
+    }
+    RuntimeShape new_shape(4, 1);
+    new_shape.SetDim(0, shape.Dims(0));
+    new_shape.SetDim(1, shape.Dims(1));
+    new_shape.SetDim(3, shape.Dims(2));
+    return new_shape;
+  };
+  const RuntimeShape input1_shape = extend_shape(unextended_input1_shape);
+  const RuntimeShape output_shape = extend_shape(unextended_output_shape);
 
   const int output_width = output_shape.Dims(2);
   const int output_height = output_shape.Dims(1);
@@ -2139,11 +1834,12 @@ inline void BatchToSpaceND(
   const int input_height = input1_shape.Dims(1);
   const int input_batch_size = input1_shape.Dims(0);
 
-  const int block_shape_width = block_shape_data[1];
   const int block_shape_height = block_shape_data[0];
+  const int block_shape_width =
+      unextended_input1_shape.DimensionsCount() == 4 ? block_shape_data[1] : 1;
   const int crops_top = crops_data[0];
-  const int crops_left = crops_data[2];
-
+  const int crops_left =
+      unextended_input1_shape.DimensionsCount() == 4 ? crops_data[2] : 0;
   for (int in_batch = 0; in_batch < input_batch_size; ++in_batch) {
     const int out_batch = in_batch % output_batch_size;
     const int spatial_offset = in_batch / output_batch_size;

@@ -1021,7 +1021,7 @@ class ApiTest(test.TestCase):
                        ag_ctx.Status.ENABLED)
       return 0
 
-    # Note: the autograph=False sets the contect to Status.DISABLED. The test
+    # Note: the autograph=False sets the connect to Status.DISABLED. The test
     # verifies that to_graph overrides that.
     @def_function.function(autograph=False)
     def f():

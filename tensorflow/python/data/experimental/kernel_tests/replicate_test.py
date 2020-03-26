@@ -22,7 +22,7 @@ from absl.testing import parameterized
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import pywrap_tfe
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.kernel_tests import test_base
@@ -220,7 +220,7 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
   def setUp(self):
     super(RemoteReplicateTest, self).setUp()
     # Start the local server.
-    local_port = pywrap_tensorflow.TF_PickUnusedPortOrDie()
+    local_port = pywrap_tfe.TF_PickUnusedPortOrDie()
     context.set_server_def(
         server_def=_get_server_def(
             JOB_NAME,
@@ -262,26 +262,30 @@ class RemoteReplicateTest(test_base.DatasetTestBase, parameterized.TestCase):
     with ops.device(self._device2):
       self.assertDatasetProduces(dataset2, range(0, 200, 2))
 
+  # TODO(b/150821179): Re-enable this test.
   @combinations.generate(
       combinations.combine(tf_api_version=[2], mode=["eager"]))
-  def testVariableInput(self):
+  def _testVariableInput(self):
     with ops.device(self._device0):
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       dataset0 = dataset_ops.Dataset.range(100).map(
           lambda _: counter_var.assign_add(1))
-    # We don't support stateful ops across processes in functions as of now.
     with self.assertRaises(errors.InvalidArgumentError):
       replicated_ds = distribute.replicate(dataset0,
                                            [self._device1, self._device2])
       dataset1 = replicated_ds[self._device1]
+      dataset2 = replicated_ds[self._device2]
       with ops.device(self._device0):
         get_next0 = self.getNext(dataset0)
       with ops.device(self._device1):
         get_next1 = self.getNext(dataset1)
+      with ops.device(self._device2):
+        get_next2 = self.getNext(dataset2)
       for _ in range(100):
         self.evaluate(get_next0())
         self.evaluate(get_next1())
+        self.evaluate(get_next2())
 
 
 if __name__ == "__main__":

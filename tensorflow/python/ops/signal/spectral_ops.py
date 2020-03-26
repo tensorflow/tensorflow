@@ -302,9 +302,15 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
       signals.
     frame_length: An integer scalar `Tensor`. The window length in samples
       which must be divisible by 4.
-    window_fn: A callable that takes a window length and a `dtype` keyword
-      argument and returns a `[window_length]` `Tensor` of samples in the
-      provided datatype. If set to `None`, no windowing is used.
+    window_fn: A callable that takes a frame_length and a `dtype` keyword
+      argument and returns a `[frame_length]` `Tensor` of samples in the
+      provided datatype. If set to `None`, a rectangular window with a scale of
+      1/sqrt(2) is used. For perfect reconstruction of a signal from `mdct`
+      followed by `inverse_mdct`, please use `tf.signal.vorbis_window`,
+      `tf.signal.kaiser_bessel_derived_window` or `None`. If using another
+      window function, make sure that w[n]^2 + w[n + frame_length // 2]^2 = 1
+      and w[n] = w[frame_length - n - 1] for n = 0,...,frame_length // 2 - 1 to
+      achieve perfect reconstruction.
     pad_end: Whether to pad the end of `signals` with zeros when the provided
       frame length and step produces a frame that lies partially past its end.
     norm: If it is None, unnormalized dct4 is used, if it is "ortho"
@@ -394,9 +400,15 @@ def inverse_mdct(mdcts,
     mdcts: A `float32`/`float64` `[..., frames, frame_length // 2]`
       `Tensor` of MDCT bins representing a batch of `frame_length // 2`-point
       MDCTs.
-    window_fn: A callable that takes a window length and a `dtype` keyword
-      argument and returns a `[window_length]` `Tensor` of samples in the
-      provided datatype. If set to `None`, no windowing is used.
+    window_fn: A callable that takes a frame_length and a `dtype` keyword
+      argument and returns a `[frame_length]` `Tensor` of samples in the
+      provided datatype. If set to `None`, a rectangular window with a scale of
+      1/sqrt(2) is used. For perfect reconstruction of a signal from `mdct`
+      followed by `inverse_mdct`, please use `tf.signal.vorbis_window`,
+      `tf.signal.kaiser_bessel_derived_window` or `None`. If using another
+      window function, make sure that w[n]^2 + w[n + frame_length // 2]^2 = 1
+      and w[n] = w[frame_length - n - 1] for n = 0,...,frame_length // 2 - 1 to
+      achieve perfect reconstruction.
     norm: If "ortho", orthonormal inverse DCT4 is performed, if it is None,
       a regular dct4 followed by scaling of `1/frame_length` is performed.
     name: An optional name for the operation.
