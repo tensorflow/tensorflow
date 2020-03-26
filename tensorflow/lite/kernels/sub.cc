@@ -225,19 +225,26 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, 16bit -> 16bit with general rescalings
-  bool pot_scale_16bit = false;
+  bool pot_scale_16bit = true;
 
   bool input1_scale_is_pot = false;
   bool input2_scale_is_pot = false;
   bool output_scale_is_pot = false;
 
-  int input1_scale_log2_rounded;
-  int input2_scale_log2_rounded;
-  int output_scale_log2_rounded;
+  int input1_scale_log2_rounded{0};
+  int input2_scale_log2_rounded{0};
+  int output_scale_log2_rounded{0};
 
   if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
       output->type == kTfLiteInt16) {
-    // Check that param scale is POT
+    // In case of 16-bit, there are two implementation:
+    // the scale parameter is a general number
+    // the scale parameter is POT and
+    // zero_point is zero for inputs/output.
+    pot_scale_16bit = (input1->params.zero_point == 0) &&
+                      (input2->params.zero_point == 0) &&
+                      (output->params.zero_point == 0);
+
     input1_scale_is_pot =
         CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
 
@@ -247,14 +254,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_scale_is_pot =
         CheckedLog2(output->params.scale, &output_scale_log2_rounded);
 
-    pot_scale_16bit = input1_scale_log2_rounded && input2_scale_log2_rounded &&
-                      output_scale_log2_rounded;
+    pot_scale_16bit &=
+        input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
   }
 
   data->pot_scale_16bit = pot_scale_16bit;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      pot_scale_16bit) {
+      !pot_scale_16bit) {
     TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
                                                    output, params, data, -1));
   } else if (output->type == kTfLiteInt16) {
@@ -348,7 +355,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       TF_LITE_SUB(reference_integer_ops, Add, int8_t);
     }
-  } else if (data->pot_scale_16bit) {
+  } else if (!data->pot_scale_16bit) {
     if (need_broadcast) {
       TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
     } else {

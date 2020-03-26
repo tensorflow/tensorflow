@@ -88,7 +88,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
              /* min_version */ 1,
-             /* max_version */ 2);
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version */ 1,
              /* max_version */ 3);
@@ -139,7 +139,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 5);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V(),
