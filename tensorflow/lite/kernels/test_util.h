@@ -264,6 +264,21 @@ class SingleOpModel {
     }
   }
 
+  template <typename T>
+  void PerChannelQuantizeBiasPopulateTensor(
+      int index, const std::vector<float>& input_data,
+      const TfLiteAffineQuantization* params) {
+    const int32_t num_inputs = input_data.size();
+    std::vector<T> quantized_output(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      const float scale = params->scale->size == 1 ? params->scale->data[0]
+                                                   : params->scale->data[i];
+      quantized_output[i] = input_data[i] / scale;
+    }
+    PopulateTensor(index, /*offset=*/0, quantized_output.data(),
+                   quantized_output.data() + quantized_output.size());
+  }
+
   // Quantize and populate data for bias with per channel quantization.
   void PerChannelQuantizeBias(int index, const std::vector<float>& input_data) {
     TfLiteTensor* t = interpreter_->tensor(index);
@@ -271,9 +286,9 @@ class SingleOpModel {
         reinterpret_cast<TfLiteAffineQuantization*>(t->quantization.params);
     CHECK(t->type == kTfLiteInt32 || t->type == kTfLiteInt64);
     if (t->type == kTfLiteInt32) {
-      PerChannelQuantizeBiasPopulateTensor<int32_t>(input_data, index, params);
+      PerChannelQuantizeBiasPopulateTensor<int32_t>(index, input_data, params);
     } else {
-      PerChannelQuantizeBiasPopulateTensor<int64_t>(input_data, index, params);
+      PerChannelQuantizeBiasPopulateTensor<int64_t>(index, input_data, params);
     }
   }
 

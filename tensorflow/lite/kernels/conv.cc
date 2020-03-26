@@ -685,8 +685,9 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
                                  TfLiteConvParams* params, OpData* data,
-                                 TfLiteTensor* input, TfLiteTensor* filter,
-                                 TfLiteTensor* bias, TfLiteTensor* output,
+                                 const TfLiteTensor* input,
+                                 const TfLiteTensor* filter,
+                                 const TfLiteTensor* bias, TfLiteTensor* output,
                                  TfLiteTensor* im2col) {
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
