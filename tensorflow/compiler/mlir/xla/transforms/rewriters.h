@@ -23,6 +23,17 @@ limitations under the License.
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 
 namespace mlir {
+
+enum LinalgTransition : unsigned int {
+  LHLO_TO_LINALG,
+  HLO_TO_LINALG_WITH_TENSOR,
+  HLO_TO_LINALG_WITH_BUFFER
+};
+
+namespace xla {
+class BufferAssignmentLegalizer;
+}  // namespace xla
+
 namespace xla_hlo {
 
 // Collection of rewrite patterns for lowering a general dot product.
@@ -42,8 +53,11 @@ void populateHLOToLHLOConversionPattern(MLIRContext *context,
                                         OwningRewritePatternList *patterns);
 
 // Collection of rewrite patterns for lowering of HLO to Linalg dialect.
-void populateHLOToLinalgConversionPattern(MLIRContext *context,
-                                          OwningRewritePatternList *patterns);
+template <LinalgTransition transition>
+void populateHLOToLinalgConversionPattern(
+    MLIRContext* context,
+    xla::BufferAssignmentLegalizer* bufferAssignment,
+    OwningRewritePatternList* patterns);
 
 // Sets up legality definitions for materializing broadcasts.
 void SetupMaterializeBroadcastsLegality(MLIRContext *context,

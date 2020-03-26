@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // TF:llvm-project
 #include "tensorflow/compiler/mlir/xla/ir/lhlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/buffer_assignment.h"
 #include "tensorflow/compiler/mlir/xla/transforms/map_xla_to_scalar_op.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
@@ -47,9 +48,9 @@ ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder* b) {
   return b->getArrayAttr(iteratorTypes);
 }
 
-template <bool isLHLO = true>
+template <LinalgTransition transition = LHLO_TO_LINALG>
 ShapedType getXLAOpResultType(Operation* op) {
-  if (isLHLO) {
+  if (transition == LHLO_TO_LINALG) {
     return op->getOperand(op->getNumOperands() - 1)
         .getType()
         .cast<ShapedType>();
@@ -57,21 +58,26 @@ ShapedType getXLAOpResultType(Operation* op) {
   return op->getResult(0).getType().cast<ShapedType>();
 }
 
-template <bool isLHLO = true>
+template <LinalgTransition transition = LHLO_TO_LINALG>
 bool verifyXLAOpBufferOrTensorSemantics(Operation* op) {
   auto verifyType = [&](Value val) -> bool {
-    return (isLHLO && val.getType().isa<MemRefType>()) ||
-           (!isLHLO && val.getType().isa<RankedTensorType>());
+    return (transition == LHLO_TO_LINALG && val.getType().isa<MemRefType>()) ||
+           (transition != LHLO_TO_LINALG &&
+            (val.getType().isa<RankedTensorType>() ||
+             val.getType().isa<MemRefType>()));
   };
   if (!llvm::all_of(op->getOperands(), verifyType)) return false;
-  return isLHLO ? op->getResults().empty()
-                : llvm::all_of(op->getResults(), verifyType);
+  return transition == LHLO_TO_LINALG
+             ? op->getResults().empty()
+             : llvm::all_of(op->getResults(), verifyType);
 }
 
-template <typename OpTy, bool isLHLO = true>
-class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
+template <typename OpTy, LinalgTransition transition = LHLO_TO_LINALG>
+class PointwiseToLinalgConverter
+    : public xla::BufferAssignmentOpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using xla::BufferAssignmentOpConversionPattern<
+      OpTy>::BufferAssignmentOpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
@@ -97,7 +103,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     if (!nloops) {
       return ConversionPattern::matchFailure();
     }
-    int operandCount = (isLHLO ? args.size() - 1 : args.size());
+    int operandCount =
+        (transition == LHLO_TO_LINALG ? args.size() - 1 : args.size());
     auto verifyArgOrResultType = [&](Value val) -> ShapedType {
       auto shapedType = val.getType().dyn_cast<ShapedType>();
       if (!shapedType ||
@@ -109,26 +116,42 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
           AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
       return shapedType;
     };
+    SmallVector<Value, 4> newArgs;
     for (const auto& arg : llvm::enumerate(args)) {
       auto shapedType = verifyArgOrResultType(arg.value());
       if (!shapedType) return ConversionPattern::matchFailure();
       auto& result_or_body_arg =
           arg.index() < operandCount ? bodyArgTypes : bodyResultTypes;
       result_or_body_arg.emplace_back(shapedType.getElementType());
+      newArgs.push_back(arg.value());
     }
-    if (!isLHLO) {
-      // HLO operations have return as tensor types.
-      assert(bodyResultTypes.empty() &&
-             "When lowering HLO ops result can't be part of arguments");
+
+    if (transition != LHLO_TO_LINALG) {
       Value result = op.getOperation()->getResult(0);
+      if (transition == HLO_TO_LINALG_WITH_BUFFER) {
+        auto type = result.getType().dyn_cast<ShapedType>();
+        auto memType = MemRefType::get(type.getShape(), type.getElementType());
+        // Using BufferAssignmentLegalizer to find AllocOp's proper position.
+        auto position =
+            xla::BufferAssignmentOpConversionPattern<OpTy>::bufferAssignment
+                ->computeAllocPosition(result);
+        // Creating a buffer for the result of HLO operation.
+        auto alloc =
+            position.template insertAlloc<AllocOp>(result, loc, memType);
+        result = alloc.getResult();
+        newArgs.push_back(result);
+        rewriter.replaceOp(op, result);
+      }
       auto shapedType = verifyArgOrResultType(result);
       if (!shapedType) return ConversionPattern::matchFailure();
       bodyResultTypes.push_back(shapedType.getElementType());
-      opResultTypes.push_back(shapedType);
+      if (transition == HLO_TO_LINALG_WITH_TENSOR) {
+        opResultTypes.push_back(shapedType);
+      }
     }
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, opResultTypes, args,
+        loc, opResultTypes, newArgs,
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),     // args_in
         rewriter.getI64IntegerAttr(bodyResultTypes.size()),  // args_out
         rewriter.getArrayAttr(indexingMaps),
@@ -139,7 +162,9 @@ class PointwiseToLinalgConverter : public OpConversionPattern<OpTy> {
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(bodyArgTypes);
-    if (isLHLO) block->addArguments(bodyResultTypes);
+    if (transition != HLO_TO_LINALG_WITH_TENSOR) {
+      block->addArguments(bodyResultTypes);
+    }
 
     SmallVector<Value, 4> bodyArgs;
     for (int i = 0, e = bodyArgTypes.size(); i < e; ++i) {
@@ -194,22 +219,25 @@ class ScalarPointwiseToStandardConverter : public OpConversionPattern<LhloOp> {
 /// transpose, some reshape, etc.). The derived classes need to provide a method
 /// `getIndexingMapsAttr` that returns an ArrayAttr containing AffineMapAttr for
 /// the index maps of the input and the output.
-template <typename Derived, typename OpTy, bool isLHLO = true>
-class DataMovementOpConverter : public OpConversionPattern<OpTy> {
+template <typename Derived, typename OpTy,
+          LinalgTransition transition = LHLO_TO_LINALG>
+class DataMovementOpConverter
+    : public xla::BufferAssignmentOpConversionPattern<OpTy> {
  public:
-  using OpConversionPattern<OpTy>::OpConversionPattern;
+  using xla::BufferAssignmentOpConversionPattern<
+      OpTy>::BufferAssignmentOpConversionPattern;
 
   PatternMatchResult matchAndRewrite(
       OpTy op, ArrayRef<Value> args,
       ConversionPatternRewriter& rewriter) const final {
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
+    if (!verifyXLAOpBufferOrTensorSemantics<transition>(op))
       return ConversionPattern::matchFailure();
     auto operandType = op.operand().getType().template cast<ShapedType>();
-    auto resultType = getXLAOpResultType<isLHLO>(op);
-    if (!verifyXLAOpBufferOrTensorSemantics<isLHLO>(op))
+    auto resultType = getXLAOpResultType<transition>(op);
+    if (!verifyXLAOpBufferOrTensorSemantics<transition>(op))
       return ConversionPattern::matchFailure();
     // TODO(b/150203558) Enable once tiling/fusion works in this case.
-    if (isLHLO && (operandType.getRank() == 0))
+    if (transition == LHLO_TO_LINALG && (operandType.getRank() == 0))
       return ConversionPattern::matchFailure();
     ArrayAttr indexingMapsAttr =
         static_cast<const Derived&>(*this).getIndexingMapsAttr(op, &rewriter);
@@ -218,16 +246,34 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
     OpBuilder::InsertionGuard linalgOpGuard(rewriter);
     auto nloops = resultType.getRank();
     auto loc = op.getLoc();
+    SmallVector<Value, 4> newArgs(args.begin(), args.end());
+    if (transition == HLO_TO_LINALG_WITH_BUFFER) {
+      Value hloOpResult = op.getOperation()->getResult(0);
+      auto type = hloOpResult.getType().dyn_cast<ShapedType>();
+      auto memType = MemRefType::get(type.getShape(), type.getElementType());
+      // Using BufferAssignmentLegalizer to find AllocOp's proper position.
+      auto position =
+          xla::BufferAssignmentOpConversionPattern<OpTy>::bufferAssignment
+              ->computeAllocPosition(hloOpResult);
+      // Creating a buffer for the result of HLO operation.
+      auto alloc =
+          position.template insertAlloc<AllocOp>(hloOpResult, loc, memType);
+      auto allocResult = alloc.getResult();
+      newArgs.push_back(allocResult);
+      rewriter.replaceOp(op, allocResult);
+    }
     auto linalgOp = rewriter.create<linalg::GenericOp>(
-        loc, isLHLO ? ArrayRef<Type>{} : resultType, args,
-        rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
+        loc,
+        transition != HLO_TO_LINALG_WITH_TENSOR ? ArrayRef<Type>{} : resultType,
+        newArgs, rewriter.getI64IntegerAttr(1), rewriter.getI64IntegerAttr(1),
         indexingMapsAttr, GetNParallelLoopsAttrs(nloops, &rewriter),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     auto* region = &linalgOp.region();
     auto* block = rewriter.createBlock(region, region->end());
     block->addArguments(operandType.getElementType());
-    if (isLHLO) block->addArgument(resultType.getElementType());
+    if (transition != HLO_TO_LINALG_WITH_TENSOR)
+      block->addArgument(resultType.getElementType());
 
     rewriter.setInsertionPointToEnd(block);
     rewriter.create<linalg::YieldOp>(loc, block->getArgument(0));
@@ -237,16 +283,16 @@ class DataMovementOpConverter : public OpConversionPattern<OpTy> {
   }
 };
 
-template <typename OpTy, bool isLHLO = true>
+template <typename OpTy, LinalgTransition transition = LHLO_TO_LINALG>
 class BroadcastInDimConverter
-    : public DataMovementOpConverter<BroadcastInDimConverter<OpTy, isLHLO>,
-                                     OpTy, isLHLO> {
+    : public DataMovementOpConverter<BroadcastInDimConverter<OpTy, transition>,
+                                     OpTy, transition> {
  public:
-  using DataMovementOpConverter<BroadcastInDimConverter<OpTy, isLHLO>, OpTy,
-                                isLHLO>::DataMovementOpConverter;
+  using DataMovementOpConverter<BroadcastInDimConverter<OpTy, transition>, OpTy,
+                                transition>::DataMovementOpConverter;
 
   ArrayAttr getIndexingMapsAttr(OpTy broadcastOp, Builder* b) const {
-    auto resultType = getXLAOpResultType<isLHLO>(broadcastOp);
+    auto resultType = getXLAOpResultType<transition>(broadcastOp);
     auto operandType =
         broadcastOp.operand().getType().template cast<ShapedType>();
     unsigned nloops = resultType.getRank();
@@ -327,16 +373,16 @@ class ScalarBroadcastInDimConverter
   }
 };
 
-template <typename OpTy, bool isLHLO = true>
+template <typename OpTy, LinalgTransition transition = LHLO_TO_LINALG>
 class TransposeConverter
-    : public DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
-                                     isLHLO> {
+    : public DataMovementOpConverter<TransposeConverter<OpTy, transition>, OpTy,
+                                     transition> {
  public:
-  using DataMovementOpConverter<TransposeConverter<OpTy, isLHLO>, OpTy,
-                                isLHLO>::DataMovementOpConverter;
+  using DataMovementOpConverter<TransposeConverter<OpTy, transition>, OpTy,
+                                transition>::DataMovementOpConverter;
   ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
     auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+        getXLAOpResultType<transition>(op).template cast<ShapedType>();
     auto nloops = resultType.getRank();
     SmallVector<AffineExpr, 2> inputExprs;
     inputExprs.resize(resultType.getRank());
@@ -363,17 +409,17 @@ class TransposeConverter
 /// can have indexing maps
 /// [affine_map<(d0, d1, d2) -> (d0, d2)>, affine_map<(d0, d1, d2) -> (d0, d1,
 /// d2)>]
-template <typename OpTy, bool isLHLO = true>
+template <typename OpTy, LinalgTransition transition = LHLO_TO_LINALG>
 class ReshapeAddRemoveDimConverter
-    : public DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
-                                     OpTy, isLHLO> {
+    : public DataMovementOpConverter<
+          ReshapeAddRemoveDimConverter<OpTy, transition>, OpTy, transition> {
  public:
-  using DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, isLHLO>,
-                                OpTy, isLHLO>::DataMovementOpConverter;
+  using DataMovementOpConverter<ReshapeAddRemoveDimConverter<OpTy, transition>,
+                                OpTy, transition>::DataMovementOpConverter;
 
   ArrayAttr getIndexingMapsAttr(OpTy op, Builder* b) const {
     auto resultType =
-        getXLAOpResultType<isLHLO>(op).template cast<ShapedType>();
+        getXLAOpResultType<transition>(op).template cast<ShapedType>();
     auto operandType =
         op.getOperation()->getOperand(0).getType().template cast<ShapedType>();
     if (!resultType.hasStaticShape() || !operandType.hasStaticShape())
@@ -525,6 +571,37 @@ class SliceConverter : public OpConversionPattern<xla_lhlo::SliceOp> {
   }
 };
 
+class StdReturnConverter
+    : public xla::BufferAssignmentOpConversionPattern<mlir::ReturnOp> {
+ public:
+  using xla::BufferAssignmentOpConversionPattern<
+      mlir::ReturnOp>::BufferAssignmentOpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      mlir::ReturnOp returnOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto numReturnValues = returnOp.getNumOperands();
+    auto funcOp = returnOp.getParentOfType<FuncOp>();
+    auto numFuncArgs = funcOp.getNumArguments();
+    auto loc = returnOp.getLoc();
+    auto block = returnOp.getOperation()->getBlock();
+    for (auto operand : llvm::enumerate(operands)) {
+      auto returnArgNumber = numFuncArgs - numReturnValues + operand.index();
+      auto dstBuffer = funcOp.getArgument(returnArgNumber);
+      if (dstBuffer == operand.value()) {
+        continue;
+      }
+      rewriter.setInsertionPointToEnd(block);
+      auto linalgOp =
+          rewriter.create<linalg::CopyOp>(loc, operand.value(), dstBuffer);
+    }
+    rewriter.setInsertionPointToEnd(block);
+    rewriter.create<mlir::ReturnOp>(loc);
+    returnOp.erase();
+    return matchSuccess();
+  }
+};
+
 void populateLHLOToLinalgConversionPattern(MLIRContext* context,
                                            OwningRewritePatternList* patterns) {
   // clang-format off
@@ -592,16 +669,33 @@ struct LhloLegalizeToLinalg : public FunctionPass<LhloLegalizeToLinalg> {
   }
 };
 
-struct HloLegalizeToLinalg : public FunctionPass<HloLegalizeToLinalg> {
+template <LinalgTransition transition = HLO_TO_LINALG_WITH_TENSOR>
+struct HloLegalizeToLinalg
+    : public FunctionPass<HloLegalizeToLinalg<transition>> {
+  using super = FunctionPass<HloLegalizeToLinalg<transition>>;
   void runOnFunction() override {
     OwningRewritePatternList patterns;
-    ConversionTarget target(getContext());
+    ConversionTarget target(super::getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect>();
 
-    auto func = getFunction();
-    xla_hlo::populateHLOToLinalgConversionPattern(func.getContext(), &patterns);
+    auto func = super::getFunction();
+    if (transition == HLO_TO_LINALG_WITH_TENSOR) {
+      target.addLegalOp<mlir::ReturnOp>();
+      xla_hlo::populateHLOToLinalgConversionPattern<transition>(
+          func.getContext(), nullptr, &patterns);
+    } else if (transition == HLO_TO_LINALG_WITH_BUFFER) {
+      xla::BufferAssignmentLegalizer bufferAssignment(func);
+      bufferAssignment.applySignatureConversion(func);
+      xla_hlo::populateHLOToLinalgConversionPattern<transition>(
+          func.getContext(), &bufferAssignment, &patterns);
+      target.addDynamicallyLegalOp<mlir::ReturnOp>(
+          [&](ReturnOp op) { return op.getNumOperands() == 0; });
+    } else {
+      assert(false && "Wrong specified type for LinalgTransition");
+    }
+
     if (failed(applyPartialConversion(func, target, patterns, nullptr))) {
-      signalPassFailure();
+      super::signalPassFailure();
     }
   }
 };
@@ -619,34 +713,51 @@ static PassRegistration<LhloLegalizeToLinalg> legalize_lhlo_pass(
 
 namespace xla_hlo {
 
-void populateHLOToLinalgConversionPattern(MLIRContext* context,
-                                          OwningRewritePatternList* patterns) {
-  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, false>,
-                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, false>,
-                   TransposeConverter<xla_hlo::TransposeOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AbsOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AddOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::AndOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CeilOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CompareOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::CopyOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::DivOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::ExpOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::MaxOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::MinOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::MulOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::NegOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::RemOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::SelectOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::SubOp, false>,
-                   PointwiseToLinalgConverter<xla_hlo::TanhOp, false>>(context);
+template <LinalgTransition transition>
+void populateHLOToLinalgConversionPattern(
+    MLIRContext* context, xla::BufferAssignmentLegalizer* bufferAssignment,
+    OwningRewritePatternList* patterns) {
+  // clang-format off
+  patterns->insert<BroadcastInDimConverter<xla_hlo::BroadcastInDimOp, transition>,
+                   ReshapeAddRemoveDimConverter<xla_hlo::ReshapeOp, transition>,
+                   TransposeConverter<xla_hlo::TransposeOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::AbsOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::AddOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::AndOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::CeilOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::CompareOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::CopyOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::DivOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::ExpOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::MaxOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::MinOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::MulOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::NegOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::RemOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::SelectOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::SubOp, transition>,
+                   PointwiseToLinalgConverter<xla_hlo::TanhOp, transition>,
+                   StdReturnConverter
+                  >(context, bufferAssignment);
+  // clang-format on
 }
 
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass() {
-  return absl::make_unique<HloLegalizeToLinalg>();
+  return absl::make_unique<HloLegalizeToLinalg<HLO_TO_LINALG_WITH_TENSOR>>();
 }
 
-static PassRegistration<HloLegalizeToLinalg> legalize_hlo_pass(
-    "hlo-legalize-to-linalg", "Legalize from HLO dialect to Linalg dialect");
+static PassRegistration<HloLegalizeToLinalg<HLO_TO_LINALG_WITH_TENSOR>>
+    legalize_hlo_pass("hlo-legalize-to-linalg",
+                      "Legalize from HLO dialect to Linalg dialect");
+
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgWithBufferPass() {
+  return absl::make_unique<HloLegalizeToLinalg<HLO_TO_LINALG_WITH_BUFFER>>();
+}
+
+static PassRegistration<HloLegalizeToLinalg<HLO_TO_LINALG_WITH_BUFFER>>
+    legalize_hlo_to_lingal_with_buffer_pass(
+        "hlo-legalize-to-linalg-with-buffer",
+        "Legalize from HLO dialect to Linalg dialect with buffers");
+
 }  // namespace xla_hlo
 }  // namespace mlir

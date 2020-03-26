@@ -59,6 +59,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeToLhloPass();
 // Lowers from HLO dialect to Linalg dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgPass();
 
+// Lowers from HLO dialect to Linalg dialect by using memrefs instead of
+// tensors.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeHloToLinalgWithBufferPass();
+
 // Removes unnecessary LHLO copies which copy from the allocated buffers to the
 // block arguments. These copies have been created by replacing TensorStoreOp
 // with LHLO.CopyOp in HLO to LHLO lowering.

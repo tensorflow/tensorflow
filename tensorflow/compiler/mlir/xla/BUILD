@@ -180,6 +180,7 @@ cc_library(
         ":hlo",
         ":lhlo",
         ":map_xla_to_scalar_op",
+        ":buffer_assignment",
         "@com_google_absl//absl/memory",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
