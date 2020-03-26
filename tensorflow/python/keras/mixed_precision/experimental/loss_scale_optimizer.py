@@ -30,6 +30,7 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
+from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -385,6 +386,11 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
 
   # TODO(reedwm): Maybe throw an error if mixed precision is used without this
   # optimizer being used.
+
+
+# pylint: disable=protected-access
+mixed_precision._register_wrapper_optimizer_cls(optimizer_v2.OptimizerV2,
+                                                LossScaleOptimizer)
 
 
 def _multiply_gradient(gradient, scale):
