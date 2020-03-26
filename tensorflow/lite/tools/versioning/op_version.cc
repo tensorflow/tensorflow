@@ -216,10 +216,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPLIT:
       // If the op take int8 input, it is version 2, for int32 it's version 3.
-      if (op_sig.input_types.at(0) == TensorType_INT32) {
+      // The input tensor is at index 1 not 0, 0 is the axis.
+      if (op_sig.input_types.at(1) == TensorType_INT32) {
         return 3;
       }
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
+      if (op_sig.input_types.at(1) == TensorType_INT8) {
         return 2;
       }
       return 1;
