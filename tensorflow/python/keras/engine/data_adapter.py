@@ -1309,7 +1309,7 @@ def _make_class_weight_map_fn(class_weight):
     raise ValueError(error_msg)
 
   class_weight_tensor = ops.convert_to_tensor_v2(
-      [int(class_weight[c]) for c in class_ids], dtype="int64")
+      [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
     """Convert `class_weight` to `sample_weight`."""
