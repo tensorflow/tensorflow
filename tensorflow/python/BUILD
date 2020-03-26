@@ -5845,6 +5845,7 @@ tf_py_wrap_cc(
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core/data/service:server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_rpc_factory_registration",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
@@ -5900,6 +5901,7 @@ filegroup(
         "//tensorflow/compiler/mlir/python:mlir",  # mlir
         "//tensorflow/core:core_cpu_base_no_ops",  # tf_session
         "//tensorflow/core:core_cpu_impl",  # device_lib
+        "//tensorflow/core/data/service:server_lib",  # server_lib
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:op_gen_lib",  # tf_session

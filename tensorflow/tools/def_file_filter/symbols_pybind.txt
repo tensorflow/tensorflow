@@ -84,6 +84,13 @@ tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
 tensorflow::SessionState::kTensorHandleResourceTypeName
 
+[server_lib] # server_lib
+tensorflow::data::GrpcDataServer::Start
+tensorflow::data::GrpcDataServer::Stop
+tensorflow::data::GrpcDataServer::Target
+tensorflow::data::NewMasterServer
+tensorflow::data::NewWorkerServer
+
 [protos_all]  # device_lib, dtypes
 tensorflow::DataType_IsValid
 tensorflow::ConfigProto::ConfigProto
