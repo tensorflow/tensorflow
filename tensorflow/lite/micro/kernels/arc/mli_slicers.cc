@@ -48,7 +48,7 @@ TensorSlicer::TensorSlicer(const mli_tensor* full_tensor, int slice_dim, int sli
     sub_cfg_.sub_tensor_rank = full_tensor->rank;
 
   } else {
-    /* In the not interlevaed mode, the slicing happens from the outer most dimension up to the slice_dim
+    /* In the not interleaved mode, the slicing happens from the outer most dimension up to the slice_dim
     for example in an HWC layout this mode can be used to slice in the H dimension.
     in this mode the data of the slice is still contiguous in memory (if that was the case in the input tensor */
     for (int i = 0; i< full_tensor->rank; i++){
