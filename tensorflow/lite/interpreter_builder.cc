@@ -97,23 +97,25 @@ TfLiteStatus ParseSparseIndexVector(const DimensionMetadata* src,
 
 const char* kEmptyTensorName = "";
 
-// Normally we'd use ABSL_HAVE_ATTRIBUTE_WEAK and ABSL_ATTRIBUTE_WEAK, but
-// we avoid the absl dependency for binary size reasons.
-#ifdef __has_attribute
-#define TFLITE_HAS_ATTRIBUTE(x) __has_attribute(x)
-#else
-#define TFLITE_HAS_ATTRIBUTE(x) 0
-#endif
+#if TFLITE_HAS_ATTRIBUTE_WEAK
+// Using weak symbols to create a delegate allows automatic injection of the
+// delegate simply by adding it as a dependency.
 
-#if TFLITE_HAS_ATTRIBUTE(weak) || (defined(__GNUC__) && !defined(__clang__))
-// Using weak symbols for the flex delegate allows automatic injection of the
-// delegate simply by adding it as a dependency. See also the strong override in
+// For flex delegate, see also the strong override in
 // lite/delegates/flex/delegate.cc.
-__attribute__((weak)) Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireFlexDelegate() {
+  return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
+}
+
+// For XNNPACK delegate, see also the strong override in
+// lite/enable_xnnpack_delegate.cc.
+TFLITE_ATTRIBUTE_WEAK Interpreter::TfLiteDelegatePtr AcquireXNNPACKDelegate(
+    int num_threads) {
   return Interpreter::TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {});
 }
 #else
 Interpreter::TfLiteDelegatePtr (*AcquireFlexDelegate)() = nullptr;
+Interpreter::TfLiteDelegatePtr (*AcquireXNNPACKDelegate)(int) = nullptr;
 #endif
 
 namespace impl {
@@ -415,6 +417,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     return kEmptyTensorName;
   };
 
+  num_fp32_tensors_ = 0;
   for (int i = 0; i < tensors->size(); ++i) {
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
@@ -424,6 +427,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         kTfLiteOk) {
       status = kTfLiteError;
       continue;
+    }
+    if (type == kTfLiteFloat32) {
+      ++num_fp32_tensors_;
     }
     auto get_readonly_data = [&](const char** buffer_data,
                                  size_t* buffer_size) {
@@ -507,12 +513,23 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
   return status;
 }
 
-TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter) {
-  // Apply Flex delegate if applicable.
-  if (!has_flex_op_ || AcquireFlexDelegate == nullptr) {
-    return kTfLiteOk;
-  } else if (auto flex_delegate = AcquireFlexDelegate()) {
-    return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+TfLiteStatus InterpreterBuilder::ApplyDelegates(Interpreter* interpreter,
+                                                int num_threads) {
+  // First, apply XNNPACK delegate if applicable.
+  if (AcquireXNNPACKDelegate && num_fp32_tensors_ > 0) {
+    if (auto xnnpack_delegate = AcquireXNNPACKDelegate(num_threads)) {
+      // The execution will fall back to default implementation if the XNNPACK
+      // delegate fails to be applied. Therefore, we ignore the return status
+      // here and let it fall through the rest of the code.
+      interpreter->ModifyGraphWithDelegate(std::move(xnnpack_delegate));
+    }
+  }
+
+  // Secondly, apply Flex delegate if applicable.
+  if (has_flex_op_ && AcquireFlexDelegate) {
+    if (auto flex_delegate = AcquireFlexDelegate()) {
+      return interpreter->ModifyGraphWithDelegate(std::move(flex_delegate));
+    }
   }
 
   return kTfLiteOk;
@@ -625,7 +642,7 @@ TfLiteStatus InterpreterBuilder::operator()(
     modified_subgraph->SetVariables(std::move(variables));
   }
 
-  if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
+  if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)
     return cleanup_and_error();
 
   return kTfLiteOk;
