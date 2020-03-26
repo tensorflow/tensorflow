@@ -1155,19 +1155,37 @@ class DataHandler(object):
 
   def enumerate_epochs(self):
     """Yields `(epoch, tf.data.Iterator)`."""
-    data_iterator = iter(self._dataset)
-    for epoch in range(self._initial_epoch, self._epochs):
-      if self._insufficient_data:  # Set by `catch_stop_iteration`.
-        break
-      if self._adapter.should_recreate_iterator():
-        if ds_context.has_strategy():
-          # TODO(b/138326910): remove this when MultiDeviceIterator is a
-          # CompositeTensor (unless this is more efficient)
-          data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
-        else:
-          data_iterator = iter(self._dataset)
-      yield epoch, data_iterator
-      self._adapter.on_epoch_end()
+    with self._truncate_execution_to_epoch():
+      data_iterator = iter(self._dataset)
+      for epoch in range(self._initial_epoch, self._epochs):
+        if self._insufficient_data:  # Set by `catch_stop_iteration`.
+          break
+        if self._adapter.should_recreate_iterator():
+          if ds_context.has_strategy():
+            # TODO(b/138326910): remove this when MultiDeviceIterator is a
+            # CompositeTensor (unless this is more efficient)
+            data_iterator._initializer  # pylint: disable=pointless-statement, protected-access
+          else:
+            data_iterator = iter(self._dataset)
+        yield epoch, data_iterator
+        self._adapter.on_epoch_end()
+
+  @contextlib.contextmanager
+  def _truncate_execution_to_epoch(self):
+    """Truncates steps per execution to at most one epoch."""
+    should_truncate = (
+        self._inferred_steps is not None and
+        self._steps_per_execution_value > self._inferred_steps)
+    original_value = self._steps_per_execution_value
+    try:
+      if should_truncate:
+        self._steps_per_execution.assign(self._inferred_steps)
+        self._steps_per_execution_value = self._inferred_steps
+      yield
+    finally:
+      if should_truncate:
+        self._steps_per_execution.assign(original_value)
+        self._steps_per_execution_value = original_value
 
   @contextlib.contextmanager
   def catch_stop_iteration(self):
