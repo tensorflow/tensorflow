@@ -949,6 +949,7 @@ def HLO_DotGeneralOp: HLO_Op<"dot_general", [NoSideEffect]>, BASE_HLO_DotGeneral
   );
 
   let results = (outs HLO_Tensor);
+  let verifier = [{ return Verify(*this); }];
 }
 
 // Define Base Einsum op within the HLO dialect as these are client ops and
