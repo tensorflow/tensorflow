@@ -29,7 +29,6 @@ limitations under the License.
 #include <vector>
 
 #include "mkl_cblas.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -44,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/matmul_bcast.h"
 #include "tensorflow/core/util/mkl_util.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -174,9 +174,29 @@ class BatchMatMulMkl : public OpKernel {
       }
     }
 
-    MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array, k_array,
-                      &a_array[0], lda_array, &b_array[0], ldb_array,
-                      &c_array[0], ldc_array, 1, group_size);
+    if (std::is_same<Scalar, bfloat16>::value) {
+      // DNNL bfloat16 API requires a, b, and c as pointers to tensors
+      // represented as flat-byte array.
+      const Scalar* a = nullptr;
+      const Scalar* b = nullptr;
+      OP_REQUIRES(ctx, !bcast.IsBroadcastingRequired(),
+                  errors::Unimplemented("Broadcasting is not supported for "
+                                        "BFloat16 _MklBatchMatMul yet."));
+      a = &lhs_reshaped(0, 0, 0);
+      b = &rhs_reshaped(0, 0, 0);
+      Scalar* c = &out_reshaped(0, 0, 0);
+      // TODO(nhasabni): Use appropriate cast instead of passing addresses of
+      // a,b and c.
+      MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array,
+                        k_array, &a, lda_array, &b, ldb_array, &c, ldc_array, 1,
+                        group_size);
+    } else {
+      // MKL CBLAS API requires a, b, and c as array of pointers, where each
+      // pointer is to 2D matrix.
+      MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, m_array, n_array,
+                        k_array, &a_array[0], lda_array, &b_array[0], ldb_array,
+                        &c_array[0], ldc_array, 1, group_size);
+    }
   }
 
  private:
@@ -269,10 +289,11 @@ class BatchMatMulMkl : public OpKernel {
     std::vector<bool> TransB_Array(group_size[0], TransB);
     std::vector<float> alpha_Array(group_size[0], 1.0);
     std::vector<float> beta_Array(group_size[0], 0.0);
+    // TODO(nhasabni): Remove *A when we pass a, b, and c correctly.
+    // MKLDNN API does not require lda, ldb, and ldc.
     dnnl_gemm_batch<bfloat16>(TransA_Array, TransB_Array, M_Array, N_Array,
-                              K_Array, alpha_Array, A_Array, lda_Array, B_Array,
-                              ldb_Array, beta_Array, C_Array, ldc_Array,
-                              group_count, group_size);
+                              K_Array, alpha_Array, *A_Array, *B_Array,
+                              beta_Array, *C_Array, group_count, group_size);
   }
 #endif  // ENABLE_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
 };
@@ -302,7 +323,7 @@ TF_CALL_double(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL_V2);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL_V2);
 
-#if defined(ENABLE_INTEL_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
+#if defined(ENABLE_MKLDNN_V1) && defined(ENABLE_INTEL_MKL_BFLOAT16)
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_bfloat16(REGISTER_BATCH_MATMUL_MKL_V2);
 #endif  // ENABLE_INTEL_MKLDNN_V1 && ENABLE_INTEL_MKL_BFLOAT16
