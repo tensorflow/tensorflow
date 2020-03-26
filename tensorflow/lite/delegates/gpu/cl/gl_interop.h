@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+#include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_event.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/spi.h"
 
 namespace tflite {
 namespace gpu {
@@ -137,6 +139,29 @@ class GlInteropFabric {
   CLEvent outbound_event_;
   std::vector<cl_mem> memory_;
   AcquiredGlObjects gl_objects_;  // transient during Start/Finish calls.
+};
+
+// Copies data from(to) GL buffer to(from) CL buffer using CPU.
+class GlClBufferCopier : public TensorObjectConverter {
+ public:
+  static bool IsSupported(const ObjectDef& input, const ObjectDef& output) {
+    return input.data_type == output.data_type &&
+           input.data_layout == output.data_layout &&
+           ((input.object_type == ObjectType::OPENGL_SSBO &&
+             output.object_type == ObjectType::OPENCL_BUFFER) ||
+            (input.object_type == ObjectType::OPENCL_BUFFER &&
+             output.object_type == ObjectType::OPENGL_SSBO));
+  }
+
+  GlClBufferCopier(const TensorObjectDef& input_def,
+                   const TensorObjectDef& output_def, Environment* environment);
+
+  absl::Status Convert(const TensorObject& input_obj,
+                       const TensorObject& output_obj) override;
+
+ private:
+  size_t size_in_bytes_;
+  CLCommandQueue* queue_ = nullptr;
 };
 
 }  // namespace cl
