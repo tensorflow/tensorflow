@@ -684,8 +684,10 @@ std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
     }
     TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
   }
-  for (auto [parameter, index] : CrossProgramPrefetches()) {
-    module->AddCrossProgramPrefetch(parameter, index);
+  for (const auto& parameter_indices : CrossProgramPrefetches()) {
+    const auto& parameter = parameter_indices.first;
+    const auto& indices = parameter_indices.second;
+    module->AddCrossProgramPrefetch(parameter, indices);
   }
   return module;
 }
