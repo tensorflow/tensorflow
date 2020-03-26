@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -89,24 +90,20 @@ void WhileOutlinePass::OutlineWhile(WhileOp while_op) {
   llvm::SmallVector<Region*, 2> regions{&while_op.cond(), &while_op.body()};
   for (auto it : llvm::enumerate(regions)) {
     llvm::SetVector<Value> region_extern_values;
-    Value const_none = nullptr;
     getUsedValuesDefinedAbove(*it.value(), region_extern_values);
 
-    // Sink down none type constants into the functions.
+    // Sink down constants into the functions.
     for (auto extern_value : region_extern_values) {
-      if (!extern_value.getType().isa<NoneType>()) {
+      if (!matchPattern(extern_value, m_Constant())) {
         extern_values.insert(extern_value);
         continue;
       }
-      if (!const_none) {
-        // Add constant at start of region.
-        auto const_builder =
-            OpBuilder(&it.value()->front(), it.value()->front().begin());
-        const_none = const_builder.create<ConstantOp>(
-            while_op.getLoc(), extern_value.getType(),
-            const_builder.getUnitAttr());
-      }
-      replaceAllUsesInRegionWith(extern_value, const_none, *it.value());
+      // Add constant at start of region.
+      auto const_builder =
+          OpBuilder(&it.value()->front(), it.value()->front().begin());
+      auto const_value = const_builder.clone(*extern_value.getDefiningOp());
+      replaceAllUsesInRegionWith(extern_value, const_value->getResult(0),
+                                 *it.value());
     }
   }
 

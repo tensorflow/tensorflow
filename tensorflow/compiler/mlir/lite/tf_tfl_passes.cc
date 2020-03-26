@@ -126,8 +126,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
   if (pass_config.legalize_tf_while) {
-    pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TFL::CreateLegalizeTFWhilePass());
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
   }
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into
