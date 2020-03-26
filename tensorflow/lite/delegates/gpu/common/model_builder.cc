@@ -1092,11 +1092,15 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                /*runtime_inputs=*/1,
                                                /*const_inputs=*/0,
                                                /*outputs=*/1));
-    } else if (IsTwoArgumentOperation()) {
-      RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
-                                               /*runtime_inputs=*/2,
-                                               /*const_inputs=*/0,
-                                               /*outputs=*/1));
+      // For some elementwise operations (currently only for SUB operation)
+      // second condition may be false. But it's worth checking the next case
+      // with const input, which may be supported.
+    } else if (IsTwoArgumentOperation() &&
+               CheckInputsConstsOutputs(context, tflite_node,
+                                        /*runtime_inputs=*/2,
+                                        /*const_inputs=*/0,
+                                        /*outputs=*/1)
+                   .ok()) {
     } else if (IsTwoArgumentOperationWithConst()) {
       RETURN_IF_ERROR(CheckInputsConstsOutputs(context, tflite_node,
                                                /*runtime_inputs=*/1,
@@ -1124,11 +1128,13 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
                                                         /*outputs=*/1));
 
       RETURN_IF_ERROR(reader->AddInput(node, 0));
-    } else if (IsTwoArgumentOperation()) {
-      RETURN_IF_ERROR(reader->VerifyInputsConstsOutputs(tflite_node,
-                                                        /*runtime_inputs=*/2,
-                                                        /*const_inputs=*/0,
-                                                        /*outputs=*/1));
+    } else if (IsTwoArgumentOperation() &&
+               reader
+                   ->VerifyInputsConstsOutputs(tflite_node,
+                                               /*runtime_inputs=*/2,
+                                               /*const_inputs=*/0,
+                                               /*outputs=*/1)
+                   .ok()) {
       if (tflite_node->inputs->size != 2) {
         return absl::InvalidArgumentError("Applies only two input tensors");
       }
