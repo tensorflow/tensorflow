@@ -36,7 +36,7 @@ void TestRound(const int* input_dims_data, const float* input_data,
       CreateFloatTensor(output_data, output_dims, "output_tensor"),
   };
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
   ::tflite::ops::micro::AllOpsResolver resolver;
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_ROUND, 1);

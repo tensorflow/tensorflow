@@ -27,6 +27,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
+#include "tensorflow/lite/interpreter.h"
 
 struct TfLiteDelegate;
 
@@ -39,7 +40,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 

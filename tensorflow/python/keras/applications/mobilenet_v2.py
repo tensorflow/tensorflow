@@ -69,6 +69,9 @@ MACs stands for Multiply Adds
 | [mobilenet_v2_0.35_128] | 20  | 1.66 |          50.8 | 75.0 |
 | [mobilenet_v2_0.35_96]  | 11  | 1.66 |          45.5 | 70.4 |
 
+  Reference paper:
+  - [MobileNetV2: Inverted Residuals and Linear Bottlenecks]
+  (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -107,6 +110,9 @@ def MobileNetV2(input_shape=None,
   (https://arxiv.org/abs/1801.04381) (CVPR 2018)
 
   Optionally loads weights pre-trained on ImageNet.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet_v2.preprocess_input` for an example.
 
   Arguments:
     input_shape: Optional shape tuple, to be specified if you would
@@ -491,31 +497,14 @@ def _make_divisible(v, divisor, min_value=None):
 
 @keras_export('keras.applications.mobilenet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `pred` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

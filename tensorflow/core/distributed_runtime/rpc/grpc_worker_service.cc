@@ -360,7 +360,7 @@ class GrpcWorkerServiceThread {
   grpc::WorkerService::AsyncService* const worker_service_;
 
   mutex shutdown_mu_;
-  bool is_shutdown_ GUARDED_BY(shutdown_mu_);
+  bool is_shutdown_ TF_GUARDED_BY(shutdown_mu_);
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerServiceThread);
 };
 
@@ -411,7 +411,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
   std::unique_ptr<GrpcResponseCache> cache_;
   mutex service_shutdown_mu_;
-  bool is_shutdown_ GUARDED_BY(service_shutdown_mu_);
+  bool is_shutdown_ TF_GUARDED_BY(service_shutdown_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcWorkerService);
 };
@@ -669,6 +669,7 @@ void GrpcWorker::RecvBufAsync(CallOptions* opts, const RecvBufRequest* request,
           AllocatorAttributes cpu_attr;
           cpu_attr.set_gpu_compatible(true);
           cpu_attr.set_nic_compatible(true);
+          MEMDEBUG_CACHE_OP("GrpcWorker::RecvBufAsync::consumer_callback");
           Tensor* cpu_tensor =
               new Tensor(cpu_dev->GetAllocator(cpu_attr),
                          hook->prod_value->dtype(), hook->prod_value->shape());

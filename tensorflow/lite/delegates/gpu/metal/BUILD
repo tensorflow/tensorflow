@@ -163,11 +163,12 @@ objc_library(
     srcs = ["environment.mm"],
     hdrs = ["environment.h"],
     copts = DEFAULT_COPTS,
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
+        # TODO(b/152322289): The following dependency is not needed, but a Bazel
+        # bug causes a build failure without an additional dummy dependency.
+        "//tensorflow/lite/delegates/gpu/common:convert",
     ],
 )
 

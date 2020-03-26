@@ -515,6 +515,7 @@ class BatchResource : public ResourceBase {
     opts.stats_collector = last_task_context->stats_collector();
     opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
+    opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
 
     auto* flib = last_task_context->function_library();
     std::vector<Tensor> combined_outputs;
@@ -685,7 +686,7 @@ class BatchResource : public ResourceBase {
   // ones (with a time delay?); it's okay if they get recreated later).
   mutable mutex batcher_queues_mu_;
   std::map<string, std::unique_ptr<BatcherQueue>> batcher_queues_
-      GUARDED_BY(batcher_queues_mu_);
+      TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
@@ -1044,8 +1045,9 @@ class UnbatchResource : public ResourceBase {
 
   // Maps keyed by BatchKey of tensors waiting for callbacks and callbacks
   // waiting for tensors.
-  std::unordered_map<int64, WaitingTensor> waiting_tensors_ GUARDED_BY(mu_);
-  std::unordered_map<int64, WaitingCallback> waiting_callbacks_ GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingTensor> waiting_tensors_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingCallback> waiting_callbacks_
+      TF_GUARDED_BY(mu_);
 
   // A thread that evicts waiting tensors and callbacks that have exceeded their
   // deadline.
@@ -1101,7 +1103,7 @@ class UnbatchGradResource : public ResourceBase {
   // callback. Clears all information about it from the available_tensors_.
   Status OutputBatch(OpKernelContext* context,
                      const AsyncOpKernel::DoneCallback& done)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor& batch_index_t = context->input(1);
     auto batch_index =
         batch_index_t.shaped<int64, 2>({batch_index_t.dim_size(0), 3});

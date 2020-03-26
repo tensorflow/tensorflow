@@ -20,8 +20,18 @@ limitations under the License.
 
 namespace ruy {
 
-enum class Side { kLhs = 0, kRhs = 1 };
+// Enumeration of the sides, i.e. the operands 'slots', in a matrix
+// multiplication. The numerical values of these enumeration constants matter
+// because these will be used as indices into the array underlying a SidePair.
+enum class Side {
+  // Left-hand side
+  kLhs = 0,
+  // Right-hand side
+  kRhs = 1
+};
 
+// SidePair is a pair container where the two elements are indexed by a Side
+// enum.
 template <typename T>
 class SidePair final {
  public:

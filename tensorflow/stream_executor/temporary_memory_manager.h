@@ -114,12 +114,13 @@ class TemporaryMemoryManager {
   //
   // If a device memory is not in this mapping, it is not a temporary currently
   // allocated and owned by this temporary memory manager.
-  std::map<DeviceMemoryBase, TemporaryMemoryRecord> records_ GUARDED_BY(mutex_);
+  std::map<DeviceMemoryBase, TemporaryMemoryRecord> records_
+      TF_GUARDED_BY(mutex_);
 
   // Allocation generation -- we bump this counter to distinguish temporary
   // memory handles that have been deallocated and later reallocated at the same
   // device memory address.
-  uint64 generation_ GUARDED_BY(mutex_);
+  uint64 generation_ TF_GUARDED_BY(mutex_);
 
   // The stream (parent object) for this temporary memory manager -- allocations
   // are performed through this stream handle.

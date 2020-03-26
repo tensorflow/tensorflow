@@ -88,7 +88,7 @@ def main():
   parser.add_argument(
       '--ilsvrc_devkit_dir',
       type=str,
-      help='Full path to ILSVRC 2012 devikit directory.')
+      help='Full path to ILSVRC 2012 devkit directory.')
   args = parser.parse_args()
   try:
     _check_arguments(args)

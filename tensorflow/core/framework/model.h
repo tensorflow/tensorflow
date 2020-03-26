@@ -129,37 +129,37 @@ class Node {
   virtual ~Node() {}
 
   // Adds an input.
-  void add_input(std::shared_ptr<Node> node) LOCKS_EXCLUDED(mu_) {
+  void add_input(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     inputs_.push_back(node);
   }
 
   // Increments the aggregate processing time by the given delta.
-  void add_processing_time(int64 delta) LOCKS_EXCLUDED(mu_) {
+  void add_processing_time(int64 delta) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     processing_time_ += delta;
   }
 
   // Returns an indication whether autotuning is enabled for this node.
-  bool autotune() const LOCKS_EXCLUDED(mu_) {
+  bool autotune() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return autotune_;
   }
 
   // Returns the number of bytes stored in this node's buffer.
-  int64 buffered_bytes() const LOCKS_EXCLUDED(mu_) {
+  int64 buffered_bytes() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return buffered_bytes_;
   }
 
   // Returns the number of elements stored in this node's buffer.
-  int64 buffered_elements() const LOCKS_EXCLUDED(mu_) {
+  int64 buffered_elements() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return buffered_elements_;
   }
 
   // Indicates whether the node has tunable parameters.
-  bool has_tunable_parameters() const LOCKS_EXCLUDED(mu_) {
+  bool has_tunable_parameters() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     for (const auto& pair : parameters_) {
       if (pair.second->state->tunable) return true;
@@ -168,10 +168,10 @@ class Node {
   }
 
   // Returns the unique node ID.
-  int64 id() const LOCKS_EXCLUDED(mu_) { return id_; }
+  int64 id() const TF_LOCKS_EXCLUDED(mu_) { return id_; }
 
   // Returns the node inputs.
-  std::list<std::shared_ptr<Node>> inputs() const LOCKS_EXCLUDED(mu_) {
+  std::list<std::shared_ptr<Node>> inputs() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return inputs_;
   }
@@ -183,7 +183,7 @@ class Node {
   const string& name() const { return name_; }
 
   // Returns the number of elements produced by the node.
-  int64 num_elements() const LOCKS_EXCLUDED(mu_) {
+  int64 num_elements() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return num_elements_;
   }
@@ -192,33 +192,33 @@ class Node {
   Node* output() const { return output_; }
 
   // Returns the aggregate processing time.
-  int64 processing_time() const LOCKS_EXCLUDED(mu_) {
+  int64 processing_time() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return processing_time_;
   }
 
   // Records the change in this node's buffer.
   void record_buffer_event(int64 bytes_delta, int64 elements_delta)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     buffered_bytes_ += bytes_delta;
     buffered_elements_ += elements_delta;
   }
 
   // Records that the node produced an element.
-  void record_element() LOCKS_EXCLUDED(mu_) {
+  void record_element() TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     num_elements_++;
   }
 
   // Records that a node thread has started executing.
-  void record_start(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
+  void record_start(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     work_start_[std::this_thread::get_id()] = time_nanos;
   }
 
   // Records that a node thread has stopped executing.
-  void record_stop(int64 time_nanos) LOCKS_EXCLUDED(mu_) {
+  void record_stop(int64 time_nanos) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     std::thread::id tid = std::this_thread::get_id();
     auto iter = work_start_.find(tid);
@@ -232,13 +232,13 @@ class Node {
   }
 
   // Removes an input.
-  void remove_input(std::shared_ptr<Node> input) LOCKS_EXCLUDED(mu_) {
+  void remove_input(std::shared_ptr<Node> input) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     inputs_.remove(input);
   }
 
   // Sets the value that determines whether autotuning is enabled for this node.
-  void set_autotune(bool autotune) LOCKS_EXCLUDED(mu_) {
+  void set_autotune(bool autotune) TF_LOCKS_EXCLUDED(mu_) {
     mutex_lock l(mu_);
     autotune_ = autotune;
   }
@@ -246,7 +246,7 @@ class Node {
   // Collects tunable parameters in the subtree rooted in this node.
   void CollectTunableParameters(
       std::map<string, std::shared_ptr<Parameter>>* parameters) const
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (!autotune_) {
       return;
@@ -262,7 +262,7 @@ class Node {
   }
 
   // Returns a human-readable representation of this node.
-  string DebugString() const LOCKS_EXCLUDED(mu_) {
+  string DebugString() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     string result;
     strings::StrAppend(&result, long_name(), ":\n");
@@ -286,7 +286,7 @@ class Node {
   // parameters of the subtree rooted in this node and the last input time.
   double OutputTime(std::vector<double>* input_times,
                     std::map<string, double>* gradient) const
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return OutputTimeLocked(input_times, gradient);
   }
@@ -297,7 +297,7 @@ class Node {
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
   std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
     {
@@ -316,14 +316,14 @@ class Node {
   }
 
   // Returns the per-element processing time spent in this node.
-  double SelfProcessingTime() const LOCKS_EXCLUDED(mu_) {
+  double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return SelfProcessingTimeLocked();
   }
 
   // Returns the total number of bytes buffered in all nodes in the subtree for
   // which autotuning is enabled.
-  double TotalBufferedBytes() const LOCKS_EXCLUDED(mu_) {
+  double TotalBufferedBytes() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (!autotune_) {
       return 0;
@@ -345,7 +345,7 @@ class Node {
   // Collects the total buffer limit of all nodes in the subtree for which
   // autotuning is enabled. This number represents the amount of memory that
   // would be used by the subtree nodes if all of their buffers were full.
-  double TotalMaximumBufferedBytes() const LOCKS_EXCLUDED(mu_) {
+  double TotalMaximumBufferedBytes() const TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     if (!autotune_) {
       return 0;
@@ -368,14 +368,14 @@ class Node {
   // If `processing_times` is not `nullptr`, collects the per-element CPU time
   // spent in each node of the subtree.
   double TotalProcessingTime(std::map<string, double>* processing_times)
-      LOCKS_EXCLUDED(mu_) {
+      TF_LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     return TotalProcessingTimeLocked(processing_times);
   }
 
  protected:
   // Returns the number of inputs.
-  int64 num_inputs() const SHARED_LOCKS_REQUIRED(mu_) {
+  int64 num_inputs() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     int64 num_inputs = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
@@ -388,10 +388,10 @@ class Node {
 
   // Creates a clone of this node.
   virtual std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the average size of an element buffered in this node.
-  double AverageBufferedElementSize() const SHARED_LOCKS_REQUIRED(mu_) {
+  double AverageBufferedElementSize() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (buffered_elements_ == 0) {
       return 0;
     }
@@ -404,7 +404,7 @@ class Node {
   // tunable parameters and the last input time.
   double OutputTimeForInputs(std::vector<double>* input_times,
                              std::map<string, double>* gradient) const
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     double sum = 0;
     for (auto& input : inputs_) {
       // Inputs for which autotuning is disabled are excluded.
@@ -420,7 +420,7 @@ class Node {
   // parameters of the subtree rooted in this node and the last input time.
   virtual double OutputTimeLocked(std::vector<double>* input_times,
                                   std::map<string, double>* gradient) const
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   // Returns the sum of per-element processing time for the inputs of this node.
   // Processing time for a given input is a weighted combination of a statistic
@@ -432,7 +432,8 @@ class Node {
   // Uniform distribution of per-element processing times across different
   // inputs is assumed.
   double TotalProcessingTimeForInputs(
-      std::map<string, double>* processing_times) SHARED_LOCKS_REQUIRED(mu_) {
+      std::map<string, double>* processing_times)
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     // If the number of elements produced by an input is smaller than this
     // constant, then its processing time is estimated using a weighted average
     // of the empirical processing time and processing time history.
@@ -472,7 +473,7 @@ class Node {
   }
 
   // Returns the per-element processing time spent in this node.
-  double SelfProcessingTimeLocked() const SHARED_LOCKS_REQUIRED(mu_) {
+  double SelfProcessingTimeLocked() const TF_SHARED_LOCKS_REQUIRED(mu_) {
     if (num_elements_ == 0) {
       return 0;
     }
@@ -485,7 +486,7 @@ class Node {
   // spent in each node of the subtree.
   virtual double TotalProcessingTimeLocked(
       std::map<string, double>* processing_times)
-      SHARED_LOCKS_REQUIRED(mu_) = 0;
+      TF_SHARED_LOCKS_REQUIRED(mu_) = 0;
 
   mutable mutex mu_;
   const int64 id_;
@@ -494,13 +495,13 @@ class Node {
   // Indicates whether the subtree rooted in this node should be included in
   // autotuning. In particular, if this is `false`, then the subtree is excluded
   // from computation of output time and processing time.
-  bool autotune_ GUARDED_BY(mu_) = true;
-  int64 buffered_bytes_ GUARDED_BY(mu_) = 0;
-  int64 buffered_elements_ GUARDED_BY(mu_) = 0;
-  int64 processing_time_ GUARDED_BY(mu_) = 0;
-  int64 num_elements_ GUARDED_BY(mu_) = 0;
-  std::map<std::thread::id, int64> work_start_ GUARDED_BY(mu_);
-  std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
+  bool autotune_ TF_GUARDED_BY(mu_) = true;
+  int64 buffered_bytes_ TF_GUARDED_BY(mu_) = 0;
+  int64 buffered_elements_ TF_GUARDED_BY(mu_) = 0;
+  int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
+  int64 num_elements_ TF_GUARDED_BY(mu_) = 0;
+  std::map<std::thread::id, int64> work_start_ TF_GUARDED_BY(mu_);
+  std::map<string, std::shared_ptr<Parameter>> parameters_ TF_GUARDED_BY(mu_);
 
   // Statistic of inputs processing time history.
   double input_processing_time_sum_ = 0.0L;
@@ -509,7 +510,7 @@ class Node {
   // Inputs of this node. These can represent an iterator created from the input
   // dataset but also other input iterators (e.g. created by the user-defined
   // functions of `flat_map` or `interleave`).
-  std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
+  std::list<std::shared_ptr<Node>> inputs_ TF_GUARDED_BY(mu_);
 
   // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
@@ -580,31 +581,33 @@ class Model {
   // Adds a node with the given name and given output. The method returns
   // a pointer to the node but does not transfer ownership.
   void AddNode(Node::Factory factory, const string& name,
-               const string& output_name, Node** out_node) LOCKS_EXCLUDED(mu_);
+               const string& output_name, Node** out_node)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Increments the processing time for the given node..
-  void AddProcessingTime(const string& name, int64 delta) LOCKS_EXCLUDED(mu_);
+  void AddProcessingTime(const string& name, int64 delta)
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
   void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
-      LOCKS_EXCLUDED(mu_);
+      TF_LOCKS_EXCLUDED(mu_);
 
   // Records that a node has produced an element.
-  void RecordElement(const string& name) LOCKS_EXCLUDED(mu_);
+  void RecordElement(const string& name) TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the number of elements that the input pipeline has produced.
-  int64 NumElements(const string& name) LOCKS_EXCLUDED(mu_);
+  int64 NumElements(const string& name) TF_LOCKS_EXCLUDED(mu_);
 
   // Records that the given node has started work. If `stop_output` is set, it
   // also records that the output of the given node has stopped work.
-  void RecordStart(const string& name, bool stop_output) LOCKS_EXCLUDED(mu_);
+  void RecordStart(const string& name, bool stop_output) TF_LOCKS_EXCLUDED(mu_);
 
   // Records that the given node has stopped work. If `stop_output` is set, it
   // also records that the output of the given node has started work.
-  void RecordStop(const string& name, bool start_output) LOCKS_EXCLUDED(mu_);
+  void RecordStop(const string& name, bool start_output) TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
-  void RemoveNode(const string& name) LOCKS_EXCLUDED(mu_);
+  void RemoveNode(const string& name) TF_LOCKS_EXCLUDED(mu_);
 
  private:
   // Collects tunable parameters in the tree rooted in the given node, returning
@@ -660,9 +663,9 @@ class Model {
   // access is required only when adding or removing nodes. Concurrent access to
   // existing nodes is protected by a node mutex.
   mutex mu_;
-  int64 id_counter_ GUARDED_BY(mu_) = 1;
-  std::shared_ptr<Node> output_ GUARDED_BY(mu_);
-  std::map<string, std::shared_ptr<Node>> lookup_table_ GUARDED_BY(mu_);
+  int64 id_counter_ TF_GUARDED_BY(mu_) = 1;
+  std::shared_ptr<Node> output_ TF_GUARDED_BY(mu_);
+  std::map<string, std::shared_ptr<Node>> lookup_table_ TF_GUARDED_BY(mu_);
 
   // Indicates whether the modeling framework should collect resource usage
   // (e.g. CPU, memory). The logic for collecting this information assumes that

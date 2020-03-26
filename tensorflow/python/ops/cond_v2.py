@@ -1133,17 +1133,17 @@ def _set_read_only_resource_inputs_attr(op, branch_graphs):
     op: If or Case Operation.
     branch_graphs: List of branch FuncGraphs.
   """
-  read_only_indices = []
-  for i in range(1, len(op.inputs)):
-    if op.inputs[i].dtype != dtypes.resource:
-      continue
-    has_write = False
-    for branch_graph in branch_graphs:
-      handle = branch_graph.inputs[i - 1]
-      if acd.resource_has_writes(handle):
-        has_write = True
-        break
-    if not has_write:
-      read_only_indices.append(i)
+  # The first entry in `op.inputs` is the predicate which is not passed to
+  # branch graphs so len(branch_graph[i].inputs) == len(op.inputs) - 1.
+  read_only_indices = set(range(len(op.inputs) - 1))
+  for branch_graph in branch_graphs:
+    assert len(branch_graph.inputs) == len(op.inputs) - 1, "should never happen"
+    if not read_only_indices:
+      break
+    branch_read_only_indices = acd.get_read_only_resource_input_indices_graph(
+        branch_graph)
+    read_only_indices = read_only_indices.intersection(branch_read_only_indices)
+  # Convert indices in `branch_graphs[i].inputs` to `op.inputs`.
+  read_only_indices = [i + 1 for i in read_only_indices]
   ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
-                        read_only_indices)
+                        sorted(read_only_indices))

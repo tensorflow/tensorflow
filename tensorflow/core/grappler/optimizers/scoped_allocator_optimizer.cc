@@ -389,7 +389,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     for (const InputDesc& nd : inputs) {
       if (op_set.find(nd.from_node_def->name()) != op_set.end()) {
         if (nd.output_slot != tensorflow::Graph::kControlSlot) {
-          return errors::Internal("Data edge exists bewtween ",
+          return errors::Internal("Data edge exists between ",
                                   nd.from_node_def->name(),
                                   " and another "
                                   "node in the set");

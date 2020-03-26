@@ -43,7 +43,7 @@ TfLiteStatus PrepareSimple(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
   // Validate axis type
-  const TfLiteTensor* axis = &context->tensors[node->inputs->data[1]];
+  const TfLiteTensor* axis = GetInput(context, node, 1);
   TF_LITE_ENSURE_TYPES_EQ(context, axis->type, kTfLiteInt32);
   return kTfLiteOk;
 }
@@ -67,9 +67,9 @@ void ResolveAxis(const int* axis_data, int axis_count,
 }
 
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  const TfLiteTensor* axis = &context->tensors[node->inputs->data[1]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* axis = GetInput(context, node, 1);
+  TfLiteTensor* output = GetOutput(context, node, 0);
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
 

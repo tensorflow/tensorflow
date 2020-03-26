@@ -60,17 +60,10 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
 // of the multiplication is accumulated to the passed result buffer.
 // More specifically, for a matrix M of shape [n, i] and a batched-vector
 // of shape [i, batch] it will first compute the product of shape [n, batch].
-// This product will be accumulated to the result buffer, using a stride value
-// provided in result_stride (the number of elements between consecutive result
-// values). For example result_stride = 1, will cause the output to look like
-// this:
-// [O_1, 0_2, ... O_rows]
-// but result_stride = 3, will cause it to be arranged like this in memory:
-// [O_1, x, x, 0_2, x, x, ..., O_rows]
+// This product will be accumulated to the result buffer.
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
-                                         int n_batch, float* result,
-                                         int result_stride);
+                                         int n_batch, float* result);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -98,7 +91,7 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride);
+    float* __restrict__ result);
 
 // Same as the function above, but provide a scratch buffer for the
 // int8 x int8 -> int32 and a CpuBackendContext for the accumulator
@@ -108,7 +101,7 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
     int32_t* __restrict__ scratch, float* __restrict__ result,
-    int result_stride, CpuBackendContext* __restrict__ context);
+    CpuBackendContext* __restrict__ context);
 
 // Same as the function above except that vector values
 // are quantized with asymmetric quantization per-batch and the matrix
@@ -117,18 +110,16 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors,
     const float* __restrict__ scaling_factors, int n_batch,
-    float* __restrict__ result, int result_stride,
-    const float* __restrict__ per_channel_scale,
+    float* __restrict__ result, const float* __restrict__ per_channel_scale,
     const int32_t* __restrict__ input_offset);
 
 // Same as the function above except that can make use of cached row sums.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset,
-    int32_t* scratch, int32_t* row_sums, bool* compute_row_sums,
-    CpuBackendContext* context);
+    int n_batch, float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -170,8 +161,8 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 //     - multiplier and shift combined gives the scale.
 //     - assumes input zero point is 0.
 //     - scratch is created for optimization purpose only.
-//       TODO(jianlijianli): this can be removed if some furture optimization
-//       work makes it unnecesssary.
+//       TODO(b/152066492): this can be removed if some future optimization
+//       work makes it unnecessary.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
@@ -201,8 +192,8 @@ void MatrixBatchVectorMultiplyAccumulate(
 //     - multiplier and shift combined gives the scale.
 //     - assumes input zero point is 0.
 //     - scratch is created for optimization purpose only.
-//       TODO(jianlijianli): this can be removed if some furture optimization
-//       work makes it unnecesssary.
+//       TODO(b/152066492): this can be removed if some future optimization
+//       work makes it unnecessary.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
@@ -240,7 +231,7 @@ void MatrixBatchVectorMultiply(const int16_t* hidden,
 //     - output: the 32bit output
 // Note: We do not need saturation because the int8 * int8 is safe from overflow
 // in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
-// initial output value is not exceiptionally large.
+// initial output value is not exceptionally large.
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                     int32_t n_row, int32_t n_col,
                                     int32_t* output);
@@ -381,7 +372,7 @@ inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
   }
 }
 
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
+// Cwise product and accumulate of two vectors. Since it's a MAC operation, the
 // assumption here is that result array is initialized to valid values.
 template <typename T>
 inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
@@ -561,15 +552,6 @@ void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
 // Clip elements of a vector using a abs_limit value.
 void ClipVector(const float* vector, int v_size, float abs_limit,
                 float* result);
-
-// Shift left a vector in place with v_size size.
-template <typename T>
-void VectorShiftLeft(T* vector, int v_size, const T& shift_value) {
-  // When copying overlapping ranges, std::copy is appropriate when beginning of
-  // the destination range is outside the source range.
-  std::copy(vector + 1, vector + v_size, vector);
-  vector[v_size - 1] = shift_value;
-}
 
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.

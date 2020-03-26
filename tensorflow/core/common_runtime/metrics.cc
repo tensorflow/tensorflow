@@ -132,8 +132,8 @@ void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
 }
 
-void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
-  tf_data_bytes_read_counter->GetCell(name)->IncrementBy(num_bytes);
+monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name) {
+  return tf_data_bytes_read_counter->GetCell(name);
 }
 
 void RecordTFDataBytesFetched(int64 num_bytes) {

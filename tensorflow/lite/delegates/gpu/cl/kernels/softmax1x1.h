@@ -30,9 +30,9 @@ class Softmax1x1 : public GPUOperation {
   Softmax1x1() = default;
   explicit Softmax1x1(const OperationDef& definition)
       : GPUOperation(definition) {}
-  Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Softmax1x1(Softmax1x1&& kernel);

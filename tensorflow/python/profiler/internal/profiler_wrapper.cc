@@ -16,7 +16,6 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "absl/time/time.h"
 #include "include/pybind11/pybind11.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
@@ -31,17 +30,18 @@ namespace py = ::pybind11;
 
 namespace {
 
-tensorflow::string GetCurrentTimeStampAsString() {
-  return absl::FormatTime("%E4Y-%m-%d_%H:%M:%S", absl::Now(),
-                          absl::LocalTimeZone());
-}
-
-tensorflow::ProfileRequest MakeProfileRequest() {
+tensorflow::ProfileRequest MakeProfileRequest(
+    const tensorflow::string& logdir, const tensorflow::string& session_id,
+    const tensorflow::string& host) {
   tensorflow::ProfileRequest request;
+  request.add_tools("trace_viewer");
   request.add_tools("overview_page");
   request.add_tools("input_pipeline");
   request.add_tools("kernel_stats");
   request.add_tools("tensorflow_stats");
+  request.set_host_name(host);
+  request.set_repository_root(logdir);
+  request.set_session_id(session_id);
   return request;
 }
 
@@ -70,20 +70,22 @@ class ProfilerSessionWrapper {
     tensorflow::Status status;
     status = session_->CollectData(&xspace);
     session_.reset();
-    if (!status.ok()) {
-      tensorflow::MaybeRaiseRegisteredFromStatus(status);
-      return;
-    }
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
+
     tensorflow::ProfileResponse response;
-    tensorflow::profiler::ConvertXSpaceToProfileResponse(
-        xspace, MakeProfileRequest(), &response);
+    tensorflow::ProfileRequest request = MakeProfileRequest(
+        logdir_, tensorflow::profiler::GetCurrentTimeStampAsString(),
+        tensorflow::port::Hostname());
+    status = tensorflow::profiler::ConvertXSpaceToProfileResponse(
+        xspace, request, &response);
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
 
     std::stringstream ss;  // Record LOG messages.
     status = tensorflow::profiler::SaveTensorboardProfile(
-        logdir_, GetCurrentTimeStampAsString(), tensorflow::port::Hostname(),
+        request.repository_root(), request.session_id(), request.host_name(),
         response, &ss);
     LOG(INFO) << ss.str();
-    tensorflow::MaybeRaiseRegisteredFromStatus(tensorflow::Status::OK());
+    tensorflow::MaybeRaiseRegisteredFromStatus(status);
   }
 
  private:

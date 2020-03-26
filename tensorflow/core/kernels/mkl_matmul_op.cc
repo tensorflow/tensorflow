@@ -174,6 +174,7 @@ class MklMatMulOp : public OpKernel {
 #endif
   }
 
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
   void MklBlasGemm(OpKernelContext* ctx, bool transa, bool transb, const int m,
                    const int n, const int k, const bfloat16* a, const int lda,
                    const bfloat16* b, const int ldb, bfloat16* c,
@@ -185,13 +186,9 @@ class MklMatMulOp : public OpKernel {
     const int index_transb = transb ? 1 : 0;
 
 #ifdef ENABLE_MKLDNN_V1
-#ifdef ENABLE_MKLDNN_V1_2
     dnnl_gemm<bfloat16>(transa ? CblasTrans : CblasNoTrans,
                         transb ? CblasTrans : CblasNoTrans, m, n, k, alpha, a,
                         lda, b, ldb, beta, c, ldc);
-#else
-// There is no MatMul support for bfloat16 type in MKLDNN1.0.
-#endif  // ENABLE_MKLDNN_V1_2
 #else
     Tensor c_float;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_FLOAT, {m, n}, &c_float));
@@ -207,6 +204,7 @@ class MklMatMulOp : public OpKernel {
     FloatToBFloat16(c_float.flat<float>().data(), c, c_float.NumElements());
 #endif  // ENABLE_MKLDNN_V1
   }
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 // MKL-DNN only supports SGEMM and bfloat16-GEMM.
 #ifndef INTEL_MKL_DNN_ONLY
@@ -268,10 +266,9 @@ class MklMatMulOp : public OpKernel {
 // TODO(inteltf) Consider template specialization when adding/removing
 // additional types
 TF_CALL_float(REGISTER_CPU);
-#if !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
-// MKLDNNv1 does not have support for bfloat16 GEMM. Only V1.2 has that support.
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
 TF_CALL_bfloat16(REGISTER_CPU);
-#endif  // !defined(ENABLE_MKLDNN_V1) || defined(ENABLE_MKLDNN_V1_2)
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
 
 #ifndef INTEL_MKL_DNN_ONLY
 TF_CALL_double(REGISTER_CPU);

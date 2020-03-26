@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import layers as layer_module
@@ -43,14 +42,14 @@ class WideDeepModel(keras_training.Model):
   linear_model = LinearModel()
   dnn_model = keras.Sequential([keras.layers.Dense(units=64),
                                keras.layers.Dense(units=1)])
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
   # define dnn_inputs and linear_inputs as separate numpy arrays or
   # a single numpy array if dnn_inputs is same as linear_inputs.
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   # or define a single `tf.data.Dataset` that contains a single tensor or
   # separate tensors for dnn_inputs and linear_inputs.
-  dataset = tf.data.Dataset.from_tensors(([dnn_inputs, linear_inputs], y))
+  dataset = tf.data.Dataset.from_tensors(([linear_inputs, dnn_inputs], y))
   combined_model.fit(dataset, epochs)
   ```
 
@@ -65,9 +64,9 @@ class WideDeepModel(keras_training.Model):
   dnn_model = keras.Sequential([keras.layers.Dense(units=1)])
   dnn_model.compile('rmsprop', 'mse')
   dnn_model.fit(dnn_inputs, y, epochs)
-  combined_model = WideDeepModel(dnn_model, linear_model)
+  combined_model = WideDeepModel(linear_model, dnn_model)
   combined_model.compile(optimizer=['sgd', 'adam'], 'mse', ['mse'])
-  combined_model.fit([dnn_inputs, linear_inputs], y, epochs)
+  combined_model.fit([linear_inputs, dnn_inputs], y, epochs)
   ```
 
   """
@@ -110,7 +109,7 @@ class WideDeepModel(keras_training.Model):
     return output
 
   # This does not support gradient scaling and LossScaleOptimizer.
-  def _train_step(self, data):
+  def train_step(self, data):
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
     x, y, sample_weight = data_adapter.expand_1d((x, y, sample_weight))
 
@@ -137,9 +136,6 @@ class WideDeepModel(keras_training.Model):
     return {m.name: m.result() for m in self.metrics}
 
   def _make_train_function(self):
-    if ops.executing_eagerly_outside_functions():
-      return super(WideDeepModel, self)._make_train_function()
-
     # Only needed for graph mode and model_to_estimator.
     has_recompiled = self._recompile_weights_loss_and_weighted_metrics()
     self._check_trainable_weights_consistency()

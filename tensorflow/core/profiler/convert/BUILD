@@ -103,6 +103,7 @@ cc_library(
     hdrs = ["op_stats_to_input_pipeline_analysis.h"],
     deps = [
         ":op_metrics_to_record",
+        ":step_events_to_steps_db",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:logging",
@@ -148,6 +149,32 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/profiler/protobuf:steps_db_proto_cc",
         "//tensorflow/core/profiler/utils:event_span",
+    ],
+)
+
+cc_library(
+    name = "trace_events_to_json",
+    srcs = ["trace_events_to_json.cc"],
+    hdrs = ["trace_events_to_json.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+tf_cc_test(
+    name = "trace_events_to_json_test",
+    srcs = ["trace_events_to_json_test.cc"],
+    deps = [
+        ":trace_events_to_json",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -203,6 +230,7 @@ cc_library(
         ":op_stats_to_input_pipeline_analysis",
         ":op_stats_to_overview_page",
         ":op_stats_to_tf_stats",
+        ":trace_events_to_json",
         ":xplane_to_op_stats",
         ":xplane_to_trace_events",
         "//tensorflow/core:lib",
@@ -214,6 +242,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:overview_page_proto_cc",
         "//tensorflow/core/profiler/protobuf:tf_stats_proto_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/rpc/client:save_profile",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
@@ -277,8 +306,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler/utils:tf_xplane_visitor",
         "//tensorflow/core/profiler/utils:xplane_schema",
-        "//tensorflow/core/profiler/utils:xplane_visitor",
         "@com_google_absl//absl/strings",
     ],
 )

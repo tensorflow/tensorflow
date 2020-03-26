@@ -786,7 +786,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertEqual(data_handler.inferred_steps, 2)
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -798,6 +799,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
   def test_finite_dataset_without_steps_per_epoch(self):
     data = dataset_ops.Dataset.from_tensor_slices([0, 1, 2]).batch(1)
     data_handler = data_adapter.DataHandler(data, initial_epoch=0, epochs=2)
+    self.assertEqual(data_handler.inferred_steps, 3)
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -812,7 +814,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # create a new iterator each epoch.
     data_handler = data_adapter.DataHandler(
         data, initial_epoch=0, epochs=2, steps_per_epoch=4)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -842,7 +844,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     # User can choose to only partially consume `Dataset`.
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2, steps_per_epoch=2)
-    self.assertFalse(data_handler._train_adapter.should_recreate_iterator())
+    self.assertFalse(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -851,6 +853,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
       returned_data.append(epoch_data)
     returned_data = self.evaluate(returned_data)
     self.assertEqual(returned_data, [[0, 1], [2, 3]])
+    self.assertEqual(data_handler.inferred_steps, 2)
 
   def test_unknown_cardinality_dataset_without_steps_per_epoch(self):
     ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2, 3, 4, 5, 6])
@@ -860,7 +863,8 @@ class DataHandlerTest(keras_parameterized.TestCase):
 
     data_handler = data_adapter.DataHandler(
         filtered_ds, initial_epoch=0, epochs=2)
-    self.assertTrue(data_handler._train_adapter.should_recreate_iterator())
+    self.assertEqual(data_handler.inferred_steps, None)
+    self.assertTrue(data_handler._adapter.should_recreate_iterator())
     returned_data = []
     for _, iterator in data_handler.enumerate_epochs():
       epoch_data = []
@@ -870,7 +874,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
       returned_data.append(epoch_data)
     returned_data = self.evaluate(returned_data)
     self.assertEqual(returned_data, [[0, 1, 2, 3], [0, 1, 2, 3]])
-    self.assertEqual(data_handler._steps_per_epoch, 4)
+    self.assertEqual(data_handler.inferred_steps, 4)
 
   def test_insufficient_data(self):
     ds = dataset_ops.DatasetV2.from_tensor_slices([0, 1])
@@ -1060,6 +1064,15 @@ class TestValidationSplit(keras_parameterized.TestCase):
         (np.ones((10, 1)), None), validation_split=0.2)
     self.assertIsNone(train_sw)
     self.assertIsNone(val_sw)
+
+
+class TestUtils(keras_parameterized.TestCase):
+
+  def test_expand_1d_sparse_tensors_untouched(self):
+    st = sparse_tensor.SparseTensor(
+        indices=[[0], [10]], values=[1, 2], dense_shape=[10])
+    st = data_adapter.expand_1d(st)
+    self.assertEqual(st.shape.rank, 1)
 
 
 if __name__ == '__main__':

@@ -435,7 +435,9 @@ public final class Tensor {
     this.dtype = DataType.fromC(dtype(nativeHandle));
     this.shapeCopy = shape(nativeHandle);
     this.shapeSignatureCopy = shapeSignature(nativeHandle);
-    this.quantizationParamsCopy = quantizationParameters(nativeHandle);
+    this.quantizationParamsCopy =
+        new QuantizationParams(
+            quantizationScale(nativeHandle), quantizationZeroPoint(nativeHandle));
   }
 
   private ByteBuffer buffer() {
@@ -468,5 +470,7 @@ public final class Tensor {
 
   private static native String name(long handle);
 
-  private static native QuantizationParams quantizationParameters(long handle);
+  private static native float quantizationScale(long handle);
+
+  private static native int quantizationZeroPoint(long handle);
 }

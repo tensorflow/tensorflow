@@ -31,6 +31,7 @@ from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
@@ -639,7 +640,7 @@ class RandomTest(PForTestCase):
 
   # The random values generated in the two implementations are not guaranteed to
   # match. So we only check the returned shapes.
-  def run_and_assert_equal(self, targets1, targets2):
+  def run_and_assert_equal(self, targets1, targets2, rtol=1e-4, atol=1e-5):
     outputs = self._run_targets(targets1, targets2)
     n = len(outputs) // 2
     for i in range(n):
@@ -737,7 +738,7 @@ class StatelessRandomTest(PForTestCase):
   # stateless random numbers can generate different random numbers.
   # TODO(agarwal): switch to checking for actual values matching once
   # b/149402339 is resolved.
-  def run_and_assert_equal(self, targets1, targets2):
+  def run_and_assert_equal(self, targets1, targets2, rtol=1e-4, atol=1e-5):
     outputs = self._run_targets(targets1, targets2)
     n = len(outputs) // 2
     for i in range(n):
@@ -1736,6 +1737,9 @@ class SpectralTest(PForTestCase, parameterized.TestCase):
       (fft_ops.irfft3d,),
   )
   def test_irfft(self, op_func):
+    if config.list_physical_devices("GPU"):
+      # TODO(b/149957923): The test is flaky
+      self.skipTest("b/149957923: irfft vectorization flaky")
     for dtype in (dtypes.complex64, dtypes.complex128):
       shape = [2, 3, 4, 3, 4]
       x = np.random.uniform(size=shape) + 1j * np.random.uniform(size=shape)

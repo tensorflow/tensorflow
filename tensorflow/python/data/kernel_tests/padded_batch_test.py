@@ -30,6 +30,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.platform import test
@@ -296,6 +297,15 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       shape_as_tensor = array_ops.placeholder(dtypes.int64, shape=[2])
       _ = dataset_ops.Dataset.range(10).padded_batch(
           5, padded_shapes=shape_as_tensor)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testPaddedBatchBfloat16(self):
+    ds = dataset_ops.Dataset.range(5)
+    ds = ds.map(lambda x: math_ops.cast(x, dtypes.bfloat16))
+    ds = ds.padded_batch(10)
+    self.assertDatasetProduces(
+        ds, expected_output=[[0.0, 1.0, 2.0, 3.0, 4.0]])
+
 
 if __name__ == '__main__':
   test.main()

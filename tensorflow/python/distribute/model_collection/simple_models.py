@@ -52,14 +52,10 @@ class SimpleFunctionalModel(model_collection_base.ModelAndInput):
 
     model = keras.Model(inputs=x, outputs=y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    experimental_run_tf_function = kwargs.pop('experimental_run_tf_function',
-                                              None)
-    assert experimental_run_tf_function is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
-        optimizer=optimizer,
-        experimental_run_tf_function=experimental_run_tf_function)
+        optimizer=optimizer)
 
     return model
 
@@ -81,14 +77,10 @@ class SimpleSequentialModel(model_collection_base.ModelAndInput):
         5, dtype=dtypes.float32, name=output_name, input_dim=3)
     model.add(y)
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    experimental_run_tf_function = kwargs.pop('experimental_run_tf_function',
-                                              None)
-    assert experimental_run_tf_function is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
-        optimizer=optimizer,
-        experimental_run_tf_function=experimental_run_tf_function)
+        optimizer=optimizer)
 
     return model
 
@@ -115,15 +107,11 @@ class SimpleSubclassModel(model_collection_base.ModelAndInput):
   def get_model(self, **kwargs):
     model = _SimpleModel()
     optimizer = gradient_descent.SGD(learning_rate=0.001)
-    experimental_run_tf_function = kwargs.pop('experimental_run_tf_function',
-                                              None)
-    assert experimental_run_tf_function is not None
     model.compile(
         loss='mse',
         metrics=['mae'],
         cloning=False,
-        optimizer=optimizer,
-        experimental_run_tf_function=experimental_run_tf_function)
+        optimizer=optimizer)
 
     return model
 

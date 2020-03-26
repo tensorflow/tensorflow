@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cusolverDn.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
@@ -50,8 +51,16 @@ cusolverStatus_t GetSymbolNotFoundError() {
 }
 }  // namespace
 
-#if CUDA_VERSION < 10010
+#if CUDA_VERSION < 10000
+#include "tensorflow/stream_executor/cuda/cusolver_dense_9_0.inc"
+#elif CUDA_VERSION == 10000
 #include "tensorflow/stream_executor/cuda/cusolver_dense_10_0.inc"
-#else
+#elif CUDA_VERSION == 10010
 #include "tensorflow/stream_executor/cuda/cusolver_dense_10_1.inc"
+#elif CUDA_VERSION == 10020
+#include "tensorflow/stream_executor/cuda/cusolver_dense_10_2.inc"
+#elif CUDA_VERSION == 11000
+#include "tensorflow/stream_executor/cuda/cusolver_dense_11_0.inc"
+#else
+#error "We don't have a wrapper for this version."
 #endif

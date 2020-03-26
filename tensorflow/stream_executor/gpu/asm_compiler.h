@@ -26,11 +26,22 @@ limitations under the License.
 namespace stream_executor {
 
 // Compiles the given PTX string using ptxas and returns the resulting machine
-// code (i.e. a cubin) as a byte array.
+// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// capabilities of the device associated with 'device_ordinal'.
 //
-// compile_ptx_options is used to query for the CUDA location in case it is
+// 'options' is used to query for the CUDA location in case it is
 // customized in a passed flag, and for controlling ptxas optimizations.
 port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
+                                                 const char* ptx_contents,
+                                                 GpuAsmOpts options);
+
+// Compiles the given PTX string using ptxas and returns the resulting machine
+// code (i.e. a cubin) as a byte array. The generated cubin matches the compute
+// capabilities provided by 'cc_major' and 'cc_minor'.
+//
+// 'options' is used to query for the CUDA location in case it is
+// customized in a passed flag, and for controlling ptxas optimizations.
+port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  const char* ptx_contents,
                                                  GpuAsmOpts options);
 

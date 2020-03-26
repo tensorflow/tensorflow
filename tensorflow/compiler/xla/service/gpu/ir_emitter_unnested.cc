@@ -2156,9 +2156,9 @@ void IrEmitterUnnested::EmitPrologueForReduction(
         reduce_inst->shape().element_type(), module_);
     llvm::Type* buffer_type = [&] {
       if (reduction_info->IsRowReduction()) {
-        // Allocate __shared__ cache[num_partial_results][num_threads].
+        // Allocate __shared__ cache[num_partial_results][kWarpSize].
         return llvm::ArrayType::get(
-            llvm::ArrayType::get(primitive_type, num_threads_x),
+            llvm::ArrayType::get(primitive_type, kWarpSize),
             num_partial_results);
       } else {
         // Allocate __shared__
@@ -3097,9 +3097,20 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
            << " " << reduction_dimensions.dimensions[0] << " "
            << reduction_dimensions.dimensions[1] << " "
            << reduction_dimensions.dimensions[2];
+  auto get_dtype_bits = [](const HloInstruction* i) {
+    return primitive_util::BitWidth(i->shape().element_type());
+  };
 
+  // For fusion with multiple inputs, use the smallest input dtype to
+  // select the reduction_tiling.
+  int smallest_input_dtype_bits = get_dtype_bits(first_reduce->operand(0));
+  for (xla::HloInstruction* input : unnested_hlo->operands()) {
+    smallest_input_dtype_bits =
+        std::min(get_dtype_bits(input), smallest_input_dtype_bits);
+  }
   std::array<int64, 3> reduction_tiling =
-      GetReductionTiling(reduction_dimensions);
+      GetReductionTiling(reduction_dimensions, smallest_input_dtype_bits,
+                         &ir_emitter_context_->device_description());
   bool dilated_x =
       reduction_dimensions.is_row_reduction ||
       !IsUnrollingColumnReductionBeneficial(unnested_hlo, input_shape,

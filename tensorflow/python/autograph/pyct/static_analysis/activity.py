@@ -320,6 +320,12 @@ class ActivityAnalyzer(transformer.Base):
     self._exit_and_record_scope(node)
     return node
 
+  def visit_Import(self, node):
+    return self._process_statement(node)
+
+  def visit_ImportFrom(self, node):
+    return self._process_statement(node)
+
   def visit_Global(self, node):
     for name in node.names:
       self.scope.globals.add(qual_names.QN(name))
@@ -360,6 +366,19 @@ class ActivityAnalyzer(transformer.Base):
   def visit_Name(self, node):
     node = self.generic_visit(node)
     self._track_symbol(node)
+    return node
+
+  def visit_alias(self, node):
+    node = self.generic_visit(node)
+
+    if node.asname is None:
+      # Only the root name is a real symbol operation.
+      qn = qual_names.QN(node.name.split('.')[0])
+    else:
+      qn = qual_names.QN(node.asname)
+
+    self.scope.modified.add(qn)
+    self.scope.bound.add(qn)
     return node
 
   def visit_Attribute(self, node):
@@ -539,6 +558,8 @@ class ActivityAnalyzer(transformer.Base):
 
     self._enter_scope(False)
     self.visit(node.target)
+    if anno.hasanno(node, anno.Basic.EXTRA_LOOP_TEST):
+      self._process_statement(anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST))
     self._exit_and_record_scope(node, tag=NodeAnno.ITERATE_SCOPE)
 
     node = self._process_parallel_blocks(node,

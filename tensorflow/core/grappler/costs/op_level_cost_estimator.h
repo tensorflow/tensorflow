@@ -200,7 +200,7 @@ class OpLevelCostEstimator {
   typedef std::function<Costs(const OpContext& op_context)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
   // If true, assume compute and memory overlap; hence, the op cost is max of
-  // compute_time and memory_time, insteaf of sum of those two.
+  // compute_time and memory_time, instead of sum of those two.
   bool compute_memory_overlap_;
   std::set<string> persistent_ops_;
 

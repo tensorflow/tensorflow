@@ -252,7 +252,7 @@ Scalar Parametrized(float param) {
 template <typename Scalar>
 struct RandomRangeBounds<Scalar, false> {
   static Scalar GetMinBound(RandomRange range) {
-    static constexpr double offcentredness =
+    static constexpr double offcenteredness =
         0.02;  // Shift lower limit by about 5 for range of 255.
     switch (range) {
       case RandomRange::kGeneral:
@@ -262,8 +262,8 @@ struct RandomRangeBounds<Scalar, false> {
       case RandomRange::kOffCenterAvoidMinValue:
         return 1 + std::numeric_limits<Scalar>::lowest() +
                static_cast<Scalar>(
-                   offcentredness * std::numeric_limits<Scalar>::max() -
-                   offcentredness *
+                   offcenteredness * std::numeric_limits<Scalar>::max() -
+                   offcenteredness *
                        (std::numeric_limits<Scalar>::lowest() + 1));
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::lowest();

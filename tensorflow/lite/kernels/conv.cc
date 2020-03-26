@@ -137,7 +137,7 @@ void Free(TfLiteContext* context, void* buffer) {
 // Naive implementation of transpose for floats. Could be optimized to be more
 // cache friendly, but for now it's a one-time cost on first run, and we would
 // prefer to remove the need to do this at all eventually.
-void TransposeFloatTensor(TfLiteTensor* input, TfLiteTensor* output) {
+void TransposeFloatTensor(const TfLiteTensor* input, TfLiteTensor* output) {
   const int rows = output->dims->data[1];
   const int cols = output->dims->data[0];
   const float* input_data = GetTensorData<float>(input);
@@ -153,8 +153,8 @@ void TransposeFloatTensor(TfLiteTensor* input, TfLiteTensor* output) {
 // Check if im2col needs to be allocated, as some version of optimized Conv dont
 // use it. If any change is supporting im2col in any of the Conv versions, then
 // it should be updated here as well
-bool IsIm2ColRequired(TfLiteTensor* input, TfLiteConvParams* params,
-                      TfLiteTensor* filter, OpData* data, bool is_hybrid,
+bool IsIm2ColRequired(const TfLiteTensor* input, TfLiteConvParams* params,
+                      const TfLiteTensor* filter, OpData* data, bool is_hybrid,
                       KernelType kernel_type) {
   // If HWCN weights are required, Im2Col not required
   if (data->need_hwcn_weights) return false;
@@ -214,8 +214,8 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
   TF_LITE_ENSURE(context, node->inputs->size >= 2);
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* filter = GetInput(context, node, 1);
 
   // If we're using the optimized multithreaded EigenTensor implementation of
   // convolution, it expects the filter weights to be transposed compared to
@@ -308,9 +308,9 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
   // Check number of inputs/outputs
   TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* filter = GetInput(context, node, 1);
 
   // Check dimensionality of input, filter
   TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
@@ -325,14 +325,14 @@ TfLiteStatus Prepare(KernelType kernel_type, TfLiteContext* context,
                      input_type == kTfLiteInt8 || input_type == kTfLiteInt16);
   TF_LITE_ENSURE_EQ(context, output->type, input_type);
 
-  TfLiteTensor* bias = nullptr;
+  const TfLiteTensor* bias = nullptr;
 
   // TODO(ahentz): At this point the optimized versions require 'bias'. We can
   // either change that or document that convolution requires it.
   TF_LITE_ENSURE(context, has_bias);
 
   if (has_bias) {
-    bias = &context->tensors[node->inputs->data[2]];
+    bias = GetInput(context, node, 2);
     if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
@@ -573,9 +573,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                   TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
-                   TfLiteTensor* filter, TfLiteTensor* bias,
-                   TfLiteTensor* im2col, TfLiteTensor* output) {
+                   TfLiteConvParams* params, OpData* data,
+                   const TfLiteTensor* input, const TfLiteTensor* filter,
+                   const TfLiteTensor* bias, TfLiteTensor* im2col,
+                   TfLiteTensor* output) {
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
@@ -637,8 +638,9 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
-                             TfLiteTensor* input, TfLiteTensor* filter,
-                             TfLiteTensor* bias, TfLiteTensor* output,
+                             const TfLiteTensor* input,
+                             const TfLiteTensor* filter,
+                             const TfLiteTensor* bias, TfLiteTensor* output,
                              TfLiteTensor* im2col) {
   ConvParams op_params;
   op_params.input_offset = -input->params.zero_point;
@@ -717,8 +719,9 @@ void EvalQuantizedPerChannel16x8(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
-               TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
-               TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
+               TfLiteConvParams* params, OpData* data,
+               const TfLiteTensor* input, const TfLiteTensor* filter,
+               const TfLiteTensor* bias, TfLiteTensor* im2col,
                TfLiteTensor* hwcn_weights, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
@@ -789,8 +792,8 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
 template <KernelType kernel_type>
 void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
                           TfLiteConvParams* params, OpData* data,
-                          TfLiteTensor* input, TfLiteTensor* filter,
-                          TfLiteTensor* bias, TfLiteTensor* im2col,
+                          const TfLiteTensor* input, const TfLiteTensor* filter,
+                          const TfLiteTensor* bias, TfLiteTensor* im2col,
                           TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
@@ -866,8 +869,9 @@ void EvalHybridPerChannel(TfLiteContext* context, TfLiteNode* node,
 
 template <KernelType kernel_type>
 void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
-                TfLiteConvParams* params, OpData* data, TfLiteTensor* input,
-                TfLiteTensor* filter, TfLiteTensor* bias, TfLiteTensor* im2col,
+                TfLiteConvParams* params, OpData* data,
+                const TfLiteTensor* input, const TfLiteTensor* filter,
+                const TfLiteTensor* bias, TfLiteTensor* im2col,
                 TfLiteTensor* accum_scratch, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
@@ -876,7 +880,7 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   const int input_size = NumElements(input) / SizeOfDimension(input, 0);
   const int batch_size = SizeOfDimension(input, 0);
 
-  float* input_ptr = GetTensorData<float>(input);
+  const float* input_ptr = GetTensorData<float>(input);
   int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(
       GetTemporary(context, node, data->input_quantized_index));
   float* scaling_factors_ptr = GetTensorData<float>(
@@ -928,12 +932,11 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  const TfLiteTensor* filter = GetInput(context, node, 1);
   bool has_bias = node->inputs->size == 3;
-  TfLiteTensor* bias =
-      has_bias ? &context->tensors[node->inputs->data[2]] : nullptr;
+  const TfLiteTensor* bias = has_bias ? GetInput(context, node, 2) : nullptr;
   TfLiteTensor* im2col =
       data->need_im2col
           ? &context->tensors[node->temporaries->data[data->im2col_index]]
@@ -989,7 +992,7 @@ TfLiteStatus EvalImpl(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+  const TfLiteTensor* input = GetInput(context, node, 0);
 
   switch (input->type) {
     case kTfLiteFloat32:

@@ -207,11 +207,8 @@ def map_and_batch(map_func,
 
   Maps `map_func` across `batch_size` consecutive elements of this dataset
   and then combines them into a batch. Functionally, it is equivalent to `map`
-  followed by `batch`. However, by fusing the two transformations together, the
-  implementation can be more efficient. Surfacing this transformation in the API
-  is temporary. Once automatic input pipeline optimization is implemented,
-  the fusing of `map` and `batch` will happen automatically and this API will be
-  deprecated.
+  followed by `batch`. This API is temporary and deprecated since input pipeline
+  optimization now fuses consecutive `map` and `batch` operations automatically.
 
   Args:
     map_func: A function mapping a nested structure of tensors to another

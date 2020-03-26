@@ -1300,19 +1300,15 @@ def _set_read_only_resource_inputs_attr(op, branch_graphs):
     op: While Operation.
     branch_graphs: List of branch FuncGraphs.
   """
-  read_only_indices = []
-  for i in range(len(op.inputs)):
-    if op.inputs[i].dtype != dtypes.resource:
-      continue
-    has_write = False
-    for branch_graph in branch_graphs:
-      handle = branch_graph.inputs[i]
-      if acd.resource_has_writes(handle):
-        has_write = True
-        break
-    if not has_write:
-      read_only_indices.append(i)
+  read_only_indices = set(range(len(op.inputs)))
+  for branch_graph in branch_graphs:
+    if not read_only_indices:
+      break
+    branch_read_only_indices = acd.get_read_only_resource_input_indices_graph(
+        branch_graph)
+    read_only_indices = read_only_indices.intersection(branch_read_only_indices)
+
   ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
-                        read_only_indices)
+                        sorted(read_only_indices))
 
 # pylint: enable=protected-access

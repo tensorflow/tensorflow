@@ -196,12 +196,12 @@ class TraceMeRecorder::ThreadLocalRecorder {
   return singleton;
 }
 
-void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
+void TraceMeRecorder::RegisterThread(uint32 tid, ThreadLocalRecorder* thread) {
   mutex_lock lock(mutex_);
   threads_.emplace(tid, thread);
 }
 
-void TraceMeRecorder::UnregisterThread(int32 tid) {
+void TraceMeRecorder::UnregisterThread(uint32 tid) {
   mutex_lock lock(mutex_);
   auto it = threads_.find(tid);
   if (it != threads_.end()) {

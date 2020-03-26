@@ -25,6 +25,7 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_config as model_config_lib
@@ -191,7 +192,8 @@ def load_model_from_hdf5(filepath, custom_objects=None, compile=True):  # pylint
         # with data to _make_train_function() and so can't load optimizer
         # weights.
         if model._is_graph_network:  # pylint: disable=protected-access
-          model._make_train_function()
+          if not ops.executing_eagerly_outside_functions():
+            model._make_train_function()
           optimizer_weight_values = load_optimizer_weights_from_hdf5_group(f)
           try:
             model.optimizer.set_weights(optimizer_weight_values)

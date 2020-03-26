@@ -23,7 +23,7 @@ import tempfile
 import traceback
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from tensorflow.lite.testing import zip_test_utils
 

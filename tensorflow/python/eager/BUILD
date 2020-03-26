@@ -35,6 +35,7 @@ cc_library(
         "//tensorflow/c/eager:c_api",
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/c/eager:c_api_internal",
+        "//tensorflow/c/eager:dlpack",
         "//tensorflow/c/eager:tape",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -93,6 +94,7 @@ py_library(
         ":test",
         ":wrap_function",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python/dlpack",
         "//tensorflow/python/eager/memory_tests:memory_test_util",
     ],
 )
@@ -176,10 +178,7 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//tensorflow:internal",
-        "//third_party/py/tf_agents:__subpackages__",
-    ],
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tf_session",
@@ -240,7 +239,10 @@ py_test(
     srcs = ["profiler_client_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+        "no_windows",
+    ],
     deps = [
         ":profiler_client",
         ":test",
@@ -838,6 +840,7 @@ py_library(
         ":context",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
+        "//tensorflow/python/distribute/cluster_resolver:base_cluster_resolver_py",
     ],
 )
 
@@ -860,6 +863,44 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
+    ],
+)
+
+cuda_py_test(
+    name = "remote_execution_test",
+    srcs = ["remote_execution_test.py"],
+    grpc_enabled = True,
+    python_version = "PY3",
+    shard_count = 8,
+    tags = [
+        "no_oss",  # This test launches local server
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:remote",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+cuda_py_test(
+    name = "remote_cluster_test",
+    srcs = ["remote_cluster_test.py"],
+    grpc_enabled = True,
+    python_version = "PY3",
+    shard_count = 16,
+    tags = [
+        "no_oss",  # This test launches local server
+        "notsan",  # TODO(b/152075365)
+    ],
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

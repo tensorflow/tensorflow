@@ -65,7 +65,7 @@ class MklSoftmaxPrimitive : public MklPrimitive {
 
 #ifdef ENABLE_MKLDNN_V1
     execute_primitives(context_.fwd_primitives, context_.fwd_stream,
-                       context_.net_args);
+                       context_.fwd_net_args);
 #else
     context_.fwd_stream->submit(context_.fwd_primitives);
 #endif

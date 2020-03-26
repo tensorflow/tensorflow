@@ -270,7 +270,7 @@ extension Interpreter {
   }
 }
 
-/// A type alias for `Interpreter.Options` to support backwards compatiblity with the deprecated
+/// A type alias for `Interpreter.Options` to support backwards compatibility with the deprecated
 /// `InterpreterOptions` struct.
 @available(*, deprecated, renamed: "Interpreter.Options")
 public typealias InterpreterOptions = Interpreter.Options

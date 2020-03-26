@@ -176,7 +176,7 @@ tf_class {
   }
   member_method {
     name: "compile"
-    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'optimizer\', \'loss\', \'metrics\', \'loss_weights\', \'sample_weight_mode\', \'weighted_metrics\', \'run_eagerly\'], varargs=None, keywords=kwargs, defaults=[\'rmsprop\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"
@@ -263,6 +263,18 @@ tf_class {
     argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
   }
   member_method {
+    name: "make_predict_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_test_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_train_function"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "pop"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
@@ -285,6 +297,10 @@ tf_class {
   member_method {
     name: "predict_proba"
     argspec: "args=[\'self\', \'x\', \'batch_size\', \'verbose\'], varargs=None, keywords=None, defaults=[\'32\', \'0\'], "
+  }
+  member_method {
+    name: "predict_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "reset_metrics"
@@ -315,6 +331,10 @@ tf_class {
     argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'False\'], "
   }
   member_method {
+    name: "test_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "to_json"
     argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
   }
@@ -325,6 +345,10 @@ tf_class {
   member_method {
     name: "train_on_batch"
     argspec: "args=[\'self\', \'x\', \'y\', \'sample_weight\', \'class_weight\', \'reset_metrics\', \'return_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'False\'], "
+  }
+  member_method {
+    name: "train_step"
+    argspec: "args=[\'self\', \'data\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "with_name_scope"

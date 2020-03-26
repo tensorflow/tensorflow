@@ -418,21 +418,11 @@ void TensorHandleSilentCopy(bool async,
 
     auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
         matmul->operation.get());
-    if (!async) {
-      // The input handles should never change since they have been mirrored.
-      ASSERT_EQ(op->GetInput(0), arg0);
-      ASSERT_EQ(op->GetInput(1), arg1);
-    } else {
-      if (cpu_op) {
-        ASSERT_EQ(op->GetInput(0), arg0);
-        // The GPU handle should be replaced with a CPU copy
-        ASSERT_NE(op->GetInput(1), arg1);
-      } else {
-        // The CPU handle should be replaced with a GPU copy
-        ASSERT_NE(op->GetInput(0), arg0);
-        ASSERT_EQ(op->GetInput(1), arg1);
-      }
-    }
+
+    // The input handles should never change since they have been mirrored.
+    EXPECT_EQ(op->GetInput(0), arg0);
+    EXPECT_EQ(op->GetInput(1), arg1);
+
     TFE_DeleteOp(matmul);
     TFE_DeleteTensorHandle(retvals[0]);
     TFE_DeleteTensorHandle(hgpu);

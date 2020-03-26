@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines common C types and APIs for implementing operations,
 // delegates and other constructs in TensorFlow Lite. The actual operations and
-// delegtes can be defined using C++, but the interface between the interpreter
+// delegates can be defined using C++, but the interface between the interpreter
 // and the operations are C.
 //
 // Summary of abstractions
@@ -45,7 +45,7 @@ typedef enum TfLiteStatus { kTfLiteOk = 0, kTfLiteError = 1 } TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
 // to avoid conflicts and to ensure ops can share the external contexts they
-// need. Access to the external contexts is controled by one of the
+// need. Access to the external contexts is controlled by one of the
 // corresponding support files.
 typedef enum TfLiteExternalContextType {
   kTfLiteEigenContext = 0,       // include eigen_support.h to use.

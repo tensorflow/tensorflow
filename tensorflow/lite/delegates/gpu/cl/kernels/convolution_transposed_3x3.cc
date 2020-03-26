@@ -30,7 +30,7 @@ namespace cl {
 namespace {
 
 std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
+    const OperationDef& op_def, const LinearStorage& biases,
     const std::vector<ElementwiseOperation*>& linked_operations,
     ConvolutionTransposed3x3::WeightsUploadType weights_upload_type,
     int2 padding, int3 work_group_launch_order) {
@@ -82,7 +82,7 @@ std::string GenerateConvolutionTransposedCode(
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
   c += "    " + weights_space + " FLT4* filters,\n";
-  c += "    __read_only image2d_t biases";
+  c += biases.GetDeclaration();
   c += GetArgsDeclaration(linked_operations);
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
@@ -240,7 +240,7 @@ std::string GenerateConvolutionTransposedCode(
     c += "  if (DST_X >= dst_size.x || DST_Y >= dst_size.y || Z >= dst_size.z) "
          "return;\n";
   }
-  c += "  FLT4 bias_val = READ_IMAGE(biases, (int2)(Z, 0));\n";
+  c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   for (int y = 0; y < 2; ++y) {
     for (int x = 0; x < 2; ++x) {
       const std::string s_x = std::to_string(x);
@@ -304,12 +304,11 @@ ConvolutionTransposed3x3& ConvolutionTransposed3x3::operator=(
   return *this;
 }
 
-Status ConvolutionTransposed3x3::Compile(
+absl::Status ConvolutionTransposed3x3::Compile(
     const CreationContext& creation_context) {
   const auto code = GenerateConvolutionTransposedCode(
-      definition_, linked_operations_, weights_upload_type_, padding_,
+      definition_, biases_, linked_operations_, weights_upload_type_, padding_,
       work_group_launch_order_);
-
   std::vector<CompilerOptions> options;
   if (definition_.precision == CalculationsPrecision::F16 &&
       creation_context.device->IsPowerVR()) {
@@ -318,11 +317,10 @@ Status ConvolutionTransposed3x3::Compile(
   RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", options, *creation_context.context,
       *creation_context.device, &kernel_));
-
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status ConvolutionTransposed3x3::BindArguments() {
+absl::Status ConvolutionTransposed3x3::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_.GetMemoryPtr()));
@@ -337,10 +335,7 @@ Status ConvolutionTransposed3x3::BindArguments() {
       padding_.x >= 1 ? (padding_.x - 1) / 2 : (padding_.x - 2) / 2;
   const int padding_y =
       padding_.y >= 1 ? (padding_.y - 1) / 2 : (padding_.y - 2) / 2;
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(padding_x * src_[0]->Batch(), padding_y)));
-
-  return OkStatus();
+  return kernel_.SetBytesAuto(int2(padding_x * src_[0]->Batch(), padding_y));
 }
 
 int3 ConvolutionTransposed3x3::GetGridSize() const {
@@ -358,7 +353,7 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status ConvolutionTransposed3x3::AddToQueue(CLCommandQueue* queue) {
+absl::Status ConvolutionTransposed3x3::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
@@ -370,13 +365,13 @@ bool IsConvolutionTransposed3x3Supported(
          attr.stride.w == 2 && attr.stride.h == 2;
 }
 
-Status CreateConvolutionTransposed3x3(
+absl::Status CreateConvolutionTransposed3x3(
     const CreationContext& creation_context, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr,
     ConvolutionTransposed3x3* result) {
   if (!IsConvolutionTransposed3x3Supported(*creation_context.device, definition,
                                            attr)) {
-    return InvalidArgumentError(
+    return absl::InvalidArgumentError(
         "ConvolutionTransposed3x3 doesn't support this attributes");
   }
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
@@ -387,10 +382,11 @@ Status CreateConvolutionTransposed3x3(
   LinearStorageCreateInfo create_info;
   create_info.storage_type = LinearStorageType::TEXTURE_2D;
   create_info.data_type = definition.GetDataType();
+  create_info.name = "biases";
   create_info.aligned_size = attr.weights.shape.o;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

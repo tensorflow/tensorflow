@@ -149,13 +149,13 @@ OverviewPageRecommendation ComputeGenericRecommendation(
 
 OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
-  OpMetricsDb metrics_db = CreateTfMetricsDbFromHloMetricsDb(
+  OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
-  uint64 total_device_time_ps = metrics_db.total_time_ps();
+  uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
   for (const OpMetrics* metrics :
-       SortedOpMetricsDb(metrics_db, kNumTopOpsShown)) {
+       SortedOpMetricsDb(device_tf_op_metrics_db, kNumTopOpsShown)) {
     OverviewTfOp* op = analysis.add_top_device_ops();
     op->set_name(metrics->name());
     op->set_category(metrics->category());
@@ -180,6 +180,20 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       SafeDivide(
           op_stats.device_op_metrics_db().precision_stats().compute_32bit_ps(),
           total_device_compute_ps));
+  uint64 num_host_tf_ops = 0;
+  for (const OpMetrics& metrics : op_stats.host_op_metrics_db().metrics_db()) {
+    num_host_tf_ops += metrics.occurrences();
+  }
+  uint64 num_device_tf_ops = 0;
+  for (const OpMetrics& metrics : device_tf_op_metrics_db.metrics_db()) {
+    num_device_tf_ops += metrics.occurrences();
+  }
+  uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
+  analysis.set_host_tf_op_percent(
+      100.0 * SafeDivide(num_host_tf_ops, num_total_tf_ops));
+  analysis.set_device_tf_op_percent(
+      100.0 * SafeDivide(num_device_tf_ops, num_total_tf_ops));
+  analysis.set_host_trace_level(op_stats.run_environment().host_trace_level());
   return analysis;
 }
 
@@ -230,23 +244,19 @@ OverviewPageRunEnvironment ComputeRunEnvironment(
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
                                           HardwareType hardware_type) {
-  OverviewPageAnalysis analysis = ComputeAnalysisResult(op_stats);
-  InputPipelineAnalysisResult input_analysis =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
-  BottleneckAnalysis bottleneck =
-      ComputeBottleneckAnalysis(input_analysis.step_details());
-  OverviewPageRecommendation recommendation = ComputeGenericRecommendation(
-      bottleneck, op_stats.device_op_metrics_db().precision_stats());
-  SetCommonRecommendation(bottleneck.input_classification(),
-                          bottleneck.input_statement(), hardware_type,
-                          &recommendation);
-
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
-  *overview_page.mutable_analysis() = analysis;
-  *overview_page.mutable_input_analysis() = input_analysis;
-  *overview_page.mutable_recommendation() = recommendation;
+  *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
+  *overview_page.mutable_input_analysis() =
+      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+  BottleneckAnalysis bottleneck =
+      ComputeBottleneckAnalysis(overview_page.input_analysis().step_details());
+  *overview_page.mutable_recommendation() = ComputeGenericRecommendation(
+      bottleneck, op_stats.device_op_metrics_db().precision_stats());
+  SetCommonRecommendation(bottleneck.input_classification(),
+                          bottleneck.input_statement(), hardware_type,
+                          overview_page.mutable_recommendation());
   return overview_page;
 }
 

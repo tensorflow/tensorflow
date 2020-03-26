@@ -69,6 +69,10 @@ message DebugOptions {
   // Disable multi-streaming in the GPU backend.
   bool xla_gpu_disable_multi_streaming = 63;
 
+  // Debugging feature: if enabled, the GPU backend will assign HLO operators to
+  // randomly chosen streams. This is intended to trigger concurrency bugs.
+  bool xla_gpu_use_random_streams = 134;
+
   // If true, in LLVM-based backends, emit !alias.scope metadata in
   // generated IR.
   bool xla_llvm_enable_alias_scope_metadata = 70;
@@ -260,7 +264,8 @@ message DebugOptions {
 
   // Guarantee run-to-run determinism from reductions on XLA:GPU.
   bool xla_gpu_deterministic_reductions = 130;
-  // Next id: 134
+
+  // Next id: 135
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

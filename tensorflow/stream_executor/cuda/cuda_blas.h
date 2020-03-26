@@ -68,7 +68,7 @@ class CUDABlas : public blas::BlasSupport {
   // cuBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into cuBLAS.
-  bool SetStream(Stream *stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real cuBLAS function together with error
   // handling.
@@ -150,7 +150,7 @@ class CUDABlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // cuBLAS library handle on the device.
-  cublasHandle_t blas_ GUARDED_BY(mu_);
+  cublasHandle_t blas_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(CUDABlas);
 };

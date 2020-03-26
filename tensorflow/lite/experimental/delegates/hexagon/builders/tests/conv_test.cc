@@ -15,6 +15,7 @@ limitations under the License.
 #include <numeric>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/delegates/hexagon/builders/tests/hexagon_delegate_op_model.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -34,17 +35,13 @@ class QuantizedConvolutionOpModel : public SingleOpModelWithHexagon {
                               ActivationFunctionType fused_activation_function =
                                   ActivationFunctionType_NONE) {
     input_ = AddInput(input);
-    uint8_t zero = static_cast<uint8_t>(0);
 
-    if (NumElements(filter.shape) == 9) {
-      filter_ = AddConstInput(
-          filter, {zero, zero, zero, zero, zero, zero, zero, zero, zero});
-    } else if (NumElements(filter.shape) == 12) {
-      filter_ = AddConstInput(filter, {zero, zero, zero, zero, zero, zero, zero,
-                                       zero, zero, zero, zero, zero});
-    }
+    filter_ = AddInput(filter);
 
     int bias_size = GetShape(filter_)[0];
+    if (type == BuiltinOperator_DEPTHWISE_CONV_2D) {
+      bias_size = GetShape(filter_)[3];
+    }
     // per tensor quantization.
     auto bias_scale = GetScale(input_) * GetScale(filter_);
     TensorData bias{TensorType_INT32, {bias_size}, 0, 0, bias_scale};
@@ -72,6 +69,11 @@ class QuantizedConvolutionOpModel : public SingleOpModelWithHexagon {
     }
 
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+
+    // Filter needs to be a constant.
+    // We don't use AddConstInput to allow setting filter values later.
+    auto* filter_tensor = interpreter_->tensor(filter_);
+    filter_tensor->allocation_type = kTfLiteMmapRo;
   }
 
   void SetInput(std::initializer_list<float> data) {
@@ -157,6 +159,36 @@ TEST(QuantizedConvolutionOpModel, SimpleDilatedDepthwiseConvTestPaddingValid) {
               ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5}));
 }
 
+TEST(QuantizedConvolutionOpModel, DepthwiseConv5x5) {
+  QuantizedConvolutionOpModel m(BuiltinOperator_DEPTHWISE_CONV_2D,
+                                {TensorType_UINT8, {1, 6, 6, 2}, -63.5, 64},
+                                {TensorType_UINT8, {1, 5, 5, 2}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128},
+                                Padding_VALID);
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  // clang-format on
+  m.SetFilter({1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2,
+               3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4,
+               5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5, 1, 2, 3, 4, 5});
+  m.SetBias({1, 2});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput();
+
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-5)));
+}
+
 TEST(QuantizedConvolutionOpModel, SimpleConvTestNoActivation) {
   QuantizedConvolutionOpModel m(
       BuiltinOperator_CONV_2D, {TensorType_UINT8, {2, 2, 4, 1}, -63.5, 64},
@@ -222,6 +254,88 @@ TEST(QuantizedConvolutionOpModel, SimpleConvTestReLU6Activation) {
                                                 6, 4, 3,  // second batch, right
                                             },
                                             1e-5)));
+}
+
+// Depthwise Conv with multiplier > 1 but input depth==1 should resolve into a
+// Conv op.
+TEST(QuantizedConvolutionOpModel, DepthwiseConvWithMultiplier_InputDepth1) {
+  QuantizedConvolutionOpModel m(BuiltinOperator_DEPTHWISE_CONV_2D,
+                                {TensorType_UINT8, {1, 6, 6, 1}, -63.5, 64},
+                                {TensorType_UINT8, {1, 5, 5, 3}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128},
+                                Padding_VALID);
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetFilter({1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5});
+  // clang-format on
+  m.SetBias({1, 2, 3});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput();
+
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-5)));
+}
+
+// Depthwise Conv with multiplier > 1 but input depth==1 should resolve into a
+// Conv op.
+TEST(QuantizedConvolutionOpModel,
+     DepthwiseConvWithMultiplier_InputDepth1_RELU) {
+  QuantizedConvolutionOpModel m(BuiltinOperator_DEPTHWISE_CONV_2D,
+                                {TensorType_UINT8, {1, 6, 6, 1}, -63.5, 64},
+                                {TensorType_UINT8, {1, 5, 5, 3}, -63.5, 64},
+                                {TensorType_UINT8, {}, -127, 128},
+                                Padding_VALID, /**dilation_factor**/ 1,
+                                /**stride**/ 2, ActivationFunctionType_RELU6);
+  // clang-format off
+  m.SetInput({0, 0, 0, 0, 0, 0, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 1, 1, 1, 0, 0, 0,
+              0, 0, 0, 0, 0, 0, 0, 0, 0});
+  m.SetFilter({1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               6, 7, 8, 9, 10,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5,
+               1, 2, 3, 4, 5});
+  // clang-format on
+  m.SetBias({1, 2, 3});
+
+  // Reference output.
+  m.Invoke();
+  auto reference_output = m.GetDequantizedOutput();
+
+  m.ApplyDelegateAndInvoke();
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(reference_output, 1e-5)));
 }
 
 }  // namespace tflite

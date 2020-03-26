@@ -560,6 +560,30 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestMajorDimension) {
   EXPECT_NE(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
 }
 
+TEST_F(DynamicDimensionInferenceTest, ReshapeIntoScalar) {
+  // Test the ability to a reshape into scalar.
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {1});
+  auto output_shape = ShapeUtil::MakeShape(F32, {});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, input_shape, "A"));
+
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, scalar_shape_, "size_param"));
+
+  builder.AddInstruction(HloInstruction::CreateReshape(output_shape, a_param));
+
+  module_->AddEntryComputation(builder.Build());
+
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  SCOPED_TRACE(module_->ToString());
+  TF_CHECK_OK(RunInference());
+}
+
 TEST_F(DynamicDimensionInferenceTest, GatherTest) {
   const string hlo_text = R"(
 HloModule TensorFlowGatherV2

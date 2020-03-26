@@ -47,20 +47,20 @@ class DerivedXLineBuilder {
                       std::vector<DerivedXLineBuilder*> dependent_lines,
                       bool try_expand)
       : line_(plane->GetOrCreateLine(line_id)),
-        group_id_stats_(
-            plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))),
         try_expand_(try_expand) {
     line_.SetName(name);
     line_.SetTimestampNs(timestamp_ns);
     dependent_lines_ = std::move(dependent_lines);
   }
 
-  void ExpandOrAddEvents(
-      const std::vector<const XEventMetadata*>& metadata_per_level,
-      const XEventVisitor& events, absl::optional<int64> group_id) {
-    for (int level = 0; level < metadata_per_level.size(); ++level) {
-      ExpandOrAddLevelEvent(metadata_per_level[level], events, group_id, level);
+  void ExpandOrAddEvents(const std::vector<XEvent>& event_per_level) {
+    for (int level = 0; level < event_per_level.size(); ++level) {
+      ExpandOrAddLevelEvent(event_per_level[level], level);
     }
+  }
+
+  void ExpandOrAddEvent(const XEvent& event) {
+    ExpandOrAddLevelEvent(event, /*level=*/0);
   }
 
   // Reset last events lower than the given level.
@@ -77,27 +77,22 @@ class DerivedXLineBuilder {
   // for the levels below the given level and all levels of the dependent lines.
   // Clearing last_event_by_level_ prevents a nested event from growing larger
   // than the parent event(s).
-  void ExpandOrAddLevelEvent(const XEventMetadata* event_metadata,
-                             const XEventVisitor& event,
-                             absl::optional<int64> group_id, int level) {
-    int64 offset_ps = event.OffsetPs();
-    int64 duration_ps = event.DurationPs();
+  void ExpandOrAddLevelEvent(const XEvent& event, int level) {
+    int64 offset_ps = event.offset_ps();
+    int64 duration_ps = event.duration_ps();
     auto& last_event = last_event_by_level_[level];
     // If last_event is not nullptr, its offset must be less than or equal to
     // the given event's offset.
     DCHECK(!last_event || last_event->OffsetPs() <= offset_ps);
     if (try_expand_ && last_event &&
-        last_event->MetadataId() == event_metadata->id()) {
+        last_event->MetadataId() == event.metadata_id()) {
       // If last_event is not nullptr and metadata is same, merge the given
       // event into last_event.
       last_event->SetDurationPs((offset_ps + duration_ps) -
                                 last_event->OffsetPs());
     } else {
       // Otherwise, create a new event for the given level.
-      last_event = line_.AddEvent(*event_metadata);
-      last_event->SetOffsetPs(offset_ps);
-      last_event->SetDurationPs(duration_ps);
-      if (group_id) last_event->AddStatValue(*group_id_stats_, *group_id);
+      last_event = line_.AddEvent(event);
       // Reset last events lower than the given level.
       ResetLastEvents(level);
       if (level == 0) ResetDependentLines();
@@ -112,7 +107,6 @@ class DerivedXLineBuilder {
 
   XLineBuilder line_;
   absl::flat_hash_map<int, absl::optional<XEventBuilder>> last_event_by_level_;
-  XStatMetadata* group_id_stats_;
   std::vector<DerivedXLineBuilder*> dependent_lines_;
   bool try_expand_;
 };
@@ -126,28 +120,49 @@ const absl::string_view kDerivedLineXlaOps = "XLA Ops";
 const absl::string_view kDerivedLineKernelLaunch = "Launch Stats";
 const absl::string_view kAnnotationDelimiter = "::";
 
+XEvent CreateXEvent(const XEventVisitor& src_event_visitor,
+                    const XEventMetadata& metadata,
+                    int64 group_id_stat_metadata_id,
+                    absl::optional<int64> group_id) {
+  XEvent event;
+  event.set_metadata_id(metadata.id());
+  // TODO(b/150498419): Normalize with the line start time.
+  event.set_offset_ps(src_event_visitor.OffsetPs());
+  event.set_duration_ps(src_event_visitor.DurationPs());
+  if (group_id) {
+    XStat* stat = event.add_stats();
+    stat->set_metadata_id(group_id_stat_metadata_id);
+    stat->set_int64_value(*group_id);
+  }
+  return event;
+}
+
 void ProcessTfOpEvent(const XEventVisitor& event,
                       absl::string_view tf_op_full_name,
                       absl::optional<int64> group_id,
                       XPlaneBuilder* plane_builder,
                       DerivedXLineBuilder* tf_name_scope_line_builder,
                       DerivedXLineBuilder* tf_op_line_builder) {
+  int64 group_id_stat_metadata_id =
+      plane_builder->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))
+          ->id();
   TfOp tf_op = ParseTfOpFullname(tf_op_full_name);
   if (tf_op.is_tf_op) {
-    std::vector<const XEventMetadata*> tf_name_scope_metadata_per_level;
+    std::vector<XEvent> name_scope_event_per_level;
     for (const auto& tf_name_scope : ParseTfNameScopes(tf_op)) {
-      tf_name_scope_metadata_per_level.push_back(
-          plane_builder->GetOrCreateEventMetadata(tf_name_scope));
+      name_scope_event_per_level.push_back(CreateXEvent(
+          event, *plane_builder->GetOrCreateEventMetadata(tf_name_scope),
+          group_id_stat_metadata_id, group_id));
     }
-    tf_name_scope_line_builder->ExpandOrAddEvents(
-        tf_name_scope_metadata_per_level, event, group_id);
+    tf_name_scope_line_builder->ExpandOrAddEvents(name_scope_event_per_level);
   }
-  XEventMetadata* event_metadata =
+  XEventMetadata* tf_op_event_metadata =
       plane_builder->GetOrCreateEventMetadata(tf_op_full_name);
   // Set the display name to op_type so that the events of the same op_type have
   // the same color in the trace viewer.
-  event_metadata->set_display_name(TfOpEventName(tf_op));
-  tf_op_line_builder->ExpandOrAddEvents({event_metadata}, event, group_id);
+  tf_op_event_metadata->set_display_name(TfOpEventName(tf_op));
+  tf_op_line_builder->ExpandOrAddEvent(CreateXEvent(
+      event, *tf_op_event_metadata, group_id_stat_metadata_id, group_id));
 }
 
 }  // namespace
@@ -182,6 +197,10 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
                             start_timestamp_ns,
                             {&tf_ops, &tf_name_scope, &hlo_ops},
                             /*try_expand=*/true);
+  int64 group_id_stat_metadata_id =
+      plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kGroupId))->id();
+  int64 step_name_stat_metadata_id =
+      plane.GetOrCreateStatMetadata(GetStatTypeStr(StatType::kStepName))->id();
 
   // Process events in order by start time.
   for (const XEventVisitor& event : events) {
@@ -205,10 +224,15 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     });
 
     if (group_id) {
+      XEvent step_event = CreateXEvent(
+          event, *plane.GetOrCreateEventMetadata(absl::StrCat(*group_id)),
+          group_id_stat_metadata_id, group_id);
       if (auto group_name = gtl::FindOrNull(event_group_name_map, *group_id)) {
-        steps.ExpandOrAddEvents({plane.GetOrCreateEventMetadata(*group_name)},
-                                event, group_id);
+        XStat* stat = step_event.add_stats();
+        stat->set_metadata_id(step_name_stat_metadata_id);
+        stat->set_str_value(*group_name);
       }
+      steps.ExpandOrAddEvent(step_event);
     }
 
     if (step_info_only) continue;
@@ -218,19 +242,21 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
     if (!is_kernel) continue;
 
     if (!hlo_module_name.empty()) {
-      hlo_modules.ExpandOrAddEvents(
-          {plane.GetOrCreateEventMetadata(hlo_module_name)}, event, group_id);
+      hlo_modules.ExpandOrAddEvent(
+          CreateXEvent(event, *plane.GetOrCreateEventMetadata(hlo_module_name),
+                       group_id_stat_metadata_id, group_id));
     }
 
     if (!hlo_op_names.empty()) {  // GPU kernel compiled by XLA
       DCHECK(!hlo_module_name.empty());
-      std::vector<const XEventMetadata*> hlo_op_metadata_per_level;
+      std::vector<XEvent> hlo_op_event_per_level;
       for (absl::string_view hlo_op_name : hlo_op_names) {
         DCHECK(!hlo_op_name.empty());
-        hlo_op_metadata_per_level.push_back(
-            plane.GetOrCreateEventMetadata(hlo_op_name));
+        hlo_op_event_per_level.push_back(
+            CreateXEvent(event, *plane.GetOrCreateEventMetadata(hlo_op_name),
+                         group_id_stat_metadata_id, group_id));
       }
-      hlo_ops.ExpandOrAddEvents(hlo_op_metadata_per_level, event, group_id);
+      hlo_ops.ExpandOrAddEvents(hlo_op_event_per_level);
       auto tf_op_name = symbol_resolver(hlo_module_name, hlo_op_names.back());
       if (!tf_op_name.empty()) {
         ProcessTfOpEvent(event, tf_op_name, group_id, &plane, &tf_name_scope,

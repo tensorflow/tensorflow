@@ -55,6 +55,7 @@ class RunId {
   RunId& operator=(const RunId&) = default;
   friend bool operator==(const RunId& a, const RunId& b);
   std::string ToString() const;
+  int64 ToInt() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const RunId& id) {

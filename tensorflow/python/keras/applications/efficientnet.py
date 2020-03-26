@@ -161,6 +161,10 @@ def EfficientNet(
 ):
   """Instantiates the EfficientNet architecture using given scaling coefficients.
 
+  Reference paper:
+  - [EfficientNet: Rethinking Model Scaling for Convolutional Neural Networks]
+    (https://arxiv.org/abs/1905.11946) (ICML 2019)
+
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
@@ -660,4 +664,18 @@ def preprocess_input(x, data_format=None):  # pylint: disable=unused-argument
 
 @keras_export('keras.applications.efficientnet.decode_predictions')
 def decode_predictions(preds, top=5):
+  """Decodes the prediction result from the model.
+
+  Arguments
+    preds: Numpy tensor encoding a batch of predictions.
+    top: Integer, how many top-guesses to return.
+
+  Returns
+    A list of lists of top class prediction tuples
+    `(class_name, class_description, score)`.
+    One list of tuples per sample in batch input.
+
+  Raises
+    ValueError: In case of invalid shape of the `preds` array (must be 2D).
+  """
   return imagenet_utils.decode_predictions(preds, top=top)

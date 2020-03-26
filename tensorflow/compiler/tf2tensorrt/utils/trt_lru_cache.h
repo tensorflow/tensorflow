@@ -136,7 +136,7 @@ struct EngineContext {
   TrtUniquePtrType<nvinfer1::ICudaEngine> cuda_engine;
 
   Status GetExecutionContext(int idx, nvinfer1::IExecutionContext** exec_ctx)
-      EXCLUSIVE_LOCKS_REQUIRED(mu) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
     if (idx >= execution_context.size()) {
       return errors::Internal("Requested engine context with index ", idx,
                               ", but only ", execution_context.size(),
@@ -152,7 +152,7 @@ struct EngineContext {
   // for inference at a time therefore we need a mutex. More details at
   // https://docs.nvidia.com/deeplearning/sdk/tensorrt-best-practices/index.html#thread-safety
   std::vector<TrtUniquePtrType<nvinfer1::IExecutionContext>> execution_context
-      GUARDED_BY(mu);
+      TF_GUARDED_BY(mu);
 };
 
 // Contains the context required to build the calibration data.
@@ -174,8 +174,8 @@ class CalibrationContext {
 
  private:
   mutex mu_;
-  bool terminated_ GUARDED_BY(mu_) = false;
-  std::string calibration_table_ GUARDED_BY(mu_);
+  bool terminated_ TF_GUARDED_BY(mu_) = false;
+  std::string calibration_table_ TF_GUARDED_BY(mu_);
 };
 
 ABSL_CONST_INIT extern const absl::string_view kTfTrtContainerName;

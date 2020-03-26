@@ -21,6 +21,7 @@ from __future__ import print_function
 import copy
 import os
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -29,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.tests import model_subclassing_test_util as model_util
@@ -99,8 +101,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=2)
     self.assertLen(model.layers, 2)
     self.assertLen(model.trainable_variables, 4)
@@ -122,8 +123,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     data = dataset_ops.DatasetV2.from_tensor_slices(({
         'a': np.ones((32, 10)),
@@ -608,8 +608,8 @@ class GraphSpecificModelSubclassingTests(test.TestCase):
       _ = model.evaluate([x1, x2], [y1, y2], verbose=0)
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class CustomCallSignatureTests(test.TestCase):
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class CustomCallSignatureTests(test.TestCase, parameterized.TestCase):
 
   def test_no_inputs_in_signature(self):
     model = model_util.CustomCallModel()
@@ -671,7 +671,7 @@ class CustomCallSignatureTests(test.TestCase):
     arg = array_ops.ones([1])
     model(arg, a=3)
     if not context.executing_eagerly():
-      self.assertEqual(len(model.inputs), 1)
+      self.assertLen(model.inputs, 1)
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -736,6 +736,21 @@ class CustomCallSignatureTests(test.TestCase):
       # Check that Trackable logic still works.
       self.assertLen(new_model.variables, 1)
       self.assertLen(new_model.layers, 1)
+
+  def test_batch_counters_not_in_variables(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = keras.layers.Dense(4)
+
+      def call(self, obs):
+        return self.layer(obs)
+
+    model = MyModel()
+    model(np.ones((10, 10)))
+    self.assertLen(model.variables, 2)
 
 
 if __name__ == '__main__':

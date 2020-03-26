@@ -329,6 +329,17 @@ TEST_F(XlaBuilderTest, BroadcastInDimWithDegeneratedDim) {
               op::Broadcast(op::Reshape(op::Broadcast())));
 }
 
+TEST_F(XlaBuilderTest, BroadcastInDimWithNegativeSize) {
+  XlaBuilder b(TestName());
+  auto x = Parameter(&b, 0, ShapeUtil::MakeShape(F32, {2, 1, 4}), "x");
+  BroadcastInDim(x, {-3, 3, 4},
+                 /*broadcast_dimensions=*/{0, 1, 2});
+  auto statusor = BuildHloModule(&b);
+  ASSERT_FALSE(statusor.ok());
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("shape's dimensions must not be < 0"));
+}
+
 TEST_F(XlaBuilderTest, OperandFromWrongBuilder) {
   XlaBuilder b1("b1");
   auto p0 = Parameter(&b1, 0, ShapeUtil::MakeShape(F32, {}), "p0");

@@ -26,6 +26,9 @@ namespace profiler {
 
 void ConvertXSpaceToTraceEvents(const XSpace& xspace, Trace* trace);
 
+// Not Public API, Testing only.
+void MaybeDropEventsForTraceViewer(Trace* trace, uint32 limit);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

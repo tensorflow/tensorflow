@@ -177,8 +177,7 @@ class TestModelCloning(keras_parameterized.TestCase):
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     new_model.train_on_batch([val_a, val_b], val_out)
 
     # On top of new tensors
@@ -190,8 +189,7 @@ class TestModelCloning(keras_parameterized.TestCase):
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     new_model.train_on_batch([val_a, val_b], val_out)
 
     # On top of new, non-Keras tensors
@@ -205,8 +203,7 @@ class TestModelCloning(keras_parameterized.TestCase):
       new_model.compile(
           testing_utils.get_v2_optimizer('rmsprop'),
           'mse',
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
       new_model.train_on_batch(None, val_out)
 
   @keras_parameterized.run_all_keras_modes
@@ -232,8 +229,7 @@ class TestModelCloning(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer=testing_utils.get_v2_optimizer('adam'),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     y = np.array([[[1], [1]], [[1], [1]]])
     loss = model.train_on_batch(x, y)
     self.assertEqual(float(loss), 0.)
@@ -322,8 +318,7 @@ class CheckpointingTests(keras_parameterized.TestCase):
     model.compile(
         optimizer=opt,
         loss='mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     model.fit(
         x=np.array([[1., 2., 3., 4.]]),
@@ -352,8 +347,7 @@ class TestModelBackend(keras_parameterized.TestCase):
     model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     keras.backend.set_floatx(floatx)
 
@@ -382,8 +376,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     new_model.train_on_batch(inp, out)
 
     # Create new tensors for inputs.
@@ -400,8 +393,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
     new_model.compile(
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     new_model.train_on_batch(inp, out)
 
   def _assert_same_compile_params(self, model):
@@ -454,8 +446,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
         metrics=['acc', metrics.categorical_accuracy],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     self._clone_and_build_test_helper(model, testing_utils.get_model_type())
 
@@ -466,8 +457,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         testing_utils.get_v2_optimizer('rmsprop'),
         'mse',
         metrics=['acc', metrics.categorical_accuracy],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     self._clone_and_build_test_helper(model, 'sequential')
 
     inp = np.random.random((10, 4))
@@ -481,8 +471,7 @@ class TestCloneAndBuildModel(keras_parameterized.TestCase):
         optimizer,
         'mse',
         metrics=['acc', metrics.categorical_accuracy],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     global_step = keras.backend.variable(123, dtype=dtypes.int64)
     clone_model = models.clone_and_build_model(
