@@ -540,11 +540,11 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8) {
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16) {
-  const float ulp = (float)1 / (float)512;
+  const float scale = 128.0 / 65536;
   QuantizedFullyConnectedOpModel m(
       GetRegistration(), /*units=*/3, /*batches*/ 2,
-      /*input=*/{TensorType_INT16, {2, 10}, -64 + ulp, 64},
-      /*output=*/{TensorType_INT16, {}, -128 + 2 * ulp, 128});
+      /*input=*/{TensorType_INT16, {2, 10}, 0, 0, scale, 0},
+      /*output=*/{TensorType_INT16, {}, 0, 0, scale, 0});
 
   // input_product_scale < output_scale was not true.
   m.SetWeights<int8_t>({
@@ -564,8 +564,7 @@ TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt16) {
   EXPECT_THAT(m.GetDequantizedOutput<int16_t>(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60})));
   EXPECT_THAT(m.GetOutput<int16_t>(),
-              ElementsAre(24 * 256 - 1, 25 * 256 - 1, 26 * 256 - 1,
-                          58 * 256 - 1, 59 * 256 - 1, 60 * 256 - 1));
+              ElementsAre(12288, 12800, 13312, 29696, 30208, 30720));
 }
 
 TEST_P(QuantizedFullyConnectedOpTest, SimpleTestQuantizedInt8NoBias) {
@@ -791,7 +790,7 @@ TEST_P(QuantizedFullyConnectedOpTest,
        SimpleTestQuantizedInt16OutputShuffled4x16Int8Weights) {
   // The shuffled weights block shape is 4x16. The shape of the weights matrix
   // is: rows = output_depth, cols = input_depth. It must be a multiple of 4x16.
-  // This means that output_depth must be a multiple of 4, and input_deth must
+  // This means that output_depth must be a multiple of 4, and input_depth must
   // be a multiple of 16.
   for (int input_depth_numblocks : {1, 3}) {
     for (int output_depth_numblocks : {1, 3}) {

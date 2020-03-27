@@ -64,6 +64,12 @@ class ParallelMapFunctor {
   // to specify error checking logic that can fail early.
   virtual Status InitFunc(IteratorContext* ctx) { return Status::OK(); }
 
+  // Indicates whether the functor depends on any external state.
+  // If so, the method returns `errors::FailedPrecondition` with
+  // a message that identifies the external state. Otherwise, the method returns
+  // `Status::OK()`.
+  virtual Status CheckExternalState() = 0;
+
   // A function that transforms elements of one dataset into another
   // asynchronously. The arguments are:
   // 1. An `IteratorContext*` for the context in which the function should

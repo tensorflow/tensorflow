@@ -39,38 +39,36 @@ class MlirIrGenTestBase : public CodegenTestBase {
   // steps to LLVM IR are applied; otherwise, the IR before lowering is
   // matched.
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                          const string& pattern, LoweringStage printing_stage);
+                          const std::string& pattern_file,
+                          LoweringStage printing_stage);
 
-  // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
-  // an HLO module.
-  void CompileAndVerifyIr(const string& hlo_text,
-                          const string& expected_llvm_ir,
+  // A thin wrapper around CompileAndVerifyIr that parses the hlo text in
+  // `hlo_text_filename` to create an HLO module.
+  void CompileAndVerifyIr(const std::string& hlo_text_filename,
                           LoweringStage printing_stage = LoweringStage::LHLO);
 
-  // Compiles and returns module with optimizations from a given HLO.
-  StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
-      absl::string_view hlo);
-
   // Adds the InjectErrorsForTestingPass to MLIRCompiler on the provided
-  // lowering stage, compiles the given HLO module, and returns a string
+  // lowering stage, compiles the given HLO module, and returns a std::string
   // representation of all the errors occurred during compiling.
   StatusOr<string> CompileAndInjectErrors(std::unique_ptr<HloModule> hlo_module,
                                           LoweringStage breaking_stage);
 
   // Adds the InjectErrorsForTestingPass to MLIRCompiler on the provided
   // lowering stage, parses and compiles `hlo_text`, and verifies that the
-  // string representation of all the errors occurred during compiling matches
-  // the given pattern.
-  void CompileAndVerifyErrors(const string& hlo_text,
-                              const string& expected_errors,
+  // std::string representation of all the errors occurred during compiling
+  // matches the given pattern.
+  void CompileAndVerifyErrors(const std::string& hlo_text_filename,
                               LoweringStage breaking_stage);
 
  private:
+  StatusOr<std::unique_ptr<VerifiedHloModule>> GetVerifiedHloModule(
+      const std::string& hlo_text_filename);
+
   void CompileIr(std::unique_ptr<HloModule> hlo_module,
                  const MlirCompiler::IRHook& ir_hook);
-  void PatternMatch(const string& str, const string& pattern);
-  string CompileIr(std::unique_ptr<HloModule> hlo_module,
-                   LoweringStage printing_stage);
+  void PatternMatch(const std::string& str, const std::string& pattern_file);
+  std::string CompileIr(std::unique_ptr<HloModule> hlo_module,
+                        LoweringStage printing_stage);
   MlirCompiler::IRHook getIRHookBreakingLoweringStage(
       LoweringStage breaking_stage);
   MlirCompiler* GetMLIRCompiler();

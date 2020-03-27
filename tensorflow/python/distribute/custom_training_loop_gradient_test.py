@@ -87,7 +87,7 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase,
     results = []
     for x in dist_dataset:
       output = distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[10., 12.], [14., 16.]], results)
 
@@ -110,7 +110,7 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase,
         grads = tape.gradient(y, x)
         return grads
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -141,7 +141,7 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase,
           with backprop.GradientTape() as tape:
             y = model(x)
           return tape.gradient(y, x)
-        return distribution.experimental_run_v2(replica_step)
+        return distribution.run(replica_step)
 
       grads = distribution.experimental_local_results(train_step())
       self.assertLen(grads, distribution.num_replicas_in_sync)

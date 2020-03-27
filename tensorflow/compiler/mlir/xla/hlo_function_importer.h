@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "absl/types/optional.h"
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -77,9 +78,6 @@ class HloFunctionImporter {
   // Converts xla Tensor type to the corresponding MLIR type.
   StatusOr<mlir::RankedTensorType> ConvertTensorType(const xla::Shape& shape);
 
-  // Converts xla Primitive types to the corresponding MLIR type.
-  StatusOr<mlir::Type> ConvertType(const xla::Shape& shape);
-
   // Returns the output type of an HloInstruction.
   StatusOr<mlir::Type> GetReturnType(xla::HloInstruction* instruction);
 
@@ -120,6 +118,21 @@ class HloFunctionImporter {
   // Converts the gather dimensions to attributes.
   mlir::NamedAttribute ConvertGatherDimensionNumbers(
       const xla::GatherDimensionNumbers& dnums);
+
+  // Converts the scatter dimensions to attributes.
+  mlir::NamedAttribute ConvertScatterDimensionNumbers(
+      const xla::ScatterDimensionNumbers& dnums);
+
+  // Converts replica groups to attribute
+  mlir::NamedAttribute ConvertReplicaGroups(
+      const std::vector<ReplicaGroup>& replica_groups);
+
+  // Converts channel id to attribute
+  mlir::NamedAttribute ConvertChannelHandle(
+      absl::optional<tensorflow::int64> channel_id);
+
+  // Converts channel handle to attribute
+  mlir::NamedAttribute ConvertChannelHandle(const xla::ChannelHandle& channel);
 
   // Converts XLA instruction source target pairs to MLIR attribute.
   mlir::NamedAttribute ConvertSourceTargetPairs(

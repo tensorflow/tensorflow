@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DistributedValues"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "HierarchicalCopyAllReduce"
     mtype: "<type \'type\'>"
   }

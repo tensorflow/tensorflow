@@ -36,6 +36,7 @@ cuda_py_test(
 cuda_py_test(
     name = "csr_sparse_matrix_ops_test",
     size = "medium",
+    timeout = "long",
     srcs = ["csr_sparse_matrix_ops_test.py"],
     main = "csr_sparse_matrix_ops_test.py",
     shard_count = 10,

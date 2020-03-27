@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/emission_context.h"
 
 #include "absl/strings/substitute.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {

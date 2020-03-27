@@ -740,6 +740,11 @@ class AutoMixedPrecisionTest(test.TestCase):
           node_map, 'while/gradients/while/dense/MatMul_grad/MatMul_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
+  # TODO(benbarsdell): Add tests for list ops (TensorList*) that pass through
+  # graph source/sink nodes, similar to the TensorListThroughFunction C++ test.
+  # Tests here will have the advantage of catching changes in the types of ops
+  # that are added to the graph.
+
 
 if __name__ == '__main__':
   test.main()

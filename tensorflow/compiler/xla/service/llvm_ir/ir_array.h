@@ -135,9 +135,9 @@ class IrArray {
 
     // Given that "this" is the target index of a transpose from `operand_shape`
     // to `shape` with the given dimension mapping, returns the source index.
-    Index SourceIndexOfTranspose(const Shape& shape, const Shape& operand_shape,
-                                 absl::Span<const int64> dimension_mapping,
-                                 llvm::IRBuilder<>* builder) const;
+    Index SourceIndexOfTranspose(
+        const Shape& shape, const Shape& operand_shape,
+        absl::Span<const int64> dimension_mapping) const;
 
     // Given that "this" is the target index of a bitcast from `operand_shape`
     // to `shape`, returns the source index.

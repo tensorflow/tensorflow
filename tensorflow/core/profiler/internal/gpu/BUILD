@@ -31,7 +31,6 @@ tf_cuda_library(
     ],
     deps = [
         ":cupti_utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:annotation_stack",
@@ -54,7 +53,10 @@ tf_cc_test_gpu(
     srcs = ["device_tracer_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "gpu_cupti",
+    ],
     deps = [
         ":device_tracer",
         "//tensorflow/cc:cc_ops",

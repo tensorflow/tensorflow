@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -48,11 +48,9 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
   std::string serialized_model(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
-  std::vector<std::string> output_arrays_order;
 
-  OwningModuleRef module =
-      tflite::FlatBufferToMlir(serialized_model, &context,
-                               UnknownLoc::get(&context), output_arrays_order);
+  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
+                                                    UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;

@@ -73,6 +73,27 @@ using matinv_C = cublasStatus_t(cublasContext*, int, const float2* const*, int,
                                 float2**, int, int*, int);
 using matinv_Z = cublasStatus_t(cublasContext*, int, const double2* const*, int,
                                 double2**, int, int*, int);
+
+using trsm_S = cublasStatus_t(cublasContext*, cublasSideMode_t,
+                              cublasFillMode_t, cublasOperation_t,
+                              cublasDiagType_t, int, int, const float*,
+                              const float* const*, int, float* const*, int,
+                              int);
+using trsm_D = cublasStatus_t(cublasContext*, cublasSideMode_t,
+                              cublasFillMode_t, cublasOperation_t,
+                              cublasDiagType_t, int, int, const double*,
+                              const double* const*, int, double* const*, int,
+                              int);
+using trsm_C = cublasStatus_t(cublasContext*, cublasSideMode_t,
+                              cublasFillMode_t, cublasOperation_t,
+                              cublasDiagType_t, int, int, const float2*,
+                              const float2* const*, int, float2* const*, int,
+                              int);
+using trsm_Z = cublasStatus_t(cublasContext*, cublasSideMode_t,
+                              cublasFillMode_t, cublasOperation_t,
+                              cublasDiagType_t, int, int, const double2*,
+                              const double2* const*, int, double2* const*, int,
+                              int);
 }
 
 namespace tensorflow {
@@ -992,10 +1013,11 @@ static inline Status TrsmBatchedImpl(
       cublasDiagType_t diag, int m, int n, const Scalar* alpha,               \
       const Scalar* const dev_Aarray[], int lda, Scalar* dev_Barray[],        \
       int ldb, int batch_size) {                                              \
-    return TrsmBatchedImpl(BLAS_SOLVER_FN(trsmBatched, type_prefix), this,    \
-                           context_, cublas_handle_, side, uplo, trans, diag, \
-                           m, n, alpha, dev_Aarray, lda, dev_Barray, ldb,     \
-                           batch_size);                                       \
+    return TrsmBatchedImpl(reinterpret_cast<trsm_##type_prefix*>(             \
+                               BLAS_SOLVER_FN(trsmBatched, type_prefix)),     \
+                           this, context_, cublas_handle_, side, uplo, trans, \
+                           diag, m, n, alpha, dev_Aarray, lda, dev_Barray,    \
+                           ldb, batch_size);                                  \
   }
 
 TF_CALL_LAPACK_TYPES(TRSM_BATCHED_INSTANCE);

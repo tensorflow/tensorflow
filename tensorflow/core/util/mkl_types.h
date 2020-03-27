@@ -23,6 +23,7 @@ namespace tensorflow {
 #define ADD_MD add_md
 #define ALGORITHM mkldnn::algorithm
 #define ALGORITHM_UNDEF ALGORITHM::undef
+#define BN_FLAGS mkldnn::normalization_flags
 #define CPU_STREAM(engine) stream(engine)
 #define DATA_WITH_ENGINE(data, engine) data, engine
 #define DST_MD dst_md
@@ -39,11 +40,15 @@ namespace tensorflow {
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) mem_ptr->get_desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \
   GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr)
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) md.get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd->src_desc()
+#define GET_DST_DESC_FROM_OP_PD(op_pd) op_pd->dst_desc()
+#define GET_BIAS_DESC_FROM_OP_PD(op_pd) op_pd->bias_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) op_pd->diff_dst_desc()
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) op_pd->workspace_desc()
 #define GET_TENSOR_FORMAT(fmt) MklTensorFormatToMklDnnDataFormat(fmt)
 #define GET_TF_DATA_FORMAT(shape, mem_desc) shape.GetTfDataFormat()
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemDesc()
 #define GET_WEIGHTS_DESC_FROM_OP_PD(op_pd) op_pd->weights_desc()
 #define GET_WEIGHTS_FORMAT_FROM_OP_PD(op_pd, op) \
   GET_WEIGHTS_DESC_FROM_OP_PD(op_pd)
@@ -116,7 +121,8 @@ namespace tensorflow {
 #define ADD_MD add_pd
 #define ALGORITHM mkldnn
 #define ALGORITHM_UNDEF ALGORITHM::algorithm_undef
-#define CPU_STREAM(engine) stream(stream::kind::eager)
+#define BN_FLAGS mkldnn
+#define CPU_STREAM(engine) stream(stream::kind::eager_nostore)
 #define DATA_WITH_ENGINE(data, engine) data
 #define DST_MD dst_pd
 #define ENGINE_CPU engine::cpu
@@ -131,13 +137,18 @@ namespace tensorflow {
 #define GET_BLOCK_STRIDES(strides, idx) strides[(idx)]
 #define GET_MEMORY_DESC_CONSTRUCTOR(dims, type, fm) \
   { {dims}, MklDnnType<type>(), fm }
+#define GET_MEMORY_SIZE_FROM_MD(md, engine) \
+  memory::primitive_desc(md, engine).get_size()
 #define GET_SRC_DESC_FROM_OP_PD(op_pd) op_pd.get()->src_primitive_desc()
+#define GET_DST_DESC_FROM_OP_PD(op_pd) op_pd.get()->dst_primitive_desc()
+#define GET_BIAS_DESC_FROM_OP_PD(op_pd) op_pd.get()->bias_primitive_desc()
 #define GET_DIFF_DST_DESC_FROM_OP_PD(op_pd) \
   op_pd.get()->diff_dst_primitive_desc()
 #define GET_WORKSPACE_DESC_FROM_OP_PD(op_pd) \
   op_pd.get()->workspace_primitive_desc()
 #define GET_TENSOR_FORMAT(fmt) fmt
 #define GET_TF_DATA_FORMAT(shape, mem_desc) mem_desc.data.format
+#define GET_USR_MEM_PRIM_DESC(src) src.GetUsrMemPrimDesc()
 #define GET_WEIGHTS_DESC_FROM_OP_PD(op_pd) op_pd.get()->weights_primitive_desc()
 #define GET_WEIGHTS_FORMAT_FROM_OP_PD(op_pd, op) op->GetFilterMemoryFormat()
 #define IS_DIFF_DST_REORDER_NEEDED(diff_dst_md, op_pd, op) \
@@ -149,7 +160,7 @@ namespace tensorflow {
 #define IS_SRC_REORDER_NEEDED(src_md, op_pd, op) \
   src_md.data.format != op->GetSrcMemoryFormat()
 #define IS_WEIGHTS_REORDER_NEEDED(weights_md, op_pd, op) \
-  weights_md.data.format != op->GetWeightsMemoryFormat()
+  weights_md.data.format != op->GetWeightMemoryFormat()
 #define GET_MEMORY_DESC_FROM_MEM_PTR(mem_ptr) \
   mem_ptr->get_primitive_desc().desc()
 #define GET_MEMORY_PRIMITIVE_DESC_FROM_MEM_PTR(mem_ptr) \

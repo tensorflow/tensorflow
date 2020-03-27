@@ -43,36 +43,52 @@ def get_layer_class():
 
 def _get_layer_computation_test_cases():
   test_cases = ({
-      "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]]),
+      "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32),
       "axis": -1,
-      "test_data": np.array([[1.], [2.], [3.]]),
-      "expected": np.array([[-1.414214], [-.707107], [0]]),
+      "test_data": np.array([[1.], [2.], [3.]], np.float32),
+      "expected": np.array([[-1.414214], [-.707107], [0]], np.float32),
       "testcase_name": "2d_single_element"
   }, {
+      "adapt_data": np.array([[1.], [2.], [3.], [4.], [5.]], dtype=np.float32),
+      "axis": None,
+      "test_data": np.array([[1.], [2.], [3.]], np.float32),
+      "expected": np.array([[-1.414214], [-.707107], [0]], np.float32),
+      "testcase_name": "2d_single_element_none_axis"
+  }, {
+      "adapt_data": np.array([[1., 2., 3., 4., 5.]], dtype=np.float32),
+      "axis": None,
+      "test_data": np.array([[1.], [2.], [3.]], np.float32),
+      "expected": np.array([[-1.414214], [-.707107], [0]], np.float32),
+      "testcase_name": "2d_single_element_none_axis_flat_data"
+  }, {
       "adapt_data":
-          np.array([[[1., 2., 3.], [2., 3., 4.]], [[3., 4., 5.], [4., 5.,
-                                                                  6.]]]),
+          np.array([[[1., 2., 3.], [2., 3., 4.]], [[3., 4., 5.], [4., 5., 6.]]],
+                   np.float32),
       "axis":
           1,
       "test_data":
-          np.array([[[1., 2., 3.], [2., 3., 4.]], [[3., 4., 5.], [4., 5.,
-                                                                  6.]]]),
+          np.array([[[1., 2., 3.], [2., 3., 4.]], [[3., 4., 5.], [4., 5., 6.]]],
+                   np.float32),
       "expected":
           np.array([[[-1.549193, -0.774597, 0.], [-1.549193, -0.774597, 0.]],
-                    [[0., 0.774597, 1.549193], [0., 0.774597, 1.549193]]]),
+                    [[0., 0.774597, 1.549193], [0., 0.774597, 1.549193]]],
+                   np.float32),
       "testcase_name":
           "3d_internal_axis"
   }, {
       "adapt_data":
-          np.array([[[1., 0., 3.], [2., 3., 4.]], [[3., -1., 5.], [4., 5.,
-                                                                   8.]]]),
+          np.array(
+              [[[1., 0., 3.], [2., 3., 4.]], [[3., -1., 5.], [4., 5., 8.]]],
+              np.float32),
       "axis": (1, 2),
       "test_data":
-          np.array([[[3., 1., -1.], [2., 5., 4.]], [[3., 0., 5.], [2., 5.,
-                                                                   8.]]]),
+          np.array(
+              [[[3., 1., -1.], [2., 5., 4.]], [[3., 0., 5.], [2., 5., 8.]]],
+              np.float32),
       "expected":
-          np.array([[[1., 3., -5.], [-1., 1., -1.]],
-                    [[1., 1., 1.], [-1., 1., 1.]]]),
+          np.array(
+              [[[1., 3., -5.], [-1., 1., -1.]], [[1., 1., 1.], [-1., 1., 1.]]],
+              np.float32),
       "testcase_name":
           "3d_multiple_axis"
   })
@@ -109,7 +125,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
   def test_combiner_api_compatibility(self):
     data = np.array([[1], [2], [3], [4], [5]])
-    combiner = normalization.Normalization._NormalizingCombiner(axis=-1)
+    combiner = normalization._NormalizingCombiner(axis=-1)
     expected = {
         "count": np.array(5.0),
         "variance": np.array([2.]),
@@ -176,7 +192,7 @@ class NormalizationTest(keras_parameterized.TestCase,
               "3d_multi_element_internal_axis"
       })
   def test_combiner_computation_multi_value_axis(self, data, axis, expected):
-    combiner = normalization.Normalization._NormalizingCombiner(axis=axis)
+    combiner = normalization._NormalizingCombiner(axis=axis)
     expected_accumulator = combiner._create_accumulator(**expected)
     self.validate_accumulator_computation(combiner, data, expected_accumulator)
 
@@ -199,7 +215,6 @@ class NormalizationTest(keras_parameterized.TestCase,
     output = layer(input_data)
     model = keras.Model(input_data, output)
     model._run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
     output_data = model.predict(test_data)
     self.assertAllClose(expected, output_data)
 
@@ -209,7 +224,7 @@ class NormalizationTest(keras_parameterized.TestCase,
       self.skipTest("'assign' doesn't work in V1, so don't test in V1.")
 
     cls = get_layer_class()
-    layer = cls()
+    layer = cls(axis=-1)
     layer.build((2,))
     layer.mean.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
@@ -221,7 +236,7 @@ class NormalizationTest(keras_parameterized.TestCase,
       self.skipTest("'assign' doesn't work in V1, so don't test in V1.")
 
     cls = get_layer_class()
-    layer = cls()
+    layer = cls(axis=-1)
     layer.build((2,))
     layer.variance.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
@@ -229,7 +244,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
   def test_weight_setting_continued_adapt_failure(self):
     cls = get_layer_class()
-    layer = cls()
+    layer = cls(axis=-1)
     layer.build((2,))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0]), np.array(0)])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
@@ -237,7 +252,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
   def test_weight_setting_no_count_continued_adapt_failure(self):
     cls = get_layer_class()
-    layer = cls()
+    layer = cls(axis=-1)
     layer.build((2,))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0])])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):

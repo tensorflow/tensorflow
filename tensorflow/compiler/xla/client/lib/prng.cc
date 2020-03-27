@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 
 #include <cmath>
+#include <vector>
 
 #include "absl/base/casts.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -134,14 +135,26 @@ XlaOp Uint32sToUint64(std::array<XlaOp, 2> u32s) {
                    ConstantR0WithType(builder, U64, 32));
 }
 
-// Given the initial state and the request number of random numbers to be
+// Given the initial state and the request shape of random numbers to be
 // generated, returns the input for the random number generator and a new state.
 std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
-    XlaOp initial_state, const int64 size) {
+    XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = initial_state.builder();
-  XlaOp input_u64 = Iota(builder, U64, size);
-  input_u64 = input_u64 + initial_state;
-  XlaOp new_state = initial_state + ConstantR0<uint64>(builder, size);
+  auto u64_shape = ShapeUtil::MakeShape(U64, shape.dimensions());
+  // initial_state is an R1, so reshape it to a scalar.
+  auto input_u64 = Broadcast(Reshape(initial_state, {}), shape.dimensions());
+  int64 trailing_dims_product = 1;
+  for (int64 i = shape.rank() - 1; i >= 0; --i) {
+    if (shape.dimensions(i) < 2) {
+      continue;
+    }
+    input_u64 =
+        input_u64 + (Iota(builder, u64_shape, i) *
+                     ConstantR0<uint64>(builder, trailing_dims_product));
+    trailing_dims_product *= shape.dimensions(i);
+  }
+  XlaOp new_state =
+      initial_state + ConstantR0<uint64>(builder, ShapeUtil::ElementsIn(shape));
   return std::make_pair(Uint64ToUint32s(input_u64), new_state);
 }
 
@@ -149,11 +162,46 @@ std::pair<ThreeFry2x32State, XlaOp> GetThreeFryInputsAndUpdatedState(
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
   XlaBuilder* builder = key.builder();
+  // Try to split the shape on a dimension > 1 into two halves, each
+  // representing a U32 value.
+  std::vector<int64> half_shape_dims;
+  std::vector<int64> padded_full_shape_dims;
+  int64 split_dim = -1;
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    if (shape.dimensions(i) > 1 && split_dim < 0) {
+      half_shape_dims.push_back(CeilOfRatio<int64>(shape.dimensions(i), 2));
+      // Create a new trivial dim for the later concat, which is more friendly
+      // to sharding propagation.
+      half_shape_dims.push_back(1);
+      split_dim = i;
+      padded_full_shape_dims.push_back(half_shape_dims[i] * 2);
+    } else {
+      half_shape_dims.push_back(shape.dimensions(i));
+      padded_full_shape_dims.push_back(shape.dimensions(i));
+    }
+  }
+  auto half_shape = ShapeUtil::MakeShape(shape.element_type(), half_shape_dims);
+  if (split_dim >= 0) {
+    std::pair<ThreeFry2x32State, XlaOp> inputs_state =
+        GetThreeFryInputsAndUpdatedState(initial_state, half_shape);
+    ThreeFry2x32State inputs = inputs_state.first;
+    ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
+    XlaOp result = ConcatInDim(builder, outputs, split_dim + 1);
+    result = Reshape(result, padded_full_shape_dims);
+    if (shape.dimensions(split_dim) % 2 != 0) {
+      result = Slice(result, std::vector<int64>(shape.rank(), 0),
+                     shape.dimensions(), std::vector<int64>(shape.rank(), 1));
+    }
+    return {result, inputs_state.second};
+  }
+  // Use an R1 shape if the previous attempt failed.
   const int64 size = ShapeUtil::ElementsIn(shape);
   const int64 half_size = CeilOfRatio<int64>(size, 2);
   const bool size_is_odd = (half_size * 2 != size);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, half_size);
+      GetThreeFryInputsAndUpdatedState(
+          initial_state,
+          ShapeUtil::MakeShape(shape.element_type(), {half_size}));
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   if (size_is_odd) {
@@ -167,14 +215,12 @@ RngOutput ThreeFryRngBit32(XlaOp key, XlaOp initial_state, const Shape& shape) {
 // Generates random 64bits with the given shape using the Three Fry
 // implementation. Returns the random bits and the new state.
 RngOutput ThreeFryRngBit64(XlaOp key, XlaOp initial_state, const Shape& shape) {
-  const int64 size = ShapeUtil::ElementsIn(shape);
   std::pair<ThreeFry2x32State, XlaOp> inputs_state =
-      GetThreeFryInputsAndUpdatedState(initial_state, size);
+      GetThreeFryInputsAndUpdatedState(initial_state, shape);
   ThreeFry2x32State inputs = inputs_state.first;
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, Uint64ToUint32s(key));
   XlaOp result = Uint32sToUint64(outputs);
-  return {Reshape(result, AsInt64Slice(shape.dimensions())),
-          inputs_state.second};
+  return {result, inputs_state.second};
 }
 
 // The key of the Philox random number generator.

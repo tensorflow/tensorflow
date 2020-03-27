@@ -38,14 +38,13 @@ from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
 _eval_using_default_session = ops._eval_using_default_session
 _override_helper = ops._override_helper
 # pylint: enable=protected-access
 
 
 @tf_export("sparse.SparseTensor", "SparseTensor")
-class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
+class SparseTensor(tensor_like.TensorLike, composite_tensor.CompositeTensor):
   """Represents a sparse tensor.
 
   TensorFlow represents a sparse tensor as three separate dense tensors:

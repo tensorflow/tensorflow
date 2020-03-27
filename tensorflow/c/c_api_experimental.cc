@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/platform.h"
@@ -702,7 +703,8 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
   } while (0);
 
   // New server created for new server_def. Unused if updating server_def.
-  tensorflow::EagerContext* context = ctx->context;
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
@@ -816,12 +818,15 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
 
   const int num_inputs = input_shapes->num_items;
   NodeDef node_def;
-  node_def.set_name(tfe_op->operation.Name());
-  node_def.set_op(tfe_op->operation.Name());
+  node_def.set_name(tfe_op->operation->Name());
+  node_def.set_op(tfe_op->operation->Name());
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tfe_op->operation.Attrs().FillAttrValueMap(node_def.mutable_attr());
+  tensorflow::down_cast<tensorflow::OperationInterface*>(
+      tfe_op->operation.get())
+      ->Attrs()
+      .FillAttrValueMap(node_def.mutable_attr());
 
   const tensorflow::OpRegistrationData* op_reg_data;
   status->status =

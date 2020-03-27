@@ -364,7 +364,7 @@ py_test(
 
 saved_model_compile_aot(
     name = "aot_compiled_x_plus_y",
-    cpp_class = "CompiledModel",
+    cpp_class = "XPlusY",
     directory = "//tensorflow/cc/saved_model:testdata/x_plus_y_v2_debuginfo",
     filegroups = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
@@ -373,15 +373,40 @@ saved_model_compile_aot(
     tags = ["no_rocm"],
 )
 
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic_frozen",
+    cpp_class = "VarsAndArithmeticFrozen",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+)
+
+saved_model_compile_aot(
+    name = "aot_compiled_vars_and_arithmetic",
+    cpp_class = "VarsAndArithmetic",
+    directory = "//tensorflow/cc/saved_model:testdata/VarsAndArithmeticObjectGraph",
+    filegroups = [
+        "//tensorflow/cc/saved_model:saved_model_half_plus_two",
+    ],
+    force_without_xla_support_flag = False,
+    tags = ["no_rocm"],
+    variables_to_feed = "variable_x",
+)
+
 tf_cc_test(
-    name = "binary_using_aot_compiled_x_plus_y_test",
+    name = "aot_compiled_test",
     srcs = if_xla_available([
-        "binary_using_aot_compiled_x_plus_y_test.cc",
+        "aot_compiled_test.cc",
     ]),
     tags = ["no_rocm"],
     deps = [
         "//tensorflow/core:test_main",
     ] + if_xla_available([
+        ":aot_compiled_vars_and_arithmetic",
+        ":aot_compiled_vars_and_arithmetic_frozen",
         ":aot_compiled_x_plus_y",
         "//tensorflow/core:test",
         "//tensorflow/core/platform:logging",

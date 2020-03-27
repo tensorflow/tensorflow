@@ -431,7 +431,7 @@ install_tensorflow_pip() {
   fi
 
   # Set path to pip.
-  PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
+  PIP_BIN_PATH="${PYTHON_BIN_PATH} -m pip"
 
   # Print python and pip bin paths
   echo "PYTHON_BIN_PATH to be used to install the .whl: ${PYTHON_BIN_PATH}"

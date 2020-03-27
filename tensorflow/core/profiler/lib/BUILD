@@ -1,5 +1,6 @@
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "if_not_android", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_pybind_cc_library_wrapper")
 
 package(
     default_visibility = [
@@ -7,6 +8,15 @@ package(
         "//tensorflow_models:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "profiler_session_headers",
+    visibility = [
+        "//tensorflow/core/profiler/rpc:__pkg__",
+        "//tensorflow/python/profiler/internal:__pkg__",
+    ],
+    deps = [":profiler_session"],
 )
 
 cc_library(
@@ -37,7 +47,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
@@ -45,7 +54,6 @@ cc_library(
     ] + if_not_android([
         ":profiler_utils",
         "//tensorflow/core/profiler/internal:profiler_factory",
-        "//tensorflow/core/profiler/convert:xplane_to_trace_events",
         "//tensorflow/core/profiler/utils:derived_timeline",
         "//tensorflow/core/profiler/utils:group_events",
         "//tensorflow/core/profiler/utils:xplane_utils",
@@ -63,6 +71,12 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal/cpu:host_tracer",
     ],
     alwayslink = True,
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "traceme_headers",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
+    deps = [":traceme"],
 )
 
 cc_library(
@@ -88,6 +102,12 @@ cc_library(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
     ],
+)
+
+tf_pybind_cc_library_wrapper(
+    name = "scoped_annotation_headers",
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
+    deps = [":scoped_annotation"],
 )
 
 cc_library(

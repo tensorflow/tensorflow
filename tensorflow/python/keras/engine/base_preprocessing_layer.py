@@ -22,7 +22,6 @@ import collections
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -32,7 +31,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine.base_layer import Layer
-from tensorflow.python.ops import math_ops
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
@@ -123,11 +122,6 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       data_dict[name] = var.numpy()
     return data_dict
 
-  def _dataset_is_infinite(self, dataset):
-    """True if the passed dataset is infinite."""
-    return math_ops.equal(
-        cardinality.cardinality(dataset), cardinality.INFINITE)
-
   def _get_dataset_iterator(self, dataset):
     """Gets an iterator from a tf.data.Dataset."""
     return dataset_ops.make_one_shot_iterator(dataset).get_next
@@ -148,18 +142,20 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
     else:
       accumulator = self._combiner.restore(self._restore_updates())
 
-    if not isinstance(data, (dataset_ops.DatasetV2, np.ndarray)):
+    if not isinstance(data,
+                      (dataset_ops.DatasetV2, np.ndarray, ops.EagerTensor)):
       raise ValueError(
-          'adapt() requires a Dataset or a Numpy array as input, got {}'.format(
-              type(data)))
+          '`adapt()` requires a batched Dataset, an EagerTensor, '
+          'or a Numpy array as input, '
+          'got {}'.format(type(data)))
 
     if isinstance(data, dataset_ops.DatasetV2):
       # Validate the datasets to try and ensure we haven't been passed one with
       # infinite size. That would cause an infinite loop here.
-      if self._dataset_is_infinite(data):
+      if tf_utils.dataset_is_infinite(data):
         raise ValueError(
-            'The dataset passed to "adapt()" has an infinite number of '
-            'elements. Please use dataset.take(...) to make the number '
+            'The dataset passed to `adapt()` has an infinite number of '
+            'elements. Please use `dataset.take(...)` to make the number '
             'of elements finite.')
       next_data = self._get_dataset_iterator(data)
     else:

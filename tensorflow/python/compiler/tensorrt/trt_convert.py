@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+from functools import partial  # pylint: disable=g-importing-member
 import os
 import platform
 import tempfile
@@ -63,9 +64,9 @@ gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
-wrap_py_utils = LazyLoader(
-    "wrap_py_utils", globals(),
-    "tensorflow.compiler.tf2tensorrt.wrap_py_utils")
+_pywrap_py_utils = LazyLoader(
+    "_pywrap_py_utils", globals(),
+    "tensorflow.compiler.tf2tensorrt._pywrap_py_utils")
 
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
@@ -113,10 +114,13 @@ DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES = 1 << 30
 
 
 @tf_export("experimental.tensorrt.ConversionParams", v1=[])
-class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
-    "rewriter_config_template", "max_workspace_size_bytes", "precision_mode",
-    "minimum_segment_size", "is_dynamic_op", "maximum_cached_engines",
-    "use_calibration", "max_batch_size"])):
+class TrtConversionParams(
+    collections.namedtuple("TrtConversionParams", [
+        "rewriter_config_template", "max_workspace_size_bytes",
+        "precision_mode", "minimum_segment_size", "is_dynamic_op",
+        "maximum_cached_engines", "use_calibration", "max_batch_size",
+        "allow_build_at_runtime"
+    ])):
   """Parameters that are used for TF-TRT conversion.
 
   Fields:
@@ -151,6 +155,11 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
       tensors were trained with fake quantization.
     max_batch_size: max size for the input batch. This parameter is only
       effective when is_dynamic_op=False which is not supported in TF 2.0.
+    allow_build_at_runtime: whether to build TensorRT engines during runtime.
+      If no TensorRT engine can be found in cache that can handle the given
+      inputs during runtime, then a new TensorRT engine is built at runtime if
+      allow_build_at_runtime=True, and otherwise native TF is used. This
+      argument is only effective if is_dynamic_op=True.
   """
 
   def __new__(cls,
@@ -161,11 +170,14 @@ class TrtConversionParams(collections.namedtuple("TrtConversionParams", [
               is_dynamic_op=True,
               maximum_cached_engines=1,
               use_calibration=True,
-              max_batch_size=1):
-    return super(TrtConversionParams, cls).__new__(
-        cls, rewriter_config_template, max_workspace_size_bytes, precision_mode,
-        minimum_segment_size, is_dynamic_op, maximum_cached_engines,
-        use_calibration, max_batch_size)
+              max_batch_size=1,
+              allow_build_at_runtime=True):
+    return super(TrtConversionParams,
+                 cls).__new__(cls, rewriter_config_template,
+                              max_workspace_size_bytes, precision_mode,
+                              minimum_segment_size, is_dynamic_op,
+                              maximum_cached_engines, use_calibration,
+                              max_batch_size, allow_build_at_runtime)
 
 
 DEFAULT_TRT_CONVERSION_PARAMS = TrtConversionParams()
@@ -228,6 +240,13 @@ def _check_conversion_params(conversion_params, is_v2=False):
           not trt_optimizer.parameter_map["is_dynamic_op"]):
         raise ValueError("Option is_dynamic_op=False is not supported "
                          "in TF 2.0, please set it to True instead.")
+  if (conversion_params.allow_build_at_runtime and
+      not conversion_params.is_dynamic_op):
+    tf_logging.warn(
+        ("Building TensorRT engines at runtime is not supported "
+         "if is_dynamic_op=False, therefore assuming "
+         "allow_build_at_runtime=False. If building TensorRT engines "
+         "at runtime is desired, set is_dynamic_op=True."))
 
 
 def _check_trt_version_compatibility():
@@ -236,8 +255,8 @@ def _check_trt_version_compatibility():
   Raises:
     RuntimeError: if the TensorRT library version is incompatible.
   """
-  linked_version = wrap_py_utils.get_linked_tensorrt_version()
-  loaded_version = wrap_py_utils.get_loaded_tensorrt_version()
+  linked_version = _pywrap_py_utils.get_linked_tensorrt_version()
+  loaded_version = _pywrap_py_utils.get_loaded_tensorrt_version()
   assert isinstance(linked_version, tuple)
   assert isinstance(loaded_version, tuple)
   assert len(linked_version) == 3
@@ -320,6 +339,8 @@ def get_tensorrt_rewriter_config(conversion_params,
     optimizer.parameter_map[
         "use_calibration"].b = conversion_params.use_calibration
     optimizer.parameter_map["is_dynamic_op"].b = conversion_params.is_dynamic_op
+    optimizer.parameter_map[
+        "allow_build_at_runtime"].b = conversion_params.allow_build_at_runtime
     if not is_v2:
       optimizer.parameter_map[
           "max_batch_size"].i = conversion_params.max_batch_size
@@ -361,6 +382,17 @@ def get_tensorrt_rewriter_config(conversion_params,
 # name when optimizing a different function graph. Fix this.
 def _get_canonical_engine_name(name):
   return name.split("/")[-1]
+
+
+def is_explicit_batch_mode_enabled(rewriter_config):
+  """Checks whether explicit batch is enabled by the rewriter config."""
+  if rewriter_config is None:
+    return False
+  for optimizer in rewriter_config.custom_optimizers:
+    if optimizer.name == "TensorRTOptimizer":
+      if "use_implicit_batch" in optimizer.parameter_map:
+        return not optimizer.parameter_map["use_implicit_batch"].b
+  return False
 
 
 class TrtGraphConverter(object):
@@ -505,7 +537,8 @@ class TrtGraphConverter(object):
         is_dynamic_op=is_dynamic_op,
         maximum_cached_engines=maximum_cached_engines,
         use_calibration=use_calibration,
-        max_batch_size=max_batch_size)
+        max_batch_size=max_batch_size,
+        allow_build_at_runtime=True)
     _check_conversion_params(self._conversion_params)
 
   def _run_conversion(self):
@@ -972,6 +1005,8 @@ class TrtGraphConverterV2(object):
     self._input_saved_model_signature_key = (
         input_saved_model_signature_key or
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+    self._rewriter_config = get_tensorrt_rewriter_config(
+        conversion_params=self._conversion_params, is_v2=True)
 
     self._need_calibration = (
         conversion_params.precision_mode == TrtPrecisionMode.INT8 and
@@ -980,6 +1015,9 @@ class TrtGraphConverterV2(object):
       raise ValueError("INT8 precision mode with calibration is not supported "
                        "with static TensorRT ops. Set is_dynamic_op to True.")
 
+    # rewriter_config is already validated
+    self._need_trt_profiles = is_explicit_batch_mode_enabled(
+        self._rewriter_config)
     self._converted = False
     self._build_called_once = False
 
@@ -992,11 +1030,9 @@ class TrtGraphConverterV2(object):
     Returns:
       The optimized GraphDef.
     """
-    rewriter_config = get_tensorrt_rewriter_config(
-        conversion_params=self._conversion_params, is_v2=True)
     grappler_session_config = config_pb2.ConfigProto()
     grappler_session_config.graph_options.rewrite_options.CopyFrom(
-        rewriter_config)
+        self._rewriter_config)
     return tf_optimizer.OptimizeGraph(
         grappler_session_config, meta_graph_def, graph_id=b"tf_graph")
 
@@ -1009,6 +1045,15 @@ class TrtGraphConverterV2(object):
       for node in func.node_def:
         if node.op == _TRT_ENGINE_OP_NAME:
           fn(node)
+
+  def _rebuild_func(self, func):
+    """Rebuild function from graph_def."""
+    rebuilt_func = wrap_function.function_from_graph_def(
+        self._converted_graph_def, [tensor.name for tensor in func.inputs],
+        [tensor.name for tensor in func.outputs])
+    rebuilt_func.graph.structured_outputs = nest.pack_sequence_as(
+        func.graph.structured_outputs, rebuilt_func.graph.structured_outputs)
+    return rebuilt_func
 
   # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
   # use it here (b/124792963).
@@ -1074,14 +1119,7 @@ class TrtGraphConverterV2(object):
                               _save_calibration_table)
 
       # Rebuild the function since calibration has changed the graph.
-      calibrated_func = wrap_function.function_from_graph_def(
-          self._converted_graph_def,
-          [tensor.name for tensor in self._converted_func.inputs],
-          [tensor.name for tensor in self._converted_func.outputs])
-      calibrated_func.graph.structured_outputs = nest.pack_sequence_as(
-          self._converted_func.graph.structured_outputs,
-          calibrated_func.graph.structured_outputs)
-      self._converted_func = calibrated_func
+      self._converted_func = self._rebuild_func(self._converted_func)
 
     self._converted = True
 
@@ -1112,8 +1150,39 @@ class TrtGraphConverterV2(object):
       raise RuntimeError("input_fn is None. Method build() needs input_fn "
                          "to be specified in order to build TensorRT engines")
 
+    def _set_profile_generation_mode(value, node):
+      node.attr["_profile_generation_mode"].b = value
+
+    if self._need_trt_profiles:
+      # Enable profile generation.
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, True))
+      # Profile generation is enabled using the _profile_generation_mode
+      # attribute of the TRTEngineOps. We need to rebuild the function to
+      # change this attribute.
+      func = self._rebuild_func(self._converted_func)
+    else:
+      func = self._converted_func
+
+    first_input = None
+    # Run inference:
+    #   Builds TRT engines if self._need_trt_profiles is False.
+    #   Builds TRT optimization profiles if self._need_trt_profiles is True.
     for inp in input_fn():
-      self._converted_func(*map(ops.convert_to_tensor, inp))
+      if not first_input:
+        first_input = inp
+      func(*map(ops.convert_to_tensor, inp))
+
+    if self._need_trt_profiles:
+      # Disable profile generation.
+      self._for_each_trt_node(self._converted_graph_def,
+                              partial(_set_profile_generation_mode, False))
+      # Use the first input in explicit batch mode to build TensorRT engines
+      # after generating all the profiles. The first input is used but any of
+      # the inputs can be used because the shape of this input does not
+      # determine the engine and instead the shapes collected in profiles
+      # determine the engine.
+      self._converted_func(*map(ops.convert_to_tensor, first_input))
 
     self._build_called_once = True
 
@@ -1124,6 +1193,12 @@ class TrtGraphConverterV2(object):
       output_saved_model_dir: directory to saved the converted SavedModel.
     """
     assert self._converted
+
+    if self._need_trt_profiles and not self._build_called_once:
+      raise NotImplementedError(
+          "build() is not called . Explicit batch mode "
+          "(use_implicit_batch=False) requires generating TensorRT optimization"
+          " profiles which is done by calling build().")
 
     # Serialize the TRT engines in the cache if any, and create trackable
     # resource to track them.
@@ -1165,6 +1240,28 @@ class TrtGraphConverterV2(object):
     signatures = {
         key: value for key, value in self._saved_model.signatures.items()
     }
+
+    # Set allow_build_at_runtime=False if asked by user.
+    #
+    # This attribute is set here because build() needs it to be True in order to
+    # build engines.
+    if not self._conversion_params.allow_build_at_runtime:
+
+      def _reset_allow_build_at_runtime(node):
+        node.attr["allow_build_at_runtime"].b = False
+
+      self._for_each_trt_node(self._converted_graph_def,
+                              _reset_allow_build_at_runtime)
+      # Rebuild the function since a node attribute changed above
+      reset_converted_func = wrap_function.function_from_graph_def(
+          self._converted_graph_def,
+          [tensor.name for tensor in self._converted_func.inputs],
+          [tensor.name for tensor in self._converted_func.outputs])
+      reset_converted_func.graph.structured_outputs = nest.pack_sequence_as(
+          self._converted_func.graph.structured_outputs,
+          reset_converted_func.graph.structured_outputs)
+      self._converted_func = reset_converted_func
+
     signatures[self._input_saved_model_signature_key] = self._converted_func
     save.save(self._saved_model, output_saved_model_dir, signatures)
 

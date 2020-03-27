@@ -281,9 +281,9 @@ class TFETensorTest(test_util.TensorFlowTestCase):
   @test_util.run_gpu_only
   def testStringTensorOnGPU(self):
     with ops.device("/device:GPU:0"):
-      with self.assertRaisesRegexp(
-          RuntimeError, "Can't copy Tensor with type string to device"):
-        _create_tensor("test string")
+      t = _create_tensor("test string")
+      self.assertIn("CPU", t.device)
+      self.assertIn("CPU", t.backing_device)
 
   def testInvalidUTF8ProducesReasonableError(self):
     if sys.version_info[0] < 3:

@@ -100,7 +100,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, &real_multiplier));
     int exponent;
 
-    // Populate quantization parameteters with multiplier and shift.
+    // Populate quantization parameters with multiplier and shift.
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
   }

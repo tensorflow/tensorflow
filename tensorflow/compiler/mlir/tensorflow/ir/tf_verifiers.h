@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_VERIFIERS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_VERIFIERS_H_
 
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -28,6 +28,12 @@ namespace TF {
 // (2) Layout dependent arguments and results indices must be in
 //     [0, getNumOperands/getNumResults) range.
 LogicalResult VerifyLayoutSensitiveInterface(Operation* op);
+
+// Verifies correctness of ops implementing FoldOperandsTransposeInterface (see
+// definition in tf_op_base.td):
+// (1) Layout dependent arguments and results indices must be in
+//     [0, getNumOperands/getNumResults) range.
+LogicalResult VerifyFoldOperandsTransposeInterface(Operation* op);
 
 }  // namespace TF
 }  // namespace mlir

@@ -43,6 +43,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/edgeset.h"
@@ -67,7 +68,6 @@ class WhileContext;
 
 class NeighborIter;     // Declared below
 class NodeIter;         // Declared below
-struct NodeProperties;  // Defined in .cc
 
 class Node {
  public:
@@ -229,11 +229,12 @@ class Node {
     while_ctx_ = while_ctx;
   }
 
+  std::shared_ptr<NodeProperties> properties() const { return props_; }
+
  private:
   friend class Graph;
   Node();
 
-  NodeProperties* properties() const { return props_.get(); }
 
   void Initialize(int id, int cost_id, std::shared_ptr<NodeProperties> props,
                   bool is_function_op);

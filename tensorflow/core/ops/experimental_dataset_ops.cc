@@ -17,6 +17,19 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("AssertCardinalityDataset")
+    .Input("input_dataset: variant")
+    .Input("cardinality: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // cardinality should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 REGISTER_OP("AssertNextDataset")
     .Input("input_dataset: variant")
     .Input("transformations: string")
@@ -561,6 +574,26 @@ REGISTER_OP("ParallelInterleaveDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// This is the V2 of ParallelInterleaveDataset, renamed to differentiate it
+// from the non-experimental ParallelInterleaveDataset op.
+REGISTER_OP("LegacyParallelInterleaveDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("other_arguments: Targuments")
+    .Input("cycle_length: int64")
+    .Input("block_length: int64")
+    .Input("buffer_output_elements: int64")
+    .Input("prefetch_input_elements: int64")
+    .Output("handle: variant")
+    .Attr("f: func")
+    // "true", "false", or "default".
+    .Attr("deterministic: string = 'default'")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+// This op is no longer used. We keep it so that we can read graphs written by
+// old versions of TensorFlow.
 REGISTER_OP("ExperimentalParallelInterleaveDataset")
     .Input("input_dataset: variant")
     .Input("other_arguments: Targuments")
@@ -1003,5 +1036,36 @@ REGISTER_OP("ExperimentalUniqueDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("DataServiceDataset")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Input("max_outstanding_requests: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("RegisterDataset")
+    .Input("dataset: variant")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("dataset_id: int64")
+    .Attr("external_state_policy: int")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("BeginEpoch")
+    .Input("dataset_id: int64")
+    .Input("address: string")
+    .Input("protocol: string")
+    .Output("epoch_id: int64")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("MakeDataServiceIterator")
+    .Input("dataset: variant")
+    .Input("epoch_id: int64")
+    .Input("iterator: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 }  // namespace tensorflow

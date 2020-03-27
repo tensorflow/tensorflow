@@ -190,3 +190,16 @@ def : Pat<(TF_ReshapeOp:$old_value
 // parameters of the input, so we can remove the quantization ops.
 def : Pat<(TF_RankOp (TFL_DequantizeOp (TFL_QuantizeOp $input, $qtype))),
           (TF_RankOp $input)>;
+
+// `k` is expected to be 0, other values are not supported currently.
+def : Pat<(TF_MatrixSetDiagV2Op $input, $diagonal,
+            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">)),
+          (TF_MatrixSetDiagOp $input, $diagonal)>;
+
+// `align` attribute can be ignored because we only support converting
+// `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs.
+def : Pat<(TF_MatrixSetDiagV3Op $input, $diagonal,
+            (ConstantOp ConstantAttr<I32ElementsAttr, "{0}">),
+            $align),
+          (TF_MatrixSetDiagOp $input, $diagonal)>;
+

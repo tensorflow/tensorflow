@@ -374,13 +374,9 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if _requires_input_stats(toco):
-      if quantized_input_stats:
-        input_array.mean_value, input_array.std_value = quantized_input_stats[
-            idx]
-      else:
-        raise ValueError("std_dev and mean must be defined when inference_type "
-                         "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+    if _requires_input_stats(toco) and quantized_input_stats:
+      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
+
     if input_shapes is None:
       shape = input_tensor.shape
     else:

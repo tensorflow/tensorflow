@@ -265,7 +265,9 @@ class TensorMapper(object):
       html += str(i) + " "
       html += NameListToString(tensor["name"]) + " "
       html += TensorTypeToName(tensor["type"]) + " "
-      html += (repr(tensor["shape"]) if "shape" in tensor else "[]") + "<br>"
+      html += (repr(tensor["shape"]) if "shape" in tensor else "[]")
+      html += (repr(tensor["shape_signature"])
+               if "shape_signature" in tensor else "[]") + "<br>"
     html += "</span>"
     html += repr(x)
     html += "</span>"
@@ -447,9 +449,9 @@ def CreateHtmlFile(tflite_input, html_output):
                           ("builtin_options", None),
                           ("opcode_index", opcode_mapper)]
     tensor_keys_to_display = [("name", NameListToString),
-                              ("type", TensorTypeToName),
-                              ("shape", None),
-                              ("buffer", None), ("quantization", None)]
+                              ("type", TensorTypeToName), ("shape", None),
+                              ("shape_signature", None), ("buffer", None),
+                              ("quantization", None)]
 
     html += "<h2>Subgraph %d</h2>\n" % subgraph_idx
 

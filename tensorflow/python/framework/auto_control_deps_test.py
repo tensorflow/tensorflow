@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -30,6 +32,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -49,6 +52,509 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(), 4.0)
+
+  def testNoControlDepsBetweenVariableReads(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies():
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+      self.assertNotIn(read_op1, read_op2.control_inputs)
+      self.assertNotIn(read_op2, read_op1.control_inputs)
+
+  def testVariableReadThenWrite(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies():
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+      # Writes should have control deps from "all" reads since last write
+      # or start of the code block.
+      self.assertIn(read_op1, assign_op.control_inputs)
+      self.assertIn(read_op2, assign_op.control_inputs)
+      # There should be no control deps between reads.
+      self.assertNotIn(read_op1, read_op2.control_inputs)
+      self.assertNotIn(read_op2, read_op1.control_inputs)
+
+  def testVariableWriteThenRead(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies():
+        assign_op = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+      # Reads should have a control dep from the last write.
+      self.assertIn(assign_op, read_op1.control_inputs)
+      self.assertIn(assign_op, read_op2.control_inputs)
+      # There should be no control deps between reads.
+      self.assertNotIn(read_op1, read_op2.control_inputs)
+      self.assertNotIn(read_op2, read_op1.control_inputs)
+
+  def testVariableReadsNotInOpsWithMustRun(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies() as c:
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+      # Reads must not be in `ops_which_must_run` since those get added to the
+      # `control_outputs`.
+      self.assertNotIn(read_op1, c.ops_which_must_run)
+      self.assertNotIn(read_op2, c.ops_which_must_run)
+      # Last write must be in `ops_which_must_run`.
+      self.assertIn(assign_op, c.ops_which_must_run)
+
+  def testVariableMultipleReadsAndWrites(self):
+    with context.graph_mode(), self.cached_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      self.evaluate(variables.global_variables_initializer())
+      with acd.AutomaticControlDependencies() as c:
+        # 2 reads -> 2 writes -> 2 reads -> 2 writes.
+        read_op1 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op2 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op1 = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+        assign_op2 = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+        read_op3 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        read_op4 = gen_resource_variable_ops.read_variable_op(
+            v.handle, v.dtype).op
+        assign_op3 = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+        assign_op4 = gen_resource_variable_ops.assign_variable_op(
+            v.handle, v + 1)
+
+      # Verify the control edges.
+      self.assertIn(read_op1, assign_op1.control_inputs)
+      self.assertIn(read_op2, assign_op1.control_inputs)
+      self.assertIn(assign_op1, assign_op2.control_inputs)
+      self.assertIn(assign_op2, read_op3.control_inputs)
+      self.assertIn(assign_op2, read_op4.control_inputs)
+      self.assertIn(read_op3, assign_op3.control_inputs)
+      self.assertIn(read_op4, assign_op3.control_inputs)
+      self.assertIn(assign_op3, assign_op4.control_inputs)
+
+      # There should be no control deps between reads.
+      read_ops = [read_op1, read_op2, read_op3, read_op4]
+      for src_op, tgt_op in itertools.product(read_ops, read_ops):
+        self.assertNotIn(src_op, tgt_op.control_inputs)
+
+      # Reads must not be in `ops_which_must_run`.
+      self.assertNotIn(read_op1, c.ops_which_must_run)
+      self.assertNotIn(read_op2, c.ops_which_must_run)
+      self.assertNotIn(read_op3, c.ops_which_must_run)
+      self.assertNotIn(read_op4, c.ops_which_must_run)
+      # Last write must be in `ops_which_must_run`.
+      self.assertIn(assign_op4, c.ops_which_must_run)
+
+  def _testVariableReadInFunctionalOp(self, build_functional_op, op_type):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def read_var_in_while():
+      gen_resource_variable_ops.read_variable_op(
+          v.handle, v.dtype, name="read1")
+
+      result = build_functional_op(v)
+      gen_resource_variable_ops.read_variable_op(
+          v.handle, v.dtype, name="read2")
+      gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+      return result
+
+    func_graph = read_var_in_while.get_concrete_function().graph
+    assert len(func_graph.inputs) == 1
+
+    def get_op(op_type, sub_name):
+      operations = [
+          op for op in func_graph.get_operations()
+          if op.type == op_type and sub_name in op.name
+      ]
+      assert len(operations) == 1
+      return operations[0]
+
+    read1 = get_op("ReadVariableOp", "read1")
+    functional_op = get_op(op_type, "")
+    read2 = get_op("ReadVariableOp", "read2")
+    assign_op = get_op("AssignVariableOp", "")
+    # Since the functional op only has reads, previous reads e.g. read1 do not\
+    # have a control edge to it and next future reads e.g. read2 do not have a
+    # control edge from it.
+    self.assertNotIn(read1, functional_op.control_inputs)
+    self.assertNotIn(functional_op, read2.control_inputs)
+    self.assertIn(read1, assign_op.control_inputs)
+    self.assertIn(read2, assign_op.control_inputs)
+    self.assertIn(functional_op, assign_op.control_inputs)
+
+  def testVariableReadInWhileLoop(self):
+
+    def build_functional_op(v):
+
+      def body(_):
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.while_loop(
+          lambda i: True, body, [0.0], maximum_iterations=1)
+
+    self._testVariableReadInFunctionalOp(build_functional_op, "While")
+
+  def testVariableReadInCondTrueBranch(self):
+
+    def build_functional_op(v):
+
+      def then_branch():
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      def else_branch():
+        return array_ops.zeros([], v.dtype)
+
+      return control_flow_ops.cond(
+          constant_op.constant(True), then_branch, else_branch)
+
+    self._testVariableReadInFunctionalOp(build_functional_op, "If")
+
+  def testVariableReadInCondFalseBranch(self):
+
+    def build_functional_op(v):
+
+      def then_branch():
+        return array_ops.zeros([], v.dtype)
+
+      def else_branch():
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.cond(
+          constant_op.constant(False), then_branch, else_branch)
+
+    self._testVariableReadInFunctionalOp(build_functional_op, "If")
+
+  def testVariableReadInCaseBranch0(self):
+
+    def build_functional_op(v):
+
+      def branch0():
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      def branch1():
+        return array_ops.zeros([], v.dtype)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(0), [branch0, branch1])
+
+    self._testVariableReadInFunctionalOp(build_functional_op, "Case")
+
+  def testVariableReadInCaseBranch1(self):
+
+    def build_functional_op(v):
+
+      def branch0():
+        return array_ops.zeros([], v.dtype)
+
+      def branch1():
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(0), [branch0, branch1])
+
+    self._testVariableReadInFunctionalOp(build_functional_op, "Case")
+
+  def testVariableReadInFunction(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_read():
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return fn_with_read()
+
+    self._testVariableReadInFunctionalOp(build_functional_op,
+                                         "StatefulPartitionedCall")
+
+  def testVariableReadInNestedFunction(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_read():
+
+        @def_function.function
+        def inner_fn():
+          return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+        return inner_fn()
+
+      return fn_with_read()
+
+    self._testVariableReadInFunctionalOp(build_functional_op,
+                                         "StatefulPartitionedCall")
+
+  def testVariableReadInWhileInInnerFunc(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_read():
+
+        @def_function.function
+        def inner_fn():
+
+          def body(_):
+            return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+          return control_flow_ops.while_loop(
+              lambda i: True, body, [0.0], maximum_iterations=1)
+
+        return inner_fn()
+
+      return fn_with_read()
+
+    self._testVariableReadInFunctionalOp(build_functional_op,
+                                         "StatefulPartitionedCall")
+
+  def testVariableReadInCondInInnerFunc(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_read():
+
+        @def_function.function
+        def inner_fn():
+
+          def then_branch():
+            return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+          def else_branch():
+            return array_ops.zeros([], v.dtype)
+
+          return control_flow_ops.cond(
+              constant_op.constant(True), then_branch, else_branch)
+
+        return inner_fn()
+
+      return fn_with_read()
+
+    self._testVariableReadInFunctionalOp(build_functional_op,
+                                         "StatefulPartitionedCall")
+
+  def _testVariableWriteInFunctionalOp(self, build_functional_op, op_type):
+    v = resource_variable_ops.ResourceVariable(1.0)
+    self.evaluate(variables.global_variables_initializer())
+
+    @def_function.function
+    def write_var_in_while():
+      gen_resource_variable_ops.read_variable_op(
+          v.handle, v.dtype, name="read1")
+
+      result = build_functional_op(v)
+      gen_resource_variable_ops.read_variable_op(
+          v.handle, v.dtype, name="read2")
+      gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+      return result
+
+    func_graph = write_var_in_while.get_concrete_function().graph
+    assert len(func_graph.inputs) == 1
+
+    def get_op(op_type, sub_name):
+      operations = [
+          op for op in func_graph.get_operations()
+          if op.type == op_type and sub_name in op.name
+      ]
+      assert len(operations) == 1
+      return operations[0]
+
+    read1 = get_op("ReadVariableOp", "read1")
+    functional_op = get_op(op_type, "")
+    read2 = get_op("ReadVariableOp", "read2")
+    assign_op = get_op("AssignVariableOp", "")
+    # Since the While has writes, it has control edges from previous reads
+    # e.g. `read1` and to future reads(`read2`) and writes(`assign_op`).
+    self.assertIn(read1, functional_op.control_inputs)
+    self.assertIn(functional_op, read2.control_inputs)
+    self.assertIn(read2, assign_op.control_inputs)
+    self.assertIn(functional_op, assign_op.control_inputs)
+
+  def testVariableWriteInWhileLoop(self):
+
+    def build_functional_op(v):
+
+      def body(_):
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.while_loop(
+          lambda i: True, body, [0.0], maximum_iterations=1)
+
+    self._testVariableWriteInFunctionalOp(build_functional_op, "While")
+
+  def testVariableWriteInCondTrueBranch(self):
+
+    def build_functional_op(v):
+
+      def then_branch():
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      def else_branch():
+        return array_ops.zeros([], v.dtype)
+
+      return control_flow_ops.cond(
+          constant_op.constant(True), then_branch, else_branch)
+
+    self._testVariableWriteInFunctionalOp(build_functional_op, "If")
+
+  def testVariableWriteInCondFalseBranch(self):
+
+    def build_functional_op(v):
+
+      def then_branch():
+        return array_ops.zeros([], v.dtype)
+
+      def else_branch():
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.cond(
+          constant_op.constant(False), then_branch, else_branch)
+
+    self._testVariableWriteInFunctionalOp(build_functional_op, "If")
+
+  def testVariableWriteInCaseBranch0(self):
+
+    def build_functional_op(v):
+
+      def branch0():
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      def branch1():
+        return array_ops.zeros([], v.dtype)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(0), [branch0, branch1])
+
+    self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
+
+  def testVariableWriteInCaseBranch1(self):
+
+    def build_functional_op(v):
+
+      def branch0():
+        return array_ops.zeros([], v.dtype)
+
+      def branch1():
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return control_flow_ops.switch_case(
+          constant_op.constant(0), [branch0, branch1])
+
+    self._testVariableWriteInFunctionalOp(build_functional_op, "Case")
+
+  def testVariableWriteInFunction(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_write():
+        gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+        return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+      return fn_with_write()
+
+    self._testVariableWriteInFunctionalOp(build_functional_op,
+                                          "StatefulPartitionedCall")
+
+  def testVariableWriteInNestedFunction(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_write():
+
+        @def_function.function
+        def inner_fn():
+          gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+          return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+        return inner_fn()
+
+      return fn_with_write()
+
+    self._testVariableWriteInFunctionalOp(build_functional_op,
+                                          "StatefulPartitionedCall")
+
+  def testVariableWriteInWhileInInnerFunc(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_write():
+
+        @def_function.function
+        def inner_fn():
+
+          def body(_):
+            gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+            return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+          return control_flow_ops.while_loop(
+              lambda i: True, body, [0.0], maximum_iterations=1)
+
+        return inner_fn()
+
+      return fn_with_write()
+
+    self._testVariableWriteInFunctionalOp(build_functional_op,
+                                          "StatefulPartitionedCall")
+
+  def testVariableWriteInCondInInnerFunc(self):
+
+    def build_functional_op(v):
+
+      @def_function.function
+      def fn_with_write():
+
+        @def_function.function
+        def inner_fn():
+
+          def then_branch():
+            gen_resource_variable_ops.assign_variable_op(v.handle, v + 1)
+            return gen_resource_variable_ops.read_variable_op(v.handle, v.dtype)
+
+          def else_branch():
+            return array_ops.zeros([], v.dtype)
+
+          return control_flow_ops.cond(
+              constant_op.constant(True), then_branch, else_branch)
+
+        return inner_fn()
+
+      return fn_with_write()
+
+    self._testVariableWriteInFunctionalOp(build_functional_op,
+                                          "StatefulPartitionedCall")
 
   @test_util.run_v1_only("b/120545219")
   def testCondMustRun(self):

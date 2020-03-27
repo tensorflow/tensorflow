@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OP_INTERFACES
 
 include "mlir/IR/OpBase.td"
+include "tensorflow/compiler/mlir/lite/experimental/tfl_hardware_interfaces.td"
 
 //===----------------------------------------------------------------------===//
 // TFL op interface for stateful operands.
@@ -67,6 +68,25 @@ def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
     InterfaceMethod<
       [{Returns the indices of sparse operands.}],
       "std::vector<int>", "GetSparseOperands", (ins)
+    >,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// TFL runtime type verification of operand/result types.
+
+def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
+  let description = [{
+    Interface to verify TFLite runtime op verification.
+
+    This verifies that the converted TFLite ops has operand/result type
+    supported by the TFLite runtime.
+  }];
+
+  let methods = [
+    StaticInterfaceMethod<
+      [{Returns whether the op's operands/results are supported by runtime.}],
+      "LogicalResult", "VerifyTflRuntimeTypes", (ins "Operation*":$op)
     >,
   ];
 }

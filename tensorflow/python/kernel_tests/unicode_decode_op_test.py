@@ -126,6 +126,8 @@ class UnicodeDecodeTest(test_util.TensorFlowTestCase,
       {"texts": [["Hi", "there"], ["", u"\U0001f60a"]], "ragged_rank": 0},
       {"texts": [["Hi", "there", ""], [u"😊"]], "ragged_rank": 1},
       {"texts": [[[u"😊", u"🤠🧐"], []], [[u"🤓👻🤖"]]], "ragged_rank": 2},
+      {"texts": [[[u"😊"], [u"🤠🧐"]], [[u"🤓👻🤖"]]], "ragged_rank": 1},
+      {"texts": [[[u"😊"], [u"🤠🧐"]], [[u"🤓"], [u"👻"]]], "ragged_rank": 0},
       {"texts": []}
   ])  # pyformat: disable
   def testBasicDecode(self, texts, ragged_rank=None):

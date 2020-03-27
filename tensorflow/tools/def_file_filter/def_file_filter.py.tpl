@@ -71,6 +71,10 @@ INCLUDE_RE = re.compile(r"^(TF_\w*)$|"
                         r"tensorflow::|"
                         r"toco::|"
                         r"functor::|"
+                        r"tf_git_version|"
+                        r"tf_compiler_version|"
+                        r"tf_cxx11_abi_flag|"
+                        r"tf_monolithic_build|"
                         r"perftools::gputools")
 
 # We want to identify data members explicitly in the DEF file, so that no one

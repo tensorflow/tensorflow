@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
@@ -85,7 +86,7 @@ TEST(ConvertXPlaneToOpMetricsDb, HostOpMetricsDb) {
   EXPECT_EQ(NanosToPicos(kTfOp1DurationNs) * 2, op_1.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(1);
-  EXPECT_EQ("IDLE", idle.name());
+  EXPECT_EQ(kIdle, idle.name());
   // Idle time is the gap between Op2 start and the end of Op1, which is 2000ns.
   EXPECT_EQ(NanosToPicos(2000), idle.time_ps());
 
@@ -149,7 +150,7 @@ TEST(ConvertXPlaneToOpMetricsDb, DeviceOpMetricsDb) {
   EXPECT_EQ(NanosToPicos(kTfOp2DurationNs), op_2.time_ps());
 
   const OpMetrics& idle = op_metrics.metrics_db().at(2);
-  EXPECT_EQ("IDLE", idle.name());
+  EXPECT_EQ(kIdle, idle.name());
   // GPU is always busy in this example.
   EXPECT_EQ(NanosToPicos(0), idle.time_ps());
 }

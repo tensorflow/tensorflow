@@ -27,12 +27,13 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/context_interface.h"
+#include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -59,10 +60,12 @@ struct TFE_ContextOptions {
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
   // If true, lazily copy the remote inputs of a function to the target devices.
   bool lazy_remote_inputs_copy = true;
+  // If true, use TFRT backend
+  bool use_tfrt = false;
 };
 
 struct TFE_Context {
-  tensorflow::EagerContext* context;
+  std::unique_ptr<tensorflow::AbstractContextInterface> context;
 };
 
 struct TFE_TensorHandle {
@@ -89,7 +92,7 @@ struct TFE_TensorDebugInfo {
 };
 
 struct TFE_Op {
-  tensorflow::EagerOperation operation;
+  std::unique_ptr<AbstractOperationInterface> operation;
 };
 
 struct TFE_MonitoringCounterCell {
@@ -234,6 +237,19 @@ struct TFE_Executor {
 
   std::unique_ptr<tensorflow::EagerExecutor> owned_executor;
   tensorflow::EagerExecutor* unowned_executor;
+};
+
+// An equivalent of a tensorflow::NameAttrList protocol buffer, but used in ways
+// that sometimes do not require serialization.
+struct TFE_OpAttrs {
+  explicit TFE_OpAttrs() : name(nullptr), attributes(nullptr) {}
+
+  explicit TFE_OpAttrs(const tensorflow::AttrBuilder* value,
+                       const char* op_name)
+      : name(op_name), attributes(value) {}
+
+  const char* name;
+  const tensorflow::AttrBuilder* attributes;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

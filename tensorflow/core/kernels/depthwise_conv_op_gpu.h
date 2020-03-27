@@ -987,7 +987,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
                                              const T* filter, T* in_backprop,
                                              TensorFormat data_format) {
   if (args.depth_multiplier == 1) {
-    if (CanLaunchDepthwiseConv2dGPUSmall(args)) {
+    // This kernel doesn't currently work in all cases so it is disabled.
+    // TODO(b/150988950): Fix and reenable this kernel.
+    if (/* CanLaunchDepthwiseConv2dGPUSmall(args) */ false) {
       return LaunchDepthwiseConv2dGPUSmall<
           T, DIRECTION_BACKWARD, kKnownFilterWidth, kKnownFilterHeight>(
           ctx, args, out_backprop, filter, in_backprop, data_format);

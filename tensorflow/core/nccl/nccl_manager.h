@@ -238,7 +238,7 @@ class NcclManager {
   // function, and the collective is signalled globally ready via
   // `SetMultiNodeReady`.
   bool CheckReady(const string& collective_key, Collective* collective)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Run <collective>.  This calls takes ownership of <collective>.
   void RunCollective(Collective* collective);
@@ -247,13 +247,13 @@ class NcclManager {
   mutex mu_;
 
   // Maps key to collectives currently being assembled or run.
-  absl::flat_hash_map<string, Collective*> collectives_ GUARDED_BY(mu_);
+  absl::flat_hash_map<string, Collective*> collectives_ TF_GUARDED_BY(mu_);
 
   // Maps a device to the communication streams that make up its collective.
   // This is used to share the stream across different communicators that
   // include the same device.
   absl::flat_hash_map<se::StreamExecutor*, std::vector<NcclStream*>>
-      device_to_comm_streams_ GUARDED_BY(mu_);
+      device_to_comm_streams_ TF_GUARDED_BY(mu_);
 
   std::vector<std::unique_ptr<Communicator>> communicators_;
 

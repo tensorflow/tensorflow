@@ -96,8 +96,6 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
   if (params.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
-    gpu_opts.inference_preference =
-        TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
       gpu_opts.inference_priority2 =

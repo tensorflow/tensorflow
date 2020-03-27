@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -26,10 +26,14 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_binary_op_tests(options,
                          binary_operator,
                          allow_fully_quantize=False,
-                         expected_tf_failures=0):
+                         expected_tf_failures=0,
+                         test_parameters=None):
   """Make a set of tests to do binary ops with and without broadcast."""
 
-  test_parameters = [
+  if test_parameters is None:
+    test_parameters = []
+
+  test_parameters = test_parameters + [
       # Avoid creating all combinations to keep the test size small.
       {
           "dtype": [tf.float32, tf.int32],
@@ -185,7 +189,21 @@ def make_div_tests(options):
 
 @register_make_test_function()
 def make_sub_tests(options):
-  make_binary_op_tests(options, tf.subtract, allow_fully_quantize=True)
+  """Make zip tests for sub op with additional cases."""
+  test_parameters = [
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+      },
+  ]
+  make_binary_op_tests(
+      options,
+      tf.subtract,
+      allow_fully_quantize=True,
+      test_parameters=test_parameters)
 
 
 @register_make_test_function()

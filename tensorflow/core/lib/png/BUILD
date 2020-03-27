@@ -22,7 +22,7 @@ cc_library(
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/base",
-        "@zlib_archive//:zlib",
+        "@zlib",
     ],
 )
 

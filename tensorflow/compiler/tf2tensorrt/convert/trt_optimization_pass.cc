@@ -44,6 +44,7 @@ Status TRTOptimizationPass::Init(
   if (config == nullptr) {
     return Status::OK();
   }
+  VLOG(1) << "config = " << config->DebugString();
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
     minimum_segment_size_ = params.at("minimum_segment_size").i();
@@ -69,6 +70,9 @@ Status TRTOptimizationPass::Init(
   }
   if (params.count("trt_logger")) {
     trt_logger_name_ = params.at("trt_logger").s();
+  }
+  if (params.count("allow_build_at_runtime")) {
+    allow_build_at_runtime_ = params.at("allow_build_at_runtime").b();
   }
   if (params.count("use_implicit_batch")) {
     use_implicit_batch_ = params.at("use_implicit_batch").b();
@@ -265,6 +269,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
   cp.use_implicit_batch = use_implicit_batch_;
+  cp.allow_build_at_runtime = allow_build_at_runtime_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

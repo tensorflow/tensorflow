@@ -370,6 +370,12 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
         [input_context],
         self._container_strategy())
 
+  def _experimental_distribute_values_from_function(self, value_fn):
+    # TODO(b/137795644): Implement this method for ParameterServerStrategy if
+    # needed.
+    raise NotImplementedError("_experimental_distribute_values_from_function "
+                              "not yet implemented in ParameterServerStrategy.")
+
   def _broadcast_to(self, tensor, destinations):
     # This is both a fast path for Python constants, and a way to delay
     # converting Python values to a tensor until we know what type it
@@ -466,28 +472,33 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
             "Cannot reduce to another worker: %r, current worker is %r" %
             (d, self._input_workers.worker_devices[0]))
 
-  def _reduce_to(self, reduce_op, value, destinations):
+  def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
     self._verify_destinations_not_different_worker(destinations)
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return cross_device_ops_lib.reduce_non_distributed_value(
           reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._cross_device_ops.reduce(
-        reduce_op, value, destinations=destinations)
+        reduce_op,
+        value,
+        destinations=destinations,
+        experimental_hints=experimental_hints)
 
-  def _batch_reduce_to(self, reduce_op, value_destination_pairs):
+  def _batch_reduce_to(self, reduce_op, value_destination_pairs,
+                       experimental_hints):
     for _, destinations in value_destination_pairs:
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_device_ops.batch_reduce(reduce_op,
-                                               value_destination_pairs)
+                                               value_destination_pairs,
+                                               experimental_hints)
 
   def _select_single_value(self, structured):
     """Select any single value in `structured`."""
 
     def _select_fn(x):  # pylint: disable=g-missing-docstring
       if isinstance(x, values.Mirrored):
-        if len(x.devices) == 1:
-          return x.primary
+        if len(x._devices) == 1:  # pylint: disable=protected-access
+          return x._primary  # pylint: disable=protected-access
         else:
           raise ValueError(
               "You cannot update variable with a Mirrored object with multiple "
@@ -602,9 +613,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   def _in_multi_worker_mode(self):
     """Whether this strategy indicates working in multi-worker settings."""
-    # With a PS job, PS strategy should always be considered as in multi
-    # worker mode.
-    return True
+    return self._cluster_spec is not None
 
   @property
   def _num_replicas_in_sync(self):

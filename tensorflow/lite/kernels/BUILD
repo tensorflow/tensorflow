@@ -182,7 +182,7 @@ cc_library(
         "//tensorflow/lite/testing:util",
         "//tensorflow/lite/tools/optimize:quantization_utils",
         "//tensorflow/lite/tools/optimize/sparsity:format_converter",
-        "//tensorflow/lite/tools/versioning:op_version",
+        "//tensorflow/lite/tools/versioning",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -426,6 +426,7 @@ cc_library(
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
+        "batch_matmul.cc",
         "batch_to_space_nd.cc",
         "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
@@ -526,7 +527,7 @@ cc_library(
         ":lstm_shared",
         ":op_macros",
         ":padding",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:common",
@@ -549,7 +550,6 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -614,12 +614,12 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
-        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "@gemmlowp",
     ],
 )
 
@@ -627,6 +627,28 @@ cc_library(
     name = "lstm_shared",
     hdrs = ["lstm_shared.h"],
     copts = tflite_copts(),
+)
+
+# For internal usage by shared libraries only.
+cc_library(
+    name = "builtin_ops_all_linked",
+    srcs = ["register.cc"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
+    copts = tflite_copts(),
+    # Limit visibility to TFLite only.
+    visibility = [
+        "//tensorflow/lite:__subpackages__",
+    ],
+    deps = [
+        ":builtin_op_kernels",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:common",
+    ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -637,13 +659,11 @@ cc_library(
         "fully_connected.h",
         "register.h",
     ],
-    copts = tflite_copts(),
     deps = [
         ":builtin_op_kernels",
-        "//tensorflow/lite:framework",
+        "//tensorflow/lite:framework_lib",
         "//tensorflow/lite/c:common",
     ],
-    alwayslink = 1,
 )
 
 # The builtin_ops target will resolve to optimized kernels when available. This
@@ -821,6 +841,19 @@ cc_test(
     size = "small",
     srcs = ["batch_to_space_nd_test.cc"],
     tags = ["tflite_nnapi"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "batch_matmul_test",
+    size = "small",
+    srcs = ["batch_matmul_test.cc"],
     deps = [
         ":builtin_ops",
         ":test_main",
