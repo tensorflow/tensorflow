@@ -166,6 +166,14 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv *, jclass,
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_getGPUPointer(JNIEnv*, jclass,
                                                                  jlong);
 
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    isGPUTensor
+ * Signature: -
+ */
+JNIEXPORT jboolean JNICALL Java_org_tensorflow_Tensor_isGPUTensor(JNIEnv*, jclass,
+                                                                  jlong);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
