@@ -16,6 +16,7 @@ limitations under the License.
 // This file defines helpers useful when creating or manipulating lhlo/hlo.
 
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
+#include <vector>
 
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -195,6 +196,30 @@ StatusOr<mlir::Type> ConvertPrimitiveTypeToMLIRType(PrimitiveType element_type,
       return tensorflow::errors::Internal(
           absl::StrCat("Unsupported type: ", PrimitiveType_Name(element_type)));
   }
+}
+
+mlir::xla_hlo::GatherDimensionNumbers CreateGatherDimensionNumbers(
+    const GatherDimensionNumbers& input, mlir::Builder builder) {
+  std::vector<int64> gather_offset_dims(input.offset_dims().begin(),
+                                        input.offset_dims().end());
+  std::vector<int64> gather_collapsed_slice_dims(
+      input.collapsed_slice_dims().begin(), input.collapsed_slice_dims().end());
+  std::vector<int64> gather_start_index_map(input.start_index_map().begin(),
+                                            input.start_index_map().end());
+
+  auto offset_dims = CreateDenseIntElementsAttrFromVector(
+                         gather_offset_dims, builder);
+  auto collapsed_slice_dims = CreateDenseIntElementsAttrFromVector(
+                                  gather_collapsed_slice_dims, builder);
+  auto start_index_map = CreateDenseIntElementsAttrFromVector(
+                             gather_start_index_map, builder);
+
+  mlir::IntegerAttr index_vector_dim = builder.getI64IntegerAttr(
+                                           input.index_vector_dim());
+
+  return mlir::xla_hlo::GatherDimensionNumbers::get(
+      offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim,
+      builder.getContext());
 }
 
 }  // namespace xla

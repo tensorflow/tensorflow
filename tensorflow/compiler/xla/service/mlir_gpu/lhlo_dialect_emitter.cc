@@ -307,6 +307,47 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   return Status::OK();
 }
 
+Status LhloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  const GatherDimensionNumbers& dim_numbers =
+                                    gather->gather_dimension_numbers();
+  mlir::IntegerAttr index_vector_dim = builder_.getI64IntegerAttr(
+      dim_numbers.index_vector_dim());
+
+  std::vector<int64> gather_offset_dims(dim_numbers.offset_dims().begin(),
+                                        dim_numbers.offset_dims().end());
+  DenseIntElementsAttr offset_dims = CreateDenseIntElementsAttrFromVector(
+      gather_offset_dims, builder_);
+
+  std::vector<int64> gather_collapsed_slice_dims(
+      dim_numbers.collapsed_slice_dims().begin(),
+      dim_numbers.collapsed_slice_dims().end());
+  DenseIntElementsAttr collapsed_slice_dims =
+      CreateDenseIntElementsAttrFromVector(
+          gather_collapsed_slice_dims, builder_);
+
+  std::vector<int64> gather_start_index_map(
+      dim_numbers.start_index_map().begin(),
+      dim_numbers.start_index_map().end());
+  DenseIntElementsAttr start_index_map = CreateDenseIntElementsAttrFromVector(
+      gather_start_index_map, builder_);
+
+  std::vector<int64> gather_slice_sizes(
+                         gather->gather_slice_sizes().begin(),
+                         gather->gather_slice_sizes().end());
+  DenseIntElementsAttr slice_sizes = CreateDenseIntElementsAttrFromVector(
+      gather_slice_sizes, builder_);
+
+  TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
+  OpBuilder func_builder(function.getBody());
+  func_builder.create<lhlo::GatherOp>(
+      getLocation(instr), function.getArgument(0), function.getArgument(1),
+      index_vector_dim, offset_dims, slice_sizes, collapsed_slice_dims,
+      start_index_map, function.getArgument(2));
+
+  return Status::OK();
+}
+
 Status LhloDialectEmitter::HandleReduce(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   llvm::SmallVector<Value, 4> arg_values{function.args_begin(),

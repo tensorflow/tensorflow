@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/hlo_dialect_emitter.h"
 
 #include <utility>
+#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -180,6 +181,30 @@ Status HloDialectEmitter::HandleConstant(HloInstruction* instr) {
   auto const_value =
       builder_.create<hlo::ConstOp>(getLocation(instr), type, value);
   instruction_to_values_[instr] = const_value;
+  return Status::OK();
+}
+
+Status HloDialectEmitter::HandleGather(HloInstruction* instr) {
+  HloGatherInstruction* gather = static_cast<HloGatherInstruction*>(instr);
+  const xla::GatherDimensionNumbers& gather_dimension_numbers =
+      gather->gather_dimension_numbers();
+  mlir::xla_hlo::GatherDimensionNumbers dimension_numbers =
+      xla::CreateGatherDimensionNumbers(gather_dimension_numbers, builder_);
+  std::vector<int64> gather_slice_sizes(
+                         gather->gather_slice_sizes().begin(),
+                         gather->gather_slice_sizes().end());
+  const mlir::DenseIntElementsAttr slice_sizes =
+      CreateDenseIntElementsAttrFromVector(gather_slice_sizes, builder_);
+  mlir::BoolAttr indices_are_sorted = builder_.getBoolAttr(
+      gather->indices_are_sorted());
+
+  TF_ASSIGN_OR_RETURN(Type res_type, ConvertTensorShapeToType<RankedTensorType>(
+                                         instr->shape(), builder_));
+
+  instruction_to_values_[instr] = builder_.create<hlo::GatherOp>(
+      getLocation(instr), res_type, instruction_to_values_[instr->operand(0)],
+      instruction_to_values_[instr->operand(1)], dimension_numbers, slice_sizes,
+      indices_are_sorted);
   return Status::OK();
 }
 
