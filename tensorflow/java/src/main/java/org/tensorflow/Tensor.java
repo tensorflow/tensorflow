@@ -429,6 +429,13 @@ public final class Tensor<T> implements AutoCloseable {
   }
 
   /**
+   * Check if a Tensor is allocated in GPU memory
+   */
+  public boolean isGPUTensor(){
+    return isGPUTensor(getNativeHandle());
+  }
+
+  /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
    * <p>For non-scalar tensors, this method copies the contents of the underlying tensor to a Java
@@ -857,6 +864,8 @@ public final class Tensor<T> implements AutoCloseable {
   private static native long allocateGPU(long[] shape, int dtype);
 
   private static native long getGPUPointer(long handle);
+
+  private static native boolean isGPUTensor(long handle);
 
   static {
     TensorFlow.init();
