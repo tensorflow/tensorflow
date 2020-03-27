@@ -61,7 +61,7 @@ class Embedding(Layer):
   Arguments:
     input_dim: int > 0. Size of the vocabulary,
       i.e. maximum integer index + 1.
-    output_dim: int >= 0. Dimension of the dense embedding.
+    output_dim: int > 0. Dimension of the dense embedding.
     embeddings_initializer: Initializer for the `embeddings` matrix.
     embeddings_regularizer: Regularizer function applied to
       the `embeddings` matrix.
@@ -103,6 +103,10 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
+    if input_dim <= 0 or output_dim <= 0:
+      raise ValueError('Both `input_dim` and `output_dim` should be positive, '
+                       'found input_dim {} and output_dim {}'.format(
+                           input_dim, output_dim))
     dtype = kwargs.pop('dtype', K.floatx())
     # We set autocast to False, as we do not want to cast floating- point inputs
     # to self.dtype. In call(), we cast to int32, and casting to self.dtype
