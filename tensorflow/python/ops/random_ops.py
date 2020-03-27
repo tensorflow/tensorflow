@@ -346,7 +346,7 @@ def random_shuffle(value, seed=None, name=None):
 
 @tf_export("image.random_crop", v1=["image.random_crop", "random_crop"])
 @deprecation.deprecated_endpoints("random_crop")
-def random_crop(value, size, seed=None, name=None,number_of_crops=None):
+def random_crop(value, size, seed=None, name=None):
   """Randomly crops a tensor to a given size.
 
   Slices a shape `size` portion out of `value` at a uniformly chosen offset.
@@ -365,7 +365,7 @@ def random_crop(value, size, seed=None, name=None,number_of_crops=None):
     name: A name for this operation (optional).
 
   Returns:
-    A cropped tensor batch of the same rank as `value` and shape `size`.
+    A cropped tensor of the same rank as `value` and shape `size`.
   """
   # TODO(shlens): Implement edge case to guarantee output size dimensions.
   # If size > value.shape, zero pad the result so that it always has shape
@@ -380,18 +380,12 @@ def random_crop(value, size, seed=None, name=None,number_of_crops=None):
         summarize=1000)
     shape = control_flow_ops.with_dependencies([check], shape)
     limit = shape - size + 1
-    offsetar=[]
-    if number_of_crops==None:
-      num=1
-    else:
-      num=number_of_crops
-    for i in range(num):
-      offsetar.append(random_uniform(
-                      array_ops.shape(shape),
-                      dtype=size.dtype,
-                      maxval=size.dtype.max,
-                      seed=seed) % limit)
-    return [array_ops.slice(value, offset, size, name=name+"i") for offset in offsetar]
+    offset = random_uniform(
+        array_ops.shape(shape),
+        dtype=size.dtype,
+        maxval=size.dtype.max,
+        seed=seed) % limit
+    return array_ops.slice(value, offset, size, name=name)
 
 
 @tf_export(v1=["random.multinomial", "multinomial"])
