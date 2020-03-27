@@ -1310,6 +1310,13 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
   const int postamble_half_start = m_cols & ~(kWeightsPerNeonLane - 1);
   const int postamble_start = m_cols & ~((kWeightsPerNeonLane >> 1) - 1);
 
+  int32_t* row_sums_ptr = row_sums;
+  if (row_sums == nullptr) {
+    row_sums_ptr = static_cast<int32_t*>(malloc(sizeof(int32_t) * m_rows));
+    memset(row_sums_ptr, 0, sizeof(int32_t) * m_rows);
+    NeonReductionSumVector(matrix, row_sums_ptr, m_rows, m_cols);
+  }
+
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     const int batch_input_offset = input_offset[batch];
@@ -1327,10 +1334,6 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
       // Initialize the dot product sum for the row to 0.
       int32x4_t dotprod_32x4 = vmovq_n_s32(0);
 
-      int32x4_t row_sum_32x4;
-      if (row_sums == nullptr) {
-        row_sum_32x4 = vmovq_n_s32(0);
-      }
       // Prefetch the row to cache.
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
@@ -1358,10 +1361,6 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
         prod_16x8 =
             vmlal_s8(prod_16x8, vget_high_s8(s1_8x16), vget_high_s8(s2_8x16));
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        if (row_sums == nullptr) {
-          const int16x8_t row_sum_16x8 = vpaddlq_s8(s2_8x16);
-          row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
-        }
       }  // for col
 
       // Half iteration dealing only 8 elements
@@ -1375,29 +1374,24 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
         const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
         const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        if (row_sums == nullptr) {
-          const int16x8_t row_sum_16x8 = vmovl_s8(s2_8x8);
-          row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
-        }
         col += (kWeightsPerNeonLane >> 1);
       }
 
       int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
-      int32_t row_sum = row_sums == nullptr ? AccumulateNeonLane(row_sum_32x4)
-                                            : row_sums[row];
 
       // Postamble loop.
       for (; col < m_cols; ++col) {
         dotprod += row_ptr[col] * aligned_vec[col];
-        if (row_sums == nullptr) {
-          row_sum += row_ptr[col];
-        }
       }  // for col
-      dotprod -= row_sum * batch_input_offset;
+      dotprod -= row_sums_ptr[row] * batch_input_offset;
       *result += dotprod * scale;
       ++result;
     }  // for row
   }    // for batch
+
+  if (row_sums == nullptr) {
+    free(row_sums_ptr);
+  }
   if (unaligned) {
     free(aligned_row_free);
   }
@@ -1410,6 +1404,20 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
+  if (input_offset == nullptr) {
+#ifdef TFLITE_WITH_RUY_GEMV
+    if (context) {
+      NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                              scaling_factors, n_batch, scratch,
+                                              result, context);
+      return;
+    }
+#endif
+    NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                            scaling_factors, n_batch, result);
+    return;
+  }
+
   if (compute_row_sums == nullptr || *compute_row_sums) {
     memset(row_sums, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums, m_rows, m_cols);
@@ -1419,7 +1427,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 
 #ifdef TFLITE_WITH_RUY_GEMV
-  if (m_rows % 4 == 0) {
+  if (context != nullptr && m_rows % 4 == 0) {
     const int32_t* bias = static_cast<const int32_t*>(nullptr);
     NeonCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows, 0,
                        scratch, context);
@@ -1463,9 +1471,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     for (; i < total_size; i++) {
       const float batch_scaling_factor = scaling_factors[i / m_rows];
       const int32_t zero_point = input_offset[i / m_rows];
-      int32_t x = *(scratch_ptr++);
-      x -= row_sums[i % m_rows] * zero_point;
-      *result += x * batch_scaling_factor;
+      int32_t dotprod = *(scratch_ptr++);
+      dotprod -= row_sums[i % m_rows] * zero_point;
+      *result += dotprod * batch_scaling_factor;
       ++result;
     }
     return;
