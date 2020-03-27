@@ -91,7 +91,7 @@ class KerasInitializersTest(test.TestCase):
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
-          initializers.lecun_uniformV2(seed=123),
+          initializers.LecunUniformV2(seed=123),
           tensor_shape,
           target_mean=0.,
           target_std=std)
@@ -113,7 +113,7 @@ class KerasInitializersTest(test.TestCase):
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
-          initializers.he_uniformV2(seed=123),
+          initializers.HeUniformV2(seed=123),
           tensor_shape,
           target_mean=0.,
           target_std=std)
@@ -124,7 +124,7 @@ class KerasInitializersTest(test.TestCase):
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(1. / fan_in)
       self._runner(
-          initializers.lecun_normalV2(seed=123),
+          initializers.LecunNormalV2(seed=123),
           tensor_shape,
           target_mean=0.,
           target_std=std)
@@ -146,7 +146,7 @@ class KerasInitializersTest(test.TestCase):
       fan_in, _ = init_ops._compute_fans(tensor_shape)
       std = np.sqrt(2. / fan_in)
       self._runner(
-          initializers.he_normalV2(seed=123),
+          initializers.HeNormalV2(seed=123),
           tensor_shape,
           target_mean=0.,
           target_std=std)

@@ -402,7 +402,7 @@ class Layer(base_layer.Layer):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:

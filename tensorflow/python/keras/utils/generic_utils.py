@@ -364,7 +364,8 @@ def deserialize_keras_object(identifier,
     else:
       obj = module_objects.get(object_name)
       if obj is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+        raise ValueError(
+            'Unknown ' + printable_module_name + ': ' + object_name)
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -782,6 +783,13 @@ def is_default(method):
   """Check if a method is decorated with the `default` wrapper."""
   return getattr(method, '_is_default', False)
 
+
+def populate_dict_with_module_objects(target_dict, modules, obj_filter):
+  for module in modules:
+    for name in dir(module):
+      obj = getattr(module, name)
+      if obj_filter(obj):
+        target_dict[name] = obj
 
 # Aliases
 
