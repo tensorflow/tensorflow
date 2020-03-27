@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import os
 import collections
 
 import numpy as np
@@ -35,26 +36,35 @@ except ImportError:
 
 
 if sys.version_info >= (3, 6):
-  import os
-  def path_to_string(path):
-    """
-    If given a non-string typed path object, converts it to its string
-    representation. If the object passed to `path` is not `PathLike` according
-    to https://www.python.org/dev/peps/pep-0519 , then the object is returned
-    unchanged. This allows e.g. passthrough of file objects through this
-    function.
-    """
+  def _path_to_string(path):
     if isinstance(path, os.PathLike):
       return os.fspath(path)
     return path
-else:
-  def path_to_string(path):
-    """
-    Dummy implementation of the `path_to_string` function for older versions of
-    python that do not support the file system path protocol
-    https://www.python.org/dev/peps/pep-0519 .
-    """
+elif sys.version_info >= (3, 4):
+  def _path_to_string(path):
+    import pathlib
+    if isinstance(path, pathlib.Path):
+      return str(path)
     return path
+else:
+  def _path_to_string(path):
+    return path
+
+
+def path_to_string(path):
+  """
+  If given a non-string typed path object, converts it to its string
+  representation. Depending on the python version used, this function
+  can handle the following arguments:
+  python >= 3.6: Everything supporting the fs path protocol
+    https://www.python.org/dev/peps/pep-0519
+  python >= 3.4: Only `pathlib.Path` objects
+
+  If the object passed to `path` is not among the above, then it is
+  returned unchanged. This allows e.g. passthrough of file objects
+  through this function.
+  """
+  return _path_to_string(path)
 
 
 @keras_export('keras.utils.HDF5Matrix')

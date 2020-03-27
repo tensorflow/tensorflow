@@ -145,10 +145,11 @@ class TestIOUtils(keras_parameterized.TestCase):
         return "dummypath"
 
     dummy = object()
-    if sys.version_info >= (3, 6):
+    if sys.version_info >= (3, 4):
       from pathlib import Path
       # conversion of PathLike
       self.assertEqual(io_utils.path_to_string(Path("path")), "path")
+    if sys.version_info >= (3, 6):
       self.assertEqual(io_utils.path_to_string(PathLikeDummy()), "dummypath")
 
     # pass-through, works for all versions of python
