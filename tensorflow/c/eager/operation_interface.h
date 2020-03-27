@@ -112,7 +112,7 @@ class OpDef;
 
 class OperationInterface : public AbstractOperationInterface {
  public:
-  explicit OperationInterface(TFE_Context* ctx);
+  explicit OperationInterface(EagerContext* ctx);
   ~OperationInterface() override{};
 
   void Clear() override { operation_.Clear(); }

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -62,7 +63,7 @@ struct TFE_ContextOptions {
 };
 
 struct TFE_Context {
-  tensorflow::EagerContext* context;
+  std::unique_ptr<tensorflow::AbstractContextInterface> context;
 };
 
 struct TFE_TensorHandle {

@@ -26,8 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-OperationInterface::OperationInterface(TFE_Context* ctx)
-    : operation_(ctx->context) {}
+OperationInterface::OperationInterface(EagerContext* ctx) : operation_(ctx) {}
 
 const string& OperationInterface::DeviceName() const {
   absl::variant<Device*, CustomDevice*> variant_device =

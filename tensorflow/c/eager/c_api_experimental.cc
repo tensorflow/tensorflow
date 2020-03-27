@@ -40,11 +40,15 @@ void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
 }
 
 void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
-  ctx->context->SetShouldStoreGraphs(true);
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  context->SetShouldStoreGraphs(true);
 }
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
-  ctx->context->SetShouldStoreGraphs(false);
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  context->SetShouldStoreGraphs(false);
 }
 
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
@@ -474,7 +478,9 @@ void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
 
 void TFE_ContextSetThreadLocalMirroringPolicy(
     TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
-  ctx->context->SetThreadLocalMirroringPolicy(
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  context->SetThreadLocalMirroringPolicy(
       static_cast<tensorflow::ContextMirroringPolicy>(policy));
 }
 
@@ -483,8 +489,9 @@ void TFE_ContextSetThreadLocalMirroringPolicy(
 // safe to call this function from the async EagerExecutor threads.
 extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
     TFE_Context* ctx) {
-  return static_cast<TFE_ContextMirroringPolicy>(
-      ctx->context->GetMirroringPolicy());
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  return static_cast<TFE_ContextMirroringPolicy>(context->GetMirroringPolicy());
 }
 
 void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,
@@ -537,16 +544,22 @@ void TFE_ExecutorClearError(TFE_Executor* executor) {
 }
 
 void TFE_ContextSetExecutorForThread(TFE_Context* ctx, TFE_Executor* executor) {
-  ctx->context->SetExecutorForThread(executor->executor());
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  context->SetExecutorForThread(executor->executor());
 }
 
 TFE_Executor* TFE_ContextGetExecutorForThread(TFE_Context* ctx) {
-  return new TFE_Executor(&ctx->context->Executor());
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  return new TFE_Executor(&context->Executor());
 }
 
 void TFE_HostAddressSpace(TFE_Context* ctx, TF_Buffer* buf) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
   auto address_space = tensorflow::DeviceNameUtils::AddressSpace(
-      ctx->context->HostCPU()->parsed_name());
+      context->HostCPU()->parsed_name());
   auto str = tensorflow::DeviceNameUtils::ParsedNameToString(address_space);
   void* data = tensorflow::port::Malloc(str.length());
   str.copy(static_cast<char*>(data), str.length(), 0);
@@ -565,7 +578,9 @@ void TFE_TensorHandleEnableImplicitMirroring(TFE_TensorHandle* h,
 
 void TFE_ContextGetFunctionDef(TFE_Context* ctx, const char* function_name,
                                TF_Buffer* buf, TF_Status* status) {
-  auto* function_def = ctx->context->FindFunctionDef(function_name);
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
+  auto* function_def = context->FindFunctionDef(function_name);
   if (function_def == nullptr) {
     status->status = tensorflow::errors::NotFound(
         "Unable to find FunctionDef with name: ", function_name);

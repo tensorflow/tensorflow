@@ -54,7 +54,7 @@ namespace tensorflow {
 class TensorInterface : public AbstractTensorInterface {
  public:
   TensorInterface() {}
-  explicit TensorInterface(Tensor t) : tensor_(std::move(t)) {}
+  explicit TensorInterface(tensorflow::Tensor t) : tensor_(std::move(t)) {}
   ~TensorInterface() override {}
 
   TF_DataType Type() const override;
@@ -66,12 +66,16 @@ class TensorInterface : public AbstractTensorInterface {
   bool IsAligned() const override;
   bool CanMove() const override;
 
-  Status ToTensor(Tensor* dst) const;
+  Status ToTensor(tensorflow::Tensor* dst) const;
   Status BitcastFrom(const TensorInterface& from, TF_DataType type,
                      const int64_t* new_dims, int num_new_dims);
 
+  // TODO(gjn): This is not a very generic interface, but is needed for specific
+  // use cases.
+  tensorflow::Tensor Tensor() { return tensor_; }
+
  private:
-  Tensor tensor_;
+  tensorflow::Tensor tensor_;
 };
 
 }  // namespace tensorflow

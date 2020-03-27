@@ -703,7 +703,8 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
   } while (0);
 
   // New server created for new server_def. Unused if updating server_def.
-  tensorflow::EagerContext* context = ctx->context;
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(ctx->context);
   tensorflow::GrpcServer* grpc_server =
       dynamic_cast<tensorflow::GrpcServer*>(context->GetServer());
   if (grpc_server == nullptr) {
