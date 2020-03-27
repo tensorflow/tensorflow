@@ -547,6 +547,9 @@ class Network(base_layer.Layer):
     """
     # TODO(fchollet): We could build a dictionary based on layer names
     # since they are constant, but we have not done that yet.
+    if index is not None and name is not None:
+      raise ValueError('Provide only a layer name or a layer index.')
+
     if index is not None:
       if len(self.layers) <= index:
         raise ValueError('Was asked to retrieve layer at index ' + str(index) +
@@ -554,13 +557,13 @@ class Network(base_layer.Layer):
                          ' layers.')
       else:
         return self.layers[index]
-    else:
-      if not name:
-        raise ValueError('Provide either a layer name or layer index.')
-    for layer in self.layers:
-      if layer.name == name:
-        return layer
-    raise ValueError('No such layer: ' + name)
+
+    if name is not None:
+      for layer in self.layers:
+        if layer.name == name:
+          return layer
+      raise ValueError('No such layer: ' + name + '.')
+    raise ValueError('Provide either a layer name or layer index.')
 
   @property
   def trainable_weights(self):

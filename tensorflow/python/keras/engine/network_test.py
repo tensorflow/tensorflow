@@ -140,21 +140,33 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.get_layer(index=1), dense_a)
 
     # test invalid get_layer by index
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Was asked to retrieve layer at index ' + str(3) +
+        ' but model only has ' + str(len(network.layers)) +
+        ' layers.'
+    ):
       network.get_layer(index=3)
 
-    # test priority of index over name
-    self.assertEqual(network.get_layer(index=1, name='dense_b'), dense_a)
+    # test that only one between name and index is requested
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Provide only a layer name or a layer index'
+    ):
+      network.get_layer(index=1, name='dense_b')
 
     # test that a name or an index must be provided
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(
+        ValueError,
+        'Provide either a layer name or layer index.'
+    ):
       network.get_layer()
 
     # test various get_layer by name
     self.assertEqual(network.get_layer(name='dense_a'), dense_a)
 
     # test invalid get_layer by name
-    with self.assertRaises(ValueError):
+    with self.assertRaisesRegexp(ValueError, 'No such layer: dense_c.'):
       network.get_layer(name='dense_c')
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
