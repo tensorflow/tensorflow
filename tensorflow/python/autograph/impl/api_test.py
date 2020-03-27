@@ -753,6 +753,27 @@ class ApiTest(test.TestCase):
 
     self.assertAllEqual(1, self.evaluate(x))
 
+  def test_converted_call_native_binding(self):
+    x = api.converted_call(np.power, (2, 2), None, options=DEFAULT_RECURSIVE)
+    self.assertAllEqual(x, 4)
+
+  def test_converted_call_native_binding_errorneous(self):
+
+    class FaultyBinding(object):
+
+      def __array__(self):
+        raise ValueError('fault')
+
+    bad_obj = FaultyBinding()
+
+    def fail_if_warning(*_):
+      self.fail('No warning should be issued')
+
+    with test.mock.patch.object(ag_logging, 'warn', fail_if_warning):
+      with self.assertRaisesRegex(ValueError, 'fault'):
+        api.converted_call(
+            np.power, (bad_obj, 2), None, options=DEFAULT_RECURSIVE)
+
   def test_converted_call_through_tf_dataset(self):
 
     def other_fn(x):
