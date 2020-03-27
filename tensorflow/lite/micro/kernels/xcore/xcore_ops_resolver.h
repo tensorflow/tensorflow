@@ -10,7 +10,8 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-// class XcoreOpsResolver : public AllOpsResolver {
+void add_custom_ops(MicroMutableOpResolver *resolver);
+
 class XcoreOpsResolver : public MicroMutableOpResolver {
  public:
   XcoreOpsResolver();
