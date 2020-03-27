@@ -193,7 +193,8 @@ def map_fn(fn,
 
     * `tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)`
       (if the function is expressible as TensorFlow ops)
-    * `tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values), st.dense_shape)`
+    * `tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
+      st.dense_shape)`
       (otherwise).
 
   #### `map_fn` vs. vectorized operations

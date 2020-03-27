@@ -2915,8 +2915,8 @@ class SparseTensorSliceDataset(DatasetSource):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
       raise TypeError(
-          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object. Was {}.".format(
-              sparse_tensor))
+          "`sparse_tensor` must be a `tf.sparse.SparseTensor` object."
+          "Was {}.".format(sparse_tensor))
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
