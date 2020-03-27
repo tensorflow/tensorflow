@@ -6044,7 +6044,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
-    elif isinstance(op_input, Tensor):
+    else:
       graph_element = _as_graph_element(op_input)
 
     if graph_element is not None:
