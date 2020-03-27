@@ -19,10 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 
-class TensorLike(object):
-  """TF-specific types TF operations are expected to natively support.
-
-  Do not check this with isinstance directly; prefer instead using
-  `tf.is_tensor` to check whether converting to a tensor is necessary.
-  """
+# NOTE(ebrevdo): Do not subclass this.  If you do, I will break you on purpose.
+class _TensorLike(object):
+  """Internal cls for grouping Tensor, SparseTensor, ..., for is_instance."""
   pass

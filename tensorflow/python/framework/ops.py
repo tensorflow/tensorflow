@@ -94,6 +94,7 @@ _api_usage_gauge = monitoring.BoolGauge(
 
 
 # pylint: disable=protected-access
+_TensorLike = tensor_like._TensorLike
 _DTYPES_INTERN_TABLE = dtypes._INTERN_TABLE
 # pylint: enable=protected-access
 
@@ -289,7 +290,7 @@ def disable_tensor_equality():
 
 
 @tf_export("Tensor")
-class Tensor(tensor_like.TensorLike):
+class Tensor(_TensorLike):
   """A tensor is a multidimensional array of elements represented by a
 
   `tf.Tensor` object.  All elements are of a single known data type.
@@ -5982,12 +5983,9 @@ def _assert_same_graph(original_item, item):
   Raises:
     ValueError: if graphs do not match.
   """
-  original_graph = getattr(original_item, "graph", None)
-  graph = getattr(item, "graph", None)
-  if original_graph and graph and original_graph is not graph:
-    raise ValueError(
-        "%s must be from the same graph as %s (graphs are %s and %s)." %
-        (item, original_item, graph, original_graph))
+  if original_item.graph is not item.graph:
+    raise ValueError("%s must be from the same graph as %s." %
+                     (item, original_item))
 
 
 def _get_graph_from_inputs(op_input_list, graph=None):
@@ -6041,16 +6039,16 @@ def _get_graph_from_inputs(op_input_list, graph=None):
     # TODO(josh11b): Note that we exclude subclasses of Tensor. Need to clean this
     # up.
     graph_element = None
-    if (isinstance(op_input, (Operation, tensor_like.TensorLike)) and
+    if (isinstance(op_input, (Operation, _TensorLike)) and
         ((not isinstance(op_input, Tensor)) or type(op_input) == Tensor)):  # pylint: disable=unidiomatic-typecheck
       graph_element = op_input
-    elif isinstance(op_input, Tensor):
+    else:
       graph_element = _as_graph_element(op_input)
 
     if graph_element is not None:
       if not graph:
         original_graph_element = graph_element
-        graph = getattr(graph_element, "graph", None)
+        graph = graph_element.graph
       elif original_graph_element is not None:
         _assert_same_graph(original_graph_element, graph_element)
       elif graph_element.graph is not graph:
