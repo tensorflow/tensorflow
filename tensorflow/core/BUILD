@@ -785,7 +785,7 @@ cc_library(
     hdrs = [
         "//tensorflow/core/framework:training_op_helpers.h",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":framework",
         ":lib",
