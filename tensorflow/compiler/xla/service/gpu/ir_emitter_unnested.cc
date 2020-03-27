@@ -2101,7 +2101,7 @@ static IrArray::Index GetUnnormalizedIndex(
   DCHECK_EQ(normalized_shape_index.size(), 3);
   // If the normalization only add a new dimensions of size 1,
   // generate simpler indexing. LLVM doesn't always simplify the more
-  // complicated indexing and this prevent him from vectorizing some
+  // complicated indexing and this prevents it from vectorizing some
   // cases.
   if (unnormalized_shape.rank() == 2) {
     DCHECK_EQ(normalized_shape_index.dims()[0], 0);
@@ -3199,8 +3199,8 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int num_partial_results = 1;
   KernelMappingScheme::IndexingOrder indexing_order = [&]() {
     if (reduction_dimensions.is_row_reduction &&
-        // P100, only ttry to vectorize+coales memory access when the
-        // tile size fit exactly and dtypes <= 32 bits
+        // P100, only try to vectorize+coales memory access when the
+        // tile size fits exactly and dtypes <= 32 bits
         ((cc_major == 6 && smallest_input_dtype_bits <= 32 && tile_fit) ||
          // On V100, only try to vectorize+coales memory access for
          // rows of even size.  For odd row sizes, every other row
