@@ -28,6 +28,7 @@ tf_cuda_library(
         "c_api_debug.cc",
         "c_api_experimental.h",
         "c_api_internal.h",
+        "c_api_unified_experimental.h",
         "context_interface.cc",
         "context_interface.h",
         "operation_interface.cc",
@@ -64,6 +65,7 @@ tf_cuda_library(
             "//tensorflow/core/platform:errors",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
+            "@com_google_absl//absl/types:variant",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -97,6 +99,7 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "c_api_unified_experimental.h",
         "context_interface.h",
         "dlpack.h",
         "operation_interface.h",
@@ -112,6 +115,7 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = [
         "c_api_experimental.h",
+        "c_api_unified_experimental.h",
         "context_interface.h",
         "operation_interface.h",
         "tensor_handle_interface.h",
@@ -218,8 +222,12 @@ tf_cuda_library(
     name = "c_api_experimental",
     srcs = [
         "c_api_experimental.cc",
+        "c_api_unified_experimental.cc",
     ],
-    hdrs = ["c_api_experimental.h"],
+    hdrs = [
+        "c_api_experimental.h",
+        "c_api_unified_experimental.h",
+    ],
     copts = tf_copts() + tfe_xla_copts(),
     visibility = ["//visibility:public"],
     deps = select({
@@ -245,6 +253,7 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
+            "@com_google_absl//absl/types:variant",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [
@@ -277,6 +286,30 @@ tf_cuda_cc_test(
     size = "small",
     srcs = [
         "c_api_experimental_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":c_api",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "c_api_unified_experimental_test",
+    size = "small",
+    srcs = [
+        "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
