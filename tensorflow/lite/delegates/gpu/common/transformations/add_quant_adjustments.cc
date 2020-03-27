@@ -48,7 +48,12 @@ class AddQuantAdjustments : public NodeTransformation {
       }
 
       // Add a new QuantizeAndDequantize node.
-      auto* quant_and_dequant_node = graph->NewNode();
+      Node* quant_and_dequant_node;
+      absl::Status status =
+          graph->InsertNodeAfter(node->id, &quant_and_dequant_node);
+      if (!status.ok()) {
+        return {TransformStatus::INVALID, "Could not insert new node."};
+      }
       quant_and_dequant_node->operation.type =
           ToString(OperationType::QUANTIZE_AND_DEQUANTIZE);
       QuantizeAndDequantizeAttributes attr;
@@ -61,7 +66,7 @@ class AddQuantAdjustments : public NodeTransformation {
       // The tensor information should rename the same.
       Value<TensorRef<BHWC>>* adjusted_value = graph->NewValue();
       adjusted_value->tensor = output_value->tensor;
-      absl::Status status =
+      status =
           graph->SetProducer(quant_and_dequant_node->id, adjusted_value->id);
       if (!status.ok()) {
         return {TransformStatus::INVALID,
