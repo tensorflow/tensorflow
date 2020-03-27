@@ -32,11 +32,6 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     const ConvolutionTransposedAttributes& params,
     const RuntimeOptions& options);
 
-std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
-    int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& params,
-    const RuntimeOptions& options);
-
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params,
