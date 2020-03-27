@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Strips all nonessential strings from a tflite file.
+"""Randomize all weights in a tflite file.
 
 Example usage:
-python strip_strings.py foo.tflite foo_stripped.tflite
+python randomize_weights.py foo.tflite foo_randomized.tflite
 """
 
 from __future__ import absolute_import
@@ -30,9 +30,8 @@ from tensorflow.python.platform import app
 
 
 def main(_):
-  """Application run loop."""
   parser = argparse.ArgumentParser(
-      description='Strips all nonessential strings from a tflite file.')
+      description='Randomize weights in a tflite file.')
   parser.add_argument(
       '--input_tflite_file',
       type=str,
@@ -42,13 +41,20 @@ def main(_):
       '--output_tflite_file',
       type=str,
       required=True,
-      help='Full path name to the stripped output tflite file.')
+      help='Full path name to the output randomized tflite file.')
+  parser.add_argument(
+      '--random_seed',
+      type=str,
+      required=False,
+      default=0,
+      help='Input to the random number generator. The default value is 0.')
   args = parser.parse_args()
 
   # Read the model
   input_model = flatbuffer_utils.read_model(args.input_tflite_file)
-  # Invoke the strip tflite file function
-  output_model = flatbuffer_utils.strip_strings(input_model)
+  # Invoke the randomize weights function
+  output_model = flatbuffer_utils.randomize_weights(input_model,
+                                                    args.random_seed)
   # Write the model
   flatbuffer_utils.write_model(output_model, args.output_tflite_file)
 
