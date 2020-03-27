@@ -67,7 +67,7 @@ GraphMgr::GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr)
 }
 
 GraphMgr::~GraphMgr() {
-  for (auto p : table_) p.second->Unref();
+  for (const auto& p : table_) p.second->Unref();
 }
 
 GraphMgr::Item::~Item() {
@@ -141,13 +141,18 @@ Status GraphMgr::InitItem(
       gdef.versions().producer(), item->lib_def.get(),
       graph_options.optimizer_options(), worker_env_->compute_pool, cluster_flr,
       /*custom_kernel_creator=*/nullptr, /*session_metadata=*/nullptr,
-      [this, session](const int64 step_id, const DeviceMgr*,
-                      Rendezvous** r) -> Status {
-        auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
-        TF_RETURN_IF_ERROR(remote_r->Initialize(session));
-        *r = remote_r;
-        return Status::OK();
-      }));
+      Rendezvous::Factory{
+          [this, session](const int64 step_id, const DeviceMgr*,
+                          Rendezvous** r) -> Status {
+            auto* remote_r = this->worker_env_->rendezvous_mgr->Find(step_id);
+            TF_RETURN_IF_ERROR(remote_r->Initialize(session));
+            *r = remote_r;
+            return Status::OK();
+          },
+          [this](const int64 step_id) {
+            this->worker_env_->rendezvous_mgr->Cleanup(step_id);
+            return Status::OK();
+          }}));
 
   // Constructs the graph out of "gdef".
   Graph graph(OpRegistry::Global());

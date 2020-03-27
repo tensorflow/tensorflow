@@ -23,10 +23,13 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
@@ -54,6 +57,26 @@ def _make_ragged_ds(nrows):
   return dataset_ops.Dataset.from_tensor_slices(rt)
 
 
+def _make_dict_ds(nrows):
+  """Create a test set with various element shapes."""
+  def transform(x):
+    return {
+        'shape=[]': ops.convert_to_tensor(x),
+        'shape=[x]': math_ops.range(x),
+        'shape=[x, 2]': array_ops.fill([x, 2], x),
+    }
+  return _make_scalar_ds(nrows).map(transform)
+
+
+def _make_tuple_ds(nrows):
+  """Create a test set with various element shapes."""
+  def transform(x):
+    return (ops.convert_to_tensor(x),
+            math_ops.range(x),
+            array_ops.fill([x, 2], x))
+  return _make_scalar_ds(nrows).map(transform)
+
+
 def _to_list(v):
   return v.to_list() if hasattr(v, 'to_list') else v.tolist()
 
@@ -66,7 +89,7 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(
               make_dataset=[
                   _make_scalar_ds, _make_vector_ds, _make_matrix_ds,
-                  _make_ragged_ds
+                  _make_ragged_ds, _make_dict_ds, _make_tuple_ds,
               ],
               nrows=[0, 20, 23],
               batch_size=[4],
@@ -77,7 +100,8 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # Get the unbatched rows (so we can check expected values).
     get_next = self.getNext(dataset)
-    rows = [_to_list(self.evaluate(get_next())) for _ in range(nrows)]
+    rows = [nest.map_structure(_to_list, self.evaluate(get_next()))
+            for _ in range(nrows)]
 
     # Batch the dataset, and check that batches match slices from `rows`.
     batched_dataset = dataset.apply(
@@ -90,7 +114,11 @@ class RaggedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       end_row = min(end_row, nrows)
       result = self.evaluate(get_next())
 
-      self.assertAllEqual(result, rows[start_row:end_row])
+      # Use nest for potentially nested datasets.
+      nest.map_structure_up_to(
+          result, lambda a, *b: self.assertAllEqual(a, list(b)),
+          result, *rows[start_row:end_row])
+
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 

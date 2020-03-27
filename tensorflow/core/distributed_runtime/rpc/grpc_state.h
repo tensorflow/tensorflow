@@ -452,19 +452,17 @@ class StreamingRPCState : public UntypedStreamingRPCState {
       mu_.unlock();
       return;
     }
-    if (!ok) {
-      // unlocks mu_
-      MarkDoneAndCompleteExchanges(errors::Internal(
-          "Not ok value returned by CompletionQueue when attempting streaming "
-          "rpc write. Probably because the completion queue has been shut "
-          "down or the connection went down. ",
-          context_->debug_error_string()));
-      return;
-    }
-
     exchanges_.MarkRequestWriteCompleted();
+    // Issue ResponseRead regardless of OK status on completing RequestWrite.
+    // If the underlying completion queue is in Not-OK status due to previous
+    // request failuress (i.e., `ok` from `Next` call on completion queue is
+    // False), delay the error in ResponseRead so we can get the remote error
+    // message from response buffer.
     MaybeIssueResponseReadLocked();
-    MaybeIssueRequestWriteLocked();
+
+    if (ok) {
+      MaybeIssueRequestWriteLocked();
+    }
     mu_.unlock();
   }
 

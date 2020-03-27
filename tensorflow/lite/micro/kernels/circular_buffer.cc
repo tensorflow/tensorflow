@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
 #include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
@@ -73,6 +74,8 @@ OpData op_data_array[kMaxOpDataSize];
 
 }  // namespace
 
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -93,6 +96,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
+  TFLITE_DCHECK_LE(op_data_counter, kMaxOpDataSize);
   OpData* op_data = &op_data_array[op_data_counter++];
   // The last circular buffer layer (length 5) simply accumulates outputs, and
   // does not run periodically.
@@ -156,6 +160,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 TfLiteRegistration* Register_CIRCULAR_BUFFER() {
   static TfLiteRegistration r = {};
+  r.free = circular_buffer::Free;
   r.prepare = circular_buffer::Prepare;
   r.invoke = circular_buffer::Eval;
   return &r;

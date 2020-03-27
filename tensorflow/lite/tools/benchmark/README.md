@@ -112,7 +112,7 @@ and the following optional parameters:
 
 ```
 bazel build -c opt \
-  --config=android_arm \
+  --config=android_arm64 \
   tensorflow/lite/tools/benchmark:benchmark_model
 ```
 
@@ -140,7 +140,7 @@ adb push mobilenet_quant_v1_224.tflite /data/local/tmp
 That step is only needed when using the Hexagon delegate.
 
 ```
-bazel build --config=android_arm \
+bazel build --config=android_arm64 \
   tensorflow/lite/experimental/delegates/hexagon/hexagon_nn:libhexagon_interface.so
 adb push bazel-bin/tensorflow/lite/experimental/delegates/hexagon/hexagon_nn/libhexagon_interface.so /data/local/tmp
 adb push libhexagon_nn_skel*.so /data/local/tmp

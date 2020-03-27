@@ -26,6 +26,7 @@ import functools
 import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
@@ -160,8 +161,8 @@ class OptimizerV2(trackable.Trackable):
   `tf.keras.losses.Reduction.SUM` for not.
 
   To aggregate gradients yourself, call `apply_gradients` with
-  `all_reduce_sum_gradients` set to False. This is useful if you need to process
-  aggregated gradients.
+  `experimental_aggregate_gradients` set to False. This is useful if you need to
+  process aggregated gradients.
 
   If you are not using these and you want to average gradients, you should use
   `tf.math.reduce_sum` to add up your per-example losses and then divide by the
@@ -230,13 +231,13 @@ class OptimizerV2(trackable.Trackable):
   """
 
   # Subclasses should set this to True unless they override `apply_gradients`
-  # with a version that does not have the `all_reduce_sum_gradients` argument.
-  # Older versions of Keras did not have this argument so custom optimizers may
-  # have overridden `apply_gradients` without the `all_reduce_sum_gradients`
-  # argument. Keras only passes `all_reduce_sum_gradients` if this attribute is
-  # True.
+  # with a version that does not have the `experimental_aggregate_gradients`
+  # argument.  Older versions of Keras did not have this argument so custom
+  # optimizers may have overridden `apply_gradients` without the
+  # `experimental_aggregate_gradients` argument. Keras only passes
+  # `experimental_aggregate_gradients` if this attribute is True.
   # Note: This attribute will likely be removed in an upcoming release.
-  _HAS_ALL_REDUCE_SUM_GRAD = False
+  _HAS_AGGREGATE_GRAD = False
 
   def __init__(self, name, **kwargs):
     """Create a new Optimizer.
@@ -433,7 +434,7 @@ class OptimizerV2(trackable.Trackable):
   def apply_gradients(self,
                       grads_and_vars,
                       name=None,
-                      all_reduce_sum_gradients=True):
+                      experimental_aggregate_gradients=True):
     """Apply gradients to variables.
 
     This is the second part of `minimize()`. It returns an `Operation` that
@@ -441,7 +442,7 @@ class OptimizerV2(trackable.Trackable):
 
     The method sums gradients from all replicas in the presence of
     `tf.distribute.Strategy` by default. You can aggregate gradients yourself by
-    passing `all_reduce_sum_gradients=False`.
+    passing `experimental_aggregate_gradients=False`.
 
     Example:
 
@@ -449,7 +450,8 @@ class OptimizerV2(trackable.Trackable):
     grads = tape.gradient(loss, vars)
     grads = tf.distribute.get_replica_context().all_reduce('sum', grads)
     # Processing aggregated gradients.
-    optimizer.apply_gradients(zip(grads, vars), all_reduce_sum_gradients=False)
+    optimizer.apply_gradients(zip(grads, vars),
+        experimental_aggregate_gradients=False)
 
     ```
 
@@ -457,7 +459,7 @@ class OptimizerV2(trackable.Trackable):
       grads_and_vars: List of (gradient, variable) pairs.
       name: Optional name for the returned operation. Default to the name passed
         to the `Optimizer` constructor.
-      all_reduce_sum_gradients: Whether to sum gradients from different
+      experimental_aggregate_gradients: Whether to sum gradients from different
         replicas in the presense of `tf.distribute.Strategy`. If False, it's
         user responsibility to aggregate the gradients. Default to True.
 
@@ -490,8 +492,16 @@ class OptimizerV2(trackable.Trackable):
             "Use `tf.distribute.Strategy.run` to enter replica "
             "context.")
 
+      strategy = distribute_ctx.get_strategy()
+      if (not experimental_aggregate_gradients and strategy and isinstance(
+          strategy.extended,
+          parameter_server_strategy.ParameterServerStrategyExtended)):
+        raise NotImplementedError(
+            "`experimental_aggregate_gradients=False is not supported for "
+            "ParameterServerStrategy and CentralStorageStrategy")
+
       apply_state = self._prepare(var_list)
-      if all_reduce_sum_gradients:
+      if experimental_aggregate_gradients:
         reduced_grads = self._aggregate_gradients(grads_and_vars)
         var_list = [v for _, v in grads_and_vars]
         grads_and_vars = list(zip(reduced_grads, var_list))

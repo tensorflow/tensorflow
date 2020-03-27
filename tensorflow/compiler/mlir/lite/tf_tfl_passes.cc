@@ -79,6 +79,23 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
             pass_config.quant_specs.serialized_quant_stats));
   }
 
+  // Note:
+  // We need to fuse composite ops before LowerStaticTensorList pass.
+  // The tensorflow list is not supported right now by that pass.
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
+  }
+
+  // This pass marks non-exported functions as symbol visibility 'private'
+  // those deemed read-only as immutable.
+  pass_manager->addPass(
+      mlir::tf_saved_model::
+          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
+
+  pass_manager->addPass(mlir::createInlinerPass());
+  pass_manager->addPass(mlir::createSymbolDCEPass());
+
   if (pass_config.lower_tensor_list_ops) {
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
@@ -109,16 +126,6 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // those deemed read-only as immutable.
   pass_manager->addPass(
       mlir::tf_saved_model::CreateOptimizeGlobalTensorsPass());
-  // This pass marks non-exported functions as symbol visibility 'private'
-  // those deemed read-only as immutable.
-  pass_manager->addPass(
-      mlir::tf_saved_model::
-          CreateMarkFunctionVisibilityUsingSavedModelLinkagePass());
-
-  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
-  if (pass_config.emit_builtin_tflite_ops) {
-    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
-  }
 
   // Legalize while early to allow further constant folding.
   // TODO(jpienaar): This may not actually matter as we do canonicalization
@@ -126,8 +133,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // that work on TF dialect and before inliner so that the function calls in
   // body and cond are inlined for optimization.
   if (pass_config.legalize_tf_while) {
-    pass_manager->addNestedPass<mlir::FuncOp>(
-        mlir::TFL::CreateLegalizeTFWhilePass());
+    pass_manager->addPass(mlir::TFL::CreateLegalizeTFWhilePass());
   }
 
   // Add function inlining pass. Both TF and TFLite dialects are opted into

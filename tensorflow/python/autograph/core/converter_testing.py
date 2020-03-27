@@ -30,9 +30,9 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
-from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer

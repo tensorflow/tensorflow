@@ -74,11 +74,11 @@ class MergeConvolutionWithMul : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemoveFollowingNode(graph, &mul_node, &conv_node);
+    absl::Status status = RemoveFollowingNode(graph, &mul_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove mul node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }
@@ -134,11 +134,11 @@ class MergeMulWithConvolution : public SequenceTransformation {
       return {TransformStatus::SKIPPED, ""};
     }
 
-    Status status = RemovePrecedingNode(graph, &mul_node, &conv_node);
+    absl::Status status = RemovePrecedingNode(graph, &mul_node, &conv_node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove mul node after convolution: " +
-                  status.error_message()};
+                  std::string(status.message())};
     }
     return {TransformStatus::APPLIED, ""};
   }

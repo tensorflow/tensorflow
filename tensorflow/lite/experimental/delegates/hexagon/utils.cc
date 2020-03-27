@@ -67,6 +67,8 @@ bool CheckOpVersion(const TfLiteRegistration* registration) {
     case kTfLiteBuiltinDepthwiseConv2d:
     case kTfLiteBuiltinSoftmax:
       return registration->version <= 2;
+    case kTfLiteBuiltinRelu:
+      return registration->version >= 2;
     default:
       return registration->version == 1;
   }
@@ -125,7 +127,7 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       return (
           node->inputs->size == 2 &&
           InputsWithCorrectTypes(node, context, {kTfLiteUInt8, kTfLiteInt32}) &&
-          IsConstantTensor(&context->tensors[node->inputs->data[1]]));
+          IsConstantTensor(GetInput(context, node, 1)));
     }
     case kTfLiteBuiltinFullyConnected: {
       if (!InputsWithCorrectTypes(node, context,
@@ -257,12 +259,12 @@ bool IsNodeSupportedByHexagon(const TfLiteRegistration* registration,
       const bool is_four_dim_or_less = input_tensor.dims->size < 5;
       // We need splitting axis to be constant, so Hexagon knows output shapes.
       return is_four_dim_or_less &&
-             IsConstantTensor(&context->tensors[node->inputs->data[0]]);
+             IsConstantTensor(GetInput(context, node, 0));
     }
     case kTfLiteBuiltinResizeBilinear: {
       if (!InputsWithCorrectTypes(node, context,
                                   {kTfLiteUInt8, kTfLiteInt32}) ||
-          !IsConstantTensor(&context->tensors[node->inputs->data[1]])) {
+          !IsConstantTensor(GetInput(context, node, 1))) {
         return false;
       }
       const auto& size_tensor = context->tensors[node->inputs->data[1]];

@@ -400,8 +400,8 @@ func @FuseFullyConnectedReshapeAddConst(%arg0: tensor<40x37xf32>, %arg1: tensor<
   // FOLD: return %[[fc]]
 }
 
-// CHECK-LABEL: @NotReorderReshapeAddIfNotBroadcastable
-func @NotReorderReshapeAddIfNotBroadcastable(%arg0: tensor<40x10x4xf32>) -> tensor<40x40xf32> {
+// CHECK-LABEL: @NotReorderReshapeAddIfNotBroadcastableAfter
+func @NotReorderReshapeAddIfNotBroadcastableAfter(%arg0: tensor<40x10x4xf32>) -> tensor<40x40xf32> {
   %cst = constant dense<2.0> : tensor<40xf32>
   %shape = constant dense<[40, 40]> : tensor<2xi32>
   %1 = "tfl.reshape"(%arg0, %shape) : (tensor<40x10x4xf32>, tensor<2xi32>) -> tensor<40x40xf32>
@@ -410,6 +410,19 @@ func @NotReorderReshapeAddIfNotBroadcastable(%arg0: tensor<40x10x4xf32>) -> tens
 
   // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
   // CHECK: %[[rs2:.*]] = "tfl.add"(%[[rs1]]
+  // CHECK: return %[[rs2]]
+}
+
+// CHECK-LABEL: @NotReorderReshapeAddIfNotTailingDimAfter
+func @NotReorderReshapeAddIfNotTailingDimAfter(%arg0: tensor<1x30x1x96xf32>) -> tensor<1x30x96xf32> {
+  %cst = constant dense<2.0> : tensor<1x30x96xf32>
+  %shape = constant dense<[1, 30, 96]> : tensor<3xi32>
+  %1 = "tfl.reshape"(%arg0, %shape) : (tensor<1x30x1x96xf32>, tensor<3xi32>) -> tensor<1x30x96xf32>
+  %2 = "tfl.add"(%1, %cst) {fused_activation_function = "NONE"} : (tensor<1x30x96xf32>, tensor<1x30x96xf32>) -> tensor<1x30x96xf32>
+  return %2 : tensor<1x30x96xf32>
+
+  // CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+  // CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
   // CHECK: return %[[rs2]]
 }
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/context_interface.h"
 #include "tensorflow/c/eager/operation_interface.h"
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
@@ -59,25 +60,16 @@ struct TFE_ContextOptions {
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
   // If true, lazily copy the remote inputs of a function to the target devices.
   bool lazy_remote_inputs_copy = true;
+  // If true, use TFRT backend
+  bool use_tfrt = false;
 };
 
 struct TFE_Context {
-  tensorflow::EagerContext* context;
+  std::unique_ptr<tensorflow::AbstractContextInterface> context;
 };
 
 struct TFE_TensorHandle {
-  static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
-                                             TF_Status* s) {
-    tensorflow::TensorHandle* handle;
-    s->status = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-    if (!s->status.ok()) {
-      return nullptr;
-    }
-    return new TFE_TensorHandle{
-        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
-  }
-
-  std::unique_ptr<AbstractTensorHandleInterface> handle;
+  std::unique_ptr<tensorflow::AbstractTensorHandleInterface> handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -89,7 +81,7 @@ struct TFE_TensorDebugInfo {
 };
 
 struct TFE_Op {
-  std::unique_ptr<AbstractOperationInterface> operation;
+  std::unique_ptr<tensorflow::AbstractOperationInterface> operation;
 };
 
 struct TFE_MonitoringCounterCell {

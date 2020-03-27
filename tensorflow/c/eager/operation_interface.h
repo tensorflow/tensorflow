@@ -23,96 +23,80 @@ limitations under the License.
 #include "tensorflow/c/eager/tensor_handle_interface.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 
+namespace tensorflow {
+
 // Abstract interface to an operation.
 class AbstractOperationInterface {
  public:
   virtual ~AbstractOperationInterface() {}
 
   virtual void Clear() = 0;
-  virtual tensorflow::Status Reset(const char* op,
-                                   const char* raw_device_name) = 0;
+  virtual Status Reset(const char* op, const char* raw_device_name) = 0;
 
-  virtual const tensorflow::string& Name() const = 0;
-  virtual const tensorflow::string& DeviceName() const = 0;
-  virtual tensorflow::Status SetDeviceName(const char* name) = 0;
+  virtual const string& Name() const = 0;
+  virtual const string& DeviceName() const = 0;
+  virtual Status SetDeviceName(const char* name) = 0;
 
-  virtual tensorflow::Status AddInput(
+  virtual Status AddInput(
       const std::unique_ptr<AbstractTensorHandleInterface>& input) = 0;
-  virtual tensorflow::Status AddInputList(
+  virtual Status AddInputList(
       const absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>&
           inputs) = 0;
-  virtual tensorflow::Status Execute(
+  virtual Status Execute(
       absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>* retvals,
       int* num_retvals) = 0;
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
-  virtual tensorflow::Status SetAttrString(const char* attr_name,
-                                           const char* data, size_t length) = 0;
-  virtual tensorflow::Status SetAttrInt(const char* attr_name,
-                                        int64_t value) = 0;
-  virtual tensorflow::Status SetAttrFloat(const char* attr_name,
-                                          float value) = 0;
-  virtual tensorflow::Status SetAttrBool(const char* attr_name, bool value) = 0;
-  virtual tensorflow::Status SetAttrType(const char* attr_name,
-                                         TF_DataType value) = 0;
-  virtual tensorflow::Status SetAttrShape(const char* attr_name,
-                                          const int64_t* dims,
-                                          const int num_dims) = 0;
-  virtual tensorflow::Status SetAttrFunction(
+  virtual Status SetAttrString(const char* attr_name, const char* data,
+                               size_t length) = 0;
+  virtual Status SetAttrInt(const char* attr_name, int64_t value) = 0;
+  virtual Status SetAttrFloat(const char* attr_name, float value) = 0;
+  virtual Status SetAttrBool(const char* attr_name, bool value) = 0;
+  virtual Status SetAttrType(const char* attr_name, TF_DataType value) = 0;
+  virtual Status SetAttrShape(const char* attr_name, const int64_t* dims,
+                              const int num_dims) = 0;
+  virtual Status SetAttrFunction(
       const char* attr_name,
       const std::unique_ptr<AbstractOperationInterface>& value) = 0;
-  virtual tensorflow::Status SetAttrFunctionName(const char* attr_name,
-                                                 const char* value,
-                                                 size_t length) = 0;
-  virtual tensorflow::Status SetAttrTensor(const char* attr_name,
-                                           TF_Tensor* tensor) = 0;
-  virtual tensorflow::Status SetAttrStringList(const char* attr_name,
-                                               const void* const* values,
-                                               const size_t* lengths,
-                                               int num_values) = 0;
-  virtual tensorflow::Status SetAttrFloatList(const char* attr_name,
-                                              const float* values,
-                                              int num_values) = 0;
-  virtual tensorflow::Status SetAttrIntList(const char* attr_name,
-                                            const int64_t* values,
-                                            int num_values) = 0;
-  virtual tensorflow::Status SetAttrTypeList(const char* attr_name,
-                                             const TF_DataType* values,
-                                             int num_values) = 0;
-  virtual tensorflow::Status SetAttrBoolList(const char* attr_name,
-                                             const unsigned char* values,
-                                             int num_values) = 0;
-  virtual tensorflow::Status SetAttrShapeList(const char* attr_name,
-                                              const int64_t** dims,
-                                              const int* num_dims,
-                                              int num_values) = 0;
-  virtual tensorflow::Status SetAttrFunctionList(const char* attr_name,
-                                                 const TFE_Op** value,
-                                                 int num_values) = 0;
+  virtual Status SetAttrFunctionName(const char* attr_name, const char* value,
+                                     size_t length) = 0;
+  virtual Status SetAttrTensor(const char* attr_name, TF_Tensor* tensor) = 0;
+  virtual Status SetAttrStringList(const char* attr_name,
+                                   const void* const* values,
+                                   const size_t* lengths, int num_values) = 0;
+  virtual Status SetAttrFloatList(const char* attr_name, const float* values,
+                                  int num_values) = 0;
+  virtual Status SetAttrIntList(const char* attr_name, const int64_t* values,
+                                int num_values) = 0;
+  virtual Status SetAttrTypeList(const char* attr_name,
+                                 const TF_DataType* values, int num_values) = 0;
+  virtual Status SetAttrBoolList(const char* attr_name,
+                                 const unsigned char* values,
+                                 int num_values) = 0;
+  virtual Status SetAttrShapeList(const char* attr_name, const int64_t** dims,
+                                  const int* num_dims, int num_values) = 0;
+  virtual Status SetAttrFunctionList(const char* attr_name,
+                                     const TFE_Op** value, int num_values) = 0;
 
-  virtual tensorflow::Status InputLength(const char* input_name,
-                                         int* length) = 0;
-  virtual tensorflow::Status OutputLength(const char* output_name,
-                                          int* length) = 0;
+  virtual Status InputLength(const char* input_name, int* length) = 0;
+  virtual Status OutputLength(const char* output_name, int* length) = 0;
 
   // Experimental
-  virtual tensorflow::Status SetUseXla(bool enable) {
-    return tensorflow::errors::Unimplemented("SetUseXla not implemented");
+  virtual Status SetUseXla(bool enable) {
+    return errors::Unimplemented("SetUseXla not implemented");
   }
-  virtual tensorflow::Status SetCancellationManager(
+
+  virtual Status SetCancellationManager(
       TFE_CancellationManager* cancellation_manager) {
-    return tensorflow::errors::Unimplemented(
-        "SetCancellationManager not implemented");
+    return errors::Unimplemented("SetCancellationManager not implemented");
   }
 };
-
-namespace tensorflow {
 
 class OpDef;
 
 class OperationInterface : public AbstractOperationInterface {
  public:
-  explicit OperationInterface(TFE_Context* ctx);
+  explicit OperationInterface(EagerContext* ctx);
   ~OperationInterface() override{};
 
   void Clear() override { operation_.Clear(); }
@@ -173,8 +157,8 @@ class OperationInterface : public AbstractOperationInterface {
       TFE_CancellationManager* cancellation_manager) override;
 
   // TODO(gjn): Remove once TFE_InferShapes is removed
-  const tensorflow::AttrBuilder& Attrs() const { return operation_.Attrs(); }
-  tensorflow::AttrBuilder* MutableAttrs() { return operation_.MutableAttrs(); }
+  const AttrBuilder& Attrs() const { return operation_.Attrs(); }
+  AttrBuilder* MutableAttrs() { return operation_.MutableAttrs(); }
 
   const TensorHandle* GetInput(int i) const { return operation_.Inputs()[i]; }
 

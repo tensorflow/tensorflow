@@ -846,10 +846,40 @@ cc_library(
 filegroup(
     name = "GPUOpsTdFiles",
     srcs = [
+        "include/mlir/Dialect/GPU/GPUBase.td",
         "include/mlir/Dialect/GPU/GPUOps.td",
         "include/mlir/Dialect/LLVMIR/LLVMOpBase.td",
         "include/mlir/Interfaces/SideEffects.td",
         ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "ParallelLoopMapperAttrGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.cpp.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/GPU/ParallelLoopMapperEnums.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/GPU/ParallelLoopMapperAttr.td",
+    td_srcs = [
+        ":GPUOpsTdFiles",
+        ":AffineOpsTdFiles",
     ],
 )
 
@@ -886,7 +916,7 @@ cc_library(
         ],
     ),
     hdrs = glob([
-        "include/mlir/Dialect/GPU/*.h",
+        "include/mlir/Dialect/GPU/GPUDialect.h",
     ]),
     includes = ["include"],
     deps = [
@@ -908,6 +938,8 @@ cc_library(
         ],
     ),
     hdrs = [
+        "include/mlir/Dialect/GPU/MemoryPromotion.h",
+        "include/mlir/Dialect/GPU/ParallelLoopMapper.h",
         "include/mlir/Dialect/GPU/Passes.h",
         "include/mlir/Dialect/GPU/Utils.h",
     ],
@@ -917,10 +949,12 @@ cc_library(
         ":GPUDialect",
         ":IR",
         ":LoopOps",
+        ":ParallelLoopMapperAttrGen",
         ":Pass",
         ":StandardOps",
         ":Support",
         ":Transforms",
+        "@llvm-project//llvm:support",
     ],
 )
 
@@ -982,6 +1016,7 @@ cc_library(
         ":GPUCommonTransforms",
         ":GPUDialect",
         ":GPUToNVVMGen",
+        ":GPUTransforms",
         ":IR",
         ":LLVMTransforms",
         ":NVVMDialect",
@@ -1733,17 +1768,14 @@ cc_library(
 
 cc_library(
     name = "LoopsToGPU",
-    srcs = [
-        "lib/Conversion/LoopsToGPU/LoopsToGPU.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h",
-    ],
+    srcs = ["lib/Conversion/LoopsToGPU/LoopsToGPU.cpp"],
+    hdrs = ["include/mlir/Conversion/LoopsToGPU/LoopsToGPU.h"],
     includes = ["include"],
     deps = [
         ":Affine",
         ":AffineToStandardTransforms",
         ":GPUDialect",
+        ":GPUTransforms",
         ":IR",
         ":LoopOps",
         ":Pass",

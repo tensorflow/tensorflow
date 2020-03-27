@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/winograd_util.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
@@ -110,7 +111,7 @@ TEST_F(OpenCLOperationTest, Winograd36To4x4) {
     src_tensor.data[i] = sin(i);
   }
 
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
+  Tensor<Linear, DataType::FLOAT32> biases;
   biases.shape = Linear(1);
   biases.data.resize(biases.shape.DimensionsProduct());
   for (int i = 0; i < biases.data.size(); ++i) {

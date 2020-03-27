@@ -518,7 +518,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_to to get the IR. ";
+           "Rerun with --xla_dump_to to get the IR and looks for files with "
+           "name containing: *"
+        << FilenameFor(*module, "", "") << "*";
   }
 
   GpuVersion gpu_version = GetGpuVersion(stream_exec);

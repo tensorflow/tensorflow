@@ -51,7 +51,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.
 //
-// These have 1:1 correspondance with same-named ops in the xla_hlo dialect;
+// These have 1:1 correspondence with same-named ops in the xla_hlo dialect;
 // however, those operations do not support broadcasting.
 //
 // See:

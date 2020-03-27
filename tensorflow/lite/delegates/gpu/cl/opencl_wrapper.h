@@ -27,7 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Status LoadOpenCL();
+absl::Status LoadOpenCL();
 void LoadOpenCLFunctions(void *libopencl, bool is_pixel);
 
 typedef cl_int(CL_API_CALL *PFN_clGetPlatformIDs)(

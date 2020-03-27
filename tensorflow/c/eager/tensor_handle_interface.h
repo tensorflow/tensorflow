@@ -19,6 +19,9 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
+#include "tensorflow/core/platform/casts.h"
+
+namespace tensorflow {
 
 // Abstract interface to a TensorHandle.
 //
@@ -34,24 +37,24 @@ class AbstractTensorHandleInterface {
   virtual ~AbstractTensorHandleInterface() {}
 
   // Check if the handle is in a valid initialized state.
-  virtual bool IsValid(tensorflow::Status* status) const = 0;
+  virtual bool IsValid(Status* status) const = 0;
   // Returns tensor dtype.
   virtual TF_DataType DataType() const = 0;
   // Returns number of dimensions.
-  virtual int NumDims(tensorflow::Status* status) const = 0;
+  virtual int NumDims(Status* status) const = 0;
   // Returns number of elements across all dimensions.
-  virtual int64_t NumElements(tensorflow::Status* status) const = 0;
+  virtual int64_t NumElements(Status* status) const = 0;
   // Returns size of specified dimension
-  virtual int64_t Dim(int dim_index, tensorflow::Status* status) const = 0;
+  virtual int64_t Dim(int dim_index, Status* status) const = 0;
 
   // Returns the device which created the handle.
-  virtual const char* DeviceName(tensorflow::Status* status) const = 0;
+  virtual const char* DeviceName(Status* status) const = 0;
   // Returns the device where the tensor was placed.
-  virtual const char* BackingDeviceName(tensorflow::Status* status) const = 0;
+  virtual const char* BackingDeviceName(Status* status) const = 0;
   // Returns a tensor for the handle. If tensor is remote, it will be copied.
-  virtual TF_Tensor* Resolve(tensorflow::Status* status) = 0;
+  virtual TF_Tensor* Resolve(Status* status) = 0;
   // Returns debug information about the tensor.
-  virtual TFE_TensorDebugInfo* TensorDebugInfo(tensorflow::Status* status) = 0;
+  virtual TFE_TensorDebugInfo* TensorDebugInfo(Status* status) = 0;
 
   // Return a copy of the handle.
   virtual AbstractTensorHandleInterface* Copy() = 0;
@@ -65,8 +68,9 @@ class AbstractTensorHandleInterface {
   virtual void EnableImplicitMirroring() = 0;
 };
 
-namespace tensorflow {
-
+// TODO(gjn): Try to move these all to TensorHandle and make it implement
+// AbstractTensorHandleInterface. Currently, this is not so straightforward
+// because of various BUILD file dependencies.
 class TensorHandleInterface : public AbstractTensorHandleInterface {
  public:
   explicit TensorHandleInterface(TensorHandle* h) : handle_(h) {}
@@ -87,13 +91,17 @@ class TensorHandleInterface : public AbstractTensorHandleInterface {
 
   void EnableImplicitMirroring() override;
 
-  // TODO(gjn): This is not a very generic interface, but is needed for specific
-  // use cases.
+  // For runtime specific APIs, provide ability to get the underlying handle.
   TensorHandle* Handle() { return handle_; }
 
  private:
   TensorHandle* handle_;
 };
+
+inline TensorHandle* TensorHandleFromInterface(
+    const std::unique_ptr<AbstractTensorHandleInterface>& handle) {
+  return down_cast<TensorHandleInterface*>(handle.get())->Handle();
+}
 
 }  // namespace tensorflow
 

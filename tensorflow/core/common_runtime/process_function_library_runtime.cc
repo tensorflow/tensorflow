@@ -1258,12 +1258,18 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
 FunctionLibraryRuntime::DoneCallback
 ProcessFunctionLibraryRuntime::ApplyCleanUpToDoneCallback(
     std::vector<std::unique_ptr<CleanUpItem>>* items,
-    FunctionLibraryRuntime::DoneCallback done,
-    const Rendezvous* rendezvous) const {
+    FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
+    const Rendezvous* created_rendezvous) const {
   return
-      [this, items, done = std::move(done), rendezvous](const Status& status) {
-        if (rendezvous) {
-          rendezvous->Unref();
+      [this, items, done = std::move(done), step_id,
+       created_rendezvous](const Status& status) {
+        if (created_rendezvous) {
+          DCHECK(rendezvous_factory_);
+          created_rendezvous->Unref();
+          Status s = rendezvous_factory_.CleanUp(step_id);
+          if (!s.ok()) {
+            LOG(ERROR) << s;
+          }
         }
         auto* local_status = new Status(status);
         CleanUp(items, [local_status, done](const Status& cleanup_status) {
@@ -1281,15 +1287,16 @@ void ProcessFunctionLibraryRuntime::Run(
     std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
   FunctionLibraryRuntime::Options new_opts = opts;
-  Rendezvous* rendezvous = nullptr;
+  Rendezvous* created_rendezvous = nullptr;
   if (!opts.rendezvous) {
     if (rendezvous_factory_) {
-      Status s = rendezvous_factory_(opts.step_id, device_mgr_, &rendezvous);
+      Status s =
+          rendezvous_factory_(opts.step_id, device_mgr_, &created_rendezvous);
       if (!s.ok()) {
         done(s);
         return;
       }
-      new_opts.rendezvous = rendezvous;
+      new_opts.rendezvous = created_rendezvous;
     } else {
       done(
           errors::FailedPrecondition("The caller does not provide a rendezvous "
@@ -1301,7 +1308,8 @@ void ProcessFunctionLibraryRuntime::Run(
   }
 
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done), rendezvous);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, std::move(done),
+                                    new_opts.step_id, created_rendezvous);
   bool multi_device;
   {
     tf_shared_lock l(mu_);

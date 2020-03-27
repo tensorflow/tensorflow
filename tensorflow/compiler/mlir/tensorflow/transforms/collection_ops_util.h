@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 
 namespace mlir {
 namespace TF {
@@ -53,7 +54,8 @@ Value GetIndicesForElement(Value index, Value buffer, OpBuilder builder,
 
 // Creates ops that slice the element out of a buffer at the given index.
 // Requires `index` to have tensor<1xi32> type.
-Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc);
+Value GetElement(Value index, Value buffer, OpBuilder builder, Location loc,
+                 bool keep_slice_shape = false);
 
 // Creates ops that copy the buffer and update an element at the given index.
 // Requires `index` to have tensor<1xi32> type.
@@ -63,9 +65,42 @@ Value SetElement(Value index, Value buffer, Value element, OpBuilder builder,
 // Creates the buffer for the data structure with given element shape, type and
 // maximum size.
 LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
+                                    int64_t max_size, Operation* op,
+                                    Type element_dtype, OpBuilder builder,
+                                    Value* buffer);
+
+// Same as above, but uses a Value as max_size and check if it is a constant.
+LogicalResult CreateInitBufferValue(ArrayRef<int64_t> element_shape,
                                     Value max_size, Operation* op,
                                     Type element_dtype, OpBuilder builder,
                                     Value* buffer);
+
+// Tries to infer the element type with full shape based its write accesses.
+// `infer_from_user` should check if the provided op is an accessing op that
+// could be used to infer the type.
+llvm::Optional<RankedTensorType> GetElementTypeFromAccess(
+    Value collection, ModuleOp module,
+    llvm::function_ref<llvm::Optional<Type>(Operation*)> infer_from_op);
+
+// Creates a ReadVariableOp on a local variable.
+Value ReadLocalVariable(Value local_var, OpBuilder builder, Location loc);
+
+// Creates an AssignVariableOp on a local variable.
+TF::AssignVariableOp WriteLocalVariable(Value local_var, Value value,
+                                        OpBuilder builder, Location loc);
+
+// Adds two values, or creates a logical-or if they are boolean type.
+Value AccumulateBuffers(Value a, Value b, OpBuilder builder, Location loc);
+
+// Gathers elements in buffer with the indices.
+Value GatherElements(Value indices, Value buffer, OpBuilder builder,
+                     Location loc);
+
+// Scatters elements into buffer, where each scattered element is accumulated
+// with the old value in buffer.
+Value ScatterAccumulateElements(Value indices, Value updates, Value buffer,
+                                OpBuilder builder, Location loc);
+
 }  // namespace collection_ops_util
 }  // namespace TF
 }  // namespace mlir

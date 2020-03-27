@@ -60,7 +60,7 @@ struct SizeDistPriorityInfo {
 
 }  // namespace
 
-Status GreedyBySizeAssignment(
+absl::Status GreedyBySizeAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     OffsetsAssignment* assignment) {
   const size_t num_tensors = usage_records.size();
@@ -104,7 +104,7 @@ Status GreedyBySizeAssignment(
           prev_offset, cur_offset + usage_records[allocated_id].tensor_size);
     }
     if (assignment->total_size < prev_offset) {
-      return InternalError("Total size is wrong.");
+      return absl::InternalError("Total size is wrong.");
     }
 
     // If no suitable gap found, we should allocate current tensor after the
@@ -125,7 +125,7 @@ Status GreedyBySizeAssignment(
     assignment->total_size =
         std::max(assignment->total_size, best_offset + rec->tensor_size);
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 // Assigns given tensors to shared objects, using the following greedy
@@ -152,7 +152,7 @@ Status GreedyBySizeAssignment(
 // object with size equal to current tensor's size;
 // - Modify SizeDistPriority records of tensors, that haven't been assigned yet,
 // to reflect distance changes after that assignment.
-Status GreedyBySizeDistPriorityAssignment(
+absl::Status GreedyBySizeDistPriorityAssignment(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
     ObjectsAssignment<size_t>* assignment) {
   std::vector<size_t> positional_max =
@@ -175,7 +175,7 @@ Status GreedyBySizeDistPriorityAssignment(
       ++pos;
     }
     if (pos == 0) {
-      return InternalError("Variable pos must be positive.");
+      return absl::InternalError("Variable pos must be positive.");
     }
     priority_info[rec_id].position = pos - 1;
   }
@@ -198,7 +198,7 @@ Status GreedyBySizeDistPriorityAssignment(
     if (best_info_id == kNotAssigned) {
       // During each iteration we assign exactly one of the tensors, so some not
       // yet assigned tensors must exist.
-      return InternalError("Invalid value for variable best_info_id.");
+      return absl::InternalError("Invalid value for variable best_info_id.");
     }
 
     size_t best_rec_id = priority_info[best_info_id].tensor_usage_id;
@@ -271,7 +271,7 @@ Status GreedyBySizeDistPriorityAssignment(
       }
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gpu

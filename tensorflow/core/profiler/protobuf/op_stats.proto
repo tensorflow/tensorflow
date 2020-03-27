@@ -84,6 +84,8 @@ message RunEnvironment {
   int32 num_cores_per_replica = 10;
   // The chip interconnection topology.
   SystemTopology topology = 11;
+  // Host trace level.
+  uint32 host_trace_level = 12;
 }
 
 // Operator Statistics.

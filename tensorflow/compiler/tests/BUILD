@@ -32,6 +32,7 @@ package_group(
     packages = [
         # To pass open source testing in the pip Kokoros.
         "//bazel_pip/tensorflow/compiler/tests/...",
+        "//platforms/xla/tests/neural_nets",
     ],
 )
 
@@ -747,6 +748,7 @@ tf_xla_py_test(
 tf_xla_py_test(
     name = "image_ops_test",
     size = "small",
+    timeout = "long",
     srcs = ["image_ops_test.py"],
     python_version = "PY3",
     shard_count = 10,

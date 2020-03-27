@@ -30,10 +30,10 @@ class Reshapex4 : public GPUOperation {
  public:
   explicit Reshapex4(const OperationDef& definition)
       : GPUOperation(definition), work_group_size_(8, 4, 1) {}
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Reshapex4(Reshapex4&& operation);
@@ -42,7 +42,7 @@ class Reshapex4 : public GPUOperation {
   Reshapex4& operator=(const Reshapex4&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
   CLKernel kernel_;
