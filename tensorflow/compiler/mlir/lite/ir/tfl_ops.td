@@ -1502,7 +1502,8 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>]> {
+    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    TFL_GpuTargetOp]> {
   let summary = "Logistic operator";
 
   let description = [{
@@ -2153,7 +2154,7 @@ def TFL_Relu1Op: TFL_Op<"relu_n1_to_1", [NoSideEffect,
 }
 
 def TFL_ReshapeOp: TFL_Op<"reshape", [
-    NoSideEffect, SameOperandsAndResultsScale]> {
+    NoSideEffect, SameOperandsAndResultsScale, TFL_GpuTargetOp]> {
   let summary = "Reshape operator";
 
   let description = [{
@@ -2370,7 +2371,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
     // zero_point = 0
     // scale = 1. / (max_value + 1)
     FixedResultScale<Int8UniformQuantizedType<-128, 390625, -8>>,
-    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>]> {
+    FixedResultScale<UInt8UniformQuantizedType<0, 390625, -8>>,
+    TFL_GpuTargetOp]> {
   let summary = "Softmax operator";
 
   let description = [{
