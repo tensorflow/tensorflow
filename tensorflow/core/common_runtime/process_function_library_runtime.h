@@ -71,7 +71,7 @@ class ProcessFunctionLibraryRuntime {
       DistributedFunctionLibraryRuntime* parent = nullptr,
       const CustomKernelCreator* custom_kernel_creator = nullptr,
       const SessionMetadata* session_metadata = nullptr,
-      Rendezvous::Factory rendezvous_factory = nullptr);
+      Rendezvous::Factory rendezvous_factory = Rendezvous::Factory());
 
   virtual ~ProcessFunctionLibraryRuntime() {
     // Deleting the FunctionLibraryRuntime map will delete the function handles
@@ -294,7 +294,7 @@ class ProcessFunctionLibraryRuntime {
 
   FunctionLibraryRuntime::DoneCallback ApplyCleanUpToDoneCallback(
       std::vector<std::unique_ptr<CleanUpItem>>* items,
-      FunctionLibraryRuntime::DoneCallback done,
+      FunctionLibraryRuntime::DoneCallback done, const int64 step_id,
       const Rendezvous* rendezvous) const;
 
   DistributedFunctionLibraryRuntime* const parent_;
