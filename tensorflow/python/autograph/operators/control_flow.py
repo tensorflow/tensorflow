@@ -340,8 +340,11 @@ def for_stmt(iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """
   if tensor_util.is_tensor(iter_):
     if tensors.is_range_tensor(iter_):
-      _tf_range_for_stmt(
-          iter_, extra_test, body, get_state, set_state, symbol_names, opts)
+      _tf_range_for_stmt(iter_, extra_test, body, get_state, set_state,
+                         symbol_names, opts)
+    elif isinstance(iter_, ragged_tensor.RaggedTensor):
+      _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
+                          symbol_names, opts)
     else:
       _known_len_tf_for_stmt(
           iter_, extra_test, body, get_state, set_state, symbol_names, opts)
