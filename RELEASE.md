@@ -11,6 +11,7 @@
     * Update NVIDIA `NCCL` to `2.5.7-1` for better performance and performance tuning. Please see [nccl developer guide](https://docs.nvidia.com/deeplearning/sdk/nccl-developer-guide/docs/env.html) for more information on this.
     * Support gradient `allreduce` in `float16`. See this [example](https://github.com/tensorflow/models/blob/master/official/staging/training/grad_utils.py) usage.
     * Experimental support of [all reduce gradient packing](https://www.tensorflow.org/api_docs/python/tf/distribute/experimental/CollectiveHints) to allow overlapping gradient aggregation with backward path computation. 
+    * Deprecated `experimental_run_v2` method for distribution strategies and renamed the method `run` as it is no longer experimental.
 * `tf.keras`:
   * `Model.fit` major improvements:
      * You can now use custom training logic with `Model.fit` by overriding `Model.train_step`.
