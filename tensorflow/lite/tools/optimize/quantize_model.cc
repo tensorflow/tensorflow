@@ -1240,11 +1240,13 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
   return kTfLiteOk;
 }
 
-TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
-                           ModelT* model, const TensorType& input_type,
-                           const TensorType& output_type, bool allow_float,
-                           const TensorType& activations_type,
-                           ErrorReporter* error_reporter) {
+TfLiteStatus QuantizeModelAllOperators(flatbuffers::FlatBufferBuilder* builder,
+                                       ModelT* model,
+                                       const TensorType& input_type,
+                                       const TensorType& output_type,
+                                       bool allow_float,
+                                       const TensorType& activations_type,
+                                       ErrorReporter* error_reporter) {
   return QuantizeModel(builder, model, input_type, output_type, allow_float,
                        GetAllOperatorOutputs(model), activations_type,
                        error_reporter);

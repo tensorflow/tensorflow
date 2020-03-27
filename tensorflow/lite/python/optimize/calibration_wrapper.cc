@@ -233,12 +233,11 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
   auto status = kTfLiteOk;
-  
-  status = tflite::optimize::QuantizeModel(
-    &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-    TfLiteTypeToSchemaType(output_type), allow_float,
-    TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
-  }
+
+  status = tflite::optimize::QuantizeModelAllOperators(
+      &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+      TfLiteTypeToSchemaType(output_type), allow_float,
+      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();
@@ -269,8 +268,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
-      TensorType_INT8,
-      error_reporter_.get());
+      TensorType_INT8, error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;
