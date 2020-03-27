@@ -1487,7 +1487,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
           new_shape = [dim_size[ragged_rank - 1]] + input_shape[ragged_rank:]
         else:
           dim_size = math_ops.cumprod(input_shape)
-          new_shape = array_ops.concat([[dim_size[ragged_rank]],
+          new_shape = array_ops.concat([[dim_size[ragged_rank - 1]],
                                         input_shape[ragged_rank:]],
                                        axis=0)
         flattened = array_ops.reshape(tensor, new_shape)
