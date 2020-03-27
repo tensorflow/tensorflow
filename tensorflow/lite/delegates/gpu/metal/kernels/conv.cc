@@ -667,21 +667,29 @@ int GetMaximumPossibleWavesCount(const BHWC& dst_shape, GpuType gpu) {
   }
 }
 
+int GetCountOfComputeUnits(GpuType gpu) {
+  if (gpu == GpuType::kA7 || gpu == GpuType::kA8) {
+    return 4;
+  } else if (gpu == GpuType::kA9 || gpu == GpuType::kA10) {
+    return 6;
+  } else if (gpu == GpuType::kA11) {
+    return 3;
+  } else if (gpu == GpuType::kA12) {
+    return 4;
+  } else {
+    // unknown gpu
+    return 4;
+  }
+}
+
 int GetRecommendedBlockSize(const BHWC& dst_shape, GpuType gpu) {
   const int max_waves = GetMaximumPossibleWavesCount(dst_shape, gpu);
-  int base_threshold;
-  if (gpu == GpuType::kA7 || gpu == GpuType::kA8) {
-    base_threshold = 32;
-  } else if (gpu == GpuType::kA11) {
-    base_threshold = 48;
-  } else {
-    base_threshold = 64;
-  }
-  if (max_waves >= base_threshold * 4) {
+  const int cu_count = GetCountOfComputeUnits(gpu);
+  if (max_waves >= cu_count * 64) {
     return 8;
-  } else if (max_waves >= base_threshold * 2) {
+  } else if (max_waves >= cu_count * 32) {
     return 4;
-  } else if (max_waves >= base_threshold) {
+  } else if (max_waves >= cu_count * 16) {
     return 2;
   } else {
     return 1;
