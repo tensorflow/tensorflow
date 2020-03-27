@@ -862,6 +862,11 @@ LogicalResult LowerStaticTensorListPass::RewriteFunction(
   target.addLegalOp<ConstantOp>();
   target.addLegalOp<FuncOp>();
   target.addLegalOp<ReturnOp>();
+  // Register fused LSTM/RNN ops as legal.
+  target.addLegalOp<TFL::LSTMOp>();
+  target.addLegalOp<TFL::UnidirectionalSequenceLSTMOp>();
+  target.addLegalOp<TFL::UnidirectionalSequenceRNNOp>();
+  target.addLegalOp<TFL::BidirectionalSequenceLSTMOp>();
 
   OwningRewritePatternList patterns;
   populateWithGenerated(context, &patterns);
