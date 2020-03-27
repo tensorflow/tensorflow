@@ -291,21 +291,17 @@ class Delegate {
       tensor->delegate = &delegate_;
     }
 
+    std::string device_name = std::string([[metal_device_ name] UTF8String]);
+    DeviceInfo device_info(device_name);
     size_t storage_type_size;
     RuntimeOptions runtime_options;
     if (options_.allow_precision_loss) {
       storage_type_size = sizeof(HalfBits);
       runtime_options.storage_precision = RuntimeOptions::Precision::FP16;
-      const auto gpu_type = GetGpuType();
-      const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
-                           gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
-      if (powervr) {
-        // PowerVR gpus support only round to zero for floating-point operations,
-        // to increase precision we will use F32 accumulator in this case
-        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
-      } else {
-        // Apple own gpus support round to nearest and have better precision
+      if (device_info.IsRoundToNearestSupported()) {
         runtime_options.accumulator_precision = RuntimeOptions::Precision::FP16;
+      } else {
+        runtime_options.accumulator_precision = RuntimeOptions::Precision::FP32;
       }
     } else {
       storage_type_size = sizeof(float);
