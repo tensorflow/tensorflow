@@ -38,8 +38,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                             float proj_clip,
                             const std::vector<std::vector<int>>& input_shapes,
                             const TensorType& weights_type = TensorType_FLOAT32,
-                            bool is_layer_norm = false,
-                            bool asymmetric_quantize_inputs = false)
+                            bool is_layer_norm = false)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
@@ -132,7 +131,7 @@ class UnidirectionalLSTMOpModel : public SingleOpModel {
                  BuiltinOptions_UnidirectionalSequenceLSTMOptions,
                  CreateUnidirectionalSequenceLSTMOptions(
                      builder_, ActivationFunctionType_TANH, cell_clip,
-                     proj_clip, time_major, asymmetric_quantize_inputs)
+                     proj_clip, time_major)
                      .Union());
     BuildInterpreter(input_shapes);
   }
@@ -293,12 +292,11 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
       bool time_major, bool use_cifg, bool use_peephole,
       bool use_projection_weights, bool use_projection_bias, float cell_clip,
       float proj_clip, const std::vector<std::vector<int>>& input_shapes,
-      TensorType tensor_type, bool asymmetric_quantize_inputs)
+      TensorType tensor_type)
       : UnidirectionalLSTMOpModel(
             n_batch, n_input, n_cell, n_output, sequence_length, time_major,
             use_cifg, use_peephole, use_projection_weights, use_projection_bias,
-            cell_clip, proj_clip, input_shapes, tensor_type, false,
-            asymmetric_quantize_inputs) {
+            cell_clip, proj_clip, input_shapes, tensor_type) {
     tensor_type_ = tensor_type;
   }
 
@@ -362,7 +360,7 @@ class HybridUnidirectionalLSTMOpModel : public UnidirectionalLSTMOpModel {
   TensorType tensor_type_;
 };
 
-class BaseUnidirectionalLstmTest : public ::testing::TestWithParam<bool> {
+class BaseUnidirectionalLstmTest : public ::testing::Test {
  protected:
   // Weights of the LSTM model. Some are optional.
   std::vector<float> input_to_input_weights_;
@@ -628,7 +626,7 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
                 /*time_major=*/false);
 }
 
-TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -670,7 +668,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8, GetParam());
+      TensorType_UINT8);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -691,7 +689,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
                 /*tolerance=*/0.0157651);
 }
 
-TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_F(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -733,7 +731,7 @@ TEST_P(NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8, GetParam());
+      TensorType_INT8);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -864,7 +862,7 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -882,10 +880,11 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
       {
           {sequence_length, n_batch, n_input},  // input tensor
 
-          {0, 0},              // input_to_input_weight tensor
-          {n_cell, n_input},   // input_to_forget_weight tensor
-          {n_cell, n_input},   // input_to_cell_weight tensor
-          {n_cell, n_input},   // input_to_output_weight tensor
+          {0, 0},             // input_to_input_weight tensor
+          {n_cell, n_input},  // input_to_forget_weight tensor
+          {n_cell, n_input},  // input_to_cell_weight tensor
+          {n_cell, n_input},  // input_to_output_weight tensor
+
           {0, 0},              // recurrent_to_input_weight tensor
           {n_cell, n_output},  // recurrent_to_forget_weight tensor
           {n_cell, n_output},  // recurrent_to_cell_weight tensor
@@ -906,7 +905,7 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8, GetParam());
+      TensorType_UINT8);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -926,7 +925,7 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.03573);
 }
 
-TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
+TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -969,7 +968,7 @@ TEST_P(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8, GetParam());
+      TensorType_INT8);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -1656,16 +1655,14 @@ TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
+TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestUint8) {
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
   const int n_output = 16;
   const int sequence_length = 4;
-  if (GetParam()) {
-    return;
-  }
+
   HybridUnidirectionalLSTMOpModel lstm(
       n_batch, n_input, n_cell, n_output, sequence_length,
       /*time_major=*/true, /*use_cifg=*/false, /*use_peephole=*/true,
@@ -1700,7 +1697,7 @@ TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_UINT8, GetParam());
+      TensorType_UINT8);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -1726,11 +1723,8 @@ TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm, /*tolerance=*/0.00467);
 }
 
-TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
+TEST_F(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
        HybridLstmBlackBoxTestInt8) {
-  if (GetParam()) {
-    return;
-  }
   const int n_batch = 2;
   const int n_input = 5;
   const int n_cell = 20;
@@ -1771,7 +1765,7 @@ TEST_P(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest,
           {n_batch, n_output},  // activation_state tensor
           {n_batch, n_cell},    // cell_state tensor
       },
-      TensorType_INT8, GetParam());
+      TensorType_INT8);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2743,14 +2737,5 @@ TEST_F(CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest,
   VerifyGoldens(lstm_input_, lstm_golden_output_, &lstm);
 }
 
-#define QUANTIZE_PARAMETER_TEST(test) \
-  INSTANTIATE_TEST_SUITE_P(test, test, ::testing::ValuesIn({false, true}));
-
-QUANTIZE_PARAMETER_TEST(
-    CifgPeepholeNoProjectionNoClippingUnidirectionalLstmTest);
-QUANTIZE_PARAMETER_TEST(
-    NoCifgNoPeepholeNoProjectionNoClippingUnidirectionalLstmTest);
-QUANTIZE_PARAMETER_TEST(NoCifgPeepholeProjectionClippingUnidirectionalLstmTest);
-#undef QUANTIZE_PARAMETER_TEST
 }  // namespace
 }  // namespace tflite

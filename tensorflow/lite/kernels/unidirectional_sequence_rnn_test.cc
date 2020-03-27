@@ -174,8 +174,7 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
   UnidirectionalRNNOpModel(
       int batches, int sequence_len, int units, int size, bool time_major,
       const TensorType& weights = TensorType_FLOAT32,
-      const TensorType& recurrent_weights = TensorType_FLOAT32,
-      bool asymmetric_quantize_inputs = false)
+      const TensorType& recurrent_weights = TensorType_FLOAT32)
       : batches_(batches),
         sequence_len_(sequence_len),
         units_(units),
@@ -189,8 +188,7 @@ class UnidirectionalRNNOpModel : public SingleOpModel {
     SetBuiltinOp(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
                  BuiltinOptions_SequenceRNNOptions,
                  CreateSequenceRNNOptions(builder_, time_major,
-                                          ActivationFunctionType_RELU,
-                                          asymmetric_quantize_inputs)
+                                          ActivationFunctionType_RELU)
                      .Union());
     if (time_major) {
       BuildInterpreter({{sequence_len_, batches_, input_size_},
@@ -251,11 +249,9 @@ class HybridUnidirectionalRNNOpModel : public UnidirectionalRNNOpModel {
  public:
   HybridUnidirectionalRNNOpModel(int batches, int sequence_len, int units,
                                  int size, bool time_major,
-                                 TensorType tensor_type,
-                                 bool asymmetric_quantize_inputs)
+                                 TensorType tensor_type)
       : UnidirectionalRNNOpModel(batches, sequence_len, units, size, time_major,
-                                 tensor_type, tensor_type,
-                                 asymmetric_quantize_inputs) {
+                                 tensor_type, tensor_type) {
     tensor_type_ = tensor_type;
   }
 
@@ -301,14 +297,10 @@ TEST(UnidirectionalRNNOpTest, BlackBoxTest) {
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
 }
 
-class HybridUnidirectionalRNNOpModelOpTest
-    : public ::testing::TestWithParam<bool> {};
-
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
+TEST(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/false, TensorType_UINT8,
-                                     GetParam());
+                                     /*time_major=*/false, TensorType_UINT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -331,11 +323,10 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestUint8) {
                                    expected, /*max_abs_error=*/0.013)));
 }
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
+TEST(HybridUnidirectionalRNNOpModelOpTest, BlackBoxTestInt8) {
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/false, TensorType_INT8,
-                                     GetParam());
+                                     /*time_major=*/false, TensorType_INT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -387,11 +378,10 @@ TEST(UnidirectionalRNNOpTest, TimeMajorBlackBoxTest) {
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(expected)));
 }
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
+TEST(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/true, TensorType_UINT8,
-                                     GetParam());
+                                     /*time_major=*/true, TensorType_UINT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -418,11 +408,10 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestUint8) {
                                    expected, /*max_abs_error=*/0.013)));
 }
 
-TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
+TEST(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
   HybridUnidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                                      /*units=*/16, /*size=*/8,
-                                     /*time_major=*/true, TensorType_INT8,
-                                     GetParam());
+                                     /*time_major=*/true, TensorType_INT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -448,10 +437,6 @@ TEST_P(HybridUnidirectionalRNNOpModelOpTest, TimeMajorBlackBoxTestInt8) {
   EXPECT_THAT(rnn.GetOutput(), ElementsAreArray(ArrayFloatNear(
                                    expected, /*max_abs_error=*/0.013)));
 }
-
-INSTANTIATE_TEST_SUITE_P(HybridUnidirectionalRNNOpModelOpTest,
-                         HybridUnidirectionalRNNOpModelOpTest,
-                         ::testing::ValuesIn({true, false}));
 
 }  // namespace
 }  // namespace tflite

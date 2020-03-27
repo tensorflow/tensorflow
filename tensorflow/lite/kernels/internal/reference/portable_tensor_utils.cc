@@ -196,11 +196,6 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
-  if (input_offset == nullptr) {
-    PortableMatrixBatchVectorMultiplyAccumulate(
-        matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
-    return;
-  }
   if (!compute_row_sums || *compute_row_sums) {
     memset(row_sums, 0, sizeof(int32_t) * m_rows);
     PortableReductionSumVector(matrix, row_sums, m_rows, m_cols);

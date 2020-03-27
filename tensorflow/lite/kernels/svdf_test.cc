@@ -131,8 +131,7 @@ class BaseSVDFOpModel : public SingleOpModel {
   BaseSVDFOpModel(int batches, int units, int input_size, int memory_size,
                   int rank,
                   TensorType weights_feature_type = TensorType_FLOAT32,
-                  TensorType weights_time_type = TensorType_FLOAT32,
-                  bool asymmetric_quantize_inputs = false)
+                  TensorType weights_time_type = TensorType_FLOAT32)
       : batches_(batches),
         units_(units),
         input_size_(input_size),
@@ -147,10 +146,9 @@ class BaseSVDFOpModel : public SingleOpModel {
         TensorData{TensorType_FLOAT32, {batches, memory_size * num_filters}},
         /*is_variable=*/true);
     output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
-                 CreateSVDFOptions(builder_, rank, ActivationFunctionType_NONE,
-                                   asymmetric_quantize_inputs)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+        CreateSVDFOptions(builder_, rank, ActivationFunctionType_NONE).Union());
     BuildInterpreter({
         {batches_, input_size_},              // input tensor
         {units_ * rank, input_size_},         // weights_feature tensor
@@ -205,10 +203,9 @@ class SVDFOpModel : public BaseSVDFOpModel {
 class HybridSVDFOpModel : public BaseSVDFOpModel {
  public:
   HybridSVDFOpModel(int batches, int units, int input_size, int memory_size,
-                    int rank, TensorType tensor_type,
-                    bool asymmetric_quantize_inputs)
+                    int rank, TensorType tensor_type)
       : BaseSVDFOpModel(batches, units, input_size, memory_size, rank,
-                        tensor_type, tensor_type, asymmetric_quantize_inputs) {
+                        tensor_type, tensor_type) {
     tensor_type_ = tensor_type;
   }
 
@@ -232,7 +229,7 @@ class HybridSVDFOpModel : public BaseSVDFOpModel {
   TensorType tensor_type_;
 };
 
-class SVDFOpTest : public ::testing::TestWithParam<bool> {
+class SVDFOpTest : public ::testing::Test {
  protected:
   void VerifyGoldens(float golden_input[], float golden_output[],
                      int golden_size, BaseSVDFOpModel* svdf,
@@ -264,9 +261,6 @@ class SVDFOpTest : public ::testing::TestWithParam<bool> {
     }
   }
 };
-
-INSTANTIATE_TEST_SUITE_P(SVDFOpTest, SVDFOpTest,
-                         ::testing::ValuesIn({false, true}));
 
 TEST_F(SVDFOpTest, BlackBoxTestRank1) {
   SVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
@@ -331,10 +325,9 @@ TEST_F(SVDFOpTest, BlackBoxTestRank2) {
                 &svdf);
 }
 
-TEST_P(SVDFOpTest, BlackBoxTestHybridRank1Uint8) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank1Uint8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/1, TensorType_UINT8,
-                         GetParam());
+                         /*memory_size=*/10, /*rank=*/1, TensorType_UINT8);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
                           0.22197971, 0.12416199, 0.27901134, 0.27557442,
                           0.3905206, -0.36137494, -0.06634006, -0.10640851});
@@ -354,13 +347,12 @@ TEST_P(SVDFOpTest, BlackBoxTestHybridRank1Uint8) {
 
   VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
                 &svdf,
-                /*tolerance=*/0.004285);
+                /*tolerance=*/0.002945);
 }
 
-TEST_P(SVDFOpTest, BlackBoxTestHybridRank2Uint8) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank2Uint8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/2, TensorType_UINT8,
-                         GetParam());
+                         /*memory_size=*/10, /*rank=*/2, TensorType_UINT8);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
                           0.12416199,  0.15785322,  0.27901134,  0.3905206,
                           0.21931258,  -0.36137494, -0.10640851, 0.31053296,
@@ -395,13 +387,12 @@ TEST_P(SVDFOpTest, BlackBoxTestHybridRank2Uint8) {
 
   VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
                 &svdf,
-                /*tolerance=*/0.007175);
+                /*tolerance=*/0.00625109);
 }
 
-TEST_P(SVDFOpTest, BlackBoxTestHybridRank1Int8) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank1Int8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/1, TensorType_INT8,
-                         GetParam());
+                         /*memory_size=*/10, /*rank=*/1, TensorType_INT8);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
                           0.22197971, 0.12416199, 0.27901134, 0.27557442,
                           0.3905206, -0.36137494, -0.06634006, -0.10640851});
@@ -421,13 +412,12 @@ TEST_P(SVDFOpTest, BlackBoxTestHybridRank1Int8) {
 
   VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
                 &svdf,
-                /*tolerance=*/0.004285);
+                /*tolerance=*/0.002945);
 }
 
-TEST_P(SVDFOpTest, BlackBoxTestHybridRank2Int8) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank2Int8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/2, TensorType_INT8,
-                         GetParam());
+                         /*memory_size=*/10, /*rank=*/2, TensorType_INT8);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
                           0.12416199,  0.15785322,  0.27901134,  0.3905206,
                           0.21931258,  -0.36137494, -0.10640851, 0.31053296,
@@ -462,7 +452,7 @@ TEST_P(SVDFOpTest, BlackBoxTestHybridRank2Int8) {
 
   VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
                 &svdf,
-                /*tolerance=*/0.007175);
+                /*tolerance=*/0.00625109);
 }
 
 // Test case for full integer quantization of SVDF.

@@ -175,8 +175,7 @@ class RNNOpModel : public SingleOpModel {
  public:
   RNNOpModel(int batches, int units, int size,
              const TensorType& weights = TensorType_FLOAT32,
-             const TensorType& recurrent_weights = TensorType_FLOAT32,
-             bool asymmetric_quantize_inputs = false)
+             const TensorType& recurrent_weights = TensorType_FLOAT32)
       : batches_(batches), units_(units), input_size_(size) {
     input_ = AddInput(TensorType_FLOAT32);
     weights_ = AddInput(weights);
@@ -184,10 +183,9 @@ class RNNOpModel : public SingleOpModel {
     bias_ = AddInput(TensorType_FLOAT32);
     hidden_state_ = AddInput(TensorType_FLOAT32, true);
     output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
-                 CreateRNNOptions(builder_, ActivationFunctionType_RELU,
-                                  asymmetric_quantize_inputs)
-                     .Union());
+    SetBuiltinOp(
+        BuiltinOperator_RNN, BuiltinOptions_RNNOptions,
+        CreateRNNOptions(builder_, ActivationFunctionType_RELU).Union());
     BuildInterpreter({{batches_, input_size_},  // input tensor
                       {units_, input_size_},    // weights tensor
                       {units_, units_},         // recurrent weights tensor
@@ -235,10 +233,8 @@ class RNNOpModel : public SingleOpModel {
 // The hybrid model has quantized weights and recurrent_weights.
 class HybridRNNOpModel : public RNNOpModel {
  public:
-  HybridRNNOpModel(int batches, int units, int size, TensorType tensor_type,
-                   bool asymmetric_quantize_inputs)
-      : RNNOpModel(batches, units, size, tensor_type, tensor_type,
-                   asymmetric_quantize_inputs) {
+  HybridRNNOpModel(int batches, int units, int size, TensorType tensor_type)
+      : RNNOpModel(batches, units, size, tensor_type, tensor_type) {
     tensor_type_ = tensor_type;
   }
 
@@ -286,10 +282,8 @@ TEST(RnnOpTest, BlackBoxTest) {
   }
 }
 
-class HybridRnnOpTest : public ::testing::TestWithParam<bool> {};
-
-TEST_P(HybridRnnOpTest, BlackBoxTestUint8) {
-  HybridRNNOpModel rnn(2, 16, 8, TensorType_UINT8, GetParam());
+TEST(HybridRnnOpTest, BlackBoxTestUint8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_UINT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -316,8 +310,8 @@ TEST_P(HybridRnnOpTest, BlackBoxTestUint8) {
   }
 }
 
-TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
-  HybridRNNOpModel rnn(2, 16, 8, TensorType_INT8, GetParam());
+TEST(HybridRnnOpTest, BlackBoxTestInt8) {
+  HybridRNNOpModel rnn(2, 16, 8, TensorType_INT8);
   rnn.SetWeights(rnn_weights);
   rnn.SetBias(rnn_bias);
   rnn.SetRecurrentWeights(rnn_recurrent_weights);
@@ -343,9 +337,6 @@ TEST_P(HybridRnnOpTest, BlackBoxTestInt8) {
                                      expected, /*max_abs_error=*/0.0104)));
   }
 }
-
-INSTANTIATE_TEST_SUITE_P(HybridRnnOpTest, HybridRnnOpTest,
-                         ::testing::ValuesIn({false, true}));
 
 }  // namespace
 }  // namespace tflite

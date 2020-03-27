@@ -286,8 +286,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
  public:
   HybridFullyConnectedOpModel(int units, int batches, const TensorData& input,
                               const TensorData& weights,
-                              const TensorData& output = {TensorType_FLOAT32},
-                              bool asymmetric_inputs = false)
+                              const TensorData& output = {TensorType_FLOAT32})
       : batches_(batches), units_(units) {
     int total_input_size = 1;
     for (size_t i = 0; i < input.shape.size(); ++i) {
@@ -303,13 +302,10 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 
     output_ = AddOutput(output);
 
-    auto options = CreateFullyConnectedOptions(
-                       builder_, ActivationFunctionType_RELU,
-                       tflite::FullyConnectedOptionsWeightsFormat_DEFAULT,
-                       false, asymmetric_inputs)
-                       .Union();
-    SetBuiltinOp(BuiltinOperator_FULLY_CONNECTED,
-                 BuiltinOptions_FullyConnectedOptions, options);
+    SetBuiltinOp(
+        BuiltinOperator_FULLY_CONNECTED, BuiltinOptions_FullyConnectedOptions,
+        CreateFullyConnectedOptions(builder_, ActivationFunctionType_RELU)
+            .Union());
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_FULLY_CONNECTED,
         ops::builtin::Register_FULLY_CONNECTED_PIE());
@@ -848,66 +844,6 @@ TEST(HybridFullyConnectedOpTest, SimpleTestQuantizedInt8) {
       /*units=*/3, /*batches=*/2,
       /*input=*/{TensorType_FLOAT32, {2, 10}},
       /*weights=*/{TensorType_INT8, {3, 10}, 0, 0, 10.0 / 127.0, 0});  // Hybrid
-
-  m.SetSignedWeights({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  });
-  m.SetBias({1, 2, 3});
-
-  m.SetInput({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  });
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                 {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
-                                 },
-                                 /*max_abs_error=*/1.3f)));
-}
-
-TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedUint8) {
-  HybridFullyConnectedOpModel m(
-      /*units=*/3, /*batches=*/2,
-      /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/
-      {TensorType_UINT8, {3, 10}, 0, 0, 10.0 / 127.0, 0}, {TensorType_FLOAT32},
-      /*asymmetric_quantize_input*/ true);  // Hybrid asymmetric
-
-  m.SetWeights({
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
-  });
-  m.SetBias({1, 2, 3});
-
-  m.SetInput({
-      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
-      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
-  });
-
-  m.Invoke();
-
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear(
-                                 {
-                                     24, 25, 26,  //
-                                     58, 59, 60,  //
-                                 },
-                                 /*max_abs_error=*/0.64f)));
-}
-
-TEST(HybridAsymmetricInputFullyConnectedOpTest, SimpleTestQuantizedInt8) {
-  HybridFullyConnectedOpModel m(
-      /*units=*/3, /*batches=*/2,
-      /*input=*/{TensorType_FLOAT32, {2, 10}},
-      /*weights=*/{TensorType_INT8, {3, 10}, 0, 0, 10.0 / 127.0, 0},
-      {TensorType_FLOAT32},
-      /*asymmetric_quantize_input*/ true);
 
   m.SetSignedWeights({
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0

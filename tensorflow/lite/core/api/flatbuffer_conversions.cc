@@ -269,8 +269,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->rank = svdf_params->rank();
         params->activation =
             parse_activation(svdf_params->fused_activation_function());
-        params->asymmetric_quantize_inputs =
-            svdf_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -282,8 +280,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation =
             parse_activation(sequence_rnn_params->fused_activation_function());
         params->time_major = sequence_rnn_params->time_major();
-        params->asymmetric_quantize_inputs =
-            sequence_rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -297,8 +293,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
             bidi_sequence_rnn_params->fused_activation_function());
         params->time_major = bidi_sequence_rnn_params->time_major();
         params->merge_outputs = bidi_sequence_rnn_params->merge_outputs();
-        params->asymmetric_quantize_inputs =
-            bidi_sequence_rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -308,8 +302,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       if (const auto* rnn_params = op->builtin_options_as_RNNOptions()) {
         params->activation =
             parse_activation(rnn_params->fused_activation_function());
-        params->asymmetric_quantize_inputs =
-            rnn_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -331,8 +323,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->activation = parse_activation(
             fully_connected_params->fused_activation_function());
         params->keep_num_dims = fully_connected_params->keep_num_dims();
-        params->asymmetric_quantize_inputs =
-            fully_connected_params->asymmetric_quantize_inputs();
         switch (fully_connected_params->weights_format()) {
           case FullyConnectedOptionsWeightsFormat_DEFAULT:
             params->weights_format = kTfLiteFullyConnectedWeightsFormatDefault;
@@ -450,8 +440,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                                  lstm_params->kernel_type());
             return kTfLiteError;
         }
-        params->asymmetric_quantize_inputs =
-            lstm_params->asymmetric_quantize_inputs();
       } else {
         TF_LITE_REPORT_ERROR(error_reporter,
                              "No valid LSTM builtin options exist");
@@ -470,8 +458,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->cell_clip = seq_lstm_params->cell_clip();
         params->proj_clip = seq_lstm_params->proj_clip();
         params->time_major = seq_lstm_params->time_major();
-        params->asymmetric_quantize_inputs =
-            seq_lstm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -487,8 +473,6 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->proj_clip = bidi_lstm_params->proj_clip();
         params->merge_outputs = bidi_lstm_params->merge_outputs();
         params->time_major = bidi_lstm_params->time_major();
-        params->asymmetric_quantize_inputs =
-            bidi_lstm_params->asymmetric_quantize_inputs();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
