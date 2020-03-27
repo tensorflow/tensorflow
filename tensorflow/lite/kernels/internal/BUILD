@@ -243,7 +243,7 @@ cc_library(
         ":strided_slice_logic",
         ":types",
         ":reference_base",
-        ":round",
+        ":cppmath",
         ":tensor",
         ":tensor_utils",
         ":transpose_utils",
@@ -294,7 +294,7 @@ cc_library(
         ":types",
         ":legacy_types",
         ":legacy_reference_base",
-        ":round",
+        ":cppmath",
         "//third_party/eigen3",
         "@gemmlowp",
         "//tensorflow/lite/c:common",
@@ -346,9 +346,10 @@ cc_test(
 )
 
 cc_library(
-    name = "round",
+    name = "cppmath",
     srcs = [],
-    hdrs = ["round.h"],
+    hdrs = ["cppmath.h"],
+    build_for_embedded = True,
     copts = tflite_copts(),
 )
 
@@ -359,7 +360,7 @@ cc_library(
     copts = tflite_copts() + micro_copts(),
     deps = [
         ":compatibility",
-        ":round",
+        ":cppmath",
         ":types",
         "//tensorflow/lite/kernels:op_macros",
     ],
@@ -467,7 +468,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":quantization_util",
-        ":round",
+        ":cppmath",
         ":strided_slice_logic",
         ":tensor",
         ":tensor_utils",
@@ -532,7 +533,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":quantization_util",
-        ":round",
+        ":cppmath",
         ":strided_slice_logic",
         ":legacy_types",
         ":tensor",
@@ -600,7 +601,7 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
-        ":round",
+        ":cppmath",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
@@ -621,9 +622,9 @@ cc_library(
     deps = [
         ":common",
         ":compatibility",
+        ":cppmath",
         ":cpu_check",
         ":portable_tensor_utils",
-        ":round",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:detect_arm",

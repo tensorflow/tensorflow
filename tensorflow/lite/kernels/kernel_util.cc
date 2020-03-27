@@ -18,8 +18,8 @@ limitations under the License.
 #include <cmath>
 #include <memory>
 
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 namespace tflite {
 
