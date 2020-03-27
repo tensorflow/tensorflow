@@ -12,14 +12,14 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-NEXT:    tensors: [ {
   // CHECK-NEXT:      shape: [ 40, 37 ],
   // CHECK-NEXT:      buffer: 1,
-  // CHECK-NEXT:      name: "Input",
+  // CHECK-NEXT:      name: "arg0",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:      }
   // CHECK-NEXT:    }, {
   // CHECK-NEXT:      shape: [ 40, 37 ],
   // CHECK-NEXT:      buffer: 2,
-  // CHECK-NEXT:      name: "Input1",
+  // CHECK-NEXT:      name: "arg1",
   // CHECK-NEXT:      quantization: {
   // CHECK-EMPTY:
   // CHECK-NEXT:      }
@@ -61,12 +61,16 @@ func @main(tensor<40x37xf32>, tensor<40x37xf32>) -> tensor<40x40xf32> {
   // CHECK-EMPTY:
   // CHECK-NEXT:  }, {
   // CHECK-EMPTY:
+  // CHECK-NEXT:  }, {
+  // CHECK-NEXT:  data: [ 49, 46, 49, 48, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+  // CHECK-NEXT:  } ],
+  // CHECK-NEXT:  metadata: [ {
+  // CHECK-NEXT:  name: "min_runtime_version",
+  // CHECK-NEXT:  buffer: 5
   // CHECK-NEXT:  } ]
   // CHECK-NEXT:}
 
   %cst = constant unit
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<40x37xf32>) -> tensor<40x37xf32> loc("Input")
-  %1 = "tfl.pseudo_input"(%arg1) : (tensor<40x37xf32>) -> tensor<40x37xf32> loc("Input")
-  %2:2 = "tfl.fully_connected"(%0, %1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "SHUFFLED4x16INT8"} : (tensor<40x37xf32>, tensor<40x37xf32>, none) -> (tensor<40x40xf32>, tensor<40x40xf32>)
-  return %2 : tensor<40x40xf32>
+  %0:2 = "tfl.fully_connected"(%arg0, %arg1, %cst) {fused_activation_function = "NONE", keep_num_dims = false, weights_format = "SHUFFLED4x16INT8"} : (tensor<40x37xf32>, tensor<40x37xf32>, none) -> (tensor<40x40xf32>, tensor<40x40xf32>)
+  return %0 : tensor<40x40xf32>
 }

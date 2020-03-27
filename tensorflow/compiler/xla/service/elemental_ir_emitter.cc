@@ -373,6 +373,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == to_type) {
         return operand_value;
       }
+      if (from_type == BF16) {
+        TF_RET_CHECK(to_type != BF16);
+        operand_value = EmitBF16ToF32(operand_value, b_);
+        from_type = F32;
+        if (from_type == to_type) {
+          return operand_value;
+        }
+      }
       if (primitive_util::IsComplexType(to_type)) {
         PrimitiveType to_component_type =
             primitive_util::ComplexComponentType(to_type);
@@ -385,15 +393,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                    llvm_ir::PrimitiveTypeToIrType(to_component_type, module_)),
             nullptr);
       }
-      if (from_type == BF16) {
-        TF_RET_CHECK(to_type != BF16);
-        operand_value = EmitBF16ToF32(operand_value, b_);
-        from_type = F32;
-        if (from_type == to_type) {
-          return operand_value;
+      if (to_type == BF16) {
+        // Cast to F32 first. Other floating point formats are not supported by
+        // EmitReducePrecisionIR.
+        if (from_type != F32) {
+          operand_value = b_->CreateFPCast(
+              operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
         }
-      }
-      if (from_type == F32 && to_type == BF16) {
         return EmitF32ToBF16(operand_value, b_);
       }
       if (to_type == PRED) {
@@ -685,7 +691,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       llvm::Value* imag_numerator = FMul(four, FMul(cos_b, sin_b));
 
       // Expm1(x) is about x for small values of x, but exp_sum_m2 is about x^2
-      // for small value of x. As a result, due to floating point precission
+      // for small value of x. As a result, due to floating point precision
       // issues, x^2 is a better approximation than Expm1(x) + Expm1(x) for
       // small values of x.
       llvm::Value* a_sqr = FMul(a, a);
@@ -728,7 +734,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
       //      is finite and b is either +/-Inf or NaN, then our normal
       //      calculation would end up returing (+/-1, NaN), as opposed to (NaN,
       //      NaN).
-      // 5/6) We always calculate the imagninary value as sin(2b)/denominator.
+      // 5/6) We always calculate the imaginary value as sin(2b)/denominator.
       //      When the denominator is infinity, this assures us that the zero is
       //      the correct sign. However if our imaginary input results in
       //      sin(2b) = NaN, we calculate our imaginary result as NaN.
@@ -1370,7 +1376,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitExpm1(PrimitiveType prim_type,
   auto for_small_x = FAdd(x, x_squared_over_two);
   // At this point, the relative errors due to floating point precision loss of
   // calculating exp(x) - 1 and the polynomial exp(x)-1 = x + x^2/2 are about
-  // equal, with a value of approximetely 2^-16.
+  // equal, with a value of approximately 2^-16.
   const auto kExponentIsSmallThreshold = 0.009;
   auto abs_x =
       llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::fabs, {value}, {type}, b_);
@@ -1848,8 +1854,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   }
 
   auto add_to_operand_index = [&](llvm::Value* index_component, int64 dim) {
-    llvm::Value* gather_dim_component_extended =
-        SExtOrTrunc(index_component, index_type);
+    auto index_component_type = index_component->getType();
+    auto extended_type = index_component_type->getScalarSizeInBits() >=
+                                 index_type->getScalarSizeInBits()
+                             ? index_component_type
+                             : index_type;
+    // Possibly extend the value at the beginning to ensure clamping logic stays
+    // in bounds.
+    auto maybe_extended_index =
+        index_component_type != extended_type
+            ? b_->CreateSExt(index_component, extended_type)
+            : index_component;
     int64 operand_dim = dim_numbers.start_index_map(dim);
     int64 output_dim = operand_to_output_dim[operand_dim];
     // If 'output_dim' is -1, it means 'operand_dim' is an elided window dim.
@@ -1862,18 +1877,21 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     CHECK_GE(largest_valid_start_index, 0);
 
     // Clamp the gather index so that the gather region fits in the operand.
-    // gather_dim_component_extended_inbound =
+    // clamped_index =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
-    auto gather_dim_component_extended_inbound = EmitIntegralMin(
-        index.GetConstantWithIndexType(largest_valid_start_index),
-        EmitIntegralMax(index.GetConstantWithIndexType(0),
-                        gather_dim_component_extended, is_signed),
+    auto clamped_index = EmitIntegralMin(
+        llvm::ConstantInt::get(extended_type, largest_valid_start_index),
+        EmitIntegralMax(llvm::ConstantInt::get(extended_type, 0),
+                        maybe_extended_index, is_signed),
         is_signed);
+    // Truncate at the end to the optimized index size
+    auto maybe_truncated_clamped_index = extended_type != index_type
+                                             ? Trunc(clamped_index, index_type)
+                                             : clamped_index;
 
     operand_multi_index[operand_dim] =
-        Add(operand_multi_index[operand_dim],
-            gather_dim_component_extended_inbound);
+        Add(operand_multi_index[operand_dim], maybe_truncated_clamped_index);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
@@ -2358,7 +2376,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& target_index) {
         return operand_to_generator.at(hlo->operand(0))(
             target_index.SourceIndexOfTranspose(
-                hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions(), b_));
+                hlo->shape(), hlo->operand(0)->shape(), hlo->dimensions()));
       };
     case HloOpcode::kPad:
       return [this, hlo, &operand_to_generator](
@@ -2371,15 +2389,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& dot_result_index)
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
-      };
-    case HloOpcode::kReplicaId:
-      return [this, hlo](const IrArray::Index&) -> StatusOr<llvm::Value*> {
-        if (hlo_module_config_.replica_count() != 1) {
-          return Unimplemented("Replication is not implemented on CPU/GPU.");
-        }
-        llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        return llvm::ConstantInt::getNullValue(type);
       };
     default:
       return [hlo](const IrArray::Index& index) {

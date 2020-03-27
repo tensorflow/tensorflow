@@ -86,7 +86,6 @@ limitations under the License.
 #include <cstdint>
 #include <type_traits>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/common.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
@@ -95,6 +94,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/ruy/pack_common.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
 #include "tensorflow/lite/experimental/ruy/platform.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/tune.h"
 
 namespace ruy {

@@ -21,9 +21,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
@@ -78,7 +78,7 @@ class ROCMBlas : public blas::BlasSupport {
   // rocBLAS is stateful, and only be associated with one stream (in order to
   // enqueue dispatch) at a given time. As a result, this generally must be
   // invoked before calling into rocBLAS.
-  bool SetStream(Stream *stream) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  bool SetStream(Stream *stream) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // A helper function that calls the real rocBLAS function together with error
   // handling.
@@ -110,7 +110,7 @@ class ROCMBlas : public blas::BlasSupport {
                               /*err_on_failure=*/false, args...);
   }
 
-  // A helper allocation funciton to convert raw pointers memory layout to
+  // A helper allocation function to convert raw pointers memory layout to
   // strided flavor
   template <typename T>
   port::Status AllocateStridedBuffer(
@@ -188,7 +188,7 @@ class ROCMBlas : public blas::BlasSupport {
   GpuExecutor *parent_;
 
   // rocBLAS library handle on the device.
-  rocblas_handle blas_ GUARDED_BY(mu_);
+  rocblas_handle blas_ TF_GUARDED_BY(mu_);
 
   SE_DISALLOW_COPY_AND_ASSIGN(ROCMBlas);
 };

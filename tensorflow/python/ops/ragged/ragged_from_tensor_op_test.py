@@ -29,8 +29,8 @@ from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
-                                 parameterized.TestCase):
+class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
+                                   parameterized.TestCase):
 
   def testDocStringExamples(self):
     # The examples from RaggedTensor.from_tensor.__doc__.
@@ -366,6 +366,8 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
     if expected_shape is not None:
       self.assertEqual(rt.shape.as_list(), expected_shape)
     self.assertAllEqual(rt, expected)
+    self.assertAllEqual(rt, RaggedTensor.from_nested_row_splits(
+        rt.flat_values, rt.nested_row_splits, validate=True))
 
   def testHighDimensions(self):
     # Use distinct prime numbers for all dimension shapes in this test, so
@@ -380,6 +382,8 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
           dt.shape.is_compatible_with(rt.shape),
           '%s is incompatible with %s' % (dt.shape, rt.shape))
       self.assertAllEqual(rt, self.evaluate(dt).tolist())
+      self.assertAllEqual(rt, RaggedTensor.from_nested_row_splits(
+          rt.flat_values, rt.nested_row_splits, validate=True))
 
   @parameterized.parameters(
       # With no padding or lengths
@@ -398,6 +402,10 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
       {
           'dt_shape': [0, 2, 3],
           'expected': []
+      },
+      {
+          'dt_shape': [1, 0, 0],
+          'expected': [[]]
       },
       {
           'dt_shape': [2, 0, 3],
@@ -485,11 +493,14 @@ class RaggedTensorToSparseOpTest(test_util.TensorFlowTestCase,
   )
   def testEmpty(self, dt_shape, expected, lengths=None, padding=None):
     dt = array_ops.zeros(dt_shape)
-    rt = RaggedTensor.from_tensor(dt, lengths, padding)
-    self.assertEqual(type(rt), RaggedTensor)
-    self.assertEqual(rt.ragged_rank, 1)
-    self.assertTrue(dt.shape.is_compatible_with(rt.shape))
-    self.assertAllEqual(rt, expected)
+    for ragged_rank in range(1, len(dt_shape) - 1):
+      rt = RaggedTensor.from_tensor(dt, lengths, padding, ragged_rank)
+      self.assertEqual(type(rt), RaggedTensor)
+      self.assertEqual(rt.ragged_rank, ragged_rank)
+      self.assertTrue(dt.shape.is_compatible_with(rt.shape))
+      self.assertAllEqual(rt, expected)
+      self.assertAllEqual(rt, RaggedTensor.from_nested_row_splits(
+          rt.flat_values, rt.nested_row_splits, validate=True))
 
   @parameterized.parameters(
       {

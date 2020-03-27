@@ -23,11 +23,12 @@ py_library(
 tf_py_test(
     name = "module_test",
     srcs = ["module_test.py"],
-    additional_deps = [
+    deps = [
         ":module",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python:variables",
+        "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/distribute:tpu_values",
+        "@absl_py//absl/testing:parameterized",
     ],
 )

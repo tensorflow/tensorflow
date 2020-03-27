@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/cluster.pb.h"
@@ -127,7 +128,7 @@ void TestRemoteExecute(bool async) {
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
 
-void TestRemoteExecuteSilentCopies(bool async) {
+void TestRemoteExecuteSilentCopies(bool async, bool remote) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -166,16 +167,31 @@ void TestRemoteExecuteSilentCopies(bool async) {
   auto* h1_task2 =
       TFE_TensorHandleCopyToDevice(h1_task0, ctx, task2_name, status);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandleEnableImplicitMirroring(h1_task2, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   // Handles are on task0 (local), and task2, but op is on task1.
   TFE_Op* matmul = MatMulOp(ctx, h0_task0, h1_task2);
-  TFE_OpSetDevice(matmul, task1_name, status);
+  if (remote) {
+    TFE_OpSetDevice(matmul, task1_name, status);
+  }
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
   TFE_TensorHandle* retvals[1];
   int num_retvals = 1;
   TFE_Execute(matmul, &retvals[0], &num_retvals, status);
   EXPECT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  // TODO(gjn): Add support for waiting on async local mirrors
+  if (!async) {
+    auto remote_arg = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
+                          h1_task2->handle.get())
+                          ->Handle();
+    auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
+        matmul->operation.get());
+    // The input handles should never change since they have been mirrored.
+    ASSERT_EQ(op->GetInput(1), remote_arg);
+  }
 
   auto* retval_task0 = TFE_TensorHandleCopyToDevice(
       retvals[0], ctx, "/job:localhost/replica:0/task:0/device:CPU:0", status);
@@ -213,9 +229,17 @@ void TestRemoteExecuteSilentCopies(bool async) {
   worker_server2.release();
 }
 
-TEST(CAPI, RemoteExecuteSilentCopies) { TestRemoteExecuteSilentCopies(false); }
+TEST(CAPI, RemoteExecuteSilentCopies) {
+  TestRemoteExecuteSilentCopies(false, true);
+}
 TEST(CAPI, RemoteExecuteSilentCopiesAsync) {
-  TestRemoteExecuteSilentCopies(true);
+  TestRemoteExecuteSilentCopies(true, true);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesLocal) {
+  TestRemoteExecuteSilentCopies(false, false);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesLocalAsync) {
+  TestRemoteExecuteSilentCopies(true, false);
 }
 
 void TestRemoteExecuteDeleteContextWithOutstandingRPC(bool async) {

@@ -19,16 +19,6 @@ cuda_py_test(
     name = "memory_test",
     size = "medium",
     srcs = ["memory_test.py"],
-    additional_deps = [
-        ":memory_test_util",
-        "//tensorflow/python/keras",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
-        "@six_archive//:six",
-    ],
     tags = [
         "manual",
         "no_oss",
@@ -37,22 +27,32 @@ cuda_py_test(
     ],
     # TODO(b/140065350): Re-enable
     xla_enable_strict_auto_jit = False,
+    deps = [
+        ":memory_test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras",
+        "@six_archive//:six",
+    ],
 )
 
 cuda_py_test(
     name = "remote_memory_test",
     size = "medium",
     srcs = ["remote_memory_test.py"],
-    additional_deps = [
-        ":memory_test_util",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/eager:remote",
-        "//tensorflow/python/eager:test",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-    ],
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
     xla_enable_strict_auto_jit = False,  # b/140261762
+    deps = [
+        ":memory_test_util",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/eager:backprop",
+        "//tensorflow/python/eager:remote",
+        "//tensorflow/python/eager:test",
+    ],
 )

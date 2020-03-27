@@ -293,7 +293,7 @@ class DeviceResDistTest : public ::testing::Test {
   std::vector<CollectiveParams> cp_;
   std::vector<Status> status_;
   mutex mu_;
-  int num_done_ GUARDED_BY(mu_);
+  int num_done_ TF_GUARDED_BY(mu_);
   condition_variable done_;
 };
 
@@ -315,7 +315,7 @@ TEST_F(DeviceResDistTest, Workers2Devices2) {
   ValidateCollectiveParams(num_workers, num_devices);
 }
 
-#ifndef GOOGLE_CUDA
+#if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 namespace {
 // A mock NcclReducer for testing group runtime details initialization with CPU
 // builds.  The only meaningful function in this class is

@@ -56,20 +56,20 @@ limitations under the License.
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/cuda.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
 #endif
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -340,7 +340,7 @@ Status BaseGPUDevice::InitScratchBuffers() {
   if (!scratch_) {
     DCHECK(stream_);
     size_t scratch_buffer_size = Eigen::kGpuScratchSize + sizeof(unsigned int);
-    MEMDEBUG_CACHE_OP("ScratchBuffer");
+    auto op_annotation = ScopedMemoryDebugAnnotation("ScratchBuffer");
     void* scratch_buffer = gpu_allocator_->AllocateRaw(
         Allocator::kAllocatorAlignment, scratch_buffer_size);
     if (scratch_buffer == nullptr) {
@@ -462,13 +462,6 @@ Status BaseGPUDevice::Init(const SessionOptions& options) {
   return Status::OK();
 }
 
-bool BaseGPUDevice::RequiresRecordingAccessedTensors() const {
-  // Since there is only one stream, we release the tensor reference
-  // at the end of the kernel launch, instead of at the end of the kernel
-  // execution.
-  return false;
-}
-
 string BaseGPUDevice::ComputeOpKernelDebugString(const OpKernel& op_kernel,
                                                  const int& stream_id) {
   return strings::StrCat(op_kernel.name(), " op ", op_kernel.type_string(),
@@ -505,8 +498,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
     }
   }
   ScopedActivateExecutorContext scoped_activation{stream->parent()};
-  MEMDEBUG_CACHE_OP(op_kernel->name().c_str());
-  MEMDEBUG_CACHE_STEPID(context->step_id());
+  auto op_annotation = ScopedMemoryDebugAnnotation(
+      op_kernel->name_view().data(), context->step_id());
   op_kernel->Compute(context);
   if (context->status().ok()) {
     if (sync_every_op_) {
@@ -539,16 +532,6 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
               << ComputeOpKernelDebugString(*op_kernel, stream_id);
     }
   }
-}
-
-void BaseGPUDevice::ConsumeListOfAccessedTensors(
-    DeviceContext* device_context, const TensorReferenceVector& tensor_refs) {
-  GPUDeviceContext* gpu_device_context = device_context_;
-  if (device_context != nullptr) {
-    gpu_device_context = static_cast<GPUDeviceContext*>(device_context);
-  }
-  se::Stream* stream = gpu_device_context->stream();
-  em_->ThenDeleteTensors(stream, tensor_refs);
 }
 
 // Based on the semantics of Device::Sync this call should wait for
@@ -618,7 +601,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       done(s);
     };
 
-    tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    profiler::ScopedAnnotation annotation("MakeTensorFromProto");
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);
@@ -629,7 +612,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
 Status BaseGPUDevice::MakeTensorFromProto(const TensorProto& tensor_proto,
                                           const AllocatorAttributes alloc_attrs,
                                           Tensor* tensor) {
-  MEMDEBUG_CACHE_OP(
+  auto op_annotation = ScopedMemoryDebugAnnotation(
       (pending_op_name != nullptr ? pending_op_name : "MakeTensorFromProto"));
   AllocatorAttributes attr;
   attr.set_on_host(true);
@@ -805,17 +788,20 @@ int64 MinSystemMemory(int64 available_memory) {
   // We use the following heuristic for now:
   //
   // If the available_memory is < 2GiB, we allocate 225MiB to system memory.
-  // Otherwise, allocate max(300MiB, 0.05 * available_memory) to system memory.
+  // Otherwise, allocate max(300MiB, kMinSystemMemoryFraction *
+  // available_memory) to system memory.
   //
   // In the future we could be more sophisticated by using a table of devices.
   int64 min_system_memory;
+  constexpr float kMinSystemMemoryFraction = 0.06;
   if (available_memory < (1LL << 31)) {
     // 225MiB
     min_system_memory = 225 * 1024 * 1024;
   } else {
-    // max(300 MiB, 0.05 * available_memory)
-    min_system_memory =
-        std::max(int64{314572800}, static_cast<int64>(available_memory * 0.05));
+    // max(300 MiB, kMinSystemMemoryFraction * available_memory)
+    min_system_memory = std::max(
+        int64{314572800},
+        static_cast<int64>(available_memory * kMinSystemMemoryFraction));
   }
 #if defined(__GNUC__) && defined(__OPTIMIZE__)
 // Do nothing
@@ -833,6 +819,9 @@ int64 MinSystemMemory(int64 available_memory) {
   // RAM and Video RAM
   min_system_memory = 1 << 30;
 #endif
+
+  VLOG(5) << "available_memory = " << available_memory;
+  VLOG(5) << "min_system_memory = " << min_system_memory;
   return min_system_memory;
 }
 
@@ -1076,6 +1065,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
                               " failed. Status: ", hipGetErrorString(err));
     }
 #endif
+
+#if GOOGLE_CUDA
+    // Log the version of CUDA and cuDNN
+    int cuda_major_version = CUDART_VERSION / 1000;
+    int cuda_minor_version = (CUDART_VERSION / 10) % 10;
+    VLOG(1) << "TensorFlow compiled with CUDA " << cuda_major_version << "."
+            << cuda_minor_version << " and cuDNN " << CUDNN_MAJOR << "."
+            << CUDNN_MINOR << "." << CUDNN_PATCHLEVEL;
+#endif
   }
 
   std::vector<InterconnectMap> interconnect_maps;
@@ -1177,7 +1175,7 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
                          ", name: ", desc.name(),
                          ", pci bus id: ", desc.pci_bus_id(),
                          ", compute capability: ", cc_major, ".", cc_minor);
-  // LINT.ThenChange(//tensorflow/python/platform/test.py)
+  // LINT.ThenChange(//tensorflow/python/framework/gpu_util.py)
 #elif TENSORFLOW_USE_ROCM
   return strings::StrCat("device: ", platform_gpu_id.value(),
                          ", name: ", desc.name(),
@@ -1544,10 +1542,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << " major: " << cc_major
-              << " minor: " << cc_minor
-              << " memoryClockRate(GHz): " << description->clock_rate_ghz()
-              << "\npciBusID: " << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << " computeCapability: " << cc_major << "." << cc_minor
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description->rocm_amdgpu_isa_version(&isa_version)) {
@@ -1555,10 +1560,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << "\nAMDGPU ISA: gfx"
-              << isa_version << "\nmemoryClockRate (GHz) "
-              << description->clock_rate_ghz() << "\npciBusID "
-              << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << "     ROCm AMD GPU ISA: gfx" << isa_version
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #endif
   }
 
@@ -1811,7 +1823,7 @@ void GPUKernelTracker::RecordTerminated(uint64 queued_count) {
   // advance the completed frontier to the just-completed PendingKernel.  In
   // practice we occasionally see the termination callbacks arrive out of
   // order probably because of thread scheduling.  Eventually we may support
-  // out-of- order completion involving multple compute streams so here we
+  // out-of- order completion involving multiple compute streams so here we
   // follow a conservative approach and wait for every single callback to
   // arrive before advancing the frontier.
   while (true) {

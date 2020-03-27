@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -330,7 +329,7 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
       new std::unordered_map<StringPiece, std::pair<const char*, bool>,
                              StringPieceHasher>{
           {"string", {"StringPiece", false}},
-          {"list(string)", {"gtl::ArraySlice<string>", true}},
+          {"list(string)", {"gtl::ArraySlice<::tensorflow::tstring>", true}},
           {"int", {"int64", false}},
           {"list(int)", {"gtl::ArraySlice<int>", true}},
           {"float", {"float", false}},

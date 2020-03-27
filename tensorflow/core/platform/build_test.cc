@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/cpu_feature_guard.h"
@@ -40,7 +39,9 @@ limitations under the License.
 #include "tensorflow/core/platform/png.h"
 #include "tensorflow/core/platform/prefetch.h"
 #include "tensorflow/core/platform/protobuf.h"
+#if !defined(__ANDROID__)
 #include "tensorflow/core/platform/rocm_rocdl_path.h"
+#endif
 #include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/core/platform/setround.h"
 #include "tensorflow/core/platform/snappy.h"

@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.converters import function_scopes
+from tensorflow.python.autograph.core import ag_ctx
+from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -78,6 +80,28 @@ class FunctionBodyTransformerTest(converter_testing.TestCase):
       self.assertIn('test_fn/', first.op.name)
       self.assertNotIn('inner_fn', first.op.name)
       self.assertIn('test_fn/inner_fn/', second.op.inputs[0].name)
+
+  @test_util.run_deprecated_v1
+  def test_conversion_context_preserves_in_inner_functions(self):
+
+    def inner_fn_callee():
+      self.assertEqual(
+          ag_ctx.control_status_ctx().status, ag_ctx.Status.DISABLED)
+
+    def test_fn():
+      def inner_fn():
+        inner_fn_callee()
+      with ag_ctx.ControlStatusCtx(
+          ag_ctx.Status.DISABLED, converter.ConversionOptions(recursive=True)):
+        inner_fn()
+
+    ns = {
+        'inner_fn_callee': inner_fn_callee,
+        'ag_ctx': ag_ctx,
+        'converter': converter
+    }
+    with self.converted(test_fn, function_scopes, ns) as result:
+      result.test_fn()
 
   @test_util.run_deprecated_v1
   def test_method(self):

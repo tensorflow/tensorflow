@@ -38,10 +38,10 @@ namespace cl {
 class DepthWiseConvolution : public GPUOperation {
  public:
   DepthWiseConvolution() = default;
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   DepthWiseConvolution(DepthWiseConvolution&& operation);
@@ -50,23 +50,25 @@ class DepthWiseConvolution : public GPUOperation {
   DepthWiseConvolution& operator=(const DepthWiseConvolution&) = delete;
 
  private:
-  friend Status CreateDepthWiseConvolution(
+  friend absl::Status CreateDepthWiseConvolution(
       const CreationContext& creation_context, const OperationDef& definition,
       const DepthwiseConvolution2DAttributes& attr,
       DepthWiseConvolution* result);
-  explicit DepthWiseConvolution(const OperationDef& definition,
-                                const DepthwiseConvolution2DAttributes& attr);
+  DepthWiseConvolution(const OperationDef& definition,
+                       const DepthwiseConvolution2DAttributes& attr,
+                       bool weights_are_buffer);
   template <DataType T>
-  Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
-                       CLContext* context);
+  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             CLContext* context);
 
   template <DataType S, typename T>
-  void RearrangeWeightsData(const ::tflite::gpu::Tensor<OHWI, S>& weights,
+  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
+  bool weights_are_buffer_;
   Texture2D weights_tex2d_;
   Buffer weights_buf_;
   cl_mem weights_;
@@ -84,8 +86,8 @@ class DepthWiseConvolution : public GPUOperation {
 };
 
 template <DataType T>
-Status DepthWiseConvolution::UploadWeights(
-    const ::tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+absl::Status DepthWiseConvolution::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_depth = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -93,16 +95,13 @@ Status DepthWiseConvolution::UploadWeights(
 
   const int elements_count = kernel_x * kernel_y * dst_depth;
 
-  bool is_buffer_storage =
-      definition_.GetPrimaryStorageType() == TensorStorageType::BUFFER;
+  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float4_size = fp32_weights ? 16 : 8;
 
-  const int float4_size =
-      definition_.precision == CalculationsPrecision::F32 ? 16 : 8;
-
-  if (definition_.GetDataType() == DataType::FLOAT32) {
+  if (fp32_weights) {
     std::vector<float4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
@@ -114,7 +113,7 @@ Status DepthWiseConvolution::UploadWeights(
   } else {
     std::vector<half4> gpu_data(elements_count);
     RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (is_buffer_storage) {
+    if (weights_are_buffer_) {
       RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
                                            gpu_data.data(), context,
                                            &weights_buf_));
@@ -125,18 +124,18 @@ Status DepthWiseConvolution::UploadWeights(
     }
   }
 
-  if (is_buffer_storage) {
+  if (weights_are_buffer_) {
     weights_ = weights_buf_.GetMemoryPtr();
   } else {
     weights_ = weights_tex2d_.GetMemoryPtr();
   }
 
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
 void DepthWiseConvolution::RearrangeWeightsData(
-    const ::tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_depth = IntegralDivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -163,10 +162,9 @@ void DepthWiseConvolution::RearrangeWeightsData(
   }
 }
 
-Status CreateDepthWiseConvolution(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const DepthwiseConvolution2DAttributes& attr,
-                                  DepthWiseConvolution* result);
+absl::Status CreateDepthWiseConvolution(
+    const CreationContext& creation_context, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr, DepthWiseConvolution* result);
 
 }  // namespace cl
 }  // namespace gpu

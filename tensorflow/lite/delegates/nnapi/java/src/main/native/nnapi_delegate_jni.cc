@@ -21,10 +21,65 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+using namespace tflite;
+
 JNIEXPORT jlong JNICALL
-Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(JNIEnv* env,
-                                                            jclass clazz) {
-  return reinterpret_cast<jlong>(tflite::NnApiDelegate());
+Java_org_tensorflow_lite_nnapi_NnApiDelegate_createDelegate(
+    JNIEnv* env, jclass clazz, jint preference, jstring accelerator_name,
+    jstring cache_dir, jstring model_token, jint max_delegated_partitions,
+    jboolean override_disallow_cpu, jboolean disallow_cpu_value) {
+  StatefulNnApiDelegate::Options options = StatefulNnApiDelegate::Options();
+  options.execution_preference =
+      (StatefulNnApiDelegate::Options::ExecutionPreference)preference;
+  if (accelerator_name) {
+    options.accelerator_name = env->GetStringUTFChars(accelerator_name, NULL);
+  }
+  if (cache_dir) {
+    options.cache_dir = env->GetStringUTFChars(cache_dir, NULL);
+  }
+  if (model_token) {
+    options.model_token = env->GetStringUTFChars(model_token, NULL);
+  }
+
+  if (max_delegated_partitions >= 0) {
+    options.max_number_delegated_partitions = max_delegated_partitions;
+  }
+
+  if (override_disallow_cpu) {
+    options.disallow_nnapi_cpu = disallow_cpu_value;
+  }
+
+  auto delegate = new StatefulNnApiDelegate(options);
+
+  if (options.accelerator_name) {
+    env->ReleaseStringUTFChars(accelerator_name, options.accelerator_name);
+  }
+
+  if (options.cache_dir) {
+    env->ReleaseStringUTFChars(cache_dir, options.accelerator_name);
+  }
+
+  if (options.model_token) {
+    env->ReleaseStringUTFChars(model_token, options.accelerator_name);
+  }
+
+  return reinterpret_cast<jlong>(delegate);
+}
+
+JNIEXPORT jint JNICALL
+Java_org_tensorflow_lite_nnapi_NnApiDelegate_getNnapiErrno(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong delegate) {
+  StatefulNnApiDelegate* nnapi_delegate =
+      reinterpret_cast<StatefulNnApiDelegate*>(delegate);
+  return nnapi_delegate->GetNnApiErrno();
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_nnapi_NnApiDelegate_deleteDelegate(JNIEnv* env,
+                                                            jclass clazz,
+                                                            jlong delegate) {
+  delete reinterpret_cast<TfLiteDelegate*>(delegate);
 }
 
 #ifdef __cplusplus

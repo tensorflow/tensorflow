@@ -19,7 +19,7 @@ limitations under the License.
 namespace tensorflow {
 namespace graph_transforms {
 
-// Remove control depdencies in preparation for inference.
+// Remove control dependencies in preparation for inference.
 // In the tensorflow graph, control dependencies are represented as extra
 // inputs which are referenced with "^tensor_name".
 // See node_def.proto for more details.

@@ -20,18 +20,17 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-// Returns runtime operation system version. Example 10.1
-float GetiOsSystemVersion();
+enum class GpuType {
+  kUnknown,
+  kA7,   // iPhone 5s, iPad Air, iPad Mini 2, iPad Mini 3.
+  kA8,   // A8 iPhone 6, A8X iPad Air 2, iPad Mini 4.
+  kA9,   // A9 iPhone 6s, iPad (2017), A9X iPad Pro (1st generation).
+  kA10,  // iPhone 7, iPad (2018), A10X iPad Pro (2nd generation).
+  kA11,  // iPhone 8/X.
+  kA12,  // iPhone Xs.
+};
 
-// Returns Apple SoC generation number. The list of Apple SoC that support Metal
-// API:
-//     7 - A7 iPhone 5s, iPad Air, iPad Mini 2, iPad Mini 3.
-//     8 - A8 iPhone 6, A8X iPad Air 2, iPad Mini 4.
-//     9 - A9 iPhone 6s, iPad (2017), A9X iPad Pro (1st generation).
-//     10 - A10 iPhone 7, iPad (2018), A10X iPad Pro (2nd generation).
-//     11 - A11 iPhone 8/X.
-//     12 - A12 iPhone Xs.
-int GetAppleSocVersion();
+GpuType GetGpuType();
 
 }  // namespace metal
 }  // namespace gpu

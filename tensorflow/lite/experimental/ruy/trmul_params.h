@@ -43,8 +43,10 @@ struct TrMulParams {
   // cache sizes when not runtime-detectable.
   Path path;
 
-  // optional overriding by the spec for testing purposes
-  int cache_friendly_traversal_threshold = 0;
+  // See Spec::local_data_cache_size().
+  int local_data_cache_size = 0;
+  // See Spec::shared_data_cache_size().
+  int shared_data_cache_size = 0;
 
   // Function pointers to type-erased entry points for kernels and packers.
   SidePair<RunPackFn*> run_pack;

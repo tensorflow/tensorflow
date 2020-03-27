@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include <vulkan/vulkan.h>
 
 namespace tflite {
 namespace gpu {
@@ -101,6 +102,13 @@ struct OpenClTexture {
 
   cl_mem memobj = nullptr;
   // TODO(akulik): should it specify texture format?
+};
+
+struct VulkanMemory {
+  VulkanMemory() = default;
+  explicit VulkanMemory(VkDeviceMemory new_memory) : memory(new_memory) {}
+
+  VkDeviceMemory memory;
 };
 
 struct CpuMemory {
@@ -212,7 +220,8 @@ class InferenceBuilder {
 
   // Sets new shape for the input if underlying implementation and graph
   // structure allows dynamic tensors.
-  virtual Status SetInputShape(int index, const Dimensions& dimensions) = 0;
+  virtual absl::Status SetInputShape(int index,
+                                     const Dimensions& dimensions) = 0;
 
   // Updates object definitions for the given index. Implementation may allow
   // to use different layouts and/or data type conversions between objects
@@ -221,21 +230,21 @@ class InferenceBuilder {
   //   A user, however, has an input in DataType::FLOAT16, DataLayout::PHWC4.
   //   An implementation may allow this transformation to happen automatically
   //   under the hood.
-  virtual Status SetInputObjectDef(int index, ObjectDef def) = 0;
-  virtual Status SetOutputObjectDef(int index, ObjectDef def) = 0;
-  virtual Status SetAllInputObjectDefsTo(ObjectDef def) {
+  virtual absl::Status SetInputObjectDef(int index, ObjectDef def) = 0;
+  virtual absl::Status SetOutputObjectDef(int index, ObjectDef def) = 0;
+  virtual absl::Status SetAllInputObjectDefsTo(ObjectDef def) {
     auto input_defs = inputs();
     for (int i = 0; i < input_defs.size(); ++i) {
       RETURN_IF_ERROR(SetInputObjectDef(i, def));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
-  virtual Status SetAllOutputObjectDefsTo(ObjectDef def) {
+  virtual absl::Status SetAllOutputObjectDefsTo(ObjectDef def) {
     auto output_defs = outputs();
     for (int i = 0; i < output_defs.size(); ++i) {
       RETURN_IF_ERROR(SetOutputObjectDef(i, def));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   // Creates new instance of the inference runner. InferenceBuilder stays valid
@@ -243,7 +252,7 @@ class InferenceBuilder {
   //
   // This method may take significant time to prepare new inference runner. For
   // example, it may require to compile OpenGL shaders.
-  virtual Status Build(std::unique_ptr<InferenceRunner>* runner) = 0;
+  virtual absl::Status Build(std::unique_ptr<InferenceRunner>* runner) = 0;
 };
 
 // Runs prepared inference. Every object marked as external needs to be set
@@ -260,13 +269,93 @@ class InferenceRunner {
   // Setters allow to set or change external object for the given index. Note,
   // object need to match object definition set before in InferenceBuilder.
 
-  virtual Status GetInputObject(int index, TensorObject* object) = 0;
-  virtual Status GetOutputObject(int index, TensorObject* object) = 0;
-  virtual Status SetInputObject(int index, TensorObject object) = 0;
-  virtual Status SetOutputObject(int index, TensorObject object) = 0;
+  virtual absl::Status GetInputObject(int index, TensorObject* object) = 0;
+  virtual absl::Status GetOutputObject(int index, TensorObject* object) = 0;
+  virtual absl::Status SetInputObject(int index, TensorObject object) = 0;
+  virtual absl::Status SetOutputObject(int index, TensorObject object) = 0;
 
-  virtual Status Run() = 0;
+  virtual absl::Status Run() = 0;
 };
+
+// Encapsulated compilation/runtime tradeoffs.
+enum class InferenceUsage {
+  UNKNOWN,
+
+  // InferenceRunner will be used only once. Therefore, it is important to
+  // minimize bootstrap time as well.
+  FAST_SINGLE_ANSWER,
+
+  // Prefer maximizing the throughput. Same inference runner will be used
+  // repeatedly on different inputs.
+  SUSTAINED_SPEED,
+};
+
+// Defines aspects to control while instantiating a runner.
+enum class InferencePriority {
+  UNKNOWN,
+
+  AUTO,
+
+  MIN_LATENCY,
+
+  MAX_PRECISION,
+
+  MIN_MEMORY_USAGE,
+};
+
+struct InferenceOptions {
+  InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
+
+  // Ordered priorities provide better understanding of desired semantics,
+  // where priority(n) is more important than priority(n+1).
+  // AUTO priority is needed when a single priority is the most important
+  // factor. For example, priority1 = InferencePriority::MIN_LATENCY and leaving
+  // everything else to AUTO would result in configuration that achieves maximum
+  // performance.
+  //
+  // AUTO priority can only be used when higher priorities are fully specified.
+  // For example:
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = AUTO, priority3 = AUTO
+  //   VALID:   priority1 = MIN_LATENCY, priority2 = MAX_PRECISION,
+  //            priority3 = AUTO
+  //   INVALID: priority1 = AUTO, priority2 = MIN_LATENCY, priority3 = AUTO
+  //   INVALID: priority1 = MIN_LATENCY, priority2 = AUTO,
+  //            priority3 = MAX_PRECISION
+  // Invalid priorities will result in error.
+  InferencePriority priority1 = InferencePriority::MAX_PRECISION;
+
+  InferencePriority priority2 = InferencePriority::AUTO;
+
+  InferencePriority priority3 = InferencePriority::AUTO;
+};
+
+// Returns a position number for the priority. If priority is missing,
+// then it it would return 'max num priorities + 1'.
+int GetPosition(const InferenceOptions& options, InferencePriority p);
+
+// Return true if options are valid.
+bool IsValid(const InferenceOptions& options);
+
+// Resolves AUTO priorities and specifies them explicitly.
+// Note, no-one should assume that these mappings will not change.
+// Technically this function is declared here for code re-use purposes and
+// by no means it should be treated as canonical way to resolve AUTO.
+void ResolveAutoPriority(InferenceOptions* options);
+
+enum class PriorityImportance {
+  UNKNOWN,
+  HIGHER,
+  LOWER,
+};
+
+// If both p1 and p2 are not present in options, return UNKNOWN
+// If p1 is present, but p2 is not, return HIGHER
+// If p2 is present, but p1 is not, return LOWER
+// If both are present, and p1 is more important, return HIGHER, otherwise,
+// LOWER.
+PriorityImportance GetRelativeImportance(const InferenceOptions& options,
+                                         InferencePriority p1,
+                                         InferencePriority p2);
 
 }  // namespace gpu
 }  // namespace tflite

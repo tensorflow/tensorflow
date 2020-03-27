@@ -15,12 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_INTEGER_OPS_DEPTHWISE_CONV_H_
 
-#include "profiling/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_3x3_filter_common.h"
+#include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8_3x3_filter.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/depthwise_conv_3x3_filter.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -1420,9 +1422,7 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
                                     int out_x_buffer_start,
                                     int out_x_buffer_end, int output_depth,
                                     int32* acc_buffer) {
-#ifdef GEMMLOWP_PROFILING
-  gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
-#endif
+  ruy::profiler::ScopeLabel label(__PRETTY_FUNCTION__);
   // Sanity check parameters. This is important in particular to ensure
   // that we keep the number of template instantiations minimal, so we don't
   // increase binary size unnecessarily.
@@ -1441,37 +1441,37 @@ void QuantizedDepthwiseConvAccumRow(int stride, int dilation_factor,
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     // For the current (filter_x, filter_y) point in the filter,
     // compute the boundaries of the corresponding output row segment.
-    int out_x_loop_start_unclampled = 0;
-    int out_x_loop_end_unclampled = 0;
+    int out_x_loop_start_unclamped = 0;
+    int out_x_loop_end_unclamped = 0;
     if (kAllowStrided) {
       if (stride == 2) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 1) / 2;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 1) / 2;
       } else if (stride == 4) {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + 3) / 4;
-        out_x_loop_end_unclampled =
+        out_x_loop_end_unclamped =
             (pad_width + input_width - dilation_factor * filter_x + 3) / 4;
       } else {
-        out_x_loop_start_unclampled =
+        out_x_loop_start_unclamped =
             (pad_width - dilation_factor * filter_x + stride - 1) / stride;
-        out_x_loop_end_unclampled = (pad_width + input_width -
-                                     dilation_factor * filter_x + stride - 1) /
-                                    stride;
+        out_x_loop_end_unclamped = (pad_width + input_width -
+                                    dilation_factor * filter_x + stride - 1) /
+                                   stride;
       }
     } else {
-      out_x_loop_start_unclampled = pad_width - dilation_factor * filter_x;
-      out_x_loop_end_unclampled =
+      out_x_loop_start_unclamped = pad_width - dilation_factor * filter_x;
+      out_x_loop_end_unclamped =
           pad_width + input_width - dilation_factor * filter_x;
     }
     // The kernel will have to iterate on the segment of the
     // output row that starts at out_x_loop_start and out_x_loop_end.
     const int out_x_loop_start =
-        std::max(out_x_buffer_start, out_x_loop_start_unclampled);
+        std::max(out_x_buffer_start, out_x_loop_start_unclamped);
     const int out_x_loop_end =
-        std::min(out_x_buffer_end, out_x_loop_end_unclampled);
+        std::min(out_x_buffer_end, out_x_loop_end_unclamped);
 
     int32* acc_buffer_ptr =
         acc_buffer + (out_x_loop_start - out_x_buffer_start) * output_depth;
@@ -1496,7 +1496,7 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
     int depth_multiplier, int filter_width, const int8* filter_data,
     int out_x_buffer_start, int out_x_buffer_end, int output_depth,
     int32* acc_buffer) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvAccumRowGeneric (slow)");
+  ruy::profiler::ScopeLabel label("DepthwiseConvAccumRowGeneric (slow)");
   const int8* filter_base_ptr = filter_data;
   for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
     const int out_x_loop_start = std::max(
@@ -1766,99 +1766,13 @@ inline void DepthwiseConvGeneral(
         }
         // Finished accumulating int32 values. Now need to convert them to
         // the final 8bit form and store them.
-        gemmlowp::ScopedProfilingLabel label("downquantize+store");
+        ruy::profiler::ScopeLabel label("downquantize+store");
         const int num_output_values = output_depth * num_output_pixels;
-        int c = 0;
 
-        while (c < output_depth) {
-          int target_output_depth = output_depth;
-#ifdef USE_NEON
-          using gemmlowp::RoundingDivideByPOT;
-          const int32x4_t output_offset_vec = vdupq_n_s32(output_offset);
-          const int32x4_t output_activation_min_vec =
-              vdupq_n_s32(output_activation_min);
-          const int32x4_t output_activation_max_vec =
-              vdupq_n_s32(output_activation_max);
-          const int32x4_t ones = vdupq_n_s32(1);
-          const int32x4_t minus_ones = vdupq_n_s32(-1);
-          const int32x4_t zeros = vdupq_n_s32(0);
-
-          for (; c <= output_depth - 4; c += 4) {
-            int32x4_t out_shift = vld1q_s32(output_shift + c);
-            const bool out_shift_all_less_than_zero =
-                (vgetq_lane_s32(out_shift, 0) < 0) &&
-                (vgetq_lane_s32(out_shift, 1) < 0) &&
-                (vgetq_lane_s32(out_shift, 2) < 0) &&
-                (vgetq_lane_s32(out_shift, 3) < 0);
-            const bool out_shift_all_greater_equal_than_zero =
-                (vgetq_lane_s32(out_shift, 0) >= 0) &&
-                (vgetq_lane_s32(out_shift, 1) >= 0) &&
-                (vgetq_lane_s32(out_shift, 2) >= 0) &&
-                (vgetq_lane_s32(out_shift, 3) >= 0);
-            if (!out_shift_all_less_than_zero &&
-                !out_shift_all_greater_equal_than_zero) {
-              // Fallback to general path.
-              // Then go ahead for next 4.
-              target_output_depth = c + 4;
-              break;
-            }
-            int32x4_t out_mul = vld1q_s32(output_multiplier + c);
-            for (int n = 0; n < num_output_pixels; ++n) {
-              int loc = n * output_depth + c;
-              int32x4_t acc = vld1q_s32(acc_buffer + loc);
-              if (out_shift_all_less_than_zero) {  // output_shift all < 0 case.
-                acc = vqrdmulhq_s32(acc, out_mul);
-                // TODO(renjieliu): Optimize this path, also consider inverse
-                // output_shift since most models have output_shift < 0.
-                int32x4_t negative_out_shift = vmulq_n_s32(out_shift, -1);
-                int32x4_t mask =
-                    vaddq_s32(vshlq_s32(ones, negative_out_shift), minus_ones);
-                int32x4_t remainder = vandq_s32(acc, mask);
-                int32x4_t shifted_right_mask = vshlq_s32(mask, minus_ones);
-                int32x4_t temp = vandq_s32(
-                    vreinterpretq_s32_u32(vcltq_s32(acc, zeros)), ones);
-                int32x4_t threshold = vaddq_s32(shifted_right_mask, temp);
-                temp = vandq_s32(
-                    vreinterpretq_s32_u32(vcgtq_s32(remainder, threshold)),
-                    ones);
-                int32x4_t shifted_right_acc = vshlq_s32(acc, out_shift);
-                acc = vaddq_s32(shifted_right_acc, temp);
-              } else {  // output_shift all > 0 case.
-                int32x4_t multiplier_power_of_two = vshlq_s32(ones, out_shift);
-                acc = vmulq_s32(acc, multiplier_power_of_two);
-                acc = vqrdmulhq_s32(acc, out_mul);
-              }
-              // Add the output offset.
-              acc = vaddq_s32(acc, output_offset_vec);
-              // Apply the activation function.
-              acc = vmaxq_s32(acc, output_activation_min_vec);
-              acc = vminq_s32(acc, output_activation_max_vec);
-              // Saturating cast to int8 and store to destination.
-              const int16x4_t acc_s16 = vqmovn_s32(acc);
-              const int16x8_t res_s16 = vcombine_s16(acc_s16, acc_s16);
-              const int8x8_t res_s8 = vqmovn_s16(res_s16);
-              vst1_lane_s8(output_ptr + loc + 0, res_s8, 0);
-              vst1_lane_s8(output_ptr + loc + 1, res_s8, 1);
-              vst1_lane_s8(output_ptr + loc + 2, res_s8, 2);
-              vst1_lane_s8(output_ptr + loc + 3, res_s8, 3);
-            }
-          }
-
-#endif  // USE_NEON
-        // Handle leftover values, one by one. This is very slow.
-          for (; c < target_output_depth; c++) {
-            for (int n = 0; n < num_output_pixels; ++n) {
-              int loc = n * output_depth + c;
-              int32 acc = acc_buffer[loc];
-              acc = MultiplyByQuantizedMultiplier(acc, output_multiplier[c],
-                                                  output_shift[c]);
-              acc += output_offset;
-              acc = std::max(acc, output_activation_min);
-              acc = std::min(acc, output_activation_max);
-              output_ptr[loc] = static_cast<int8>(acc);
-            }
-          }
-        }
+        optimized_ops::Quantize(output_multiplier, output_shift, output_depth,
+                                num_output_values, output_offset,
+                                output_activation_min, output_activation_max,
+                                acc_buffer, output_ptr);
 
         output_ptr += num_output_values;
       }
@@ -1876,8 +1790,9 @@ inline void DepthwiseConvWithRounding(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    int thread_start, int thread_end, int thread_dim) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8/8bit");
+    int thread_start, int thread_end, int thread_dim,
+    const CpuBackendContext& cpu_backend_context) {
+  ruy::profiler::ScopeLabel label("DepthwiseConvInt8/8bit");
   const int depth_multiplier = params.depth_multiplier;
   const int dilation_width_factor = params.dilation_width_factor;
   const int dilation_height_factor = params.dilation_height_factor;
@@ -1894,6 +1809,40 @@ inline void DepthwiseConvWithRounding(
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
+#if defined(__ANDROID__) && defined(__clang__)
+  ruy::Context* ruy_context = cpu_backend_context.ruy_context();
+  const auto ruy_paths = ruy_context != nullptr
+                             ? ruy_context->GetRuntimeEnabledPaths()
+                             : ruy::Path::kNone;
+  // TODO(b/150208140): Re-enable once erroneous activation in test is resolved.
+  const bool has_dot_product_instructions =
+      false && (ruy_paths & ruy::Path::kNeonDotprod) != ruy::Path::kNone;
+
+  // Dispatch to dot-product 3x3 kernels when supported.
+  if (has_dot_product_instructions) {
+    using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+    DotProduct3x3KernelType kernel_type =
+        optimized_ops::depthwise_conv::CategorizeDotProductKernel<
+            optimized_ops::depthwise_conv::QuantizationType::kPerChannelInt8>(
+            input_shape, filter_shape, output_shape, params, output_shift);
+    if (kernel_type != DotProduct3x3KernelType::kNone) {
+      ruy::profiler::ScopeLabel specialized_label(
+          "DepthwiseConvInt8/8bit/3x3XDotProduct");
+      DepthwiseParams params_copy = params;
+      params_copy.output_shift_per_channel = output_shift;
+      params_copy.output_multiplier_per_channel = output_multiplier;
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3PerChannel<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params_copy, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data, thread_start,
+          thread_end, thread_dim);
+      return;
+    }
+  }
+
+#endif
+  // Dispatch to non-dot-product 3x3 kernels when supported.
+
   const int stride_width = params.stride_width;
   const int stride_height = params.stride_height;
   const int pad_width = params.padding_values.width;
@@ -1906,8 +1855,7 @@ inline void DepthwiseConvWithRounding(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, 0, output_shift)) {
-    gemmlowp::ScopedProfilingLabel specialized_label(
-        "DepthwiseConvInt8/8bit/3x3");
+    ruy::profiler::ScopeLabel specialized_label("DepthwiseConvInt8/8bit/3x3");
     optimized_ops::depthwise_conv::DepthwiseConv3x3FilterPerChannel<
         DepthwiseConvOutputRounding::kUpward>(
         params, output_multiplier, output_shift, input_shape, input_data,
@@ -1917,8 +1865,7 @@ inline void DepthwiseConvWithRounding(
   }
 #endif
 
-  gemmlowp::ScopedProfilingLabel specialized_label(
-      "DepthwiseConvInt8/8bit/General");
+  ruy::profiler::ScopeLabel specialized_label("DepthwiseConvInt8/8bit/General");
   depthwise_conv::DepthwiseConvGeneral(
       params, output_multiplier, output_shift, input_shape, input_data,
       filter_shape, filter_data, bias_shape, bias_data, output_shape,
@@ -1931,11 +1878,12 @@ inline void DepthwiseConvImpl(
     const int8* input_data, const RuntimeShape& filter_shape,
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
-    int thread_start, int thread_end, int thread_dim) {
+    int thread_start, int thread_end, int thread_dim,
+    const CpuBackendContext& cpu_backend_context) {
   return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
       params, output_multiplier, output_shift, input_shape, input_data,
       filter_shape, filter_data, bias_shape, bias_data, output_shape,
-      output_data, thread_start, thread_end, thread_dim);
+      output_data, thread_start, thread_end, thread_dim, cpu_backend_context);
 }
 
 template <typename T, typename TS>
@@ -1948,7 +1896,8 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
                           const T* filter_data, const RuntimeShape& bias_shape,
                           const TS* bias_data, const RuntimeShape& output_shape,
                           T* output_data, int thread_start, int thread_end,
-                          int thread_dim)
+                          int thread_dim,
+                          const CpuBackendContext& cpu_backend_context_x)
       : params_(params),
         output_multiplier_(output_multiplier),
         output_shift_(output_shift),
@@ -1962,13 +1911,14 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
         output_data_(output_data),
         thread_start_(thread_start),
         thread_end_(thread_end),
-        thread_dim_(thread_dim) {}
+        thread_dim_(thread_dim),
+        cpu_backend_context(cpu_backend_context_x) {}
 
   void Run() override {
     DepthwiseConvImpl(params_, output_multiplier_, output_shift_, input_shape_,
                       input_data_, filter_shape_, filter_data_, bias_shape_,
                       bias_data_, output_shape_, output_data_, thread_start_,
-                      thread_end_, thread_dim_);
+                      thread_end_, thread_dim_, cpu_backend_context);
   }
 
  private:
@@ -1986,6 +1936,7 @@ struct DepthwiseConvWorkerTask : cpu_backend_threadpool::Task {
   int thread_start_;
   int thread_end_;
   int thread_dim_;
+  const CpuBackendContext& cpu_backend_context;
 };
 
 inline int HowManyConvThreads(const RuntimeShape& output_shape,
@@ -2009,7 +1960,7 @@ inline void DepthwiseConvPerChannel(
     const int8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape, int8* output_data,
     CpuBackendContext* cpu_backend_context) {
-  gemmlowp::ScopedProfilingLabel label("DepthwiseConvInt8");
+  ruy::profiler::ScopeLabel label("DepthwiseConvInt8");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -2036,7 +1987,8 @@ inline void DepthwiseConvPerChannel(
     DepthwiseConvImpl(params, output_multiplier, output_shift, input_shape,
                       input_data, filter_shape, filter_data, bias_shape,
                       bias_data, output_shape, output_data, /*thread_start=*/0,
-                      /*thread_end=*/output_rows, /*thread_dim=*/1);
+                      /*thread_end=*/output_rows, /*thread_dim=*/1,
+                      *cpu_backend_context);
   } else {
     std::vector<DepthwiseConvWorkerTask<int8, int32>> tasks;
     // TODO(b/131746020) don't create new heap allocations every time.
@@ -2049,7 +2001,7 @@ inline void DepthwiseConvPerChannel(
       tasks.emplace_back(params, output_multiplier, output_shift, input_shape,
                          input_data, filter_shape, filter_data, bias_shape,
                          bias_data, output_shape, output_data, thread_start,
-                         thread_end, thread_dim);
+                         thread_end, thread_dim, *cpu_backend_context);
       thread_start = thread_end;
     }
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),

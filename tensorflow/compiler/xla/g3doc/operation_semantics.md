@@ -94,7 +94,7 @@ The participating cores can be configured by:
     in the same order of 1, 2, 3. Then, another AllToAll will be applied within
     replicas 4, 5, 0, and the concatenation order is also 4, 5, 0. If
     `replica_groups` is empty, all replicas belong to one group, in the
-    concatenation order of their appearence.
+    concatenation order of their appearance.
 
 Prerequisites:
 
@@ -761,17 +761,12 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
-The `batch_group_count` (default value 1) argument can be used for depthwise
+The `batch_group_count` (default value 1) argument can be used for grouped
 filters during backpropagation. `batch_group_count` needs to be a divisor of the
 size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
-than 1, it means that the output batch dimension should be of size
-`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
-For convolutions with `batch_group_count` greater than 1, the input batch size
-must evenly divide into batch_group_size and output feature size, which implies
-that the output feature size must be equal to batch_group_count. Conceptually,
-this can be achieved by performing the usual convolution, and then scraping
-`batch_group_size` number of elements on the diagonal of the matrix formed by
-output batch and output feature.
+than 1, it means that the output batch dimension should be of size `input batch
+/ batch_group_count`. The `batch_group_count` must be a divisor of the output
+feature size.
 
 The output shape has these dimensions, in this order:
 
@@ -955,7 +950,7 @@ Arguments           | Type                  | Semantics
 ------------------- | --------------------- | ---------------
 `lhs`               | `XlaOp`               | array of type T
 `rhs`               | `XlaOp`               | array of type T
-`dimension_numbers` | `DotDimensionNumbers` | array of type T
+`dimension_numbers` | `DotDimensionNumbers` | contracting and batch dimension numbers
 
 As Dot, but allows contracting and batch dimension numbers to be specified for
 both the 'lhs' and 'rhs'.
@@ -971,7 +966,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same and but must have the same dimension sizes.
+to be the same but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
@@ -1269,6 +1264,9 @@ XlaBuilder supports these element-wise unary functions:
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.
 
+<b>`Imag(operand)`</b> Element-wise imaginary part of a complex (or real)
+shape. `x -> imag(x)`. If the operand is a floating point type, returns 0.
+
 <b>`IsFinite(operand)`</b> Tests whether each element of `operand` is finite,
 i.e., is not positive or negative infinity, and is not `NaN`. Returns an array
 of `PRED` values with the same shape as the input, where each element is `true`
@@ -1283,11 +1281,19 @@ element of `operand`.
 
 <b>`Neg(operand)`</b> Element-wise negation `x -> -x`.
 
+<b>`Real(operand)`</b> Element-wise real part of a complex (or real) shape.
+`x -> real(x)`. If the operand is a floating point type, returns the same value.
+
+<b>`Rsqrt(operand)`</b> Element-wise reciprocal of square root operation
+`x -> 1.0 / sqrt(x)`.
+
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
 
 $$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & x = +0\\ 1 & x > 0 \end{cases}$$
 
 using the comparison operator of the element type of `operand`.
+
+<b>`Sqrt(operand)`</b> Element-wise square root operation `x -> sqrt(x)`.
 
 <b>`Tanh(operand)`</b> Element-wise hyperbolic tangent `x -> tanh(x)`.
 
@@ -2053,8 +2059,8 @@ window_strides, padding)` </b>
 :                     :                     : as to have the same output shape :
 :                     :                     : as input if the stride is 1, or  :
 :                     :                     : Padding\:\:kValid, which uses no :
-:                     :                     : no padding and "stops" the       :
-:                     :                     : window once it no longer fits)   :
+:                     :                     : padding and "stops" the window   :
+:                     :                     : once it no longer fits)          :
 
 Below code and figure shows an example of using `ReduceWindow`. Input is a
 matrix of size [4x6] and both window_dimensions and window_stride_dimensions are
@@ -2275,6 +2281,34 @@ implementation-defined.
 | `b`       | `XlaOp`                 | Scalar of type T specifying upper |
 :           :                         : limit of interval                 :
 | `shape`   | `Shape`                 | Output shape of type T            |
+
+## RngBitGenerator
+
+Generates an output with a given shape filled with uniform random bits using the
+specified algorithm (or backend default) and returns an updated state (with the
+same shape as initial state) and the generated random data.
+
+Initial state is the initial state of the current random number generation. It
+and the required shape and valid values are dependent on the algorithm used.
+
+The output is guaranteed to be a deterministic function of the initial state but
+it is *not* guaranteed to be deterministic between backends and different
+compiler versions.
+
+<b>`RngBitGenerator(algorithm, key, shape)`</b> | Arguments | Type | Semantics |
+|---------------- | ----------------- | ------------------------------------- |
+| `algorithm` | `RandomAlgorithm` | PRNG algorithm to be used. | |
+`initial_state` | `XlaOp` | Initial state for the PRNG algorithm. | | `shape` |
+`Shape` | Output shape for generated data. |
+
+Available values for `algorithm`: * `rng_default`: Backend specific algorithm
+with backend specific shape requirements. * `rng_three_fry`: ThreeFry
+counter-based PRNG algorithm. The `initial_state` shape is `u64[2]` with
+arbitrary values.
+[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
+* `rng_philox`: Philox algorithm to generate random numbers in parallel. The
+`initial_state` shape is `u64[3]` with arbitrary values.
+[Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.](http://www.thesalmons.org/john/random123/papers/random123sc11.pdf)
 
 ## Scatter
 

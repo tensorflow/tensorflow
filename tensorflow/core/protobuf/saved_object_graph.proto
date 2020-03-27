@@ -1,15 +1,16 @@
 syntax = "proto3";
 
-import "tensorflow/core/protobuf/trackable_object_graph.proto";
-import "tensorflow/core/protobuf/struct.proto";
+package tensorflow;
+
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/framework/variable.proto";
+import "tensorflow/core/framework/versions.proto";
+import "tensorflow/core/protobuf/struct.proto";
+import "tensorflow/core/protobuf/trackable_object_graph.proto";
 
 option cc_enable_arenas = true;
-
-package tensorflow;
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // A SavedObjectGraph is part of object-based SavedModels in TF 2.0. It
 // describes the directed graph of Python objects (or equivalent in other
@@ -37,8 +38,7 @@ message SavedObject {
   // graph.
   //
   // Note: currently only valid if kind == "user_object".
-  repeated TrackableObjectGraph.TrackableObject.ObjectReference
-      children = 1;
+  repeated TrackableObjectGraph.TrackableObject.ObjectReference children = 1;
 
   // Removed when forking SavedObject from TrackableObjectGraph.
   reserved "attributes";

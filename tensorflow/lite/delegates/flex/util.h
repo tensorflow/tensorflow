@@ -16,9 +16,9 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_FLEX_UTIL_H_
 
 #include "tensorflow/c/c_api_internal.h"
-#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace flex {

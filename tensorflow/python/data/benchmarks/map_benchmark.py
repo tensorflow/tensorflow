@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bechmarks for `tf.data.Dataset.map()`."""
+"""Benchmarks for `tf.data.Dataset.map()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.benchmarks import benchmark_base
+from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
 
 
@@ -28,7 +29,7 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
   def benchmark_chain_of_maps(self):
 
     def benchmark_helper(chain_length, map_fn, use_inter_op_parallelism, label):
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(None)
+      dataset = dataset_ops.Dataset.range(10000)
       for _ in range(chain_length):
         dataset = dataset_ops.MapDataset(
             dataset, map_fn, use_inter_op_parallelism=use_inter_op_parallelism)
@@ -61,6 +62,19 @@ class MapBenchmark(benchmark_base.DatasetBenchmarkBase):
       benchmark_helper(fan_out, lambda *xs: [x + 1 for x in xs], False,
                        "_single_threaded")
       benchmark_helper(fan_out, lambda *xs: xs, True, "_short_circuit")
+
+  def benchmark_stats(self):
+    for stats in [True, False]:
+      dataset = dataset_ops.Dataset.range(1000).repeat()
+      dataset = dataset.map(lambda x: x + 1, num_parallel_calls=32)
+      options = dataset_ops.Options()
+      options.experimental_deterministic = False
+      if stats:
+        aggregator = stats_aggregator.StatsAggregator()
+        options.experimental_stats.aggregator = aggregator
+      dataset = dataset.with_options(options)
+      self.run_and_report_benchmark(
+          dataset, num_elements=10000, name="stats_%s" % stats)
 
 
 if __name__ == "__main__":

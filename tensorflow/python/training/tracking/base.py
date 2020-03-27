@@ -352,7 +352,6 @@ class CheckpointPosition(object):
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
           del saveables_cache[self.trackable]
-          break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
         # object has the attribute.

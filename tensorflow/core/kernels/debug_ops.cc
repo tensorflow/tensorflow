@@ -150,4 +150,55 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentityV2")
                         DebugIdentityV2Op);
 #endif
 
+#define REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT(type)                 \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummaryV2")               \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .TypeConstraint<float>("output_dtype"), \
+                          DebugNumericSummaryV2Op<CPUDevice, type, float>);
+TF_CALL_half(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+TF_CALL_bfloat16(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+TF_CALL_float(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+TF_CALL_double(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+TF_CALL_INTEGRAL_TYPES(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+TF_CALL_bool(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_FLOAT);
+// TODO(cais): Add string support.
+
+#define REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE(type)                 \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummaryV2")                \
+                              .Device(DEVICE_CPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<double>("output_dtype"), \
+                          DebugNumericSummaryV2Op<CPUDevice, type, double>);
+TF_CALL_half(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+TF_CALL_bfloat16(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+TF_CALL_float(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+TF_CALL_double(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+TF_CALL_INTEGRAL_TYPES(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+TF_CALL_bool(REGISTER_DEBUG_NUMERIC_SUMMARY_V2_DOUBLE);
+// TODO(cais): Add string support.
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(in_type, out_type) \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("DebugNumericSummaryV2")                              \
+          .Device(DEVICE_GPU)                                    \
+          .TypeConstraint<in_type>("T")                          \
+          .TypeConstraint<out_type>("output_dtype"),             \
+      DebugNumericSummaryV2Op<GPUDevice, in_type, out_type>);
+
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(Eigen::half, float);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(float, float);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(double, float);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(int16, float);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(int32, float);
+
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(Eigen::half, double);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(float, double);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(double, double);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(int16, double);
+REGISTER_DEBUG_NUMERIC_SUMMARY_V2_GPU(int32, double);
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

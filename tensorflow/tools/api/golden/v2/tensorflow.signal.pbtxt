@@ -53,6 +53,10 @@ tf_module {
     argspec: "args=[\'x\', \'axes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "inverse_mdct"
+    argspec: "args=[\'mdcts\', \'window_fn\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'<function vorbis_window instance>\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "inverse_stft"
     argspec: "args=[\'stfts\', \'frame_length\', \'frame_step\', \'fft_length\', \'window_fn\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'<function hann_window instance>\', \'None\'], "
   }
@@ -73,8 +77,20 @@ tf_module {
     argspec: "args=[\'input_tensor\', \'fft_length\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "kaiser_bessel_derived_window"
+    argspec: "args=[\'window_length\', \'beta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'12.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "kaiser_window"
+    argspec: "args=[\'window_length\', \'beta\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'12.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "linear_to_mel_weight_matrix"
     argspec: "args=[\'num_mel_bins\', \'num_spectrogram_bins\', \'sample_rate\', \'lower_edge_hertz\', \'upper_edge_hertz\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'20\', \'129\', \'8000\', \'125.0\', \'3800.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "mdct"
+    argspec: "args=[\'signals\', \'frame_length\', \'window_fn\', \'pad_end\', \'norm\', \'name\'], varargs=None, keywords=None, defaults=[\'<function vorbis_window instance>\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "mfccs_from_log_mel_spectrograms"
@@ -99,5 +115,9 @@ tf_module {
   member_method {
     name: "stft"
     argspec: "args=[\'signals\', \'frame_length\', \'frame_step\', \'fft_length\', \'window_fn\', \'pad_end\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'<function hann_window instance>\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "vorbis_window"
+    argspec: "args=[\'window_length\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
 }

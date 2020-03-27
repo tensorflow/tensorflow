@@ -21,13 +21,13 @@ limitations under the License.
 #include <cstddef>
 #include <functional>
 
-#include "profiling/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/check_macros.h"
 #include "tensorflow/lite/experimental/ruy/context.h"
 #include "tensorflow/lite/experimental/ruy/dispatch.h"
 #include "tensorflow/lite/experimental/ruy/internal_matrix.h"
 #include "tensorflow/lite/experimental/ruy/matrix.h"
 #include "tensorflow/lite/experimental/ruy/path.h"
+#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/experimental/ruy/side_pair.h"
 #include "tensorflow/lite/experimental/ruy/spec.h"
 #include "tensorflow/lite/experimental/ruy/trmul.h"
@@ -43,7 +43,7 @@ void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
                            Context* context, Matrix<DstScalar>* dst,
                            SidePair<PrepackedMatrix*> prepacked,
                            std::function<void*(std::size_t)> alloc_fn) {
-  gemmlowp::ScopedProfilingLabel label("PrePackForMul");
+  profiler::ScopeLabel label("PrePackForMul");
   Path the_path = context->GetPathToTake<CompiledPaths>();
   RUY_CHECK_NE(the_path, Path::kReference);
   constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
@@ -77,7 +77,7 @@ void MulWithPrepackedInternal(const Matrix<LhsScalar>& lhs,
                               const Matrix<RhsScalar>& rhs, const Spec& spec,
                               Context* context, Matrix<DstScalar>* dst,
                               SidePair<PrepackedMatrix*> prepacked) {
-  gemmlowp::ScopedProfilingLabel label("MulWithPrepacked");
+  profiler::ScopeLabel label("MulWithPrepacked");
 
   EnforceLayoutSupport<Spec>(lhs.layout, rhs.layout, dst->layout);
   EnforceZeroPointSupport<Spec>(lhs.zero_point, rhs.zero_point,

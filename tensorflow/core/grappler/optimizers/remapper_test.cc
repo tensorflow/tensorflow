@@ -69,9 +69,9 @@ TEST_F(RemapperTest, FusedBatchNorm) {
 }
 
 TEST_F(RemapperTest, FusedBatchNormNCHW) {
-#if !GOOGLE_CUDA
-  GTEST_SKIP() << "CUDA is not enabled";
-#endif  // !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+  GTEST_SKIP() << "Neither CUDA nor ROCm is enabled";
+#endif  // !GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output dflt =
       ops::Const(s.WithOpName("dflt"), {3.14f, 2.7f, 1.0f, 2.0f, 3.0f, 100.0f},
@@ -796,9 +796,8 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   std::vector<int> strides = {1, 1, 1, 1};
   auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
 
-  ops::Squeeze::Attrs attrs;
-  attrs = attrs.Axis({2});
-  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv, attrs);
+  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv,
+                              ops::Squeeze::Attrs().Axis({2}));
 
   auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), squeeze, bias);
   auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);

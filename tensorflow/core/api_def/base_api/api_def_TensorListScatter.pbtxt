@@ -8,7 +8,7 @@ specified by the given index (see `tf.gather`).
 tensor: The input tensor.
 indices: The indices used to index into the list.
 element_shape: The shape of the elements in the list (can be less specified than
-  the shape of the tensor).  
+  the shape of the tensor).
 output_handle: The TensorList.
 END
 }

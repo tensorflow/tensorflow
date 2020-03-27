@@ -26,7 +26,9 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:util",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -37,7 +39,7 @@ cc_test(
     linkstatic = 1,
     deps = [
         ":utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "@com_google_googletest//:gtest_main",
     ],
 )

@@ -319,7 +319,7 @@ Status LayoutConstraints::SetInstructionLayout(
         CHECK_EQ(1, buffers.size());
         CHECK_EQ(buffers[0]->instruction(), instruction);
 
-        if (subshape.IsArray()) {
+        if (subshape.IsArray() && subshape.has_layout()) {
           return SetBufferLayout(subshape.layout(), *buffers[0], mandatory);
         } else {
           return Status::OK();
@@ -432,6 +432,12 @@ bool IsLayoutConstrainedCustomCall(HloInstruction* instruction) {
   return custom_call != nullptr && custom_call->layout_constrained();
 }
 
+bool IsLayoutConstrainedAllReduce(const HloInstruction* instruction) {
+  const HloAllReduceInstruction* all_reduce =
+      DynCast<HloAllReduceInstruction>(instruction);
+  return all_reduce != nullptr && all_reduce->constrain_layout();
+}
+
 }  // namespace
 
 Status LayoutAssignment::AddMandatoryConstraints(
@@ -466,12 +472,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
         const ShapeLayout& parameter_layout =
             computation_layout->parameter_layout(
                 instruction->parameter_number());
-        if (parameter_layout.LayoutIsSet()) {
-          // Parameter layouts must match the respective layout in
-          // ComputationLayout, if there is one.
-          TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-              parameter_layout.shape(), instruction));
-        }
+        // Parameter layouts must match the respective layout in
+        // ComputationLayout, if there is one.
+        TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+            parameter_layout.shape(), instruction));
       }
     } else if (IsLayoutConstrainedCustomCall(instruction)) {
       const HloCustomCallInstruction* custom_call =
@@ -516,6 +520,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
         TF_RETURN_IF_ERROR(
             constraints->SetBufferLayout(new_shape.layout(), *buffer));
       }
+    } else if (IsLayoutConstrainedAllReduce(instruction)) {
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(instruction->shape(), instruction));
     } else if (instruction->IsCrossModuleAllReduce()) {
       CHECK(get_channel_constraints(instruction))
           << "Multi-module layout assignment requires ChannelLayoutConstraints";
@@ -598,7 +605,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
           body_layout.result_shape(), instruction));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
       // Find the conditional branch with the most instructions and force all
-      // other computations to match that layout. A potentially better decison
+      // other computations to match that layout. A potentially better decision
       // could count the number FLOPs or how constrained the layouts are.
       int64 largest_branch = 0;
       int64 largest_instruction_count =
@@ -756,15 +763,23 @@ Status CheckParameterLayout(HloInstruction* parameter,
                             const ComputationLayout& computation_layout) {
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
-  if (parameter_layout.LayoutIsSet() &&
-      !parameter_layout.MatchesLayoutInShape(parameter->shape(),
-                                             /*minor_to_major_only=*/true)) {
-    return InternalError(
-        "parameter instruction %s does not match layout of computation "
-        "shape: %s",
-        parameter->ToString(), parameter_layout.ToString());
-  }
-  return Status::OK();
+  return ShapeUtil::ForEachSubshapeWithStatus(
+      parameter_layout.shape(),
+      [&](const Shape& subshape, const ShapeIndex& shape_index) {
+        if (!ShapeUtil::IsLeafIndex(parameter_layout.shape(), shape_index) ||
+            !subshape.has_layout()) {
+          return Status::OK();
+        }
+        if (!Shape::Equal().MinorToMajorOnlyInLayout().IgnoreDynamicDimension()(
+                subshape,
+                ShapeUtil::GetSubshape(parameter->shape(), shape_index))) {
+          return InternalError(
+              "parameter instruction %s does not match layout of computation "
+              "shape: %s",
+              parameter->ToString(), parameter_layout.ToString());
+        }
+        return Status::OK();
+      });
 }
 
 // The layout of a constant instruction must match the layout of its literal.
@@ -933,8 +948,10 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
               for (const LogicalBuffer* buffer : buffers) {
-                if (!Shape::Equal().MinorToMajorOnlyInLayout()(
-                        instruction_subshape, buffer->shape())) {
+                if (!Shape::Equal()
+                         .IgnoreDynamicDimension()
+                         .MinorToMajorOnlyInLayout()(instruction_subshape,
+                                                     buffer->shape())) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -996,8 +1013,9 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
       FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout();
   if (result_layout.LayoutIsSet()) {
-    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-        module->result_shape(), result_layout.shape()));
+    TF_RET_CHECK(
+        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
+            module->result_shape(), result_layout.shape()));
   }
   return Status::OK();
 }
@@ -1303,6 +1321,23 @@ Status LayoutAssignment::PropagateOperandConstraint(
   if (!operand->shape().IsArray()) {
     return Status::OK();
   }
+
+  if (user->opcode() == HloOpcode::kAllReduce) {
+    const auto shape_index =
+        user->operand_count() == 1
+            ? ShapeIndex()
+            : ShapeIndex({operand_constraint.operand_no()});
+    TF_ASSIGN_OR_RETURN(const LogicalBuffer* buffer,
+                        constraints->points_to_analysis().GetBufferDefinedAt(
+                            user, shape_index));
+    const BufferLayoutConstraint* constraint =
+        constraints->GetBufferLayoutConstraint(*buffer);
+    if (constraint == nullptr) {
+      TF_RETURN_IF_ERROR(constraints->SetBufferLayout(
+          operand_constraint.shape_layout().layout(), *buffer,
+          /*mandatory=*/false));
+    }
+  }
   if (instruction_can_change_layout_func_(user) && !user->shape().IsArray()) {
     return Status::OK();
   }
@@ -1434,6 +1469,13 @@ Status LayoutAssignment::PropagateBufferConstraintToOperands(
     return Status::OK();
   }
 
+  if (instruction->opcode() == HloOpcode::kAllReduce) {
+    TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
+        buffer_constraint.layout(), instruction,
+        instruction->operand_count() == 1 ? 0 : buffer.index()[0],
+        /*mandatory=*/true));
+    return Status::OK();
+  }
   for (int64 operand_no = 0; operand_no < instruction->operand_count();
        ++operand_no) {
     const HloInstruction* operand = instruction->operand(operand_no);
@@ -1765,7 +1807,8 @@ Status LayoutAssignment::ClearComputationLayouts(HloComputation* computation) {
     }
     // Some instructions carry mandatory layouts in their shape.
     if (instruction->opcode() != HloOpcode::kInfeed &&
-        !IsLayoutConstrainedCustomCall(instruction)) {
+        !IsLayoutConstrainedCustomCall(instruction) &&
+        !IsLayoutConstrainedAllReduce(instruction)) {
       LayoutUtil::ClearLayout(instruction->mutable_shape());
     }
   }
@@ -1967,14 +2010,33 @@ Status LayoutAssignment::PropagateComputationLayouts(
       /*ignore_layouts=*/false);
   for (int64 i = 0; i < computed_computation_layout.parameter_count(); ++i) {
     ShapeLayout* param_layout = computation_layout->mutable_parameter_layout(i);
-    if (!param_layout->LayoutIsSet()) {
+    bool needs_assign = false;
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        param_layout->shape(),
+        [&](const Shape& subshape, const ShapeIndex& shape_index) {
+          if (!ShapeUtil::IsLeafIndex(param_layout->shape(), shape_index)) {
+            return Status::OK();
+          }
+          if (!subshape.has_layout()) {
+            needs_assign = true;
+            return Status::OK();
+          }
+          const auto& computed_subshape = ShapeUtil::GetSubshape(
+              computed_computation_layout.parameter_shape(i), shape_index);
+          if (subshape.layout() != computed_subshape.layout()) {
+            return InternalError(
+                "Assigned parameter shape %s does not match layout of "
+                "computation shape: %s",
+                computed_computation_layout.ToString(),
+                computation_layout->ToString());
+          }
+          return Status::OK();
+        }));
+    if (needs_assign) {
       VLOG(4) << "Assigning layout to parameter " << i << " of computation "
               << computation->name() << ": "
               << computed_computation_layout.parameter_layout(i).ToString();
       *param_layout = computed_computation_layout.parameter_layout(i);
-    } else {
-      TF_RET_CHECK(computed_computation_layout.parameter_layout(i) ==
-                   *param_layout);
     }
   }
   ShapeLayout* result_layout = computation_layout->mutable_result_layout();
@@ -1983,9 +2045,10 @@ Status LayoutAssignment::PropagateComputationLayouts(
             << ": " << computed_computation_layout.result_layout().ToString();
     *result_layout = computed_computation_layout.result_layout();
   } else {
-    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
-        computed_computation_layout.result_layout().shape(),
-        result_layout->shape()));
+    TF_RET_CHECK(
+        Shape::Equal().IgnoreDynamicDimension().MinorToMajorOnlyInLayout()(
+            computed_computation_layout.result_layout().shape(),
+            result_layout->shape()));
   }
   return Status::OK();
 }
@@ -2116,7 +2179,6 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kConditional:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
-    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kDivide:
@@ -2166,6 +2228,9 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
     case HloOpcode::kSetDimensionSize:
+    // AllReduce is variadic so it needs to be careful to assign the same layout
+    // to the corresponding input argument and Tuple index.
+    case HloOpcode::kAllReduce:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
@@ -2195,6 +2260,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
     case HloOpcode::kRng:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:

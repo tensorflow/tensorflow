@@ -14,280 +14,208 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_irgen_test_base.h"
+#include "tensorflow/core/platform/path.h"
 
 namespace xla {
 namespace mlir_gpu {
 
 class LhloGenTest : public MlirIrGenTestBase {};
 
+TEST_F(LhloGenTest, Const) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "const.hlo"),
+      LoweringStage::LHLO);
+}
+
 TEST_F(LhloGenTest, BrokenAdd) {
   CompileAndVerifyErrors(
-      R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2,2], y: f32[2,2,2]) -> f32[2,2,2] {
-  %x = f32[2,2,2]{2,1,0} parameter(0)
-  %y = f32[2,2,2]{2,1,0} parameter(1)
-  ROOT %add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y)
-})",
-      R"(CHECK: ERRORS FOUND: [%add = f32[2,2,2]{2,1,0} add(f32[2,2,2]{2,1,0} %x, f32[2,2,2]{2,1,0} %y): failed for testing: xla_lhlo.add; failed for testing: std.return])",
+      /*hlo_text_filename=*/
+      tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                               "mlir_gpu", "tests", "broken_add.hlo"),
       LoweringStage::LHLO);
 }
 
 TEST_F(LhloGenTest, Add) {
-  CompileAndVerifyIr(R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "add"} : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
-;CHECK: }
-      )");
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "add.hlo"));
 }
 
 TEST_F(LhloGenTest, Compare) {
-  CompileAndVerifyIr(R"(
-HloModule Compare
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "compare.hlo"));
+}
 
-ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %compare = pred[2,2]{1,0} compare(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y), direction=EQ
-})",
-                     R"(
-;CHECK: func @compare(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[PRED:.*]]: [[PRED_TYPE:.*]]) {
-;CHECK:   "xla_lhlo.compare"(%[[ARG0]], %[[ARG1]], %[[PRED]])
-;CHECK: {comparison_direction = "EQ", name = "compare"} : ([[TYPE]], [[TYPE]], [[PRED_TYPE]]) -> ()
-;CHECK: }
-)");
+TEST_F(LhloGenTest, Copy) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "copy.hlo"));
+}
+
+TEST_F(LhloGenTest, CopyTranspose) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "copy_transpose.hlo"));
 }
 
 TEST_F(LhloGenTest, Select) {
-  CompileAndVerifyIr(R"(
-HloModule Select
-
-ENTRY %Select (p: pred[2,2], x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %p = pred[2,2]{1,0} parameter(0)
-  %x = f32[2,2]{1,0} parameter(1)
-  %y = f32[2,2]{1,0} parameter(2)
-  ROOT %select = f32[2,2]{1,0} select(pred[2,2]{1,0} %p, f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @select(%[[PRED:.*]]: [[PRED_TYPE:.*]], %[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.select"(%[[PRED]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "select"} : ([[PRED_TYPE]], [[TYPE]], [[TYPE]], [[TYPE]]) -> ()
-;CHECK: }
-      )");
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "select.hlo"));
 }
 
 TEST_F(LhloGenTest, Exp) {
-  CompileAndVerifyIr(R"(
-HloModule Exp
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "exp.hlo"));
+}
 
-ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  ROOT %exp = f32[2,2]{1,0} exponential(f32[2,2]{1,0} %x)
-})",
-                     R"(
-;CHECK: func @exponential(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.exp"(%[[ARG0]], %[[ARG1]]) {name = "exponential"} : ([[TYPE]], [[TYPE]]) -> ()
-;CHECK: }
-      )");
+TEST_F(LhloGenTest, Log) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "log.hlo"));
 }
 
 TEST_F(LhloGenTest, AddInGPUDialect) {
-  CompileAndVerifyIr(R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK: "gpu.launch_func"(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %[[ARG0]], %[[ARG1]], %[[ARG2]]
-;CHECK: }
-;CHECK: func @add_kernel(%[[ARG0]]: [[TYPE]], %[[ARG1]]: [[TYPE]], %[[ARG2]]: [[TYPE]]
-;CHECK: load %[[ARG0]][[INDEX:.*]]
-;CHECK: load %[[ARG1]][[INDEX]]
-;CHECK: store %{{.*}}, %[[ARG2]][[INDEX]]
-      )",
-                     LoweringStage::GPU);
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/
+      tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                               "mlir_gpu", "tests", "add_in_gpu_dialect.hlo"),
+      LoweringStage::GPU);
 }
 
-TEST_F(LhloGenTest, AddInLVVMDialect) {
-  CompileAndVerifyIr(R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
-;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]]
-;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
-;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][0 : index]
-;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]
-;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
-;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][0 : index]
-;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]
-;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
-      )",
-                     LoweringStage::LLVM);
-}
-
+// This test verifies that the kernel signature is amended correctly. The actual
+// body of the generated function does not matter, it is already checked at the
+// GPU level above.
 TEST_F(LhloGenTest, AddAsKernel) {
-  CompileAndVerifyIr(R"(
-HloModule Add
-
-ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  ROOT %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-})",
-                     R"(
-;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-
-;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
-;CHECK: %[[GEP0O:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0O]]
-;CHECK: %[[GEP0S0:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: %[[CST0S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST0S0]], %[[GEP0S0]]
-;CHECK: %[[GEP0S1:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: %[[CST0S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST0S1]], %[[GEP0S1]]
-;CHECK: %[[GEP0ST0:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0ST0]]
-;CHECK: %[[GEP0ST1:.*]] = llvm.getelementptr %[[DESC0]]
-;CHECK: llvm.store %{{.*}}, %[[GEP0ST1]]
-
-;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
-;CHECK: %[[GEP1O:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1O]]
-;CHECK: %[[GEP1S0:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: %[[CST1S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST1S0]], %[[GEP1S0]]
-;CHECK: %[[GEP1S1:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: %[[CST1S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST1S1]], %[[GEP1S1]]
-;CHECK: %[[GEP1ST0:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1ST0]]
-;CHECK: %[[GEP1ST1:.*]] = llvm.getelementptr %[[DESC1]]
-;CHECK: llvm.store %{{.*}}, %[[GEP1ST1]]
-
-;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
-;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
-;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
-;CHECK: %[[GEP2O:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2O]]
-;CHECK: %[[GEP2S0:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: %[[CST2S0:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST2S0]], %[[GEP2S0]]
-;CHECK: %[[GEP2S1:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: %[[CST2S1:.*]] = llvm.mlir.constant(2 : i64) : !llvm.i64
-;CHECK: llvm.store %[[CST2S1]], %[[GEP2S1]]
-;CHECK: %[[GEP2ST0:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2ST0]]
-;CHECK: %[[GEP2ST1:.*]] = llvm.getelementptr %[[DESC2]]
-;CHECK: llvm.store %{{.*}}, %[[GEP2ST1]]
-
-;CHECK: %[[VL0:.*]] = llvm.load %[[DESC0]]
-;CHECK: %[[VL1:.*]] = llvm.load %[[DESC1]]
-;CHECK: %[[VL2:.*]] = llvm.load %[[DESC2]]
-;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][0 : index]
-;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
-;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
-;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][0 : index]
-;CHECK: %[[VGEP1:.*]] = llvm.getelementptr %[[EV1]]
-;CHECK: %[[VAL1:.*]] = llvm.load %[[VGEP1]]
-;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][0 : index]
-;CHECK: %[[SGEP:.*]] = llvm.getelementptr %[[EV2]]
-;CHECK: llvm.store %[[VAL2]], %[[SGEP]]
-      )",
-                     LoweringStage::KERNEL);
+  CompileAndVerifyIr(
+      tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                               "mlir_gpu", "tests", "add_as_kernel.hlo"),
+      LoweringStage::KERNEL);
 }
 
-TEST_F(LhloGenTest, AddMultiply) {
-  CompileAndVerifyIr(R"(
-HloModule AddMultiply
-
-ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
-  %x = f32[2,2]{1,0} parameter(0)
-  %y = f32[2,2]{1,0} parameter(1)
-  %z = f32[2,2]{1,0} parameter(2)
-  %add = f32[2,2]{1,0} add(f32[2,2]{1,0} %x, f32[2,2]{1,0} %y)
-  ROOT %mul = f32[2,2]{1,0} multiply(f32[2,2]{1,0} %add, f32[2,2]{1,0} %z)
-})",
-                     R"(
-;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]], %[[RESULT:.*]]: [[TYPE]])
-;CHECK: "xla_lhlo.fusion"() ( {
-;CHECK:   %[[REF0:.*]] = tensor_load %[[ARG0]] : [[TYPE]]
-;CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE:.*]]
-;CHECK:   %[[REF2:.*]] = tensor_load %[[ARG2]] : [[TYPE]]
-;CHECK:   %[[ADD:.*]] = "xla_hlo.add"(%[[REF1]], %[[REF2]]) {name = "add"}
-;CHECK:   %[[MUL:.*]] = "xla_hlo.mul"(%[[ADD]], %[[REF0]]) {name = "multiply"}
-;CHECK:   tensor_store %[[MUL]], %[[RESULT]]
-;CHECK:   "xla_lhlo.terminator"()
-;CHECK-NEXT: }
-      )");
+// TODO(b/149302060) Reenable once fusion is fixed.
+TEST_F(LhloGenTest, DISABLED_AddMultiply) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "add_multiply.hlo"));
 }
 
-TEST_F(LhloGenTest, FusedReduce) {
-  CompileAndVerifyIr(R"(
-HloModule FusedReduce
-
-%add (x: f32[], y: f32[]) -> f32[] {
-  %x = f32[] parameter(0)
-  %y = f32[] parameter(1)
-  ROOT %add = f32[] add(f32[] %x, f32[] %y)
+// TODO(b/149302060) Reenable once fusion is fixed.
+TEST_F(LhloGenTest, DISABLED_IotaAddMultiply) {
+  CompileAndVerifyIr(
+      tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                               "mlir_gpu", "tests", "iota_add_multiply.hlo"),
+      LoweringStage::GPU);
 }
 
-%fused_computation (param: f32[100,10]) -> f32[10] {
-  %param = f32[100,10] parameter(0)
-  %constant = f32[] constant(0)
-  ROOT %reduce = f32[10]{0} reduce(f32[100,10]{1,0} %param, f32[] %constant), dimensions={0}, to_apply=%add
+TEST_F(LhloGenTest, AddMultiplyGPU) {
+  CompileAndVerifyIr(
+      tensorflow::io::JoinPath("tensorflow", "compiler", "xla", "service",
+                               "mlir_gpu", "tests", "add_multiply_gpu.hlo"),
+      LoweringStage::GPU);
 }
 
-ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
-  %x = f32[100,10] parameter(0)
-  ROOT %fusion = f32[10]{0} fusion(f32[100,10]{1,0} %x), kind=kInput, calls=%fused_computation
+// TODO(b/137624192): Reenable once we can fuse reductions.
+TEST_F(LhloGenTest, DISABLED_FusedReduce) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "fused_reduce.hlo"));
 }
-)",
-                     R"(
-;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
-;CHECK: "xla_lhlo.fusion"() ( {
-;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
-;CHECK:   %[[CT0:.*]] = "xla_hlo.constant"()
-;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
-;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
-;CHECK:       %[[ADD:.*]] = "xla_hlo.add"(%[[BARG0]], %[[BARG1]]) {name = "add"} : ([[ETYPE]], [[ETYPE]]) -> [[ETYPE]]
-;CHECK:       "xla_hlo.return"(%[[ADD]])
-;CHECK:     })
-;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
-;CHECK:   "xla_lhlo.terminator"()
-;CHECK-NEXT: })
-      )");
+
+TEST_F(LhloGenTest, Broadcast) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "broadcast.hlo"));
+}
+
+TEST_F(LhloGenTest, Iota) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "iota.hlo"));
+}
+
+TEST_F(LhloGenTest, AddReduce) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "add_reduce.hlo"));
+}
+
+TEST_F(LhloGenTest, Abs) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "abs.hlo"));
+}
+
+TEST_F(LhloGenTest, Ceil) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "ceil.hlo"));
+}
+
+TEST_F(LhloGenTest, Cos) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "cos.hlo"));
+}
+
+TEST_F(LhloGenTest, Neg) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "neg.hlo"));
+}
+
+TEST_F(LhloGenTest, ReduceWindow) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "reduce_window.hlo"));
+}
+
+TEST_F(LhloGenTest, Rem) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "rem.hlo"));
+}
+
+TEST_F(LhloGenTest, Rsqrt) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "rsqrt.hlo"));
+}
+
+TEST_F(LhloGenTest, SelectAndScatter) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "select_and_scatter.hlo"));
+}
+
+TEST_F(LhloGenTest, Sign) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "rsqrt.hlo"));
+}
+
+TEST_F(LhloGenTest, Sqrt) {
+  CompileAndVerifyIr(
+      /*hlo_text_filename=*/tensorflow::io::JoinPath(
+          "tensorflow", "compiler", "xla", "service", "mlir_gpu", "tests",
+          "sqrt.hlo"));
+}
+
+TEST_F(LhloGenTest, Tanh) {
+  CompileAndVerifyIr(tensorflow::io::JoinPath("tensorflow", "compiler", "xla",
+                                              "service", "mlir_gpu", "tests",
+                                              "tanh.hlo"));
 }
 
 }  // namespace mlir_gpu

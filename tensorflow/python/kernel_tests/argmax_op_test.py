@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+
 import numpy as np
 
 from tensorflow.python.framework import dtypes
@@ -55,7 +56,9 @@ class ArgMaxTest(test.TestCase):
                    expected_values,
                    expected_err_re=None):
     self._testArg(method, x, axis, expected_values, True, expected_err_re)
-    self._testArg(method, x, axis, expected_values, False, expected_err_re)
+    # Compilation time is too large with XLA/CPU autojit.
+    if not test_util.is_xla_enabled():
+      self._testArg(method, x, axis, expected_values, False, expected_err_re)
 
   def _testBasic(self, dtype):
     x = np.arange(200, dtype=dtype)

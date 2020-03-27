@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.training.saving import saveable_hook
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util import nest
@@ -130,15 +131,31 @@ class MultiDeviceSaver(object):
 
     Args:
       saveable_objects: A list of `SaveableObject`s.
+        Objects extending `SaveableObject` will be saved and restored, and
+        objects extending `SaveableHook` will be called into at save and
+        restore time.
     """
+    self._before_save_callbacks = []
+    self._after_restore_callbacks = []
+
     saveable_objects = list(saveable_objects)
     saveables_by_device = {}
     for saveable in saveable_objects:
-      if not isinstance(saveable, saveable_object.SaveableObject):
+      is_saveable = isinstance(saveable, saveable_object.SaveableObject)
+      is_hook = isinstance(saveable, saveable_hook.SaveableHook)
+
+      if not is_saveable and not is_hook:
         raise ValueError(
             "Expected a dictionary of SaveableObjects, got {}."
             .format(saveable))
-      saveables_by_device.setdefault(saveable.device, []).append(saveable)
+
+      if is_hook:
+        self._before_save_callbacks.append(saveable.before_save)
+        self._after_restore_callbacks.append(saveable.after_restore)
+
+      if is_saveable:
+        saveables_by_device.setdefault(saveable.device, []).append(saveable)
+
     self._single_device_savers = {
         device: _SingleDeviceSaver(saveables)
         for device, saveables in saveables_by_device.items()}
@@ -182,6 +199,9 @@ class MultiDeviceSaver(object):
     Returns:
       An `Operation`, or None when executing eagerly.
     """
+    for callback in self._before_save_callbacks:
+      callback()
+
     # IMPLEMENTATION DETAILS: most clients should skip.
     #
     # Suffix for any well-formed "checkpoint_prefix", when sharded.
@@ -201,14 +221,20 @@ class MultiDeviceSaver(object):
     #     <train dir>/
     #        myckpt{.index, .data-?????-of-?????}
     #
+    #   Filesystems with eventual consistency (such as S3), don't need a
+    #   temporary location. Using a temporary directory in those cases might
+    #   cause situations where files are not available during copy.
+    #
     # Users only need to interact with the user-specified prefix, which is
     # "<train dir>/myckpt" in this case.  Save() and Restore() work with the
     # prefix directly, instead of any physical pathname.  (On failure and
     # subsequent restore, an outdated and orphaned temporary directory can be
     # safely removed.)
-    sharded_suffix = "_temp_%s/part" % uuid.uuid4().hex
-
-    with ops.device("cpu:0"):
+    with ops.device("CPU"):
+      sharded_suffix = array_ops.where(
+          string_ops.regex_full_match(file_prefix, "^s3://.*"),
+          constant_op.constant(".part"),
+          constant_op.constant("_temp_%s/part" % uuid.uuid4().hex))
       tmp_checkpoint_prefix = string_ops.string_join(
           [file_prefix, sharded_suffix])
 
@@ -253,4 +279,8 @@ class MultiDeviceSaver(object):
     for device, saver in sorted(self._single_device_savers.items()):
       with ops.device(device):
         restore_ops.update(saver.restore(file_prefix))
+
+    for callback in self._after_restore_callbacks:
+      callback()
+
     return restore_ops

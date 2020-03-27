@@ -215,7 +215,7 @@ def main():
   # ignore PWD env var
   os.environ['PWD']=''
 
-  parser = ArgumentParser()
+  parser = ArgumentParser(fromfile_prefix_chars='@')
   parser.add_argument('-x', nargs=1)
   parser.add_argument('--rocm_log', action='store_true')
   parser.add_argument('-pass-exit-codes', action='store_true')

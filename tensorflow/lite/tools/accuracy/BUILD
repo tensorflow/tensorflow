@@ -13,6 +13,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )

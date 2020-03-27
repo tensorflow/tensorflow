@@ -38,6 +38,7 @@ namespace xla {
 
 class DeviceAssignment;
 class ExecutionProfile;
+class GpuExecutableRunOptions;
 
 // A unique identifier for a particular "logical execution" of an XLA model.
 //
@@ -54,6 +55,7 @@ class RunId {
   RunId& operator=(const RunId&) = default;
   friend bool operator==(const RunId& a, const RunId& b);
   std::string ToString() const;
+  int64 ToInt() const;
 
   template <typename H>
   friend H AbslHashValue(H h, const RunId& id) {
@@ -63,6 +65,15 @@ class RunId {
  private:
   int64 data_;
 };
+
+// Callback used by the GPU backend only. This is an "one-sided" version of
+// ThenDoHostCallback that enqueues a callback onto a stream. The difference
+// with ThenDoHostCallback is that the device does not block waiting for the
+// callback to complete; instead the callback is scheduled by the runtime.
+// This functionality must be provided by the caller, and hence is provided in
+// callback form.
+using ThenExecuteFunction =
+    std::function<void(stream_executor::Stream*, std::function<void()>)>;
 
 // Class containing options for running a LocalExecutable.
 class ExecutableRunOptions {
@@ -119,6 +130,21 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_run_id(RunId id);
   RunId run_id() const;
 
+  // See documentation on ThenExecuteFunction.
+  ExecutableRunOptions& set_then_execute_function(ThenExecuteFunction* f) {
+    then_execute_function_ = f;
+    return *this;
+  }
+  ThenExecuteFunction* then_execute_function() const {
+    return then_execute_function_;
+  }
+
+  // GPU-backend specific options. These are kept out-of-line to avoid bloating
+  // the size of this dependency for CPU-only AOT builds.
+  ExecutableRunOptions& set_gpu_executable_run_options(
+      const GpuExecutableRunOptions* gpu_executable_run_options);
+  const GpuExecutableRunOptions* gpu_executable_run_options() const;
+
  private:
   stream_executor::DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -128,7 +154,9 @@ class ExecutableRunOptions {
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
+  ThenExecuteFunction* then_execute_function_ = nullptr;
   RunId run_id_;
+  const GpuExecutableRunOptions* gpu_executable_run_options_ = nullptr;
 };
 
 }  // namespace xla

@@ -254,10 +254,12 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
   assigned_buffers_.emplace(&buffer, offset_size);
   // For debugging purposes, store the assigned memory space in the
   // instruction's layout.
-  HloInstruction* defining_instruction = buffer.defining_instruction();
-  if (defining_instruction->shape().has_layout()) {
-    defining_instruction->mutable_shape()->mutable_layout()->set_memory_space(
-        buffer.color().value());
+  for (HloPosition position : buffer.positions()) {
+    Shape* shape = ShapeUtil::GetMutableSubshape(
+        position.instruction->mutable_shape(), position.index);
+    if (shape->has_layout()) {
+      shape->mutable_layout()->set_memory_space(buffer.color().value());
+    }
   }
 }
 
@@ -296,6 +298,38 @@ static bool CompareHloValuesById(const HloValue* a, const HloValue* b) {
   return a->id() < b->id();
 }
 
+// Returns parameter instruction corresponding to the allocation or nullptr.
+static const HloInstruction* GetEntryParameterInstruction(
+    const BufferAllocation& alloc) {
+  for (const auto& p : alloc.assigned_buffers()) {
+    const HloValue* value = p.first;
+    const HloInstruction* instr = value->instruction();
+    if (instr->opcode() == HloOpcode::kParameter &&
+        instr->parent() == instr->parent()->parent()->entry_computation()) {
+      return instr;
+    }
+  }
+  return nullptr;
+}
+
+// Returns root module output instruction corresponding to the allocation or
+// nullptr.
+static const HloInstruction* GetOutputInstruction(
+    const BufferAllocation& alloc) {
+  for (const auto& p : alloc.assigned_buffers()) {
+    const HloValue* value = p.first;
+    for (const HloPosition& position : value->positions()) {
+      const HloInstruction* instr = position.instruction;
+      if (position.index.empty() &&
+          instr->parent()->root_instruction() == instr &&
+          instr->parent()->IsEntryComputation()) {
+        return instr;
+      }
+    }
+  }
+  return nullptr;
+}
+
 string BufferAllocation::ToString() const {
   string output;
   StrAppendFormat(&output, "allocation %d: %p, size %d", index_, this, size());
@@ -303,8 +337,15 @@ string BufferAllocation::ToString() const {
     StrAppend(&output, ", color ", color().value());
   }
   if (is_entry_computation_parameter()) {
-    StrAppend(&output, ", parameter ", parameter_number(), " at ShapeIndex ",
-              param_shape_index().ToString());
+    const HloInstruction* param = GetEntryParameterInstruction(*this);
+    CHECK(param);
+    StrAppend(&output, ", parameter ", parameter_number(), ", shape |",
+              param->shape().ToString(/*print_layout=*/false),
+              "| at ShapeIndex ", param_shape_index().ToString());
+  }
+  if (const HloInstruction* instr = GetOutputInstruction(*this)) {
+    StrAppend(&output, ", output shape is |",
+              instr->shape().ToString(/*print_layout=*/false), "|");
   }
   if (is_constant()) {
     StrAppend(&output, ", constant");
@@ -967,7 +1008,22 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
   // Try allocate same buffer for dynamic update slice's operand and output.
-  //
+
+  // If memory_space_assignment is run and there is information about a color in
+  // preset assignments, don't merge those buffers. We expect
+  // memory_space_assignment to have merged these buffers. If
+  // memory_space_assignment didn't merge these buffers and have assigned
+  // different offsets to the operand and the output buffer, merging the buffers
+  // can cause memory corruption if memory_space_assignment assigned a different
+  // buffer at the same offset.
+  absl::flat_hash_set<int64> excluded_colors;
+  if (preset_assignments_) {
+    for (const auto& color_and_info :
+         preset_assignments_->assignment_informations()) {
+      excluded_colors.insert(color_and_info.first);
+    }
+  }
+
   // TODO(yunxing): Moving this logic to alias analysis and add must-alias rule
   // to operations that can be done in place.
   for (HloComputation* computation : assignment->module().computations()) {
@@ -997,6 +1053,13 @@ Status BufferAssigner::MergeInplaceOpBuffers(BufferAssignment* assignment) {
       HloBuffer& operand_buffer =
           assignment->alias_analysis().GetUniqueBufferAt(
               instruction->operand(0), {});
+
+      // The instruction or operand color is excluded because it was assigned by
+      // memory_space_assignment.
+      if (excluded_colors.contains(instruction_buffer.color().value()) ||
+          excluded_colors.contains(operand_buffer.color().value())) {
+        continue;
+      }
 
       // Already have the same buffer. No need to merge those.
       if (instruction_buffer.id() == operand_buffer.id()) {
@@ -1311,11 +1374,14 @@ Status BufferAssigner::AssignPresetBuffers(
   absl::flat_hash_map<LogicalBuffer::Color, BufferAllocation*,
                       LogicalBuffer::Color::Hasher>
       preset_allocations;
-  for (auto& color_and_size : preset_assignments_->sizes()) {
-    LogicalBuffer::Color color(color_and_size.first);
+  for (auto& color_and_info : preset_assignments_->assignment_informations()) {
+    LogicalBuffer::Color color(color_and_info.first);
     auto inserted = preset_allocations.emplace(
-        color, assignment->NewEmptyAllocation(color_and_size.second, color));
+        color,
+        assignment->NewEmptyAllocation(color_and_info.second.size, color));
     BufferAllocation* inserted_allocation = inserted.first->second;
+    inserted_allocation->AddHeapTrace(
+        color_and_info.second.heap_simulator_trace);
     VLOG(3) << "Created preset buffer allocation "
             << inserted_allocation->index()
             << ", color: " << inserted_allocation->color()
@@ -1323,22 +1389,24 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
+  const HloDataflowAnalysis& dataflow_analysis =
+      alias_analysis.dataflow_analysis();
 
   for (auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
-    const HloBuffer& buffer =
-        alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
-    VLOG(3) << "Preset allocation for buffer: " << buffer;
+    const HloValue& value = dataflow_analysis.GetUniqueValueAt(
+        position.instruction, position.index);
+    VLOG(3) << "Preset allocation for value: " << value.ToShortString();
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    auto preset_allocations_iter = preset_allocations.find(buffer.color());
+    auto preset_allocations_iter = preset_allocations.find(value.color());
     CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset buffer allocation for color " << buffer.color()
-        << " found.";
-    preset_allocations_iter->second->AddAssignment(buffer.GetUniqueValue(),
-                                                   chunk.offset, chunk.size);
-    // Ensure that there is at most one preset allocation for each buffer.
-    CHECK_EQ(assigned_buffers->count(&buffer), 0);
-    assigned_buffers->emplace(&buffer);
+        << "No preset value allocation for color " << value.color() << " for "
+        << value.ToShortString() << " found.";
+    preset_allocations_iter->second->AddAssignment(value, chunk.offset,
+                                                   chunk.size);
+
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+    assigned_buffers->insert(&buffer);
   }
 
   // Upon consumption of the preset assignments, delete it so that if this
@@ -1604,7 +1672,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       /*is_thread_local=*/false, &buffers_to_assign_sequentially,
       assignment.get()));
   // Assign buffers with sequential ordering, if any. If all global
-  // computations are sequential, we can run heap simuation on the whole
+  // computations are sequential, we can run heap simulation on the whole
   // module, which reduces memory usage.
   const bool run_whole_module_heap_simulation =
       buffers_to_assign_sequentially.size() == global_computations.size();

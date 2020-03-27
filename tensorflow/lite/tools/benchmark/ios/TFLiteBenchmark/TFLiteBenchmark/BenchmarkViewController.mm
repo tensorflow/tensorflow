@@ -18,8 +18,13 @@
 #import <sstream>
 #import <string>
 #import <vector>
-#import "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
-#import "tensorflow/lite/tools/benchmark/logging.h"
+
+#if defined(USE_TFLITE_BENCHMARK_HEADERS)
+#include "tensorflow/lite/tools/benchmark/experimental/c/benchmark_c_api.h"
+#include "tensorflow/lite/tools/benchmark/logging.h"
+#else
+#import <TensorFlowLiteBenchmarkC/TensorFlowLiteBenchmarkC.h>
+#endif
 
 namespace {
 NSString* FilePathForResourceName(NSString* filename) {
@@ -64,42 +69,57 @@ std::vector<char*> StringVecToCharPtrVec(const std::vector<std::string>& str_vec
   return charptr_vec;
 }
 
-class ResultsListener : public tflite::benchmark::BenchmarkListener {
+class ResultsListener {
  public:
-  void OnBenchmarkEnd(const tflite::benchmark::BenchmarkResults& results) override;
+  void OnBenchmarkEnd(TfLiteBenchmarkResults* results);
   std::string Results() { return results_; }
 
  private:
   std::string results_;
 };
 
-void OutputMicrosecondsStatToStream(const tensorflow::Stat<int64_t>& time_us,
+void OutputMicrosecondsStatToStream(const TfLiteBenchmarkInt64Stat& time_us,
                                     const std::string& prefix, std::ostringstream* stream) {
-  *stream << prefix << "Num runs: " << time_us.count() << "\n";
+  *stream << prefix << "Num runs: " << time_us.count << "\n";
 
-  *stream << prefix << "Average: " << time_us.avg() / 1e3 << " ms\n";
-  *stream << prefix << "Min: " << time_us.min() / 1e3 << " ms \n";
-  *stream << prefix << "Max: " << time_us.max() / 1e3 << " ms \n";
-  *stream << prefix << "Std deviation: " << time_us.std_deviation() / 1e3 << " ms\n";
+  *stream << prefix << "Average: " << time_us.avg / 1e3 << " ms\n";
+  *stream << prefix << "Min: " << time_us.min / 1e3 << " ms \n";
+  *stream << prefix << "Max: " << time_us.max / 1e3 << " ms \n";
+  *stream << prefix << "Std deviation: " << time_us.std_deviation / 1e3 << " ms\n";
 }
 
-void ResultsListener::OnBenchmarkEnd(const tflite::benchmark::BenchmarkResults& results) {
+void ResultsListener::OnBenchmarkEnd(TfLiteBenchmarkResults* results) {
   std::ostringstream stream;
   const std::string prefix = " - ";
+
+  TfLiteBenchmarkInt64Stat inference = TfLiteBenchmarkResultsGetInferenceTimeMicroseconds(results);
+  TfLiteBenchmarkInt64Stat warmup = TfLiteBenchmarkResultsGetWarmupTimeMicroseconds(results);
+
   stream << "Startup latency: ";
-  stream << results.startup_latency_us() / 1e3 << " ms\n";
+  stream << TfLiteBenchmarkResultsGetStartupLatencyMicroseconds(results) / 1e3 << " ms\n";
   stream << "\nInference:\n";
-  OutputMicrosecondsStatToStream(results.inference_time_us(), prefix, &stream);
+  OutputMicrosecondsStatToStream(inference, prefix, &stream);
   stream << "\nWarmup:\n";
-  OutputMicrosecondsStatToStream(results.warmup_time_us(), prefix, &stream);
+  OutputMicrosecondsStatToStream(warmup, prefix, &stream);
 
   results_ = stream.str();
 }
 
+void OnBenchmarkEnd(void* user_data, TfLiteBenchmarkResults* results) {
+  if (user_data != nullptr) {
+    reinterpret_cast<ResultsListener*>(user_data)->OnBenchmarkEnd(results);
+  }
+}
+
 std::string RunBenchmark() {
-  ResultsListener listener;
-  tflite::benchmark::BenchmarkTfLiteModel benchmark;
-  benchmark.AddListener(&listener);
+  ResultsListener results_listener;
+  TfLiteBenchmarkTfLiteModel* benchmark = TfLiteBenchmarkTfLiteModelCreate();
+
+  TfLiteBenchmarkListener* listener = TfLiteBenchmarkListenerCreate();
+  TfLiteBenchmarkListenerSetCallbacks(listener, &results_listener, nullptr, nullptr, nullptr,
+                                      OnBenchmarkEnd);
+
+  TfLiteBenchmarkTfLiteModelAddListener(benchmark, listener);
   // TODO(shashishekhar): Passing arguments like this is brittle, refactor the BenchmarkParams
   // so that it contains arguments for BenchmarkTfLiteModel and set parameters using BenchmarkParams
   std::vector<std::string> command_line_params;
@@ -109,8 +129,15 @@ std::string RunBenchmark() {
   ReadCommandLineParameters(&command_line_params);
   std::vector<char*> argv = StringVecToCharPtrVec(command_line_params);
   int argc = static_cast<int>(argv.size());
-  benchmark.Run(argc, argv.data());
-  return listener.Results();
+
+  TfLiteBenchmarkTfLiteModelRunWithArgs(benchmark, argc, argv.data());
+
+  std::string results = results_listener.Results();
+
+  TfLiteBenchmarkListenerDelete(listener);
+  TfLiteBenchmarkTfLiteModelDelete(benchmark);
+
+  return results;
 }
 }  // namespace
 

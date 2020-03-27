@@ -25,14 +25,15 @@ import re
 import string
 import traceback
 import zipfile
+
 import numpy as np
 from six import StringIO
 
 # pylint: disable=g-import-not-at-top
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from google.protobuf import text_format
+from tensorflow.lite.testing import _pywrap_string_util
 from tensorflow.lite.testing import generate_examples_report as report_lib
-from tensorflow.lite.testing import string_util_wrapper
 from tensorflow.python.framework import graph_util as tf_graph_util
 
 # A map from names to functions which make test cases.
@@ -93,7 +94,7 @@ class ExtraTocoOptions(object):
     self.allow_custom_ops = False
     # Rnn states that are used to support rnn / lstm cells.
     self.rnn_states = None
-    # Split the LSTM inputs from 5 inoputs to 18 inputs for TFLite.
+    # Split the LSTM inputs from 5 inputs to 18 inputs for TFLite.
     self.split_tflite_lstm_inputs = None
     # The inference input type passed to TFLiteConvert.
     self.inference_input_type = None
@@ -155,7 +156,7 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return string_util_wrapper.SerializeAsHexString(t.flatten())
+    return _pywrap_string_util.SerializeAsHexString(t.flatten())
 
 
 def write_examples(fp, examples):
@@ -167,7 +168,7 @@ def write_examples(fp, examples):
 
   Args:
     fp: File-like object to write to.
-    examples: Example dictionary consiting of keys "inputs" and "outputs"
+    examples: Example dictionary consisting of keys "inputs" and "outputs"
   """
 
   def write_tensor(fp, x):
@@ -195,7 +196,7 @@ def write_test_cases(fp, model_name, examples):
   Args:
     fp: File-like object to write to.
     model_name: Filename where the model was written to, relative to filename.
-    examples: Example dictionary consiting of keys "inputs" and "outputs"
+    examples: Example dictionary consisting of keys "inputs" and "outputs"
   """
 
   fp.write("load_model: %s\n" % os.path.basename(model_name))
@@ -261,8 +262,8 @@ def make_zip_of_tests(options,
                       expected_tf_failures=0):
   """Helper to make a zip file of a bunch of TensorFlow models.
 
-  This does a cartestian product of the dictionary of test_parameters and
-  calls make_graph() for each item in the cartestian product set.
+  This does a cartesian product of the dictionary of test_parameters and
+  calls make_graph() for each item in the cartesian product set.
   If the graph is built successfully, then make_test_inputs() is called to
   build expected input/output value pairs. The model is then converted to tflite
   with toco, and the examples are serialized with the tflite model into a zip
@@ -409,35 +410,36 @@ def make_zip_of_tests(options,
         # Build graph
         report["tf_log"] = ""
         report["toco_log"] = ""
-        tf.compat.v1.reset_default_graph()
+        tf.reset_default_graph()
 
-        with tf.device("/cpu:0"):
+        with tf.Graph().as_default():
+          with tf.device("/cpu:0"):
+            try:
+              inputs, outputs = make_graph(param_dict_real)
+            except (tf.errors.UnimplementedError,
+                    tf.errors.InvalidArgumentError, ValueError):
+              report["tf_log"] += traceback.format_exc()
+              return None, report
+
+          sess = tf.Session()
           try:
-            inputs, outputs = make_graph(param_dict_real)
+            baseline_inputs, baseline_outputs = (
+                make_test_inputs(param_dict_real, sess, inputs, outputs))
           except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
                   ValueError):
             report["tf_log"] += traceback.format_exc()
             return None, report
-
-        sess = tf.compat.v1.Session()
-        try:
-          baseline_inputs, baseline_outputs = (
-              make_test_inputs(param_dict_real, sess, inputs, outputs))
-        except (tf.errors.UnimplementedError, tf.errors.InvalidArgumentError,
-                ValueError):
-          report["tf_log"] += traceback.format_exc()
-          return None, report
-        report["toco"] = report_lib.FAILED
-        report["tf"] = report_lib.SUCCESS
-        # Convert graph to toco
-        input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
-                          input_tensor.dtype) for input_tensor in inputs]
-        output_tensors = [_normalize_output_name(out.name) for out in outputs]
-        # pylint: disable=g-long-ternary
-        graph_def = freeze_graph(
-            sess,
-            tf.global_variables() + inputs +
-            outputs) if use_frozen_graph else sess.graph_def
+          report["toco"] = report_lib.FAILED
+          report["tf"] = report_lib.SUCCESS
+          # Convert graph to toco
+          input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
+                            input_tensor.dtype) for input_tensor in inputs]
+          output_tensors = [_normalize_output_name(out.name) for out in outputs]
+          # pylint: disable=g-long-ternary
+          graph_def = freeze_graph(
+              sess,
+              tf.global_variables() + inputs +
+              outputs) if use_frozen_graph else sess.graph_def
 
         if "split_tflite_lstm_inputs" in param_dict_real:
           extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
@@ -522,10 +524,9 @@ def make_zip_of_tests(options,
   percent = 0
   if tf_success > 0:
     percent = float(toco_success) / float(tf_success) * 100.
-  tf.compat.v1.logging.info(
-      ("Archive %s Considered %d graphs, %d TF evaluated graphs "
-       " and %d TOCO converted graphs (%.1f%%"), zip_path, total_conversions,
-      tf_success, toco_success, percent)
+  tf.logging.info(("Archive %s Considered %d graphs, %d TF evaluated graphs "
+                   " and %d TOCO converted graphs (%.1f%%"), zip_path,
+                  total_conversions, tf_success, toco_success, percent)
 
   tf_failures = parameter_count - tf_success
 

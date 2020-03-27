@@ -221,12 +221,14 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     with ops.name_scope(name, values=graph_parents):
       super(LinearOperatorKronecker, self).__init__(
           dtype=dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+    # TODO(b/143910018) Remove graph_parents in V3.
+    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):

@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "absl/algorithm/container.h"
@@ -166,6 +167,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
@@ -613,12 +615,17 @@ HloInstruction* InstructionFusion::AddFusionInstruction(
   return fusion_instruction;
 }
 
+HloInstruction* InstructionFusion::FuseInstruction(
+    HloInstruction* fusion_instruction, HloInstruction* producer) {
+  return fusion_instruction->FuseInstruction(producer);
+}
+
 HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
                                         HloInstruction* consumer) {
   VLOG(2) << "Fusing " << producer->ToString() << " into "
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
-  fusion_instruction->FuseInstruction(producer);
+  FuseInstruction(fusion_instruction, producer);
   if (fusion_instruction != producer && fusion_instruction != consumer) {
     VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
   }
@@ -682,14 +689,6 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return false;
-  }
-
-  if (producer->CouldBeBitcast() &&
-      // We can't fuse parameters anyhow, so we leave the user unfused to become
-      // a bitcast. If the operand is not a parameter, we would break a
-      // potential fusion to make it a bitcast, which is not so clear a win.
-      producer->operand(0)->opcode() == HloOpcode::kParameter) {
     return false;
   }
 

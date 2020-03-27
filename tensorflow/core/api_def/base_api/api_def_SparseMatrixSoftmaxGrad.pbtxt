@@ -1,5 +1,6 @@
 op {
   graph_op_name: "SparseMatrixSoftmaxGrad"
+  visibility: HIDDEN
   in_arg {
     name: "softmax"
     description: "A CSRSparseMatrix."

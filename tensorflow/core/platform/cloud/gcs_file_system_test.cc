@@ -14,12 +14,20 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/gcs_file_system.h"
+
 #include <fstream>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/test.h"
+
+// Undef DeleteFile macro defined in wndows.h.
+#ifdef PLATFORM_WINDOWS
+#undef DeleteFile
+#endif
 
 namespace tensorflow {
 namespace {

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.platform import test
+from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 
@@ -52,6 +53,20 @@ class ObjectIdentityWrapperTest(test.TestCase):
     with self.assertRaises(TypeError):
       bool(o in set([wrap1]))
 
+  def testNestFlatten(self):
+    a = object_identity._ObjectIdentityWrapper('a')
+    b = object_identity._ObjectIdentityWrapper('b')
+    c = object_identity._ObjectIdentityWrapper('c')
+    flat = nest.flatten([[[(a, b)]], c])
+    self.assertEqual(flat, [a, b, c])
+
+  def testNestMapStructure(self):
+    k = object_identity._ObjectIdentityWrapper('k')
+    v1 = object_identity._ObjectIdentityWrapper('v1')
+    v2 = object_identity._ObjectIdentityWrapper('v2')
+    struct = nest.map_structure(lambda a, b: (a, b), {k: v1}, {k: v2})
+    self.assertEqual(struct, {k: (v1, v2)})
+
 
 class ObjectIdentitySetTest(test.TestCase):
 
@@ -69,6 +84,21 @@ class ObjectIdentitySetTest(test.TestCase):
     self.assertIn(a, diff_set)
     self.assertNotIn(b, diff_set)
     self.assertNotIn(c, diff_set)
+
+  def testDiscard(self):
+    a = object()
+    b = object()
+    set1 = object_identity.ObjectIdentitySet([a, b])
+    set1.discard(a)
+    self.assertIn(b, set1)
+    self.assertNotIn(a, set1)
+
+  def testClear(self):
+    a = object()
+    b = object()
+    set1 = object_identity.ObjectIdentitySet([a, b])
+    set1.clear()
+    self.assertLen(set1, 0)
 
 
 if __name__ == '__main__':

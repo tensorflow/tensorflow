@@ -596,7 +596,7 @@ class Optimizer(
     with ops.init_scope():
       self._create_slots(var_list)
     update_ops = []
-    with ops.name_scope(name, self._name) as name:
+    with ops.name_scope(name, self._name, skip_on_eager=False) as name:
       self._prepare()
       for grad, var, processor in converted_grads_and_vars:
         if grad is None:
@@ -610,7 +610,9 @@ class Optimizer(
           scope_name = ""
         else:
           scope_name = var.op.name
-        with ops.name_scope("update_" + scope_name), ops.colocate_with(var):
+        with ops.name_scope(
+            "update_" + scope_name,
+            skip_on_eager=False), ops.colocate_with(var):
           update_ops.append(processor.update_op(self, grad))
       if global_step is None:
         apply_updates = self._finish(update_ops, name)
@@ -766,7 +768,7 @@ class Optimizer(
       # pylint: enable=protected-access
       mirrored_slot = named_slots.get(key, None)
       if mirrored_slot is None: return None
-      return mirrored_slot.get(device=var.device)
+      return mirrored_slot._get_closest()  # pylint: disable=protected-access
 
     return named_slots.get(_var_key(var), None)
 

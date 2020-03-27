@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
 
 #import <Metal/Metal.h>
-#import <UIKit/UIKit.h>
 
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -27,9 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-float GetiOsSystemVersion() { return [[[UIDevice currentDevice] systemVersion] floatValue]; }
-
-int GetAppleSocVersion() {
+GpuType GetGpuType() {
   int max_feature_set = 0;
 #if defined(__IPHONE_9_0) && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_9_0
   std::vector<std::pair<MTLFeatureSet, int>> features;
@@ -65,8 +63,34 @@ int GetAppleSocVersion() {
       max_feature_set = std::max(max_feature_set, type.second);
     }
   }
+#elif defined(__MAC_10_5) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_5
+  std::vector<std::pair<MTLFeatureSet, int>> features;
+  if (@available(macOS 10.15, *)) {
+    features.emplace_back(MTLFeatureSet_macOS_GPUFamily2_v1, 12);
+  }
+  id<MTLDevice> device = GetBestSupportedMetalDevice();
+  for (auto &type : features) {
+    if ([device supportsFeatureSet:type.first]) {
+      max_feature_set = std::max(max_feature_set, type.second);
+    }
+  }
 #endif
-  return max_feature_set;
+  switch (max_feature_set) {
+    case 7:
+      return GpuType::kA7;
+    case 8:
+      return GpuType::kA8;
+    case 9:
+      return GpuType::kA9;
+    case 10:
+      return GpuType::kA10;
+    case 11:
+      return GpuType::kA11;
+    case 12:
+      return GpuType::kA12;
+    default:
+      return GpuType::kUnknown;
+  };
 }
 
 }  // namespace metal

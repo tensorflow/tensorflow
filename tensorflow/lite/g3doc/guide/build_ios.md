@@ -118,8 +118,8 @@ follow the steps here.
 #### Using local TensorFlow Lite core
 
 You can set up a private CocoaPods specs repository, and publish your custom
-`TensorFlowLiteC` framework to your private repo. You can copy this [podspec
-file][tflite-podspec] and modify a few values:
+`TensorFlowLiteC` framework to your private repo. You can copy this
+[podspec file][tflite-podspec] and modify a few values:
 
 ```ruby
   ...
@@ -203,4 +203,4 @@ TensorFlow Lite's C API, defined by the header files under
 [objc-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/objc
 [private-cocoapods]: https://guides.cocoapods.org/making/private-cocoapods.html
 [swift-api]: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/swift
-[tflitec-podspec]: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/ios/TensorFlowLiteC.podspec
+[tflite-podspec]: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/ios/TensorFlowLiteC.podspec

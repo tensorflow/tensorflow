@@ -21,6 +21,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util.tf_export import tf_export
@@ -67,6 +68,8 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
     super(MixedPrecisionLossScaleOptimizer, self).__init__(use_locking, name)
 
     self._loss_scale = loss_scale_module.get(loss_scale)
+    if self._loss_scale is None:
+      raise ValueError('loss_scale cannot be None')
     self._track_trackable(self._optimizer, 'base_optimizer')
     self._track_trackable(self._loss_scale, 'loss_scale')
 
@@ -85,7 +88,7 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
 
     This adjusts the dynamic range of the gradient evaluation by scaling up
     the `loss` value. The gradient values are then scaled back down by the
-    recipricol of the loss scale. This is useful in reduced precision training
+    reciprocal of the loss scale. This is useful in reduced precision training
     where small gradient values would otherwise underflow the representable
     range.
 
@@ -125,22 +128,26 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
   def _scale_loss(self, loss):
     loss_scale = self._loss_scale()
     if callable(loss):
-      return lambda: loss() * loss_scale
-    return loss * loss_scale
+      def new_loss():
+        loss_val = loss()
+        return loss_val * math_ops.cast(loss_scale, loss_val.dtype)
+      return new_loss
+    else:
+      return loss * math_ops.cast(loss_scale, loss.dtype)
 
   def _unscale_grads(self, grads):
     loss_scale = self._loss_scale()
-    loss_scale_reciprical = 1 / loss_scale
+    loss_scale_reciprocal = 1 / loss_scale
     return [
-        None if g is None else self._scale_grad(g, loss_scale_reciprical)
+        None if g is None else self._scale_grad(g, loss_scale_reciprocal)
         for g in grads
     ]
 
-  def _scale_grad(self, grad, loss_scale_reciprical):
+  def _scale_grad(self, grad, loss_scale_reciprocal):
     if isinstance(grad, ops.IndexedSlices):
-      grad_vals = grad.values * loss_scale_reciprical
+      grad_vals = grad.values * loss_scale_reciprocal
       return ops.IndexedSlices(grad_vals, grad.indices, grad.dense_shape)
-    return grad * loss_scale_reciprical
+    return grad * loss_scale_reciprocal
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
     """Apply gradients to variables.

@@ -19,9 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/metal/common.h"
 
-using ::tflite::gpu::metal::GetiOsSystemVersion;
-using ::tflite::gpu::metal::GetAppleSocVersion;
-using ::tflite::gpu::metal::GetMacOsGpuVersion;
+using ::tflite::gpu::metal::GetGpuType;
 
 @interface EnvironmentTest : XCTestCase
 
@@ -41,27 +39,10 @@ using ::tflite::gpu::metal::GetMacOsGpuVersion;
 #endif
 }
 
-- (void)testRunTimeOSDetection {
-  float runtimeOSVersion = GetiOsSystemVersion();
-#if IOS_VERSION > 0
-  XCTAssertTrue(runtimeOSVersion >= 8.0f, @"runtimeOSVersion: %f", runtimeOSVersion);
-
-  int gpuVersion = GetAppleSocVersion();
-  XCTAssertTrue(gpuVersion >= 7, @"gpu version: %d", gpuVersion);
-#endif
-
-#if TVOS_VERSION > 0
-  XCTAssertTrue(runtimeOSVersion >= 9.0f, @"runtimeOSVersion: %f", runtimeOSVersion);
-
-  int gpuVersion = GetAppleSocVersion();
-  XCTAssertTrue(gpuVersion >= 8, @"gpu version: %d", gpuVersion);
-#endif
-
-#if MACOS_VERSION > 0
-  XCTAssertTrue(runtimeOSVersion >= 10.11f, @"runtimeOSVersion: %f", runtimeOSVersion);
-
-  int gpuVersion = GetMacOsGpuVersion(device);
-  XCTAssertTrue(gpuVersion >= 1, @"gpu version: %d", gpuVersion);
+- (void)testGetGpuType {
+#if (IOS_VERSION > 0) || (TVOS_VERSION > 0)
+  auto gpuType = GetGpuType();
+  XCTAssertTrue(gpuType != GpuType::kUnknown);
 #endif
 }
 

@@ -568,7 +568,7 @@ class ApplyGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -610,7 +610,7 @@ class ApplyGradientDescentOp<SYCLDevice, T> : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha_dev = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha_dev.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha_dev.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha_dev.shape().DebugString()));
     const Tensor& delta = ctx->input(2);
@@ -652,6 +652,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -666,12 +668,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
@@ -813,6 +827,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -829,12 +845,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -994,6 +1022,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1020,7 +1050,7 @@ class ApplyProximalGradientDescentOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(0)));
     const Tensor& alpha = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(alpha.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(alpha.shape()),
                 errors::InvalidArgument("alpha is not a scalar: ",
                                         alpha.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1077,7 +1107,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0});
@@ -1088,7 +1118,7 @@ class SparseApplyProximalGradientDescentOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(1);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(2);
@@ -1242,7 +1272,7 @@ class ApplyAdagradOp : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1286,6 +1316,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -1300,12 +1332,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1337,7 +1381,7 @@ class ApplyAdagradV2Op : public OpKernel {
         errors::FailedPrecondition(
             "Attempting to use uninitialized variables: ", requested_input(1)));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -1385,6 +1429,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -1400,12 +1446,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1520,7 +1578,7 @@ class SparseApplyAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1547,7 +1605,7 @@ class SparseApplyAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& grad = ctx->input(3);
@@ -1672,6 +1730,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1685,7 +1745,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("update_slots", &update_slots_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -1712,7 +1772,7 @@ class SparseApplyAdagradV2Op : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& epsilon = ctx->input(3);
@@ -1845,6 +1905,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -1858,7 +1920,7 @@ class SparseApplyProximalAdagradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -2077,7 +2139,7 @@ class ApplyAdagradDAOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
@@ -2091,7 +2153,7 @@ class ApplyAdagradDAOp : public OpKernel {
         errors::InvalidArgument("l2 regularization strength is not a scalar: ",
                                 l2.shape().DebugString()));
     const Tensor& global_step = ctx->input(7);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
@@ -2133,7 +2195,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2180,7 +2242,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx, IsLegacyScalar(lr.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()),
                 errors::InvalidArgument("lr is not a scalar: ",
                                         lr.shape().DebugString()));
 
@@ -2197,7 +2259,7 @@ class SparseApplyAdagradDAOp : public OpKernel {
                                 l2.shape().DebugString()));
 
     const Tensor& global_step = ctx->input(8);
-    OP_REQUIRES(ctx, IsLegacyScalar(global_step.shape()),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(global_step.shape()),
                 errors::InvalidArgument("global_step is not a scalar: ",
                                         global_step.shape().DebugString()));
 
@@ -2519,7 +2581,7 @@ class SparseApplyFtrlOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -2862,6 +2924,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -2877,12 +2941,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -2896,7 +2972,7 @@ class SparseApplyMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -3003,6 +3079,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3080,6 +3158,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -3095,12 +3175,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3115,7 +3207,7 @@ class SparseApplyKerasMomentumOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<Device, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1});
@@ -3201,6 +3293,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
@@ -3221,6 +3315,14 @@ DECLARE_GPU_SPEC(float, int32);
 DECLARE_GPU_SPEC(float, int64);
 DECLARE_GPU_SPEC(double, int32);
 DECLARE_GPU_SPEC(double, int64);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64, int32);
+DECLARE_GPU_SPEC(complex64, int64);
+DECLARE_GPU_SPEC(complex128, int32);
+DECLARE_GPU_SPEC(complex128, int64);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
@@ -3231,6 +3333,12 @@ DECLARE_GPU_SPEC(double, int64);
 REGISTER_GPU_KERNELS(Eigen::half);
 REGISTER_GPU_KERNELS(float);
 REGISTER_GPU_KERNELS(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_GPU_KERNELS(complex64);
+REGISTER_GPU_KERNELS(complex128);
+#endif
 #undef REGISTER_GPU_KERNELS
 #endif
 #undef REGISTER_KERNELS
@@ -3461,6 +3569,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
@@ -3488,12 +3598,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -3974,6 +4096,8 @@ TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_bfloat16(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+TF_CALL_complex64(REGISTER_CPU_KERNELS);
+TF_CALL_complex128(REGISTER_CPU_KERNELS);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
@@ -4001,12 +4125,24 @@ namespace functor {
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+DECLARE_GPU_SPEC(complex64);
+DECLARE_GPU_SPEC(complex128);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 REGISTER_KERNELS(GPU, Eigen::half);
 REGISTER_KERNELS(GPU, float);
 REGISTER_KERNELS(GPU, double);
+#if !defined(TENSORFLOW_USE_NVCC) && \
+    !defined(TENSORFLOW_USE_ROCM)  // TODO(b/143684500): Eigen to support
+                                   // complex sqrt
+REGISTER_KERNELS(GPU, complex64);
+REGISTER_KERNELS(GPU, complex128);
+#endif
 #endif
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
@@ -4019,7 +4155,7 @@ class SparseApplyRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2});
@@ -4149,7 +4285,7 @@ class SparseApplyCenteredRMSPropOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
-  void Compute(OpKernelContext* ctx) override NO_THREAD_SAFETY_ANALYSIS {
+  void Compute(OpKernelContext* ctx) override TF_NO_THREAD_SAFETY_ANALYSIS {
     const bool sparse = true;
     auto locks = MaybeLockVariableInputMutexesInOrder<CPUDevice, T>(
         ctx, use_exclusive_lock_, sparse, {0, 1, 2, 3});
@@ -4310,6 +4446,10 @@ REGISTER_KERNELS(float, int32);
 REGISTER_KERNELS(float, int64);
 REGISTER_KERNELS(double, int32);
 REGISTER_KERNELS(double, int64);
+REGISTER_KERNELS(complex64, int32);
+REGISTER_KERNELS(complex64, int64);
+REGISTER_KERNELS(complex128, int32);
+REGISTER_KERNELS(complex128, int64);
 
 #undef REGISTER_KERNELS
 

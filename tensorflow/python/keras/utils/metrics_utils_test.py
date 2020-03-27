@@ -21,14 +21,17 @@ from __future__ import print_function
 from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.ops import script_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import googletest
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.parameters([
@@ -245,6 +248,56 @@ class RaggedSizeOpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):  # pylint: disable=g-error-prone-assert-raises
       [x, y], _ = \
           metrics_utils.ragged_assert_compatible_and_get_flat_values([x, y])
+
+
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
+class FilterTopKTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+
+  def test_one_dimensional(self):
+    x = constant_op.constant([.3, .1, .2, -.5, 42.])
+    top_1 = self.evaluate(metrics_utils._filter_top_k(x=x, k=1))
+    top_2 = self.evaluate(metrics_utils._filter_top_k(x=x, k=2))
+    top_3 = self.evaluate(metrics_utils._filter_top_k(x=x, k=3))
+
+    self.assertAllClose(top_1, [
+        metrics_utils.NEG_INF, metrics_utils.NEG_INF, metrics_utils.NEG_INF,
+        metrics_utils.NEG_INF, 42.
+    ])
+    self.assertAllClose(top_2, [
+        .3, metrics_utils.NEG_INF, metrics_utils.NEG_INF, metrics_utils.NEG_INF,
+        42.
+    ])
+    self.assertAllClose(
+        top_3, [.3, metrics_utils.NEG_INF, .2, metrics_utils.NEG_INF, 42.])
+
+  def test_three_dimensional(self):
+    x = constant_op.constant([[[.3, .1, .2], [-.3, -.2, -.1]],
+                              [[5., .2, 42.], [-.3, -.6, -.99]]])
+    top_2 = self.evaluate(metrics_utils._filter_top_k(x=x, k=2))
+
+    self.assertAllClose(
+        top_2,
+        [[[.3, metrics_utils.NEG_INF, .2], [metrics_utils.NEG_INF, -.2, -.1]],
+         [[5., metrics_utils.NEG_INF, 42.], [-.3, -.6, metrics_utils.NEG_INF]]])
+
+  def test_handles_dynamic_shapes(self):
+    # See b/150281686.  # GOOGLE_INTERNAL
+
+    def _identity(x):
+      return x
+
+    def _filter_top_k(x):
+      # This loses the static shape.
+      x = script_ops.py_func_common(_identity, (x,), dtypes.float32)
+
+      return metrics_utils._filter_top_k(x=x, k=2)
+
+    x = constant_op.constant([.3, .1, .2, -.5, 42.])
+    top_2 = self.evaluate(_filter_top_k(x))
+    self.assertAllClose(top_2, [
+        .3, metrics_utils.NEG_INF, metrics_utils.NEG_INF, metrics_utils.NEG_INF,
+        42.
+    ])
 
 
 if __name__ == '__main__':

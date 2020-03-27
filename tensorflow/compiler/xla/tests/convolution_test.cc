@@ -47,9 +47,9 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-4);
+  ErrorSpec error_spec_ = ErrorSpec(1e-2, 1e-3);
 #else
-  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-4);
+  ErrorSpec error_spec_ = ErrorSpec(1e-4, 1e-3);
 #endif
 };
 
@@ -1148,7 +1148,7 @@ TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Input_Batch_In_Lanes,
 }
 
 template <typename T>
-class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
+class Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes
     : public ConvolutionTest {
  public:
   void RunTest() {
@@ -1210,9 +1210,9 @@ class Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes
   }
 };
 
-TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST_CASE(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
                 TestTypes);
-TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Dephtwise_Both_Batch_In_Lanes,
+TYPED_TEST(Convolve2D_1x4x4x160_3x3x1x160_Depthwise_Both_Batch_In_Lanes,
            Types) {
   this->RunTest();
 }
@@ -1886,7 +1886,7 @@ XLA_TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
 // (We run this test on all platforms, because, what the heck.)
 XLA_TEST_F(ConvolutionTest, NoCudnnAlgorithmPicker) {
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
-      "cudnn-conv-algorithm-picker");
+      "gpu-conv-algorithm-picker");
 
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 1, 1, 2});
@@ -1908,10 +1908,10 @@ XLA_TEST_F(ConvolutionTest, ConvolveF32BackwardInputGroupedConvolution) {
   XlaBuilder builder(TestName());
   Shape input_shape = ShapeUtil::MakeShape(F32, {1, 64, 100, 100});
   Array4D<float> input_data(1, 64, 100, 100);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45321);
+  input_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45321);
   Shape filter_shape = ShapeUtil::MakeShape(F32, {7, 7, 1, 64});
   Array4D<float> filter_data(7, 7, 1, 64);
-  input_data.FillRandom(/*value=*/0.023, 0.001, /*seed=*/45320);
+  filter_data.FillRandom(/*stddev=*/0.023, 0.001, /*seed=*/45320);
   auto input = Parameter(&builder, 0, input_shape, "input");
   auto filter = ConstantR4FromArray4D(&builder, filter_data);
 
@@ -2004,6 +2004,18 @@ ENTRY Test {
   %kernel = f32[672,7,7,64] parameter(1)
   %reverse = f32[672,7,7,64]{3,2,1,0} reverse(f32[672,7,7,64]{3,2,1,0} %kernel), dimensions={1,2}
   ROOT %convolution = f32[672,9,9,64]{3,2,1,0} convolution(f32[3,3,64,64]{3,2,1,0} %output, f32[672,7,7,64]{3,2,1,0} %reverse), window={size=7x7 pad=6_6x6_6}, dim_labels=01bf_o01i->f01b
+})";
+  EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
+}
+
+XLA_TEST_F(ConvolutionHloTest, TestConv0D) {
+  constexpr char kHlo[] = R"(
+HloModule TestModule
+
+ENTRY TestComputation {
+  %parameter.1 = f32[10,5]{1,0} parameter(0)
+  %parameter.2 = f32[5,7]{1,0} parameter(1)
+  ROOT %convolution.3 = f32[10,7]{1,0} convolution(f32[10,5]{1,0} %parameter.1, f32[5,7]{1,0} %parameter.2), dim_labels=bf_io->bf
 })";
   EXPECT_TRUE(RunAndCompare(kHlo, ErrorSpec{0.01, 0.01}));
 }

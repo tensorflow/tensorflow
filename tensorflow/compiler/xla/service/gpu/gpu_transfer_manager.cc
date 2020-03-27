@@ -165,7 +165,7 @@ Status GpuTransferManager::TransferLiteralFromOutfeed(
             absl::make_unique<MutableBorrowingLiteral>(literal, index));
       });
 
-  // Give the tree of buffers to the outfeed mananger. The device will fill it
+  // Give the tree of buffers to the outfeed manager. The device will fill it
   // while we're waiting for it below.
   gpu::OutfeedManager* outfeed_manager = gpu::GetOrCreateOutfeedManager();
   outfeed_manager->EnqueueDestination(&outfeed_buffers);

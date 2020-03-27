@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_METRICS_H_
 
+#include "tensorflow/core/lib/monitoring/counter.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -26,11 +27,17 @@ namespace metrics {
 // The `name` argument identifies the Dataset type (e.g. "ParallelMap").
 void RecordTFDataAutotune(const string& name);
 
-// Records the number of bytes read from the filesystem by a tf.data.Dataset
-// source.
+// Returns a counter than can be used to record the number of bytes read from
+// the filesystem by a tf.data.Dataset source.
 //
 // The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
-void RecordTFDataBytesRead(const string& name, int64 num_bytes);
+monitoring::CounterCell* GetTFDataBytesReadCounter(const string& name);
+
+// Records the number of bytes fetched from tf.data.Dataset iterator.
+void RecordTFDataBytesFetched(int64 num_bytes);
+
+// Records the time spent in ItertatorResource::GetNext() in microseconds.
+void RecordTFDataGetNextDuration(uint64 duration_us);
 
 // Records the number of elements produced by a tf.data.Dataset.
 //
@@ -47,7 +54,7 @@ void RecordTFDataFingerprint(const string& name);
 // Records the number of independent graph changes resulting from the
 // application of a tf.data optimization.
 //
-// The `name` argument identifies the optimization (e.g. "noop_eliminiation").
+// The `name` argument identifies the optimization (e.g. "noop_elimination").
 void RecordTFDataOptimization(const string& name, int64 num_changes);
 
 // Records parsing of dense tensor features.
@@ -65,6 +72,9 @@ void RecordGraphOutputTensors(const size_t size);
 
 void UpdateGraphExecTime(const uint64 running_time_usecs);
 
+// Records that one output of an op of type `op_name` was unused.
+void RecordUnusedOutput(const string& op_name);
+
 // Updates the metrics stored about time spent building graphs.
 //
 // By "GraphBuild", we refer to building a client graph, which is a sub-graph of
@@ -79,6 +89,12 @@ void UpdateGraphExecTime(const uint64 running_time_usecs);
 //
 // TODO(jtkeeling): Should we record building/optimizing tf.functions?
 void UpdateGraphBuildTime(const uint64 running_time_usecs);
+
+// Updates the metrics stored about graph optimizations.
+void UpdateGraphOptimizationPassTime(const string& pass_name,
+                                     const uint64 running_time_usecs);
+void UpdateGrapplerPassTime(const string& pass_name,
+                            const uint64 running_time_usecs);
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);

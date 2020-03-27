@@ -85,10 +85,24 @@ enum class Path : std::uint8_t {
 #if RUY_PLATFORM(X86)
   // x86 architectures.
   //
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder.
+  // Optimization is not finished. In particular the dimensions of the kernel
+  // blocks can be changed as desired.
+  //
+  // Optimized for SSE 4.2.
+  kSse42 = 0x4,
   // Optimized for AVX2.
-  kAvx2 = 0x4,
+  kAvx2 = 0x8,
   // Optimized for AVX-512.
-  kAvx512 = 0x8,
+  kAvx512 = 0x10,
+  // TODO(b/147376783): SSE 4.2 and AVX-VNNI support is incomplete /
+  // placeholder.
+  // Optimization is not finished. In particular the dimensions of the kernel
+  // blocks can be changed as desired.
+  //
+  // Optimized for AVX-VNNI.
+  kAvxVnni = 0x20,
 #endif  // RUY_PLATFORM(X86)
 };
 
@@ -124,10 +138,9 @@ constexpr Path kAllPaths =
 #elif RUY_PLATFORM(NEON_32)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #elif RUY_PLATFORM(X86)
-// TODO(b/138433137): kAllPaths should always contain kAvx512 regardless of
-// whether AVX-512 is enabled in the translation unit #including this header.
-constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp |
+                           Path::kSse42 | Path::kAvx2 | Path::kAvx512 |
+                           Path::kAvxVnni;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif
@@ -136,8 +149,9 @@ constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #if RUY_PLATFORM(NEON)
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp | Path::kNeon;
 #elif RUY_PLATFORM(X86)
-constexpr Path kAllPaths =
-    Path::kReference | Path::kStandardCpp | Path::kAvx2 | Path::kAvx512;
+constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp |
+                           Path::kSse42 | Path::kAvx2 | Path::kAvx512 |
+                           Path::kAvxVnni;
 #else
 constexpr Path kAllPaths = Path::kReference | Path::kStandardCpp;
 #endif

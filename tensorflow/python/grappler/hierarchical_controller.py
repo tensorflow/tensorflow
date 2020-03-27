@@ -26,6 +26,7 @@ from __future__ import division
 from __future__ import print_function
 
 import math
+
 import numpy as np
 import six
 from tensorflow.python.framework import constant_op
@@ -192,11 +193,11 @@ class HierarchicalController(Controller):
           [self.hparams.grouping_hidden_size, self.num_groups])
       if self.hparams.bi_lstm:
         variable_scope.get_variable("encoder_lstm_forward", [
-            self.embedding_size + self.hparams.hidden_size / 2,
+            self.embedding_size + self.hparams.hidden_size // 2,
             2 * self.hparams.hidden_size
         ])
         variable_scope.get_variable("encoder_lstm_backward", [
-            self.embedding_size + self.hparams.hidden_size / 2,
+            self.embedding_size + self.hparams.hidden_size // 2,
             2 * self.hparams.hidden_size
         ])
         variable_scope.get_variable(

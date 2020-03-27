@@ -158,7 +158,8 @@ class SqlDatasetOp : public DatasetOpKernel {
         return model::MakeSourceNode(std::move(args));
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (query_connection_initialized_) {
           TF_RETURN_IF_ERROR(
@@ -190,7 +191,7 @@ class SqlDatasetOp : public DatasetOpKernel {
       }
 
      private:
-      Status InitializeQueryConnection() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      Status InitializeQueryConnection() TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         query_connection_initialized_ = true;
         end_of_sequence_ = false;
         query_connection_ =
@@ -208,10 +209,11 @@ class SqlDatasetOp : public DatasetOpKernel {
 
       mutex mu_;
       // TODO(b/129062371): explore ways to seek into a SQLite databases.
-      int64 next_calls_ GUARDED_BY(mu_) = 0;
-      std::unique_ptr<sql::QueryConnection> query_connection_ GUARDED_BY(mu_);
-      bool query_connection_initialized_ GUARDED_BY(mu_) = false;
-      bool end_of_sequence_ GUARDED_BY(mu_) = false;
+      int64 next_calls_ TF_GUARDED_BY(mu_) = 0;
+      std::unique_ptr<sql::QueryConnection> query_connection_
+          TF_GUARDED_BY(mu_);
+      bool query_connection_initialized_ TF_GUARDED_BY(mu_) = false;
+      bool end_of_sequence_ TF_GUARDED_BY(mu_) = false;
     };
     const tstring driver_name_;
     const tstring data_source_name_;

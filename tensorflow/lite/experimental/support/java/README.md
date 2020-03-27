@@ -10,8 +10,8 @@ TensorFlow Lite models, and make the TensorFlow Lite interpreter easier to use.
 We welcome feedback from the community as we develop this support library,
 especially around:
 
-*   `Use-cases we should support including data types and operations`
-*   `Ease of use - does the APIs make sense to the community`
+*   Use-cases we should support including data types and operations
+*   Ease of use - does the APIs make sense to the community
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ especially around:
     *   [Basic image manipulation and conversion](#Basic-image-manipulation-and-conversion)
     *   [Create output objects and run the model](#Create-output-objects-and-run-the-model)
     *   [Accessing the result](#Accessing-the-result)
-    *   [Optional: Mapping results to labels](#Optional:-Mapping-results-to-labels)
+    *   [Optional: Mapping results to labels](#Optional-Mapping-results-to-labels)
 *   [Current use-case coverage](#Current-use-case-coverage)
 *   [ImageProcessor Architecture](#ImageProcessor-Architecture)
 *   [Quantization](#Quantization)
@@ -114,8 +114,9 @@ try{
 }
 
 // Running inference
-if(null != tflite)
+if(null != tflite) {
     tflite.run(tImage.getBuffer(), probabilityBuffer.getBuffer());
+}
 ```
 
 ### Accessing the result
@@ -138,9 +139,9 @@ import org.tensorflow.lite.support.common.FileUtil;
 final String ASSOCIATED_AXIS_LABELS = "labels.txt";
 List<String> associatedAxisLabels = null;
 
-try{
+try {
     associatedAxisLabels = FileUtil.loadLabels(this, ASSOCIATED_AXIS_LABELS);
-} catch (IOException e){
+} catch (IOException e) {
     Log.e("tfliteSupport", "Error reading label file", e);
 }
 ```
@@ -170,10 +171,10 @@ if (null != associatedAxisLabels) {
 
 The current experimental version of the TensorFlow Lite Support Library covers:
 
-*   `common data types (float, uint8, images and array of these objects) as
-    inputs and outputs of tflite models.`
-*   `basic image operations (crop image, resize and rotate).`
-*   `quantized and float models.`
+*   common data types (float, uint8, images and array of these objects) as
+    inputs and outputs of tflite models.
+*   basic image operations (crop image, resize and rotate).
+*   quantized and float models.
 
 Future versions will improve support for text-related applications.
 
@@ -192,11 +193,11 @@ int size = height > width ? width : height;
 ImageProcessor imageProcessor =
     new ImageProcessor.Builder()
         // Center crop the image to the largest square possible
-        .add(new ResizeWithCropOrPadOp(size , size))
+        .add(new ResizeWithCropOrPadOp(size, size))
         // Resize using Bilinear or Nearest neighbour
         .add(new ResizeOp(224, 224, ResizeOp.ResizeMethod.BILINEAR));
         // Rotation counter-clockwise in 90 degree increments
-        .add(new Rot90Op(rotateDegrees/90))
+        .add(new Rot90Op(rotateDegrees / 90))
         .build();
 ```
 
@@ -229,5 +230,5 @@ TensorProcessor probabilityProcessor =
     new TensorProcessor.Builder().add(new NormalizeOp(0, 255)).build();
 
 // Post-processor which dequantize the result
-TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer)
+TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer);
 ```

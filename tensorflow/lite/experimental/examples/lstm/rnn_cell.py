@@ -163,7 +163,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   This is used only for TfLite, it provides hints and it also makes the
-  variables in the desired for the tflite ops  (transposed and seaparated).
+  variables in the desired for the tflite ops  (transposed and separated).
 
   The default non-peephole implementation is based on:
 
@@ -438,7 +438,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
         aggregate="first",
         index_override=18)
 
-    input_size = inputs.shape.with_rank(2)[1]
+    input_size = inputs.shape.with_rank(2).dims[1]
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.shape[-1]")
 

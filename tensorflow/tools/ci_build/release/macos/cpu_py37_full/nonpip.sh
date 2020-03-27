@@ -17,14 +17,11 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
 
 # Pick a more recent version of xcode
-sudo xcode-select --switch /Applications/Xcode_9.2.app/Contents/Developer
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
 python -m virtualenv tf_build_env --system-site-packages
 source tf_build_env/bin/activate
 
@@ -38,7 +35,7 @@ export TF2_BEHAVIOR=1
 export PYTHON_BIN_PATH=$(which python3.7)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
-tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1)"
+tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh

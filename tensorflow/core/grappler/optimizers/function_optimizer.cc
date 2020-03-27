@@ -23,6 +23,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_replace.h"
 #include "absl/strings/substitute.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
@@ -43,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/graph_node_util.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/graph_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -804,14 +806,13 @@ bool LowerAsMultiDeviceFunctionIsOn(const Node* n) {
   return CheckBoolAttr(n, kLowerAsMultiDeviceFunctionAttr);
 }
 
-bool MarkedForTpuCompilation(const Node* n) {
-  static constexpr const char* const kTpuReplicateAttr = "_tpu_replicate";
-  return CheckStringAttr(n, kTpuReplicateAttr);
-}
-
-bool MarkedForXlaCompilation(const Node* n) {
-  static constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
-  return CheckStringAttr(n, kXlaClusterAttr);
+bool MarkedForXlaCompilation(const NodeDef& n) {
+  auto is_enabled = [&](std::string attr_name) -> bool {
+    auto it = n.attr().find(attr_name);
+    return it != n.attr().end() && (!it->second.s().empty() || it->second.b());
+  };
+  return is_enabled("_xla_compile_id") || is_enabled("_tpu_replicate") ||
+         is_enabled(kXlaMustCompileAttr);
 }
 
 const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
@@ -1079,9 +1080,14 @@ Status MakeFunctionBodyForInlining(const Node& node,
 // V2, however we have to guarantee that graphs constructed with Tensorflow V1
 // will produce correct results.
 void AddStrictInputSemantics(Node* caller, Graph* g) {
-  const bool has_incoming_control_edges =
-      absl::c_any_of(caller->in_edges(),
-                     [](const Edge* edge) { return edge->IsControlEdge(); });
+  absl::flat_hash_set<const Node*> existing_control_sources;
+  for (const Edge* edge : caller->in_edges()) {
+    if (edge->IsControlEdge()) {
+      existing_control_sources.insert(edge->src());
+    }
+  }
+
+  const bool has_incoming_control_edges = !existing_control_sources.empty();
 
   const bool has_resource_input =
       absl::c_any_of(caller->input_types(),
@@ -1098,18 +1104,19 @@ void AddStrictInputSemantics(Node* caller, Graph* g) {
       (has_constant_enter_input);                             // Case #2
   if (!requires_strict_semantics) return;
 
-  std::vector<const Node*> data_inputs;
-  data_inputs.reserve(caller->in_edges().size());
-
+  std::set<const Node*> data_inputs;
   for (const Edge* edge : caller->in_edges()) {
-    if (edge->IsControlEdge()) continue;
-    data_inputs.push_back(edge->src());
+    if (!edge->IsControlEdge() &&
+        !existing_control_sources.contains(edge->src())) {
+      data_inputs.insert(edge->src());
+    }
   }
 
   VLOG(3) << "Add control edges from all data inputs to enforce strict "
              "semantics with regard to function inputs";
   for (const Node* node : data_inputs) {
-    g->AddControlEdge(g->FindNodeId(node->id()), caller);
+    g->AddControlEdge(g->FindNodeId(node->id()), caller,
+                      /*allow_duplicates=*/true);
   }
 }
 
@@ -1170,7 +1177,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
                            GraphDef* output_graph) {
   bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
   VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
-          << " (aggessive_mode=" << is_aggressive << ")";
+          << " (aggressive_mode=" << is_aggressive << ")";
 
   FunctionLibraryDefinition flib_def =
       FunctionLibraryDefinition(OpRegistry::Global(), item.graph.library());
@@ -1225,8 +1232,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     // Skip nodes that are not function calls.
     if (!IsFunctionCall(flib_def, *n)) continue;
     // Skip function calls that we plan to compile later.
-    if (MarkedForTpuCompilation(n)) continue;
-    if (MarkedForXlaCompilation(n)) continue;
+    if (MarkedForXlaCompilation(n->def())) continue;
 
     // Function body that we will inline into the main graph. It can be a
     // function instantiation, or a gradient function instantiated from
@@ -1430,7 +1436,9 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
 
     // Do not specialize if function has custom gradient or marked nospecialize.
     const string grad_func = ctx.function_library().FindGradient(func_name);
-    const bool no_specialize = !grad_func.empty() || MarkedNoSpecialize(*func);
+    const bool no_specialize = !grad_func.empty() ||
+                               MarkedNoSpecialize(*func) ||
+                               MarkedForXlaCompilation(node);
 
     if (specialization_worthy && !no_specialize) {
       // TODO(ezhulenev): Specialize function call if input has a known shape.

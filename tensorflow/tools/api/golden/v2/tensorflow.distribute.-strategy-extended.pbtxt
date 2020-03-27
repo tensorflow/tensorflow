@@ -20,7 +20,7 @@ tf_class {
   }
   member_method {
     name: "batch_reduce_to"
-    argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'reduce_op\', \'value_destination_pairs\', \'experimental_hints\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "colocate_vars_with"
@@ -32,7 +32,7 @@ tf_class {
   }
   member_method {
     name: "reduce_to"
-    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'destinations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'destinations\', \'experimental_hints\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "update"

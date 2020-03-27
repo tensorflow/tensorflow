@@ -71,6 +71,10 @@ class Optimizer(object):
     self.updates = []
     self.weights = []
 
+  # Set this to False, indicating `apply_gradients` does not take the
+  # `experimental_aggregate_gradients` argument.
+  _HAS_AGGREGATE_GRAD = False
+
   def get_updates(self, loss, params):
     raise NotImplementedError
 
@@ -89,7 +93,7 @@ class Optimizer(object):
           function not implemented).
     """
     grads = K.gradients(loss, params)
-    if any([g is None for g in grads]):
+    if any(g is None for g in grads):
       raise ValueError('An operation has `None` for gradient. '
                        'Please make sure that all of your ops have a '
                        'gradient defined (i.e. are differentiable). '
@@ -721,6 +725,11 @@ class TFOptimizer(Optimizer, trackable.Trackable):
       self.iterations = iterations
     self._track_trackable(self.iterations, name='global_step')
 
+  def _clip_gradients(self, grads):
+    """Clip gradients according to the clipnorm and clipvalue attributes."""
+    # TFOptimizer wrapper has no gradient clipping options.
+    return grads
+
   def apply_gradients(self, grads):
     self.optimizer.apply_gradients(grads, global_step=self.iterations)
 
@@ -794,6 +803,8 @@ def deserialize(config, custom_objects=None):
   Returns:
       A Keras Optimizer instance.
   """
+  # loss_scale_optimizer has a direct dependency of optimizer, import here
+  # rather than top to avoid the cyclic dependency.
   from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
   all_classes = {
       'adadelta': adadelta_v2.Adadelta,

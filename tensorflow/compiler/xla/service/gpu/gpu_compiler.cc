@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <atomic>
 #include <functional>
-#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <utility>
 
 #include "absl/memory/memory.h"
@@ -32,10 +31,13 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/all_reduce_combiner.h"
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
+#include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
+#include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/depthwise_convolution_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
@@ -44,14 +46,16 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
+#include "tensorflow/compiler/xla/service/gpu/gemm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_conv_algorithm_picker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_hlo_schedule.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_sanitize_constant_names.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_scatter_expander.h"
+#include "tensorflow/compiler/xla/service/gpu/horizontal_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -59,10 +63,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/multi_output_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_degenerate_dim_remover.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_dimension_grouper.h"
+#include "tensorflow/compiler/xla/service/gpu/reduction_layout_normalizer.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/gpu/tree_reduction_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/variadic_op_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
@@ -78,8 +86,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
+#include "tensorflow/compiler/xla/service/rng_bit_generator_expander.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
 #include "tensorflow/compiler/xla/service/slow_operation_alarm.h"
@@ -104,6 +112,7 @@ limitations under the License.
 #include "tensorflow/core/platform/subprocess.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace xla {
 namespace gpu {
@@ -127,6 +136,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     // Expand random number generation.
     pipeline.AddPass<RngExpander>();
+    pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
@@ -135,19 +145,29 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<GpuScatterExpander>();
 
     pipeline.AddPass<DynamicIndexSplitter>();
-    pipeline.AddPass<GpuHloSupportChecker>();
-    ReducePrecisionInsertion::AddPasses(
-        &pipeline, hlo_module->config().debug_options(),
-        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
-    auto cost_model = [](HloInstruction* conv) {
+
+    pipeline.AddPass<DotDecomposer>();
+
+    pipeline.AddPass<Convolution4DExpander>();
+
+    auto cost_model = [](HloInstruction*) {
       // We need a cost model for GPUs. Currently, do nothing.
       return false;
     };
-    pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<DepthwiseConvolutionConverter>(cost_model);
+
+    // We use the ConvolutionGroupConverter to convert backprops of filter
+    // grouped convolutions into non-grouped equivalents.
+    auto batch_group_cost_model = [](HloInstruction*) { return false; };
+
+    pipeline.AddPass<ConvolutionGroupConverter>(
+        batch_group_cost_model,
+        /*convert_batch_groups_only=*/true,
+        /*filter_expansion=*/true);
+
     // Expand the sort op to support stable sorting if required.
     pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
@@ -165,6 +185,12 @@ Status GpuCompiler::OptimizeHloModule(
       // where possible.  Not every batchnorm op can be implemented as a call to
       // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
       if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        // Since BatchNorm inference is essentially pointwise operations, it is
+        // always advantageous to use kernel fusion rather than cudnn.
+        pass.AddPass<BatchNormExpander>(
+            /*rewrite_training_op=*/false,
+            /*rewrite_inference_op=*/true,
+            /*rewrite_grad_op=*/false);
         pass.AddPass<CudnnBatchNormRewriter>();
       }
       pass.AddPass<BatchNormExpander>(
@@ -180,6 +206,8 @@ Status GpuCompiler::OptimizeHloModule(
 
       AlgebraicSimplifierOptions options;
       pass.AddPass<AlgebraicSimplifier>(options);
+      // AlgebraicSimplifier may add contracting dimensions to a dot.
+      pass.AddPass<DotDecomposer>();
       pass.AddPass<SortSimplifier>();
       pass.AddPass<TupleSimplifier>();
       pass.AddPass<WhileLoopConstantSinking>();
@@ -264,25 +292,20 @@ Status GpuCompiler::OptimizeHloModule(
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
 
-    HloPassPipeline reduce_pipeline("reduce-precision");
-    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-     * fixing the ticket. */
-    reduce_pipeline.AddInvariantChecker<HloVerifier>(
-        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
-        LayoutAssignment::InstructionCanChangeLayout);
-    ReducePrecisionInsertion::AddPasses(
-        &reduce_pipeline, hlo_module->config().debug_options(),
-        ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
-    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
-    TF_RETURN_IF_ERROR(reduce_result.status());
-
-    if (reduce_result.ValueOrDie()) {
-      // Do another fusion pass, with the expectation that we may be able to
-      // fuse the new ReducePrecision operations.
-      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
-    }
+    HloPassPipeline horizontal_fusion("horizontal_fusion");
+    horizontal_fusion.AddPass<GpuHorizontalFusion>();
+    horizontal_fusion.AddPass<HloCSE>(/*is_layout_sensitive=*/true,
+                                      /*only_fusion_computations=*/true);
+    horizontal_fusion.AddPass<HloDCE>();
+    TF_RETURN_IF_ERROR(horizontal_fusion.Run(hlo_module).status());
   }
-
+  {
+    HloPassPipeline pipeline("all_reduce_combiner");
+    pipeline.AddPass<AllReduceCombiner>(
+        /*combine_threshold_in_bytes=*/30 * 1024 * 1024,
+        /*combine_threshold_count=*/256);
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
   return Status::OK();
 }
 
@@ -315,6 +338,84 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   pipeline.AddPass<GpuCopyInsertion>(GetCanShareBuffer());
   pipeline.AddPass<GpuSanitizeConstantNames>();
   return pipeline.Run(hlo_module).status();
+}
+
+// TODO(cheshire): Duplication with gpu_conv_algorithm picker, figure out a
+// right way to share this.
+static bool RequireDeterminism() {
+  static bool require_determinism = [] {
+    bool deterministic_ops = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_DETERMINISTIC_OPS",
+                                               /*default_val=*/false,
+                                               &deterministic_ops));
+    return deterministic_ops;
+  }();
+  return require_determinism;
+}
+
+Status GpuCompiler::OptimizeHloPostLayoutAssignment(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    se::DeviceMemoryAllocator* device_allocator) {
+  HloPassPipeline pipeline("post-layout_assignment");
+  /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
+   * fixing the ticket. */
+  pipeline.AddInvariantChecker<HloVerifier>(
+      /*layout_sensitive=*/true,
+      /*allow_mixed_precision=*/false,
+      LayoutAssignment::InstructionCanChangeLayout);
+
+  pipeline.AddPass<ReductionDegenerateDimRemover>();
+  pipeline.AddPass<ReductionLayoutNormalizer>();
+  pipeline.AddPass<ReductionDimensionGrouper>();
+
+  // The LayoutAssignment pass may leave behind kCopy instructions which are
+  // duplicate or NOPs, so remove them with algebraic simplification and CSE.
+  AlgebraicSimplifierOptions options;
+  options.set_is_layout_sensitive(true);
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(options);
+
+  if (RequireDeterminism() ||
+      hlo_module->config().debug_options().xla_gpu_deterministic_reductions()) {
+    pipeline.AddPass<HloPassFix<GpuTreeReductionRewriter>>();
+  }
+
+  // Rewrite GEMMs into custom calls.
+  pipeline.AddPass<GemmRewriter>();
+
+  // Choose the fastest algorithm for each conv.
+  //
+  // We pick the algorithm before fusion so we can generate better HLO. After
+  // GpuConvRewriter, our convolutions are CustomCalls which return a
+  // tuple (conv_result, scratch_memory), and the each conv uses 0 bytes of
+  // scratch:
+  //
+  //   customcall = (f32[...], f32[0])
+  //   return gte(customcall, 0)
+  //
+  // The algorithm picker then chooses the best algorithm, and potentially
+  // increases the scratch space.  It replaces customcall with new_tuple,
+  // giving us the following:
+  //
+  //   new_customcall = (f32[...], f32[N])
+  //   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
+  //   return gte(new_tuple, 0)
+  //
+  // The new tuple and gte instructions then be simplified away, because
+  // nobody is expected to use the scratch value.
+  //
+  // However, if we were to run GpuConvAlgorithmPicker after fusion
+  // the gte(customcall, 0) would probably already be into a fusion node.  We
+  // can't simplify across HloComputation boundaries, so in this case we
+  // wouldn't be able to simplify away the new_tuple bits.
+  pipeline.AddPass<GpuConvAlgorithmPicker>(stream_exec, device_allocator);
+
+  // Clean up new_tuple described above.
+  pipeline.AddPass<TupleSimplifier>();
+
+  pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+  TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+
+  return Status::OK();
 }
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
@@ -431,7 +532,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
       hlo_schedule->ThunkLaunchOrder());
   if (DumpingEnabledForHloModule(*module)) {
-    DumpToFileInDirOrStdout(*module, "thunk_schedule",
+    DumpToFileInDirOrStdout(*module, "", "thunk_schedule",
                             thunk_schedule->ToString());
   }
 

@@ -39,7 +39,7 @@ class _RewriteBlock(object):
 
 
 class ConditionalReturnRewriter(converter.Base):
-  """Rewrites a a pattern where it's unbovious that all paths return a value.
+  """Rewrites a a pattern where it's unobvious that all paths return a value.
 
   This rewrite allows avoiding intermediate None return values.
 
@@ -71,7 +71,7 @@ class ConditionalReturnRewriter(converter.Base):
 
   def _postprocess_statement(self, node):
     # If the node definitely returns (e.g. it's a with statement with a
-    # return stateent in it), then the current block also definitely returns.
+    # return statement in it), then the current block also definitely returns.
     if anno.getanno(node, STMT_DEFINITELY_RETURNS, default=False):
       self.state[_RewriteBlock].definitely_returns = True
 
@@ -231,9 +231,15 @@ class ReturnStatementsTransformer(converter.Base):
 
     retval = node.value if node.value else parser.parse_expression('None')
 
+    # Note: If `return <expr> raises, then the return is aborted.
+    # The try-catch below ensures the variables remain consistent in that case.
     template = """
-      do_return_var_name = True
-      retval_var_name = retval
+      try:
+        do_return_var_name = True
+        retval_var_name = retval
+      except:
+        do_return_var_name = False
+        raise
     """
     node = templates.replace(
         template,
@@ -293,7 +299,7 @@ class ReturnStatementsTransformer(converter.Base):
     # Add the check for return to the loop condition.
     node.body = self._visit_statement_block(node, node.body)
     if self.state[_Block].return_used:
-      extra_test = anno.getanno(node, 'extra_test', default=None)
+      extra_test = anno.getanno(node, anno.Basic.EXTRA_LOOP_TEST, default=None)
       if extra_test is not None:
         extra_test = templates.replace_as_expression(
             'ag__.and_(lambda: ag__.not_(control_var), lambda: extra_test)',
@@ -303,7 +309,7 @@ class ReturnStatementsTransformer(converter.Base):
         extra_test = templates.replace_as_expression(
             'ag__.not_(control_var)',
             control_var=self.state[_Function].do_return_var_name)
-      anno.setanno(node, 'extra_test', extra_test)
+      anno.setanno(node, anno.Basic.EXTRA_LOOP_TEST, extra_test)
 
     node.orelse = self._visit_statement_block(node, node.orelse)
     return node
@@ -349,23 +355,24 @@ class ReturnStatementsTransformer(converter.Base):
     docstring = None
     if converted_body:
       if (isinstance(converted_body[0], gast.Expr) and
-          isinstance(converted_body[0].value, gast.Str)):
+          isinstance(converted_body[0].value, gast.Constant)):
         docstring = converted_body[0]
         converted_body = converted_body[1:]
 
     if self.state[_Block].return_used:
 
       if self.default_to_null_return:
+        # TODO(mdan): Remove the (do_return_var_name,) below.
+        # Currently, that line ensures the variable is both defined and alive
+        # throughout the function.
         template = """
           do_return_var_name = False
           retval_var_name = ag__.UndefinedReturnValue()
           body
-          # TODO(b/134753123) Remove the do_return_var_name tuple.
           (do_return_var_name,)
           return ag__.retval(retval_var_name)
         """
       else:
-        # TODO(b/134753123) Fix loops that return when do_return is not set.
         template = """
           body
           return retval_var_name

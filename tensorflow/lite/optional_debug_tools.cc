@@ -115,6 +115,14 @@ void PrintInterpreterState(Interpreter* interpreter) {
     PrintTfLiteIntVector(node.inputs);
     printf("  Outputs:");
     PrintTfLiteIntVector(node.outputs);
+    if (node.intermediates && node.intermediates->size) {
+      printf("  Intermediates:");
+      PrintTfLiteIntVector(node.intermediates);
+    }
+    if (node.temporaries && node.temporaries->size) {
+      printf("  Temporaries:");
+      PrintTfLiteIntVector(node.temporaries);
+    }
   }
 }
 

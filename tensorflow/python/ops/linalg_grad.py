@@ -14,14 +14,24 @@
 # ==============================================================================
 """Gradients for operators defined in linalg_ops.py.
 
-Useful reference for derivative formulas is
-An extended collection of matrix derivative results for forward and reverse
-mode algorithmic differentiation by Mike Giles:
-http://eprints.maths.ox.ac.uk/1079/1/NA-08-01.pdf
+Useful reference for derivative formulas is (Mike Giles, 2008).
 
-A detailed derivation of formulas for backpropagating through spectral layers
-(SVD and Eig) by Ionescu, Vantzos & Sminchisescu:
-https://arxiv.org/pdf/1509.07838v4.pdf
+Ionescu et al. (2015) provide a detailed derivation of formulas for
+backpropagating through spectral layers (SVD and Eig).
+
+References:
+  An extended collection of matrix derivative results for
+  forward and reverse mode automatic differentiation:
+    [Mike Giles, 2008]
+    (https://ora.ox.ac.uk/objects/uuid:8d0c0a29-c92b-4153-a1d2-38b276e93124)
+    ([pdf](http://eprints.maths.ox.ac.uk/1079/1/NA-08-01.pdf))
+  Matrix Backpropagation for Deep Networks with Structured Layers
+    [Ionescu et al., 2015]
+    (https://www.cv-foundation.org/openaccess/content_iccv_2015/html/Ionescu_Matrix_Backpropagation_for_ICCV_2015_paper.html)
+    ([pdf](https://www.cv-foundation.org/openaccess/content_iccv_2015/papers/Ionescu_Matrix_Backpropagation_for_ICCV_2015_paper.pdf))
+  Training Deep Networks with Structured Layers by Matrix Backpropagation:
+    [Ionescu et al., 2015](https://arxiv.org/abs/1509.07838)
+    ([pdf](https://arxiv.org/pdf/1509.07838.pdf))
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -265,7 +275,7 @@ def _EinsumGrad(op, grad):
         set(output_subs + other_subs + "."))
     # Obtain the input subscripts with the reduced axis labels removed. E.g.
     # "ac" in the above example.
-    left_subs = "".join([s for s in input_subs if s not in reduced_label_set])
+    left_subs = "".join(s for s in input_subs if s not in reduced_label_set)
 
     # Compute the gradient wrt the input, without accounting for the operation
     # "abc->ac". So, now we have the VJP of the operation "ac,cd->ad".
@@ -380,7 +390,7 @@ def _MatrixSquareRootGrad(op, grad):
 
   # Used to find Kronecker products within the Sylvester equation
   def _KroneckerProduct(b1, b2):
-    """Computes the Kronecker product of two batches of square matrices"""
+    """Computes the Kronecker product of two batches of square matrices."""
     b1_shape = array_ops.shape(b1)
     b2_shape = array_ops.shape(b2)
     b1_order = b1_shape[-1]
@@ -597,6 +607,7 @@ def _MatrixSolveLsGrad(op, grad):
 def _MatrixTriangularSolveGrad(op, grad):
   """Gradient for MatrixTriangularSolve."""
   a = op.inputs[0]
+  b = op.inputs[1]
   adjoint_a = op.get_attr("adjoint")
   lower_a = op.get_attr("lower")
   c = op.outputs[0]
@@ -610,7 +621,16 @@ def _MatrixTriangularSolveGrad(op, grad):
     grad_a = array_ops.matrix_band_part(grad_a, -1, 0)
   else:
     grad_a = array_ops.matrix_band_part(grad_a, 0, -1)
-  return (grad_a, grad_b)
+  # If the static batch shapes are equal, we don't need to unbroadcast.
+  if (a.shape.is_fully_defined() and b.shape.is_fully_defined() and
+      a.shape[:-2] == b.shape[:-2]):
+    return grad_a, grad_b
+  a_shape = array_ops.shape(a)
+  b_shape = array_ops.shape(b)
+  ra, rb = array_ops.broadcast_gradient_args(a_shape[:-2], b_shape[:-2])
+  grad_a = array_ops.reshape(math_ops.reduce_sum(grad_a, axis=ra), a_shape)
+  grad_b = array_ops.reshape(math_ops.reduce_sum(grad_b, axis=rb), b_shape)
+  return grad_a, grad_b
 
 
 @ops.RegisterGradient("SelfAdjointEigV2")
@@ -725,7 +745,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     # only defined up a (k-dimensional) subspace. In practice, this can
     # lead to numerical instability when singular values are close but not
     # exactly equal.
-    # To avoid nan in cases with degenrate sigular values or zero sigular values
+    # To avoid nan in cases with degenerate sigular values or zero singular values
     # in calculating f and s_inv_mat, we introduce a Lorentz brodening.
 
     def _SafeReciprocal(x, epsilon=1E-20):

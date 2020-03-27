@@ -42,12 +42,12 @@ void FillTensorWithRandomValues(Tensor* t, int string_length, int64* bytes) {
 }
 
 template <>
-void FillTensorWithRandomValues<std::string>(Tensor* t, int string_length,
-                                             int64* bytes) {
-  auto ts = t->flat<string>();
+void FillTensorWithRandomValues<tstring>(Tensor* t, int string_length,
+                                         int64* bytes) {
+  auto ts = t->flat<tstring>();
   *bytes = 0;
   for (int i = 0; i < ts.size(); i++) {
-    ts(i) = string(string_length, 'x');
+    ts(i) = tstring(string_length, 'x');
     *bytes += sizeof(ts(i)) + ts(i).size();
   }
 }
@@ -99,7 +99,7 @@ BENCHMARK(BM_ConcatDim0Float)->Arg(1000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ConcatDim1Float)->Arg(1000)->Arg(100000)->Arg(1000000);
 
 static void BM_ConcatDim0String(int iters, int dim2, int string_length) {
-  ConcatHelper<string>(iters, 0, dim2, string_length);
+  ConcatHelper<tstring>(iters, 0, dim2, string_length);
 }
 
 BENCHMARK(BM_ConcatDim0String)

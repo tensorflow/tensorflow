@@ -26,11 +26,51 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+
+namespace {
+
+void RecordPaddingSize(int32 padding_size) {
+  static tensorflow::monitoring::PercentileSamplerCell* cell =
+      tensorflow::monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/padding_size",
+           "Tracks the padding size distribution on batches."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
+          ->GetCell();
+  cell->Add(static_cast<double>(padding_size));
+}
+
+void RecordInputBatchSize(int32 batch_size) {
+  static tensorflow::monitoring::PercentileSamplerCell* cell =
+      tensorflow::monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/input_batch_size",
+           "Tracks the batch size distribution on the inputs."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
+          ->GetCell();
+  cell->Add(static_cast<double>(batch_size));
+}
+
+void RecordBatchDelayMs(int64 batch_delay_ms) {
+  static monitoring::PercentileSamplerCell* cell =
+      monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/batch_delay_ms",
+           "Tracks the batching delay for inputs."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime)
+          ->GetCell();
+  cell->Add(static_cast<double>(batch_delay_ms));
+}
+
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -43,7 +83,7 @@ typedef Eigen::SyclDevice SYCLDevice;
 // op's output at position 'output_index', using 'context' for the allocation to
 // ensure proper device placement.
 template <typename T>
-Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
+Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor> inputs,
               Tensor* output) {
   const int input_dims = inputs[0].dims();
   const TensorShape& input_shape = inputs[0].shape();
@@ -105,7 +145,7 @@ Status Concat(OpKernelContext* context, const gtl::ArraySlice<Tensor>& inputs,
 // applicable special case and wrote to the outputs. Otherwise acts as a no-op.
 template <typename T>
 Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
-                      const gtl::ArraySlice<int64>& sizes,
+                      const gtl::ArraySlice<int64> sizes,
                       std::vector<Tensor>* outputs, bool* done) {
   *done = false;
 
@@ -142,7 +182,7 @@ Status SplitEasyCases(OpKernelContext* context, const Tensor& input,
 // Handles the general case, on CPU.
 template <typename T>
 Status SplitCPU(OpKernelContext* context, const Tensor& input,
-                const gtl::ArraySlice<int64>& sizes,
+                const gtl::ArraySlice<int64> sizes,
                 std::vector<Tensor>* outputs) {
   int64 suffix_dim_size = 1;
   for (int i = 1; i < input.shape().dims(); ++i) {
@@ -191,8 +231,7 @@ Status SplitGPU(OpKernelContext* context, const Tensor& input,
 // The outer function that dispatches to the various Split*() functions above.
 template <typename T>
 Status Split(OpKernelContext* context, const Tensor& input,
-             const gtl::ArraySlice<int64>& sizes,
-             std::vector<Tensor>* outputs) {
+             const gtl::ArraySlice<int64> sizes, std::vector<Tensor>* outputs) {
   bool easy_cases_done;
   TF_RETURN_IF_ERROR(
       SplitEasyCases<T>(context, input, sizes, outputs, &easy_cases_done));
@@ -244,13 +283,14 @@ class BatchResource : public ResourceBase {
   Status RegisterInput(int64 guid, OpKernelContext* context,
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback) {
-    std::unique_ptr<BatchTask> batch_components(new BatchTask);
+    auto batch_components = MakeUnique<BatchTask>();
+    batch_components->start_time = EnvTime::NowNanos();
     batch_components->guid = guid;
     batch_components->propagated_context = Context(ContextKind::kThread);
     OpInputList tensors;
     TF_RETURN_IF_ERROR(context->input_list("in_tensors", &tensors));
-    for (int i = 0; i < tensors.size(); ++i) {
-      const Tensor& tensor = tensors[i];
+    batch_components->inputs.reserve(tensors.size());
+    for (const Tensor& tensor : tensors) {
       if (tensor.shape().dims() == 0) {
         return errors::InvalidArgument(
             "Batching input tensors must have at least one dimension");
@@ -263,10 +303,12 @@ class BatchResource : public ResourceBase {
       }
       batch_components->inputs.push_back(tensor);
     }
+    RecordInputBatchSize(tensors[0].shape().dim_size(0));
     OpInputList captured_tensors;
     const auto captured_status =
         context->input_list("captured_tensors", &captured_tensors);
     if (captured_status.ok()) {
+      batch_components->captured_inputs.reserve(captured_tensors.size());
       for (const Tensor& captured_tensor : captured_tensors) {
         batch_components->captured_inputs.push_back(captured_tensor);
       }
@@ -296,6 +338,8 @@ class BatchResource : public ResourceBase {
     AsyncOpKernel::DoneCallback done_callback;
 
     size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    uint64 start_time;
   };
 
   using Batcher = serving::SharedBatchScheduler<BatchTask>;
@@ -342,6 +386,7 @@ class BatchResource : public ResourceBase {
 
     const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
     const int padding_amount = padded_batch_size - batch.size();
+    RecordPaddingSize(padding_amount);
 
     // All tasks should have the same number of input edges.
     const int num_inputs = batch.task(0).inputs.size();
@@ -361,28 +406,16 @@ class BatchResource : public ResourceBase {
       if (padding_amount > 0) {
         const Tensor& padding_source = batch.task(0).inputs.at(i);
         Tensor padding;
+        if (padding_source.shape().dim_size(0) == 0) {
+          return errors::InvalidArgument(
+              "Cannot use an empty tensor with zero rows as padding when "
+              "batching. (Input ",
+              i, " got shape ", padding_source.shape().DebugString(), ".)");
+        }
         if (padding_source.shape().dim_size(0) == 1) {
           padding = padding_source;
         } else {
-          const std::vector<int64> slice_sizes = {1};
-          const DataType type = padding_source.dtype();
-          Status slice_status;
-          std::vector<Tensor> slices;
-          switch (type) {
-#define CASE(type)                                                     \
-  case DataTypeToEnum<type>::value:                                    \
-    slice_status =                                                     \
-        SplitCPU<type>(context, padding_source, slice_sizes, &slices); \
-    break;
-            TF_CALL_ALL_TYPES(CASE);
-#undef CASE
-            default:
-              slice_status =
-                  errors::InvalidArgument("Unsupported data type: ", type);
-              break;
-          }
-          TF_RETURN_IF_ERROR(slice_status);
-          padding = slices.at(0);
+          padding = padding_source.Slice(0, 1);
         }
         for (int i = 0; i < padding_amount; ++i) {
           to_concatenate.push_back(padding);
@@ -525,6 +558,7 @@ class BatchResource : public ResourceBase {
     opts.stats_collector = last_task_context->stats_collector();
     opts.rendezvous = last_task_context->rendezvous();
     opts.runner = last_task_context->runner();
+    opts.run_all_kernels_inline = last_task_context->run_all_kernels_inline();
 
     auto* flib = last_task_context->function_library();
     std::vector<Tensor> combined_outputs;
@@ -535,6 +569,10 @@ class BatchResource : public ResourceBase {
         batch->task(batch->num_tasks() - 1).captured_inputs;
     args.insert(args.end(), captured_inputs.begin(), captured_inputs.end());
 
+    uint64 current_time = EnvTime::NowNanos();
+    for (int i = 0; i < batch->num_tasks(); ++i) {
+      RecordBatchDelayMs((current_time - batch->task(i).start_time) * 1e-6);
+    }
     // Releases the cleanup method here, because the callback of the function
     // library runtime will handle it now.
     finally.release();
@@ -695,7 +733,7 @@ class BatchResource : public ResourceBase {
   // ones (with a time delay?); it's okay if they get recreated later).
   mutable mutex batcher_queues_mu_;
   std::map<string, std::unique_ptr<BatcherQueue>> batcher_queues_
-      GUARDED_BY(batcher_queues_mu_);
+      TF_GUARDED_BY(batcher_queues_mu_);
 
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
@@ -1054,8 +1092,9 @@ class UnbatchResource : public ResourceBase {
 
   // Maps keyed by BatchKey of tensors waiting for callbacks and callbacks
   // waiting for tensors.
-  std::unordered_map<int64, WaitingTensor> waiting_tensors_ GUARDED_BY(mu_);
-  std::unordered_map<int64, WaitingCallback> waiting_callbacks_ GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingTensor> waiting_tensors_ TF_GUARDED_BY(mu_);
+  std::unordered_map<int64, WaitingCallback> waiting_callbacks_
+      TF_GUARDED_BY(mu_);
 
   // A thread that evicts waiting tensors and callbacks that have exceeded their
   // deadline.
@@ -1111,7 +1150,7 @@ class UnbatchGradResource : public ResourceBase {
   // callback. Clears all information about it from the available_tensors_.
   Status OutputBatch(OpKernelContext* context,
                      const AsyncOpKernel::DoneCallback& done)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor& batch_index_t = context->input(1);
     auto batch_index =
         batch_index_t.shaped<int64, 2>({batch_index_t.dim_size(0), 3});

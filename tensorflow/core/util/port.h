@@ -24,6 +24,12 @@ bool IsGoogleCudaEnabled();
 // Returns true if TENSORFLOW_USE_ROCM is defined. (i.e. TF is built with ROCm)
 bool IsBuiltWithROCm();
 
+// Returns true if TENSORFLOW_USE_XLA is defined. (i.e. TF is built with XLA)
+bool IsBuiltWithXLA();
+
+// Returns true if TENSORFLOW_USE_NVCC is defined. (i.e. TF is built with nvcc)
+bool IsBuiltWithNvcc();
+
 // Returns true if either
 //
 //   GOOGLE_CUDA is defined, and the given CUDA version supports

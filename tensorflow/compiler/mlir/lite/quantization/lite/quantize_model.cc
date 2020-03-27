@@ -17,14 +17,14 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Location.h"  // TF:local_config_mlir
-#include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
+#include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_import.h"
-#include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_config.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
@@ -61,11 +61,9 @@ TfLiteStatus QuantizeModel(
   std::string serialized_model(
       reinterpret_cast<const char*>(input_builder.GetBufferPointer()),
       input_builder.GetSize());
-  std::vector<std::string> output_arrays_order;
 
-  OwningModuleRef module =
-      tflite::FlatBufferToMlir(serialized_model, &context,
-                               UnknownLoc::get(&context), output_arrays_order);
+  OwningModuleRef module = tflite::FlatBufferToMlir(serialized_model, &context,
+                                                    UnknownLoc::get(&context));
   if (!module) {
     error_reporter->Report("Couldn't import flatbuffer to MLIR.");
     return kTfLiteError;
@@ -73,19 +71,19 @@ TfLiteStatus QuantizeModel(
 
   // Apply quantization passes
   PassManager pm(module->getContext());
-  TFL::QuantizationSpecs pass_config;
-  pass_config.inference_type = tensorflow::DT_QINT8;
-  pass_config.post_training_quantization = true;
+  TFL::QuantizationSpecs quant_specs;
+  quant_specs.inference_type = tensorflow::DT_QINT8;
+  quant_specs.post_training_quantization = true;
 
   bool emit_adaptor = false;
   auto input_tf_type = tflite::TflTypeToTfType(input_type);
   if (input_tf_type == tensorflow::DT_FLOAT) {
     emit_adaptor = true;
   } else if (input_tf_type == tensorflow::DT_UINT8) {
-    pass_config.inference_type = tensorflow::DT_QUINT8;
+    quant_specs.inference_type = tensorflow::DT_QUINT8;
   }
 
-  pm.addPass(TFL::CreatePrepareQuantizePass(pass_config));
+  pm.addPass(TFL::CreatePrepareQuantizePass(quant_specs));
   pm.addPass(TFL::CreateQuantizePass());
   pm.addPass(TFL::CreatePostQuantizePass(emit_adaptor));
 

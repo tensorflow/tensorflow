@@ -13,6 +13,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "read"
+    argspec: "args=[\'self\', \'save_path\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "restore"
     argspec: "args=[\'self\', \'save_path\'], varargs=None, keywords=None, defaults=None"
   }

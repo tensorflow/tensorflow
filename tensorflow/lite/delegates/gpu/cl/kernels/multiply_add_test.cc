@@ -37,8 +37,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMul) {
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
-  MultiplyScalarAttributes attr;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
+  MultiplyAttributes attr;
+  Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   attr.param = parameters;
@@ -49,8 +49,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMul) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       MultiplyAdd operation;
       ASSERT_OK(CreateMultiplyAdd(creation_context_, op_def, attr, &operation));
@@ -68,7 +68,7 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorAdd) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   AddAttributes attr;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
+  Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   attr.param = parameters;
@@ -79,8 +79,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorAdd) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       MultiplyAdd operation;
       ASSERT_OK(CreateMultiplyAdd(creation_context_, op_def, attr, &operation));
@@ -97,7 +97,7 @@ TEST_F(OpenCLOperationTest, MultiplyAddScalarMul) {
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
-  MultiplyScalarAttributes attr;
+  MultiplyAttributes attr;
   attr.param = 0.5f;
 
   for (auto storage : env_.GetSupportedStorages()) {
@@ -106,8 +106,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddScalarMul) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       MultiplyAdd operation;
       ASSERT_OK(CreateMultiplyAdd(creation_context_, op_def, attr, &operation));
@@ -133,8 +133,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddScalarAdd) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       MultiplyAdd operation;
       ASSERT_OK(CreateMultiplyAdd(creation_context_, op_def, attr, &operation));
@@ -151,8 +151,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMad) {
   src_tensor.shape = BHWC(1, 2, 1, 2);
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
-  MultiplyScalarAttributes mul_attr;
-  ::tflite::gpu::Tensor<Linear, DataType::FLOAT32> parameters;
+  MultiplyAttributes mul_attr;
+  Tensor<Linear, DataType::FLOAT32> parameters;
   parameters.shape = Linear(2);
   parameters.data = {0.5f, 2.0f};
   mul_attr.param = parameters;
@@ -167,8 +167,8 @@ TEST_F(OpenCLOperationTest, MultiplyAddVectorMad) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       MultiplyAdd operation;
       ASSERT_OK(CreateMultiplyAdd(creation_context_, op_def, mul_attr, add_attr,

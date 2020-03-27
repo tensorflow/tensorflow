@@ -38,6 +38,24 @@ func @test_single_branch_direct_t() -> tensor<i32> {
   return %0 : tensor<i32>
 }
 
+// CHECK-LABEL: test_single_branch_direct_arg_f
+// CHECK: Switch
+// CHECK: tf.AddV2
+func @test_single_branch_direct_arg_f(%pred : tensor<i1>) -> tensor<i32> {
+  %cst_0 = constant dense<10> : tensor<i32>
+  %cst_1 = constant dense<1> : tensor<i32>
+  %0 = tf_executor.graph {
+    %7:3 = tf_executor.Switch %cst_0, %pred : tensor<i32>
+    %8:2 = tf_executor.island {
+      %12 = "tf.AddV2"(%7#1, %cst_1) : (tensor<i32>, tensor<i32>) -> tensor<i32>
+      tf_executor.yield %12 : tensor<i32>
+    }
+    %11:3 = tf_executor.Merge %7#0, %8#0 : tensor<i32> {N = 2 : i64}
+    tf_executor.fetch %11#0 : tensor<i32>
+  }
+  return %0 : tensor<i32>
+}
+
 // pred ? x + 1 : x - 1
 // CHECK-LABEL: ControlFlowTest.testCond_1f
 // CHECK-NOT: Switch

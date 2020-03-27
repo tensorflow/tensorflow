@@ -49,7 +49,7 @@ def check_pydot():
     # to check the pydot/graphviz installation.
     pydot.Dot.create(pydot.Dot())
     return True
-  except OSError:
+  except (OSError, pydot.InvocationException):
     return False
 
 
@@ -100,15 +100,17 @@ def model_to_dot(model,
   from tensorflow.python.keras.engine import network
 
   if not check_pydot():
+    message = (
+        'Failed to import pydot. You must `pip install pydot` '
+        'and install graphviz (https://graphviz.gitlab.io/download/), ',
+        'for `pydotprint` to work.')
     if 'IPython.core.magics.namespace' in sys.modules:
       # We don't raise an exception here in order to avoid crashing notebook
       # tests where graphviz is not available.
-      print('Failed to import pydot. You must install pydot'
-            ' and graphviz for `pydotprint` to work.')
+      print(message)
       return
     else:
-      raise ImportError('Failed to import pydot. You must install pydot'
-                        ' and graphviz for `pydotprint` to work.')
+      raise ImportError(message)
 
   if subgraph:
     dot = pydot.Cluster(style='dashed', graph_name=model.name)

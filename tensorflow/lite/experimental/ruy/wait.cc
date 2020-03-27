@@ -19,9 +19,8 @@ limitations under the License.
 
 namespace ruy {
 
-void WaitUntil(const std::function<bool()>& condition,
-               const Duration& spin_duration, std::condition_variable* condvar,
-               std::mutex* mutex) {
+void Wait(const std::function<bool()>& condition, const Duration& spin_duration,
+          std::condition_variable* condvar, std::mutex* mutex) {
   // First, trivial case where the `condition` is already true;
   if (condition()) {
     return;
@@ -40,8 +39,8 @@ void WaitUntil(const std::function<bool()>& condition,
   condvar->wait(lock, condition);
 }
 
-void WaitUntil(const std::function<bool()>& condition,
-               std::condition_variable* condvar, std::mutex* mutex) {
+void Wait(const std::function<bool()>& condition,
+          std::condition_variable* condvar, std::mutex* mutex) {
   // This value was empirically derived with some microbenchmark, we don't have
   // high confidence in it.
   //
@@ -64,7 +63,7 @@ void WaitUntil(const std::function<bool()>& condition,
   // may be a little longer. There may also not be another GEMM for a long time,
   // in which case we'll end up passively waiting below.
   const Duration spin_duration = DurationFromMilliseconds(2);
-  WaitUntil(condition, spin_duration, condvar, mutex);
+  Wait(condition, spin_duration, condvar, mutex);
 }
 
 }  // namespace ruy

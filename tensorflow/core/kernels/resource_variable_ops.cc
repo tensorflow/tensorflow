@@ -51,6 +51,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif
 
+#include "tensorflow/core/kernels/resource_variable_ops.h"
+
 #include <memory>
 #include <vector>
 
@@ -60,17 +62,18 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
-#include "tensorflow/core/kernels/resource_variable_ops.h"
 #include "tensorflow/core/kernels/scatter_functor.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -102,7 +105,7 @@ Status CopyVariable(int output_idx, OpKernelContext* ctx, const Tensor* t) {
   } else if (ctx->op_device_context() != nullptr) {
     // TODO(apassos): remove the down_cast by just returning Device* from
     // OpKernelContext
-    Device* device = static_cast<Device*>(ctx->device());
+    Device* device = down_cast<Device*>(ctx->device());
     ctx->op_device_context()->CopyTensorInSameDevice(
         t, device, output, [&n, &status](const Status& s) {
           status = s;
@@ -226,10 +229,25 @@ VarHandleOp::VarHandleOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("dtype", &dtype_and_shape_.dtype));
   PartialTensorShape shape;
   OP_REQUIRES_OK(context, context->GetAttr("shape", &dtype_and_shape_.shape));
+  OP_REQUIRES_OK(context,
+                 context->GetAttr("allowed_devices", &allowed_devices_));
+
+  is_anonymous_ = name_ == ResourceHandle::ANONYMOUS_NAME;
+
+  if (!is_anonymous_) {
+    AllocatorAttributes attr;
+    attr.set_on_host(true);
+    OP_REQUIRES_OK(context, context->allocate_temp(DT_RESOURCE, TensorShape({}),
+                                                   &resource_, attr));
+    resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
+        context, container_, name_,
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
+  }
 }
 
 void VarHandleOp::Compute(OpKernelContext* ctx) {
-  if (name_ == ResourceHandle::ANONYMOUS_NAME) {
+  if (is_anonymous_) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     Tensor handle;
@@ -237,23 +255,10 @@ void VarHandleOp::Compute(OpKernelContext* ctx) {
         ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}), &handle, attr));
     handle.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
         ctx, container_, name_,
-        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
+        std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_},
+        allowed_devices_);
     ctx->set_output(0, handle);
   } else {
-    if (!initialized_.load()) {
-      mutex_lock ml(mutex_);
-      // Checking again to see if another thread has initialized the resource.
-      if (!initialized_.load()) {
-        AllocatorAttributes attr;
-        attr.set_on_host(true);
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DT_RESOURCE, TensorShape({}),
-                                               &resource_, attr));
-        resource_.scalar<ResourceHandle>()() = MakeResourceHandle<Var>(
-            ctx, container_, name_,
-            std::vector<DtypeAndPartialTensorShape>{dtype_and_shape_});
-        initialized_.store(true);
-      }
-    }
     ctx->set_output(0, resource_);
   }
 }
@@ -719,7 +724,7 @@ class ResourceGatherOp : public OpKernel {
   }
 
  private:
-  // Add the batch offset derrived from params to each batch of indices.
+  // Add the batch offset derived from params to each batch of indices.
   // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
   // If indexing into a params dimension of size 4, then the indices will become
   // [0, 1, 2, 4, 5, 6]

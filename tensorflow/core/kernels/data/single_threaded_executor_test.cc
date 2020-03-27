@@ -58,17 +58,18 @@ class ExecutorTest : public ::testing::Test {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
     params.device = device_.get();
-    params.create_kernel = [this, version](const NodeDef& ndef,
-                                           OpKernel** kernel) {
-      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
-                                   kernel);
-    };
+    params.create_kernel =
+        [this, version](const std::shared_ptr<const NodeProperties>& props,
+                        OpKernel** kernel) {
+          return CreateNonCachedKernel(device_.get(), nullptr, props, version,
+                                       kernel);
+        };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
     delete exec_;
     TF_CHECK_OK(NewSingleThreadedExecutor(params, *graph, &exec_));
-    runner_ = [](std::function<void()> fn) { fn(); };
+    runner_ = [](const std::function<void()>& fn) { fn(); };
     rendez_ = NewLocalRendezvous();
   }
 
@@ -141,17 +142,18 @@ TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
   auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
-  auto in1 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto in1 = test::graph::Arg(g.get(), 1, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
-  test::graph::Retval(g.get(), 0, tmp);
+  auto ret = test::graph::Retval(g.get(), 0, tmp);
+  g->AddControlEdge(in1, ret);
   FixupSourceAndSinkEdges(g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
-  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(1.0)}));
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(2.0)}));
   TF_ASSERT_OK(Run(&call_frame));
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
-  EXPECT_EQ(2.0, V(retvals[0]));  // out = 1.0 + 1.0 = 2.0
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
 }
 
 TEST_F(ExecutorTest, SelfAdd) {

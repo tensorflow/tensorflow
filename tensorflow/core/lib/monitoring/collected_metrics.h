@@ -27,6 +27,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/monitoring/metric_def.h"
+#include "tensorflow/core/lib/monitoring/types.h"
 
 namespace tensorflow {
 namespace monitoring {
@@ -90,6 +91,7 @@ struct Point {
   string string_value;
   bool bool_value;
   HistogramProto histogram_value;
+  Percentiles percentiles_value;
 
   // start_timestamp and end_timestamp indicate the time period over which this
   // point's value measurement applies.

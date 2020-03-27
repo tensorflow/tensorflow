@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
-#include "third_party/llvm/llvm/include/llvm-c/Target.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

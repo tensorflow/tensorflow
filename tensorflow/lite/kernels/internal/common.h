@@ -406,7 +406,7 @@ log_x_for_x_greater_than_or_equal_to_1(
     gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
   static_assert(
       OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
+      "Output integer bits must be sufficient to accommodate logs of inputs.");
   return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
                                                      InputIntegerBits>(
       input_val);
@@ -432,12 +432,23 @@ inline int32 GetReciprocal(int32 x, int x_integer_digits,
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input, int reverse_shift,
                                              int32* output_inv_sqrt,
                                              int* output_shift) {
+  TFLITE_DCHECK_GE(input, 0);
+  if (input <= 1) {
+    // Handle the input value 1 separately to avoid overflow in that case
+    // in the general computation below (b/143972021). Also handle 0 as if it
+    // were a 1. 0 is an invalid input here (divide by zero) and 1 is a valid
+    // but rare/unrealistic input value. We can expect both to occur in some
+    // incompletely trained models, but probably not in fully trained models.
+    *output_inv_sqrt = std::numeric_limits<std::int32_t>::max();
+    *output_shift = 0;
+    return;
+  }
+  TFLITE_DCHECK_GT(input, 1);
   *output_shift = 11;
   while (input >= (1 << 29)) {
     input /= 4;
     ++*output_shift;
   }
-  TFLITE_DCHECK_GT(input, 0);
   const unsigned max_left_shift_bits =
       CountLeadingZeros(static_cast<uint32>(input)) - 1;
   const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
@@ -513,6 +524,12 @@ inline int SubscriptToIndex(const NdArrayDesc<4>& desc, int i0, int i1, int i2,
          i3 * desc.strides[3];
 }
 
+inline int SubscriptToIndex(const NdArrayDesc<5>& desc, int indexes[5]) {
+  return indexes[0] * desc.strides[0] + indexes[1] * desc.strides[1] +
+         indexes[2] * desc.strides[2] + indexes[3] * desc.strides[3] +
+         indexes[4] * desc.strides[4];
+}
+
 // Given the dimensions of the operands for an element-wise binary broadcast,
 // adjusts them so that they can be directly iterated over with simple loops.
 // Returns the adjusted dims as instances of NdArrayDesc in 'desc0_out' and
@@ -570,6 +587,18 @@ inline void NdArrayDescsForElementwiseBroadcast(const Dims<N>& input0_dims,
   }
 }
 
+// Copies dims to desc, calculating strides.
+template <int N>
+inline void CopyDimsToDesc(const RuntimeShape& input_shape,
+                           NdArrayDesc<N>* desc_out) {
+  int desc_stride = 1;
+  for (int i = N - 1; i >= 0; --i) {
+    desc_out->extents[i] = input_shape.Dims(i);
+    desc_out->strides[i] = desc_stride;
+    desc_stride *= input_shape.Dims(i);
+  }
+}
+
 template <int N>
 inline void NdArrayDescsForElementwiseBroadcast(
     const RuntimeShape& input0_shape, const RuntimeShape& input1_shape,
@@ -581,16 +610,8 @@ inline void NdArrayDescsForElementwiseBroadcast(
   auto extended_input1_shape = RuntimeShape::ExtendedShape(N, input1_shape);
 
   // Copy dims to desc, calculating strides.
-  int desc0_stride = 1;
-  int desc1_stride = 1;
-  for (int i = N - 1; i >= 0; --i) {
-    desc0_out->extents[i] = extended_input0_shape.Dims(i);
-    desc0_out->strides[i] = desc0_stride;
-    desc0_stride *= extended_input0_shape.Dims(i);
-    desc1_out->extents[i] = extended_input1_shape.Dims(i);
-    desc1_out->strides[i] = desc1_stride;
-    desc1_stride *= extended_input1_shape.Dims(i);
-  }
+  CopyDimsToDesc<N>(extended_input0_shape, desc0_out);
+  CopyDimsToDesc<N>(extended_input1_shape, desc1_out);
 
   // Walk over each dimension. If the extents are equal do nothing.
   // Otherwise, set the desc with extent 1 to have extent equal to the other and
@@ -611,6 +632,92 @@ inline void NdArrayDescsForElementwiseBroadcast(
   }
 }
 
+template <int N>
+inline void NdArrayDescsForElementwiseBroadcast(
+    const RuntimeShape& input0_shape, const RuntimeShape& input1_shape,
+    const RuntimeShape& input2_shape, NdArrayDesc<N>* desc0_out,
+    NdArrayDesc<N>* desc1_out, NdArrayDesc<N>* desc2_out) {
+  TFLITE_DCHECK(desc0_out != nullptr);
+  TFLITE_DCHECK(desc1_out != nullptr);
+  TFLITE_DCHECK(desc2_out != nullptr);
+
+  auto extended_input0_shape = RuntimeShape::ExtendedShape(N, input0_shape);
+  auto extended_input1_shape = RuntimeShape::ExtendedShape(N, input1_shape);
+  auto extended_input2_shape = RuntimeShape::ExtendedShape(N, input2_shape);
+
+  // Copy dims to desc, calculating strides.
+  CopyDimsToDesc<N>(extended_input0_shape, desc0_out);
+  CopyDimsToDesc<N>(extended_input1_shape, desc1_out);
+  CopyDimsToDesc<N>(extended_input2_shape, desc2_out);
+
+  // Walk over each dimension. If the extents are equal do nothing.
+  // Otherwise, set the desc with extent 1 to have extent equal to the other and
+  // stride 0.
+  for (int i = 0; i < N; ++i) {
+    const int extent0 = extended_input0_shape.Dims(i);
+    const int extent1 = extended_input1_shape.Dims(i);
+    const int extent2 = extended_input2_shape.Dims(i);
+
+    int extent = extent0;
+    if (extent1 != 1) extent = extent1;
+    if (extent2 != 1) extent = extent2;
+
+    TFLITE_DCHECK(extent0 == 1 || extent0 == extent);
+    TFLITE_DCHECK(extent1 == 1 || extent1 == extent);
+    TFLITE_DCHECK(extent2 == 1 || extent2 == extent);
+
+    if (!(extent0 == extent1 && extent1 == extent2)) {
+      if (extent0 == 1) {
+        desc0_out->strides[i] = 0;
+        desc0_out->extents[i] = extent;
+      }
+      if (extent1 == 1) {
+        desc1_out->strides[i] = 0;
+        desc1_out->extents[i] = extent;
+      }
+      if (extent2 == 1) {
+        desc2_out->strides[i] = 0;
+        desc2_out->extents[i] = extent;
+      }
+    }
+  }
+}
+
+// Detailed implementation of NDOpsHelper, the indexes must be a zero array.
+// This implementation is equivalent to N nested loops. Ex, if N=4, it can be
+// re-writen as:
+// for (int b = 0; b < output.extents[0]; ++b) {
+//   for (int y = 0; y < output.extents[1]; ++y) {
+//     for (int x = 0; x < output.extents[2]; ++x) {
+//       for (int c = 0; c < output.extents[3]; ++c) {
+//           calc({b,y,x,c});
+//       }
+//     }
+//   }
+// }
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM != N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    NDOpsHelperImpl<N, DIM + 1, Calc>(output, calc, indexes);
+  }
+}
+
+template <int N, int DIM, typename Calc>
+typename std::enable_if<DIM == N - 1, void>::type NDOpsHelperImpl(
+    const NdArrayDesc<N>& output, const Calc& calc, int indexes[N]) {
+  for (indexes[DIM] = 0; indexes[DIM] < output.extents[DIM]; ++indexes[DIM]) {
+    calc(indexes);
+  }
+}
+
+// Execute the calc function in the innermost iteration based on the shape of
+// the output. The calc function should take a single argument of type int[N].
+template <int N, typename Calc>
+inline void NDOpsHelper(const NdArrayDesc<N>& output, const Calc& calc) {
+  int indexes[N] = {0};
+  NDOpsHelperImpl<N, 0, Calc>(output, calc, indexes);
+}
 // Copied from gemmlowp::RoundDown when we dropped direct dependency on
 // gemmlowp.
 //

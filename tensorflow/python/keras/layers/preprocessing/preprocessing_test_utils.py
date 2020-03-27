@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+
 import numpy as np
 
 from tensorflow.python.platform import test
@@ -26,31 +27,37 @@ from tensorflow.python.platform import test
 
 class PreprocessingLayerTest(test.TestCase):
   """Base test class for preprocessing layer API validation."""
-
   # TODO(b/137303934): Consider incorporating something like this Close vs All
   # behavior into core tf.test.TestCase.
+
   def assertAllCloseOrEqual(self, a, b, msg=None):
     """Asserts that elements are close (if numeric) or equal (if string)."""
-    if isinstance(a, collections.Mapping):
+    if a is None or b is None:
+      self.assertAllEqual(a, b, msg=msg)
+    elif isinstance(a, (list, tuple)):
+      self.assertEqual(len(a), len(b))
+      for a_value, b_value in zip(a, b):
+        self.assertAllCloseOrEqual(a_value, b_value, msg=msg)
+    elif isinstance(a, collections.Mapping):
       self.assertEqual(len(a), len(b))
       for key, a_value in a.items():
         b_value = b[key]
         error_message = "{} ({})".format(msg, key) if msg else None
         self.assertAllCloseOrEqual(a_value, b_value, error_message)
-    elif isinstance(a, (list, tuple)):
-      self.assertEqual(len(a), len(b))
-      for a_value, b_value in zip(a, b):
-        self.assertAllCloseOrEqual(a_value, b_value, msg)
+    elif (isinstance(a, float) or
+          hasattr(a, "dtype") and np.issubdtype(a.dtype, np.number)):
+      self.assertAllClose(a, b, msg=msg)
     else:
-      comparison_fn = (
-          self.assertAllClose
-          if np.issubdtype(a.dtype, np.number) else self.assertAllEqual)
-      comparison_fn(a, b, msg=msg)
+      self.assertAllEqual(a, b, msg=msg)
 
   def assert_extracted_output_equal(self, combiner, acc1, acc2, msg=None):
     data_1 = combiner.extract(acc1)
     data_2 = combiner.extract(acc2)
     self.assertAllCloseOrEqual(data_1, data_2, msg=msg)
+
+  # This is an injection seam so that tests like TextVectorizationTest can
+  # define their own methods for asserting that accumulators are equal.
+  compare_accumulators = assertAllCloseOrEqual
 
   def validate_accumulator_computation(self, combiner, data, expected):
     """Validate that various combinations of compute and merge are identical."""
@@ -67,7 +74,8 @@ class PreprocessingLayerTest(test.TestCase):
         combiner.compute(data_1),
         combiner.compute(data_2)
     ])
-    self.assertAllCloseOrEqual(
+
+    self.compare_accumulators(
         single_compute,
         all_merge,
         msg="Sharding data should not change the data output.")
@@ -77,7 +85,7 @@ class PreprocessingLayerTest(test.TestCase):
         combiner.compute(data_2),
         combiner.compute(data_0)
     ])
-    self.assertAllCloseOrEqual(
+    self.compare_accumulators(
         all_merge,
         unordered_all_merge,
         msg="The order of merge arguments should not change the data "
@@ -88,14 +96,14 @@ class PreprocessingLayerTest(test.TestCase):
         combiner.merge([combiner.compute(data_2),
                         combiner.compute(data_0)])
     ])
-    self.assertAllCloseOrEqual(
+    self.compare_accumulators(
         all_merge,
         hierarchical_merge,
         msg="Nesting merge arguments should not change the data output.")
 
     nested_compute = combiner.compute(
         data_0, combiner.compute(data_1, combiner.compute(data_2)))
-    self.assertAllCloseOrEqual(
+    self.compare_accumulators(
         all_merge,
         nested_compute,
         msg="Nesting compute arguments should not change the data output.")
@@ -104,12 +112,27 @@ class PreprocessingLayerTest(test.TestCase):
         combiner.compute(data_0),
         combiner.compute(data_1, combiner.compute(data_2))
     ])
-    self.assertAllCloseOrEqual(
+    self.compare_accumulators(
         all_merge,
         mixed_compute,
         msg="Mixing merge and compute calls should not change the data "
         "output.")
-    self.assertAllCloseOrEqual(expected, all_merge)
+
+    single_merge = combiner.merge([
+        combiner.merge([combiner.compute(data_0)]),
+        combiner.compute(data_1, combiner.compute(data_2))
+    ])
+    self.compare_accumulators(
+        all_merge,
+        single_merge,
+        msg="Calling merge with a data length of 1 should not change the data "
+        "output.")
+
+    self.compare_accumulators(
+        expected,
+        all_merge,
+        msg="Calculated accumulators "
+        "did not match expected accumulator.")
 
   def validate_accumulator_extract(self, combiner, data, expected):
     """Validate that the expected results of computing and extracting."""
@@ -131,11 +154,12 @@ class PreprocessingLayerTest(test.TestCase):
     acc = combiner.compute(data)
     serialized_data = combiner.serialize(acc)
     deserialized_data = combiner.deserialize(serialized_data)
-    self.assertAllCloseOrEqual(acc, deserialized_data)
+    self.compare_accumulators(acc, deserialized_data)
+    self.compare_accumulators(expected, deserialized_data)
 
   def validate_accumulator_uniqueness(self, combiner, data):
     """Validate that every call to compute creates a unique accumulator."""
     acc = combiner.compute(data)
     acc2 = combiner.compute(data)
     self.assertIsNot(acc, acc2)
-    self.assertAllCloseOrEqual(acc, acc2)
+    self.compare_accumulators(acc, acc2)

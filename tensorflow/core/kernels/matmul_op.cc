@@ -122,7 +122,7 @@ struct LaunchMatMulBase {
   static void launch(
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
-      std::vector<AlgorithmType>* algorithms, bool use_aututone, Tensor* out) {
+      std::vector<AlgorithmType>* algorithms, bool use_autotune, Tensor* out) {
 #ifndef TENSORFLOW_USE_SYCL
     // An explicit vector-matrix multiply is much better optimized than an
     // implicit one and this is a bottleneck during non-batched inference.
@@ -220,10 +220,11 @@ bool ShouldUseGemv(uint64 n) {
 bool GetCublasAutotuneComputationType(const DataType& dtype,
                                       se::blas::ComputationType* compute_type) {
   using se::blas::ComputationType;
-  bool use_f32_for_f16_computation = MatmulDoFP32ComputationFP16Input();
   switch (dtype) {
     case DT_HALF:
     case DT_BFLOAT16:
+      static bool use_f32_for_f16_computation =
+          MatmulDoFP32ComputationFP16Input();
       if (use_f32_for_f16_computation) {
         *compute_type = ComputationType::kF32;
       } else {

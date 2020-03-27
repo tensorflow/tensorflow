@@ -6,8 +6,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "ErrorCodesProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // The canonical error codes for TensorFlow APIs.
 //
@@ -17,6 +16,8 @@ option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobu
 // -   Changes to this list should only be made if there is a compelling
 //     need that can't be satisfied in another way.  Such changes
 //     must be approved by at least two OWNERS.
+// -   These error codes must match gRPC and protobuf error codes (except for
+//     DO_NOT_USE_RESERVED_FOR_FUTURE_EXPANSION_USE_DEFAULT_IN_SWITCH_INSTEAD_).
 //
 // Sometimes multiple error codes may apply.  Services should return
 // the most specific error code that applies.  For example, prefer

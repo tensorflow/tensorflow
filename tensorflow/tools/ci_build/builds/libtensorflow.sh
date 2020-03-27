@@ -84,7 +84,7 @@ function build_libtensorflow_tarball() {
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/java/libtensorflow.jar ${DIR}
   cp_normalized_srcjar bazel-bin/tensorflow/java/libtensorflow-src.jar ${DIR}/libtensorflow-src.jar
-  cp bazel-genfiles/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
+  cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
   chmod -x ${DIR}/*
 }
 

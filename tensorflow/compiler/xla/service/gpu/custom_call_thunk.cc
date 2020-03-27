@@ -162,7 +162,8 @@ Status CustomCallThunk::ExecuteOnStream(const ExecuteParams& params) {
         }
         SafeH2DMemcpy(se::DeviceMemory<void*>(
                           params.buffer_allocations->GetDeviceAddress(slice)),
-                      std::move(tuple_ptrs), n, stream);
+                      std::move(tuple_ptrs), n, stream,
+                      params.deferred_host_callbacks);
         return Status::OK();
       });
 }

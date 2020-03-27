@@ -374,39 +374,6 @@ xla::StatusOr<NodeDef> BuildXlaHostComputeNodeDef(
   return new_def;
 }
 
-TF_ATTRIBUTE_NOINLINE Status
-ValidateOutsideCompilationCallNode(Node* call_node) {
-  // DT_INT64 as input/output for outside compilation is not supported yet:
-  // b/120809951.
-  for (const Edge* e : call_node->in_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->src()->output_type(e->src_output());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 input for outside compilation is not supported yet: "
-          "b/120809951. Please cast output of node ",
-          e->src()->DebugString(),
-          " to int32 before feeding it into outside compilation.");
-    }
-  }
-  for (const Edge* e : call_node->out_edges()) {
-    if (e->IsControlEdge()) {
-      continue;
-    }
-    DataType dtype = e->dst()->input_type(e->dst_input());
-    if (dtype == DT_INT64) {
-      return errors::Unimplemented(
-          "int64 output for outside compilation is not supported yet: "
-          "b/120809951. Please cast input of node ",
-          e->dst()->DebugString(),
-          " to int32 before returning it from outside compilation.");
-    }
-  }
-  return Status::OK();
-}
-
 // Replace outside compilation function call node with XlaHostCompute node.
 TF_ATTRIBUTE_NOINLINE xla::StatusOr<Node*> ReplaceOutsideCompilationCallNode(
     Graph* g, Node* call_node, const std::map<string, int>& host_compute_core,
@@ -2130,6 +2097,53 @@ Status ExtractOutsideCompilationForNodesWithAssociatedFunctions(
   return Status::OK();
 }
 
+Status CopyOutsideCompilationConstNodes(
+    Graph* g, const string& outside_compilation_attr_name) {
+  for (Node* n : g->op_nodes()) {
+    if (!n->IsConstant() ||
+        !HasNodeAttr(n->def(), outside_compilation_attr_name)) {
+      continue;
+    }
+
+    std::vector<const Edge*> out_edges(n->out_edges().begin(),
+                                       n->out_edges().end());
+    bool has_non_oc_output = false;
+    for (const Edge* e : out_edges) {
+      if (!e->IsControlEdge() &&
+          !HasNodeAttr(e->dst()->def(), outside_compilation_attr_name)) {
+        has_non_oc_output = true;
+        break;
+      }
+    }
+    if (!has_non_oc_output) {
+      continue;
+    }
+
+    NodeDef copy_def = n->def();
+    copy_def.set_name(g->NewName(n->name()));
+    copy_def.mutable_attr()->erase(outside_compilation_attr_name);
+    Status s;
+    Node* copy_node = g->AddNode(copy_def, &s);
+    TF_RETURN_IF_ERROR(s);
+    for (const Edge* e : n->in_edges()) {
+      if (e->IsControlEdge()) {
+        g->AddControlEdge(e->src(), copy_node);
+      }
+    }
+    for (const Edge* e : out_edges) {
+      if (!e->IsControlEdge() &&
+          !HasNodeAttr(e->dst()->def(), outside_compilation_attr_name)) {
+        Node* dst = e->dst();
+        int dst_input = e->dst_input();
+        g->RemoveEdge(e);
+        g->AddEdge(copy_node, 0, dst, dst_input);
+      }
+    }
+  }
+
+  return Status::OK();
+}
+
 }  // namespace
 
 Status RewriteOutsideCompilationSubgraphFn::operator()(
@@ -2279,6 +2293,10 @@ Status ExtractOutsideCompilationForFunction(
   std::vector<string> outside_compilation_host_graphs;
   std::vector<string> shape_inference_graphs_to_rewrite;
   if (*has_outside_compilation) {
+    // Copy outside compilation Const nodes with non outside compilation users.
+    TF_RETURN_IF_ERROR(CopyOutsideCompilationConstNodes(
+        fbody->graph, outside_compilation_attr_name));
+
     // Find dependencies between outside compilation clusters.
     TF_ASSIGN_OR_RETURN(auto cluster_deps,
                         OutsideCompilationClusterDependencies(
@@ -2333,7 +2351,6 @@ Status ExtractOutsideCompilationForFunction(
     }
     std::map<string, Node*> host_compute_nodes;
     for (Node* n : outside_compilation_nodes) {
-      TF_RETURN_IF_ERROR(ValidateOutsideCompilationCallNode(n));
       auto host_compute_node_or = ReplaceOutsideCompilationCallNode(
           graph_out.get(), n, host_compute_core, *cluster_deps);
       TF_RETURN_IF_ERROR(host_compute_node_or.status());

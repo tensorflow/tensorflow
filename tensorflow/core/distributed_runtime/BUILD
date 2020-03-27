@@ -8,11 +8,11 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -22,6 +22,11 @@ package(
 )
 
 exports_files(["LICENSE"])
+
+exports_files(
+    ["server_lib.h"],
+    visibility = ["//tensorflow:internal"],
+)
 
 filegroup(
     name = "c_srcs",
@@ -106,6 +111,9 @@ tf_cc_test(
     name = "cluster_function_library_runtime_test",
     srcs = ["cluster_function_library_runtime_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":worker_session",
         "//tensorflow/core:framework_internal",
@@ -776,5 +784,22 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "call_options.h",
+        "message_wrappers.h",
+        "rendezvous_mgr_interface.h",
+        "server_lib.h",
+        "worker_cache.h",
+        "worker_env.h",
+        "worker_interface.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
     ],
 )

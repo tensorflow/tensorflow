@@ -35,7 +35,8 @@ TEST(ContextTest, EnabledPathsGeneral) {
 #if RUY_PLATFORM(X86)
 TEST(ContextTest, EnabledPathsX86) {
   ruy::Context ruy_context;
-  ruy_context.SetRuntimeEnabledPaths(Path::kAvx2 | Path::kAvx512);
+  ruy_context.SetRuntimeEnabledPaths(Path::kSse42 | Path::kAvx2 |
+                                     Path::kAvx512 | Path::kAvxVnni);
   const auto ruy_paths = ruy_context.GetRuntimeEnabledPaths();
   EXPECT_EQ(ruy_paths & Path::kReference, Path::kNone);
   EXPECT_EQ(ruy_paths & Path::kStandardCpp, Path::kNone);

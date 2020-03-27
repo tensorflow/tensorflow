@@ -402,7 +402,7 @@ Status AddPlaceholdersForFeeds(
     // TODO(shikharagarwal): Add original node information.
     NodeDef* d = graph_def->add_node();
     d->set_name(info.placeholder_name);
-    d->set_op("PlaceholderV2");
+    d->set_op("Placeholder");
     auto& attr_map = *d->mutable_attr();
     attr_map["dtype"].set_type(info.data_type);
     *attr_map["shape"].mutable_shape() = info.feed->shape();
@@ -503,8 +503,7 @@ Status SetNodeShardingFromNeighbors(Node* n, bool out_edges) {
         ParseShardingFromDevice(
             *possible_match,
             /*num_cores_per_replica=*/std::numeric_limits<int32>::max()));
-    if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() == xla::OpSharding::MAXIMAL);
+    if (sharding && sharding->type() == xla::OpSharding::MAXIMAL) {
       const int core_annotation = sharding.value().tile_assignment_devices(0);
       if (core == -1 || core > core_annotation) {
         core = core_annotation;

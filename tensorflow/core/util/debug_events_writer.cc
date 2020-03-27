@@ -158,7 +158,7 @@ Status DebugEventsWriter::Init() {
   int64 time_in_seconds = env_->NowMicros() / 1e6;
   file_prefix_ = io::JoinPath(
       dump_root_, strings::Printf("%s.%010lld.%s", kFileNamePrefix,
-                                  static_cast<int64>(time_in_seconds),
+                                  static_cast<long long>(time_in_seconds),
                                   port::Hostname().c_str()));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(SOURCE_FILES));
   TF_RETURN_IF_ERROR(InitNonMetadataFile(STACK_FRAMES));
@@ -306,7 +306,7 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
       mu = &graph_execution_trace_buffer_mu_;
       break;
     default:
-      break;
+      return;
   }
 
   if (circular_buffer_size_ <= 0) {
@@ -320,6 +320,23 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
       buffer->pop_front();
     }
   }
+}
+
+int DebugEventsWriter::RegisterDeviceAndGetId(const string& device_name) {
+  mutex_lock l(device_mu_);
+  int& device_id = device_name_to_id_[device_name];
+  if (device_id == 0) {
+    device_id = device_name_to_id_.size();
+    DebugEvent debug_event;
+    MaybeSetDebugEventTimestamp(&debug_event, env_);
+    DebuggedDevice* debugged_device = debug_event.mutable_debugged_device();
+    debugged_device->set_device_name(device_name);
+    debugged_device->set_device_id(device_id);
+    string serialized;
+    debug_event.SerializeToString(&serialized);
+    graphs_writer_->WriteSerializedDebugEvent(serialized);
+  }
+  return device_id;
 }
 
 Status DebugEventsWriter::FlushNonExecutionFiles() {
@@ -448,7 +465,9 @@ DebugEventsWriter::DebugEventsWriter(const string& dump_root,
       execution_buffer_(),
       execution_buffer_mu_(),
       graph_execution_trace_buffer_(),
-      graph_execution_trace_buffer_mu_() {}
+      graph_execution_trace_buffer_mu_(),
+      device_name_to_id_(),
+      device_mu_() {}
 
 Status DebugEventsWriter::InitNonMetadataFile(DebugEventFileType type) {
   std::unique_ptr<SingleDebugEventFileWriter>* writer = nullptr;

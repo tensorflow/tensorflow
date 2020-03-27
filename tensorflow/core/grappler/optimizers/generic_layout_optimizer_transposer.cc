@@ -165,8 +165,8 @@ Status TransposeContext::InitializeTransposeContext(const GrapplerItem& item,
   DCHECK(context != nullptr);
   context->graph_properties = absl::make_unique<GraphProperties>(item);
   TF_RETURN_IF_ERROR(context->graph_properties->InferStatically(false));
-  TF_RETURN_IF_ERROR(
-      context->graph_properties->AnnotateOutputShapes(&context->graph));
+  TF_RETURN_IF_ERROR(context->graph_properties->AnnotateOutputShapes(
+      &context->graph, /*allow_symbolic_shapes=*/true));
   Status status;
   context->graph_view =
       absl::make_unique<utils::MutableGraphView>(&context->graph, &status);

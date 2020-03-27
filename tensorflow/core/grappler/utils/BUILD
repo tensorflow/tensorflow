@@ -1,11 +1,21 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_protos_grappler",
 )
 
 package(
     licenses = ["notice"],  # Apache 2.0
+)
+
+filegroup(
+    name = "pywrap_required_hdrs",
+    srcs = [
+        "topological_sort.h",
+    ],
+    visibility = [
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(

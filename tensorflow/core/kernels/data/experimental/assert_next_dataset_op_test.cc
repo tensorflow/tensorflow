@@ -12,6 +12,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/experimental/assert_next_dataset_op.h"
 
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
+#include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 
 namespace tensorflow {
@@ -65,7 +66,7 @@ class AssertNextDatasetParams : public DatasetParams {
   std::vector<tstring> transformations_;
 };
 
-class AssertNextDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class AssertNextDatasetOpTest : public DatasetOpsTestBase {};
 
 AssertNextDatasetParams AssertNextDatasetParams1() {
   TakeDatasetParams take_dataset_params =

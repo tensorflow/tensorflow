@@ -31,7 +31,7 @@ typedef std::function<void(const Status&)> StatusCallback;
 // allocated. `alloc_attrs` should either be {} or should match the length of
 // `keys`.
 Status SendTensorsToRendezvous(
-    Rendezvous* rendezvous, DeviceContext* device_context,
+    RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, gtl::ArraySlice<Tensor> tensors_to_send);
 
@@ -40,12 +40,13 @@ Status SendTensorsToRendezvous(
 // information as how to store the received tensors. Should be {} or match the
 // length of `keys`.
 void RecvOutputsFromRendezvousAsync(
-    Rendezvous* rendezvous, DeviceContext* device_context,
+    RendezvousInterface* rendezvous, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
     const std::vector<string>& keys, std::vector<Tensor>* received_tensors,
     StatusCallback done);
 
-Status RecvOutputsFromRendezvous(Rendezvous* rendezvous, NamedTensors* out,
+Status RecvOutputsFromRendezvous(RendezvousInterface* rendezvous,
+                                 NamedTensors* out,
                                  const Rendezvous::Args& args);
 
 }  // namespace tensorflow

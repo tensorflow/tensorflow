@@ -65,6 +65,8 @@ TfLiteType TfLiteTypeFromPyType(int py_type) {
   switch (py_type) {
     case NPY_FLOAT32:
       return kTfLiteFloat32;
+    case NPY_FLOAT16:
+      return kTfLiteFloat16;
     case NPY_INT32:
       return kTfLiteInt32;
     case NPY_INT16:

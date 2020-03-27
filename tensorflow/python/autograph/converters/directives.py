@@ -40,9 +40,16 @@ from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.util import tf_inspect
 
-ENCLOSING_LOOP = 'enclosing_loop'
+
 STATIC_VALUE = 'static_value'
 """Used for AST annotations, see visit_Name."""
+
+
+class _LoopScope(object):
+
+  def __init__(self):
+    self.ast_node = None
+    self.statements_visited = 0
 
 
 def _map_args(call_node, function):
@@ -94,13 +101,17 @@ class DirectivesTransformer(converter.Base):
     return call_node
 
   def _process_statement_directive(self, call_node, directive):
-    if self.local_scope_level < 2:
+    if self.state[_LoopScope].statements_visited > 1:
+      raise ValueError(
+          '"%s" must be the first statement in the loop block' % (
+              directive.__name__))
+    if self.state[_LoopScope].level < 2:
       raise ValueError(
           '"%s" must be used inside a statement' % directive.__name__)
-    target = self.get_local(ENCLOSING_LOOP)
-    node_anno = anno.getanno(target, converter.AgAnno.DIRECTIVES, {})
+    target = self.state[_LoopScope].ast_node
+    node_anno = anno.getanno(target, anno.Basic.DIRECTIVES, {})
     node_anno[directive] = _map_args(call_node, directive)
-    anno.setanno(target, converter.AgAnno.DIRECTIVES, node_anno)
+    anno.setanno(target, anno.Basic.DIRECTIVES, node_anno)
     return call_node
 
   def visit_Name(self, node):
@@ -120,7 +131,16 @@ class DirectivesTransformer(converter.Base):
         anno.setanno(node, STATIC_VALUE, getattr(parent_val, node.attr))
     return node
 
+  def visit_Assign(self, node):
+    self.state[_LoopScope].statements_visited += 1
+    return self.generic_visit(node)
+
+  def visit_AugAssign(self, node):
+    self.state[_LoopScope].statements_visited += 1
+    return self.generic_visit(node)
+
   def visit_Expr(self, node):
+    self.state[_LoopScope].statements_visited += 1
     node = self.generic_visit(node)
     if isinstance(node.value, gast.Call):
       call_node = node.value
@@ -141,10 +161,10 @@ class DirectivesTransformer(converter.Base):
   # That means that if we ever have a directive that affects things other than
   # loops, we'll need support for parallel scopes, or have multiple converters.
   def _track_and_visit_loop(self, node):
-    self.enter_local_scope()
-    self.set_local(ENCLOSING_LOOP, node)
+    self.state[_LoopScope].enter()
+    self.state[_LoopScope].ast_node = node
     node = self.generic_visit(node)
-    self.exit_local_scope()
+    self.state[_LoopScope].exit()
     return node
 
   def visit_While(self, node):

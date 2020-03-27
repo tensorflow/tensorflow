@@ -38,12 +38,12 @@ class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
 
   def test3VirtualCPUs(self):
     cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_virtual_device_configuration(cpu_device), 3)
+    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
 
   def testSetVirtualCPUsAgain(self):
     strategy_combinations.set_virtual_cpus_to_at_least(2)
     cpu_device = config.list_physical_devices("CPU")[0]
-    self.assertLen(config.get_virtual_device_configuration(cpu_device), 3)
+    self.assertLen(config.get_logical_device_configuration(cpu_device), 3)
 
   def testSetVirtualCPUsErrors(self):
     with self.assertRaises(ValueError):
@@ -56,8 +56,7 @@ class StrategyCombinationsTest(test.TestCase, parameterized.TestCase):
       mode=["graph", "eager"]))
   def testMirrored2CPUs(self, distribution):
     with distribution.scope():
-      one_per_replica = distribution.experimental_run_v2(
-          lambda: constant_op.constant(1))
+      one_per_replica = distribution.run(lambda: constant_op.constant(1))
       num_replicas = distribution.reduce(
           reduce_util.ReduceOp.SUM, one_per_replica, axis=None)
       self.assertEqual(2, self.evaluate(num_replicas))

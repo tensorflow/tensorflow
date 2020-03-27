@@ -274,7 +274,7 @@ class PlacerTest : public ::testing::Test {
     RewriterConfig* rewriter_config = graph_opts->mutable_rewrite_options();
     rewriter_config->set_disable_meta_optimizer(true);
 
-    // Placing nested functions requires go through some PRE_PLACEMNT passes.
+    // Placing nested functions requires go through some PRE_PLACEMENT passes.
     // Currently, just the IsolateDeepOpsPass.
     GraphOptimizationPassOptions optimization_options;
     std::unique_ptr<Graph> graph_ptr(graph);
@@ -1220,6 +1220,27 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
   EXPECT_COLOCATED(g, "in", "foo");
 }
 
+TEST_F(PlacerTest, TestChainColocation) {
+  Graph g(OpRegistry::Global());
+  {  // Scope for temporary variables used to construct g.
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* input = ops::SourceOp("TestInput", b.opts().WithName("in"));
+    Node* colocated_with_input = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
+    Node* colocated_with_input_and_other = ops::UnaryOp(
+        "TestRelu", input,
+        b.opts().WithName("foo").WithAttr("_class", {"loc:@colocated_1"}));
+    CHECK(colocated_with_input);
+    CHECK(colocated_with_input_and_other);
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_COLOCATED(g, "in", "colocated_1");
+  EXPECT_COLOCATED(g, "in", "foo");
+}
+
 TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
@@ -1472,7 +1493,7 @@ TEST_F(PlacerTest, TestUnknownAssignedDevice) {
 
 // Test that placement fails when an op with no registered kernels is
 // requested and no device is requested for the node
-TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequstedDevice) {
+TEST_F(PlacerTest, TestNoKernelsRegisteredWithNoRequestedDevice) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1703,7 +1724,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
   EXPECT_TRUE(absl::StrContains(s.error_message(), "but available devices"));
 }
 
-#if !GOOGLE_CUDA
+#if !(GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 // Test that we inform the user if they appear to be explicitly placing nodes
 // on a GPU when CUDA is not available
 TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
@@ -2265,7 +2286,7 @@ TEST_F(NestedPlacerTest, OutputTwoResources_UnassignedResource) {
    * the "second pass" as they are "sources". It assigns `r1` to GPU because it
    * is in the same group as `b`. It assigns `r2` to GPU because GPU has a
    * higher device preference. Finally, `a` is assigned to GPU because `r2` is
-   * on GPU - this test that the "second pass" heuristics respect colocaton
+   * on GPU - this test that the "second pass" heuristics respect colocation
    * groups (even when the consumer of the source, i.e. PCO is on a different
    * device).
    */
@@ -2473,7 +2494,7 @@ TEST_F(NestedPlacerTest, DuplicateInputResource_Conflict) {
    *                 r1:RESOURCE:GPU
    *
    * There is a conflict but Placer always overrides requested devices
-   * when they result in coflict due to resource edges. Which device
+   * when they result in conflict due to resource edges. Which device
    * is picked for a/r1/r2 is indeterministic.
    */
   FunctionDef func = test::function::Swap();

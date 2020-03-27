@@ -734,12 +734,8 @@ TEST(TensorBundleTest, StringTensors) {
 
     // Requires a 64-bit length.
     tstring* backing_string = long_string_tensor.flat<tstring>().data();
-#ifdef USE_TSTRING
     backing_string->resize_uninitialized(kLongLength);
     std::char_traits<char>::assign(backing_string->data(), kLongLength, 'd');
-#else   // USE_TSTRING
-    backing_string->assign(kLongLength, 'd');
-#endif  // USE_TSTRING
     TF_EXPECT_OK(writer.Add("long_scalar", long_string_tensor));
 
     // Mixes in some floats.

@@ -266,9 +266,9 @@ bool RecursiveCompilabilityChecker::IsCompilableCall(
     s = lib_runtime->Instantiate(function.name(), AttrSlice(&function.attr()),
                                  &handle);
   }
-
   if (!s.ok()) {
-    std::string uncompilable_reason = "could not instantiate call";
+    std::string uncompilable_reason =
+        absl::StrCat("could not instantiate call: '", function.name(), "'");
     MaybeMarkUncompilableNode(uncompilable_reason, *stack_trace,
                               encapsulating_function, uncompilable_nodes);
     VLOG(2) << "Rejecting " << call_def.DebugString() << ": "
@@ -300,12 +300,14 @@ bool RecursiveCompilabilityChecker::OpIsInaccurate(const Node& node) const {
 bool RecursiveCompilabilityChecker::OpIsSlow(const Node& node) const {
   // b/128001705: SelfAdjointEigV2 and Svd performance issues.
   // b/135640736: MatrixInverse performance issues.
+  // b/111271662: MatrixSolve performance issues.
   // https://github.com/tensorflow/tensorflow/pull/31012:
   //    ResizeNearestNeighbor, ResizeBilinear, and ResizeBilinearGrad sometimes
   //    create convolutions too large for CuDNN to handle.
   return node.type_string() == "SelfAdjointEigV2" ||
          node.type_string() == "Svd" || node.type_string() == "Qr" ||
          node.type_string() == "MatrixInverse" ||
+         node.type_string() == "MatrixSolve" ||
          node.type_string() == "ResizeNearestNeighbor" ||
          node.type_string() == "ResizeBilinear" ||
          node.type_string() == "ResizeBilinearGrad";
@@ -507,10 +509,10 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   auto it = uncompilable_nodes->find(function_identifier);
   if (it == uncompilable_nodes->end()) {
     std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>
-        uncompileable_node_info{std::move(node_info)};
+        uncompilable_node_info{std::move(node_info)};
     uncompilable_nodes->emplace(
         std::move(function_identifier),
-        std::make_pair(function, std::move(uncompileable_node_info)));
+        std::make_pair(function, std::move(uncompilable_node_info)));
   } else {
     it->second.second.emplace_back(std::move(node_info));
   }

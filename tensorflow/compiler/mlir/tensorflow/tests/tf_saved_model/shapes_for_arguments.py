@@ -36,7 +36,7 @@ class TestModule(tf.Module):
   # sense and will be superceded by MLIR->MLIR shape inference tests.
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<f32> {{.*}}) -> (tensor<f32> {{.*}})
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
   @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
   def some_function(self, x):
     return x

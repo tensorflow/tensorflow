@@ -46,14 +46,14 @@ class ClipOpsTest(test.TestCase):
       indices = constant_op.constant(indices)
       shape = constant_op.constant(shape)
       # IndexedSlices mode
-      indixed_slices = ops.IndexedSlices(values, indices, shape)
-      clipped = clip_ops.clip_by_norm(indixed_slices, max_norm, axes)
+      indexed_slices = ops.IndexedSlices(values, indices, shape)
+      clipped = clip_ops.clip_by_norm(indexed_slices, max_norm, axes)
       # clipped should be IndexedSlices
       self.assertIsInstance(clipped, ops.IndexedSlices)
       clipped = ops.convert_to_tensor(clipped)
 
       # Tensor mode
-      dense_tensor = ops.convert_to_tensor(indixed_slices)
+      dense_tensor = ops.convert_to_tensor(indexed_slices)
       dense_clipped = clip_ops.clip_by_norm(dense_tensor, max_norm, axes)
       result, expected = self.evaluate([clipped, dense_clipped])
     self.assertAllClose(result, expected)

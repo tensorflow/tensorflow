@@ -86,18 +86,16 @@ class TestIOUtils(keras_parameterized.TestCase):
     model.compile(
         loss='binary_crossentropy',
         optimizer='sgd',
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     # Note: you have to use shuffle='batch' or False with HDF5Matrix
     model.fit(x_train, y_train, batch_size=32, shuffle='batch', verbose=False)
-    # test that evalutation and prediction
+    # test that evaluation and prediction
     # don't crash and return reasonable results
     out_pred = model.predict(x_test, batch_size=32, verbose=False)
     out_eval = model.evaluate(x_test, y_test, batch_size=32, verbose=False)
 
     self.assertEqual(out_pred.shape, (50, 1))
-    self.assertEqual(out_eval.shape, ())
     self.assertGreater(out_eval, 0)
 
     # test slicing for shortened array

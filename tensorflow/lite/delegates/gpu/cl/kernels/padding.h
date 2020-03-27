@@ -28,10 +28,10 @@ namespace cl {
 class Padding : public GPUOperation {
  public:
   Padding(const OperationDef& definition, const PadAttributes& attr);
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Padding(Padding&& kernel);
@@ -40,10 +40,10 @@ class Padding : public GPUOperation {
   Padding& operator=(const Padding&) = delete;
 
  private:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
 
-  int4 prepended_;
+  PadAttributes attributes_;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
 };

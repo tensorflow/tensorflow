@@ -101,8 +101,8 @@ class NodeShader {
   };
 
   // Generates shader code for a node. The code should be just a function body.
-  virtual Status GenerateCode(const GenerationContext& ctx,
-                              GeneratedCode* generated_code) const = 0;
+  virtual absl::Status GenerateCode(const GenerationContext& ctx,
+                                    GeneratedCode* generated_code) const = 0;
 
   // Limit the size of the const offsets array
   static constexpr int kMaxConstArraySize = 9;

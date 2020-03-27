@@ -27,7 +27,7 @@ namespace {
 
 // Traverses the callee computation, inlining cloned nodes into the caller
 // computation and connecting them to producers/consumers appropriately.
-// When the traversal has completed, the provided call instruction is entriely
+// When the traversal has completed, the provided call instruction is entirely
 // replaced in the caller's graph.
 class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -40,9 +40,7 @@ class SubcomputationInsertionVisitor : public DfsHloVisitorWithDefault {
 
   // Resolves the operands to the HLO instruction in the inlined (caller) graph,
   // and clones the HLO instruction into that graph with the new operands.
-  // If the instruction is a call, it is added to the work queue.
   Status DefaultAction(HloInstruction* hlo) override {
-    TF_RET_CHECK(hlo->opcode() != HloOpcode::kCall);
     std::vector<HloInstruction*> new_operands;
     for (HloInstruction* operand : hlo->operands()) {
       TF_ASSIGN_OR_RETURN(HloInstruction * new_operand, Resolve(operand));
@@ -143,11 +141,15 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
-        for (const CallSite& callsite : node.caller_callsites()) {
-          VLOG(1) << "Visiting callsite: " << callsite.ToString();
-          if (callsite.instruction()->opcode() == HloOpcode::kCall) {
-            HloInstruction* call = callsite.instruction();
-            TF_RETURN_IF_ERROR(Inline(call).status());
+        VLOG(1) << "Visiting node: " << node.ToString();
+        for (HloInstruction* instruction :
+             node.computation()->MakeInstructionPostOrder()) {
+          if (instruction->opcode() == HloOpcode::kCall &&
+              (!single_call_site_ ||
+               call_graph->GetNode(instruction->to_apply())
+                       .caller_callsites()
+                       .size() == 1)) {
+            TF_RETURN_IF_ERROR(Inline(instruction).status());
             did_mutate = true;
           }
         }

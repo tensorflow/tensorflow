@@ -47,9 +47,9 @@ TEST_F(OpenCLOperationTest, ConcatWidth) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatXY operation = CreateConcatXY(op_def, attr, 2);
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
@@ -79,9 +79,9 @@ TEST_F(OpenCLOperationTest, ConcatHeight) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatXY operation = CreateConcatXY(op_def, attr, 2);
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
@@ -112,10 +112,10 @@ TEST_F(OpenCLOperationTest, ConcatChannels) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatZ operation = CreateConcatZ(op_def, {1, 2, 3});
       ASSERT_OK(ExecuteGPUOperation({src0, src1, src2}, creation_context_,
@@ -146,9 +146,9 @@ TEST_F(OpenCLOperationTest, ConcatChannelsAlignedx4) {
       OperationDef op_def;
       op_def.precision = precision;
       auto data_type = DeduceDataTypeFromPrecision(precision);
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.src_tensors.push_back({data_type, storage});
-      op_def.dst_tensors.push_back({data_type, storage});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
+      op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatZ operation = CreateConcatZ(op_def, {4, 4});
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,

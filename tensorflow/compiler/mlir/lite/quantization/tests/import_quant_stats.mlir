@@ -3,7 +3,8 @@
 
 // CHECK-LABEL: import_stats_skip
 func @import_stats_skip(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
-  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32, name = "skip"} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+    loc(fused["skip1", "skip2.cc":10:8, callsite("op" at "skip3.cc":10:8)])
   return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
 
 // CHECK-NEXT: "tfl.split"
@@ -12,7 +13,8 @@ func @import_stats_skip(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf3
 
 // CHECK-LABEL: import_stats_name
 func @import_stats_name(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
-  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32, name = "op"} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+    loc(fused["skip1.cc":10:8, "op", callsite("skip2" at "skip3.cc":10:8)])
   return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
 
 // CHECK-NEXT: %[[split:.*]]:2 = "tfl.split"
@@ -23,7 +25,8 @@ func @import_stats_name(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf3
 
 // CHECK-LABEL: import_stats_name_port
 func @import_stats_name_port(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
-  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32, name = "op_0"} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+    loc(fused["skip1.cc":10:8, "op_0", callsite("skip2" at "skip3.cc":10:8)])
   return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
 
 // CHECK-NEXT: %[[split:.*]]:2 = "tfl.split"
@@ -34,6 +37,7 @@ func @import_stats_name_port(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor
 // CHECK-LABEL: import_stats_name_regex
 func @import_stats_name_regex(%arg0: tensor<4xf32>, %cst: tensor<i32>) -> (tensor<2xf32>,tensor<2xf32>) {
   %0:2 = "tfl.split"(%cst, %arg0) {num_splits = 2 : i32, name = "op_regex"} : (tensor<i32>, tensor<4xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+    loc(fused["skip1.cc":10:8, "op_regex", callsite("skip2" at "skip3.cc":10:8)])
   return %0#0, %0#1 : tensor<2xf32>, tensor<2xf32>
 
 // CHECK-NEXT: %[[split:.*]]:2 = "tfl.split"

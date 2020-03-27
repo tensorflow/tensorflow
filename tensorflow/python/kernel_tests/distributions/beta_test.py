@@ -322,7 +322,7 @@ class BetaTest(test.TestCase):
       self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
       if not stats:
         return
-      self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+      self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=9e-3, atol=5e-6)
 
   def testBetaLogCdf(self):
     shape = (30, 40, 50)
@@ -335,7 +335,7 @@ class BetaTest(test.TestCase):
       self.assertAllEqual(np.ones(shape, dtype=np.bool), 1. >= x)
       if not stats:
         return
-      self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=1e-4, atol=0)
+      self.assertAllClose(stats.beta.cdf(x, a, b), actual, rtol=3e-3, atol=2e-5)
 
   def testBetaWithSoftplusConcentration(self):
     a, b = -4.2, -9.1

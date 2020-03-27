@@ -48,7 +48,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     # Iterate over the distributed dataset
     for x in dist_dataset:
       # process dataset elements
-      strategy.experimental_run_v2(train_step, args=(x,))
+      strategy.run(train_step, args=(x,))
   ```
   """
 
@@ -125,7 +125,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     inputs = strategy.experimental_distribute_datasets_from_function(dataset_fn)
 
     for batch in inputs:
-      replica_results = strategy.experimental_run_v2(replica_fn, args=(batch,))
+      replica_results = strategy.run(replica_fn, args=(batch,))
     ```
 
     IMPORTANT: The `tf.data.Dataset` returned by `dataset_fn` should have a
@@ -152,8 +152,8 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     will be all the values on that worker.
 
     Args:
-      value: A value returned by `experimental_run()`, `experimental_run_v2()`,
-        `extended.call_for_each_replica()`, or a variable created in `scope`.
+      value: A value returned by `run()`, `extended.call_for_each_replica()`,
+      or a variable created in `scope`.
 
     Returns:
       A tuple of values contained in `value`. If `value` represents a single
@@ -161,7 +161,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     """
     return super(CentralStorageStrategy, self).experimental_local_results(value)
 
-  def experimental_run_v2(self, fn, args=(), kwargs=None):  # pylint: disable=useless-super-delegation
+  def run(self, fn, args=(), kwargs=None, options=None):  # pylint: disable=useless-super-delegation
     """Run `fn` on each replica, with the given arguments.
 
     In `CentralStorageStrategy`, `fn` is  called on each of the compute
@@ -171,17 +171,18 @@ class CentralStorageStrategy(distribute_lib.Strategy):
       fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
       args: (Optional) Positional arguments to `fn`.
       kwargs: (Optional) Keyword arguments to `fn`.
+      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+        the options to run `fn`.
 
     Returns:
       Return value from running `fn`.
     """
-    return super(CentralStorageStrategy, self).experimental_run_v2(fn, args,
-                                                                   kwargs)
+    return super(CentralStorageStrategy, self).run(fn, args, kwargs, options)
 
   def reduce(self, reduce_op, value, axis):  # pylint: disable=useless-super-delegation
     """Reduce `value` across replicas.
 
-    Given a per-replica value returned by `experimental_run_v2`, say a
+    Given a per-replica value returned by `run`, say a
     per-example loss, the batch will be divided across all the replicas. This
     function allows you to aggregate across replicas and optionally also across
     batch elements.  For example, if you have a global batch size of 8 and 2
@@ -219,7 +220,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
 
       # Iterate over the distributed dataset
       for x in dist_dataset:
-        result = strategy.experimental_run_v2(train_step, args=(x,))
+        result = strategy.run(train_step, args=(x,))
 
     result = strategy.reduce(tf.distribute.ReduceOp.SUM, result,
                              axis=None).numpy()
@@ -232,7 +233,7 @@ class CentralStorageStrategy(distribute_lib.Strategy):
     Args:
       reduce_op: A `tf.distribute.ReduceOp` value specifying how values should
         be combined.
-      value: A "per replica" value, e.g. returned by `experimental_run_v2` to
+      value: A "per replica" value, e.g. returned by `run` to
         be combined into a single tensor.
       axis: Specifies the dimension to reduce along within each
         replica's tensor. Should typically be set to the batch dimension, or
@@ -260,7 +261,3 @@ class CentralStorageStrategyV1(distribute_lib.StrategyV1):
         'CentralStorageStrategy')
 
   __init__.__doc__ = CentralStorageStrategy.__init__.__doc__
-
-  def _in_multi_worker_mode(self):
-    """Whether this strategy indicates working in multi-worker settings."""
-    return False

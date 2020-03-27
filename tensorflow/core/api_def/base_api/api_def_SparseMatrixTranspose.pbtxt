@@ -1,5 +1,6 @@
 op {
   graph_op_name: "SparseMatrixTranspose"
+  visibility: HIDDEN
   in_arg {
     name: "input"
     description: "A CSRSparseMatrix."

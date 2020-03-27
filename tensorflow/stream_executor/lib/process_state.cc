@@ -19,7 +19,6 @@ limitations under the License.
 #include <direct.h>
 #include <stdlib.h>
 #include <WinSock2.h>
-#pragma comment(lib, "Ws2_32.lib")
 #else
 #include <errno.h>
 #include <unistd.h>
@@ -30,14 +29,14 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
-string Hostname() {
+std::string Hostname() {
   char hostname[1024];
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
   return std::string(hostname);
 }
 
-bool GetCurrentDirectory(string* dir) {
+bool GetCurrentDirectory(std::string* dir) {
   size_t len = 128;
   std::unique_ptr<char[]> a(new char[len]);
   for (;;) {

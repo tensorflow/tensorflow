@@ -44,7 +44,7 @@ struct GraphConstructorOptions {
   bool expect_device_spec = false;
 
   // If true, validates that nodes being converted have all expected attrs
-  // set and no unknonw attrs set by calling ValidateNodeDef().
+  // set and no unknown attrs set by calling ValidateNodeDef().
   // Setting validate_nodes without add_default_attributes, will fail if
   // the GraphDef does not have all required attributes set.
   bool validate_nodes = false;

@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
@@ -81,7 +82,8 @@ ceil = _unary_op(math_ops.ceil)
 digamma = _unary_op(math_ops.digamma)
 erf = _unary_op(math_ops.erf)
 erfc = _unary_op(math_ops.erfc)
-# TODO(phawkins): implement erfinv
+erfinv = _unary_op(math_ops.erfinv)
+ndtri = _unary_op(math_ops.ndtri)
 exp = _unary_op(math_ops.exp)
 expm1 = _unary_op(math_ops.expm1)
 floor = _unary_op(math_ops.floor)
@@ -197,6 +199,11 @@ pow = _broadcasting_binary_op(math_ops.pow)
 shift_left = _broadcasting_binary_op(bitwise_ops.left_shift)
 shift_right_logical = _broadcasting_binary_op(_shift_right_logical_helper)
 shift_right_arithmetic = _broadcasting_binary_op(_shift_right_arithmetic_helper)
+
+igamma = _broadcasting_binary_op(math_ops.igamma)
+igamma_grad_a = _broadcasting_binary_op(gen_math_ops.igamma_grad_a)
+random_gamma_grad = _broadcasting_binary_op(gen_random_ops.random_gamma_grad)
+igammac = _broadcasting_binary_op(math_ops.igammac)
 
 
 def _binary_op(fn):
@@ -415,3 +422,26 @@ sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
 dequantize = gen_xla_ops.xla_dequantize
+
+
+def gather(operand, start_indices, dimension_numbers, slice_sizes,
+           indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_gather(
+      operand,
+      start_indices,
+      slice_sizes=slice_sizes,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)
+
+
+def scatter(operand, scatter_indices, updates, update_computation,
+            dimension_numbers, indices_are_sorted=False, name=None):
+  return gen_xla_ops.xla_scatter(
+      operand,
+      scatter_indices,
+      updates,
+      update_computation=update_computation,
+      dimension_numbers=dimension_numbers.SerializeToString(),
+      indices_are_sorted=indices_are_sorted,
+      name=name)

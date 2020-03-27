@@ -17,7 +17,7 @@ limitations under the License.
 #include <sys/mman.h>
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/minimal_logging.h"
@@ -1895,7 +1895,7 @@ class BaseActivationsOpModel : public SingleOpModelWithNNAPI {
  public:
   // Most activations don't take any options, so this constructor works for
   // them.
-  BaseActivationsOpModel(BuiltinOperator type, TensorData input) {
+  BaseActivationsOpModel(BuiltinOperator type, const TensorData& input) {
     input_ = AddInput(input);
     if (input.type == TensorType_UINT8) {
       output_ = AddOutput({input.type, {}, 0, 0, 1. / 256});
@@ -3031,19 +3031,19 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     PopulateTensor(projection_bias_, f);
   }
 
-  void SetInputLayerNormCoefficients(std::vector<float> f) {
+  void SetInputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(input_layer_norm_coefficients_, f);
   }
 
-  void SetForgetLayerNormCoefficients(std::vector<float> f) {
+  void SetForgetLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(forget_layer_norm_coefficients_, f);
   }
 
-  void SetCellLayerNormCoefficients(std::vector<float> f) {
+  void SetCellLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(cell_layer_norm_coefficients_, f);
   }
 
-  void SetOutputLayerNormCoefficients(std::vector<float> f) {
+  void SetOutputLayerNormCoefficients(const std::vector<float>& f) {
     PopulateTensor(output_layer_norm_coefficients_, f);
   }
 
@@ -4811,17 +4811,17 @@ class PadV2OpConstModel : public PadOpModel<T1> {
 };
 
 // Test case where paddings is a non-const tensor.
-template <typename RegularInputOuput>
-class PadV2OpDynamicModel : public PadOpModel<RegularInputOuput> {
+template <typename RegularInputOutput>
+class PadV2OpDynamicModel : public PadOpModel<RegularInputOutput> {
  public:
   PadV2OpDynamicModel(const TensorData& input,
                       std::initializer_list<int> paddings_shape,
-                      RegularInputOuput constant_values,
+                      RegularInputOutput constant_values,
                       const TensorData& output) {
     this->input_ = this->AddInput(input);
     this->paddings_ = this->AddInput(TensorType_INT32);
     this->constant_values_ = this->AddConstInput(
-        GetTensorType<RegularInputOuput>(), {constant_values}, {1});
+        GetTensorType<RegularInputOutput>(), {constant_values}, {1});
     this->output_ = this->AddOutput(output);
 
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,

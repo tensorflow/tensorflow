@@ -657,7 +657,7 @@ class ScatterNdTest(test.TestCase):
           self.assertAllEqual(expected_input_grad, self.evaluate(input_grad))
 
   @test_util.run_deprecated_v1
-  def testScatterNdRepatedIndicesAdd(self):
+  def testScatterNdRepeatedIndicesAdd(self):
     indices = array_ops.zeros([100000, 1], dtypes.int32)
     values = np.random.randn(100000)
     shape = [1]

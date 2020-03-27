@@ -204,7 +204,7 @@ class TemplateTest(test.TestCase):
     with context.eager_mode():
       with self.assertRaisesRegexp(
           ValueError,
-          "unique_name_ cannot be used when eager exeuction is enabled."):
+          "unique_name_ cannot be used when eager execution is enabled."):
         template.make_template(
             "_", variable_scoped_function, unique_name_="s1")
 

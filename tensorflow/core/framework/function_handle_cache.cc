@@ -22,7 +22,9 @@ namespace tensorflow {
 namespace data {
 
 FunctionHandleCache::FunctionHandleCache(FunctionLibraryRuntime* lib)
-    : lib_(lib), state_handle_(strings::Printf("%lld", random::New64())) {}
+    : lib_(lib),
+      state_handle_(
+          strings::Printf("%lld", static_cast<long long>(random::New64()))) {}
 
 FunctionHandleCache::~FunctionHandleCache() {
   Status s = Clear();

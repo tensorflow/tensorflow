@@ -53,7 +53,7 @@ class GpuDebugInfoManager {
 
   // Register an active module to GpuDebugInfoManager. We will keep track all
   // existing HloModules within the process.
-  // Modules with same module id can be registered and tracked seperately.
+  // Modules with same module id can be registered and tracked separately.
   void RegisterModule(
       const ModuleIdentifier& module_id, std::shared_ptr<HloModule> hlo_module,
       std::shared_ptr<const BufferAssignment> buffer_assignment);
@@ -126,17 +126,17 @@ class GpuDebugInfoManager {
   };
 
   tensorflow::mutex mutex_;
-  bool tracing_active_ GUARDED_BY(mutex_) = false;
+  bool tracing_active_ TF_GUARDED_BY(mutex_) = false;
   // Modules that was running currently. Because multiple instances of the
   // modules can be running in the same time, a reference count is maintained
   // as map value.
   absl::flat_hash_map<ModuleIdentifier, int> running_module_ids_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
   // Active modules are those still tracked by us. There could be much more
   // active modules than running modules, we will try to reduce the trace size
   // by only transfer those modules that were running during tracing period.
   absl::flat_hash_map<ModuleIdentifier, GpuModuleEntry> active_modules_
-      GUARDED_BY(mutex_);
+      TF_GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu
