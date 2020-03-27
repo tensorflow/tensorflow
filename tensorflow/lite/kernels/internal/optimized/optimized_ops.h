@@ -27,6 +27,7 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
 
@@ -1127,6 +1128,48 @@ inline void Mean(const tflite::MeanParams& op_params,
     cpu_backend_threadpool::Execute(tasks.size(), tasks.data(),
                                     cpu_backend_context);
   }
+}
+
+template <typename T, typename U>
+inline bool MeanGeneral(const T* input_data, const int* input_dims,
+                        const int input_num_dims, T* output_data,
+                        const int* output_dims, const int output_num_dims,
+                        const int* axis, const int num_axis_dimensions,
+                        bool keep_dims, int* temp_index, int* resolved_axis,
+                        U* temp_sum) {
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
+}
+
+template <>
+inline bool MeanGeneral<float, float>(
+    const float* input_data, const int* input_dims, const int input_num_dims,
+    float* output_data, const int* output_dims, const int output_num_dims,
+    const int* axis, const int num_axis_dimensions, bool keep_dims,
+    int* temp_index, int* resolved_axis, float* temp_sum) {
+  // Handle reduce_mean for the last dimensions.
+  if (num_axis_dimensions == 1 && axis[0] == (input_num_dims - 1)) {
+    ruy::profiler::ScopeLabel label("MeanLastDim/Float");
+    int output_size = 1;
+    for (int i = 0; i < input_num_dims - 1; ++i) {
+      output_size *= input_dims[i];
+    }
+    const int last_input_dim = input_dims[axis[0]];
+
+    // TODO(b/152563685): Consider use eigen to cover more general cases.
+    const MatrixMap<const float> in_mat(input_data, last_input_dim,
+                                        output_size);
+    VectorMap<float> out(output_data, output_size, 1);
+    out = (in_mat.array().colwise().sum()) / static_cast<float>(last_input_dim);
+    return true;
+  }
+
+  return reference_ops::Mean(input_data, input_dims, input_num_dims,
+                             output_data, output_dims, output_num_dims, axis,
+                             num_axis_dimensions, keep_dims, temp_index,
+                             resolved_axis, temp_sum);
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
