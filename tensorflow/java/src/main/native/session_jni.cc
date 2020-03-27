@@ -15,8 +15,10 @@ limitations under the License.
 
 #include <string.h>
 #include <memory>
+#include <iostream>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/java/src/main/native/utils_jni.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
 #include "tensorflow/java/src/main/native/session_jni.h"
