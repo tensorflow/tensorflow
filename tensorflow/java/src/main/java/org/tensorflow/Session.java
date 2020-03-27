@@ -377,9 +377,6 @@ public final class Session implements AutoCloseable {
         long[] inputTensorHandles = new long[inputTensors.size()];
         long[] outputTensorHandles = new long[outputs.size()];
 
-        System.out.println("Number of input handles: "+inputTensors.size());
-        System.out.println("Number of output handles: "+outputs.size());
-
         // It's okay to use Operation.getUnsafeNativeHandle() here since the safety depends on the
         // validity of the Graph and graphRef ensures that.
         int idx = 0;
