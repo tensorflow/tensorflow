@@ -107,6 +107,20 @@ cc_test(
 )
 
 cc_library(
+    name = "model_builder_helper",
+    hdrs = ["model_builder_helper.h"],
+    deps = [
+        ":status",
+        "//tensorflow/lite:context",
+        "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/delegates:utils",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "model_builder",
     srcs = ["model_builder.cc"],
     hdrs = ["model_builder.h"],
@@ -114,6 +128,7 @@ cc_library(
         ":custom_parsers",
         ":data_type",
         ":model",
+        ":model_builder_helper",
         ":operations",
         ":shape",
         ":status",
@@ -122,7 +137,6 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
