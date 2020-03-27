@@ -22,7 +22,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
+
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
+
+#include "cuda_runtime_api.h"
 
 namespace {
 
@@ -672,4 +678,28 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_getGPUPointer(JNIEnv* env,
     TF_Tensor* t = requireHandle(env, handle);
     if (t == nullptr) return -1;
     return reinterpret_cast<jlong>(t->tensor.tensor_data().data());
+}
+
+JNIEXPORT jboolean JNICALL Java_org_tensorflow_Tensor_isGPUTensor(JNIEnv* env,
+                                                              jclass clazz,
+                                                              jlong handle) {
+    using namespace tensorflow;
+
+    TF_Tensor* tf_t = requireHandle(env, handle);
+    if (tf_t == nullptr) return false;
+
+    Tensor t;
+    TF_TensorToTensor(tf_t,&t);
+
+    cudaPointerAttributes attributes;
+    cudaError_t err =
+        cudaPointerGetAttributes(&attributes, t.tensor_data().data());
+    if (err == cudaErrorInvalidValue)
+        return false;
+    CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
+#if CUDART_VERSION >= 10000
+    return (attributes.type == cudaMemoryTypeDevice);
+#else
+    return (attributes.memoryType == cudaMemoryTypeDevice);
+#endif
 }
