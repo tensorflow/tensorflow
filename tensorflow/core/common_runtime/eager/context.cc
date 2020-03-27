@@ -1102,6 +1102,7 @@ Status EagerContext::UpdateRemoteMaster(
     if (rendezvous_ != nullptr) rendezvous_->Unref();
     rendezvous_ = r;
     remote_eager_workers_ = std::move(remote_eager_workers);
+    pflr_->InitializeDeviceSet();
     InitPrioritizedDeviceTypeList();
 
     default_executor_.ClearError();
