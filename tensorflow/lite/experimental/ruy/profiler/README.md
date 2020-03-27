@@ -133,7 +133,7 @@ But also the following advantages:
 The philosophy underlying this profiler is that software performance depends on
 software engineers profiling often, and a key factor limiting that in practice
 is the difficulty or cumbersome aspects of profiling with more serious profilers
-such as Linux's "perf", espectially in embedded/mobile development: multiple
+such as Linux's "perf", especially in embedded/mobile development: multiple
 command lines are involved to copy symbol files to devices, retrieve profile
 data from the device, etc. In that context, it is useful to make profiling as
 easy as benchmarking, even on embedded targets, even if the price to pay for

@@ -59,3 +59,7 @@ EMBARC_OSP_MD5 := "9eaf7b3a1ed05872a03da9796672a776"
 
 EMBARC_MLI_URL := "https://github.com/foss-for-synopsys-dwc-arc-processors/embarc_mli/archive/6316034d421cbbb59756239908d7c9a99075a3bb.zip"
 EMBARC_MLI_MD5 := "db0910cf0e07e43f74ae7a31de485d56"
+
+XTENSA_HIFI4_URL :="https://github.com/foss-xtensa/nnlib-hifi4/blob/master/archive/xa_nnlib.zip"
+XTENSA_HIFI4_MD5 :="a517b653a75b96d0271e1b99ee2a8c14"
+

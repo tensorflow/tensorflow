@@ -865,6 +865,45 @@ ENTRY main {
   EXPECT_EQ(result, expected);
 }
 
+XLA_TEST_F(ExecutionTest, DynamicPad) {
+  const string hlo_text = R"(
+HloModule TEST
+
+update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+  lhs = s32[] parameter(0)
+  rhs = s32[] parameter(1)
+  ROOT add = s32[] add(lhs, rhs)
+}
+
+ENTRY main {
+  param = s32[4] parameter(0)
+  size = s32[] constant(3)
+  padding = s32[] constant(2)
+  param_dynamic = s32[4] set-dimension-size(param, size),
+    dimensions={0}
+  // pad head and tail to 2
+  pad = s32[6] pad(param_dynamic, padding), padding=1_1
+
+  init = s32[] constant(0)
+  ROOT reduce = s32[] reduce(pad, init),
+    dimensions={0},
+    to_apply=update_s32
+}
+)";
+
+  Literal operand = LiteralUtil::CreateR1<int32>({1, 4, 3, 5});
+  auto module = GetHloModule(hlo_text);
+
+  // After padding head and tail with "2", the effective data will be [2, 1, 4,
+  // 3, 2]
+
+  Literal result = PadAndExecute(std::move(module), {&operand},
+                                 /*slice_dynamic_output=*/false);
+  Literal expected = LiteralUtil::CreateR0<int32>(12);
+
+  EXPECT_EQ(result, expected);
+}
+
 XLA_TEST_F(ExecutionTest, DynamicTupleSort) {
   const string hlo_text = R"(
 HloModule TEST

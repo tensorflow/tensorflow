@@ -51,7 +51,8 @@ LIBS := \
 -lstdc++ \
 -lpthread \
 -lm \
--lz
+-lz \
+-ldl
 
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
@@ -149,6 +150,7 @@ $(wildcard tensorflow/lite/*/*/*/*test.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
 tensorflow/lite/experimental/ruy/tune_tool.cc \
+tensorflow/lite/tflite_with_xnnpack.cc \
 $(MINIMAL_SRCS)
 
 BUILD_WITH_MMAP ?= true
@@ -216,6 +218,7 @@ BENCHMARK_LIB_SRCS := $(filter-out \
 	$(BENCHMARK_MAIN_SRC) \
 	$(BENCHMARK_PERF_OPTIONS_SRC) \
 	$(BENCHMARK_SRCS_DIR)/benchmark_plus_flex_main.cc \
+	$(BENCHMARK_SRCS_DIR)/external_delegate_provider.cc \
 	$(BENCHMARK_SRCS_DIR)/gpu_delegate_provider.cc \
 	$(BENCHMARK_SRCS_DIR)/hexagon_delegate_provider.cc \
 	$(BENCHMARK_SRCS_DIR)/nnapi_delegate_provider.cc \

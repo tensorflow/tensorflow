@@ -191,18 +191,18 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
 
   // Prepare the argument.
   PyObject* args = nullptr;
-  TFE_Context* ctx = nullptr;
   std::unique_ptr<EagerExecutor> new_executor = nullptr;
   EagerExecutor* old_executor = nullptr;
   if (call->eager) {
     // See FuncRegistry._ctx.
-    ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
         PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
     CHECK_NE(ctx, nullptr);
-    TF_RETURN_IF_ERROR(MakeArgTuple(call, ctx->context, &args));
+    EagerContext* context = ContextFromInterface(ctx->context);
+    TF_RETURN_IF_ERROR(MakeArgTuple(call, context, &args));
     new_executor.reset(new EagerExecutor(call->eager_async));
-    old_executor = &ctx->context->Executor();
-    ctx->context->SetExecutorForThread(new_executor.get());
+    old_executor = &context->Executor();
+    context->SetExecutorForThread(new_executor.get());
   } else {
     TF_RETURN_IF_ERROR(MakeArgTuple(call, nullptr, &args));
   }
@@ -236,8 +236,11 @@ Status DoCallPyFunc(PyCall* call, bool* out_log_on_error) {
   }
 
   if (new_executor != nullptr) {
+    TFE_Context* ctx = reinterpret_cast<TFE_Context*>(PyCapsule_GetPointer(
+        PyObject_GetAttrString(trampoline, "_ctx"), nullptr));
+    EagerContext* context = ContextFromInterface(ctx->context);
     s.Update(new_executor->WaitForAllPendingNodes());
-    ctx->context->SetExecutorForThread(old_executor);
+    context->SetExecutorForThread(old_executor);
   }
 
   TF_RETURN_IF_ERROR(s);

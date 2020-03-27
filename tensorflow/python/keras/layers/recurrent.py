@@ -1339,7 +1339,8 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    return output, [output]
+    new_state = [output] if nest.is_sequence(states) else output
+    return output, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
@@ -1878,7 +1879,8 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    return h, [h]
+    new_state = [h] if nest.is_sequence(states) else h
+    return h, new_state
 
   def get_config(self):
     config = {

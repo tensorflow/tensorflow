@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/monitoring/percentile_sampler.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/context.h"
 #include "tensorflow/core/platform/errors.h"
@@ -33,6 +34,43 @@ limitations under the License.
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+
+namespace {
+
+void RecordPaddingSize(int32 padding_size) {
+  static tensorflow::monitoring::PercentileSamplerCell* cell =
+      tensorflow::monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/padding_size",
+           "Tracks the padding size distribution on batches."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
+          ->GetCell();
+  cell->Add(static_cast<double>(padding_size));
+}
+
+void RecordInputBatchSize(int32 batch_size) {
+  static tensorflow::monitoring::PercentileSamplerCell* cell =
+      tensorflow::monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/input_batch_size",
+           "Tracks the batch size distribution on the inputs."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, tensorflow::monitoring::UnitOfMeasure::kNumber)
+          ->GetCell();
+  cell->Add(static_cast<double>(batch_size));
+}
+
+void RecordBatchDelayMs(int64 batch_delay_ms) {
+  static monitoring::PercentileSamplerCell* cell =
+      monitoring::PercentileSampler<0>::New(
+          {"/tensorflow/serving/batching/batch_delay_ms",
+           "Tracks the batching delay for inputs."},
+          /*percentiles=*/{25.0, 50.0, 75.0, 90.0, 95.0, 99.0},
+          /*max_samples=*/1024, monitoring::UnitOfMeasure::kTime)
+          ->GetCell();
+  cell->Add(static_cast<double>(batch_delay_ms));
+}
+
+}  // namespace
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -246,6 +284,7 @@ class BatchResource : public ResourceBase {
                        const string& batcher_queue_name,
                        AsyncOpKernel::DoneCallback done_callback) {
     auto batch_components = MakeUnique<BatchTask>();
+    batch_components->start_time = EnvTime::NowNanos();
     batch_components->guid = guid;
     batch_components->propagated_context = Context(ContextKind::kThread);
     OpInputList tensors;
@@ -264,6 +303,7 @@ class BatchResource : public ResourceBase {
       }
       batch_components->inputs.push_back(tensor);
     }
+    RecordInputBatchSize(tensors[0].shape().dim_size(0));
     OpInputList captured_tensors;
     const auto captured_status =
         context->input_list("captured_tensors", &captured_tensors);
@@ -298,6 +338,8 @@ class BatchResource : public ResourceBase {
     AsyncOpKernel::DoneCallback done_callback;
 
     size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    uint64 start_time;
   };
 
   using Batcher = serving::SharedBatchScheduler<BatchTask>;
@@ -344,6 +386,7 @@ class BatchResource : public ResourceBase {
 
     const int padded_batch_size = RoundToLowestAllowedBatchSize(batch.size());
     const int padding_amount = padded_batch_size - batch.size();
+    RecordPaddingSize(padding_amount);
 
     // All tasks should have the same number of input edges.
     const int num_inputs = batch.task(0).inputs.size();
@@ -526,6 +569,10 @@ class BatchResource : public ResourceBase {
         batch->task(batch->num_tasks() - 1).captured_inputs;
     args.insert(args.end(), captured_inputs.begin(), captured_inputs.end());
 
+    uint64 current_time = EnvTime::NowNanos();
+    for (int i = 0; i < batch->num_tasks(); ++i) {
+      RecordBatchDelayMs((current_time - batch->task(i).start_time) * 1e-6);
+    }
     // Releases the cleanup method here, because the callback of the function
     // library runtime will handle it now.
     finally.release();

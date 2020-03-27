@@ -121,10 +121,9 @@ class EagerOperation {
     return remote_func_params_;
   }
 
-#ifdef TENSORFLOW_MEM_DEBUG
+  // Op name recorded for memory debugging purpose.
   const char* op_name() const { return op_name_; }
   const char* op_name_ = nullptr;
-#endif
 
   Status MaybeInferSingleInputAttrs(TensorHandle* handle);
   Status InferInputListAttrs(int num_inputs);

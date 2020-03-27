@@ -818,6 +818,9 @@ def name_scope(name):
   """
   return ops.name_scope_v2(name)
 
+# Export V1 version.
+keras_export(v1=['keras.backend.name_scope'])(ops.name_scope_v1)
+
 
 @keras_export('keras.backend.variable')
 def variable(value, dtype=None, name=None, constraint=None):

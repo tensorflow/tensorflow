@@ -70,8 +70,8 @@ class Delegate {
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
   }
 
-  Status Prepare(TfLiteContext* context,
-                 const TfLiteDelegateParams* delegate_params) {
+  absl::Status Prepare(TfLiteContext* context,
+                       const TfLiteDelegateParams* delegate_params) {
     thread_id_prepare_ = std::this_thread::get_id();
 
     // Extract TFLite delegate execution plan from the context and convert it
@@ -98,9 +98,10 @@ class Delegate {
 
     std::unique_ptr<InferenceBuilder> builder;
     bool graph_is_destroyed;
-    Status status = InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
+    absl::Status status =
+        InitializeOpenClApi(&graph, &builder, &graph_is_destroyed);
     if (!status.ok()) {
-      context->ReportError(context, "%s", status.error_message().c_str());
+      TF_LITE_KERNEL_LOG(context, std::string(status.message()).c_str());
       context->ReportError(context, "Falling back to OpenGL");
 
       // Graph need to be re-created because it is moved above.
@@ -132,7 +133,7 @@ class Delegate {
     return builder->Build(&runner_);
   }
 
-  Status SetInputsAndOutputs(TfLiteContext* context) {
+  absl::Status SetInputsAndOutputs(TfLiteContext* context) {
     int i = 0;
     for (auto index : input_indices_) {
       RETURN_IF_ERROR(
@@ -143,15 +144,15 @@ class Delegate {
       RETURN_IF_ERROR(
           runner_->SetOutputObject(i++, GetTensorObject(index, context)));
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status Invoke(TfLiteContext* context) {
+  absl::Status Invoke(TfLiteContext* context) {
     if (thread_id_prepare_ != std::this_thread::get_id()) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
                  "GpuDelegate invoke thread != prepare thread");
       if (enforce_same_thread_) {
-        return FailedPreconditionError(
+        return absl::FailedPreconditionError(
             "GpuDelegate must run on the same thread where it was "
             "initialized.");
       }
@@ -178,9 +179,9 @@ class Delegate {
   TfLiteDelegate* tflite_delegate() { return &delegate_; }
 
  private:
-  Status InitializeOpenClApi(GraphFloat32* graph,
-                             std::unique_ptr<InferenceBuilder>* builder,
-                             bool* graph_is_destroyed) {
+  absl::Status InitializeOpenClApi(GraphFloat32* graph,
+                                   std::unique_ptr<InferenceBuilder>* builder,
+                                   bool* graph_is_destroyed) {
     *graph_is_destroyed = false;
     cl::InferenceEnvironmentOptions env_options;
     cl::InferenceEnvironmentProperties properties;
@@ -207,11 +208,11 @@ class Delegate {
         options, std::move(*graph), builder));
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenCL-based API.");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status InitializeOpenGlApi(GraphFloat32* graph,
-                             std::unique_ptr<InferenceBuilder>* builder) {
+  absl::Status InitializeOpenGlApi(GraphFloat32* graph,
+                                   std::unique_ptr<InferenceBuilder>* builder) {
     gl::InferenceEnvironmentOptions env_options;
     gl::InferenceEnvironmentProperties properties;
     RETURN_IF_ERROR(
@@ -226,7 +227,7 @@ class Delegate {
     enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   TfLiteDelegate delegate_ = {
@@ -269,7 +270,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = gpu_delegate->Prepare(context, params);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Init: %s",
-                               status.error_message().c_str());
+                               std::string(status.message()).c_str());
           return nullptr;
         }
         return gpu_delegate;
@@ -294,7 +295,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         const auto status = GetDelegate(node)->Invoke(context);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                               status.error_message().c_str());
+                               std::string(status.message()).c_str());
           return kTfLiteError;
         }
         return kTfLiteOk;

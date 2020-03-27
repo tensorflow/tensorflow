@@ -32,6 +32,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/metal/kernels",
         "//tensorflow/lite/delegates/gpu/metal/kernels:custom_registry",
     ],
@@ -163,11 +164,12 @@ objc_library(
     srcs = ["environment.mm"],
     hdrs = ["environment.h"],
     copts = DEFAULT_COPTS,
-    sdk_frameworks = [
-        "Metal",
-    ],
+    sdk_frameworks = ["Metal"],
     deps = [
         ":common",
+        # TODO(b/152322289): The following dependency is not needed, but a Bazel
+        # bug causes a build failure without an additional dummy dependency.
+        "//tensorflow/lite/delegates/gpu/common:convert",
     ],
 )
 

@@ -91,6 +91,7 @@ py_library(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/distribute:tpu_strategy",
         "//tensorflow/python/eager:context",
@@ -122,7 +123,7 @@ distribute_py_test(
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 8,
+    shard_count = 10,
     tags = [
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
@@ -283,6 +284,7 @@ distribute_py_test(
     ],
     deps = [
         ":keras_test_lib",
+        "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     ],
 )

@@ -216,10 +216,11 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_SPLIT:
       // If the op take int8 input, it is version 2, for int32 it's version 3.
-      if (op_sig.input_types.at(0) == TensorType_INT32) {
+      // The input tensor is at index 1 not 0, 0 is the axis.
+      if (op_sig.input_types.at(1) == TensorType_INT32) {
         return 3;
       }
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
+      if (op_sig.input_types.at(1) == TensorType_INT8) {
         return 2;
       }
       return 1;
@@ -318,13 +319,16 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
 
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
-      if (op_sig.input_types.at(0) == TensorType_INT8) {
-        return 2;
-      }
-
       if (op_sig.input_types.at(0) == TensorType_INT16 &&
           op_sig.output_types.at(0) == TensorType_INT16) {
+        return 4;
+      }
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
+      }
+      if (op_sig.input_types.at(0) == TensorType_INT8) {
+        return 2;
       }
       return 1;
 
@@ -357,8 +361,8 @@ int GetBuiltinOperatorVersion(const OpSignature& op_sig) {
       return 1;
 
     case BuiltinOperator_SUB:
-      if (op_sig.options.sub.need_broadcast &&
-          op_sig.options.sub.num_dims > 4) {
+      if (op_sig.options.broadcast.need_broadcast &&
+          op_sig.options.broadcast.num_dims > 4) {
         return 3;
       }
       if (op_sig.input_types.at(0) == TensorType_INT8) {
@@ -509,9 +513,12 @@ OpSignature GetOpSignature(const OperatorCode* op_code, const Operator* op,
       op_sig.options.space_batch.num_dims = GetNumDims(subgraph, op, 0);
     } break;
 
-    case BuiltinOperator_SUB: {
-      op_sig.options.sub.need_broadcast = !HaveSameShapes(subgraph, op, 0, 1);
-      op_sig.options.sub.num_dims =
+    case BuiltinOperator_SUB:
+    case BuiltinOperator_MAXIMUM:
+    case BuiltinOperator_MINIMUM: {
+      op_sig.options.broadcast.need_broadcast =
+          !HaveSameShapes(subgraph, op, 0, 1);
+      op_sig.options.broadcast.num_dims =
           std::max(GetNumDims(subgraph, op, 0), GetNumDims(subgraph, op, 1));
     } break;
 

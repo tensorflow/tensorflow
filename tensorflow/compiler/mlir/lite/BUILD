@@ -17,8 +17,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
+        "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
@@ -205,8 +204,6 @@ cc_library(
 cc_library(
     name = "tensorflow_lite",
     srcs = [
-        "experimental/estimators/estimator.h",
-        "experimental/estimators/gpu_estimator.h.inc",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -216,7 +213,6 @@ cc_library(
         "utils/attribute_utils.cc",
     ],
     hdrs = [
-        "experimental/estimators/hardware.h",
         "ir/tfl_ops.h",
         "transforms/passes.h",
         "utils/attribute_utils.h",
@@ -226,6 +222,7 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
+        "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",

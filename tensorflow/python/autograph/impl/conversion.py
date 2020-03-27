@@ -48,12 +48,12 @@ from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
-from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import loader
+from tensorflow.python.autograph.pyct import naming
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
@@ -572,7 +572,7 @@ def convert_func_to_ast(f, program_ctx, do_rename=True):
   if isinstance(node, gast.Lambda):
     new_name = namer.new_symbol('tf__lambda', ())
   elif do_rename:
-    new_name = namer.function_name(f.__name__)
+    new_name = namer.new_symbol('tf__' + f.__name__, ())
   else:
     new_name = f.__name__
 

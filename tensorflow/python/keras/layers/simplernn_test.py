@@ -225,8 +225,7 @@ class SimpleRNNLayerTest(test.TestCase, parameterized.TestCase):
     initial_state = cell.get_initial_state(
         batch_size=batch_size, dtype=dtypes.float32)
     _, state = cell(np.ones((batch_size, 20), dtype=np.float32), initial_state)
-    self.assertLen(state, 1)
-    self.assertEqual(state[0].shape, initial_state.shape)
+    self.assertEqual(state.shape, initial_state.shape)
 
 
 if __name__ == '__main__':

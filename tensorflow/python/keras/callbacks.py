@@ -2005,6 +2005,7 @@ class TensorBoard(Callback, version_utils.TensorBoardVersionSelector):
     self._should_trace = not (self._start_batch == 0 and self._stop_batch == 0)
 
   def on_train_begin(self, logs=None):
+    self._global_train_batch = 0
     self._push_writer(self._train_writer, self._train_step)
 
   def on_train_end(self, logs=None):

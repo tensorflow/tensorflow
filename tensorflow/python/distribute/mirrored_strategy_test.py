@@ -379,16 +379,38 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
           self.evaluate(distribution.experimental_local_results(result)))
       self.assertLen(traces, distribution.num_replicas_in_sync)
 
-  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
-    def merge_fn(_):
-      pass
+  def testControlFlowFunctionInCallForEachReplicaWithMergeCall(
+      self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
 
     @def_function.function
     def model_fn():
+
       def body_fn(i):
-        ds_context.get_replica_context().merge_call(merge_fn)
-        return i + 1
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(i,))
+
       return control_flow_ops.while_loop_v2(lambda i: i < 2, body_fn, [0])
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
+
+  def testNestedFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+
+    def merge_fn(strategy, value):
+      return strategy.reduce(reduce_util.ReduceOp.SUM, value, axis=None)
+
+    def model_fn():
+
+      @def_function.function
+      def model_fn_nested():
+        t = constant_op.constant(1)
+        return ds_context.get_replica_context().merge_call(merge_fn, args=(t,))
+
+      return model_fn_nested()
 
     with distribution.scope():
       with self.assertRaisesRegexp(

@@ -28,6 +28,8 @@ tf_cuda_library(
         "c_api_debug.cc",
         "c_api_experimental.h",
         "c_api_internal.h",
+        "context_interface.cc",
+        "context_interface.h",
         "operation_interface.cc",
         "operation_interface.h",
         "tensor_handle_interface.h",
@@ -95,6 +97,7 @@ filegroup(
     srcs = [
         "c_api_experimental.h",
         "c_api_internal.h",
+        "context_interface.h",
         "dlpack.h",
         "operation_interface.h",
         "tensor_handle_interface.h",
@@ -109,6 +112,7 @@ tf_cuda_library(
     name = "c_api_internal",
     srcs = [
         "c_api_experimental.h",
+        "context_interface.h",
         "operation_interface.h",
         "tensor_handle_interface.h",
     ],

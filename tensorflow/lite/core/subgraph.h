@@ -29,6 +29,10 @@ limitations under the License.
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/subgraph.h"
+#endif
+
 namespace tflite {
 
 namespace impl {
@@ -679,7 +683,11 @@ class Subgraph {
 
 }  // namespace impl
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Subgraph = tflrt::Subgraph;
+#else
 using Subgraph = impl::Subgraph;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

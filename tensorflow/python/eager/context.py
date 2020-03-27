@@ -411,6 +411,7 @@ class Context(object):
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
     self._lazy_remote_inputs_copy = None
+    self._use_tfrt = None
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -514,6 +515,8 @@ class Context(object):
         if self._lazy_remote_inputs_copy is not None:
           pywrap_tfe.TFE_ContextOptionsSetLazyRemoteInputsCopy(
               opts, self._lazy_remote_inputs_copy)
+        if self._use_tfrt is not None:
+          pywrap_tfe.TFE_ContextOptionsSetTfrt(opts, self._use_tfrt)
         context_handle = pywrap_tfe.TFE_NewContext(opts)
       finally:
         pywrap_tfe.TFE_DeleteContextOptions(opts)
@@ -1564,6 +1567,21 @@ class Context(object):
         raise ValueError(
             "lazy_remote_inputs_copy should be set before being initialized.")
       self._lazy_remote_inputs_copy = lazy_copy
+
+  @property
+  def use_tfrt(self):
+    return self._use_tfrt
+
+  @use_tfrt.setter
+  def use_tfrt(self, tfrt):
+    """Sets whether to use TFRT."""
+    if not isinstance(tfrt, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(tfrt))
+
+    if self._use_tfrt != tfrt:
+      if self._initialized:
+        raise ValueError("use_tfrt should be set before being initialized.")
+      self._use_tfrt = tfrt
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.

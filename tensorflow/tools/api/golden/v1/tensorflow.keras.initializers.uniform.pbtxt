@@ -1,6 +1,6 @@
 path: "tensorflow.keras.initializers.uniform"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.initializers.RandomUniformV1\'>"
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v1.RandomUniform\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.RandomUniform\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
   is_instance: "<type \'object\'>"

@@ -96,11 +96,15 @@ class GPUOperation {
   void SetSrc(Tensor* ptr, int index = 0);
   void SetDst(Tensor* ptr, int index = 0);
 
-  virtual Status AddToQueue(CLCommandQueue* queue) { return OkStatus(); }
-  virtual Status Tune(const TuningParameters& params) { return OkStatus(); }
+  virtual absl::Status AddToQueue(CLCommandQueue* queue) {
+    return absl::OkStatus();
+  }
+  virtual absl::Status Tune(const TuningParameters& params) {
+    return absl::OkStatus();
+  }
 
-  virtual Status Compile(const CreationContext& creation_context) {
-    return OkStatus();
+  virtual absl::Status Compile(const CreationContext& creation_context) {
+    return absl::OkStatus();
   }
 
   const OperationDef& GetDefinition() const { return definition_; }
@@ -127,10 +131,10 @@ class ElementwiseOperation : public GPUOperation {
       : GPUOperation(definition) {}
 
   virtual ~ElementwiseOperation() {}
-  Status AddToQueue(CLCommandQueue* queue) override;
-  Status Tune(const TuningParameters& params) override;
+  absl::Status AddToQueue(CLCommandQueue* queue) override;
+  absl::Status Tune(const TuningParameters& params) override;
 
-  Status Compile(const CreationContext& creation_context) override;
+  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   ElementwiseOperation(ElementwiseOperation&& operation);
@@ -150,10 +154,12 @@ class ElementwiseOperation : public GPUOperation {
 
   virtual std::string GetCoreCode(const LinkingContext& context) const = 0;
   virtual std::string GetArgsDeclaration() const { return ""; }
-  virtual Status BindArguments(CLKernel* kernel) { return OkStatus(); }
+  virtual absl::Status BindArguments(CLKernel* kernel) {
+    return absl::OkStatus();
+  }
 
  protected:
-  Status BindArguments();
+  absl::Status BindArguments();
   int3 GetGridSize() const;
   CLKernel kernel_;
   int3 work_group_size_ = int3(8, 4, 1);
@@ -171,8 +177,8 @@ std::string PostProcess(const std::vector<ElementwiseOperation*>& linked_ops,
 // Binds arguments to given kernel for elementwise operations in
 // linked_ops.
 // Every ElementwiseOperation can bind her arguments.
-Status BindArgs(CLKernel* kernel,
-                const std::vector<ElementwiseOperation*>& linked_ops);
+absl::Status BindArgs(CLKernel* kernel,
+                      const std::vector<ElementwiseOperation*>& linked_ops);
 
 }  // namespace cl
 }  // namespace gpu

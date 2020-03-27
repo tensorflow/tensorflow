@@ -355,6 +355,17 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       continue;
     }
 
+    HloInstruction* inst = interval.buffer->instruction();
+    HloModule* module = inst->GetModule();
+
+    // Don't intra-program prefetch a cross program prefetch
+    if (inst->opcode() == HloOpcode::kParameter &&
+        absl::c_count(module->CrossProgramPrefetches(),
+                      std::make_pair(inst->parameter_number(),
+                                     interval.buffer->index())) > 0) {
+      continue;
+    }
+
     auto colocated_intervals = GetSortedColocatedIntervals(interval);
 
     if (AreIntervalsReservedInAlternateMemory(colocated_intervals)) {
@@ -559,6 +570,52 @@ AlternateMemoryBestFitHeap::GetLiveAllocationAt(
     }
   }
   return nullptr;
+}
+
+void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
+    HloModule* module, absl::optional<BufferInterval> prefetch_candidate) {
+  if (!prefetch_candidate) {
+    return;
+  }
+
+  ChunkCandidate chunk_candidate = FindChunkCandidate(*prefetch_candidate);
+  if (chunk_candidate.chunk.offset != 0 ||
+      chunk_candidate.heap_size > available_heap_size()) {
+    LOG(WARNING)
+        << "Could not allocate preferred memory for cross program prefetch";
+    return;
+  }
+  AddToPendingChunks(*prefetch_candidate, chunk_candidate);
+
+  const HloValue* buffer = prefetch_candidate->buffer;
+  int64 parameter = buffer->instruction()->parameter_number();
+  module->AddCrossProgramPrefetch(parameter, buffer->index());
+
+  allocation_sequence_list_->push_back({buffer, {}});
+  MemorySpaceAssignment::AllocationSequence& allocations =
+      allocation_sequence_list_->back().sequence;
+
+  allocations.push_back(absl::make_unique<MemorySpaceAssignment::Allocation>(
+      buffer->defining_position(), MemorySpace::kDefault, kDummyChunk,
+      prefetch_candidate->start, prefetch_candidate->end));
+
+  // Sort the uses by the use time.
+  const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
+  auto uses = buffer->uses();
+  auto first_use =
+      absl::c_min_element(uses, [&](const HloUse& lhs, const HloUse& rhs) {
+        return instruction_schedule.at(lhs.instruction) <
+               instruction_schedule.at(rhs.instruction);
+      });
+  int64 latest_prefetch_time = instruction_schedule.at(first_use->instruction);
+
+  AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate,
+               chunk_candidate.chunk, prefetch_candidate->start,
+               prefetch_candidate->end, latest_prefetch_time, &allocations);
+  absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
+
+  pending_chunks_.clear();
+  pending_async_copies_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
@@ -1207,6 +1264,90 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
   };
 }
 
+namespace {
+
+bool LooksLikeAnActivation(const HloInstruction* inst) {
+  for (HloInstruction* user : inst->users()) {
+    switch (user->opcode()) {
+      case HloOpcode::kConvolution:
+      case HloOpcode::kDot:
+        if (user->operand(0) == inst) {
+          return true;
+        }
+        break;
+      case HloOpcode::kGather:
+        if (user->operand(1) == inst) {
+          return true;
+        }
+        break;
+      case HloOpcode::kFusion:
+        for (int i = 0; i < user->operand_count(); ++i) {
+          if (user->operand(i) == inst &&
+              LooksLikeAnActivation(user->fused_parameter(i))) {
+            return true;
+          }
+        }
+        break;
+      default:
+        return true;
+    }
+  }
+  return false;
+}
+
+bool IsCrossProgramPrefetchCandidate(
+    const HloValue& value, const MemorySpaceAssignment::Options& options) {
+  return value.instruction()->parent() ==
+             value.instruction()->GetModule()->entry_computation() &&
+         value.instruction()->opcode() == HloOpcode::kParameter &&
+         value.index().size() == 1 && value.shape().IsArray() &&
+         !value.uses().empty() &&
+         options.size_fn(value) <= options.max_size_in_bytes &&
+         absl::c_all_of(value.uses(), [&](const HloUse& use) {
+           const HloInstruction* gte =
+               use.instruction->operand(use.operand_number);
+           return gte->opcode() == HloOpcode::kGetTupleElement &&
+                  !LooksLikeAnActivation(gte);
+         });
+}
+
+absl::optional<MemorySpaceAssignment::BufferInterval>
+FindCrossProgramPrefetchCandidate(
+    const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
+    const MemorySpaceAssignment::Options& options) {
+  std::vector<MemorySpaceAssignment::BufferInterval> candidates;
+  for (HloValue* value : alias_analysis.dataflow_analysis().values()) {
+    if (IsCrossProgramPrefetchCandidate(*value, options)) {
+      MemorySpaceAssignment::BufferInterval interval;
+      interval.buffer = value;
+      interval.size = options.size_fn(*value);
+      interval.start = 0;
+      interval.end = hlo_live_range.schedule_end_time();
+      interval.need_allocation = true;
+      candidates.emplace_back(interval);
+    }
+  }
+
+  // The buffer_interval_compare ought to do a good job picking the most
+  // appropriate buffer to cross program prefetch, but empirically, it makes
+  // worse choices than just picking the largest buffer.
+  // TODO(b/152421603): Investigate.
+  auto size_compare = [](const auto& x, const auto& y) {
+    return x.size < y.size;
+  };
+  auto& compare = options.default_cross_program_prefetch_heuristic &&
+                          options.buffer_interval_compare
+                      ? *options.buffer_interval_compare
+                      : size_compare;
+
+  auto best_candidate = absl::c_max_element(candidates, compare);
+  if (best_candidate == candidates.end()) {
+    return absl::nullopt;
+  }
+  return *best_candidate;
+}
+}  // namespace
+
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
 MemorySpaceAssignment::Run(HloModule* module,
                            const HloLiveRange& hlo_live_range,
@@ -1221,6 +1362,13 @@ MemorySpaceAssignment::Run(HloModule* module,
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_sequence_list_, options,
       alias_analysis, hlo_live_range);
+
+  if (options.enable_cross_program_prefetch) {
+    absl::optional<BufferInterval> prefetch_candiate =
+        FindCrossProgramPrefetchCandidate(alias_analysis, hlo_live_range,
+                                          options);
+    algorithm->AllocateCrossProgramPrefetchBuffer(module, prefetch_candiate);
+  }
 
   HeapSimulator::Options heap_simulator_options;
   heap_simulator_options.may_reuse_operand_buffers = false;

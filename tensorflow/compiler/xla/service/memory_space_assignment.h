@@ -319,6 +319,14 @@ class MemorySpaceAssignment {
     // If true, verifies the memory space assignment against overlapping
     // buffers.
     bool verify = false;
+
+    // Enable prefetching buffers into preferred memory across program
+    // boundaries
+    bool enable_cross_program_prefetch = true;
+
+    // If true, use buffer_interval_compare to determine which buffers to
+    // prefetch across program boundaries.
+    bool default_cross_program_prefetch_heuristic = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -622,6 +630,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
       buffer_interval_compare_ = *options.buffer_interval_compare;
     }
   }
+
+  // Allocates a buffer in preferred memory with whole program lifetime and
+  // enables prefetching prefech_candidate from default memory across program
+  // boundaries.
+  void AllocateCrossProgramPrefetchBuffer(
+      HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
 
   HeapSimulator::Result Finish() override;
 

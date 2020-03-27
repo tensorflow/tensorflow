@@ -13,6 +13,7 @@ package(
 android_library(
     name = "tensorflow-lite-support",
     srcs = glob(["src/java/org/tensorflow/lite/support/**/*.java"]),
+    javacopts = JAVACOPTS,
     manifest = "AndroidManifest.xml",
     deps = [
         "//tensorflow/lite/java:tensorflowlite",
@@ -40,6 +41,7 @@ java_library(
 android_library(
     name = "tensorflow-lite-support-precondition-lib-android",
     srcs = ["src/java/org/tensorflow/lite/support/common/SupportPreconditions.java"],
+    javacopts = JAVACOPTS,
     manifest = "AndroidManifest.xml",
     deps = [
         "@org_checkerframework_qual",

@@ -216,6 +216,7 @@ cuda_py_test(
     deps = [
         ":profiler",
         ":test",
+        "//tensorflow/core/profiler/protobuf:trace_events_proto_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python/profiler:traceme",
     ],
@@ -891,7 +892,7 @@ cuda_py_test(
     srcs = ["remote_cluster_test.py"],
     grpc_enabled = True,
     python_version = "PY3",
-    shard_count = 16,
+    shard_count = 8,
     tags = [
         "no_oss",  # This test launches local server
         "notsan",  # TODO(b/152075365)

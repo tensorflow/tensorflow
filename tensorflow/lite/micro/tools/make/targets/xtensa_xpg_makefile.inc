@@ -7,6 +7,8 @@
 ifeq ($(TARGET), xtensa-xpg)
   TARGET_ARCH := xtensa-xpg
 
+$(eval $(call add_third_party_download,$(XTENSA_HIFI4_URL),$(XTENSA_HIFI4_MD5),xa_nnlib,))
+
   PLATFORM_ARGS = \
     -DTF_LITE_MCU_DEBUG_LOG \
     --xtensa-core=$(XTENSA_CORE) \
@@ -16,7 +18,9 @@ ifeq ($(TARGET), xtensa-xpg)
     -ffunction-sections \
     -fno-exceptions \
     -fno-unwind-tables \
-    -fmessage-length=0
+    -fno-use-cxa-atexit \
+    -fmessage-length=0 \
+    -fno-threadsafe-statics
 
   TARGET_TOOLCHAIN_PREFIX := xt-
   CXX_TOOL := clang++
