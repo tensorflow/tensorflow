@@ -378,8 +378,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
           return errors::InvalidArgument("Invalid TensorProto: ",
                                          input.tensor().DebugString());
         } else {
-          TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-              std::move(tensor), nullptr, nullptr, eager_context, &handle));
+          handle = TensorHandle::CreateLocalHandle(std::move(tensor), nullptr,
+                                                   nullptr, eager_context);
           op->AddInput(handle);
         }
       }
@@ -558,9 +558,8 @@ Status EagerServiceImpl::SendTensor(const SendTensorOp& send_tensor,
       return errors::InvalidArgument("Unable to parse tensor proto");
     }
 
-    TensorHandle* tensor_handle = nullptr;
-    TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-        std::move(tensor), nullptr, nullptr, eager_context, &tensor_handle));
+    TensorHandle* tensor_handle = TensorHandle::CreateLocalHandle(
+        std::move(tensor), nullptr, nullptr, eager_context);
     TensorHandle* copied_handle = nullptr;
     Device* device;
     TF_RETURN_IF_ERROR(eager_context->FindDeviceFromName(

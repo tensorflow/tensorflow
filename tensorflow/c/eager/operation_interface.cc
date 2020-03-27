@@ -266,8 +266,7 @@ Status OperationInterface::OutputLength(const char* output_name, int* length) {
 
 Status OperationInterface::AddInput(
     const std::unique_ptr<AbstractTensorHandleInterface>& input) {
-  TensorHandle* h =
-      tensorflow::down_cast<TensorHandleInterface*>(input.get())->Handle();
+  TensorHandle* h = TensorHandleFromInterface(input);
   operation_.AddInput(h);
   return operation_.MaybeInferSingleInputAttrs(h);
 }
@@ -276,8 +275,7 @@ Status OperationInterface::AddInputList(
     const absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>&
         inputs) {
   for (auto& input : inputs) {
-    TensorHandle* h =
-        tensorflow::down_cast<TensorHandleInterface*>(input.get())->Handle();
+    TensorHandle* h = TensorHandleFromInterface(input);
     operation_.AddInput(h);
   }
   return operation_.InferInputListAttrs(inputs.size());

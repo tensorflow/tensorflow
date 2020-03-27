@@ -69,18 +69,7 @@ struct TFE_Context {
 };
 
 struct TFE_TensorHandle {
-  static TFE_TensorHandle* CreateLocalHandle(const class tensorflow::Tensor& t,
-                                             TF_Status* s) {
-    tensorflow::TensorHandle* handle;
-    s->status = tensorflow::TensorHandle::CreateLocalHandle(t, &handle);
-    if (!s->status.ok()) {
-      return nullptr;
-    }
-    return new TFE_TensorHandle{
-        std::make_unique<tensorflow::TensorHandleInterface>(handle)};
-  }
-
-  std::unique_ptr<AbstractTensorHandleInterface> handle;
+  std::unique_ptr<tensorflow::AbstractTensorHandleInterface> handle;
 };
 
 struct TFE_TensorDebugInfo {
@@ -92,7 +81,7 @@ struct TFE_TensorDebugInfo {
 };
 
 struct TFE_Op {
-  std::unique_ptr<AbstractOperationInterface> operation;
+  std::unique_ptr<tensorflow::AbstractOperationInterface> operation;
 };
 
 struct TFE_MonitoringCounterCell {
