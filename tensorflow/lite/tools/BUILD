@@ -16,7 +16,10 @@ py_binary(
     srcs = ["visualize.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/lite/python:schema_py"],
+    deps = [
+        "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python:platform",
+    ],
 )
 
 py_test(
@@ -28,7 +31,7 @@ py_test(
         "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
     ],
     deps = [
-        ":test_utils",
+        ":test_utilities",
         ":visualize",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
@@ -41,12 +44,11 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:image_ops",
-        "//tensorflow/python:io_ops",
+        "//tensorflow:tensorflow_py_no_contrib",
         "//tensorflow/python:platform",
-        "//tensorflow/python:session",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 
@@ -59,10 +61,8 @@ py_test(
     deps = [
         ":convert_image_to_csv",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform",
-        "//third_party/py/numpy",
     ],
 )
 
@@ -72,48 +72,32 @@ py_binary(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
-        ":flatbuffer_utils",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_binary(
-    name = "randomize_weights",
-    srcs = ["randomize_weights.py"],
-    python_version = "PY3",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":flatbuffer_utils",
-        "//tensorflow/python:platform",
-    ],
-)
-
-py_library(
-    name = "flatbuffer_utils",
-    srcs = ["flatbuffer_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
         "//tensorflow/lite/python:schema_py",
+        "//tensorflow/python:platform",
         "@flatbuffers//:runtime_py",
     ],
 )
 
 py_test(
-    name = "flatbuffer_utils_test",
-    srcs = ["flatbuffer_utils_test.py"],
+    name = "strip_strings_test",
+    srcs = ["strip_strings_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
     deps = [
-        ":flatbuffer_utils",
-        ":test_utils",
+        ":strip_strings",
+        ":test_utilities",
+        "//tensorflow/lite/python:schema_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
 )
 
 py_library(
-    name = "test_utils",
-    srcs = ["test_utils.py"],
+    name = "test_utilities",
+    srcs = ["test_utilities.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/lite/python:schema_py",
@@ -125,9 +109,9 @@ tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
     deps = [
-        ":gen_op_registration",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/lite/tools:gen_op_registration",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -227,10 +211,7 @@ py_binary(
     srcs = ["zip_files.py"],
     python_version = "PY3",
     visibility = ["//visibility:public"],
-    deps = [
-        "@absl_py//absl:app",
-        "@absl_py//absl/flags",
-    ],
+    deps = ["@absl_py//absl:app"],
 )
 
 tflite_portable_test_suite()

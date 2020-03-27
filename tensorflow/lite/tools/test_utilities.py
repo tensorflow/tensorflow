@@ -25,24 +25,24 @@ from flatbuffers.python import flatbuffers
 from tensorflow.lite.python import schema_py_generated as schema_fb
 
 
-def build_mock_model():
-  """Creates a flatbuffer containing an example model."""
+def BuildMockModel():
+  """Creates a flatbuffer object containing an example model."""
   builder = flatbuffers.Builder(1024)
 
   schema_fb.BufferStart(builder)
   buffer0_offset = schema_fb.BufferEnd(builder)
 
   schema_fb.BufferStartDataVector(builder, 10)
-  builder.PrependUint8(9)
-  builder.PrependUint8(8)
-  builder.PrependUint8(7)
-  builder.PrependUint8(6)
-  builder.PrependUint8(5)
-  builder.PrependUint8(4)
-  builder.PrependUint8(3)
-  builder.PrependUint8(2)
-  builder.PrependUint8(1)
   builder.PrependUint8(0)
+  builder.PrependUint8(1)
+  builder.PrependUint8(2)
+  builder.PrependUint8(3)
+  builder.PrependUint8(4)
+  builder.PrependUint8(5)
+  builder.PrependUint8(6)
+  builder.PrependUint8(7)
+  builder.PrependUint8(8)
+  builder.PrependUint8(9)
   buffer1_data_offset = builder.EndVector(10)
   schema_fb.BufferStart(builder)
   schema_fb.BufferAddData(builder, buffer1_data_offset)
@@ -200,15 +200,6 @@ def build_mock_model():
   schema_fb.ModelAddBuffers(builder, buffers_offset)
   model_offset = schema_fb.ModelEnd(builder)
   builder.Finish(model_offset)
-  model = builder.Output()
+  model_data = builder.Output()
 
-  return model
-
-
-def build_mock_model_python_object():
-  """Creates a python flatbuffer object containing an example model."""
-  model_mock = build_mock_model()
-  model_obj = schema_fb.Model.GetRootAsModel(model_mock, 0)
-  model = schema_fb.ModelT.InitFromObj(model_obj)
-
-  return model
+  return model_data

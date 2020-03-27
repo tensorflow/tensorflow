@@ -20,7 +20,7 @@ from __future__ import print_function
 import os
 import re
 
-from tensorflow.lite.tools import test_utils
+from tensorflow.lite.tools import test_utilities
 from tensorflow.lite.tools import visualize
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -35,7 +35,7 @@ class VisualizeTest(test_util.TensorFlowTestCase):
     self.assertEqual('HASHTABLE_LOOKUP', visualize.BuiltinCodeToName(10))
 
   def testFlatbufferToDict(self):
-    model_data = test_utils.build_mock_model()
+    model_data = test_utilities.BuildMockModel()
     model_dict = visualize.CreateDictFromFlatbuffer(model_data)
     self.assertEqual(0, model_dict['version'])
     self.assertEqual(1, len(model_dict['subgraphs']))
@@ -45,7 +45,7 @@ class VisualizeTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, model_dict['subgraphs'][0]['tensors'][0]['buffer'])
 
   def testVisualize(self):
-    model_data = test_utils.build_mock_model()
+    model_data = test_utilities.BuildMockModel()
 
     tmp_dir = self.get_temp_dir()
     model_filename = os.path.join(tmp_dir, 'model.tflite')
