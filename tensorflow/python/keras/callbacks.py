@@ -562,13 +562,13 @@ class Callback(object):
   will include the following quantities in the `logs` that
   it passes to its callbacks:
 
-      on_epoch_end: logs include `acc` and `loss`, and
+      on_epoch_end: logs include `accuracy` and `loss`, and
           optionally include `val_loss`
-          (if validation is enabled in `fit`), and `val_acc`
+          (if validation is enabled in `fit`), and `val_accuracy`
           (if validation and accuracy monitoring are enabled).
       on_batch_begin: logs include `size`,
           the number of samples in the current batch.
-      on_batch_end: logs include `loss`, and optionally `acc`
+      on_batch_end: logs include `loss`, and optionally `accuracy`
           (if accuracy monitoring is enabled).
   """
 
