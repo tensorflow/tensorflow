@@ -374,6 +374,32 @@ tf_java_test(
     ],
 )
 
+tf_java_test(
+    name = "GPUTensorTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/GPUTensorTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.GPUTensorTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
+    name = "DirectSessionTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/DirectSessionTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.DirectSessionTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
 filegroup(
     name = "processor_test_resources",
     srcs = glob([
