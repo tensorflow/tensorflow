@@ -22,16 +22,6 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
-enum class GpuType {
-  kUnknown,
-  kA7,   // iPhone 5s, iPad Air, iPad Mini 2, iPad Mini 3.
-  kA8,   // A8 iPhone 6, A8X iPad Air 2, iPad Mini 4.
-  kA9,   // A9 iPhone 6s, iPad (2017), A9X iPad Pro (1st generation).
-  kA10,  // iPhone 7, iPad (2018), A10X iPad Pro (2nd generation).
-  kA11,  // iPhone 8/X.
-  kA12,  // iPhone Xs.
-};
-
 enum class AppleGPU {
   kUnknown,
   kA7,
@@ -53,6 +43,8 @@ struct AppleGPUInfo {
   explicit AppleGPUInfo(const std::string& device_name);
   AppleGPU gpu_type;
 
+  bool IsLocalMemoryPreferredOverGlobal() const;
+
   bool IsBionic() const;
 
   // floating point rounding mode
@@ -71,8 +63,6 @@ struct DeviceInfo {
 
   int GetComputeUnitsCount() const;
 };
-
-GpuType GetGpuType();
 
 }  // namespace metal
 }  // namespace gpu

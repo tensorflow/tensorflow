@@ -659,32 +659,19 @@ bool IsKernelYIs1(const Convolution2DAttributes& attr) {
          attr.padding.appended.h == 0;
 }
 
-int GetMaximumPossibleWavesCount(const BHWC& dst_shape, GpuType gpu) {
-  if (gpu == GpuType::kA7 || gpu == GpuType::kA8) {
+int GetMaximumPossibleWavesCount(const AppleGPUInfo& apple_info,
+                                 const BHWC& dst_shape) {
+  if (apple_info.IsLocalMemoryPreferredOverGlobal()) {
     return GetGroupsCountForLinearWH(dst_shape, {32, 1, 1}, {1, 1, 1});
   } else {
     return GetGroupsCountForLinearWHS(dst_shape, {32, 1, 1}, {1, 1, 1});
   }
 }
 
-int GetCountOfComputeUnits(GpuType gpu) {
-  if (gpu == GpuType::kA7 || gpu == GpuType::kA8) {
-    return 4;
-  } else if (gpu == GpuType::kA9 || gpu == GpuType::kA10) {
-    return 6;
-  } else if (gpu == GpuType::kA11) {
-    return 3;
-  } else if (gpu == GpuType::kA12) {
-    return 4;
-  } else {
-    // unknown gpu
-    return 4;
-  }
-}
-
-int GetRecommendedBlockSize(const BHWC& dst_shape, GpuType gpu) {
-  const int max_waves = GetMaximumPossibleWavesCount(dst_shape, gpu);
-  const int cu_count = GetCountOfComputeUnits(gpu);
+int GetRecommendedBlockSize(const AppleGPUInfo& apple_info,
+                            const BHWC& dst_shape) {
+  const int max_waves = GetMaximumPossibleWavesCount(apple_info, dst_shape);
+  const int cu_count = apple_info.GetComputeUnitsCount();
   if (max_waves >= cu_count * 64) {
     return 8;
   } else if (max_waves >= cu_count * 32) {
@@ -696,8 +683,9 @@ int GetRecommendedBlockSize(const BHWC& dst_shape, GpuType gpu) {
   }
 }
 
-ConvParams GetConvParamsForA7A8(const Convolution2DAttributes& attr,
-                                const BHWC& dst_shape, GpuType gpu) {
+ConvParams GetConvParamsForA7A8(const AppleGPUInfo& apple_info,
+                                const Convolution2DAttributes& attr,
+                                const BHWC& dst_shape) {
   const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
   const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
 
@@ -711,7 +699,7 @@ ConvParams GetConvParamsForA7A8(const Convolution2DAttributes& attr,
   params.linear_whs = false;
   params.work_group_launch_order = int3(0, 1, 2);
 
-  int blk_total_size = GetRecommendedBlockSize(dst_shape, gpu);
+  int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
 
   if (blk_total_size >= 4 && (dst_slices % 4 == 0 || dst_slices >= 16)) {
     params.block_size.z = 4;
@@ -771,14 +759,14 @@ ConvParams GetConvParamsForA7A8(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParamsForA9AndHigher(const Convolution2DAttributes& attr,
-                                       const BHWC& dst_shape, GpuType gpu) {
+ConvParams GetConvParamsForA9AndHigher(const AppleGPUInfo& apple_info,
+                                       const Convolution2DAttributes& attr,
+                                       const BHWC& dst_shape) {
   const int dst_slices = IntegralDivideRoundUp(dst_shape.c, 4);
   const int src_slices = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-  int blk_total_size = GetRecommendedBlockSize(dst_shape, gpu);
-  bool apple_gpu = gpu == GpuType::kA11 || gpu == GpuType::kA12;
+  int blk_total_size = GetRecommendedBlockSize(apple_info, dst_shape);
   int3 block_size = int3(1, 1, 1);
-  if (blk_total_size >= 2 && apple_gpu) {
+  if (blk_total_size >= 2 && apple_info.IsBionic()) {
     if (dst_shape.h % 2 != 0 && dst_shape.w % 2 == 0) {
       block_size.x = 2;
     } else {
@@ -816,7 +804,7 @@ ConvParams GetConvParamsForA9AndHigher(const Convolution2DAttributes& attr,
     params.work_group_size = int3(32, 1, 1);
     params.work_group_launch_order = int3(0, 1, 2);
   }
-  float precise_threshold = gpu == GpuType::kA12 ? 1.0f : 1.04f;
+  float precise_threshold = apple_info.IsBionic() ? 1.0f : 1.04f;
   float precise_ratio = static_cast<float>(g2) / static_cast<float>(g3);
   if (precise_ratio > precise_threshold) {
     params.linear_wh = false;
@@ -852,13 +840,13 @@ ConvParams GetConvParamsForA9AndHigher(const Convolution2DAttributes& attr,
   return params;
 }
 
-ConvParams GetConvParams(const Convolution2DAttributes& attr,
+ConvParams GetConvParams(const DeviceInfo& device_info,
+                         const Convolution2DAttributes& attr,
                          const BHWC& dst_shape) {
-  auto gpu_type = GetGpuType();
-  if (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8) {
-    return GetConvParamsForA7A8(attr, dst_shape, gpu_type);
+  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
+    return GetConvParamsForA7A8(device_info.apple_info, attr, dst_shape);
   } else {
-    return GetConvParamsForA9AndHigher(attr, dst_shape, gpu_type);
+    return GetConvParamsForA9AndHigher(device_info.apple_info, attr, dst_shape);
   }
 }
 
@@ -898,8 +886,9 @@ std::pair<uint3, uint3> GetDispatchSizes(const ConvParams& params,
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const metal::RuntimeOptions& options) {
-  ConvParams params = GetConvParams(attr, dst_shape);
+    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const metal::RuntimeOptions& options) {
+  ConvParams params = GetConvParams(device_info, attr, dst_shape);
 
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
@@ -953,7 +942,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionGeneric(
 
 std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
     int id, ValueId input_id, ValueId output_id, const BHWC& dst_shape,
-    const Convolution2DAttributes& attr, const RuntimeOptions& options) {
+    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const RuntimeOptions& options) {
   const int dst_slices = IntegralDivideRoundUp(attr.weights.shape.o, 4);
   ConvParams params;
   params.work_group_launch_order = int3(2, 0, 1);
@@ -965,8 +955,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionWino4x4To6x6(
   params.different_weights_for_height = true;
   params.x_kernel_is_1 = true;
   params.y_kernel_is_1 = true;
-  auto gpu_type = GetGpuType();
-  if (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8) {
+  if (device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
     params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
     params.work_group_size = int3(32, 1, 1);
     params.block_size = int3(4, 1, 4);

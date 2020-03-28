@@ -442,7 +442,7 @@ std::string GetDeconvolution4x4(const int2& block_size, bool use_local_mem) {
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params,
-    const RuntimeOptions& options) {
+    const DeviceInfo& device_info, const RuntimeOptions& options) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
@@ -454,9 +454,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
   const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
-  auto gpu_type = GetGpuType();
   if (shared_size < 1000 * 16 &&
-      (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8)) {
+      device_info.apple_info.IsLocalMemoryPreferredOverGlobal()) {
     desc->shader_source =
         GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
   } else {
@@ -543,7 +542,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
 std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
     int id, ValueId input_id, ValueId output_id,
     const ConvolutionTransposedAttributes& params,
-    const RuntimeOptions& options) {
+    const DeviceInfo& device_info, const RuntimeOptions& options) {
   const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
   const int dst_depth = IntegralDivideRoundUp(params.weights.shape.o, 4);
   const int kernel_x = 4;
@@ -596,12 +595,10 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed4x4(
   desc->id = id;
   desc->is_linkable = false;
 
-  const auto gpu_type = GetGpuType();
-  const bool powervr = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8 ||
-                       gpu_type == GpuType::kA9 || gpu_type == GpuType::kA10;
   const bool recommended_2x =
-      !powervr && options.storage_precision == RuntimeOptions::Precision::FP16;
-  const bool use_local_mem = powervr;
+      device_info.apple_info.IsBionic() &&
+      options.storage_precision == RuntimeOptions::Precision::FP16;
+  const bool use_local_mem = !device_info.apple_info.IsBionic();
   const int2 block_size(recommended_2x ? 2 : 1, 1);
   desc->shader_source = GetDeconvolution4x4(block_size, use_local_mem);
 
