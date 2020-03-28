@@ -152,21 +152,21 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   }
 
   void OnEventsDropped(const std::string& reason, uint32 num_events) override {
-    VLOG(kRocmTracerVlog) << "RocmTracerEvent(s) dropped (" << num_events
-                          << ") : " << reason << ".";
+    LOG(INFO) << "RocmTracerEvent(s) dropped (" << num_events
+              << ") : " << reason << ".";
   }
 
   void Flush() override {
     mutex_lock lock(aggregated_events_mutex_);
 
-    VLOG(kRocmTracerVlog) << "RocmTraceCollector collected "
-                          << num_callback_events_ << " callback events, "
-                          << num_activity_events_
-                          << " activity events, and aggregated them into "
-                          << aggregated_events_.size() << " events.";
+    VLOG(kRocmTracerVlog1) << "RocmTraceCollector collected "
+                           << num_callback_events_ << " callback events, "
+                           << num_activity_events_
+                           << " activity events, and aggregated them into "
+                           << aggregated_events_.size() << " events.";
 
     for (auto& iter : aggregated_events_) {
-      auto& event = iter.second;
+     auto& event = iter.second;
       if (event.device_id > options_.num_gpus) {
         OnEventsDropped("failed to determine device id", 1);
       } else {
@@ -211,7 +211,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 
   mutex aggregated_events_mutex_;
   absl::flat_hash_map<uint32, RocmTracerEvent> aggregated_events_
-      GUARDED_BY(aggregated_events_mutex_);
+      TF_GUARDED_BY(aggregated_events_mutex_);
 
   struct PerDeviceCollector {
     void AddEvent(const RocmTracerEvent& event) {
@@ -503,7 +503,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
     }
 
     mutex events_mutex;
-    std::vector<RocmTracerEvent> events GUARDED_BY(events_mutex);
+    std::vector<RocmTracerEvent> events TF_GUARDED_BY(events_mutex);
   };
 
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
@@ -513,7 +513,7 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
 class GpuTracer : public profiler::ProfilerInterface {
  public:
   GpuTracer(RocmTracer* rocm_tracer) : rocm_tracer_(rocm_tracer) {
-    VLOG(kRocmTracerVlog) << "GpuTracer created.";
+    LOG(INFO) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
 
@@ -640,7 +640,7 @@ Status GpuTracer::DoCollectData(StepStats* step_stats) {
 Status GpuTracer::CollectData(RunMetadata* run_metadata) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog)
+      VLOG(kRocmTracerVlog1)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -649,7 +649,7 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog) << "No trace data collected";
+      VLOG(kRocmTracerVlog1) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
@@ -672,7 +672,7 @@ Status GpuTracer::DoCollectData(XSpace* space) {
 Status GpuTracer::CollectData(XSpace* space) {
   switch (profiling_state_) {
     case State::kNotStarted:
-      VLOG(kRocmTracerVlog)
+      VLOG(kRocmTracerVlog1)
           << "No trace data collected, session wasn't started";
       return Status::OK();
     case State::kStartedOk:
@@ -681,7 +681,7 @@ Status GpuTracer::CollectData(XSpace* space) {
       LOG(ERROR) << "Cannot collect, roctracer failed to start";
       return Status::OK();
     case State::kStoppedError:
-      VLOG(kRocmTracerVlog) << "No trace data collected";
+      VLOG(kRocmTracerVlog1) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
       DoCollectData(space);
