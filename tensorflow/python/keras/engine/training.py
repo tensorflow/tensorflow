@@ -475,7 +475,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
-    This method is called by `Model._make_train_function`.
+    This method is called by `Model.make_train_function`.
 
     This method should contain the mathemetical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
@@ -483,7 +483,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_train_function`, which can also be overridden.
+    `Model.make_train_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -888,7 +888,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one evaluation step.
 
     This method can be overridden to support custom evaluation logic.
-    This method is called by `Model._make_test_function`.
+    This method is called by `Model.make_test_function`.
 
     This function should contain the mathemetical logic for one step of
     evaluation.
@@ -897,7 +897,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_test_function`, which can also be overridden.
+    `Model.make_test_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -1125,14 +1125,14 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one inference step.
 
     This method can be overridden to support custom inference logic.
-    This method is called by `Model._make_predict_function`.
+    This method is called by `Model.make_predict_function`.
 
     This method should contain the mathemetical logic for one step of inference.
     This typically includes the forward pass.
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_predict_function`, which can also be overridden.
+    `Model.make_predict_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
