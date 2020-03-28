@@ -274,7 +274,7 @@ cc_library(
         # For now this unconditionally depends on both ruy and gemmlowp.
         # See the comment inside class CpuBackendContext on the
         # gemmlowp_context_ and ruy_context_ members.
-        "//tensorflow/lite/experimental/ruy:context",
+        "//tensorflow/lite/experimental/ruy/ruy:context",
         "@gemmlowp",
         "//tensorflow/lite:external_cpu_backend_context",
     ],
@@ -295,8 +295,8 @@ cc_library(
         # We only need to depend on gemmlowp when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
-        "//tensorflow/lite/experimental/ruy:context",
-        "//tensorflow/lite/experimental/ruy:thread_pool",
+        "//tensorflow/lite/experimental/ruy/ruy:context",
+        "//tensorflow/lite/experimental/ruy/ruy:thread_pool",
         "@gemmlowp",
     ],
 )
@@ -334,9 +334,9 @@ cc_library(
         ":cpu_backend_threadpool",
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
-        "//tensorflow/lite/experimental/ruy",
-        "//tensorflow/lite/experimental/ruy:path",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/experimental/ruy/ruy",
+        "//tensorflow/lite/experimental/ruy/ruy:path",
+        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -355,7 +355,7 @@ cc_test(
         "@com_google_googletest//:gtest",
         # ruy's reference path provides the reference implementation
         # that this test compares against.
-        "//tensorflow/lite/experimental/ruy",
+        "//tensorflow/lite/experimental/ruy/ruy",
     ],
 )
 
@@ -596,7 +596,7 @@ cc_library(
         "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/kernels:hashtable_op_kernels",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//third_party/fft2d:fft2d_headers",
@@ -613,7 +613,7 @@ cc_library(
         ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/experimental/ruy/profiler:instrumentation",
+        "//tensorflow/lite/experimental/ruy/ruy/profiler:instrumentation",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:kernel_utils",
