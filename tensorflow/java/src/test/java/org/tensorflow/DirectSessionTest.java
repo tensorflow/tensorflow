@@ -5,7 +5,7 @@ package org.tensorflow;
 //import static org.junit.Assert.assertTrue;
 //import static org.junit.Assert.assertFalse;
 //import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
+//import static org.junit.Assert.fail;
 
 import java.nio.FloatBuffer;
 import java.util.Arrays;
@@ -128,8 +128,6 @@ public class DirectSessionTest {
 
       float [] res2 = new float[floats.length];
       res_gpu.copyTo(res2);
-
-      // print-that-crap!
       System.out.println(Arrays.toString(res2));
 
     }
