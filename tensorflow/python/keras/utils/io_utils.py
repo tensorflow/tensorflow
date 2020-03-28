@@ -53,6 +53,8 @@ else:
 
 def path_to_string(path):
   """
+  Convert `PathLike` objects to their string representation.
+
   If given a non-string typed path object, converts it to its string
   representation. Depending on the python version used, this function
   can handle the following arguments:
