@@ -32,7 +32,7 @@
   * Huber loss function has been updated to be consistent with other Keras losses. It now computes mean over the last axis of per-sample losses before applying the reduction function.
 * AutoGraph no longer converts functions passed to `tf.py_function`, `tf.py_func` and `tf.numpy_function`.
 * Deprecating `XLA_CPU` and `XLA_GPU` devices with this release.
-* Increasing the minimum bazel version to build TF to 1.2.1 to use Bazel's `cc_experimental_shared_library`.
+* Increasing the minimum bazel version to build TF to 2.0.0 to use Bazel's `cc_experimental_shared_library`.
 
 ## Known Caveats
 * Due to certain unforeseen circumstances, we are unable to release MacOS py3.8 binaries, but Windows/Linux binaries for py3.8 are available.
