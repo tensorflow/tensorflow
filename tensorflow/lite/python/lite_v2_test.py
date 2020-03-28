@@ -469,6 +469,22 @@ class FromSavedModelTest(lite_v2_test_util.ModelTest):
                   str(error.exception))
 
   @test_util.run_v2_only
+  def testNoConcreteFunctionModel(self):
+    root = self._getMultiFunctionModel()
+    input_data = tf.constant(1., shape=[1])
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save(root, save_dir)
+
+    converter = lite.TFLiteConverterV2.from_saved_model(save_dir)
+    self.assertLen(converter._funcs, 0)
+
+    with self.assertRaises(ValueError) as error:
+      _ = converter.convert()
+    self.assertIn('No ConcreteFunction is specified.',
+                  str(error.exception))
+
+  @test_util.run_v2_only
   def testKerasSequentialModel(self):
     """Test a simple sequential tf.Keras model."""
     input_data = tf.constant(1., shape=[1, 1])
