@@ -18,7 +18,7 @@ import org.junit.runners.JUnit4;
 
 @RunWith(JUnit4.class)
 public class DirectSessionTest {
-  private static final double EPSILON = 1e-7;
+  private static final float EPSILON_F = 1e-7f;
 
   @Test
   public void DirectSessionTest() {
@@ -33,7 +33,6 @@ public class DirectSessionTest {
                           .setAttr("dtype", DataType.FLOAT)
                           .setAttr("value", Tensor.<Float>create((float) 2.0, Float.class))
                           .build();
-
 
       Operation output = g.opBuilder("Mul", "output1")
                           .addInput(input1.output(0))
@@ -56,13 +55,13 @@ public class DirectSessionTest {
       // dummy run
       Tensor<?> res_cpu = s.runner().fetch("output1").feed("input1", t_cpu).run().get(0);
 
-      // don't have to test anything here
+      // don't have to test regular run
       /*
       float [] res1 = new float[floats.length];
       res_cpu.copyTo(res1);
 
       for (int i = 0; i < size; ++i) {
-        assertEquals(expected[i], res1[i], EPSILON);
+        assertEquals(expected[i], res1[i], EPSILON_F);
       }
       */
 
