@@ -525,7 +525,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual training
-    logic to `Model._train_step`.
+    logic to `Model.train_step`.
 
     This function is cached the first time `Model.fit` or
     `Model.train_on_batch` is called. The cache is cleared whenever
@@ -926,7 +926,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._test_step`.
+    logic to `Model.test_step`.
 
     This function is cached the first time `Model.evaluate` or
     `Model.test_on_batch` is called. The cache is cleared whenever
@@ -1153,7 +1153,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual evaluation
-    logic to `Model._predict_step`.
+    logic to `Model.predict_step`.
 
     This function is cached the first time `Model.predict` or
     `Model.predict_on_batch` is called. The cache is cleared whenever
