@@ -32,6 +32,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
+constexpr uint32 RocmTracerEvent::kInvalidDeviceId;
+
 #define RETURN_IF_ROCTRACER_ERROR(expr)                                      \
   do {                                                                       \
     roctracer_status_t status = expr;                                        \

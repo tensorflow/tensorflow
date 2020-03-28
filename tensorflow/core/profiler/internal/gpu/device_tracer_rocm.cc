@@ -92,14 +92,19 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
         start_gputime_ns_(start_gputime_ns),
-        per_device_collector_(options.num_gpus) {}
+        next_logical_device_id_(0),
+        per_device_collector_(options.num_gpus) {
+    // in the physical -> logical device_id map, add an explicit entry for
+    // RocmTracerEvent::kInvalidDeviceId -> RocmTracerEvent::kInvalidDeviceId
+    // event with this device_id are events for which we were not able to
+    // determine the correct device_id via the API+Activity callbacks
+    // we will special case such events in the Flush routine
+    device_id_map_[RocmTracerEvent::kInvalidDeviceId] =
+        RocmTracerEvent::kInvalidDeviceId;
+  }
 
   void AddEvent(RocmTracerEvent&& event) override {
     mutex_lock lock(aggregated_events_mutex_);
-
-    // TODO(rocm):
-    // hard-code the device_id to 0 for now
-    if (event.device_id > options_.num_gpus) event.device_id = 0;
 
     if (event.source == RocmTracerEventSource::ApiCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
@@ -166,11 +171,38 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
                            << aggregated_events_.size() << " events.";
 
     for (auto& iter : aggregated_events_) {
-     auto& event = iter.second;
-      if (event.device_id > options_.num_gpus) {
-        OnEventsDropped("failed to determine device id", 1);
+      auto& event = iter.second;
+      uint32 physical_id = event.device_id;
+
+      // determine the logical device id
+      uint32 logical_id = options_.num_gpus;
+      auto kv_pair = device_id_map_.find(physical_id);
+      if (kv_pair == device_id_map_.end()) {
+        logical_id = next_logical_device_id_++;
+        LOG(INFO) << "Mapping physical device id " << physical_id
+                  << " to logical device id " << logical_id;
+        device_id_map_[physical_id] = logical_id;
       } else {
-        per_device_collector_[event.device_id].AddEvent(event);
+        logical_id = kv_pair->second;
+      }
+
+      // hack
+      // if the logical_id is the default value (kInvalidDeviceId)
+      // and num_gpus == 1, set the logical_id to 0
+      if ((logical_id == RocmTracerEvent::kInvalidDeviceId) &&
+          (options_.num_gpus == 1)) {
+        VLOG(kRocmTracerVlog2) << "Explicitly setting device_id to 0 for event "
+                                  "with correlation_id="
+                               << event.correlation_id;
+        logical_id = 0;
+      }
+
+      if (logical_id >= options_.num_gpus) {
+        OnEventsDropped("logical device id >= num gpus", 1);
+        DumpRocmTracerEvent(event, 0, 0);
+      } else {
+        event.device_id = logical_id;
+        per_device_collector_[logical_id].AddEvent(event);
       }
     }
     aggregated_events_.clear();
@@ -212,6 +244,21 @@ class RocmTraceCollectorImpl : public profiler::RocmTraceCollector {
   mutex aggregated_events_mutex_;
   absl::flat_hash_map<uint32, RocmTracerEvent> aggregated_events_
       TF_GUARDED_BY(aggregated_events_mutex_);
+
+  // We need to create a map of
+  //  event.device_id -> index into per_device_collector_ array
+  // The event.device_id returned by the RocmTracer is the physical
+  // device_id and not the logical device_id. Say for example we are
+  // running on a node with 8 GPUs. The expected physical device_id(s)
+  // for those 8 GPUs would be 0,1,2,3,4,5,6,7. On such a node, if we
+  // run a test with HIP_VISIBLE_DEVICES=5, then "options.num_gpus_ == 1",
+  // but the event.device_id field will have 5 in it!
+  // So the event.device_id can be thought of as the physical device id
+  // and the index can be thought of as the logical device id.
+  // We cannot determine the actual phsyical device id logical device id
+  // mapping here, so we determine it empirically
+  std::map<uint32, uint32> device_id_map_;
+  uint32 next_logical_device_id_;
 
   struct PerDeviceCollector {
     void AddEvent(const RocmTracerEvent& event) {
