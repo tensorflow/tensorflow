@@ -180,6 +180,13 @@ def softplus(x):
 @keras_export('keras.activations.softsign')
 def softsign(x):
   """Softsign activation function.
+  
+  Example Usage:
+  
+  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> b = tf.keras.activations.softsign(a)
+  >>> b.numpy()
+  [-0.95238096, -0.5,  0.,  0.5, 0.95238096]
 
   Arguments:
       x: Input tensor.
