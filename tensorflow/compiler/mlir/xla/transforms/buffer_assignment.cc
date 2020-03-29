@@ -109,6 +109,38 @@ class FunctionAndBlockSignatureConverter : public OpConversionPattern<FuncOp> {
   }
 };
 
+template <typename ReturnOpSourceTy, typename ReturnOpTargetTy,
+          typename CopyOpTy>
+class NonVoidToVoidReturnOpConversion
+    : public OpConversionPattern<ReturnOpSourceTy> {
+ public:
+  using OpConversionPattern<ReturnOpSourceTy>::OpConversionPattern;
+
+  PatternMatchResult matchAndRewrite(
+      ReturnOpSourceTy returnOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto numReturnValues = returnOp.getNumOperands();
+    auto funcOp = returnOp.template getParentOfType<FuncOp>();
+    auto numFuncArgs = funcOp.getNumArguments();
+    auto loc = returnOp.getLoc();
+
+    for (auto operand : llvm::enumerate(operands)) {
+      auto returnArgNumber = numFuncArgs - numReturnValues + operand.index();
+      auto dstBuffer = funcOp.getArgument(returnArgNumber);
+      if (dstBuffer == operand.value()) {
+        continue;
+      }
+
+      rewriter.setInsertionPoint(
+          returnOp.getOperation()->getBlock()->getTerminator());
+      rewriter.create<CopyOpTy>(loc, llvm::None, operand.value(),
+                                funcOp.getArgument(returnArgNumber));
+    }
+    rewriter.replaceOpWithNewOp<ReturnOpTargetTy>(returnOp);
+    return OpConversionPattern<ReturnOpSourceTy>::matchSuccess();
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // BufferInsertPosition
 //===----------------------------------------------------------------------===//
