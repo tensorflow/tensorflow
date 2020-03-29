@@ -868,7 +868,7 @@ class ComputationBuilder(object):
                          shape,
                          name=None,
                          parameter_num=None,
-                         replicated=False):
+                         replicated=None):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -880,6 +880,7 @@ class ComputationBuilder(object):
         parameters, use it for *all* parameters to avoid clashes.
       replicated: whether to mark the parameter's leaves as replicated. May be a
         bool, in which case it applies to all leaves, or an iterable of bools.
+        The default is None, which means no replication annotation.
 
     Returns:
       An XlaOp.
@@ -888,7 +889,9 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
-    if isinstance(replicated, bool):
+    if replicated is None:
+      replicated = []
+    elif isinstance(replicated, bool):
       replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
