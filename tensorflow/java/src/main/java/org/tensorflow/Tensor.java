@@ -167,6 +167,10 @@ public final class Tensor<T> implements AutoCloseable {
     return t;
   }
 
+  public void setValueGPU(Object obj){
+    setValueGPU(getNativeHandle(), obj);
+  }
+
   /**
    * Create a {@link Integer} Tensor with data from the given buffer.
    *
@@ -862,6 +866,8 @@ public final class Tensor<T> implements AutoCloseable {
   private static native void readNDArray(long handle, Object value);
 
   private static native long allocateGPU(long[] shape, int dtype);
+
+  private static native void setValueGPU(long handle, Object value);
 
   private static native long getGPUPointer(long handle);
 
