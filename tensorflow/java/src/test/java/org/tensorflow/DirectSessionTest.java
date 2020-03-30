@@ -1,16 +1,8 @@
 package org.tensorflow;
 
-//import static java.nio.charset.StandardCharsets.UTF_8;
-
-//import static org.junit.Assert.assertTrue;
-//import static org.junit.Assert.assertFalse;
-//import static org.junit.Assert.assertEquals;
-//import static org.junit.Assert.fail;
+import static org.junit.Assert.assertEquals;
 
 import java.nio.FloatBuffer;
-import java.util.Arrays;
-
-//import org.tensorflow.framework.CallableOptions;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -55,7 +47,7 @@ public class DirectSessionTest {
       // dummy run
       Tensor<?> res_cpu = s.runner().fetch("output1").feed("input1", t_cpu).run().get(0);
 
-      // don't have to test regular run
+      // don't have to test a regular run
       /*
       float [] res1 = new float[floats.length];
       res_cpu.copyTo(res1);
@@ -65,14 +57,12 @@ public class DirectSessionTest {
       }
       */
 
-      // now we need to teleport data to GPU;
-
       //String gpuDeviceName = s.GPUDeviceName();
-      // Expecting but not insisting on "/job:localhost/replica:0/task:0/device:GPU:0"
+      // Expecting but not insisting on string "/job:localhost/replica:0/task:0/device:GPU:0"
       //byte[] gpuName = gpuDeviceName.getBytes(UTF_8);
 
       /*
-       * The following message is found in SavedModelBundleTest.java, enjoy:
+       * The following message is copied from SavedModelBundleTest.java:
        */
 
       // Ideally this would use the generated Java sources for protocol buffers
@@ -102,6 +92,7 @@ public class DirectSessionTest {
       /*
        * "For this test, for now, the use of specific bytes suffices."
        */
+      /* feed from GPU options: */
       byte[] opts = {
         0x0a, 0x08, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x31, 0x3a, 0x30, 0x12, 0x09, 0x6f, 0x75, 0x74, 0x70,
         0x75, 0x74, 0x31, 0x3a, 0x30, 0x32, 0x38, 0x0a, 0x08, 0x69, 0x6e, 0x70, 0x75, 0x74, 0x31, 0x3a,
@@ -110,28 +101,29 @@ public class DirectSessionTest {
         0x3a, 0x30, 0x2f, 0x64, 0x65, 0x76, 0x69, 0x63, 0x65, 0x3a, 0x47, 0x50, 0x55, 0x3a, 0x30
       };
 
-      /*
-      feed from GPU options:
-      {
+      /* partially dechipered:
+      byte[] opts = {
         0x0a, 0x08, "input1:0",
         0x12, 0x09, "output1:0",
         0x32, 0x38,
           0x0a, 0x08, "input1:0",
           0x12, 0x2c, "/job:localhost/replica:0/task:0/device:GPU:0"
-      }
+      };
       */
 
-      Tensor<?> t_gpu = Tensor.createGPU(new long[]{256},DataType.FLOAT);
+      Tensor<?> t_gpu = Tensor.createGPU(new long[]{size},DataType.FLOAT);
+      t_gpu.setValueGPU(floats);
 
       long handle = s.makeCallable(opts);
       Tensor<?> res_gpu = s.runner().fetch("output1").feed("input1",t_gpu).runCallable(handle).get(0);
 
-      float [] res2 = new float[floats.length];
-      res_gpu.copyTo(res2);
-      System.out.println(Arrays.toString(res2));
+      float [] res_gpu_buf = new float[floats.length];
+      res_gpu.copyTo(res_gpu_buf);
 
+      for (int i = 0; i < size; ++i) {
+        assertEquals(expected[i], res_gpu_buf[i], EPSILON_F);
+      }
     }
-
   }
 
 }
