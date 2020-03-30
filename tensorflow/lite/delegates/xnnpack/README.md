@@ -62,6 +62,15 @@ Below is the list of current operators and limitations:
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
   output are not supported.
 
+### `AVERAGE_POOL_2D`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* 1x1 pooling is not supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
 ### `CONV_2D`
 
 * Inputs and outputs must be in 32-bit floating-point format.
@@ -91,6 +100,15 @@ Below is the list of current operators and limitations:
 ### `LOGISTIC`
 
 * Inputs and outputs must be in 32-bit floating-point format.
+* Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
+  output are not supported.
+
+### `MAX_POOL_2D`
+
+* Inputs and outputs must be in 32-bit floating-point format.
+* 1x1 pooling is not supported.
+* Fused `NONE`, `RELU`, `RELU_N1_TO_1`, and `RELU6` activations are supported,
+  but fused `TANH` and `SIGN_BIT` activations are not.
 * Dynamically allocated (with `kTfLiteDynamic` allocation type) inputs and
   output are not supported.
 

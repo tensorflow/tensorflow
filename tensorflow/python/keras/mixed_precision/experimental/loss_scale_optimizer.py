@@ -333,6 +333,9 @@ class LossScaleOptimizer(optimizer_v2.OptimizerV2):
   def set_weights(self, weights):
     return self._optimizer.set_weights(weights)
 
+  def _aggregate_gradients(self, grads_and_vars):
+    return self._optimizer._aggregate_gradients(grads_and_vars)  # pylint: disable=protected-access
+
   # For the most part, we only expose methods in the base OptimizerV2, not
   # individual subclasses like Adam. However, although "learning_rate" and "lr"
   # properties are not part of the base OptimizerV2 class, they are part of most

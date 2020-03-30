@@ -50,8 +50,8 @@ void EagerProcessFunctionLibraryRuntime::Run(
                                               std::move(done));
   }
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done =
-      ApplyCleanUpToDoneCallback(cleanup_items, done, /*rendezvous=*/nullptr);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
+                                    /*rendezvous=*/nullptr);
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {

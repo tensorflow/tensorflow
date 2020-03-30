@@ -122,6 +122,8 @@ const StatTypeMap& GetStatTypeMap() {
       {"fragmentation", kFragmentation},
       {"peak_bytes_in_use", kPeakBytesInUse},
       {"requested_bytes", kRequestedBytes},
+      {"allocation_bytes", kAllocationBytes},
+      {"addr", kAddress},
       {"shape", kTensorShapes},
       // Device trace arguments.
       {"device_id", kDeviceId},

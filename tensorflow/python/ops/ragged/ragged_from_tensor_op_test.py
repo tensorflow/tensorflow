@@ -20,6 +20,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
+import numpy as np
+
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -499,6 +502,66 @@ class RaggedTensorFromTensorOpTest(test_util.TensorFlowTestCase,
       self.assertEqual(rt.ragged_rank, ragged_rank)
       self.assertTrue(dt.shape.is_compatible_with(rt.shape))
       self.assertAllEqual(rt, expected)
+      self.assertAllEqual(rt, RaggedTensor.from_nested_row_splits(
+          rt.flat_values, rt.nested_row_splits, validate=True))
+
+  @parameterized.named_parameters([
+      {
+          'testcase_name': '2D_UnknownRank',
+          'tensor': [[1, 2], [3, 4]],
+          'tensor_shape': None,
+      },
+      {
+          'testcase_name': '2D_Shape_None_None',
+          'tensor': [[1, 2], [3, 4]],
+          'tensor_shape': [None, None],
+      },
+      {
+          'testcase_name': '2D_Shape_2_None',
+          'tensor': [[1, 2], [3, 4]],
+          'tensor_shape': [2, None],
+      },
+      {
+          'testcase_name': '2D_Shape_None_2',
+          'tensor': [[1, 2], [3, 4]],
+          'tensor_shape': [None, 2],
+      },
+      {
+          'testcase_name': '4D_UnknownRank',
+          'tensor': np.ones([4, 3, 2, 1]),
+          'tensor_shape': None,
+      },
+      {
+          'testcase_name': '4D_Shape_None_None_None_None',
+          'tensor': np.ones([4, 3, 2, 1]),
+          'tensor_shape': [None, None, None, None],
+      },
+      {
+          'tensor': np.ones([4, 3, 2, 1]),
+          'tensor_shape': [4, None, None, 1],
+          'testcase_name': '4D_Shape_4_None_None_1',
+      },
+  ])
+  def testPartialShapes(self, tensor, tensor_shape, shape=None,
+                        expected=None):
+    if expected is None:
+      expected = tensor
+
+    if context.executing_eagerly():
+      return  # static shapes are always fully defined in eager mode.
+
+    dt = constant_op.constant(tensor)
+    for ragged_rank in range(1, len(dt.shape) - 1):
+      dt_placeholder = array_ops.placeholder_with_default(tensor, tensor_shape)
+      rt = RaggedTensor.from_tensor(dt_placeholder, ragged_rank=ragged_rank)
+      self.assertIsInstance(rt, RaggedTensor)
+      self.assertEqual(rt.ragged_rank, ragged_rank)
+      self.assertTrue(
+          dt.shape.is_compatible_with(rt.shape),
+          '%s is incompatible with %s' % (dt.shape, rt.shape))
+      if shape is not None:
+        self.assertEqual(rt.shape.as_list(), shape)
+      self.assertAllEqual(rt, expected.tolist())
       self.assertAllEqual(rt, RaggedTensor.from_nested_row_splits(
           rt.flat_values, rt.nested_row_splits, validate=True))
 

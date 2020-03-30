@@ -732,6 +732,7 @@ genrule(
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +
            "-I external/llvm-project/mlir/include " +
+           "-I external/org_tensorflow " +
            "$(location //tensorflow/compiler/mlir/xla:ir/hlo_ops.td) " +
            " -o $@"),
     tools = [":operator_writer_gen"],

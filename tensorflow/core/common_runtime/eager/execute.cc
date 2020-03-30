@@ -583,11 +583,11 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   if (executor.Async()) {
     const DataTypeVector& output_dtypes = kernel->output_dtypes();
     for (int i = 0; i < num_outputs; ++i) {
-      TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+      retvals[i] = TensorHandle::CreateEmptyLocalHandle(
           /* d= */ ctx.CanonicalDevice(kernel->OutputDevice(i)),
           /* op_device= */ kernel->device(),
           /* resource_device= */ kernel->OutputResourceDevice(i),
-          output_dtypes[i], &ctx, &retvals[i]));
+          output_dtypes[i], &ctx);
     }
     auto node = absl::make_unique<AsyncExecuteNode>(
         &ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
@@ -773,18 +773,8 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // remote device here. We just need to know that it is remote. If we need
     // to copy this tensor to this process, the remote end will know the
     // correct device of this handle.
-    Status status = TensorHandle::CreateUnshapedRemoteHandle(
-        id, i, remote_task, output_dtypes[i], op_device, &ctx, &retvals[i]);
-    if (!status.ok()) {
-      for (int j = 0; j < i; ++j) {
-        retvals[j]->PoisonRemote(
-            errors::Internal(
-                "Failed to construct unshaped remote tensor handle at index ",
-                i, " for op ", op->Name()),
-            op_device, ctx.GetContextViewId());
-      }
-      return status;
-    }
+    retvals[i] = TensorHandle::CreateUnshapedRemoteHandle(
+        id, i, remote_task, output_dtypes[i], op_device, &ctx);
   }
 
   if (ctx.LazyCopyFunctionRemoteInputs()) {
@@ -1056,12 +1046,11 @@ Status EagerKernelExecute(
 
   for (int i = 0; i < retvals.size(); ++i) {
     if (retvals[i] == nullptr) {
-      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
+      retvals[i] = TensorHandle::CreateLocalHandle(
           std::move(outputs[i]),
           /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
           /* op_device= */ kernel->device(),
-          /* resource_device= */ kernel->OutputResourceDevice(i), ctx,
-          &retvals[i]));
+          /* resource_device= */ kernel->OutputResourceDevice(i), ctx);
     } else {
       DCHECK_EQ(kernel->device(), retvals[i]->op_device());
       DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
@@ -1100,8 +1089,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     h->Ref();
     *result = h;
   } else {
-    TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
-        d, dstd, h->resource_device(), h->dtype, ctx, result));
+    *result = TensorHandle::CreateEmptyLocalHandle(
+        d, dstd, h->resource_device(), h->dtype, ctx);
   }
 
   Status s;
@@ -1169,9 +1158,9 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         h->Ref();
         *result = h;
       } else {
-        TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+        *result = TensorHandle::CreateEmptyLocalHandle(
             /* d= */ d, /* op_device= */ device,
-            /*resource_device=*/nullptr, h->dtype, ctx, result));
+            /*resource_device=*/nullptr, h->dtype, ctx);
       }
     } else {
       if (mirror) {
@@ -1194,8 +1183,8 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
         h->Ref();
         *result = h;
       } else {
-        TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
-            recv_op_id, 0, remote_task, h->dtype, device, ctx, result));
+        *result = TensorHandle::CreateUnshapedRemoteHandle(
+            recv_op_id, 0, remote_task, h->dtype, device, ctx);
       }
     }
 

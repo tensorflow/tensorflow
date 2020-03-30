@@ -114,6 +114,44 @@ PyObject* CalibrationWrapper::Prepare() {
   Py_RETURN_NONE;
 }
 
+PyObject* CalibrationWrapper::Prepare(PyObject* input_shapes) {
+  TFLITE_PY_ENSURE_VALID_INTERPRETER();
+  if (!PyList_Check(input_shapes)) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input shapes: expected shapes to be a list.");
+    return nullptr;
+  }
+
+  const size_t inputs_size = PyList_Size(input_shapes);
+  if (inputs_size != interpreter_->inputs().size()) {
+    PyErr_Format(PyExc_ValueError,
+                 "Invalid input shapes: expected %ld items got %ld items.",
+                 interpreter_->inputs().size(), inputs_size);
+    return nullptr;
+  }
+
+  for (size_t i = 0; i < inputs_size; i++) {
+    PyObject* shape = PyList_GetItem(input_shapes, i);
+    if (!shape || !PyList_Check(shape)) {
+      PyErr_Format(PyExc_ValueError,
+                   "Invalid %ld input shape: expected to be a list.", i);
+      return nullptr;
+    }
+    std::vector<int> dims;
+    for (size_t dim_index = 0; dim_index < PyList_Size(shape); ++dim_index) {
+      PyObject* dim = PyList_GetItem(shape, dim_index);
+      dims.push_back(PyLong_AsLong(dim));
+    }
+    int input_tensor_idx = interpreter_->inputs()[i];
+    if (interpreter_->ResizeInputTensor(input_tensor_idx, dims) != kTfLiteOk) {
+      PyErr_Format(PyExc_ValueError, "Failed to resize %ld input tensor.", i);
+      return nullptr;
+    }
+  }
+
+  return Prepare();
+}
+
 PyObject* CalibrationWrapper::FeedTensor(PyObject* input_value) {
   TFLITE_PY_ENSURE_VALID_INTERPRETER();
   if (!PyList_Check(input_value)) {

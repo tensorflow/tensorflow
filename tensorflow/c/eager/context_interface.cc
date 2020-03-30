@@ -121,20 +121,13 @@ std::unique_ptr<AbstractTensorInterface> ContextInterface::CreateBoolTensor(
       Tensor(DT_BOOL, TensorShape(dim_sizes)));
 }
 
-Status ContextInterface::CreateLocalHandle(
-    const std::unique_ptr<AbstractTensorInterface> t,
-    std::unique_ptr<AbstractTensorHandleInterface>* h) {
+std::unique_ptr<AbstractTensorHandleInterface>
+ContextInterface::CreateLocalHandle(
+    const std::unique_ptr<AbstractTensorInterface> t) {
   Tensor tensor = tensorflow::down_cast<TensorInterface*>(t.get())->Tensor();
-  tensorflow::TensorHandle* handle = nullptr;
-  auto status =
+  return std::make_unique<TensorHandleInterface>(
       TensorHandle::CreateLocalHandle(std::move(tensor), /*d=*/ctx_->HostCPU(),
-                                      /*op_device=*/nullptr, ctx_, &handle);
-  if (!status.ok()) {
-    return status;
-  }
-  *h = std::make_unique<TensorHandleInterface>(handle);
-
-  return status;
+                                      /*op_device=*/nullptr, ctx_));
 }
 
 std::unique_ptr<AbstractOperationInterface>

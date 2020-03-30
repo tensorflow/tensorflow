@@ -919,7 +919,10 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
   if (!status->status.ok()) return nullptr;
-  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
+
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(
+          tensorflow::TensorHandle::CreateLocalHandle(tensor))};
 }
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
@@ -1074,10 +1077,12 @@ TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
   }
 
   return new TFE_TensorHandle{
-      std::unique_ptr<AbstractTensorHandleInterface>(h->handle->Copy())};
+      std::unique_ptr<tensorflow::AbstractTensorHandleInterface>(
+          h->handle->Copy())};
 }
 
-AbstractTensorHandleInterface* tensorflow::TensorHandleInterface::Copy() {
+tensorflow::AbstractTensorHandleInterface*
+tensorflow::TensorHandleInterface::Copy() {
   handle_->Ref();
   return new TensorHandleInterface(handle_);
 }
@@ -1166,8 +1171,7 @@ void* TFE_TensorHandleDevicePointer(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
+      tensorflow::TensorHandleFromInterface(h->handle);
   if (VariantDeviceIsCustom(handle->device())) {
     const tensorflow::Tensor* t;
     status->status = handle->Tensor(&t);
@@ -1228,19 +1232,17 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   tensorflow::Tensor t(static_cast<tensorflow::DataType>(dtype),
                        tensorflow::TensorShape(dimvec), buf);
   buf->Unref();
-  tensorflow::TensorHandle* ret_handle;
   if (custom_device == nullptr) {
-    status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), device, device, context, &ret_handle);
+    return new TFE_TensorHandle{
+        std::make_unique<tensorflow::TensorHandleInterface>(
+            tensorflow::TensorHandle::CreateLocalHandle(std::move(t), device,
+                                                        device, context))};
   } else {
-    status->status = tensorflow::TensorHandle::CreateLocalHandle(
-        std::move(t), custom_device, context, &ret_handle);
+    return new TFE_TensorHandle{
+        std::make_unique<tensorflow::TensorHandleInterface>(
+            tensorflow::TensorHandle::CreateLocalHandle(
+                std::move(t), custom_device, context))};
   }
-  if (!status->status.ok()) {
-    return nullptr;
-  }
-  return new TFE_TensorHandle{
-      std::make_unique<tensorflow::TensorHandleInterface>(ret_handle)};
 }
 
 // This function will block till the operation that produces `h` has
@@ -1254,9 +1256,7 @@ size_t TFE_TensorHandleDeviceMemorySize(TFE_TensorHandle* h,
     return 0;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
-
+      tensorflow::TensorHandleFromInterface(h->handle);
   if (handle->IsRemote()) {
     status->status = tensorflow::errors::InvalidArgument(
         "TFE_TensorHandleDeviceMemorySize may not be called on a remote tensor "
@@ -1309,8 +1309,8 @@ void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
 
 void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
                         TF_Status* status) {
-  absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>> handles(
-      num_inputs);
+  absl::FixedArray<std::unique_ptr<tensorflow::AbstractTensorHandleInterface>>
+      handles(num_inputs);
   for (int i = 0; i < num_inputs; ++i) {
     handles[i].reset(inputs[i]->handle->Copy());
   }
@@ -1504,8 +1504,8 @@ TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
-  absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>> handles(
-      *num_retvals);
+  absl::FixedArray<std::unique_ptr<tensorflow::AbstractTensorHandleInterface>>
+      handles(*num_retvals);
   status->status = op->operation->Execute(&handles, num_retvals);
   if (!status->status.ok()) {
     return;
@@ -1529,10 +1529,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     status->status = context->FindCustomDeviceFromName(device_name, &dev);
     if (status->status.ok()) {
       status->status = dev->CopyTensorToDevice(
-          tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-              h->handle.get())
-              ->Handle(),
-          &handle);
+          tensorflow::TensorHandleFromInterface(h->handle), &handle);
       if (status->status.ok()) {
         return new TFE_TensorHandle{
             std::make_unique<tensorflow::TensorHandleInterface>(handle)};
@@ -1549,10 +1546,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   status->status = context->FindCustomDeviceFromName(handle_device_name, &dev);
   if (status->status.ok()) {
     status->status = dev->CopyTensorFromDevice(
-        tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-            h->handle.get())
-            ->Handle(),
-        device_name, &handle);
+        tensorflow::TensorHandleFromInterface(h->handle), device_name, &handle);
     if (status->status.ok()) {
       return new TFE_TensorHandle{
           std::make_unique<tensorflow::TensorHandleInterface>(handle)};
@@ -1562,9 +1556,8 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
 
   // Handle regular case.
   status->status = tensorflow::EagerCopyToDevice(
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle(),
-      context, &context->Executor(), device, false, &handle);
+      tensorflow::TensorHandleFromInterface(h->handle), context,
+      &context->Executor(), device, false, &handle);
   if (status->status.ok()) {
     return new TFE_TensorHandle{
         std::make_unique<tensorflow::TensorHandleInterface>(handle)};
@@ -1622,7 +1615,9 @@ void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
 
 TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
                                       TF_Status* status) {
-  return TFE_TensorHandle::CreateLocalHandle(t, status);
+  return new TFE_TensorHandle{
+      std::make_unique<tensorflow::TensorHandleInterface>(
+          tensorflow::TensorHandle::CreateLocalHandle(t))};
 }
 
 void TFE_ContextExportRunMetadata(TFE_Context* ctx, TF_Buffer* buf,
@@ -1767,9 +1762,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle* result_handle =
         device_.copy_tensor_to_device(context_, &tensor_handle, &status, info_);
     if (!status.status.ok()) return status.status;
-    *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                  result_handle->handle.get())
-                  ->Handle();
+    *result = tensorflow::TensorHandleFromInterface(result_handle->handle);
     (*result)->Ref();
     delete result_handle;
     return status.status;
@@ -1786,9 +1779,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     TFE_TensorHandle* result_handle = device_.copy_tensor_from_device(
         context_, &tensor_handle, target_device_name.c_str(), &status, info_);
     if (!status.status.ok()) return status.status;
-    *result = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                  result_handle->handle.get())
-                  ->Handle();
+    *result = tensorflow::TensorHandleFromInterface(result_handle->handle);
     (*result)->Ref();
     delete result_handle;
     return status.status;
@@ -1812,9 +1803,7 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
                     &attributes, num_retvals, outputs.data(), &status, info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
-        retvals[i] = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                         outputs[i]->handle.get())
-                         ->Handle();
+        retvals[i] = tensorflow::TensorHandleFromInterface(outputs[i]->handle);
         retvals[i]->Ref();
         delete outputs[i];
       }

@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -47,9 +46,7 @@ const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
-          ->Handle();
-
+      tensorflow::TensorHandleFromInterface(h->handle);
   if (handle->IsRemote()) {
     status->status = tensorflow::errors::InvalidArgument(
         "DLPack doesn't support remote tensor");

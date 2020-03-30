@@ -278,26 +278,23 @@ struct Converter {
   static Status Convert(TFE_Context* ctx, PyObject* obj, ConverterState* state,
                         TFE_TensorHandle** h, const char** error) {
     // TODO(josh11b): Allocator & attributes
-    std::unique_ptr<AbstractTensorInterface> tensor;
+    std::unique_ptr<AbstractTensorInterface> t;
     if (state->inferred_shape.empty()) { /* Scalar case */
       T value;
       auto scalar = ZeroDimArrayToScalar(obj, state);
       *error = ConverterTraits<T>::ConvertScalar(scalar, &value);
       Py_DECREF(scalar);
       if (*error != nullptr) return errors::InvalidArgument(*error);
-      tensor = ConverterTraits<T>::CreateScalar(ctx, value);
+      t = ConverterTraits<T>::CreateScalar(ctx, value);
     } else {
-      tensor = ConverterTraits<T>::CreateTensor(ctx, state->inferred_shape);
-      if (tensor->NumElements() > 0) {
-        T* buf = static_cast<T*>(tensor->Data());
+      t = ConverterTraits<T>::CreateTensor(ctx, state->inferred_shape);
+      if (t->NumElements() > 0) {
+        T* buf = static_cast<T*>(t->Data());
         *error = Helper(obj, 0, state, &buf);
         if (*error != nullptr) return errors::InvalidArgument(*error);
       }
     }
-    std::unique_ptr<AbstractTensorHandleInterface> handle;
-    TF_RETURN_IF_ERROR(
-        ctx->context->CreateLocalHandle(std::move(tensor), &handle));
-    *h = new TFE_TensorHandle{std::move(handle)};
+    *h = new TFE_TensorHandle{ctx->context->CreateLocalHandle(std::move(t))};
     return Status::OK();
   }
 };
@@ -679,20 +676,18 @@ typedef Converter<bool> BoolConverter;
 TFE_TensorHandle* NumpyToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj) {
   std::unique_ptr<AbstractTensorHandleInterface> handle;
   tensorflow::Tensor t;
-  auto cppstatus = tensorflow::NdarrayToTensor(obj, &t);
-  if (cppstatus.ok()) {
-    cppstatus = ctx->context->CreateLocalHandle(
-        std::make_unique<TensorInterface>(std::move(t)), &handle);
-  }
-  if (!cppstatus.ok()) {
+  tensorflow::Status status = tensorflow::NdarrayToTensor(obj, &t);
+  if (!status.ok()) {
     PyErr_SetString(PyExc_ValueError,
                     tensorflow::strings::StrCat(
                         "Failed to convert a NumPy array to a Tensor (",
-                        cppstatus.error_message(), ").")
+                        status.error_message(), ").")
                         .c_str());
     return nullptr;
   }
-  return new TFE_TensorHandle{std::move(handle)};
+
+  return new TFE_TensorHandle{ctx->context->CreateLocalHandle(
+      std::make_unique<TensorInterface>(std::move(t)))};
 }
 
 }  // namespace
@@ -874,16 +869,10 @@ TFE_TensorHandle* PySeqToTFE_TensorHandle(TFE_Context* ctx, PyObject* obj,
 
     case DT_INVALID:  // Only occurs for empty tensors.
     {
-      std::unique_ptr<AbstractTensorHandleInterface> handle;
       Tensor t(requested_dtype == DT_INVALID ? DT_FLOAT : requested_dtype,
                TensorShape(state.inferred_shape));
-      status = ctx->context->CreateLocalHandle(
-          std::make_unique<TensorInterface>(std::move(t)), &handle);
-      if (!status.ok()) {
-        PyErr_SetString(PyExc_ValueError, status.error_message().c_str());
-        return nullptr;
-      }
-      return new TFE_TensorHandle{std::move(handle)};
+      return new TFE_TensorHandle{ctx->context->CreateLocalHandle(
+          std::make_unique<TensorInterface>(std::move(t)))};
     }
 
     default:

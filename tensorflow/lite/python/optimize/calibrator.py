@@ -55,9 +55,17 @@ class Calibrator(object):
     if not self._calibrator:
       raise ValueError("Failed to parse the model.")
 
-  def calibrate_and_quantize(self, dataset_gen, input_type, output_type,
-                             allow_float, activations_type = lite_constants.INT8):
+  def calibrate_and_quantize(self,
+                             dataset_gen,
+                             input_type,
+                             output_type,
+                             allow_float,
+                             resize_input=True,
+                             activations_type = lite_constants.INT8):
     """Calibrates the model with specified generator and then quantizes it.
+
+    The input shapes of the calibrator are resized with the calibration data if
+    `resize_input` is set.
 
     Returns:
       A quantized model.
@@ -70,21 +78,35 @@ class Calibrator(object):
                    computation, useful when targeting an integer-only backend.
                    If False, an error will be thrown if an operation cannot be
                    quantized, otherwise the model will fallback to float ops.
-      activations_type: A tf.dtype representing the desired type for activations
+      activations_type: A tf.dtype representing the desired type for activations.
+      resize_input: A boolean. True if the shape of the sample data is different
+        from the input.
     """
-    self._calibrator.Prepare()
-    for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor(calibration_sample)
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        if resize_input:
+          self._calibrator.Prepare([list(s.shape) for s in sample])
+        else:
+          self._calibrator.Prepare()
+      self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float,
         np.dtype(activations_type.as_numpy_dtype()).num)
 
-  def calibrate_and_quantize_single(self, dataset_gen, input_type, output_type,
-                                    allow_float, op_output_name):
+  def calibrate_and_quantize_single(self,
+                                    dataset_gen,
+                                    input_type,
+                                    output_type,
+                                    allow_float,
+                                    op_output_name,
+                                    resize_input=True):
     """Calibrates the model with specified generator and then quantizes it.
 
     Only the single op with output op_output_name will be quantized.
+    The input shapes of the calibrator are resized with the calibration data.
 
     Returns:
       A quantized model.
@@ -98,10 +120,18 @@ class Calibrator(object):
         error will be thrown if an operation cannot be quantized, otherwise the
         model will fallback to float ops.
       op_output_name: A string, only this op will be quantized.
+      resize_input: A boolean. True if the shape of the sample data is different
+        from the input.
     """
-    self._calibrator.Prepare()
-    for calibration_sample in dataset_gen():
-      self._calibrator.FeedTensor(calibration_sample)
+    initialized = False
+    for sample in dataset_gen():
+      if not initialized:
+        initialized = True
+        if resize_input:
+          self._calibrator.Prepare([list(s.shape) for s in sample])
+        else:
+          self._calibrator.Prepare()
+      self._calibrator.FeedTensor(sample)
     return self._calibrator.QuantizeModel(
         np.dtype(input_type.as_numpy_dtype()).num,
         np.dtype(output_type.as_numpy_dtype()).num, allow_float, op_output_name)
