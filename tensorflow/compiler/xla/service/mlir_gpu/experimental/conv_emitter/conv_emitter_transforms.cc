@@ -143,7 +143,7 @@ void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
   std::rotate(permutation.begin(),
               permutation.begin() + loops.size() - rotate_amount,
               permutation.end());
-  mlir::interchangeLoops(
+  mlir::permuteLoops(
       llvm::ArrayRef<mlir::AffineForOp>(loops.begin(), loops.end()),
       permutation);
 }
