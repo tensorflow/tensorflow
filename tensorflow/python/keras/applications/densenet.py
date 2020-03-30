@@ -433,9 +433,9 @@ DOC = """
 
   ```python
   #Extract image features with DenseNet121
-  from keras.applications.DenseNet121 import DenseNet121
+  from keras.applications.densenet import DenseNet121
   from keras.preprocessing import image
-  from keras.applications.DenseNet121 import preprocess_input
+  from keras.applications.densenet import preprocess_input
   import numpy as np
 
   #create a DenseNet121 model pre-trained on imagenet
