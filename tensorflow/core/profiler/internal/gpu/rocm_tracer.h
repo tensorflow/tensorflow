@@ -30,7 +30,8 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-const int kRocmTracerVlog = 3;
+const int kRocmTracerVlog1 = 1;
+const int kRocmTracerVlog2 = 3;
 
 struct MemcpyDetails {
   // The amount of data copied for memcpy events.
