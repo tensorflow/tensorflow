@@ -1229,13 +1229,18 @@ class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
       splits_shape = array_ops.shape(self.row_splits, out_type=out_type)
       flat_values_shape = array_ops.shape(rt_flat_values, out_type=out_type)
 
-      ragged_dimensions = array_ops.stack([splits_shape[0] - 1] + [
+      ragged_dimensions = [splits_shape[0] - 1] + [
           math_ops.maximum(math_ops.reduce_max(splits[1:] - splits[:-1]), 0)
           for splits in nested_splits
-      ])
+      ]
       inner_dimensions = flat_values_shape[1:]
 
-      bbox = array_ops.concat([ragged_dimensions, inner_dimensions], axis=0)
+      if out_type != self._row_partition.dtype:
+        ragged_dimensions = [
+            math_ops.cast(d, out_type) for d in ragged_dimensions
+        ]
+      bbox = array_ops.concat(
+          [array_ops.stack(ragged_dimensions), inner_dimensions], axis=0)
       return bbox if axis is None else array_ops.gather(bbox, axis)
 
   #=============================================================================
