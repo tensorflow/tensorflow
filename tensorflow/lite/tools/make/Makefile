@@ -119,7 +119,8 @@ $(wildcard tensorflow/lite/c/*.c) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc) \
 $(wildcard tensorflow/lite/experimental/resource/*.cc) \
-$(wildcard tensorflow/lite/experimental/ruy/*.cc)
+$(wildcard tensorflow/lite/experimental/ruy/*.cc)  \
+$(wildcard tensorflow/lite/experimental/ruy/ruy/*.cc)
 ifneq ($(BUILD_TYPE),micro)
 CORE_CC_ALL_SRCS += \
 $(wildcard tensorflow/lite/kernels/*.cc) \
@@ -142,14 +143,18 @@ CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
+$(wildcard tensorflow/lite/*/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
+$(wildcard tensorflow/lite/*/*/*/example*.cc) \
 $(wildcard tensorflow/lite/*/*/test*.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*tool.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/ruy/test*.cc) \
+$(wildcard tensorflow/lite/experimental/ruy/ruy/profiler/test*.cc) \
 $(wildcard tensorflow/lite/kernels/*test_main.cc) \
 $(wildcard tensorflow/lite/kernels/*test_util*.cc) \
-tensorflow/lite/experimental/ruy/tune_tool.cc \
+tensorflow/lite/experimental/ruy/ruy/tune_tool.cc \
 tensorflow/lite/tflite_with_xnnpack.cc \
 $(MINIMAL_SRCS)
 
