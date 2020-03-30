@@ -560,6 +560,48 @@ DOC = """
 
   Returns:
     A Keras model instance.
+
+  Example:
+
+  ```python
+  #Extract image features with ResNet50
+  from tensorflow.keras.applications.resnet import ResNet50
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.resnet import preprocess_input
+  import numpy as np
+
+  #create a ResNet50 model pre-trained on imagenet
+  model = ResNet50(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
+  >>>model = ResNet101(weights = None)
+  >>>model.name
+  'resnet101'
+
+  >>>model = ResNet152(weights = None)
+  >>>model.name
+  'resnet152'
+
+  >>>model = ResNet50(weights = None)
+  >>>model.name
+  'resnet50'
+
+  Raises:
+    ValueError: in case of invalid argument for `weights`,
+      or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
+
 """
 
 setattr(ResNet50, '__doc__', ResNet50.__doc__ + DOC)
