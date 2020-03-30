@@ -231,6 +231,7 @@ py_library(
         "//tensorflow/core/profiler:internal",
     ],
     deps = [
+        "//tensorflow/python:util",
         "//tensorflow/python/profiler/internal:_pywrap_profiler",
     ],
 )
