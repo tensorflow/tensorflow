@@ -183,10 +183,10 @@ def softsign(x):
   
   Example Usage:
   
-  >>> a = tf.constant([-20, -1.0, 0.0, 1.0, 20], dtype = tf.float32)
+  >>> a = tf.constant([-1.0, 0.0, 1.0], dtype = tf.float32)
   >>> b = tf.keras.activations.softsign(a)
   >>> b.numpy()
-  [-0.95238096, -0.5,  0.,  0.5, 0.95238096]
+  [-0.5,  0.,  0.5]
 
   Arguments:
       x: Input tensor.
@@ -200,8 +200,8 @@ def softsign(x):
 @keras_export('keras.activations.swish')
 def swish(x):
   """Swish activation function.
-  Swish is an activation function which returns `x*sigmoid(x)`, swish tends to work
-  better than ReLU on deeper models.
+  
+  Swish is an activation function which returns `x*sigmoid(x)`. 
   
   Example Usage:
   
@@ -214,7 +214,7 @@ def swish(x):
       x: Input tensor.
 
   Returns:
-      The swish activation applied to `x`: `x*sigmoid(x)`
+      The swish activation applied to `x`: `x*sigmoid(x)`.
   """
   return nn.swish(x)
 
@@ -300,8 +300,6 @@ def sigmoid(x):
   >>> b = tf.keras.activations.sigmoid(a)
   >>> b.numpy()
   [2.0611537e-09, 2.6894143e-01, 5.0000000e-01, 7.3105860e-01, 1.0000000e+00]
-  >>> b.numpy() >= 0.0
-  array([ True,  True,  True,  True,  True])
 
   Arguments:
       x: Input tensor.
