@@ -45,17 +45,21 @@ limitations under the License.
 #if GOOGLE_CUDA 
 using gpuFloatComplex = cuFloatComplex;
 using gpuDoubleComplex = cuDoubleComplex;
+using gpuStream_t = cudaStream_t;
+using gpuEvent_t = cudaEvent_t;
 #define gpuEventRecord cudaEventRecord
 #define gpuEventSynchronize cudaEventSynchronize
 #define gpuEventDestroy cudaEventDestroy
 #define gpuEventCreate cudaEventCreate
 #define gpuEventCreateWithFlags cudaEventCreateWithFlags
 #define gpuEventDisableTiming cudaEventDisableTiming
-typedef cudaStream_t gpuStream_t;
-typedef cudaEvent_t gpuEvent_t;
 #elif TENSORFLOW_USE_ROCM
 using gpuFloatComplex = hipFloatComplex;
 using gpuDoubleComplex = hipDoubleComplex;
+using gpuStream_t = hipStream_t;
+using gpuEvent_t = hipEvent_t;
+using cudaError = int;
+using cudaError_t = int;
 #define cudaSuccess 0
 #define cudaGetLastError hipGetLastError
 #define gpuEventRecord hipEventRecord
@@ -64,12 +68,7 @@ using gpuDoubleComplex = hipDoubleComplex;
 #define gpuEventCreate hipEventCreate
 #define gpuEventCreateWithFlags hipEventCreateWithFlags
 #define gpuEventDisableTiming hipEventDisableTiming 
-typedef hipStream_t gpuStream_t;
-typedef hipEvent_t gpuEvent_t;
-typedef int cudaError;
-typedef int cudaError_t;
 static std::string cudaGetErrorString(int err) { return std::to_string(err); }
-
 #endif
 
 #define TF_RETURN_IF_CUDA_ERROR(result)                   \
