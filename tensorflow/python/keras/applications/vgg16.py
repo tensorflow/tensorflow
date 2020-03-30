@@ -102,9 +102,9 @@ def VGG16(
 
   ```python
   #Extract image features with VGG16
-  from keras.applications.vgg16 import VGG16
-  from keras.preprocessing import image
-  from keras.applications.vgg16 import preprocess_input
+  from tensorflow.keras.applications.vgg16 import VGG16
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.vgg16 import preprocess_input
   import numpy as np
 
   #create a VGG16 model pre-trained on imagenet

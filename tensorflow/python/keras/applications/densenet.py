@@ -397,7 +397,7 @@ DOC = """
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.
@@ -433,9 +433,9 @@ DOC = """
 
   ```python
   #Extract image features with DenseNet121
-  from keras.applications.densenet import DenseNet121
-  from keras.preprocessing import image
-  from keras.applications.densenet import preprocess_input
+  from tensorflow.keras.applications.densenet import DenseNet121
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.densenet import preprocess_input
   import numpy as np
 
   #create a DenseNet121 model pre-trained on imagenet
