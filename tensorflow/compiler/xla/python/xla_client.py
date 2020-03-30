@@ -147,7 +147,8 @@ class LocalBackend(Backend):
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
-                                        compile_options.device_assignment)
+                                        compile_options.device_assignment,
+                                        compile_options.tuple_arguments)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:
@@ -504,6 +505,7 @@ class CompileOptions(object):
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
+    self.tuple_arguments = False
 
 
 class Computation(object):
