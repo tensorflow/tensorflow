@@ -55,34 +55,10 @@ class BufferAssignmentDominators
 };
 }  // namespace detail
 
-/// Stores a proper alloc position to place dialect-specific alloc operations.
-struct BufferInsertPosition {
- public:
-  /// Creates a new positions tuple including alloc and dealloc positions.
-  BufferInsertPosition(Operation* allocPosition);
-
-  /// Returns the alloc position before which the alloc operation has to be
-  /// inserted.
-  Operation* getAllocPosition() const { return allocPosition; }
-
-  /// Inserts a new dialect-specific alloc operation that will be constructed in
-  /// the right place using the arguments provided.
-  /// TODO(dfki): Value can be removed from arguments.
-  template <typename AllocOpT, typename... Args>
-  AllocOpT insertAlloc(Value value, Args... args) const {
-    OpBuilder allocBuilder(value.getDefiningOp());
-    allocBuilder.setInsertionPoint(allocPosition);
-    return allocBuilder.create<AllocOpT>(args...);
-  }
-
- private:
-  Operation* allocPosition;
-};
-
 /// Prepares a buffer assignment phase. It can place (user-defined) alloc
 /// nodes. This simplifies the integration of the actual buffer-assignment
 /// pass. Sample usage:
-///   BufferAssignmentLegalizer baHelper(value);
+///   BufferAssignmentPlacer baHelper(regionOp);
 ///   -> determine alloc positions
 ///   auto allocPosition = baHelper.computeAllocPosition(value);
 ///   -> place alloc
@@ -94,20 +70,16 @@ struct BufferInsertPosition {
 /// Note: this class is intended to be used during legalization. In order
 /// to move alloc and dealloc nodes into the right places you can use the
 /// createBufferAssignmentPass() function.
-class BufferAssignmentLegalizer {
+class BufferAssignmentPlacer {
  public:
   /// Creates a new assignment builder.
-  explicit BufferAssignmentLegalizer(Operation* op);
+  explicit BufferAssignmentPlacer(Operation* op);
 
   /// Returns the operation this analysis was constructed from.
   Operation* getOperation() const { return operation; }
 
-  /// Automatically converts all tensor types in the scope of all signatures to
-  /// memref types.
-  void applySignatureConversion(FuncOp& funcOp);
-
   /// Computes the actual position to place allocs for the given value.
-  BufferInsertPosition computeAllocPosition(Value value) const;
+  OpBuilder::InsertPoint computeAllocPosition(Value value) const;
 
  private:
   /// The operation this analysis was constructed from.
@@ -117,7 +89,7 @@ class BufferAssignmentLegalizer {
   detail::BufferAssignmentDominators<false> dominators;
 };
 
-/// Helper conversion pattern that encapsulates a BufferAssignmentLegalizer
+/// Helper conversion pattern that encapsulates a BufferAssignmentPlacer
 /// instance.
 template <typename SourceOp>
 class BufferAssignmentOpConversionPattern
@@ -125,13 +97,69 @@ class BufferAssignmentOpConversionPattern
  public:
   BufferAssignmentOpConversionPattern(
       MLIRContext* context_,
-      xla::BufferAssignmentLegalizer* bufferAssignment_ = nullptr,
+      xla::BufferAssignmentPlacer* bufferAssignment_ = nullptr,
       PatternBenefit benefit_ = 1)
       : OpConversionPattern<SourceOp>(context_, benefit_),
         bufferAssignment(bufferAssignment_) {}
 
  protected:
-  xla::BufferAssignmentLegalizer* bufferAssignment;
+  xla::BufferAssignmentPlacer* bufferAssignment;
+};
+
+// Converts only the tensor-type function and block arguments to memref-type.
+class FunctionAndBlockSignatureConverter
+    : public BufferAssignmentOpConversionPattern<FuncOp> {
+ public:
+  using BufferAssignmentOpConversionPattern<
+      FuncOp>::BufferAssignmentOpConversionPattern;
+
+  // Adding functions whose arguments are memref type to the set of legal
+  // operations.
+  static void addDynamicallyLegalFuncOp(ConversionTarget& target);
+
+  // Performs the actual signature rewriting step.
+  PatternMatchResult matchAndRewrite(
+      FuncOp funcOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final;
+};
+
+// This pattern converter transforms a non-void ReturnOpSourceTy into a void
+// return of type ReturnOpTargetTy. It uses a copy operation of type CopyOpTy to
+// copy the results to the output buffer.
+template <typename ReturnOpSourceTy, typename ReturnOpTargetTy,
+          typename CopyOpTy>
+class NonVoidToVoidReturnOpConverter
+    : public OpConversionPattern<ReturnOpSourceTy> {
+ public:
+  using OpConversionPattern<ReturnOpSourceTy>::OpConversionPattern;
+
+  // Performs the actual return-op conversion step.
+  PatternMatchResult matchAndRewrite(
+      ReturnOpSourceTy returnOp, ArrayRef<Value> operands,
+      ConversionPatternRewriter& rewriter) const final {
+    auto numReturnValues = returnOp.getNumOperands();
+    auto funcOp = returnOp.template getParentOfType<FuncOp>();
+    auto numFuncArgs = funcOp.getNumArguments();
+    auto loc = returnOp.getLoc();
+
+    // Find the corresponding output buffer for each operand.
+    for (auto operand : llvm::enumerate(operands)) {
+      auto returnArgNumber = numFuncArgs - numReturnValues + operand.index();
+      auto dstBuffer = funcOp.getArgument(returnArgNumber);
+      if (dstBuffer == operand.value()) {
+        continue;
+      }
+
+      // Insert the copy operation to copy before the return.
+      rewriter.setInsertionPoint(
+          returnOp.getOperation()->getBlock()->getTerminator());
+      rewriter.create<CopyOpTy>(loc, llvm::None, operand.value(),
+                                funcOp.getArgument(returnArgNumber));
+    }
+    // Insert the new target return operation.
+    rewriter.replaceOpWithNewOp<ReturnOpTargetTy>(returnOp);
+    return OpConversionPattern<ReturnOpSourceTy>::matchSuccess();
+  }
 };
 
 }  // namespace xla

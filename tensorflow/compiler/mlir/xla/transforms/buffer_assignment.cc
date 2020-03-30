@@ -59,134 +59,7 @@ limitations under the License.
 
 namespace mlir {
 namespace xla {
-
-//===----------------------------------------------------------------------===//
-// FunctionAndBlockSignatureConverter
-//===----------------------------------------------------------------------===//
-
-// Converts only the tensor-type function and block arguments to memref-type.
-class FunctionAndBlockSignatureConverter : public OpConversionPattern<FuncOp> {
- public:
-  using OpConversionPattern::OpConversionPattern;
-
-  PatternMatchResult matchAndRewrite(
-      FuncOp funcOp, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    auto toMemrefConverter = [&](Type t) -> Type {
-      if (auto tensorType = t.dyn_cast<RankedTensorType>()) {
-        return MemRefType::get(tensorType.getShape(),
-                               tensorType.getElementType());
-      }
-      return t;
-    };
-    // Converting tensor-type function arguments to memref-type.
-    auto funcType = funcOp.getType();
-    TypeConverter::SignatureConversion conversion(funcType.getNumInputs());
-    for (auto argType : llvm::enumerate(funcType.getInputs())) {
-      conversion.addInputs(argType.index(), toMemrefConverter(argType.value()));
-    }
-    for (auto resType : funcType.getResults()) {
-      conversion.addInputs(toMemrefConverter(resType));
-    }
-    rewriter.updateRootInPlace(funcOp, [&] {
-      funcOp.setType(
-          rewriter.getFunctionType(conversion.getConvertedTypes(), llvm::None));
-      rewriter.applySignatureConversion(&funcOp.getBody(), conversion);
-    });
-    // Converting tensor-type block arugments of all blocks inside the
-    // function region to memref-type except for the entry block.
-    for (auto& block : funcOp.getBlocks()) {
-      if (block.isEntryBlock()) continue;
-      for (int i = 0, e = block.getNumArguments(); i < e; ++i) {
-        auto oldArg = block.getArgument(i);
-        auto newArg =
-            block.insertArgument(i, toMemrefConverter(oldArg.getType()));
-        oldArg.replaceAllUsesWith(newArg);
-        block.eraseArgument(i + 1, false);
-      }
-    }
-    return matchSuccess();
-  }
-};
-
-template <typename ReturnOpSourceTy, typename ReturnOpTargetTy,
-          typename CopyOpTy>
-class NonVoidToVoidReturnOpConversion
-    : public OpConversionPattern<ReturnOpSourceTy> {
- public:
-  using OpConversionPattern<ReturnOpSourceTy>::OpConversionPattern;
-
-  PatternMatchResult matchAndRewrite(
-      ReturnOpSourceTy returnOp, ArrayRef<Value> operands,
-      ConversionPatternRewriter& rewriter) const final {
-    auto numReturnValues = returnOp.getNumOperands();
-    auto funcOp = returnOp.template getParentOfType<FuncOp>();
-    auto numFuncArgs = funcOp.getNumArguments();
-    auto loc = returnOp.getLoc();
-
-    for (auto operand : llvm::enumerate(operands)) {
-      auto returnArgNumber = numFuncArgs - numReturnValues + operand.index();
-      auto dstBuffer = funcOp.getArgument(returnArgNumber);
-      if (dstBuffer == operand.value()) {
-        continue;
-      }
-
-      rewriter.setInsertionPoint(
-          returnOp.getOperation()->getBlock()->getTerminator());
-      rewriter.create<CopyOpTy>(loc, llvm::None, operand.value(),
-                                funcOp.getArgument(returnArgNumber));
-    }
-    rewriter.replaceOpWithNewOp<ReturnOpTargetTy>(returnOp);
-    return OpConversionPattern<ReturnOpSourceTy>::matchSuccess();
-  }
-};
-
-//===----------------------------------------------------------------------===//
-// BufferInsertPosition
-//===----------------------------------------------------------------------===//
-
-BufferInsertPosition::BufferInsertPosition(Operation* allocPosition)
-    : allocPosition(allocPosition) {}
-
-//===----------------------------------------------------------------------===//
-// BufferAssignmentLegalizer
-//===----------------------------------------------------------------------===//
-
-/// Creates a new assignment builder.
-BufferAssignmentLegalizer::BufferAssignmentLegalizer(Operation* op)
-    : operation(op), dominators(op) {}
-
-void BufferAssignmentLegalizer::applySignatureConversion(FuncOp& funcOp) {
-  OwningRewritePatternList patterns;
-  ConversionTarget target(*funcOp.getContext());
-  // Adding functions whose all arguments are memref type to the set of legal
-  // operations.
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    auto inputs = op.getType().getInputs();
-    return std::all_of(inputs.begin(), inputs.end(),
-                       [](Type input) { return input.isa<MemRefType>(); });
-  });
-  patterns.insert<FunctionAndBlockSignatureConverter>(funcOp.getContext());
-  if (failed(applyPartialConversion(funcOp, target, patterns, nullptr))) {
-    funcOp.emitOpError()
-        << "Failed to apply function and block signature conversions";
-  }
-}
-
-/// Computes the actual position to place allocs for the given value.
-BufferInsertPosition BufferAssignmentLegalizer::computeAllocPosition(
-    Value value) const {
-  if (auto arg = value.dyn_cast<BlockArgument>()) {
-    // This is a block argument which has to be allocated in the scope
-    // of its associated terminator.
-    auto domNode = dominators.getNode(arg.getOwner());
-    assert(domNode != nullptr & "Cannot find dominator info");
-    auto idomNode = domNode->getIDom();
-    assert(idomNode != nullptr & "There is no parent dominator");
-    return BufferInsertPosition(idomNode->getBlock()->getTerminator());
-  }
-  return BufferInsertPosition(value.getDefiningOp());
-}
+namespace {
 
 //===----------------------------------------------------------------------===//
 // BufferAssignmentAliasAnalysis
@@ -293,6 +166,7 @@ struct BufferAssignmentPositions {
 // BufferAssignmentAnalysis
 //===----------------------------------------------------------------------===//
 
+// The main buffer assignment analysis used to place allocs and deallocs.
 class BufferAssignmentAnalysis {
  public:
   using DeallocSetT = SmallPtrSet<Operation*, 2>;
@@ -353,7 +227,7 @@ class BufferAssignmentAnalysis {
 
  private:
   /// Finds a proper placement block to store alloc/dealloc node according to
-  /// the algorithm descirbed at the top of the file. It supports dominator and
+  /// the algorithm described at the top of the file. It supports dominator and
   /// post-dominator analyses via template arguments.
   template <typename AliasesT, typename DominatorT>
   Block* findPlacementBlock(Value value, const AliasesT& aliases,
@@ -454,7 +328,7 @@ class BufferAssignmentAnalysis {
 };
 
 //===----------------------------------------------------------------------===//
-// BufferAssignment
+// BufferAssignmentPass
 //===----------------------------------------------------------------------===//
 
 /// The actual buffer assignment pass that moves alloc and dealloc nodes into
@@ -501,6 +375,94 @@ struct BufferAssignmentPass : mlir::FunctionPass<BufferAssignmentPass> {
   };
 };
 
+}  // namespace
+
+//===----------------------------------------------------------------------===//
+// BufferAssignmentPlacer
+//===----------------------------------------------------------------------===//
+
+/// Creates a new assignment placer.
+BufferAssignmentPlacer::BufferAssignmentPlacer(Operation* op)
+    : operation(op), dominators(op) {}
+
+/// Computes the actual position to place allocs for the given value.
+OpBuilder::InsertPoint BufferAssignmentPlacer::computeAllocPosition(
+    Value value) const {
+  Operation* insertOp;
+  if (auto arg = value.dyn_cast<BlockArgument>()) {
+    // This is a block argument which has to be allocated in the scope
+    // of its associated terminator.
+    auto domNode = dominators.getNode(arg.getOwner());
+    assert(domNode != nullptr & "Cannot find dominator info");
+    auto idomNode = domNode->getIDom();
+    assert(idomNode != nullptr & "There is no parent dominator");
+    insertOp = idomNode->getBlock()->getTerminator();
+  } else {
+    insertOp = value.getDefiningOp();
+  }
+  OpBuilder opBuilder(insertOp);
+  return opBuilder.saveInsertionPoint();
+}
+
+//===----------------------------------------------------------------------===//
+// FunctionAndBlockSignatureConverter
+//===----------------------------------------------------------------------===//
+
+// Performs the actual signature rewriting step.
+PatternMatchResult FunctionAndBlockSignatureConverter::matchAndRewrite(
+    FuncOp funcOp, ArrayRef<Value> operands,
+    ConversionPatternRewriter& rewriter) const {
+  auto toMemrefConverter = [&](Type t) -> Type {
+    if (auto tensorType = t.dyn_cast<RankedTensorType>()) {
+      return MemRefType::get(tensorType.getShape(),
+                             tensorType.getElementType());
+    }
+    return t;
+  };
+  // Converting tensor-type function arguments to memref-type.
+  auto funcType = funcOp.getType();
+  TypeConverter::SignatureConversion conversion(funcType.getNumInputs());
+  for (auto argType : llvm::enumerate(funcType.getInputs())) {
+    conversion.addInputs(argType.index(), toMemrefConverter(argType.value()));
+  }
+  for (auto resType : funcType.getResults()) {
+    conversion.addInputs(toMemrefConverter(resType));
+  }
+  rewriter.updateRootInPlace(funcOp, [&] {
+    funcOp.setType(
+        rewriter.getFunctionType(conversion.getConvertedTypes(), llvm::None));
+    rewriter.applySignatureConversion(&funcOp.getBody(), conversion);
+  });
+  // Converting tensor-type block arugments of all blocks inside the
+  // function region to memref-type except for the entry block.
+  for (auto& block : funcOp.getBlocks()) {
+    if (block.isEntryBlock()) continue;
+    for (int i = 0, e = block.getNumArguments(); i < e; ++i) {
+      auto oldArg = block.getArgument(i);
+      auto newArg =
+          block.insertArgument(i, toMemrefConverter(oldArg.getType()));
+      oldArg.replaceAllUsesWith(newArg);
+      block.eraseArgument(i + 1, false);
+    }
+  }
+  return matchSuccess();
+}
+
+// Adding functions whose arguments are memref type to the set of legal
+// operations.
+void FunctionAndBlockSignatureConverter::addDynamicallyLegalFuncOp(
+    ConversionTarget& target) {
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    auto inputs = op.getType().getInputs();
+    return std::all_of(inputs.begin(), inputs.end(),
+                       [](Type input) { return input.isa<MemRefType>(); });
+  });
+}
+
+//===----------------------------------------------------------------------===//
+// Buffer assignment pass registrations
+//===----------------------------------------------------------------------===//
+
 std::unique_ptr<OpPassBase<FuncOp>> createBufferAssignmentPass() {
   return absl::make_unique<BufferAssignmentPass>();
 }
@@ -514,8 +476,8 @@ static PassRegistration<BufferAssignmentPass> buffer_assignment_pass(
 /// analysis.
 struct BufferAssignmentTestPass : mlir::FunctionPass<BufferAssignmentTestPass> {
   void runOnFunction() override {
-    llvm::errs() << "Testing : " << getFunction().getName() << "\n";
-    getAnalysis<BufferAssignmentAnalysis>().print(llvm::errs());
+    llvm::outs() << "Testing : " << getFunction().getName() << "\n";
+    getAnalysis<BufferAssignmentAnalysis>().print(llvm::outs());
   };
 };
 
