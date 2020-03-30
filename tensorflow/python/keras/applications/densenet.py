@@ -430,6 +430,40 @@ DOC = """
 
   Returns:
     A Keras model instance.
+
+  ```python
+  #Extract image features with DenseNet121
+  from keras.applications.DenseNet121 import DenseNet121
+  from keras.preprocessing import image
+  from keras.applications.DenseNet121 import preprocess_input
+  import numpy as np
+
+  #create a DenseNet121 model pre-trained on imagenet
+  model = DenseNet121(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
+  >>>model = DenseNet121(weights = None)
+  >>>model.name
+  'densenet121'
+
+  >>>model = DenseNet169(weights = None)
+  >>>model.name
+  'densenet169'
+
+  >>>model = DenseNet201(weights = None)
+  >>>model.name
+  'densenet201'
+
 """
 
 setattr(DenseNet121, '__doc__', DenseNet121.__doc__ + DOC)
