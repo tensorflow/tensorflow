@@ -686,7 +686,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       # use `compute_output_shape` manually with shapes that are incompatible
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
-      self._maybe_build(input_shape)
+      self._maybe_build(input_shape=input_shape)
       with func_graph.FuncGraph('graph').as_default():
         input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
         def _make_placeholder_like(shape):
@@ -2431,7 +2431,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     else:
       return values
 
-  def _maybe_build(self, inputs):
+  def _maybe_build(self, inputs, input_shape=None):
     # Check input assumptions set before layer building, e.g. input rank.
     if not self.built:
       input_spec.assert_input_compatibility(
