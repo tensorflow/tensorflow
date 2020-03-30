@@ -8,6 +8,10 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    exclude = [
+        "**/v1_1.0_224_frozen.wrong_attr.line.part.pbtxt",
+        "**/v1_1.0_224_frozen.wrong_attr.stack.part.pbtxt",
+    ],
     test_file_exts = [
         "pbtxt",
         #        "py", TODO(b/150304798)

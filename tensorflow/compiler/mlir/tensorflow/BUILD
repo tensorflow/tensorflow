@@ -1116,6 +1116,10 @@ tf_cc_test(
     name = "compile_mlir_util_test",
     size = "small",
     srcs = ["utils/compile_mlir_util_test.cc"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":compile_mlir_util",
         "//tensorflow/compiler/tf2xla:common",
