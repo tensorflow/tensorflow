@@ -70,6 +70,28 @@ class Delegate {
     options_ = options ? *options : TfLiteGpuDelegateOptionsV2Default();
   }
 
+  TfLiteDelegate* tflite_delegate() { return &delegate_; }
+  const TfLiteGpuDelegateOptionsV2& options() const { return options_; }
+
+ private:
+  TfLiteDelegate delegate_ = {
+      .data_ = reinterpret_cast<void*>(this),
+      .Prepare = DelegatePrepare,
+      .CopyFromBufferHandle = nullptr,
+      .CopyToBufferHandle = nullptr,
+      .FreeBufferHandle = nullptr,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
+
+  TfLiteGpuDelegateOptionsV2 options_;
+};
+
+// Represent the execution of a subset of nodes on GPU.
+class DelegateKernel {
+ public:
+  explicit DelegateKernel(const TfLiteGpuDelegateOptionsV2& options)
+      : options_(options) {}
+
   absl::Status Prepare(TfLiteContext* context,
                        const TfLiteDelegateParams* delegate_params) {
     thread_id_prepare_ = std::this_thread::get_id();
@@ -133,20 +155,6 @@ class Delegate {
     return builder->Build(&runner_);
   }
 
-  absl::Status SetInputsAndOutputs(TfLiteContext* context) {
-    int i = 0;
-    for (auto index : input_indices_) {
-      RETURN_IF_ERROR(
-          runner_->SetInputObject(i++, GetTensorObject(index, context)));
-    }
-    i = 0;
-    for (auto index : output_indices_) {
-      RETURN_IF_ERROR(
-          runner_->SetOutputObject(i++, GetTensorObject(index, context)));
-    }
-    return absl::OkStatus();
-  }
-
   absl::Status Invoke(TfLiteContext* context) {
     if (thread_id_prepare_ != std::this_thread::get_id()) {
       TFLITE_LOG(tflite::TFLITE_LOG_WARNING,
@@ -160,6 +168,19 @@ class Delegate {
 
     RETURN_IF_ERROR(SetInputsAndOutputs(context));
     return runner_->Run();
+  }
+
+ private:
+  absl::Status SetInputsAndOutputs(TfLiteContext* context) {
+    for (int i = 0; i < input_indices_.size(); ++i) {
+      RETURN_IF_ERROR(runner_->SetInputObject(
+          i, GetTensorObject(input_indices_[i], context)));
+    }
+    for (int i = 0; i < output_indices_.size(); ++i) {
+      RETURN_IF_ERROR(runner_->SetOutputObject(
+          i, GetTensorObject(output_indices_[i], context)));
+    }
+    return absl::OkStatus();
   }
 
   ObjectDef GetObjectDef(int index) const {
@@ -176,9 +197,6 @@ class Delegate {
     return MakeCpuMemory(absl::MakeSpan(tensor.data.raw, tensor.bytes));
   }
 
-  TfLiteDelegate* tflite_delegate() { return &delegate_; }
-
- private:
   absl::Status InitializeOpenClApi(GraphFloat32* graph,
                                    std::unique_ptr<InferenceBuilder>* builder,
                                    bool* graph_is_destroyed) {
@@ -230,28 +248,20 @@ class Delegate {
     return absl::OkStatus();
   }
 
-  TfLiteDelegate delegate_ = {
-      reinterpret_cast<void*>(this),  // .data_
-      DelegatePrepare,                // .Prepare
-      nullptr,                        // .CopyFromBufferHandle
-      nullptr,                        // .CopyToBufferHandle
-      nullptr,                        // .FreeBufferHandle
-      kTfLiteDelegateFlagsNone,       // .flags
-  };
-
-  TfLiteGpuDelegateOptionsV2 options_;
+  // Shared across all DelegateKernel instances, passed by the Delegate
+  // instance.
+  const TfLiteGpuDelegateOptionsV2& options_;
   std::unique_ptr<cl::InferenceEnvironment> cl_environment_;
   std::unique_ptr<gl::InferenceEnvironment> gl_environment_;
   std::unique_ptr<InferenceRunner> runner_;
   std::vector<int64_t> input_indices_;
   std::vector<int64_t> output_indices_;
-
   std::thread::id thread_id_prepare_;  // thread id used for Prapare()
   bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
 };
 
-inline Delegate* GetDelegate(TfLiteNode* node) {
-  return reinterpret_cast<Delegate*>(node->user_data);
+inline DelegateKernel* GetDelegateKernel(TfLiteNode* node) {
+  return reinterpret_cast<DelegateKernel*>(node->user_data);
 }
 
 inline Delegate* GetDelegate(TfLiteDelegate* delegate) {
@@ -267,16 +277,20 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         auto* gpu_delegate = GetDelegate(params->delegate);
         // Everything below should happen in prepare function call, but TFLite
         // for whatever reason forbids that.
-        const auto status = gpu_delegate->Prepare(context, params);
+        DelegateKernel* gpu_delegate_kernel =
+            new DelegateKernel(gpu_delegate->options());
+        const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Init: %s",
                                std::string(status.message()).c_str());
           return nullptr;
         }
-        return gpu_delegate;
+        return gpu_delegate_kernel;
       },
       // .free
-      [](TfLiteContext*, void* buffer) -> void {},
+      [](TfLiteContext*, void* buffer) -> void {
+        delete reinterpret_cast<DelegateKernel*>(buffer);
+      },
       // .prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         if (!node->user_data) {
@@ -292,7 +306,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       },
       // .invoke
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
-        const auto status = GetDelegate(node)->Invoke(context);
+        const auto status = GetDelegateKernel(node)->Invoke(context);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
                                std::string(status.message()).c_str());
