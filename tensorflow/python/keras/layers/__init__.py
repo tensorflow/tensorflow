@@ -85,6 +85,11 @@ from tensorflow.python.keras.layers.convolutional import SeparableConvolution1D
 from tensorflow.python.keras.layers.convolutional import SeparableConvolution2D
 from tensorflow.python.keras.layers.convolutional import DepthwiseConv2D
 
+#Octave Convolution Layers
+from tensorflow.python.keras.layers.octaveconvolution import OctaveConv1D
+from tensorflow.python.keras.layers.octaveconvolution import OctaveConvDual
+from tensorflow.python.keras.layers.octaveconvolution import OctaveConv2D
+
 # Image processing layers.
 from tensorflow.python.keras.layers.convolutional import UpSampling1D
 from tensorflow.python.keras.layers.convolutional import UpSampling2D
