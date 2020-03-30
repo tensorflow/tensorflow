@@ -1,3 +1,8 @@
+/* Copyright 2020 Elphel, Inc.
+
+SPDX-License-Identifier: Apache-2.0
+==============================================================================*/
+
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
