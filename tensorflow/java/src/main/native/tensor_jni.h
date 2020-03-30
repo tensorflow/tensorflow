@@ -160,6 +160,14 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateGPU(JNIEnv *, jclass,
 
 /*
  * Class:     org_tensorflow_Tensor
+ * Method:    setValueGPU
+ * Signature: -
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_setValueGPU(JNIEnv *, jclass,
+                                                              jlong, jobject);
+
+/*
+ * Class:     org_tensorflow_Tensor
  * Method:    getGPUPointer
  * Signature: -
  */
