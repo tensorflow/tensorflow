@@ -365,6 +365,29 @@ def NASNetMobile(input_shape=None,
   Returns:
       A Keras model instance.
 
+  Example:
+
+  ```python
+  #Extract image features with NASNetMobile
+  from tensorflow.keras.applications.nasnet import NASNetMobile
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.nasnet import preprocess_input
+  import numpy as np
+
+  #create a NASNetMobile model pre-trained on imagenet
+  model = NASNetMobile(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
   Raises:
       ValueError: In case of invalid argument for `weights`,
           or invalid input shape.
@@ -432,6 +455,29 @@ def NASNetLarge(input_shape=None,
 
   Returns:
       A Keras model instance.
+
+  Example:
+
+  ```python
+  #Extract image features with NASNetLarge
+  from tensorflow.keras.applications.nasnet import NASNetLarge
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.nasnet import preprocess_input
+  import numpy as np
+
+  #create a NASNetLarge model pre-trained on imagenet
+  model = NASNetLarge(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(331, 331))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
 
   Raises:
       ValueError: in case of invalid argument for `weights`,
