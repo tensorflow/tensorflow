@@ -178,6 +178,31 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
 }
 
 //===----------------------------------------------------------------------===//
+// DotGeneralOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(DotGeneralOp op) {
+  auto dot_dimension_numbers = op.dot_dimension_numbers();
+  int64_t lhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_batching_dimensions().getValues<int64_t>());
+  int64_t rhs_batching_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_batching_dimensions().getValues<int64_t>());
+  if (lhs_batching_dimensions_size != rhs_batching_dimensions_size) {
+    return op.emitError()
+           << "lhs and rhs should have the same number of batching dimensions";
+  }
+  int64_t lhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.lhs_contracting_dimensions().getValues<int64_t>());
+  int64_t rhs_contracting_dimensions_size = llvm::size(
+      dot_dimension_numbers.rhs_contracting_dimensions().getValues<int64_t>());
+  if (lhs_contracting_dimensions_size != rhs_contracting_dimensions_size) {
+    return op.emitError() << "lhs and rhs should have the same number of "
+                             "contracting dimensions";
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // IotaOp
 //===----------------------------------------------------------------------===//
 

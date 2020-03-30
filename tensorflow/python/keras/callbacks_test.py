@@ -2160,6 +2160,8 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         validation_data=(x, y),
         callbacks=[tb_cbk])
 
+    time.sleep(1)  # Avoids the second profile over-writing the first.
+
     model.fit(
         x,
         y,

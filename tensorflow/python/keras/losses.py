@@ -1401,8 +1401,7 @@ def categorical_hinge(y_true, y_pred):
   >>> assert np.array_equal(loss.numpy(), np.maximum(0., neg - pos + 1.))
 
   Args:
-    y_true: The ground truth values. `y_true` values are expected to be -1 or 1.
-      If binary (0 or 1) labels are provided they will be converted to -1 or 1.
+    y_true: The ground truth values. `y_true` values are expected to be 0 or 1.
     y_pred: The predicted values.
 
   Returns:

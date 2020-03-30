@@ -1269,26 +1269,27 @@ def resize_images(images,
 
   The `method` can be one of:
 
-  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
+  *   <b>`tf.image.ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
     https://en.wikipedia.org/wiki/Bilinear_interpolation)
-  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](
+  *   <b>`tf.image.ResizeMethod.NEAREST_NEIGHBOR`</b>: [
+    Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
+  *   <b>`tf.image.ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
     https://en.wikipedia.org/wiki/Bicubic_interpolation)
-  *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+  *   <b>`tf.image.ResizeMethod.AREA`</b>: Area interpolation.
 
   The return value has the same type as `images` if `method` is
-  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
-  if the size of `images` can be statically determined to be the same as `size`,
-  because `images` is returned in this case. Otherwise, the return value has
-  type `float32`.
+  `tf.image.ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type
+  as `images` if the size of `images` can be statically determined to be the
+  same as `size`, because `images` is returned in this case. Otherwise, the
+  return value has type `float32`.
 
   Args:
     images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
       size for the images.
-    method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
+    method: ResizeMethod.  Defaults to `tf.image.ResizeMethod.BILINEAR`.
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
       input and output tensors are aligned, preserving the values at the corner
       pixels. Defaults to `False`.

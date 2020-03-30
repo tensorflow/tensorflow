@@ -341,7 +341,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               on TPUs or small models with a large Python overhead. Note that if
               this value is set to `N`, `Callback.on_batch` methods will only be
               called every `N` batches. This currently defaults to `1`. At most,
-              one full epoch can be run each execution.
+              one full epoch will be run each execution. If a number larger than
+              the size of the epoch is passed, the execution will be truncated
+              to the size of the epoch.
 
     Raises:
         ValueError: In case of invalid arguments for

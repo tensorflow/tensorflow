@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -181,6 +182,7 @@ class Model : public Graph<TensorT> {
     return FilterValues([](const ValueDef&) { return true; });
   }
 
+  // Returns nodes in the execution order.
   std::vector<Node*> nodes() const final {
     return FilterNodes([](const NodeDef&) { return true; });
   }
@@ -212,7 +214,7 @@ class Model : public Graph<TensorT> {
     if (id >= nodes_.size()) {
       return {};
     }
-    return nodes_[id].node.get();
+    return nodes_.at(id).node.get();
   }
 
   Value<TensorT>* GetValue(ValueId id) const final {
@@ -222,13 +224,38 @@ class Model : public Graph<TensorT> {
     return values_[id].value.get();
   }
 
+  // Append Node to the end of the execution plan.
   Node* NewNode() final {
+    const NodeId new_id = nodes_.size();
     NodeDef def;
-    def.node =
-        absl::make_unique<Node>(Node{static_cast<NodeId>(nodes_.size()), {}});
+    def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
     Node* node = def.node.get();
-    nodes_.push_back(std::move(def));
+    nodes_[new_id] = std::move(def);
+    execution_plan_.push_back(new_id);
     return node;
+  }
+
+  // Insert Node after another in the execution plan.
+  absl::Status InsertNodeAfter(NodeId id, Node** new_node) {
+    if (id >= nodes_.size()) {
+      return absl::OutOfRangeError("NodeId is out of range");
+    }
+    int idx = 0;
+    while (idx < execution_plan_.size()) {
+      if (execution_plan_[idx] == id) break;
+      ++idx;
+    }
+    if (idx == execution_plan_.size()) {
+      return absl::OutOfRangeError("NodeId not in execution plan");
+    }
+
+    const NodeId new_id = nodes_.size();
+    NodeDef def;
+    def.node = absl::make_unique<Node>(Node{static_cast<NodeId>(new_id), {}});
+    *new_node = def.node.get();
+    nodes_[new_id] = std::move(def);
+    execution_plan_.insert(execution_plan_.begin() + idx + 1, new_id);
+    return absl::OkStatus();
   }
 
   Value<TensorT>* NewValue() final {
@@ -244,14 +271,14 @@ class Model : public Graph<TensorT> {
     if (id >= nodes_.size()) {
       return {};
     }
-    return nodes_[id].inputs;
+    return nodes_.at(id).inputs;
   }
 
   std::vector<Value<TensorT>*> FindOutputs(NodeId id) const final {
     if (id >= nodes_.size()) {
       return {};
     }
-    return nodes_[id].outputs;
+    return nodes_.at(id).outputs;
   }
 
   Node* FindProducer(ValueId id) const final {
@@ -422,6 +449,7 @@ class Model : public Graph<TensorT> {
 
   absl::Status MakeExactCopy(Model<TensorT>* model) const {
     model->nodes_.clear();
+    model->execution_plan_.clear();
     model->values_.clear();
     model->name_ = name_;
     for (auto& value_def : values_) {
@@ -431,10 +459,19 @@ class Model : public Graph<TensorT> {
             absl::make_unique<Value<TensorT>>(*value_def.value);
       }
     }
-    for (auto& node_def : nodes_) {
-      model->nodes_.push_back({});
+    // Add all nodes first.
+    for (auto node_id : execution_plan_) {
+      model->execution_plan_.push_back(node_id);
+      model->nodes_[node_id] = {};
+      auto& node_def = nodes_.at(node_id);
       if (node_def.node) {
-        model->nodes_.back().node = absl::make_unique<Node>(*node_def.node);
+        model->nodes_[node_id].node = absl::make_unique<Node>(*node_def.node);
+      }
+    }
+    // Wire up dependencies between nodes.
+    for (auto node_id : execution_plan_) {
+      auto& node_def = nodes_.at(node_id);
+      if (node_def.node) {
         for (auto output : node_def.outputs) {
           RETURN_IF_ERROR(model->SetProducer(node_def.node->id, output->id));
         }
@@ -519,7 +556,8 @@ class Model : public Graph<TensorT> {
   std::vector<Node*> FilterNodes(const Pred& predicate) const {
     std::vector<Node*> nodes;
     nodes.reserve(nodes_.size());
-    for (auto& n : nodes_) {
+    for (const auto id : execution_plan_) {
+      auto& n = nodes_.at(id);
       if (n.node != nullptr && predicate(n)) {
         nodes.push_back(n.node.get());
       }
@@ -533,7 +571,10 @@ class Model : public Graph<TensorT> {
   // unique_ptr and store it in values_ and nodes_ or store it by value.
   // We store it by value here to make introspection calls cheaper.
   std::vector<ValueDef> values_;
-  std::vector<NodeDef> nodes_;
+
+  std::map<NodeId, NodeDef> nodes_;
+  // Node Ids in order of execution.
+  std::vector<NodeId> execution_plan_;
 };
 
 // Removes to_remove node that precedes to_keep node only if to_remove has

@@ -127,7 +127,7 @@ tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \
 tensorflow/lite/core/api/tensor_utils.h \
-tensorflow/lite/experimental/ruy/profiler/instrumentation.h \
+tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h \
 tensorflow/lite/kernels/internal/common.h \
 tensorflow/lite/kernels/internal/compatibility.h \
 tensorflow/lite/kernels/internal/optimized/neon_check.h \
@@ -165,7 +165,7 @@ tensorflow/lite/kernels/internal/reference/sub.h \
 tensorflow/lite/kernels/internal/reference/logistic.h \
 tensorflow/lite/kernels/internal/reference/strided_slice.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h \
-tensorflow/lite/kernels/internal/round.h \
+tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
 tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \

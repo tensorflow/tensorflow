@@ -73,7 +73,12 @@ message QueueItem {
 }
 
 message QueueResponse {
+  // `shape` and `tensor` cannot be set in the same response.
+  // Shapes of output tensors for creating remote TensorHandles.
   repeated TensorShapeProto shape = 1;
+
+  // Output tensors of a remote function. Set when Operation.id is invalid.
+  repeated TensorProto tensor = 2;
 }
 
 message CreateContextRequest {

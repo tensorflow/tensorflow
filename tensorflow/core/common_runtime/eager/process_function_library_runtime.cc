@@ -31,12 +31,6 @@ void EagerProcessFunctionLibraryRuntime::RunRemoteDevice(
     FunctionLibraryRuntime::Handle local_handle,
     gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
-  if (!rets->empty()) {
-    done(
-        errors::Unimplemented("Remote outputs are not supported by "
-                              "EagerClusterFunctionLibraryRuntime yet."));
-    return;
-  }
   parent_->Run(opts, local_handle, args, rets, std::move(done));
 }
 
@@ -50,8 +44,8 @@ void EagerProcessFunctionLibraryRuntime::Run(
                                               std::move(done));
   }
   auto* cleanup_items = new std::vector<std::unique_ptr<CleanUpItem>>;
-  done =
-      ApplyCleanUpToDoneCallback(cleanup_items, done, /*rendezvous=*/nullptr);
+  done = ApplyCleanUpToDoneCallback(cleanup_items, done, opts.step_id,
+                                    /*rendezvous=*/nullptr);
 
   auto get_component_args = [&args](const ComponentFunctionData& comp_data,
                                     InternalArgs* comp_args) -> Status {

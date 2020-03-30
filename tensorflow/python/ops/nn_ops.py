@@ -780,7 +780,7 @@ def convolution(
     name=None,
     data_format=None,
     filters=None,
-    dilations=None):
+    dilations=None):  # pylint: disable=g-doc-args
   """Computes sums of N-D convolutions (actually cross-correlation).
 
   This also supports either output striding via the optional `strides` parameter
@@ -865,8 +865,6 @@ def convolution(
       starts with "NC").  For N=1, the valid values are "NWC" (default) and
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
-    filters: Alias of filter.
-    dilations: Alias of dilation_rate.
 
   Returns:
     A `Tensor` with the same type as `input` of shape

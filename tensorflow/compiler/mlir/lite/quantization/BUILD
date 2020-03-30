@@ -111,3 +111,15 @@ tf_native_cc_binary(
         "@llvm-project//mlir:TableGen",
     ],
 )
+
+cc_library(
+    name = "device_target",
+    srcs = ["device_target.cc"],
+    hdrs = ["device_target.h"],
+    deps = [
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
+)

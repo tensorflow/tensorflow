@@ -14,114 +14,134 @@
 # ==============================================================================
 """Keras initializer serialization / deserialization.
 """
-# pylint: disable=unused-import
-# pylint: disable=line-too-long
-# pylint: disable=g-import-not-at-top
-# pylint: disable=g-bad-import-order
-# pylint: disable=invalid-name
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import threading
 import six
 
 from tensorflow.python import tf2
-from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras.initializers import initializers_v1
+from tensorflow.python.keras.initializers import initializers_v2
+from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.ops import init_ops
+from tensorflow.python.util import tf_inspect as inspect
 from tensorflow.python.util.tf_export import keras_export
 
-# These imports are brought in so that keras.initializers.deserialize
-# has them available in module_objects.
-from tensorflow.python.keras.initializers.initializers_v2 import Constant as ConstantV2
-from tensorflow.python.keras.initializers.initializers_v2 import GlorotNormal as GlorotNormalV2
-from tensorflow.python.keras.initializers.initializers_v2 import GlorotUniform as GlorotUniformV2
-from tensorflow.python.keras.initializers.initializers_v2 import HeNormal as HeNormalV2
-from tensorflow.python.keras.initializers.initializers_v2 import HeUniform as HeUniformV2
-from tensorflow.python.keras.initializers.initializers_v2 import Identity as IdentityV2
-from tensorflow.python.keras.initializers.initializers_v2 import Initializer
-from tensorflow.python.keras.initializers.initializers_v2 import LecunNormal as LecunNormalV2
-from tensorflow.python.keras.initializers.initializers_v2 import LecunUniform  as LecunUniformV2
-from tensorflow.python.keras.initializers.initializers_v2 import Ones as OnesV2
-from tensorflow.python.keras.initializers.initializers_v2 import Orthogonal as OrthogonalV2
-from tensorflow.python.keras.initializers.initializers_v2 import RandomNormal as RandomNormalV2
-from tensorflow.python.keras.initializers.initializers_v2 import RandomUniform as RandomUniformV2
-from tensorflow.python.keras.initializers.initializers_v2 import TruncatedNormal as TruncatedNormalV2
-from tensorflow.python.keras.initializers.initializers_v2 import VarianceScaling as VarianceScalingV2
-from tensorflow.python.keras.initializers.initializers_v2 import Zeros as ZerosV2
 
-if tf2.enabled():
-  Constant = ConstantV2
-  GlorotNormal = GlorotNormalV2
-  GlorotUniform = GlorotUniformV2
-  HeNormal = HeNormalV2
-  HeUniform = HeUniformV2
-  Identity = IdentityV2
-  LecunNormal = LecunNormalV2
-  LecunUniform = LecunUniformV2
-  Ones = OnesV2
-  Orthogonal = OrthogonalV2
-  RandomNormal = RandomNormalV2
-  RandomUniform = RandomUniformV2
-  TruncatedNormal = TruncatedNormalV2
-  VarianceScaling = VarianceScalingV2
-  Zeros = ZerosV2
-else:
-  from tensorflow.python.ops.init_ops import Constant
-  from tensorflow.python.ops.init_ops import GlorotNormal
-  from tensorflow.python.ops.init_ops import GlorotUniform
-  from tensorflow.python.ops.init_ops import Identity
-  from tensorflow.python.ops.init_ops import Ones
-  from tensorflow.python.ops.init_ops import Orthogonal
-  from tensorflow.python.ops.init_ops import VarianceScaling
-  from tensorflow.python.ops.init_ops import Zeros
-  from tensorflow.python.keras.initializers.initializers_v1 import HeNormal
-  from tensorflow.python.keras.initializers.initializers_v1 import HeUniform
-  from tensorflow.python.keras.initializers.initializers_v1 import LecunNormal
-  from tensorflow.python.keras.initializers.initializers_v1 import LecunUniform
-  from tensorflow.python.keras.initializers.initializers_v1 import RandomNormal
-  from tensorflow.python.keras.initializers.initializers_v1 import RandomUniform
-  from tensorflow.python.keras.initializers.initializers_v1 import TruncatedNormal
+# LOCAL.ALL_OBJECTS is meant to be a global mutable. Hence we need to make it
+# thread-local to avoid concurrent mutations.
+LOCAL = threading.local()
 
 
-# Compatibility aliases
-glorot_normal = GlorotNormal
-glorot_uniform = GlorotUniform
-he_normal = HeNormal
-he_uniform = HeUniform
-lecun_normal = LecunNormal
-lecun_uniform = LecunUniform
-zero = zeros = Zeros
-one = ones = Ones
-constant = Constant
-uniform = random_uniform = RandomUniform
-normal = random_normal = RandomNormal
-truncated_normal = TruncatedNormal
-identity = Identity
-orthogonal = Orthogonal
+def populate_deserializable_objects():
+  """Populates dict ALL_OBJECTS with every built-in initializer.
+  """
+  global LOCAL
+  if not hasattr(LOCAL, 'ALL_OBJECTS'):
+    LOCAL.ALL_OBJECTS = {}
+    LOCAL.GENERATED_WITH_V2 = None
 
-# For unit tests
-glorot_normalV2 = GlorotNormalV2
-glorot_uniformV2 = GlorotUniformV2
-he_normalV2 = HeNormalV2
-he_uniformV2 = HeUniformV2
-lecun_normalV2 = LecunNormalV2
-lecun_uniformV2 = LecunUniformV2
+  if LOCAL.ALL_OBJECTS and LOCAL.GENERATED_WITH_V2 == tf2.enabled():
+    # Objects dict is already generated for the proper TF version:
+    # do nothing.
+    return
+
+  LOCAL.ALL_OBJECTS = {}
+  LOCAL.GENERATED_WITH_V2 = tf2.enabled()
+
+  # Compatibility aliases (need to exist in both V1 and V2).
+  LOCAL.ALL_OBJECTS['ConstantV2'] = initializers_v2.Constant
+  LOCAL.ALL_OBJECTS['GlorotNormalV2'] = initializers_v2.GlorotNormal
+  LOCAL.ALL_OBJECTS['GlorotUniformV2'] = initializers_v2.GlorotUniform
+  LOCAL.ALL_OBJECTS['HeNormalV2'] = initializers_v2.HeNormal
+  LOCAL.ALL_OBJECTS['HeUniformV2'] = initializers_v2.HeUniform
+  LOCAL.ALL_OBJECTS['IdentityV2'] = initializers_v2.Identity
+  LOCAL.ALL_OBJECTS['LecunNormalV2'] = initializers_v2.LecunNormal
+  LOCAL.ALL_OBJECTS['LecunUniformV2'] = initializers_v2.LecunUniform
+  LOCAL.ALL_OBJECTS['OnesV2'] = initializers_v2.Ones
+  LOCAL.ALL_OBJECTS['OrthogonalV2'] = initializers_v2.Orthogonal
+  LOCAL.ALL_OBJECTS['RandomNormalV2'] = initializers_v2.RandomNormal
+  LOCAL.ALL_OBJECTS['RandomUniformV2'] = initializers_v2.RandomUniform
+  LOCAL.ALL_OBJECTS['TruncatedNormalV2'] = initializers_v2.TruncatedNormal
+  LOCAL.ALL_OBJECTS['VarianceScalingV2'] = initializers_v2.VarianceScaling
+  LOCAL.ALL_OBJECTS['ZerosV2'] = initializers_v2.Zeros
+
+  # Out of an abundance of caution we also include these aliases that have
+  # a non-zero probability of having been included in saved configs in the past.
+  LOCAL.ALL_OBJECTS['glorot_normalV2'] = initializers_v2.GlorotNormal
+  LOCAL.ALL_OBJECTS['glorot_uniformV2'] = initializers_v2.GlorotUniform
+  LOCAL.ALL_OBJECTS['he_normalV2'] = initializers_v2.HeNormal
+  LOCAL.ALL_OBJECTS['he_uniformV2'] = initializers_v2.HeUniform
+  LOCAL.ALL_OBJECTS['lecun_normalV2'] = initializers_v2.LecunNormal
+  LOCAL.ALL_OBJECTS['lecun_uniformV2'] = initializers_v2.LecunUniform
+
+  if tf2.enabled():
+    # For V2, entries are generated automatically based on the content of
+    # initializers_v2.py.
+    v2_objs = {}
+    base_cls = initializers_v2.Initializer
+    generic_utils.populate_dict_with_module_objects(
+        v2_objs,
+        [initializers_v2],
+        obj_filter=lambda x: inspect.isclass(x) and issubclass(x, base_cls))
+    for key, value in v2_objs.items():
+      LOCAL.ALL_OBJECTS[key] = value
+      # Functional aliases.
+      LOCAL.ALL_OBJECTS[generic_utils.to_snake_case(key)] = value
+  else:
+    # V1 initializers.
+    v1_objs = {
+        'Constant': init_ops.Constant,
+        'GlorotNormal': init_ops.GlorotNormal,
+        'GlorotUniform': init_ops.GlorotUniform,
+        'Identity': init_ops.Identity,
+        'Ones': init_ops.Ones,
+        'Orthogonal': init_ops.Orthogonal,
+        'VarianceScaling': init_ops.VarianceScaling,
+        'Zeros': init_ops.Zeros,
+        'HeNormal': initializers_v1.HeNormal,
+        'HeUniform': initializers_v1.HeUniform,
+        'LecunNormal': initializers_v1.LecunNormal,
+        'LecunUniform': initializers_v1.LecunUniform,
+        'RandomNormal': initializers_v1.RandomNormal,
+        'RandomUniform': initializers_v1.RandomUniform,
+        'TruncatedNormal': initializers_v1.TruncatedNormal,
+    }
+    for key, value in v1_objs.items():
+      LOCAL.ALL_OBJECTS[key] = value
+      # Functional aliases.
+      LOCAL.ALL_OBJECTS[generic_utils.to_snake_case(key)] = value
+
+  # More compatibility aliases.
+  LOCAL.ALL_OBJECTS['normal'] = LOCAL.ALL_OBJECTS['random_normal']
+  LOCAL.ALL_OBJECTS['uniform'] = LOCAL.ALL_OBJECTS['random_uniform']
+  LOCAL.ALL_OBJECTS['one'] = LOCAL.ALL_OBJECTS['ones']
+  LOCAL.ALL_OBJECTS['zero'] = LOCAL.ALL_OBJECTS['zeros']
+
+
+# For backwards compatibility, we populate this file with the objects
+# from ALL_OBJECTS. We make no guarantees as to whether these objects will
+# using their correct version.
+populate_deserializable_objects()
+globals().update(LOCAL.ALL_OBJECTS)
 
 # Utility functions
 
 
 @keras_export('keras.initializers.serialize')
 def serialize(initializer):
-  return serialize_keras_object(initializer)
+  return generic_utils.serialize_keras_object(initializer)
 
 
 @keras_export('keras.initializers.deserialize')
 def deserialize(config, custom_objects=None):
   """Return an `Initializer` object from its config."""
-  module_objects = globals()
-  return deserialize_keras_object(
+  populate_deserializable_objects()
+  return generic_utils.deserialize_keras_object(
       config,
-      module_objects=module_objects,
+      module_objects=LOCAL.ALL_OBJECTS,
       custom_objects=custom_objects,
       printable_module_name='initializer')
 

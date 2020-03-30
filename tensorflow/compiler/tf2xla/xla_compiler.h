@@ -518,11 +518,21 @@ class XlaCompiler {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaCompiler);
 };
 
+// Creates an identity shape representation function.
+XlaCompiler::ShapeRepresentationFn IdentityShapeRepresentationFn();
+
 // Rewrites the layout of xla_shape if there is tiled sharding.
 Status RewriteLayoutWithShardedShape(
     const absl::optional<xla::HloSharding>& sharding, bool use_fast_memory,
     XlaCompiler::ShapeRepresentationFn shape_representation_fn,
     xla::Shape* xla_shape);
+
+// Adds reshapes to fix the layout of an output, if a shape_representation_fn or
+// sharding is present.
+xla::StatusOr<xla::XlaOp> ReshapeWithCorrectRepresentationAndSharding(
+    xla::XlaBuilder* builder, xla::XlaOp original, xla::Shape original_shape,
+    XlaCompiler::ShapeRepresentationFn shape_representation_fn,
+    absl::optional<xla::OpSharding> sharding, bool fast_mem);
 
 }  // namespace tensorflow
 

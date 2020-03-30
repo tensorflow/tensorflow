@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/client/save_profile.h"
@@ -56,8 +57,10 @@ class ProfilerSessionWrapper {
   py::bytes Stop() {
     tensorflow::string content;
     if (session_ != nullptr) {
-      tensorflow::Status status = session_->SerializeToString(&content);
+      tensorflow::profiler::XSpace xspace;
+      tensorflow::Status status = session_->CollectData(&xspace);
       session_.reset();
+      tensorflow::profiler::ConvertXSpaceToTraceEventsString(xspace, &content);
       tensorflow::MaybeRaiseRegisteredFromStatus(status);
     }
     // The content is not valid UTF-8, so it must be converted to bytes.

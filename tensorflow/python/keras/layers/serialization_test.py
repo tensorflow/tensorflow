@@ -124,12 +124,6 @@ class LayerSerializationTest(parameterized.TestCase, test.TestCase):
     layer = batchnorm_layer(
         momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
     config = keras.layers.serialize(layer)
-    # To simulate if BatchNormalizationV1 or BatchNormalizationV2 appears in the
-    # saved model.
-    if batchnorm_layer is batchnorm_v1.BatchNormalization:
-      config['class_name'] = 'BatchNormalizationV1'
-    else:
-      config['class_name'] = 'BatchNormalizationV2'
     new_layer = keras.layers.deserialize(config)
     self.assertEqual(new_layer.momentum, 0.9)
     if tf2.enabled():

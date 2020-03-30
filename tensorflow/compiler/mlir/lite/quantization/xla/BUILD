@@ -33,6 +33,7 @@ cc_library(
         "passes.h",
     ],
     deps = [
+        ":cpu_device_target",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/xla:hlo",
@@ -47,6 +48,22 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "cpu_device_target",
+    srcs = [
+        "cpu_device_target.cc",
+    ],
+    hdrs = [
+        "cpu_device_target.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/mlir/lite/quantization:device_target",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(

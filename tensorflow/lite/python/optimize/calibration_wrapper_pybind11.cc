@@ -30,6 +30,10 @@ PYBIND11_MODULE(_pywrap_tensorflow_lite_calibration_wrapper, m) {
         return ::CalibrationWrapper::CreateWrapperCPPFromBuffer(data.ptr());
       }))
       .def("Prepare",
+           [](CalibrationWrapper& self, py::handle& input_shapes) {
+             return tensorflow::pyo_or_throw(self.Prepare(input_shapes.ptr()));
+           })
+      .def("Prepare",
            [](CalibrationWrapper& self) {
              return tensorflow::pyo_or_throw(self.Prepare());
            })

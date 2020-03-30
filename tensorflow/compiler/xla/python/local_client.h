@@ -316,6 +316,10 @@ struct CompileOptions {
   // The layouts of the arguments that the computation should expect.
   absl::optional<std::vector<Shape>> argument_layouts;
 
+  // If true, the arguments to the computation will be wrapped in a tuple and
+  // passed as a single parameter.
+  bool tuple_arguments = false;
+
   // XLA's compilation time options.
   ExecutableBuildOptions executable_build_options;
 };
@@ -340,7 +344,8 @@ class PyLocalExecutable {
       CompileOptions options);
 
   PyLocalExecutable(std::vector<std::unique_ptr<LocalExecutable>> executables,
-                    DeviceAssignment device_assignment, PyLocalClient* client);
+                    bool tuple_arguments, DeviceAssignment device_assignment,
+                    PyLocalClient* client);
 
   PyLocalClient* client() const { return client_; }
 
@@ -403,6 +408,10 @@ class PyLocalExecutable {
   // One executable per partition.
   std::vector<std::shared_ptr<LocalExecutable>> executables_;
   std::shared_ptr<DeviceAssignment> device_assignment_;
+
+  // True if the executables were compiled expecting arguments in a single
+  // tuple.
+  const bool tuple_arguments_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas
