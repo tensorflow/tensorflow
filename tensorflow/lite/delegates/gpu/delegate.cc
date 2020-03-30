@@ -20,6 +20,7 @@ limitations under the License.
 #include <thread>  // NOLINT(build/c++11)
 #include <vector>
 
+#include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
@@ -277,15 +278,15 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         auto* gpu_delegate = GetDelegate(params->delegate);
         // Everything below should happen in prepare function call, but TFLite
         // for whatever reason forbids that.
-        DelegateKernel* gpu_delegate_kernel =
-            new DelegateKernel(gpu_delegate->options());
+        auto gpu_delegate_kernel =
+            absl::make_unique<DelegateKernel>(gpu_delegate->options());
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
           context->ReportError(context, "TfLiteGpuDelegate Init: %s",
                                std::string(status.message()).c_str());
           return nullptr;
         }
-        return gpu_delegate_kernel;
+        return gpu_delegate_kernel.release();
       },
       // .free
       [](TfLiteContext*, void* buffer) -> void {
