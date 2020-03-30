@@ -74,15 +74,10 @@ def InceptionResNetV2(include_top=True,
       It should have exactly 3 inputs channels,
       and width and height should be no smaller than 75.
       E.g. `(150, 150, 3)` would be one valid value.
-    pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`. It could be:
-      - `None` means that the output of the model will be
-          the 4D tensor output of the last convolutional block.
-      - `'avg'` means that global average pooling
-          will be applied to the output of the
-          last convolutional block, and thus
-          the output of the model will be a 2D tensor.
-      - `'max'` means that global max pooling will be applied.
+    pooling: optional pooling mode for feature extraction when `include_top` is
+        `False`. If `max` or `avg` pooling is applied, output of the model will
+        be a 2D tensor. `None` will directly output the last convolutional layer,
+        a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is `True`, and
       if no `weights` argument is specified.
