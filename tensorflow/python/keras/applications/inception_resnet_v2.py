@@ -94,6 +94,33 @@ def InceptionResNetV2(include_top=True,
   Returns:
     A `keras.Model` instance.
 
+  Example:
+
+  ```python
+  #Extract image features with InceptionResNetV2
+  from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input
+  import numpy as np
+
+  #create a InceptionResNetV2 model pre-trained on imagenet
+  model = InceptionResNetV2(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
+  >>>model = InceptionResNetV2(weights = None)
+  >>>model.name
+  'inception_resnet_v2'
+
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
