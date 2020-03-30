@@ -1636,11 +1636,10 @@ class RaggedTensor(composite_tensor.CompositeTensor):
     it is not ragged-right, then an error will be generated.
 
     Example:
-
-    >>> st = tf.sparse.SparseTensor(indices=
-    ...                      [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]],
-    ...                      values=[1, 2, 3, 4, 5],
-    ...                      dense_shape=[4, 3])
+    >>> indices = [[0, 0], [0, 1], [0, 2], [1, 0], [3, 0]]
+    >>> st = tf.sparse.SparseTensor(indices=indices,
+    ...                             values=[1, 2, 3, 4, 5],
+    ...                             dense_shape=[4, 3])
     >>> tf.RaggedTensor.from_sparse(st).to_list()
     [[1, 2, 3], [4], [], [5]]
 
