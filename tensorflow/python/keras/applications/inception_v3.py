@@ -102,6 +102,33 @@ def InceptionV3(
   Returns:
     A `keras.Model` instance.
 
+  Example:
+
+  ```python
+  #Extract image features with InceptionV3
+  from tensorflow.keras.applications.inception_v3 import InceptionV3
+  from tensorflow.keras.preprocessing import image
+  from tensorflow.keras.applications.inception_v3 import preprocess_input
+  import numpy as np
+
+  #create a InceptionV3 model pre-trained on imagenet
+  model = InceptionV3(weights='imagenet', include_top=False)
+
+  #process the input
+  img_path = 'elephant_example.jpg'
+  img = image.load_img(img_path, target_size=(224, 224))
+  x = image.img_to_array(img)
+  x = np.expand_dims(x, axis=0)
+  x = preprocess_input(x)
+
+  #extract the features
+  features = model.predict(x)
+  ```
+
+  >>>model = InceptionV3(weights = None)
+  >>>model.name
+  'inception_v3'
+
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
