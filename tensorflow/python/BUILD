@@ -7608,35 +7608,6 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "graph_placer",
-    srcs = [
-        "grappler/controller.py",
-        "grappler/graph_placer.py",
-        "grappler/hierarchical_controller.py",
-    ],
-    deps = [
-        ":python",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "graph_placer_test",
-    size = "large",
-    srcs = ["grappler/graph_placer_test.py"],
-    python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_pip",  # graph_placer is not available in pip.
-    ],
-    deps = [
-        ":client_testlib",
-        ":graph_placer",
-        ":math_ops",
-    ],
-)
-
 tf_py_test(
     name = "memory_optimizer_test",
     size = "medium",
