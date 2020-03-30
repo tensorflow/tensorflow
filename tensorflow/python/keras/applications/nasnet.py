@@ -118,7 +118,7 @@ def NASNet(
       `layers.Input()`)
       to use as image input for the model.
     pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`.
+      when `include_top` is `False`. It could be:
       - `None` means that the output of the model
           will be the 4D tensor output of the
           last convolutional block.

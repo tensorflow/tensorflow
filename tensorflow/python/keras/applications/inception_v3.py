@@ -84,7 +84,7 @@ def InceptionV3(
       E.g. `(150, 150, 3)` would be one valid value.
       `input_shape` will be ignored if the `input_tensor` is provided.
     pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`.
+      when `include_top` is `False`. It could be:
       - `None` (default) means that the output of the model will be
           the 4D tensor output of the last convolutional block.
       - `avg` means that global average pooling

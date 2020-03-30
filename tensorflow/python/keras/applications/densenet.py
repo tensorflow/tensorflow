@@ -414,7 +414,7 @@ DOC = """
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
     pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`.
+      when `include_top` is `False`. It could be:
       - `None` means that the output of the model will be
           the 4D tensor output of the
           last convolutional block.

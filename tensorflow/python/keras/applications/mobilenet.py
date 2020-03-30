@@ -131,7 +131,7 @@ def MobileNet(input_shape=None,
       use as image input for the model. `input_tensor` is useful for sharing
       inputs between multiple different networks. Default to None.
     pooling: Optional pooling mode for feature extraction when `include_top`
-      is `False`.
+      is `False`. It could be:
       - `None` (default) means that the output of the model will be
           the 4D tensor output of the last convolutional block.
       - `avg` means that global average pooling

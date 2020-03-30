@@ -187,7 +187,7 @@ def EfficientNet(
         if `include_top` is False.
         It should have exactly 3 inputs channels.
     pooling: optional pooling mode for feature extraction
-        when `include_top` is `False`.
+        when `include_top` is `False`. It could be:
         - `None` means that the output of the model will be
             the 4D tensor output of the
             last convolutional layer.
