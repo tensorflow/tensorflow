@@ -17,8 +17,11 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_TENSOR_INTERFACE_H_
 
 #include "tensorflow/c/tf_datatype.h"
-#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
+
+namespace tensorflow {
 
 // Abstract interface to a Tensor.
 //
@@ -49,8 +52,6 @@ class AbstractTensorInterface {
   virtual bool CanMove() const = 0;
 };
 
-namespace tensorflow {
-
 class TensorInterface : public AbstractTensorInterface {
  public:
   TensorInterface() {}
@@ -72,11 +73,16 @@ class TensorInterface : public AbstractTensorInterface {
 
   // TODO(gjn): This is not a very generic interface, but is needed for specific
   // use cases.
-  tensorflow::Tensor Tensor() { return tensor_; }
+  tensorflow::Tensor& Tensor() { return tensor_; }
 
  private:
   tensorflow::Tensor tensor_;
 };
+
+inline Tensor& TensorFromInterface(
+    const std::unique_ptr<AbstractTensorInterface>& tensor) {
+  return down_cast<TensorInterface*>(tensor.get())->Tensor();
+}
 
 }  // namespace tensorflow
 

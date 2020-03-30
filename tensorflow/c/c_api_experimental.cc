@@ -827,8 +827,7 @@ void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
   for (int i = 0; i < num_inputs; ++i) {
     node_def.add_input("dummy_input");
   }
-  tensorflow::down_cast<tensorflow::OperationInterface*>(
-      tfe_op->operation.get())
+  OperationFromInterface(tfe_op->operation)
       ->Attrs()
       .FillAttrValueMap(node_def.mutable_attr());
 

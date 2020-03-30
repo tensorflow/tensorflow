@@ -98,7 +98,7 @@ class EagerOperation {
   const DeviceNameUtils::ParsedName& GetDeviceParsedName() const {
     return device_parsed_name_;
   }
-  Status SetDeviceName(const char* device, const bool reset = false);
+  Status SetDeviceName(const char* device);
 
   // Indicates whether the op is assigned to a device that is local to the
   // current host.

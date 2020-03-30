@@ -1098,13 +1098,22 @@ TF_Tensor* TFE_TensorHandleResolve(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
 
-  return h->handle->Resolve(&status->status);
+  std::unique_ptr<tensorflow::AbstractTensorInterface> t =
+      h->handle->Resolve(&status->status);
+  if (t == nullptr) {
+    return nullptr;
+  }
+
+  tensorflow::Tensor tensor = tensorflow::TensorFromInterface(t);
+  return tensorflow::TF_TensorFromTensor(tensor, &status->status);
 }
 
-TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
+std::unique_ptr<tensorflow::AbstractTensorInterface>
+tensorflow::TensorHandleInterface::Resolve(Status* status) {
   if (!IsValid(status)) {
     return nullptr;
   }
+
   if (VariantDeviceIsCustom(handle_->device())) {
     tensorflow::CustomDevice* custom_device =
         absl::get<tensorflow::CustomDevice*>(handle_->device());
@@ -1133,7 +1142,7 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
       h_cpu->Unref();
       return nullptr;
     }
-    TF_Tensor* retval = tensorflow::TF_TensorFromTensor(*t, status);
+    auto retval = std::make_unique<tensorflow::TensorInterface>(*t);
     h_cpu->Unref();
     return retval;
   } else {
@@ -1160,7 +1169,7 @@ TF_Tensor* tensorflow::TensorHandleInterface::Resolve(Status* status) {
         if (!status->ok()) return nullptr;
       }
     }
-    return tensorflow::TF_TensorFromTensor(tensor, status);
+    return std::make_unique<tensorflow::TensorInterface>(std::move(tensor));
   }
 }
 
@@ -1407,7 +1416,10 @@ void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
 
 void TFE_OpSetAttrTensor(TFE_Op* op, const char* attr_name, TF_Tensor* tensor,
                          TF_Status* status) {
-  status->status = op->operation->SetAttrTensor(attr_name, tensor);
+  tensorflow::Tensor t;
+  status->status = TF_TensorToTensor(tensor, &t);
+  status->status = op->operation->SetAttrTensor(
+      attr_name, std::make_unique<tensorflow::TensorInterface>(t));
 }
 
 void TFE_OpSetAttrStringList(TFE_Op* op, const char* attr_name,
@@ -1657,16 +1669,14 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
 }
 
 void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs) {
-  auto operation = tensorflow::down_cast<tensorflow::OperationInterface*>(
-      op->operation.get());
-  *attrs = TFE_OpAttrs(&operation->Attrs(), op->operation->Name().c_str());
+  tensorflow::EagerOperation* operation = OperationFromInterface(op->operation);
+  *attrs = TFE_OpAttrs(&operation->Attrs(), operation->Name().c_str());
 }
 
 void TFE_OpAddAttrs(TFE_Op* op, const TFE_OpAttrs* attrs) {
   tensorflow::AttrValueMap m;
   attrs->attributes->FillAttrValueMap(&m);
-  auto operation = tensorflow::down_cast<tensorflow::OperationInterface*>(
-      op->operation.get());
+  tensorflow::EagerOperation* operation = OperationFromInterface(op->operation);
   tensorflow::AttrBuilder* destination = operation->MutableAttrs();
   for (auto attribute : m) {
     destination->Set(attribute.first, attribute.second);
