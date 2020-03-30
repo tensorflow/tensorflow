@@ -74,8 +74,9 @@ void *get_arc_scratch_buffer(int size) {
   void *buf = NULL;
   int best_mem_idx = -1;
   int best_mem_delta = INT_MAX;
+  const int num_mem = sizeof(scratch_mem)/sizeof(scratch_mem[0]);
   // find a local memory that fits the data size.
-  for (int mem_idx = 0; mem_idx < sizeof(scratch_mem)/sizeof(scratch_mem[0]); ++mem_idx) {
+  for (int mem_idx = 0; mem_idx < num_mem; ++mem_idx) {
     // Best Fit
     if ((size <= scratch_sizes[mem_idx]) && (scratch_sizes[mem_idx] - size < best_mem_delta)) {
       best_mem_idx = mem_idx;
@@ -90,11 +91,24 @@ void *get_arc_scratch_buffer(int size) {
   return buf;
 }
 
+void get_arc_scratch_buffer_max_size(int *size) {
+  int maxavailable = 0;
+  const int num_mem = sizeof(scratch_mem)/sizeof(scratch_mem[0]);
+  // find the largest available buffer.
+  for (int i = 0; i < num_mem; i++) {
+    if (scratch_sizes[i] > maxavailable) {
+      maxavailable = scratch_sizes[i];
+    }
+  }
+  *size = maxavailable;
+}
+
 void get_arc_scratch_buffer_two_max_sizes(int *size1, int *size2) {
   int maxavailable = 0;
   int secondavail = 0;
+  const int num_mem = sizeof(scratch_mem)/sizeof(scratch_mem[0]);
   // find the two largest available buffers.
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < num_mem; i++) {
     if (scratch_sizes[i] > maxavailable) {
       secondavail = maxavailable;
       maxavailable = scratch_sizes[i];
@@ -106,7 +120,7 @@ void get_arc_scratch_buffer_two_max_sizes(int *size1, int *size2) {
   *size2 = secondavail;
 }
 
-void free_arc_scratch_buffers(void) {
+void init_arc_scratch_buffers(void) {
   scratch_mem[0] = scratch_mem_x;
   scratch_mem[1] = scratch_mem_y;
   scratch_mem[2] = scratch_mem_z;

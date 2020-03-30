@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/arc/scratch_buffers.h"
 #include "tensorflow/lite/micro/kernels/arc/scratch_buf_mgr.h"
 #include "tensorflow/lite/micro/kernels/arc/mli_tf_utils.h"
+#include "tensorflow/lite/micro/kernels/arc/mli_slicers.h"
 
 #include "mli_api.h"
 
@@ -139,35 +140,47 @@ TfLiteStatus AverageEvalInt8(TfLiteContext* context, const TfLiteNode* node,
     mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
     mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
 
+    const int height_dimension = 1;
+    int in_slice_height = 0;
+    int out_slice_height = 0;
+    const int overlap = cfg.kernel_height - cfg.stride_height;
+
     // Tensors for data in fast (local) memory and config to copy data from external to local memory
     mli_tensor in_local = sub_mli_in;
     mli_tensor out_local = sub_mli_out;
     mli_mov_cfg_t copy_config;
     mli_mov_cfg_for_copy(&copy_config);
-    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_io_tensors(context, &in_local, &out_local));
-	bool in_is_local = in_local.data == sub_mli_in.data;
-	bool out_is_local = out_local.data == sub_mli_out.data;
+    TF_LITE_ENSURE_STATUS(get_arc_scratch_buffer_for_pooling_tensors(context, &in_local, &out_local));
+    bool in_is_local = in_local.data == sub_mli_in.data;
+    bool out_is_local = out_local.data == sub_mli_out.data;
+    TF_LITE_ENSURE_STATUS(arc_scratch_buffer_calc_slice_size_io(&in_local, &out_local, cfg.kernel_height, cfg.stride_height, cfg.padding_top, cfg.padding_bottom, &in_slice_height, &out_slice_height));
 
-    const int batches =
-        MatchingDim(GetTensorShape(input), 0, GetTensorShape(output), 0);
+    /* mli_in tensor contains batches of HWC tensors. so it is a 4 dimensional tensor.
+       because the mli kernel will process one HWC tensor at a time, the 4 dimensional tensor needs to be sliced into nBatch 3 dimensional tensors.
+       on top of that there could be a need to also slice in the Height dimension. for that the sliceHeight has been calculated.
+       The tensor slicer is configured that it will completely slice the nBatch dimension (0) and slice the height dimension (1)
+       in chunks of 'sliceHeight' */
+    TensorSlicer in_slice(&mli_in, height_dimension, in_slice_height, cfg.padding_top, cfg.padding_bottom, overlap);
+    TensorSlicer out_slice(&mli_out, height_dimension, out_slice_height);
 
-    for (int i = 0; i < batches; i++) {
-      mli_mov_tensor_sync(&sub_mli_in, &copy_config, &in_local);
-      mli_krn_avepool_hwc_sa8(&in_local, &cfg, &out_local);
-      mli_mov_tensor_sync(&out_local, &copy_config, &sub_mli_out);
-	  if (i == batches -1) break;
-      subtsr_cfg_in.start_coord[0]++;
-      subtsr_cfg_out.start_coord[0]++;
-      mli_hlp_point_to_subtensor(&mli_in, &subtsr_cfg_in, &sub_mli_in);
-      mli_hlp_point_to_subtensor(&mli_out, &subtsr_cfg_out, &sub_mli_out);
-      if (in_is_local) {
-        in_local.data = sub_mli_in.data;
-	  }
-      if (out_is_local) {
-        out_local.data = sub_mli_out.data;
-	  }
+    /* is_local indicates that the tensor is already in local memory,
+       so in that case the original tensor can be used,
+       and there is no need to copy it to the local tensor*/
+    mli_tensor *in_ptr = in_is_local ? in_slice.Sub() : &in_local;
+    mli_tensor *out_ptr = out_is_local ? out_slice.Sub() : &out_local;
+
+    while (!out_slice.Done()) {
+      cfg.padding_top = in_slice.GetPaddingPre();
+      cfg.padding_bottom = in_slice.GetPaddingPost();
+
+      mli_mov_tensor_sync(in_slice.Sub(), &copy_config, in_ptr);
+      mli_krn_avepool_hwc_sa8(in_ptr, &cfg, out_ptr);
+      mli_mov_tensor_sync(out_ptr, &copy_config, out_slice.Sub());
+
+      in_slice.Next();
+      out_slice.Next();
     }
-    free_arc_scratch_buffers();
+
   } else {
     int32_t activation_min, activation_max;
     (void)CalculateActivationRangeQuantized(context, params->activation, output,
