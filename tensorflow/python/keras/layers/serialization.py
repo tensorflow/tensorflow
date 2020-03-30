@@ -26,6 +26,7 @@ import threading
 from tensorflow.python import tf2
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.layers import advanced_activations
 from tensorflow.python.keras.layers import convolutional
 from tensorflow.python.keras.layers import convolutional_recurrent
@@ -128,6 +129,7 @@ def populate_deserializable_objects():
   from tensorflow.python.feature_column import sequence_feature_column as sfc  # pylint: disable=g-import-not-at-top
 
   LOCAL.ALL_OBJECTS['Input'] = input_layer.Input
+  LOCAL.ALL_OBJECTS['InputSpec'] = input_spec.InputSpec
   LOCAL.ALL_OBJECTS['Network'] = models.Network
   LOCAL.ALL_OBJECTS['Model'] = models.Model
   LOCAL.ALL_OBJECTS['Sequential'] = models.Sequential
@@ -135,6 +137,15 @@ def populate_deserializable_objects():
   LOCAL.ALL_OBJECTS['WideDeepModel'] = WideDeepModel
   LOCAL.ALL_OBJECTS['DenseFeatures'] = dense_features.DenseFeatures
   LOCAL.ALL_OBJECTS['SequenceFeatures'] = sfc.SequenceFeatures
+  # Merge layers, function versions.
+  LOCAL.ALL_OBJECTS['add'] = merge.add
+  LOCAL.ALL_OBJECTS['subtract'] = merge.subtract
+  LOCAL.ALL_OBJECTS['multiply'] = merge.multiply
+  LOCAL.ALL_OBJECTS['average'] = merge.average
+  LOCAL.ALL_OBJECTS['maximum'] = merge.maximum
+  LOCAL.ALL_OBJECTS['minimum'] = merge.minimum
+  LOCAL.ALL_OBJECTS['concatenate'] = merge.concatenate
+  LOCAL.ALL_OBJECTS['dot'] = merge.dot
 
 
 @keras_export('keras.layers.serialize')
