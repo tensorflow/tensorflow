@@ -46,11 +46,11 @@ def main(_):
   args = parser.parse_args()
 
   # Read the model
-  input_model = flatbuffer_utils.read_model(args.input_tflite_file)
+  model = flatbuffer_utils.read_model(args.input_tflite_file)
   # Invoke the strip tflite file function
-  output_model = flatbuffer_utils.strip_strings(input_model)
+  flatbuffer_utils.strip_strings(model)
   # Write the model
-  flatbuffer_utils.write_model(output_model, args.output_tflite_file)
+  flatbuffer_utils.write_model(model, args.output_tflite_file)
 
 
 if __name__ == '__main__':
