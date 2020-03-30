@@ -464,6 +464,12 @@ DOC = """
   >>>model.name
   'densenet201'
 
+  Raises:
+    ValueError: in case of invalid argument for `weights`,
+      or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
+
 """
 
 setattr(DenseNet121, '__doc__', DenseNet121.__doc__ + DOC)
