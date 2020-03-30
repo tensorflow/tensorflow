@@ -1696,11 +1696,6 @@ def cosine_similarity(y_true, y_pred, axis=-1):
   >>> y_true = [[0., 1.], [1., 1.], [1., 1.]]
   >>> y_pred = [[1., 0.], [1., 1.], [-1., -1.]]
   >>> loss = tf.keras.losses.cosine_similarity(y_true, y_pred, axis=1)
-  >>> # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
-  >>> # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
-  >>> # loss = -sum(l2_norm(y_true) . l2_norm(y_pred), axis=1)
-  >>> #       = -[0. + 0., 0.5 + 0.5]
   >>> loss.numpy()
   array([-0., -0.999, 0.999], dtype=float32)
 
