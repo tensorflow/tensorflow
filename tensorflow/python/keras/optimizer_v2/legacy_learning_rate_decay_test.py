@@ -22,11 +22,11 @@ import math
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.optimizer_v2 import legacy_learning_rate_decay as learning_rate_decay
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
 from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-from tensorflow.python.training import learning_rate_decay
 
 
 class LRDecayTest(test_util.TensorFlowTestCase):
