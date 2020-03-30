@@ -157,7 +157,7 @@ def set_intersection(a, b, validate_indices=True):
         ((1, 1, 1), 6),
     ])
     a = tf.sparse.SparseTensor(list(a.keys()), list(a.values()),
-                                dense_shape=[2,2,2])
+                               dense_shape=[2,2,2])
 
     # b = np.array([[{1}, {}], [{4}, {5, 6, 7, 8}]])
     b = collections.OrderedDict([

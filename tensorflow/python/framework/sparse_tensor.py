@@ -481,6 +481,6 @@ def is_sparse(x):
 
   Returns:
     `True` iff `x` is a `tf.sparse.SparseTensor` or
-     `tf.compat.v1.SparseTensorValue`.
+    `tf.compat.v1.SparseTensorValue`.
   """
   return isinstance(x, (SparseTensor, SparseTensorValue))

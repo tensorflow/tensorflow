@@ -2516,7 +2516,7 @@ class CategoricalColumn(FeatureColumn):
   """Represents a categorical feature.
 
   A categorical feature typically handled with a `tf.sparse.SparseTensor` of
-   IDs.
+  IDs.
   """
 
   IdWeightPair = collections.namedtuple(  # pylint: disable=invalid-name
