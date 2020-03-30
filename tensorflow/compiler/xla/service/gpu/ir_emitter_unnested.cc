@@ -2102,8 +2102,11 @@ static IrArray::Index GetUnnormalizedIndex(
   // If the normalization only add a new dimensions of size 1,
   // generate simpler indexing. LLVM doesn't always simplify the more
   // complicated indexing and this prevents it from vectorizing some
-  // cases.
-  if (unnormalized_shape.rank() == 2) {
+  // cases. We do this only for major_to_minor memory layout.
+  if (unnormalized_shape.rank() == 2 && unnormalized_shape.has_layout() &&
+      unnormalized_shape.dimensions()[0] == normalized_shape_index.dims()[1] &&
+      unnormalized_shape.dimensions()[1] == normalized_shape_index.dims()[2] &&
+      unnormalized_shape.layout().minor_to_major(1) == 0) {
     DCHECK_EQ(normalized_shape_index.dims()[0], 0);
     auto multidim = normalized_shape_index.multidim();
     return IrArray::Index({multidim[1], multidim[2]}, unnormalized_shape,
