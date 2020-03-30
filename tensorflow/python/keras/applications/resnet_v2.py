@@ -220,7 +220,6 @@ DOC = """
       or invalid input shape.
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
-
 """
 
 setattr(ResNet50V2, '__doc__', ResNet50V2.__doc__ + DOC)

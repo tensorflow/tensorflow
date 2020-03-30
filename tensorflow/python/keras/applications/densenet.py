@@ -162,7 +162,7 @@ def DenseNet(
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
     pooling: optional pooling mode for feature extraction
-      when `include_top` is `False`.
+      when `include_top` is `False`. It could be:
       - `None` means that the output of the model will be
           the 4D tensor output of the
           last convolutional block.
@@ -469,7 +469,6 @@ DOC = """
       or invalid input shape.
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
-
 """
 
 setattr(DenseNet121, '__doc__', DenseNet121.__doc__ + DOC)

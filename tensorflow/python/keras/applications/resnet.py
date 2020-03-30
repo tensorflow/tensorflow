@@ -527,7 +527,7 @@ DOC = """
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.
@@ -544,7 +544,7 @@ DOC = """
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
     pooling: Optional pooling mode for feature extraction
-      when `include_top` is `False`.
+      when `include_top` is `False`. It could be:
       - `None` means that the output of the model will be
           the 4D tensor output of the
           last convolutional block.
