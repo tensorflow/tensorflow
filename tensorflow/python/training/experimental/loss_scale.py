@@ -197,10 +197,6 @@ class LossScale(trackable.Trackable):
     """Creates the LossScale from its config."""
     return cls(**config)
 
-  def variables(self):
-    """Returns the variables defined in this LossScale."""
-    return list(self._weights.values())
-
 
 def get_loss_scale_weights(loss_scale):
   return loss_scale._weights.values()  # pylint: disable=protected-access
