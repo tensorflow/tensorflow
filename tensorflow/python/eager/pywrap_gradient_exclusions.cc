@@ -410,7 +410,7 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
 
 absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
     const tensorflow::string &op_name) {
-  static std::array<OpIndexInfo, 469> a = {{
+  static std::array<OpIndexInfo, 459> a = {{
       {"Abs"},
       {"AccumulateNV2"},
       {"Acos"},
@@ -821,20 +821,11 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"TensorArrayRead"},
       {"TensorArrayReadV2"},
       {"TensorArrayReadV3"},
-      {"TensorArrayScatter"},
-      {"TensorArrayScatterV2"},
-      {"TensorArrayScatterV3"},
       {"TensorArraySize"},
       {"TensorArraySizeV2"},
       {"TensorArraySizeV3"},
-      {"TensorArraySplit"},
-      {"TensorArraySplitV2"},
-      {"TensorArraySplitV3"},
       {"TensorArrayV2"},
       {"TensorArrayV3"},
-      {"TensorArrayWrite"},
-      {"TensorArrayWriteV2"},
-      {"TensorArrayWriteV3"},
       {"TensorListConcat", 1, {0}},
       {"TensorListConcatLists"},
       {"TensorListConcatV2", 1, {0}},
@@ -842,7 +833,6 @@ absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
       {"TensorListGather"},
       {"TensorListGetItem"},
       {"TensorListLength"},
-      {"TensorListPopBack", 1, {1}},
       {"TensorListPushBack"},
       {"TensorListPushBackBatch"},
       {"TensorListResize"},

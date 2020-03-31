@@ -23,18 +23,18 @@ limitations under the License.
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
-#include "mlir/Dialect/Quant/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 
 namespace mlir {

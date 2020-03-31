@@ -263,11 +263,11 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter.representative_dataset = calibration_gen
 
     # default quantizer
-    quantized_converter.experimental_new_quantizer = False
+    quantized_converter._experimental_new_quantizer = False
     old_tflite = quantized_converter.convert()
 
     # new quantizer
-    quantized_converter.experimental_new_quantizer = True
+    quantized_converter._experimental_new_quantizer = True
     new_tflite = quantized_converter.convert()
 
     for _ in range(5):

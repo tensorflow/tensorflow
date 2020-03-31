@@ -17,8 +17,7 @@ package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
     packages = [
-        "//learning/brain/experimental/mlir/...",
-        "//learning/brain/google/xla/...",
+        "//learning/brain/mlir/...",
         "//tensorflow/compiler/mlir/...",
     ],
 )
@@ -205,7 +204,6 @@ cc_library(
 cc_library(
     name = "tensorflow_lite",
     srcs = [
-        "experimental/estimators/estimator.h",
         "ir/tfl_ops.cc",
         "ir/tfl_ops.cc.inc",
         "ir/tfl_ops.h.inc",
@@ -224,7 +222,7 @@ cc_library(
     deps = [
         ":tensorflow_lite_ops_inc_gen",
         ":validators",
-        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/lite/experimental/estimators:cost_estimators",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/lite/schema:schema_fbs",
         "@llvm-project//llvm:support",
@@ -421,7 +419,9 @@ cc_library(
     ],
     deps = [
         ":tensorflow_lite",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
@@ -554,14 +554,14 @@ cc_library(
 cc_library(
     name = "flatbuffer_translate_lib",
     srcs = [
+        "flatbuffer_export.cc",
         "flatbuffer_import.cc",
-        "flatbuffer_translate.cc",
         "utils/convert_type.cc",
     ],
     hdrs = [
+        "flatbuffer_export.h",
+        "flatbuffer_export_flags.h",
         "flatbuffer_import.h",
-        "flatbuffer_translate.h",
-        "flatbuffer_translate_flags.h",
         "utils/convert_type.h",
     ],
     deps = [
@@ -578,9 +578,10 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:status",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
@@ -601,15 +602,37 @@ cc_library(
         "@llvm-project//mlir:Support",
         "@llvm-project//mlir:Translation",
     ],
+)
+
+cc_library(
+    name = "flatbuffer_translate_registeration",
+    srcs = [
+        "flatbuffer_translate.cc",
+    ],
+    deps = [
+        ":flatbuffer_translate_lib",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LoopOpsTransforms",
+        "@llvm-project//mlir:MlirTranslateMain",
+        "@llvm-project//mlir:QuantOps",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
+    ],
     alwayslink = 1,
 )
 
 tf_cc_binary(
     name = "flatbuffer_translate",
     deps = [
-        ":flatbuffer_translate_lib",
-        "@llvm-project//mlir:LoopOpsTransforms",
-        "@llvm-project//mlir:MlirTranslateMain",
+        ":flatbuffer_translate_registeration",
     ],
 )
 
@@ -647,10 +670,13 @@ filegroup(
 
 tf_cc_binary(
     name = "tf_tfl_translate",
-    srcs = [":tf_tfl_translate_main"],
+    srcs = [
+        ":tf_tfl_translate_main",
+    ],
     deps = [
         ":common",
         ":flatbuffer_translate_lib",
+        ":flatbuffer_translate_registeration",
         ":tensorflow_lite",
         ":tf_tfl_passes",
         ":tf_tfl_translate_cl_options",
@@ -672,15 +698,18 @@ tf_cc_binary(
 
 tf_cc_binary(
     name = "mlir-tflite-runner",
-    srcs = ["mlir_tflite_runner.cc"],
+    srcs = [
+        "mlir_tflite_runner.cc",
+    ],
     deps = [
         ":flatbuffer_translate_lib",
+        ":flatbuffer_translate_registeration",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/delegates/flex:delegate",
         "//tensorflow/lite/kernels:builtin_ops",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:support",
         "@llvm-project//mlir:IR",

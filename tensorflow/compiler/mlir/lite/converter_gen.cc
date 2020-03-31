@@ -27,10 +27,10 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/TableGen/Attribute.h"  // TF:llvm-project
-#include "mlir/TableGen/Format.h"  // TF:llvm-project
-#include "mlir/TableGen/Operator.h"  // TF:llvm-project
-#include "mlir/TableGen/Predicate.h"  // TF:llvm-project
+#include "mlir/TableGen/Attribute.h"  // from @llvm-project
+#include "mlir/TableGen/Format.h"  // from @llvm-project
+#include "mlir/TableGen/Operator.h"  // from @llvm-project
+#include "mlir/TableGen/Predicate.h"  // from @llvm-project
 
 using llvm::DefInit;
 using llvm::dyn_cast;

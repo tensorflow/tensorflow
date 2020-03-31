@@ -62,29 +62,32 @@ struct AllocationAttributes {
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
-// If defined, the runtime will cache Op names in thread-local memory
-// and some allocators will try to tag allocations with the requesting Op.
-#ifdef TENSORFLOW_MEM_DEBUG
+// The runtime will cache Op names in thread-local memory and some allocators
+// will try to tag allocations with the requesting Op.
 extern thread_local const char* pending_op_name;
-extern thread_local uint64 pending_step_id;
-#define MEMDEBUG_CACHE_OP(N) \
-  do {                       \
-    pending_op_name = (N);   \
-  } while (0)
-#define MEMDEBUG_CACHE_STEPID(N) \
-  do {                           \
-    pending_step_id = (N);       \
-  } while (0)
-#define MEMDEBUG_CACHE_VAL pending_op_name
-#else
-#define MEMDEBUG_CACHE_OP(N) \
-  do {                       \
-  } while (0)
-#define MEMDEBUG_CACHE_STEPID(N) \
-  do {                           \
-  } while (0)
-#define MEMDEBUG_CACHE_VAL nullptr
-#endif
+extern thread_local int64 pending_step_id;
+
+// Wrapper class of pending_op_name and pending_step_id for RAII.
+class ScopedMemoryDebugAnnotation {
+ public:
+  explicit ScopedMemoryDebugAnnotation(const char* op_name) {
+    last_op_name_ = pending_op_name;
+    pending_op_name = op_name;
+  }
+
+  explicit ScopedMemoryDebugAnnotation(const char* op_name, int64 step_id) {
+    last_op_name_ = pending_op_name;
+    pending_op_name = op_name;
+    pending_step_id = step_id;
+  }
+
+  ~ScopedMemoryDebugAnnotation() { pending_op_name = last_op_name_; }
+
+ private:
+  // Stores the previous value of pending_op_name in case the annotations are
+  // nested.
+  const char* last_op_name_ = nullptr;
+};
 
 // Runtime statistics collected by an allocator. Exactly the same as
 // stream_executor::AllocatorStats, but independently defined to preserve the
@@ -114,7 +117,7 @@ struct AllocatorStats {
         bytes_reserved(0),
         peak_bytes_reserved(0) {}
 
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Allocator is an abstract interface for allocating and deallocating
@@ -127,7 +130,7 @@ class Allocator {
   virtual ~Allocator();
 
   // Return a string identifying this allocator
-  virtual string Name() = 0;
+  virtual std::string Name() = 0;
 
   // Return an uninitialized block of memory that is "num_bytes" bytes
   // in size.  The returned pointer is guaranteed to be aligned to a
@@ -242,7 +245,7 @@ class AllocatorWrapper : public Allocator {
   // Returns the wrapped allocator to which all calls are delegated.
   Allocator* wrapped() const { return wrapped_; }
 
-  string Name() override { return wrapped_->Name(); }
+  std::string Name() override { return wrapped_->Name(); }
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return wrapped_->AllocateRaw(alignment, num_bytes);
@@ -336,7 +339,7 @@ struct AllocatorAttributes {
   int32 scope_id = 0;
 
   // Returns a human readable representation of this.
-  string DebugString() const;
+  std::string DebugString() const;
 };
 
 // Returns a trivial implementation of Allocator, which is a process singleton.

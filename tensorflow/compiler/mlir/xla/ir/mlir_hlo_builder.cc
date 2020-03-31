@@ -16,8 +16,8 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"

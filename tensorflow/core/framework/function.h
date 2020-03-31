@@ -24,6 +24,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/optional.h"
+#include "absl/types/variant.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -838,6 +839,15 @@ class CustomKernelCreator {
       std::unique_ptr<OpKernel>* kernel) const = 0;
 };
 
+typedef
+#if !defined(IS_MOBILE_PLATFORM)
+    absl::variant<Tensor, eager::RemoteTensorHandle*>
+        FunctionArg;
+#else
+    absl::variant<Tensor>
+        FunctionArg;
+#endif
+
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
  public:
@@ -861,7 +871,7 @@ class DistributedFunctionLibraryRuntime {
   // TODO(yujingzhang): Support outputting tensors on remote devices.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
-                   std::vector<eager::RemoteTensorHandle>* args,
+                   gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) {
     done(errors::Unimplemented("Unimplemented."));
   }

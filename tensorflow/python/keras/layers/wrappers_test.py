@@ -905,7 +905,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       # leading to the following error on ROCm platform
       # ROCm MIOpen only supports packed input output
       # Skip this subtest for now
-      self.skipTest("Test not supported on the ROCm platform")
+      self.skipTest('Test not supported on the ROCm platform')
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -938,7 +938,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       # leading to the following error on ROCm platform
       # ROCm MIOpen only supports packed input output
       # Skip this subtest for now
-      self.skipTest("Test not supported on the ROCm platform")
+      self.skipTest('Test not supported on the ROCm platform')
     samples = 2
     dim = 5
     timesteps = 3
@@ -1142,7 +1142,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
   def test_Bidirectional_ragged_input(self, merge_mode):
     if test.is_built_with_rocm():
       # ragged tenors are not supported in ROCM RNN implementation
-      self.skipTest("Test not supported on the ROCm platform")
+      self.skipTest('Test not supported on the ROCm platform')
     np.random.seed(100)
     rnn = keras.layers.LSTM
     units = 3

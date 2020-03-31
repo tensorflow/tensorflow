@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/model_utils.h"
 
 namespace tflite {
 namespace optimize {
@@ -356,6 +357,109 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
   TFLITE_DCHECK_EQ(status, kTfLiteOk);
 
   WriteFile(output_file, builder.GetBufferPointer(), builder.GetSize());
+
+  return kTfLiteOk;
+}
+
+namespace {
+void AddUint8Dequant(
+    const std::unordered_map<string, std::pair<float, int32_t>>& quant_params,
+    ModelT* model) {
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    // Add dequant to input tensors.
+    for (size_t input_idx = 0; input_idx < subgraph->inputs.size();
+         input_idx++) {
+      const int32_t tensor_idx = subgraph->inputs[input_idx];
+      TensorT* tensor = subgraph->tensors[tensor_idx].get();
+      if (tensor->type != TensorType_FLOAT32) {
+        continue;
+      }
+      if (quant_params.find(tensor->name) != quant_params.end()) {
+        // Add uint8 tensor
+        const string added_tensor_name = tensor->name + "_uint8";
+        std::unique_ptr<TensorT> leading_op_input;
+        const std::pair<float, int32_t>& provided_quant_params =
+            quant_params.at(string(tensor->name));
+        utils::MakeTensorWithQuantParam(
+            added_tensor_name, tensor->shape, TensorType_UINT8,
+            provided_quant_params.first, provided_quant_params.second,
+            &leading_op_input);
+        const int32_t leading_op_input_idx = subgraph->tensors.size();
+        subgraph->tensors.push_back(std::move(leading_op_input));
+
+        // Create the leading op, which is deqantize Op.
+        std::unique_ptr<OperatorT> leading_op;
+        utils::MakeDequantizeOperator(model, &leading_op, leading_op_input_idx,
+                                      tensor_idx);
+
+        // Insert the new op at the start of the model.
+        subgraph->operators.insert(subgraph->operators.begin(),
+                                   std::move(leading_op));
+      }
+    }
+  }
+}
+
+void AddUint8Quant(
+    const std::unordered_map<string, std::pair<float, int32_t>>& quant_params,
+    ModelT* model) {
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    // Add quant to output tensors.
+    for (size_t output_idx = 0; output_idx < subgraph->outputs.size();
+         output_idx++) {
+      const int32_t tensor_idx = subgraph->outputs[output_idx];
+      TensorT* tensor = subgraph->tensors[tensor_idx].get();
+      if (tensor->type != TensorType_FLOAT32) {
+        continue;
+      }
+      if (quant_params.find(tensor->name) != quant_params.end()) {
+        // Add uint8 tensor
+        const string added_tensor_name = tensor->name + "_uint8";
+        std::unique_ptr<TensorT> tailing_op_output;
+        const std::pair<float, int32_t>& provided_quant_params =
+            quant_params.at(string(tensor->name));
+        utils::MakeTensorWithQuantParam(
+            added_tensor_name, tensor->shape, TensorType_UINT8,
+            provided_quant_params.first, provided_quant_params.second,
+            &tailing_op_output);
+        const int32_t tailing_op_output_idx = subgraph->tensors.size();
+        subgraph->tensors.push_back(std::move(tailing_op_output));
+
+        // Create the tailing op, which is Qantize Op.
+        std::unique_ptr<OperatorT> tailing_op;
+        utils::MakeQuantizeOperator(model, &tailing_op, tensor_idx,
+                                    tailing_op_output_idx);
+
+        // Insert the new op at the end of the model.
+        subgraph->operators.push_back(std::move(tailing_op));
+      }
+    }
+  }
+}
+}  // namespace
+
+TfLiteStatus Uint8QuantizeModelInputsOutputs(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        input_quant_params,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        output_quant_params) {
+  std::unique_ptr<ModelT> model;
+  model.reset(input_model->UnPack());
+  // Add Dequant for inputs.
+  AddUint8Dequant(input_quant_params, model.get());
+
+  // Add Quant for outputs.
+  AddUint8Quant(output_quant_params, model.get());
+
+  // Output model.
+  flatbuffers::Offset<Model> output_model_location =
+      Model::Pack(*builder, model.get());
+  FinishModelBuffer(*builder, output_model_location);
 
   return kTfLiteOk;
 }

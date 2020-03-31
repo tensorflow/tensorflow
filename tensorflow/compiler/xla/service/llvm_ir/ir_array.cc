@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
+#include <tuple>
+#include <vector>
+
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -137,40 +140,76 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK_EQ(multidim_.size(), output_shape.rank());
-  const auto common_factors =
-      CommonFactors(AsInt64Slice(input_shape.dimensions()),
-                    AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(
       input_shape.rank(), llvm::UndefValue::get(index_type_));
-  // We compute the source indices in each common factor from only the target
-  // indices in the same common factor.
-  for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
-    absl::Span<int64 const> dimensions =
-        AsInt64Slice(output_shape.dimensions())
-            .subspan(common_factors[k].second,
-                     common_factors[k + 1].second - common_factors[k].second);
-    llvm::Value* logical_linear_index =
-        Index(absl::Span<llvm::Value* const>(multidim_).subspan(
-                  common_factors[k].second,
-                  common_factors[k + 1].second - common_factors[k].second),
-              dimensions, index_type_)
-            .Linearize(dimensions, builder);
-    // Delinearizes logical_linear_index for the source array in row-major
-    // collapsed order. The first rank-1 indices are the remainder of the
-    // linear index by each dimension size.
-    for (int64 i = common_factors[k + 1].first - 1;
-         i >= common_factors[k].first; --i) {
-      llvm::Value* divisor =
-          GetConstantWithIndexType(input_shape.dimensions(i));
-      if (input_shape.dimensions(i) == 1) {
-        source_multidim_index[i] = GetConstantWithIndexType(0);
-      } else if (i == common_factors[k].first) {
-        source_multidim_index[i] = logical_linear_index;
+  auto trivial_reshape =
+      ShapeUtil::InsertedOrDeleted1SizedDimensions(input_shape, output_shape);
+  if (std::get<0>(trivial_reshape)) {
+    // The 1-sized dimensions which only appear in 'input_shape'.
+    auto deleted_dims_indices = std::get<1>(trivial_reshape);
+    // The 1-sized dimensions which only appear in 'output_shape'.
+    auto inserted_dims_indices = std::get<2>(trivial_reshape);
+
+    // This is a two-way merge of 'deleted_dims_indices' with indexing into
+    // 'source_multidim_index', and a two-way merge of 'inserted_dims_indices'
+    // with indexing into 'multidim_'. When we find a dimension in
+    // 'source_multidim_index' which does not belong to 'deleted_dims_indices',
+    // we retrieve the corresponding value from 'multidim_' (skipping any
+    // indices that appear in 'inserted_dims_indices').
+    for (int64 i = 0, j = 0, k = 0, l = 0; i < source_multidim_index.size();
+         ++i) {
+      if (j == deleted_dims_indices.size() || deleted_dims_indices[j] > i) {
+        // This is a dimension that was preserved. Take the matching value from
+        // multidim_.
+        while (l < inserted_dims_indices.size() &&
+               inserted_dims_indices[l] == k) {
+          // Skip 1-sized dimensions.
+          ++k;
+          ++l;
+        }
+        source_multidim_index[i] = multidim_[k];
+        ++k;
       } else {
-        source_multidim_index[i] =
-            builder->CreateURem(logical_linear_index, divisor);
+        // This is a 1-sized dimension that only appears in the operand.
+        source_multidim_index[i] = GetConstantWithIndexType(0);
+        ++j;
       }
-      logical_linear_index = builder->CreateUDiv(logical_linear_index, divisor);
+    }
+  } else {
+    const auto common_factors =
+        CommonFactors(AsInt64Slice(input_shape.dimensions()),
+                      AsInt64Slice(output_shape.dimensions()));
+    // We compute the source indices in each common factor from only the target
+    // indices in the same common factor.
+    for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
+      absl::Span<int64 const> dimensions =
+          AsInt64Slice(output_shape.dimensions())
+              .subspan(common_factors[k].second,
+                       common_factors[k + 1].second - common_factors[k].second);
+      llvm::Value* logical_linear_index =
+          Index(absl::Span<llvm::Value* const>(multidim_).subspan(
+                    common_factors[k].second,
+                    common_factors[k + 1].second - common_factors[k].second),
+                dimensions, index_type_)
+              .Linearize(dimensions, builder);
+      // Delinearizes logical_linear_index for the source array in row-major
+      // collapsed order. The first rank-1 indices are the remainder of the
+      // linear index by each dimension size.
+      for (int64 i = common_factors[k + 1].first - 1;
+           i >= common_factors[k].first; --i) {
+        llvm::Value* divisor =
+            GetConstantWithIndexType(input_shape.dimensions(i));
+        if (input_shape.dimensions(i) == 1) {
+          source_multidim_index[i] = GetConstantWithIndexType(0);
+        } else if (i == common_factors[k].first) {
+          source_multidim_index[i] = logical_linear_index;
+        } else {
+          source_multidim_index[i] =
+              builder->CreateURem(logical_linear_index, divisor);
+        }
+        logical_linear_index =
+            builder->CreateUDiv(logical_linear_index, divisor);
+      }
     }
   }
 

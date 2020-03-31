@@ -86,6 +86,13 @@ class EmbeddingTest(keras_parameterized.TestCase):
     outputs = model.predict(np.array([[0, 1, 0]], dtype='int32'))
     self.assertAllClose(outputs, [[[1, 1], [2, 2], [1, 1]]])
 
+  def test_embedding_incorrect_dimension(self):
+    with self.assertRaises(ValueError):
+      keras.layers.Embedding(input_dim=0, output_dim=1)
+
+    with self.assertRaises(ValueError):
+      keras.layers.Embedding(input_dim=1, output_dim=0)
+
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def test_eager_gpu_cpu(self):
     l = keras.layers.Embedding(output_dim=2, input_dim=2)

@@ -1337,10 +1337,11 @@ Status DirectSession::CreateExecutors(
       device_mgr_.get(), options_.env, &options_.config, graph_def_version,
       func_info->flib_def.get(), optimizer_opts, thread_pools_[0].first,
       /*parent=*/nullptr, custom_kernel_creator, session_metadata,
-      [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-        *r = new IntraProcessRendezvous(device_mgr);
-        return Status::OK();
-      }));
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }}));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {

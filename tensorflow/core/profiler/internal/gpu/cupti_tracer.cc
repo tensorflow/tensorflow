@@ -1348,7 +1348,7 @@ absl::string_view AnnotationMap::LookUp(uint32 device_id,
 }
 
 bool CuptiTracer::IsAvailable() const {
-  return !activity_tracing_enabled_ && !api_tracing_enabled_;
+  return NumGpus() && !activity_tracing_enabled_ && !api_tracing_enabled_;
 }
 
 int CuptiTracer::NumGpus() {

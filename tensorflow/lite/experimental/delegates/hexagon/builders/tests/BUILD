@@ -34,6 +34,7 @@ hexagon_op_tests(
         "pool_test.cc",
         "reduce_test.cc",
         "resize_bilinear_test.cc",
+        "softmax_test.cc",
         "space_to_depth_test.cc",
         "split_test.cc",
         "transpose_conv_test.cc",

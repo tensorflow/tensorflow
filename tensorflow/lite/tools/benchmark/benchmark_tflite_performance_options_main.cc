@@ -23,9 +23,6 @@ namespace benchmark {
 int Main(int argc, char** argv) {
   TFLITE_LOG(INFO) << "STARTING!";
   BenchmarkTfLiteModel benchmark;
-  BenchmarkLoggingListener listener;
-  benchmark.AddListener(&listener);
-
   BenchmarkPerformanceOptions all_options_benchmark(&benchmark);
   all_options_benchmark.Run(argc, argv);
   return EXIT_SUCCESS;

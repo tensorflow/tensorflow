@@ -338,6 +338,7 @@ cc_library(
     deps = [
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",

@@ -381,7 +381,7 @@ Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst) {
       ->ToTensor(dst);
 }
 
-Status TensorInterface::ToTensor(Tensor* dst) const {
+Status TensorInterface::ToTensor(tensorflow::Tensor* dst) const {
   if (tensor_.dtype() == DT_RESOURCE) {
     if (tensor_.dims() != 0) {
       return InvalidArgument(
@@ -389,7 +389,7 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
           "shape ",
           tensor_.shape().DebugString());
     }
-    *dst = Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
+    *dst = tensorflow::Tensor(tensorflow::DT_RESOURCE, tensor_.shape());
     if (!dst->scalar<tensorflow::ResourceHandle>()().ParseFromString(
             string(static_cast<const char*>(Data()), ByteSize()))) {
       return InvalidArgument(
@@ -414,7 +414,7 @@ Status TensorInterface::ToTensor(Tensor* dst) const {
   const char* data_start = input + sizeof(tensorflow::uint64) * num_elements;
   const char* limit = input + src_size;
 
-  *dst = Tensor(tensor_.dtype(), tensor_.shape());
+  *dst = tensorflow::Tensor(tensor_.dtype(), tensor_.shape());
   auto dstarray = dst->flat<tstring>();
   for (tensorflow::int64 i = 0; i < num_elements; ++i) {
     tensorflow::uint64 offset =

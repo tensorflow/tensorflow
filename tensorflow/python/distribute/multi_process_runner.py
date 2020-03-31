@@ -1,3 +1,4 @@
+# Lint as: python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -386,7 +387,12 @@ class MultiProcessRunner(object):
 
     for subprocess_info in subprocess_infos:
       logging.info('Parent process is now killing PID: %d', subprocess_info.pid)
-      os.kill(subprocess_info.pid, signal.SIGKILL)
+      try:
+        os.kill(subprocess_info.pid, signal.SIGKILL)
+      except ProcessLookupError:
+        # TODO(rchao): Remove subprocess info from the queue once a subprocess
+        # is terminated.
+        logging.info('PID %d does not exist.', subprocess_info.pid)
 
     self._all_forced_terminated = True
 
@@ -444,7 +450,8 @@ class _Subprocess(object):
     """The wrapper function that actually gets run in child process(es)."""
 
     pid = os.getpid()
-    logging.info('Subprocess with PID %d is now being started.', pid)
+    logging.info('Subprocess with PID %d (%s, %d) is now being started.', pid,
+                 task_type, task_id)
     _resource(SUBPROCESS_INFO_QUEUE).put(_SubprocessInfo(pid=pid))
 
     # Assign sys.stdout and sys.stderr as duplicates of `pipe_w` so print() and

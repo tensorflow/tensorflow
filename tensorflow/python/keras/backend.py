@@ -75,6 +75,7 @@ from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import moving_averages
+from tensorflow.python.training.tracking import util as tracking_util
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
@@ -546,6 +547,11 @@ def get_session(op_input_list=()):
   return session
 
 
+# Inject the get_session function to tracking_util to avoid the backward
+# dependency from TF to Keras.
+tracking_util.register_session_provider(get_session)
+
+
 def get_graph():
   if context.executing_eagerly():
     global _GRAPH
@@ -817,6 +823,9 @@ def name_scope(name):
     Name scope context manager.
   """
   return ops.name_scope_v2(name)
+
+# Export V1 version.
+keras_export(v1=['keras.backend.name_scope'])(ops.name_scope_v1)
 
 
 @keras_export('keras.backend.variable')
@@ -1497,7 +1506,8 @@ def random_uniform_variable(shape, low, high, dtype=None, name=None, seed=None):
 
   Example:
 
-  >>> kvar = tf.keras.backend.random_uniform_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_uniform_variable(shape=(2,3),
+  ... low=0.0, high=1.0)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
@@ -1531,7 +1541,8 @@ def random_normal_variable(shape, mean, scale, dtype=None, name=None,
 
   Example:
 
-  >>> kvar = tf.keras.backend.random_normal_variable((2,3), 0, 1)
+  >>> kvar = tf.keras.backend.random_normal_variable(shape=(2,3),
+  ... mean=0.0, scale=1.0)
   >>> kvar
   <tf.Variable 'Variable:0' shape=(2, 3) dtype=float32, numpy=...,
   dtype=float32)>
@@ -5671,6 +5682,14 @@ def random_normal(shape, mean=0.0, stddev=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor with normal distribution of values.
+
+  Example:
+
+  >>> random_normal_tensor = tf.keras.backend.random_normal(shape=(2,3),
+  ... mean=0.0, stddev=1.0)
+  >>> random_normal_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5695,6 +5714,14 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> random_uniform_tensor = tf.keras.backend.random_uniform(shape=(2,3),
+  ... minval=0.0, maxval=1.0)
+  >>> random_uniform_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()
@@ -5723,6 +5750,14 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
 
   Returns:
       A tensor.
+
+  Example:
+
+  >>> random_binomial_tensor = tf.keras.backend.random_binomial(shape=(2,3),
+  ... p=0.5)
+  >>> random_binomial_tensor
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
+  dtype=float32)>
   """
   if dtype is None:
     dtype = floatx()

@@ -19,8 +19,8 @@ limitations under the License.
 #include <memory>
 
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 

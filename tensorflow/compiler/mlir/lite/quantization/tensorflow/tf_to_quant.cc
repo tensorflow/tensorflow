@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "mlir/Dialect/Quant/QuantOps.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 

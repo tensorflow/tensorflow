@@ -24,6 +24,7 @@ import itertools
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -340,7 +341,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
               on TPUs or small models with a large Python overhead. Note that if
               this value is set to `N`, `Callback.on_batch` methods will only be
               called every `N` batches. This currently defaults to `1`. At most,
-              one full epoch can be run each execution.
+              one full epoch will be run each execution. If a number larger than
+              the size of the epoch is passed, the execution will be truncated
+              to the size of the epoch.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -472,7 +475,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     """The logic for one training step.
 
     This method can be overridden to support custom training logic.
-    This method is called by `Model._make_train_function`.
+    This method is called by `Model.make_train_function`.
 
     This method should contain the mathemetical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
@@ -480,7 +483,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Configuration details for *how* this logic is run (e.g. `tf.function` and
     `tf.distribute.Strategy` settings), should be left to
-    `Model._make_train_function`, which can also be overridden.
+    `Model.make_train_function`, which can also be overridden.
 
     Arguments:
       data: A nested structure of `Tensor`s.
@@ -508,7 +511,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     #   self.optimizer.apply_gradients(zip(gradients, trainable_variables))
     # The _minimize call does a few extra steps unnecessary in most cases,
     # such as loss scaling and gradient clipping.
-    _minimize(tape, self.optimizer, loss, self.trainable_variables)
+    _minimize(self.distribute_strategy, tape, self.optimizer, loss,
+              self.trainable_variables)
 
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
@@ -521,7 +525,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
     Typically, this method directly controls `tf.function` and
     `tf.distribute.Strategy` settings, and delegates the actual training
-    logic to `Model._train_step`.
+    logic to `Model.train_step`.
 
     This function is cached the first time `Model.fit` or
     `Model.train_on_batch` is called. The cache is cleared whenever
@@ -542,8 +546,7 @@ class Model(network.Network, version_utils.ModelVersionSelector):
       def run_step(data):
         outputs = model.train_step(data)
         # Ensure counter is updated only if `train_step` succeeds.
-        control_deps = [nest.flatten(outputs)[0]]
-        with ops.control_dependencies(control_deps):
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
           model._train_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
@@ -655,7 +658,10 @@ class Model(network.Network, version_utils.ModelVersionSelector):
            `keras.utils.Sequence` instance.
         validation_data: Data on which to evaluate
             the loss and any model metrics at the end of each epoch.
-            The model will not be trained on this data.
+            The model will not be trained on this data. Thus, note the fact
+            that the validation loss of data provided using `validation_split`
+            or `validation_data` is not affected by regularization layers like
+            noise and dropuout.
             `validation_data` will override `validation_split`.
             `validation_data` could be:
               - tuple `(x_val, y_val)` of Numpy arrays or tensors
@@ -934,19 +940,36 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     if self.test_function is not None:
       return self.test_function
 
-    def test_function(iterator):
-      """Runs one call to `self.test_function`."""
+    def step_function(model, iterator):
+      """Runs a single evaluation step."""
 
       def run_step(data):
-        outputs = self.test_step(data)
-        self._test_counter.assign_add(1)
+        outputs = model.test_step(data)
+        # Ensure counter is updated only if `test_step` succeeds.
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
+          model._test_counter.assign_add(1)  # pylint: disable=protected-access
         return outputs
 
       data = next(iterator)
-      outputs = self.distribute_strategy.run(run_step, args=(data,))
+      outputs = model.distribute_strategy.run(run_step, args=(data,))
       outputs = reduce_per_replica(
           outputs, self.distribute_strategy, reduction='first')
       return outputs
+
+    if self._steps_per_execution.numpy().item() == 1:
+
+      def test_function(iterator):
+        """Runs an evaluation execution with one step."""
+        return step_function(self, iterator)
+
+    else:
+
+      def test_function(iterator):
+        """Runs an evaluation execution with multiple steps."""
+        outputs = step_function(self, iterator)
+        for _ in math_ops.range(self._steps_per_execution - 1):
+          outputs = step_function(self, iterator)
+        return outputs
 
     if not self.run_eagerly:
       test_function = def_function.function(
@@ -1058,7 +1081,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
           max_queue_size=max_queue_size,
           workers=workers,
           use_multiprocessing=use_multiprocessing,
-          model=self)
+          model=self,
+          steps_per_execution=self._steps_per_execution)
 
       # Container that configures and calls `tf.keras.Callback`s.
       if not isinstance(callbacks, callbacks_module.CallbackList):
@@ -1081,10 +1105,11 @@ class Model(network.Network, version_utils.ModelVersionSelector):
             with trace.Trace('TraceContext', graph_type='test', step_num=step):
               callbacks.on_test_batch_begin(step)
               tmp_logs = test_function(iterator)
-              if not data_handler.should_sync:
+              if data_handler.should_sync:
                 context.async_wait()
               logs = tmp_logs  # No error, now safe to assign to logs.
-              callbacks.on_test_batch_end(step, logs)
+              end_step = step + data_handler.step_increment
+              callbacks.on_test_batch_end(end_step, logs)
       callbacks.on_test_end()
 
       logs = tf_utils.to_numpy_or_python_type(logs)
@@ -1146,7 +1171,9 @@ class Model(network.Network, version_utils.ModelVersionSelector):
 
       def run_step(data):
         outputs = self.predict_step(data)
-        self._predict_counter.assign_add(1)
+        # Ensure counter is updated only if `predict_step` succeeds.
+        with ops.control_dependencies(_minimum_control_deps(outputs)):
+          self._predict_counter.assign_add(1)
         return outputs
 
       data = next(iterator)
@@ -1179,7 +1206,8 @@ class Model(network.Network, version_utils.ModelVersionSelector):
     directly using `__call__` is recommended for faster execution, e.g.,
     `model(x)`, or `model(x, training=False)` if you have layers such as
     `tf.keras.layers.BatchNormalization` that behaves differently during
-    inference.
+    inference. Also, note the fact that test loss is not affected by
+    regularization layers like noise and dropout.
 
     Arguments:
         x: Input samples. It could be:
@@ -1763,7 +1791,7 @@ def _tpu_multi_host_concat(v, strategy):
   return concat(ordered_replicas)
 
 
-def _minimize(tape, optimizer, loss, trainable_variables):
+def _minimize(strategy, tape, optimizer, loss, trainable_variables):
   """Minimizes loss for one step by updating `trainable_variables`.
 
   This is roughly equivalent to
@@ -1777,6 +1805,7 @@ def _minimize(tape, optimizer, loss, trainable_variables):
   optimizer is a LossScaleOptimizer.
 
   Args:
+    strategy: `tf.distribute.Strategy`.
     tape: A gradient tape. The loss must have been computed under this tape.
     optimizer: The optimizer used to minimize the loss.
     loss: The loss tensor.
@@ -1790,7 +1819,15 @@ def _minimize(tape, optimizer, loss, trainable_variables):
 
   gradients = tape.gradient(loss, trainable_variables)
 
-  if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
+  # Whether to aggregate gradients outside of optimizer. This requires support
+  # of the optimizer and doesn't work with ParameterServerStrategy and
+  # CentralStroageStrategy.
+  aggregate_grads_outside_optimizer = (
+      optimizer._HAS_AGGREGATE_GRAD and  # pylint: disable=protected-access
+      not isinstance(strategy.extended,
+                     parameter_server_strategy.ParameterServerStrategyExtended))
+
+  if aggregate_grads_outside_optimizer:
     # We aggregate gradients before unscaling them, in case a subclass of
     # LossScaleOptimizer all-reduces in fp16. All-reducing in fp16 can only be
     # done on scaled gradients, not unscaled gradients, for numeric stability.
@@ -1800,9 +1837,10 @@ def _minimize(tape, optimizer, loss, trainable_variables):
     gradients = optimizer.get_unscaled_gradients(gradients)
   gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
   if trainable_variables:
-    if optimizer._HAS_ALL_REDUCE_SUM_GRAD:  # pylint: disable=protected-access
-      optimizer.apply_gradients(zip(gradients, trainable_variables),
-                                all_reduce_sum_gradients=False)
+    if aggregate_grads_outside_optimizer:
+      optimizer.apply_gradients(
+          zip(gradients, trainable_variables),
+          experimental_aggregate_gradients=False)
     else:
       optimizer.apply_gradients(zip(gradients, trainable_variables))
 
@@ -1815,3 +1853,15 @@ def write_scalar_summaries(logs, step):
   for name, value in logs.items():
     if _is_scalar(value):
       summary_ops_v2.scalar('batch_' + name, value, step=step)
+
+
+def _minimum_control_deps(outputs):
+  """Returns the minimum control dependencies to ensure step succeeded."""
+  if context.executing_eagerly():
+    return []  # Control dependencies not needed.
+  outputs = nest.flatten(outputs, expand_composites=True)
+  for out in outputs:
+    # Variables can't be control dependencies.
+    if not isinstance(out, variables.Variable):
+      return [out]  # Return first Tensor or Op from outputs.
+  return []  # No viable Tensor or Op to use for control deps.

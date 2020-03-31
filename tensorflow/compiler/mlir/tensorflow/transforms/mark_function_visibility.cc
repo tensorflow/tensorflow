@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h"
 
 #define DEBUG_TYPE "tf-shape-inference"

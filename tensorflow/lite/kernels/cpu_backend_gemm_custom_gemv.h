@@ -35,7 +35,7 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "tensorflow/lite/experimental/ruy/ruy/profiler/instrumentation.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/cpu_backend_threadpool.h"

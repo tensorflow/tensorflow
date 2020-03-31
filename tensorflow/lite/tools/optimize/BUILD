@@ -17,6 +17,7 @@ cc_library(
     srcs = ["modify_model_interface.cc"],
     hdrs = ["modify_model_interface.h"],
     deps = [
+        ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -107,8 +108,8 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "//tensorflow/lite/kernels/internal:round",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",

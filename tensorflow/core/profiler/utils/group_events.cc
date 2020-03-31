@@ -28,6 +28,22 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+static const int64 kFunctionalOpEventTypes[] = {
+    HostEventType::kCallOp,
+    HostEventType::kParallelForOp,
+    HostEventType::kForeverOp,
+    HostEventType::kNumericalGradientOpEvalRight,
+    HostEventType::kNumericalGradientOpEvalLeft,
+    HostEventType::kSymbolicGradientOp,
+    HostEventType::kRemoteCallOp,
+    HostEventType::kIfOp,
+    HostEventType::kCaseOp,
+    HostEventType::kWhileOpEvalCond,
+    HostEventType::kWhileOpStartBody,
+    HostEventType::kForOp,
+    HostEventType::kPartitionedCallOp,
+};
+
 // Creates stat metadata for the stats which may be added by grouping.
 void CreateStatMetadata(XPlane* plane) {
   XPlaneBuilder builder(plane);
@@ -190,19 +206,24 @@ void EventForest::ConnectInterThread(
     const std::vector<InterThreadConnectInfo>& connect_info_list) {
   for (const auto& connect_info : connect_info_list) {
     absl::flat_hash_map<std::vector<int64>, EventNode*> connect_map;
-    const std::vector<int64>& stat_types = connect_info.stat_types;
+    const std::vector<int64>& parent_stat_types =
+        connect_info.parent_stat_types;
+    const std::vector<int64>* child_stat_types = &connect_info.child_stat_types;
+    if (child_stat_types->empty()) {
+      child_stat_types = &parent_stat_types;
+    }
     if (auto parent_event_node_list =
             gtl::FindOrNull(event_node_map_, connect_info.parent_event_type)) {
       for (const auto& parent_event_node : *parent_event_node_list) {
         std::vector<int64> stats;
-        for (auto stat_type : stat_types) {
+        for (auto stat_type : parent_stat_types) {
           const XStat* stat = parent_event_node->GetContextStat(stat_type);
           if (!stat) break;
           stats.push_back(stat->value_case() == stat->kInt64Value
                               ? stat->int64_value()
                               : stat->uint64_value());
         }
-        if (stats.size() == stat_types.size()) {
+        if (stats.size() == parent_stat_types.size()) {
           connect_map[stats] = parent_event_node.get();
         }
       }
@@ -211,14 +232,14 @@ void EventForest::ConnectInterThread(
             gtl::FindOrNull(event_node_map_, connect_info.child_event_type)) {
       for (const auto& child_event_node : *child_event_node_list) {
         std::vector<int64> stats;
-        for (auto stat_type : stat_types) {
+        for (auto stat_type : *child_stat_types) {
           const XStat* stat = child_event_node->GetContextStat(stat_type);
           if (!stat) break;
           stats.push_back(stat->value_case() == stat->kInt64Value
                               ? stat->int64_value()
                               : stat->uint64_value());
         }
-        if (stats.size() == stat_types.size()) {
+        if (stats.size() == child_stat_types->size()) {
           if (auto parent_event_node = gtl::FindPtrOrNull(connect_map, stats)) {
             parent_event_node->AddChild(child_event_node.get());
           }
@@ -330,24 +351,36 @@ EventForest::EventForest(
   CreateEventGroup(root_event_types);
 }
 
+std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
+  std::vector<InterThreadConnectInfo> connect_info_list = {
+      {HostEventType::kFunctionRun,
+       HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kSessionRun,
+       HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kExecutorStateProcess,
+       HostEventType::kIteratorGetNextOp,
+       {StatType::kStepId, StatType::kIterNum}},
+      {HostEventType::kKernelLaunch,
+       HostEventType::kKernelExecute,
+       {StatType::kCorrelationId}},
+      {HostEventType::kLocalExecutableExecuteOnLocalDevice,
+       HostEventType::kLocalExecutableExecute,
+       {StatType::kRunId}}};
+  for (int64 event_type : kFunctionalOpEventTypes) {
+    connect_info_list.push_back({event_type,
+                                 HostEventType::kExecutorStateProcess,
+                                 {StatType::kFunctionStepId},
+                                 {StatType::kStepId}});
+  }
+  return connect_info_list;
+}
+
 void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map) {
   if (!space) return;
-  std::vector<InterThreadConnectInfo> connect_info_list(
-      {{HostEventType::kFunctionRun,
-        HostEventType::kExecutorStateProcess,
-        {StatType::kStepId}},
-       {HostEventType::kSessionRun,
-        HostEventType::kExecutorStateProcess,
-        {StatType::kStepId}},
-       {HostEventType::kExecutorStateProcess,
-        HostEventType::kIteratorGetNextOp,
-        {StatType::kStepId, StatType::kIterNum}},
-       {HostEventType::kKernelLaunch,
-        HostEventType::kKernelExecute,
-        {StatType::kCorrelationId}},
-       {HostEventType::kLocalExecutableExecuteOnLocalDevice,
-        HostEventType::kLocalExecutableExecute,
-        {StatType::kRunId}}});
+  std::vector<InterThreadConnectInfo> connect_info_list =
+      CreateInterThreadConnectInfoList();
   const std::vector<int64 /*EventType*/> root_event_types(
       {HostEventType::kTraceContext, HostEventType::kFunctionRun,
        HostEventType::kSessionRun, HostEventType::kHostTrainingLoopIteration});

@@ -24,8 +24,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict

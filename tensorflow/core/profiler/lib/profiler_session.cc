@@ -20,14 +20,10 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-#include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 #if !defined(IS_MOBILE_PLATFORM)
-#include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/profiler/utils/derived_timeline.h"
@@ -126,16 +122,6 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
   return Status::OK();
 }
 
-Status ProfilerSession::SerializeToString(string* content) {
-  profiler::Trace trace;
-#if !defined(IS_MOBILE_PLATFORM)
-  profiler::XSpace xspace;
-  TF_RETURN_IF_ERROR(CollectData(&xspace));
-  profiler::ConvertXSpaceToTraceEvents(xspace, &trace);
-#endif
-  trace.SerializeToString(content);
-  return Status::OK();
-}
 
 ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
 #if !defined(IS_MOBILE_PLATFORM)

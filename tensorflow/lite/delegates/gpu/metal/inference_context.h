@@ -50,12 +50,12 @@ limitations under the License.
 /// @return Status signals whether model is compiled successfully or not.
 /// @discussion Previously added operations are distilled into sorted list of sets of
 ///             ComputeTaskDescriptors, which can be fused into a single GPU task.
-- (::tflite::gpu::Status)
-    compileModelWithDevice:(id<MTLDevice>)device
-           taskDescriptors:
-               (const std::vector<::tflite::gpu::metal::ComputeTaskDescriptorPtr>&)taskDescriptors
-           outputBufferIDs:(const std::vector<::tflite::gpu::ValueId>&)outputBufferIDs
-            runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
+- (absl::Status)compileModelWithDevice:(id<MTLDevice>)device
+                       taskDescriptors:
+                           (const std::vector<::tflite::gpu::metal::ComputeTaskDescriptorPtr>&)
+                               taskDescriptors
+                       outputBufferIDs:(const std::vector<::tflite::gpu::ValueId>&)outputBufferIDs
+                        runtimeOptions:(const ::tflite::gpu::metal::RuntimeOptions&)options;
 
 /// Creates intermediate buffers. The model is ready to be used after this call.
 /// @param inputDimensions Used to create resources: shaders, buffers.
@@ -63,7 +63,7 @@ limitations under the License.
 /// @return Status signals whether intermediate buffers are successfully created or not.
 /// @discussion The operation is intended to be lightweight with minimum overhead. A preceding call
 ///             compileModelWithDevice() must be made with the proper device parameter set.
-- (::tflite::gpu::Status)
+- (absl::Status)
     setInputDimensions:(const std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>&)inputDimensions
       outputDimensions:(std::map<::tflite::gpu::ValueId, ::tflite::gpu::BHWC>*)outputDimensions
        taskDescriptors:

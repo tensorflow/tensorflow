@@ -5,10 +5,6 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<type \'object\'>"
   member {
-    name: "dtype"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "value_type"
     mtype: "<type \'property\'>"
   }

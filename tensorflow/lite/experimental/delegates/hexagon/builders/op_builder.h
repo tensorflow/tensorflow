@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -121,6 +122,20 @@ class OpBuilder {
     for (int i = 4 - dims->size; i < 4; ++i) {
       *dim[i] = dims->data[i - (4 - dims->size)];
     }
+  }
+
+  TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
+                                           float* min, float* max) {
+    if (tensor.type == kTfLiteUInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<uint8_t>::min(),
+                                         std::numeric_limits<uint8_t>::max());
+    } else if (tensor.type == kTfLiteInt8) {
+      return ComputeMinAndMaxQuantValues(tensor, min, max,
+                                         std::numeric_limits<int8_t>::min(),
+                                         std::numeric_limits<int8_t>::max());
+    }
+    return kTfLiteError;
   }
 
   template <typename T>

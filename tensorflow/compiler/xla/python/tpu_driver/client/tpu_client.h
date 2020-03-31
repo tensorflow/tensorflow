@@ -268,12 +268,12 @@ class PyTpuExecutable {
       absl::optional<std::vector<Shape>> argument_layouts,
       const ExecutableBuildOptions* build_options,
       std::shared_ptr<PyTpuClient> client,
-      absl::optional<DeviceAssignment> device_assignment);
+      absl::optional<DeviceAssignment> device_assignment, bool tuple_arguments);
 
   PyTpuExecutable(
       std::unique_ptr<tpu_driver::CompiledProgramHandle> compiled_program,
       DeviceAssignment device_assignment, std::shared_ptr<PyTpuClient> client,
-      xla::Shape result_shape);
+      xla::Shape result_shape, bool tuple_arguments);
   virtual ~PyTpuExecutable() {
     for (auto it = executables_.begin(); it != executables_.end(); ++it) {
       client_->driver()->UnloadProgram(std::move(it->second), {});
@@ -336,6 +336,7 @@ class PyTpuExecutable {
   std::shared_ptr<PyTpuClient> const client_;
   std::map<int, std::unique_ptr<tpu_driver::LoadedProgramHandle>> executables_;
   const DeviceAssignment device_assignment_;
+  const bool tuple_arguments_;
 
   // The replica and partition indices of device_assignment_ to be run by this
   // client. On single-host platforms without partitioning, this is all replicas

@@ -409,13 +409,8 @@ void TensorHandleSilentCopy(bool async,
     ASSERT_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
 
     // Validate if the input was replaced with a different TensorHandle
-    auto arg0 = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                    hcpu->handle.get())
-                    ->Handle();
-    auto arg1 = tensorflow::down_cast<tensorflow::TensorHandleInterface*>(
-                    hgpu->handle.get())
-                    ->Handle();
-
+    auto arg0 = tensorflow::TensorHandleFromInterface(hcpu->handle);
+    auto arg1 = tensorflow::TensorHandleFromInterface(hgpu->handle);
     auto op = tensorflow::down_cast<tensorflow::OperationInterface*>(
         matmul->operation.get());
 
