@@ -99,20 +99,23 @@ class ReductionRewriterVisitor : public DfsHloRewriteVisitor {
     bool is_row_reduction = reduction_dimensions.is_row_reduction;
     int64 atomic_free_bound = 0;
     if (is_row_reduction) {
+      // The maximum number of input's elements read per block is:
+      // "nb of threads per blocks" * "nb of elements read per threads."
       auto get_dtype_bits = [](const HloInstruction *i) {
-        return primitive_util::BitWidth(i->shape().element_type());};
+        return primitive_util::BitWidth(i->shape().element_type());
+      };
       int smallest_input_dtype_bits = get_dtype_bits(hlo->operand(0));
-      for (xla::HloInstruction* input: hlo->operands()) {
-        smallest_input_dtype_bits = std::min(get_dtype_bits(input),
-                                             smallest_input_dtype_bits);
+      for (xla::HloInstruction *input : hlo->operands()) {
+        smallest_input_dtype_bits =
+            std::min(get_dtype_bits(input), smallest_input_dtype_bits);
       }
+      // Get the number of elements read per threads.
       std::array<int64, 3> reduction_tiling = GetReductionTiling(
-          reduction_dimensions, smallest_input_dtype_bits,
-          device_desc_);
-      auto bloc_size = GetReductionBlockSize(reduction_dimensions,
-                                             smallest_input_dtype_bits,
-                                             reduction_tiling,
-                                             device_desc_);
+          reduction_dimensions, smallest_input_dtype_bits, device_desc_);
+      // Get bloc sizes.
+      std::array<int64, 2> bloc_size =
+          GetReductionBlockSize(reduction_dimensions, smallest_input_dtype_bits,
+                                reduction_tiling, device_desc_);
 
       atomic_free_bound = bloc_size[0] * bloc_size[1] * reduction_tiling[2];
     } else {
