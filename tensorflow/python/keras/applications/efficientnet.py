@@ -186,17 +186,10 @@ def EfficientNet(
     input_shape: optional shape tuple, only to be specified
         if `include_top` is False.
         It should have exactly 3 inputs channels.
-    pooling: optional pooling mode for feature extraction
-        when `include_top` is `False`. It could be:
-        - `None` means that the output of the model will be
-            the 4D tensor output of the
-            last convolutional layer.
-        - `avg` means that global average pooling
-            will be applied to the output of the
-            last convolutional layer, and thus
-            the output of the model will be a 2D tensor.
-        - `max` means that global max pooling will
-            be applied.
+    pooling: optional pooling mode for feature extraction when `include_top` is
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
         into, only to be specified if `include_top` is True, and
         if no `weights` argument is specified.

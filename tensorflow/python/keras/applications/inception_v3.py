@@ -84,9 +84,9 @@ def InceptionV3(
       E.g. `(150, 150, 3)` would be one valid value.
       `input_shape` will be ignored if the `input_tensor` is provided.
     pooling: optional pooling mode for feature extraction when `include_top` is
-        `False`. If `max` or `avg` pooling is applied, output of the model will
-        be a 2D tensor. `None` will directly output the last convolutional layer,
-        a 4D tensor.
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified. Default to 1000.

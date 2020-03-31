@@ -141,9 +141,9 @@ def MobileNetV2(input_shape=None,
       `layers.Input()`)
       to use as image input for the model.
     pooling: optional pooling mode for feature extraction when `include_top` is
-        `False`. If `max` or `avg` pooling is applied, output of the model will
-        be a 2D tensor. `None` will directly output the last convolutional layer,
-        a 4D tensor.
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: Integer, optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -165,7 +165,9 @@ def MobileNetV2(input_shape=None,
   import numpy as np
 
   #create a MobileNetV2 model pre-trained on imagenet
-  model = MobileNetV2(weights='imagenet', include_top=False, input_shape=[224,224,3])
+  model = MobileNetV2(weights='imagenet',
+                      include_top=False,
+                      input_shape=[224,224,3])
 
   #process the input
   img_path = 'elephant_example.jpg'

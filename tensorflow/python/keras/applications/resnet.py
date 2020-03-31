@@ -94,9 +94,9 @@ def ResNet(stack_fn,
       or `(3, 224, 224)` (with `channels_first` data format).
       It should have exactly 3 inputs channels.
     pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, output of the model will
-      be a 2D tensor. `None` will directly output the last convolutional layer,
-      a 4D tensor.
+      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+      model will be a 2D tensor. `None` will directly output the last
+      convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -537,9 +537,9 @@ DOC = """
       and width and height should be no smaller than 32.
       E.g. `(200, 200, 3)` would be one valid value.
     pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, output of the model will
-      be a 2D tensor. `None` will directly output the last convolutional layer,
-      a 4D tensor.
+      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+      model will be a 2D tensor. `None` will directly output the last
+      convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.

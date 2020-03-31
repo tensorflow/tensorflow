@@ -118,9 +118,9 @@ def NASNet(
       `layers.Input()`)
       to use as image input for the model.
     pooling: optional pooling mode for feature extraction when `include_top` is
-      `False`. If `'max'` or `'avg'` pooling is applied, output of the model will
-      be a 2D tensor. `None` will directly output the last convolutional layer,
-      a 4D tensor.
+      `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+      model will be a 2D tensor. `None` will directly output the last
+      convolutional layer, a 4D tensor.
     classes: Optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
@@ -338,10 +338,10 @@ def NASNetMobile(input_shape=None,
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
-      pooling: optional pooling mode for feature extraction when `include_top` is
-          `False`. If `max` or `avg` pooling is applied, output of the model will
-          be a 2D tensor. `None` will directly output the last convolutional layer,
-          a 4D tensor.
+      pooling: optional pooling mode for feature extraction when `include_top`
+          is `False`. If `'max'` or `'avg'` pooling is applied, the output of
+          the model will be a 2D tensor. `None` will directly output the last
+          convolutional layer, a 4D tensor.
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.
@@ -421,10 +421,10 @@ def NASNetLarge(input_shape=None,
       input_tensor: Optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
-      pooling: optional pooling mode for feature extraction when `include_top` is
-          `False`. If `max` or `avg` pooling is applied, output of the model will
-          be a 2D tensor. `None` will directly output the last convolutional layer,
-          a 4D tensor.
+      pooling: optional pooling mode for feature extraction when `include_top`
+          is `False`. If `'max'` or `'avg'` pooling is applied, the output of
+          the model will be a 2D tensor. `None` will directly output the last
+          convolutional layer, a 4D tensor.
       classes: Optional number of classes to classify images
           into, only to be specified if `include_top` is True, and
           if no `weights` argument is specified.

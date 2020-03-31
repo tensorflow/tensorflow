@@ -75,9 +75,9 @@ def InceptionResNetV2(include_top=True,
       and width and height should be no smaller than 75.
       E.g. `(150, 150, 3)` would be one valid value.
     pooling: optional pooling mode for feature extraction when `include_top` is
-        `False`. If `max` or `avg` pooling is applied, output of the model will
-        be a 2D tensor. `None` will directly output the last convolutional layer,
-        a 4D tensor.
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is `True`, and
       if no `weights` argument is specified.
@@ -93,7 +93,8 @@ def InceptionResNetV2(include_top=True,
 
   ```python
   #Extract image features with InceptionResNetV2
-  from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+  from tensorflow.keras.applications.inception_resnet_v2 \
+  import InceptionResNetV2
   from tensorflow.keras.preprocessing import image
   from tensorflow.keras.applications.inception_resnet_v2 import preprocess_input
   import numpy as np

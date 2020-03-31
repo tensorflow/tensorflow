@@ -131,9 +131,9 @@ def MobileNet(input_shape=None,
       use as image input for the model. `input_tensor` is useful for sharing
       inputs between multiple different networks. Default to None.
     pooling: optional pooling mode for feature extraction when `include_top` is
-        `False`. If `max` or `avg` pooling is applied, output of the model will
-        be a 2D tensor. `None` will directly output the last convolutional layer,
-        a 4D tensor.
+        `False`. If `'max'` or `'avg'` pooling is applied, the output of the
+        model will be a 2D tensor. `None` will directly output the last
+        convolutional layer, a 4D tensor.
     classes: Optional number of classes to classify images into, only to be
       specified if `include_top` is True, and if no `weights` argument is
       specified. Defaults to 1000.
@@ -154,7 +154,9 @@ def MobileNet(input_shape=None,
   import numpy as np
 
   #create a MobileNet model pre-trained on imagenet
-  model = MobileNet(weights='imagenet', include_top=False, input_shape=[224,224,3])
+  model = MobileNet(weights='imagenet',
+                    include_top=False,
+                    input_shape=[224,224,3])
 
   #process the input
   img_path = 'elephant_example.jpg'
