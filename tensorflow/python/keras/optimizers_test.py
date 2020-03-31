@@ -241,7 +241,6 @@ class KerasOptimizersTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(
         2, input_shape=(3,), kernel_constraint=keras.constraints.MaxNorm(1)))
-    # This is possible
     model.compile(
         loss='mean_squared_error',
         optimizer=optimizer,

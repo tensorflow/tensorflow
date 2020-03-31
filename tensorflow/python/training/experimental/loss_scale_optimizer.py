@@ -246,5 +246,5 @@ class MixedPrecisionLossScaleOptimizer(optimizer.Optimizer):
 
   def variables(self):
     """Returns the variables of the Optimizer."""
-    return self._optimizer.variables() + \
-        list(self._loss_scale._weights.values()) # pylint: disable=protected-access
+    return (self._optimizer.variables() +
+        list(self._loss_scale._weights.values())) # pylint: disable=protected-access
