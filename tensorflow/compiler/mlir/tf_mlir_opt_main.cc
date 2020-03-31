@@ -55,6 +55,12 @@ static llvm::cl::opt<bool> verify_passes(
     llvm::cl::desc("Run the verifier after each transformation pass"),
     llvm::cl::init(true));
 
+// NOLINTNEXTLINE
+static llvm::cl::opt<bool> allowUnregisteredDialects(
+    "allow-unregistered-dialect",
+    llvm::cl::desc("Allow operation with no registered dialects"),
+    llvm::cl::init(true));
+
 int main(int argc, char **argv) {
   tensorflow::InitMlir y(&argc, &argv);
 
@@ -77,7 +83,7 @@ int main(int argc, char **argv) {
 
   if (failed(mlir::MlirOptMain(output->os(), std::move(file), pass_pipeline,
                                split_input_file, verify_diagnostics,
-                               verify_passes)))
+                               verify_passes, allowUnregisteredDialects)))
     return 1;
   output->keep();
   return 0;
