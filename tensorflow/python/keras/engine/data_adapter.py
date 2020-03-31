@@ -1397,10 +1397,11 @@ def train_validation_split(arrays, validation_split, shuffle=True):
     return isinstance(t, tensor_types) or t is None
 
   flat_arrays = nest.flatten(arrays)
-  if not all(_can_split(t) for t in flat_arrays):
+  unsplitable = [type(t) for t in flat_arrays if not _can_split(t)]
+  if unsplitable:
     raise ValueError(
         "`validation_split` is only supported for Tensors or NumPy "
-        "arrays, found: {}".format(arrays))
+        "arrays, found following types in the input: {}".format(unsplitable))
 
   if all(t is None for t in flat_arrays):
     return arrays, arrays
