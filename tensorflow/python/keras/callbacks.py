@@ -390,7 +390,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_train_batch_hooks:
       self._call_batch_hook(ModeKeys.TRAIN, 'end', batch, logs=logs)
@@ -411,7 +411,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_test_batch_hooks:
       self._call_batch_hook(ModeKeys.TEST, 'end', batch, logs=logs)
@@ -432,7 +432,7 @@ class CallbackList(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     if self._should_call_predict_batch_hooks:
       self._call_batch_hook(ModeKeys.PREDICT, 'end', batch, logs=logs)
@@ -648,7 +648,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
     # For backwards compatibility.
     self.on_batch_end(batch, logs=logs)
@@ -681,7 +681,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
@@ -706,7 +706,7 @@ class Callback(object):
 
     Arguments:
         batch: integer, index of batch within the current epoch.
-        logs: dict. Metric results for this batch.
+        logs: dict. Aggregated metric results up until this batch.
     """
 
   @doc_controls.for_subclass_implementers
