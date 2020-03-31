@@ -506,7 +506,10 @@ tflite_micro_cc_test(
 cc_library(
     name = "activation_utils",
     hdrs = ["activation_utils.h"],
-    deps = ["//tensorflow/lite/c:common"],
+    deps = [
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels/internal:cppmath",
+    ],
 )
 
 tflite_micro_cc_test(

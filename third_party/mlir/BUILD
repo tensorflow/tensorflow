@@ -542,6 +542,7 @@ gentbl(
     td_file = "include/mlir/Dialect/Shape/IR/ShapeOps.td",
     td_srcs = [
         ":StdOpsTdFiles",
+        "include/mlir/Interfaces/InferTypeOpInterface.td",
     ],
 )
 
@@ -560,6 +561,7 @@ cc_library(
         ":CallOpInterfaces",
         ":CommonFolders",
         ":IR",
+        ":InferTypeOpInterface",
         ":ShapeOpsIncGen",
         ":SideEffects",
         ":Support",

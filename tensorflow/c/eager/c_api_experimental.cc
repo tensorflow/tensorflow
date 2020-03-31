@@ -31,6 +31,7 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
+    op_to_reset->operation->Clear();
     status->status =
         op_to_reset->operation->Reset(op_or_function_name, raw_device_name);
   } else {
@@ -525,7 +526,11 @@ void TFE_DeleteCancellationManager(
 void TFE_OpSetCancellationManager(TFE_Op* op,
                                   TFE_CancellationManager* cancellation_manager,
                                   TF_Status* status) {
-  status->status = op->operation->SetCancellationManager(cancellation_manager);
+  tensorflow::EagerOperation* operation =
+      tensorflow::OperationFromInterface(op->operation);
+  operation->SetCancellationManager(
+      &cancellation_manager->cancellation_manager);
+  status->status = tensorflow::Status::OK();
 }
 
 TFE_Executor* TFE_NewExecutor(bool is_async) {

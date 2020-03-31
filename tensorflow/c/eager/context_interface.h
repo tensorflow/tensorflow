@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/tensor_interface.h"
 #include "tensorflow/core/platform/casts.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/tstring.h"
 
 namespace tensorflow {
@@ -75,16 +76,14 @@ class AbstractContextInterface {
       absl::Span<const int64> dim_sizes) = 0;
 
   // Create a handle to wrap and manage a Tensor
-  virtual tensorflow::Status CreateLocalHandle(
-      const std::unique_ptr<AbstractTensorInterface> t,
-      std::unique_ptr<AbstractTensorHandleInterface>* handle) = 0;
+  virtual std::unique_ptr<AbstractTensorHandleInterface> CreateLocalHandle(
+      const std::unique_ptr<AbstractTensorInterface> t) = 0;
 
   // Create an operation to perform op execution
   virtual std::unique_ptr<AbstractOperationInterface> CreateOperation() = 0;
 
   // List attributes of available devices
-  virtual void ListDevices(
-      std::vector<tensorflow::DeviceAttributes>* devices) = 0;
+  virtual void ListDevices(std::vector<DeviceAttributes>* devices) = 0;
 };
 
 // TODO(gjn): Try to move these all to EagerContext and make it implement
@@ -133,12 +132,11 @@ class ContextInterface : public AbstractContextInterface {
   std::unique_ptr<AbstractTensorInterface> CreateBoolTensor(
       absl::Span<const int64> dim_sizes) override;
 
-  tensorflow::Status CreateLocalHandle(
-      const std::unique_ptr<AbstractTensorInterface> t,
-      std::unique_ptr<AbstractTensorHandleInterface>* h) override;
+  std::unique_ptr<AbstractTensorHandleInterface> CreateLocalHandle(
+      const std::unique_ptr<AbstractTensorInterface> t) override;
   std::unique_ptr<AbstractOperationInterface> CreateOperation() override;
 
-  void ListDevices(std::vector<tensorflow::DeviceAttributes>* devices) override;
+  void ListDevices(std::vector<DeviceAttributes>* devices) override;
 
   // For runtime specific APIs, provide ability to get the underlying context.
   EagerContext* Context() const { return ctx_; }
@@ -149,7 +147,7 @@ class ContextInterface : public AbstractContextInterface {
 
 inline EagerContext* ContextFromInterface(
     const std::unique_ptr<AbstractContextInterface>& context) {
-  return down_cast<tensorflow::ContextInterface*>(context.get())->Context();
+  return down_cast<ContextInterface*>(context.get())->Context();
 }
 
 }  // namespace tensorflow

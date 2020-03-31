@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -92,10 +91,9 @@ Status MakeArgTuple(const PyCall* call, EagerContext* ctx, PyObject** tuple) {
   for (int64 i = 0; i < n; ++i) {
     PyObject* arg = nullptr;
     if (call->eager) {
-      TensorHandle* handle;
       Tensor t = call->ins[i];
-      TF_RETURN_IF_ERROR(TensorHandle::CreateLocalHandle(
-          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx, &handle));
+      TensorHandle* handle = TensorHandle::CreateLocalHandle(
+          std::move(t), ctx->CanonicalDevice(device), nullptr, ctx);
       arg = EagerTensorFromHandle(new TFE_TensorHandle{
           std::make_unique<tensorflow::TensorHandleInterface>(handle)});
       if (arg == nullptr) {
@@ -146,9 +144,8 @@ bool IsSingleNone(PyObject* obj) {
 tensorflow::Status ExtractTensorFromEagerTensor(const PyObject* eager_tensor,
                                                 const Device* expected_device,
                                                 const Tensor** output_tensor) {
-  auto handle = down_cast<tensorflow::TensorHandleInterface*>(
-                    EagerTensor_Handle(eager_tensor)->handle.get())
-                    ->Handle();
+  tensorflow::TensorHandle* handle = tensorflow::TensorHandleFromInterface(
+      EagerTensor_Handle(eager_tensor)->handle);
   if (VariantDeviceIsCustom(handle->device())) {
     return errors::Unimplemented(
         "Custom devices are currently not supported with PyFuncs.");

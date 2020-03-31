@@ -98,9 +98,8 @@ Status OperationInterface::SetAttrFunction(
   AttrValue attr_value;
   NameAttrList* func = attr_value.mutable_func();
   func->set_name(value->Name());
-  OperationInterface* value_operation =
-      tensorflow::down_cast<OperationInterface*>(value.get());
-  value_operation->operation_.Attrs().FillAttrValueMap(func->mutable_attr());
+  EagerOperation* value_operation = OperationFromInterface(value);
+  value_operation->Attrs().FillAttrValueMap(func->mutable_attr());
   operation_.MutableAttrs()->Set(attr_name, attr_value);
   return Status::OK();
 }
@@ -115,10 +114,9 @@ Status OperationInterface::SetAttrFunctionName(const char* attr_name,
   return Status::OK();
 }
 
-Status OperationInterface::SetAttrTensor(const char* attr_name,
-                                         TF_Tensor* tensor) {
-  Tensor t;
-  TF_RETURN_IF_ERROR(TF_TensorToTensor(tensor, &t));
+Status OperationInterface::SetAttrTensor(
+    const char* attr_name, std::unique_ptr<AbstractTensorInterface> tensor) {
+  Tensor t = TensorFromInterface(tensor);
   operation_.MutableAttrs()->Set(attr_name, t);
   return Status::OK();
 }
@@ -208,11 +206,10 @@ Status OperationInterface::SetAttrFunctionList(const char* attr_name,
                                                int num_values) {
   std::unique_ptr<NameAttrList[]> funcs(new NameAttrList[num_values]);
   for (int i = 0; i < num_values; i++) {
-    auto value_operation =
-        tensorflow::down_cast<OperationInterface*>(value[i]->operation.get());
-    funcs[i].set_name(value_operation->operation_.Name());
-    value_operation->operation_.Attrs().FillAttrValueMap(
-        funcs[i].mutable_attr());
+    EagerOperation* value_operation =
+        OperationFromInterface(value[i]->operation);
+    funcs[i].set_name(value_operation->Name());
+    value_operation->Attrs().FillAttrValueMap(funcs[i].mutable_attr());
   }
   operation_.MutableAttrs()->Set(
       attr_name, gtl::ArraySlice<const NameAttrList>(funcs.get(), num_values));
@@ -266,8 +263,7 @@ Status OperationInterface::OutputLength(const char* output_name, int* length) {
 
 Status OperationInterface::AddInput(
     const std::unique_ptr<AbstractTensorHandleInterface>& input) {
-  TensorHandle* h =
-      tensorflow::down_cast<TensorHandleInterface*>(input.get())->Handle();
+  TensorHandle* h = TensorHandleFromInterface(input);
   operation_.AddInput(h);
   return operation_.MaybeInferSingleInputAttrs(h);
 }
@@ -276,8 +272,7 @@ Status OperationInterface::AddInputList(
     const absl::FixedArray<std::unique_ptr<AbstractTensorHandleInterface>>&
         inputs) {
   for (auto& input : inputs) {
-    TensorHandle* h =
-        tensorflow::down_cast<TensorHandleInterface*>(input.get())->Handle();
+    TensorHandle* h = TensorHandleFromInterface(input);
     operation_.AddInput(h);
   }
   return operation_.InferInputListAttrs(inputs.size());
@@ -293,13 +288,6 @@ Status OperationInterface::Execute(
     retvals->at(i).reset(
         new tensorflow::TensorHandleInterface(handle_retvals[i]));
   }
-  return Status::OK();
-}
-
-Status OperationInterface::SetCancellationManager(
-    TFE_CancellationManager* cancellation_manager) {
-  operation_.SetCancellationManager(
-      &cancellation_manager->cancellation_manager);
   return Status::OK();
 }
 

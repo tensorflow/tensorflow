@@ -5206,7 +5206,7 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
+        "//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay",
         "//tensorflow/python/ops/losses",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -6602,7 +6602,6 @@ cuda_py_tests(
         "training/device_setter_test.py",
         "training/ftrl_test.py",
         "training/gradient_descent_test.py",
-        "training/learning_rate_decay_test.py",
         "training/momentum_test.py",
         "training/optimizer_test.py",
         "training/proximal_adagrad_test.py",
@@ -7609,35 +7608,6 @@ tf_py_test(
     ],
 )
 
-py_library(
-    name = "graph_placer",
-    srcs = [
-        "grappler/controller.py",
-        "grappler/graph_placer.py",
-        "grappler/hierarchical_controller.py",
-    ],
-    deps = [
-        ":python",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "graph_placer_test",
-    size = "large",
-    srcs = ["grappler/graph_placer_test.py"],
-    python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_pip",  # graph_placer is not available in pip.
-    ],
-    deps = [
-        ":client_testlib",
-        ":graph_placer",
-        ":math_ops",
-    ],
-)
-
 tf_py_test(
     name = "memory_optimizer_test",
     size = "medium",
@@ -7836,10 +7806,7 @@ cuda_py_test(
         "grappler/auto_mixed_precision_test.py",
     ],
     python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_rocm",
-    ],
+    tags = ["grappler"],
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
     deps = [

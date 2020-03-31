@@ -220,6 +220,36 @@ class OptimizerV2(trackable.Trackable):
   opt.minimize(loss, var_list=[var1, var2])
   ```
 
+  ### Callable learning rate.
+  Optimizer accepts a callable learning rate in two ways. The first way is
+  through built-in or customized
+  `tf.keras.optimizers.schedules.LearningRateSchedule`. The schedule will be
+  called on each iteration with `schedule(iteration)`, a `tf.Variable`
+  owned by the optimizer.
+
+  Example:
+
+  >>> var = tf.Variable(np.random.random(size=(1,)))
+  >>> learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(
+  ... initial_learning_rate=.01, decay_steps=20, decay_rate=.1)
+  >>> opt = tf.keras.optimizers.SGD(learning_rate=learning_rate)
+  >>> loss = lambda: 3 * var
+  >>> opt.minimize(loss, var_list=[var])
+  <tf.Variable...
+
+  The second way is through a callable function that
+  does not accept any arguments.
+
+  Example:
+
+  >>> var = tf.Variable(np.random.random(size=(1,)))
+  >>> def lr_callable():
+  ...   return .1
+  >>> opt = tf.keras.optimizers.SGD(learning_rate=lr_callable)
+  >>> loss = lambda: 3 * var
+  >>> opt.minimize(loss, var_list=[var])
+  <tf.Variable...
+
   ### Write a customized optimizer.
   If you intend to create your own optimization algorithm, simply inherit from
   this class and override the following methods:

@@ -387,45 +387,28 @@ void OpKernelContext::SetStatus(const Status& status) {
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  if (input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
                                    "' when non-ref input was expected");
   }
-  *tensor = (*params_->inputs)[start].tensor;
+  *tensor = (*params_->inputs)[index].tensor;
   return Status::OK();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  const TensorValue& value((*params_->inputs)[start]);
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  const TensorValue& value((*params_->inputs)[index]);
   *dtype = value.dtype();
   return Status::OK();
 }
 
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  *out_mutex = input_ref_mutex(start);
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  *out_mutex = input_ref_mutex(index);
   return Status::OK();
 }
 
@@ -497,23 +480,9 @@ bool OpKernelContext::forward_input_to_output_with_shape(
 Status OpKernelContext::forward_input_to_output_with_shape(
     StringPiece input_name, StringPiece output_name,
     const TensorShape& output_shape, Tensor** output) {
-  int input_index, output_index, stop;
-  TF_RETURN_IF_ERROR(
-      params_->op_kernel->InputRange(input_name, &input_index, &stop));
-  if (stop != input_index + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   input_name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  TF_RETURN_IF_ERROR(
-      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
-  if (stop != output_index + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   output_name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
+  int input_index, output_index;
+  TF_RETURN_IF_ERROR(get_input_index(input_name, &input_index));
+  TF_RETURN_IF_ERROR(get_output_index(output_name, &output_index));
   if (!forward_input_to_output_with_shape(input_index, output_index,
                                           output_shape, output)) {
     return errors::FailedPrecondition("OpKernel could not forward input '",
@@ -621,23 +590,18 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
 
 Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
                                       bool lock_held) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  if (!input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (!input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used non-ref input name '", name,
                                    "' when ref input was expected");
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    *tensor = *(*params_->inputs)[start].tensor;
+    *tensor = *(*params_->inputs)[index].tensor;
   } else {
-    tf_shared_lock l(*input_ref_mutex(start));
-    *tensor = *(*params_->inputs)[start].tensor;
+    tf_shared_lock l(*input_ref_mutex(index));
+    *tensor = *(*params_->inputs)[index].tensor;
   }
   return Status::OK();
 }
@@ -645,18 +609,13 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
 Status OpKernelContext::replace_ref_input(StringPiece name,
                                           const Tensor& tensor,
                                           bool lock_held) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  if (!input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (!input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used immutable input name '", name,
                                    "' when ref input was expected");
   }
-  replace_ref_input(start, tensor, lock_held);
+  replace_ref_input(index, tensor, lock_held);
   return Status::OK();
 }
 
@@ -888,7 +847,22 @@ Status OpKernelContext::allocate_persistent(DataType type,
   return s;
 }
 
-Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
+Status OpKernelContext::get_input_index(StringPiece name,
+                                        int* out_index) const {
+  int start, stop;
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
+  if (stop != start + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  *out_index = start;
+  return Status::OK();
+}
+
+Status OpKernelContext::get_output_index(StringPiece name,
+                                         int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -897,22 +871,31 @@ Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
                                    "' when single-valued output was "
                                    "expected");
   }
-  set_output(start, tensor);
+  *out_index = start;
   return Status::OK();
 }
 
-void OpKernelContext::set_output(int index, const Tensor& tensor) {
-  CHECK_GE(index, 0);
-  CHECK_LT(index, outputs_.size());
-  const DataType type = params_->op_kernel->output_type(index);
-  CHECK(!IsRefType(type));
-  CHECK_EQ(mutable_output(index), nullptr);
+Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output(index, tensor);
+  return Status::OK();
+}
 
+Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output(index, std::move(tensor));
+  return Status::OK();
+}
+
+bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
+    int index, const Tensor& tensor) {
   bool allocate_and_copy = false;
   const bool never_forward =
       (params_->forward_from_array != nullptr &&
        params_->forward_from_array[index] == Params::kNeverForward);
-  if (never_forward) {
+  if (TF_PREDICT_FALSE(never_forward)) {
     maybe_initialize_scope_id_set();
     if (allocated_scope_ids_->find(output_alloc_attr(index).scope_id) ==
         allocated_scope_ids_->end()) {
@@ -929,7 +912,7 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
     }
   }
 
-  if (allocate_and_copy) {
+  if (TF_PREDICT_FALSE(allocate_and_copy)) {
     // This output was marked to not be forwarded either during graph
     // construction or grappler passes.  Force an allocation and copy input to
     // output.
@@ -939,31 +922,59 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
     auto new_tensor = MakeUnique<Tensor>();
-    Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
+    Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
     TF_CHECK_OK(s);
     device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
                                      op_device_context(), [](const Status&) {});
     outputs_[index] = TensorValue(new_tensor.release());
-  } else {
+  }
+  return allocate_and_copy;
+}
+
+void OpKernelContext::maybe_track_allocations_for_set_output(
+    const Tensor& tensor) {
+  if (TF_PREDICT_FALSE(track_allocations()) && tensor.TotalBytes() > 0) {
+    DCHECK(tracking_state_);
+    mutex_lock l(tracking_state_->stats_mu);
+    const auto it = std::find_if(
+        tracking_state_->temp_tensor_buffer_and_size.begin(),
+        tracking_state_->temp_tensor_buffer_and_size.end(),
+        [&tensor](const std::pair<const void*, int64>& e) {
+          return e.first ==
+                 static_cast<const void*>(tensor.tensor_data().data());
+        });
+    if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
+      tracking_state_->temp_memory_allocated -= it->second;
+      tracking_state_->temp_tensor_buffer_and_size.erase(it);
+    }
+  }
+}
+
+void OpKernelContext::set_output(int index, const Tensor& tensor) {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
+  const DataType type = params_->op_kernel->output_type(index);
+  CHECK(!IsRefType(type));
+  CHECK_EQ(outputs_[index].tensor, nullptr);
+  if (TF_PREDICT_TRUE(!maybe_set_output_by_allocate_and_copy(index, tensor))) {
     // Input can be forwarded to output; incref on `tensor` and set output at
     // `index` to this tensor.
     outputs_[index] = TensorValue(new Tensor(tensor));
-    if (track_allocations() && tensor.TotalBytes() > 0) {
-      DCHECK(tracking_state_);
-      mutex_lock l(tracking_state_->stats_mu);
-      const auto it = std::find_if(
-          tracking_state_->temp_tensor_buffer_and_size.begin(),
-          tracking_state_->temp_tensor_buffer_and_size.end(),
-          [&tensor](const std::pair<const void*, int64>& e) {
-            return e.first ==
-                   static_cast<const void*>(tensor.tensor_data().data());
-          });
-      if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
-        tracking_state_->temp_memory_allocated -= it->second;
-        tracking_state_->temp_tensor_buffer_and_size.erase(it);
-      }
-    }
+    maybe_track_allocations_for_set_output(*outputs_[index].tensor);
+  }
+}
+
+void OpKernelContext::set_output(int index, Tensor&& tensor) {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
+  const DataType type = params_->op_kernel->output_type(index);
+  CHECK(!IsRefType(type));
+  CHECK_EQ(outputs_[index].tensor, nullptr);
+  if (TF_PREDICT_TRUE(!maybe_set_output_by_allocate_and_copy(index, tensor))) {
+    // Input can be forwarded to output; set output at `index` to this tensor.
+    outputs_[index] = TensorValue(new Tensor(std::move(tensor)));
+    maybe_track_allocations_for_set_output(*outputs_[index].tensor);
   }
 }
 
@@ -977,28 +988,16 @@ void OpKernelContext::set_output_ref(int index, mutex* mu,
 
 Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
                                        Tensor* tensor_for_ref) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  set_output_ref(start, mu, tensor_for_ref);
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output_ref(index, mu, tensor_for_ref);
   return Status::OK();
 }
 
 Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  *tensor = mutable_output(start);
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  *tensor = mutable_output(index);
   return Status::OK();
 }
 

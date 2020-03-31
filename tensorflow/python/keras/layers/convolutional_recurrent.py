@@ -569,7 +569,7 @@ class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
         def bias_initializer(_, *args, **kwargs):
           return K.concatenate([
               self.bias_initializer((self.filters,), *args, **kwargs),
-              initializers.Ones()((self.filters,), *args, **kwargs),
+              initializers.get('ones')((self.filters,), *args, **kwargs),
               self.bias_initializer((self.filters * 2,), *args, **kwargs),
           ])
       else:

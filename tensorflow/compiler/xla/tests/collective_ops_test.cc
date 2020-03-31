@@ -218,6 +218,88 @@ XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_half) {
   TestAllOps<Eigen::half>();
 }
 
+XLA_TEST_F(CollectiveOpsTest, AllReduceAnd_Pred) {
+  // Test with equal elements.
+  TestTwoReplicasOneOperand<bool>(
+      "and",
+      /*input_value=*/LiteralUtil::CreateR1<bool>({true, false}),
+      /*expected_value=*/LiteralUtil::CreateR1<bool>({true, false}));
+
+  // Test with {true, false}.
+  const char* hlo_module = R"(
+    HloModule test
+
+    apply_op {
+      x = pred[] parameter(0)
+      y = pred[] parameter(1)
+      ROOT apply_op = pred[] and(x, y)
+    }
+
+    ENTRY test_computation {
+      id = u32[] replica-id()
+      c = u32[] constant(0)
+      p = pred[] compare(id, c), direction=EQ
+      p2 = pred[1] bitcast(p)
+      crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
+      copy = pred[1] copy(crs)
+      ROOT out = pred[1] bitcast(copy)
+    }
+  )";
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(2);
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
+  for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({false}),
+                                       results[replica_idx]));
+  }
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduceOr_Pred) {
+  // Test with equal elements.
+  TestTwoReplicasOneOperand<bool>(
+      "or",
+      /*input_value=*/LiteralUtil::CreateR1<bool>({true, false}),
+      /*expected_value=*/LiteralUtil::CreateR1<bool>({true, false}));
+
+  // Test with {true, false}.
+  const char* hlo_module = R"(
+    HloModule test
+
+    apply_op {
+      x = pred[] parameter(0)
+      y = pred[] parameter(1)
+      ROOT apply_op = pred[] or(x, y)
+    }
+
+    ENTRY test_computation {
+      id = u32[] replica-id()
+      c = u32[] constant(0)
+      p = pred[] compare(id, c), direction=EQ
+      p2 = pred[1] bitcast(p)
+      crs = pred[1] all-reduce(p2), replica_groups={}, to_apply=apply_op
+      copy = pred[1] copy(crs)
+      ROOT out = pred[1] bitcast(copy)
+    }
+  )";
+
+  auto config = GetModuleConfigForTest();
+  config.set_replica_count(2);
+  auto module = ParseAndReturnVerifiedModule(hlo_module, config).ValueOrDie();
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                          ExecuteReplicated(std::move(module), {},
+                                            /*num_replicas=*/2,
+                                            /*use_threads=*/true));
+  for (int replica_idx = 0; replica_idx < 2; replica_idx++) {
+    EXPECT_TRUE(LiteralTestUtil::Equal(LiteralUtil::CreateR1<bool>({true}),
+                                       results[replica_idx]));
+  }
+}
+
 // Tries all-to-all operations across all 2^kNumDevices - 1 combinations of
 // devices in sequence.
 XLA_TEST_F(CollectiveOpsTest, AllReduce_AllCombinations) {

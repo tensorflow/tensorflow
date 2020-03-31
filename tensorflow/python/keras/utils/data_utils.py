@@ -182,6 +182,15 @@ def get_file(fname,
   Passing a hash will verify the file after download. The command line
   programs `shasum` and `sha256sum` can compute the hash.
 
+  Example:
+
+  ```python
+  path_to_downloaded_file = tf.keras.utils.get_file(
+      "flower_photos",
+      "https://storage.googleapis.com/download.tensorflow.org/example_images/flower_photos.tgz",
+      untar=True)
+  ```
+
   Arguments:
       fname: Name of the file. If an absolute path `/path/to/file.txt` is
           specified the file will be saved at that location.

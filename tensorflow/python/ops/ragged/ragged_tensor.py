@@ -30,8 +30,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -54,7 +56,7 @@ _convert_row_partition = RowPartition._convert_row_partition
 
 
 @tf_export("RaggedTensor")
-class RaggedTensor(composite_tensor.CompositeTensor):
+class RaggedTensor(composite_tensor.CompositeTensor, tensor_like.TensorLike):
   """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
@@ -1228,13 +1230,18 @@ class RaggedTensor(composite_tensor.CompositeTensor):
       splits_shape = array_ops.shape(self.row_splits, out_type=out_type)
       flat_values_shape = array_ops.shape(rt_flat_values, out_type=out_type)
 
-      ragged_dimensions = array_ops.stack([splits_shape[0] - 1] + [
+      ragged_dimensions = [splits_shape[0] - 1] + [
           math_ops.maximum(math_ops.reduce_max(splits[1:] - splits[:-1]), 0)
           for splits in nested_splits
-      ])
+      ]
       inner_dimensions = flat_values_shape[1:]
 
-      bbox = array_ops.concat([ragged_dimensions, inner_dimensions], axis=0)
+      if out_type != self._row_partition.dtype:
+        ragged_dimensions = [
+            math_ops.cast(d, out_type) for d in ragged_dimensions
+        ]
+      bbox = array_ops.concat(
+          [array_ops.stack(ragged_dimensions), inner_dimensions], axis=0)
       return bbox if axis is None else array_ops.gather(bbox, axis)
 
   #=============================================================================
@@ -1368,6 +1375,59 @@ class RaggedTensor(composite_tensor.CompositeTensor):
                        "inner_axis (%d)" % (outer_axis, inner_axis))
     return _merge_dims(self, outer_axis, inner_axis)
 
+  def _set_shape(self, shape):
+    """Updates the static shape of `self` to be `shape`.
+
+    * If a dimension of `shape` has known rank, and is encoded via
+      partitioning, then this will update the corresponding partition to
+      define `_uniform_row_length` and `nrows`.
+    * If a dimension of `shape` has a known rank, and is encoded as one
+      of the `flat_values` dimensions, then `flat_values.set_shape()` will
+      be used to update its shape.
+
+    Warning: Using this method to assert an incorrect shape for a RaggedTensor
+    (i.e., one that's not consistent with its actual shape) can cause
+    segmentation faults and very difficult-to-diagnose behavior.  Only use this
+    method if you are certain that the shape is correct.
+
+    Args:
+      shape: `tf.TensorShape` specifying the shape for this `RaggedTensor`.
+    """
+    # TODO(edloper): Refactor this to not directly access private members
+    # of RowPartition.
+    # pylint: disable=protected-access
+
+    shape = tensor_shape.as_shape(shape)
+    if shape.rank is None:
+      return  # Nothing to do.
+
+    shape = shape.as_list()
+
+    # Outermost dimension
+    if shape[0] is not None:
+      self._row_partition._row_splits.set_shape(shape[0] + 1)
+
+    # Partitioned dimensions
+    dtype = self._row_partition.dtype
+    for i, partition in enumerate(self._nested_row_partitions):
+      size = shape[i + 1]
+      if size is not None:
+        if partition._uniform_row_length is not None:
+          old_row_length = tensor_util.constant_value(
+              partition._uniform_row_length)
+          if old_row_length is not None:
+            if size == old_row_length:
+              continue  # already have shape info for this axis.
+            else:
+              raise ValueError("Inconsistent size for axis %s: %s vs %s" %
+                               ((i + 1), old_row_length, size))
+        partition._uniform_row_length = ops.convert_to_tensor(size, dtype)
+        if partition._nrows is None:
+          partition._nrows = array_ops.size(partition._row_splits) - 1
+
+    # Inner dimensions
+    flat_shape = tensor_shape.as_shape([None] + shape[self.ragged_rank + 1:])
+    self.flat_values.set_shape(flat_shape)
 
 #=============================================================================
 # Tensor Type Conversions
@@ -2158,6 +2218,8 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
     return [tensor_spec.TensorSpec(None, dtypes.variant)]
 
   def _to_tensor_list(self, value):
+    # TODO(edloper): Update gen_ragged_conversion_ops that convert to and
+    # from variant to include all of the row-partitioning tensors.
     ragged_rank = value.ragged_rank if isinstance(value, RaggedTensor) else 0
     if ragged_rank != self._ragged_rank:
       raise ValueError("Ragged rank of value (%d) does not match ragged "
@@ -2196,9 +2258,7 @@ class RaggedTensorSpec(type_spec.BatchableTypeSpec):
         outer_dim = tensor_shape.dimension_value(self._shape[0])
         if outer_dim is not None:
           result.row_splits.set_shape([outer_dim + 1])
-        result.flat_values.set_shape(
-            tensor_shape.TensorShape([None]).concatenate(
-                self._shape[1 + self._ragged_rank:]))
+        result._set_shape(self._shape)  # pylint: disable=protected-access
       else:
         result.set_shape(self._shape)
     return result

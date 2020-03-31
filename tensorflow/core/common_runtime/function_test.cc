@@ -164,10 +164,11 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, /*thread_pool=*/nullptr,
         /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
         /*session_metadata=*/nullptr,
-        [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
-          *r = new IntraProcessRendezvous(device_mgr);
-          return Status::OK();
-        }));
+        Rendezvous::Factory{
+            [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+              *r = new IntraProcessRendezvous(device_mgr);
+              return Status::OK();
+            }}));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     flr1_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:1");
     flr2_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:2");

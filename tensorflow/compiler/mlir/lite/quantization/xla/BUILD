@@ -35,6 +35,7 @@ cc_library(
     deps = [
         ":cpu_device_target",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_config",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_context",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_lib",
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/xla/client/lib:quantize",
@@ -60,6 +61,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/mlir/lite/quantization:device_target",
+        "//tensorflow/compiler/mlir/lite/quantization:quantization_context",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:Support",

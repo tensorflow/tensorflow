@@ -88,12 +88,14 @@ std::vector<ComputeTaskDescriptorPtr> SelectDepthWiseConv(
 
 std::vector<ComputeTaskDescriptorPtr> SelectConvolutionTransposed(
     int id, ValueId input_id, ValueId output_id,
-    const ConvolutionTransposedAttributes& attr,
+    const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
     const metal::RuntimeOptions& options) {
   if (CheckConvolutionTransposed4x4Support(attr)) {
-    return ConvolutionTransposed4x4(id, input_id, output_id, attr, options);
+    return ConvolutionTransposed4x4(id, input_id, output_id, attr, device_info,
+                                    options);
   } else {
-    return ConvolutionTransposed(id, input_id, output_id, attr, options);
+    return ConvolutionTransposed(id, input_id, output_id, attr, device_info,
+                                 options);
   }
 }
 
@@ -165,6 +167,7 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
 absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
                                 const std::vector<ValueId>& inputs,
                                 const std::vector<ValueId>& outputs,
+                                const DeviceInfo& device_info,
                                 const RuntimeOptions& options,
                                 int* last_node_id, int* last_value_id,
                                 std::vector<ComputeTaskDescriptorPtr>* tasks) {
@@ -219,8 +222,9 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
 
         BHWC conv_shape{dst_shape.b, 36, tiles_x * tiles_y, dst_shape.c};
         (*last_node_id) += 1;
-        auto t1 = ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
-                                          conv_shape, attr, options);
+        auto t1 =
+            ConvolutionWino4x4To6x6(*last_node_id, value_id, value_id + 1,
+                                    conv_shape, attr, device_info, options);
         tasks->insert(tasks->end(), t1.begin(), t1.end());
 
         Winograd36To4x4Attributes wino_down_attr;
@@ -233,7 +237,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
         (*last_value_id) += 2;
       } else {
         *tasks = ConvolutionGeneric(node_id, inputs[0], outputs[0], dst_shape,
-                                    attr, options);
+                                    attr, device_info, options);
       }
       break;
     }
@@ -242,7 +246,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
           node_id, inputs[0], outputs[0],
           absl::any_cast<ConvolutionTransposedAttributes>(
               node->operation.attributes),
-          options);
+          device_info, options);
       break;
     case OperationType::DEPTHWISE_CONVOLUTION:
       *tasks =
@@ -255,7 +259,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
       *tasks = FullyConnected(
           node_id, inputs[0], outputs[0],
           absl::any_cast<FullyConnectedAttributes>(node->operation.attributes),
-          options);
+          device_info, options);
       break;
     case OperationType::MAX_UNPOOLING_2D:
       *tasks = MaxUnpooling(
@@ -388,7 +392,8 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
 
 }  // namespace
 
-absl::Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
+absl::Status Compile(const GraphFloat32& graph, const DeviceInfo& device_info,
+                     const RuntimeOptions& options,
                      CompiledModel* compiled_model) {
   int last_node_id = 0;
   for (const auto& node : graph.nodes()) {
@@ -412,7 +417,7 @@ absl::Status Compile(const GraphFloat32& graph, const RuntimeOptions& options,
         RegisterCustomOps(graph, node, inputs, outputs, options, &tasks);
     if (!custom_status.ok()) {
       auto primary_status =
-          RegisterPrimaryOps(graph, node, inputs, outputs, options,
+          RegisterPrimaryOps(graph, node, inputs, outputs, device_info, options,
                              &last_node_id, &last_value_id, &tasks);
       if (!primary_status.ok()) {
         return absl::UnimplementedError(

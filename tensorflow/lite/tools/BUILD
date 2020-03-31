@@ -103,6 +103,9 @@ py_test(
     srcs = ["flatbuffer_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+    ],
     deps = [
         ":flatbuffer_utils",
         ":test_utils",

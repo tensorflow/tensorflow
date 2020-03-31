@@ -382,7 +382,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   }
   void* ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
   if (ptr != nullptr) {
-    AddTraceMe("MemoryAllocation", num_bytes);
+    AddTraceMe("MemoryAllocation", ptr);
     return ptr;
   }
 
@@ -390,7 +390,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   if (Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation", num_bytes);
+      AddTraceMe("MemoryAllocation", ptr);
       return ptr;
     }
   }
@@ -403,7 +403,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
     if (MergeTimestampedChunks(rounded_bytes)) {
       ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
       if (ptr != nullptr) {
-        AddTraceMe("MemoryAllocation", num_bytes);
+        AddTraceMe("MemoryAllocation", ptr);
         return ptr;
       }
     }
@@ -417,7 +417,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
       Extend(unused_alignment, rounded_bytes)) {
     ptr = FindChunkPtr(bin_num, rounded_bytes, num_bytes, freed_before);
     if (ptr != nullptr) {
-      AddTraceMe("MemoryAllocation", num_bytes);
+      AddTraceMe("MemoryAllocation", ptr);
       return ptr;
     }
   }
@@ -439,7 +439,7 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
 }
 
 void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
-                              int64 requested_bytes) {
+                              const void* chunk_ptr) {
   // Internal users will see the memory profile with default trace level.
   auto traceme_level = profiler::TraceMeLevel::kVerbose;
 #ifdef PLATFORM_GOOGLE
@@ -451,12 +451,17 @@ void BFCAllocator::AddTraceMe(absl::string_view traceme_name,
         AllocatorStats stats = stats_;
         int64 bytes_available =
             memory_limit_ - stats.bytes_reserved - stats.bytes_in_use;
+        BFCAllocator::Chunk* chunk =
+            ChunkFromHandle(region_manager_.get_handle(chunk_ptr));
+
         return absl::StrCat(traceme_name, "#allocator_name=", name_,
                             ",bytes_reserved=", stats.bytes_reserved,
                             ",bytes_allocated=", stats.bytes_in_use,
                             ",bytes_available=", bytes_available,
                             ",peak_bytes_in_use=", stats.peak_bytes_in_use,
-                            ",requested_bytes=", requested_bytes,
+                            ",requested_bytes=", chunk->requested_size,
+                            ",allocation_bytes=", chunk->size,
+                            ",addr=", reinterpret_cast<uint64>(chunk_ptr),
                             ",tf_op=", pending_op_name, ",id=", pending_step_id,
                             "#");
       },
@@ -595,8 +600,10 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle);
 
-  int64 requested_bytes = ChunkFromHandle(h)->requested_size;
   MarkFree(h);
+  // TraceMe needs to be added after MarkFree and before InsertFreeChunkIntoBin
+  // for correct memory stats.
+  AddTraceMe("MemoryDeallocation", ptr);
 
   // Consider coalescing it.
   if (timing_counter_) {
@@ -609,8 +616,6 @@ void BFCAllocator::DeallocateRawInternal(void* ptr) {
   if (VLOG_IS_ON(4)) {
     LOG(INFO) << "F: " << RenderOccupancy();
   }
-
-  AddTraceMe("MemoryDeallocation", -requested_bytes);
 }
 
 // Merges h1 and h2 when Chunk(h1)->next is h2 and Chunk(h2)->prev is c1.
