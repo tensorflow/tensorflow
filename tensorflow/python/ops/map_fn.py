@@ -191,10 +191,15 @@ def map_fn(fn,
   *rows* of a `SparseTensor`.  If you wish to map a function over the nonzero
   values, then you should use:
 
-    * `tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)`
-      (if the function is expressible as TensorFlow ops)
-    * `tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
-      st.dense_shape)` (otherwise).
+    * If the function is expressible as TensorFlow ops, use:
+      ```python
+      tf.sparse.SparseTensor(st.indices, fn(st.values), st.dense_shape)
+      ```
+    * Otherwise, use:
+      ```python
+      tf.sparse.SparseTensor(st.indices, tf.map_fn(fn, st.values),
+                             st.dense_shape)
+      ```
 
   #### `map_fn` vs. vectorized operations
 
