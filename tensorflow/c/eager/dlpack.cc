@@ -15,11 +15,12 @@ limitations under the License.
 
 #include "tensorflow/c/eager/dlpack.h"
 
-#include "include/dlpack/dlpack.h"  // from @dlpack
+#include "include/dlpack/dlpack.h"  // TF:dlpack
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
+#include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -46,7 +47,9 @@ const Tensor* GetTensorFromHandle(TFE_TensorHandle* h, TF_Status* status) {
     return nullptr;
   }
   tensorflow::TensorHandle* handle =
-      tensorflow::TensorHandleFromInterface(h->handle);
+      tensorflow::down_cast<tensorflow::TensorHandleInterface*>(h->handle.get())
+          ->Handle();
+
   if (handle->IsRemote()) {
     status->status = tensorflow::errors::InvalidArgument(
         "DLPack doesn't support remote tensor");
