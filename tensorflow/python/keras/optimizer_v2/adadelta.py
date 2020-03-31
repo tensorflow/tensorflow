@@ -120,7 +120,7 @@ class Adadelta(optimizer_v2.OptimizerV2):
     which converged faster than ADAGRAD.
   
     The alternate function declaration can be used for testing the use case 
-    similar to the in the paper
+    similar to the in the paper:
     def __init__(self, lr=1.0, rho=0.95, epsilon=1e-6, decay=0., **kwargs):
     
     """
