@@ -251,6 +251,9 @@ Status CommonSubgraphElimination::DedupComputations(GraphDef* optimized_graph) {
           CanonicalizeNode(fanout);
         }
       }
+      if (fetch_nodes_known_) {
+        node->Clear();
+      }
       duplicates.insert(i);
       stop = false;
     }
