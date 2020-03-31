@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -380,13 +379,7 @@ class BatchNormalizationTest(test.TestCase):
     use_gpu_vals = [False]
     if test.is_gpu_available(cuda_only=True):
       use_gpu_vals += [True]
-    factors = [
-        1.0,
-    ]
-    if compat.forward_compatible(2020, 3, 6):
-      factors += [
-          0.6,
-      ]
+    factors = [1.0, 0.6]
     for dtype in [np.float16, np.float32]:
       for use_gpu in use_gpu_vals:
         for data_format in ['NHWC', 'NCHW']:
