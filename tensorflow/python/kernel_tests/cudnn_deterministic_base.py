@@ -50,7 +50,8 @@ from tensorflow.python.platform import test
 # algorithms, for a given layer configuration, are always used (i.e. that
 # algorithm selection is deterministic / reproducible), this is not tested.
 
-# TODO(duncanriach): Add test for deterministic cuDNN max-pooling
+# TODO(duncanriach): (1) Add test for deterministic cuDNN max-pooling
+#                    (2) Add test for deterministic cuDNN CTC loss
 
 LayerShapeNHWC = collections.namedtuple('LayerShapeNHWC',
                                         'batch, height, width, channels')
