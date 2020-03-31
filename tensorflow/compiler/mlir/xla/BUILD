@@ -316,8 +316,8 @@ cc_library(
     name = "hlo_legalize_to_lhlo",
     srcs = ["transforms/hlo_legalize_to_lhlo.cc"],
     deps = [
-        ":hlo",
         ":buffer_assignment",
+        ":hlo",
         ":lhlo",
         ":map_hlo_to_lhlo_op",
         "@com_google_absl//absl/memory",
