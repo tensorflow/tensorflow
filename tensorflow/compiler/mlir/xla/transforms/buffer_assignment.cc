@@ -117,12 +117,19 @@ class BufferAssignmentAliasAnalysis {
                 return successor == &block;
               }));
           // Get the terminator and the values that will be passed to our block.
-          auto successorOps =
-              pred->getTerminator()->getSuccessorOperands(successorIndex);
-          // Build the actual mapping of values to their immediate aliases.
-          for (auto arg : block.getArguments()) {
-            Value predecessorArgValue = successorOps[arg.getArgNumber()];
-            aliases[predecessorArgValue].insert(arg);
+          if (auto branchInterface =
+                  dyn_cast<BranchOpInterface>(pred->getTerminator())) {
+            // Query the branch op interace to get the successor operands.
+            auto successorOps =
+                branchInterface.getSuccessorOperands(successorIndex);
+            if (successorOps.hasValue()) {
+              // Build the actual mapping of values to their immediate aliases.
+              for (auto arg : block.getArguments()) {
+                Value predecessorArgValue =
+                    successorOps.getValue()[arg.getArgNumber()];
+                aliases[predecessorArgValue].insert(arg);
+              }
+            }
           }
         }
       }
@@ -317,10 +324,10 @@ class BufferAssignmentAnalysis {
   Liveness liveness;
 
   /// The dominator analysis to place allocs in the appropriate blocks.
-  detail::BufferAssignmentDominators<false> dominators;
+  DominanceInfo dominators;
 
   /// The post dominator analysis to place deallocs in the appropriate blocks.
-  detail::BufferAssignmentDominators<true> postDominators;
+  PostDominanceInfo postDominators;
 
   /// The internal alias analysis to ensure that allocs and deallocs take all
   /// their potential aliases into account.
@@ -387,7 +394,7 @@ BufferAssignmentPlacer::BufferAssignmentPlacer(Operation* op)
 
 /// Computes the actual position to place allocs for the given value.
 OpBuilder::InsertPoint BufferAssignmentPlacer::computeAllocPosition(
-    Value value) const {
+    Value value) {
   Operation* insertOp;
   if (auto arg = value.dyn_cast<BlockArgument>()) {
     // This is a block argument which has to be allocated in the scope
@@ -409,7 +416,7 @@ OpBuilder::InsertPoint BufferAssignmentPlacer::computeAllocPosition(
 //===----------------------------------------------------------------------===//
 
 // Performs the actual signature rewriting step.
-PatternMatchResult FunctionAndBlockSignatureConverter::matchAndRewrite(
+LogicalResult FunctionAndBlockSignatureConverter::matchAndRewrite(
     FuncOp funcOp, ArrayRef<Value> operands,
     ConversionPatternRewriter& rewriter) const {
   auto toMemrefConverter = [&](Type t) -> Type {
@@ -442,10 +449,10 @@ PatternMatchResult FunctionAndBlockSignatureConverter::matchAndRewrite(
       auto newArg =
           block.insertArgument(i, toMemrefConverter(oldArg.getType()));
       oldArg.replaceAllUsesWith(newArg);
-      block.eraseArgument(i + 1, false);
+      block.eraseArgument(i + 1);
     }
   }
-  return matchSuccess();
+  return success();
 }
 
 // Adding functions whose arguments are memref type to the set of legal

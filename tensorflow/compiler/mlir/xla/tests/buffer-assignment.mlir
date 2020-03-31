@@ -104,9 +104,9 @@ func @ifElseNested(%cond : i1, %arg0 : tensor<2xf32>) -> tensor<2xf32>{
 
 // CHECK-LABEL: Testing : redundantOperations
 func @redundantOperations(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) {
-  // CHECK: Alloc: %0 = xla_hlo.max
+  // CHECK: Alloc: %0 = xla_hlo.maximum
   // CHECK-NEXT: Dealloc: %1 = xla_hlo.add
-  %1 = "xla_hlo.max"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  %1 = "xla_hlo.maximum"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
   // CHECK: Alloc: %1 = xla_hlo.add
   // CHECK-NEXT: Dealloc: %1 = xla_hlo.add
   %2 = "xla_hlo.add"(%arg0, %1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>

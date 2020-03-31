@@ -25,35 +25,6 @@ limitations under the License.
 
 namespace mlir {
 namespace xla {
-namespace detail {
-
-/// A specialized dominator analysis that provided access to some private
-/// methods.
-///
-/// TODO(dfki): merge this functionality into the underlying MLIR core dominator
-/// analysis.
-template <bool IsPostDom>
-class BufferAssignmentDominators
-    : public mlir::detail::DominanceInfoBase<IsPostDom> {
- public:
-  using super = mlir::detail::DominanceInfoBase<IsPostDom>;
-  using super::super;
-
-  /// Finds the nearest common dominator block for the two given blocks first
-  /// and second. If there is no common dominator this function will return
-  /// nullptr.
-  Block* findNearestCommonDominator(Block* first, Block* second) const {
-    assert(first->getParent() == second->getParent() & "Invalid region");
-    return super::dominanceInfos.find(first->getParent())
-        ->second->findNearestCommonDominator(first, second);
-  }
-
-  /// Return the dominance node from the region containing block A.
-  DominanceInfoNode* getNode(Block* a) const {
-    return super::dominanceInfos.find(a->getParent())->second->getNode(a);
-  }
-};
-}  // namespace detail
 
 /// Prepares a buffer assignment phase. It can place (user-defined) alloc
 /// nodes. This simplifies the integration of the actual buffer-assignment
@@ -79,14 +50,14 @@ class BufferAssignmentPlacer {
   Operation* getOperation() const { return operation; }
 
   /// Computes the actual position to place allocs for the given value.
-  OpBuilder::InsertPoint computeAllocPosition(Value value) const;
+  OpBuilder::InsertPoint computeAllocPosition(Value value);
 
  private:
   /// The operation this analysis was constructed from.
   Operation* operation;
 
   /// The dominator analysis to place allocs in the appropriate blocks.
-  detail::BufferAssignmentDominators<false> dominators;
+  DominanceInfo dominators;
 };
 
 /// Helper conversion pattern that encapsulates a BufferAssignmentPlacer
@@ -118,7 +89,7 @@ class FunctionAndBlockSignatureConverter
   static void addDynamicallyLegalFuncOp(ConversionTarget& target);
 
   // Performs the actual signature rewriting step.
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       FuncOp funcOp, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final;
 };
@@ -129,12 +100,13 @@ class FunctionAndBlockSignatureConverter
 template <typename ReturnOpSourceTy, typename ReturnOpTargetTy,
           typename CopyOpTy>
 class NonVoidToVoidReturnOpConverter
-    : public OpConversionPattern<ReturnOpSourceTy> {
+    : public BufferAssignmentOpConversionPattern<ReturnOpSourceTy> {
  public:
-  using OpConversionPattern<ReturnOpSourceTy>::OpConversionPattern;
+  using BufferAssignmentOpConversionPattern<
+      ReturnOpSourceTy>::BufferAssignmentOpConversionPattern;
 
   // Performs the actual return-op conversion step.
-  PatternMatchResult matchAndRewrite(
+  LogicalResult matchAndRewrite(
       ReturnOpSourceTy returnOp, ArrayRef<Value> operands,
       ConversionPatternRewriter& rewriter) const final {
     auto numReturnValues = returnOp.getNumOperands();
@@ -153,12 +125,12 @@ class NonVoidToVoidReturnOpConverter
       // Insert the copy operation to copy before the return.
       rewriter.setInsertionPoint(
           returnOp.getOperation()->getBlock()->getTerminator());
-      rewriter.create<CopyOpTy>(loc, llvm::None, operand.value(),
+      rewriter.create<CopyOpTy>(loc, operand.value(),
                                 funcOp.getArgument(returnArgNumber));
     }
     // Insert the new target return operation.
     rewriter.replaceOpWithNewOp<ReturnOpTargetTy>(returnOp);
-    return OpConversionPattern<ReturnOpSourceTy>::matchSuccess();
+    return success();
   }
 };
 
