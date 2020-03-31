@@ -38,7 +38,7 @@ package(
 # Check that tensorflow/core:tensorflow does not depend on grpc.
 check_deps(
     name = "core_tensorflow_check_deps",
-    disallowed_deps = ["@grpc//:grpc++"],
+    disallowed_deps = ["@com_github_grpc_grpc//:grpc++"],
     deps = ["//tensorflow/core:tensorflow"],
 )
 

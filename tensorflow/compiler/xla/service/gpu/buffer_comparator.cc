@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/kernel.h"
 #include "tensorflow/stream_executor/stream_executor_pimpl.h"
 

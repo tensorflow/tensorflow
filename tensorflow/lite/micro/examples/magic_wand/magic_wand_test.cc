@@ -35,10 +35,10 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_magic_wand_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.\n",
-        model->version(), TFLITE_SCHEMA_VERSION);
+    TF_LITE_REPORT_ERROR(error_reporter,
+                         "Model provided is schema version %d not equal "
+                         "to supported version %d.\n",
+                         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
   // Pull in only the operation implementations we need.
@@ -87,7 +87,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Provide an input value
   const float* ring_features_data = g_ring_micro_f9643d42_nohash_4_data;
-  error_reporter->Report("%d", input->bytes);
+  TF_LITE_REPORT_ERROR(error_reporter, "%d", input->bytes);
   for (int i = 0; i < (input->bytes / sizeof(float)); ++i) {
     input->data.f[i] = ring_features_data[i];
   }
@@ -95,7 +95,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Run the model on this input and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -132,7 +132,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Run the model on this "Slope" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
+    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 

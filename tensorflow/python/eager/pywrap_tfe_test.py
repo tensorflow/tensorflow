@@ -237,8 +237,7 @@ class Tests(test.TestCase):
   @test_util.assert_no_garbage_created
   def testInvalidNumOutputs(self):
     with self.assertRaisesRegexp(
-        Exception,
-        "Value for attr 'num_split' of -1 must be at least minimum 1"):
+        Exception, r"Value for number_attr\(\) -1 < 0 \[Op:Split\]"):
       array_ops.split(value=[1, 2, 3], num_or_size_splits=-1)
 
     with self.assertRaisesRegexp(

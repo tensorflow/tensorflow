@@ -2,10 +2,7 @@ syntax = "proto3";
 
 package tensorflow;
 
-import "tensorflow/core/framework/graph.proto";
-import "tensorflow/core/profiler/op_profile.proto";
 import "tensorflow/core/profiler/profiler_service_monitor_result.proto";
-import "tensorflow/core/protobuf/config.proto";
 
 // The ProfilerService service retrieves performance information about
 // the programs running on connected devices over a period of time.
@@ -17,11 +14,37 @@ service ProfilerService {
 }
 
 message ProfileOptions {
+  // Some default value of option are not proto3 default value. Use this version
+  // to determine if we should use default option value instead of proto3
+  // default value.
+  uint32 version = 5;
+
   // We don't collect the dataset ops by default for better trace-viewer
   // scalability. The caller can mannually set this field to include the ops.
   bool include_dataset_ops = 1;
 
-  // next-field: 2
+  // Levels of host tracing: (version >= 1)
+  // - Level 0 is used to disable host traces.
+  // - Level 1 enables tracing of only user instrumented (or default) TraceMe.
+  // - Level 2 enables tracing of all level 1 TraceMe(s) and instrumented high
+  //           level program execution details (expensive TF ops, XLA ops, etc).
+  //           This is the default.
+  // - Level 3 enables tracing of all level 2 TraceMe(s) and more verbose
+  //           (low-level) program execution details (cheap TF ops, etc).
+  uint32 host_tracer_level = 2;
+
+  // Levels of device tracing: (version >= 1)
+  // - Level 0 is used to disable device traces.
+  // - Level 1 is used to enable device traces.
+  // - More levels might be defined for specific device for controlling the
+  //   verbosity of the trace.
+  uint32 device_tracer_level = 3;
+
+  // Whether enable python function calls tracing. Runtime overhead ensues if
+  // enabled. Default off. (version >= 1)
+  uint32 python_tracer_level = 4;
+
+  // next-field: 6
 }
 
 message ToolRequestOptions {
@@ -80,28 +103,14 @@ message ProfileToolData {
 }
 
 message ProfileResponse {
-  reserved 1;  // was uint64 placeholder for returning something meaningful.
-  // Graphs of programs executed on devices during the profiling period.
-  repeated GraphDef computation_graph = 2;
-
-  // Performance profile that can be used to annotate HLO operations in the
-  // computation graph.
-  RunMetadata hlo_metadata = 5;
-
-  // Encoded Trace proto message that contains metadata about the trace captured
-  // during the profiling period. Describes the devices and resources that
-  // 'trace_events' refers to.
-  bytes encoded_trace = 3;
-
-  reserved 4;  // was op_profile.
-
   // Data payload for each required tools.
   repeated ProfileToolData tool_data = 6;
 
   // When we write profiling data directly to repository directory, we need a
-  // way to figure out whether the captured trace is empty (due to idle TPU).
+  // way to figure out whether the captured trace is empty.
   bool empty_trace = 7;
 
+  reserved 1, 2, 3, 4, 5;
   // next-field: 8
 }
 
@@ -127,17 +136,10 @@ message MonitorResponse {
   // Properly formatted string data that can be directly returned back to user.
   string data = 1;
 
-  reserved 2;  // was double device_idle_time_percent
-  reserved 3;  // was double matrix_unit_utilization_percent
-  reserved 4;  // was double step_time_ms_avg
-  reserved 5;  // was double step_time_ms_min
-  reserved 6;  // was double step_time_ms_max
-  reserved 7;  // was double infeed_percent_avg
-  reserved 8;  // was double infeed_percent_min
-  reserved 9;  // was double infeed_percent_max
-
   // A collection of monitoring results for each field show in data.
   ProfilerServiceMonitorResult monitor_result = 10;
+
+  reserved 2, 3, 4, 5, 6, 7, 8, 9;
 
   // next-field: 11
 }

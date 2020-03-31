@@ -593,7 +593,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
                      ("fake_evaluator", 3, True, False))
 
 
-class DistributeCoordinatorTestInpendentWorkerMode(
+class DistributeCoordinatorTestIndependentWorkerMode(
     DistributeCoordinatorTestBase):
 
   def testInGraph(self):
@@ -946,7 +946,7 @@ class RunStandardTensorflowServerTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  # TODO(yuefengz): find a smart way to terminite std server threads.
+  # TODO(yuefengz): find a smart way to terminate std server threads.
   with test.mock.patch.object(sys, "exit", os._exit):
     # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
     orig_init = session_manager.SessionManager.__init__

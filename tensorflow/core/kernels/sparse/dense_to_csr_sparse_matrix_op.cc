@@ -22,6 +22,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
@@ -361,10 +362,8 @@ class DenseToCSRSparseMatrixGPUOp : public AsyncOpKernel {
 
 REGISTER_GPU(GPU, float)
 REGISTER_GPU(GPU, double)
-#if GOOGLE_CUDA
 REGISTER_GPU(GPU, complex64)
 REGISTER_GPU(GPU, complex128)
-#endif
 
 namespace functor {
 

@@ -127,9 +127,37 @@ class Masking(Layer):
 class Dropout(Layer):
   """Applies Dropout to the input.
 
-  Dropout consists in randomly setting
-  a fraction `rate` of input units to 0 at each update during training time,
-  which helps prevent overfitting.
+  The Dropout layer randomly sets input units to 0 with a frequency of `rate`
+  at each step during training time, which helps prevent overfitting.
+  Inputs not set to 0 are scaled up by 1/(1 - rate) such that the sum over
+  all inputs is unchanged.
+
+  Note that the Dropout layer only applies when `training` is set to True
+  such that no values are dropped during inference. When using `model.fit`,
+  `training` will be appropriately set to True automatically, and in other
+  contexts, you can set the kwarg explicitly to True when calling the layer.
+
+  (This is in contrast to setting `trainable=False` for a Dropout layer.
+  `trainable` does not affect the layer's behavior, as Dropout does
+  not have any variables/weights that can be frozen during training.)
+
+  >>> tf.random.set_seed(0)
+  >>> layer = tf.keras.layers.Dropout(.2, input_shape=(2,))
+  >>> data = np.arange(10).reshape(5, 2).astype(np.float32)
+  >>> print(data)
+  [[0. 1.]
+   [2. 3.]
+   [4. 5.]
+   [6. 7.]
+   [8. 9.]]
+  >>> outputs = layer(data, training=True)
+  >>> print(outputs)
+  tf.Tensor(
+  [[ 0.    1.25]
+   [ 2.5   3.75]
+   [ 5.    6.25]
+   [ 7.5   8.75]
+   [10.    0.  ]], shape=(5, 2), dtype=float32)
 
   Arguments:
     rate: Float between 0 and 1. Fraction of the input units to drop.
@@ -165,7 +193,7 @@ class Dropout(Layer):
     noise_shape = []
     for i, value in enumerate(self.noise_shape):
       noise_shape.append(concrete_inputs_shape[i] if value is None else value)
-    return ops.convert_to_tensor(noise_shape)
+    return ops.convert_to_tensor_v2(noise_shape)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -868,9 +896,10 @@ class Lambda(Layer):
       # checking only to immediately discard it.
       return
 
-    tracked_weights = set(v.experimental_ref() for v in self.weights)
-    untracked_new_vars = [v for v in created_variables
-                          if v.experimental_ref() not in tracked_weights]
+    tracked_weights = set(v.ref() for v in self.weights)
+    untracked_new_vars = [
+        v for v in created_variables if v.ref() not in tracked_weights
+    ]
     if untracked_new_vars:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_new_vars)
       error_str = textwrap.dedent(
@@ -886,8 +915,9 @@ class Lambda(Layer):
       ).format(name=self.name, variable_str=variable_str)
       raise ValueError(error_str)
 
-    untracked_used_vars = [v for v in accessed_variables
-                           if v.experimental_ref() not in tracked_weights]
+    untracked_used_vars = [
+        v for v in accessed_variables if v.ref() not in tracked_weights
+    ]
     if untracked_used_vars and not self._already_warned:
       variable_str = '\n'.join('  {}'.format(i) for i in untracked_used_vars)
       self._warn(textwrap.dedent(
@@ -1029,8 +1059,15 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: If the input to the layer has a rank greater than 2, then
-  it is flattened prior to the initial dot product with `kernel`.
+  Note: If the input to the layer has a rank greater than 2, then `Dense`
+  computes the dot product between the `inputs` and the `kernel` along the
+  last axis of the `inputs` and axis 1 of the `kernel` (using `tf.tensordot`).
+  For example, if input has dimensions `(batch_size, d0, d1)`,
+  then we create a `kernel` with shape `(d1, units)`, and the `kernel` operates
+  along axis 2 of the `input`, on every sub-tensor of shape `(1, 1, d1)`
+  (there are `batch_size * d0` such sub-tensors).
+  The output in this case will have shape `(batch_size, d0, units)`.
+
   Besides, layer attributes cannot be modified after the layer has been called
   once (except the `trainable` attribute).
 
@@ -1117,8 +1154,7 @@ class Dense(Layer):
       raise ValueError('The last dimension of the inputs to `Dense` '
                        'should be defined. Found `None`.')
     last_dim = tensor_shape.dimension_value(input_shape[-1])
-    self.input_spec = InputSpec(min_ndim=2,
-                                axes={-1: last_dim})
+    self.input_spec = InputSpec(min_ndim=2, axes={-1: last_dim})
     self.kernel = self.add_weight(
         'kernel',
         shape=[last_dim, self.units],
@@ -1141,8 +1177,8 @@ class Dense(Layer):
     self.built = True
 
   def call(self, inputs):
-    rank = len(inputs.shape)
-    if rank > 2:
+    rank = inputs.shape.rank
+    if rank is not None and rank > 2:
       # Broadcasting is required for the inputs.
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.

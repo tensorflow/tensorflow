@@ -318,8 +318,11 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
               local_determinism=[None, True, False],
               global_determinism=[True, False])))
   def testDeterminismConfiguration(self, local_determinism, global_determinism):
+    expect_determinism = local_determinism or (local_determinism is None and
+                                               global_determinism)
+    elements = list(range(1000))
 
-    def make_interleave_fn(delay_ms):
+    def dataset_fn(delay_ms):
 
       def interleave_fn(x):
         ds = dataset_ops.Dataset.from_tensors(x)
@@ -329,36 +332,18 @@ class InterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
           ds = ds.apply(testing.sleep(0))
         return ds
 
-      return interleave_fn
-
-    expect_determinism = local_determinism or (local_determinism is None and
-                                               global_determinism)
-    if expect_determinism:
-      delays_ms = [100]
-    else:
-      delays_ms = [10, 100, 1000, 20000]
-    # We consider the test a success if it succeeds under any delay_ms. The
-    # delay_ms needed to observe non-deterministic ordering varies across
-    # test machines. Usually 10 or 100 milliseconds is enough, but on slow
-    # machines it could take longer.
-    for delay_ms in delays_ms:
-      dataset = dataset_ops.Dataset.range(2)
-
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
       dataset = dataset.interleave(
-          make_interleave_fn(delay_ms),
-          cycle_length=2,
-          num_parallel_calls=2,
+          interleave_fn,
+          cycle_length=10,
+          num_parallel_calls=10,
           deterministic=local_determinism)
-
       opts = dataset_ops.Options()
       opts.experimental_deterministic = global_determinism
       dataset = dataset.with_options(opts)
+      return dataset
 
-      expected = [0, 1] if expect_determinism else [1, 0]
-      actual = self.getDatasetOutput(dataset)
-      if actual == expected:
-        return
-    self.assertEqual(expected, actual)
+    self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
 if __name__ == "__main__":

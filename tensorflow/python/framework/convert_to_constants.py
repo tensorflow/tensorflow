@@ -249,7 +249,7 @@ def _get_control_flow_function_data(node_defs, tensor_data, name_to_node):
 
   def get_source_node_name_through_identities(node_name):
     # Trace the source node along with a chain of Identity nodes.
-    # For example, given Plaecholder -> Identity -> Identity -> node_name
+    # For example, given Placeholder -> Identity -> Identity -> node_name
     # The function will return the name of the Placeholder.
     while name_to_node[node_name].op == "Identity":
       node_name = _get_tensor_name(name_to_node[node_name].input[0])

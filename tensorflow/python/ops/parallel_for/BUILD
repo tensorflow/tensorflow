@@ -41,6 +41,7 @@ py_library(
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
+        "//tensorflow/python/ops/signal",
         "@absl_py//absl/flags",
     ],
 )

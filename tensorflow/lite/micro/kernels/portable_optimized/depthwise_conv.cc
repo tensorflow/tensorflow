@@ -147,7 +147,7 @@ static inline void DepthwiseConvOptimizedForFilterWidthEight(
   const int needed_size =
       output_depth * filter_width * filter_height * input_depth;
   if (needed_size > kReshapedFilterDataSize) {
-    context->ReportError(
+    TF_LITE_KERNEL_LOG(
         context,
         "Size too large for reshaped weight buffer (%d needed, %d available)",
         needed_size, kReshapedFilterDataSize);
@@ -416,7 +416,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     } else {
       static bool has_warned = false;
       if (!has_warned) {
-        context->ReportError(
+        TF_LITE_KERNEL_LOG(
             context,
             "Multiple depthwise conv ops match optimization parameters, but "
             "only the first will use the fast path, because there's only one "
@@ -499,8 +499,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantized(context, node, params, &data, input, filter, bias, output);
       break;
     default:
-      context->ReportError(context, "Type %s (%d) not supported.",
-                           TfLiteTypeGetName(input->type), input->type);
+      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+                         TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

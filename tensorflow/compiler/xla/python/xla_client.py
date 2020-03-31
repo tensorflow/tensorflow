@@ -42,6 +42,8 @@ from tensorflow.compiler.xla.python.xla_extension import ops
 # consistency with XLA.
 # pylint: disable=invalid-name
 
+profiler = _xla.profiler
+
 
 class Backend(object, metaclass=abc.ABCMeta):
   """Abstract base class for XLA backends."""
@@ -73,10 +75,6 @@ class Backend(object, metaclass=abc.ABCMeta):
   @abc.abstractmethod
   def buffer_from_pyval(self, pyval, device=None, force_copy=False):
     """Allocates a fresh buffer and populates it with `pyval`."""
-
-  @abc.abstractmethod
-  def make_tuple(self, c_buffers, device):
-    """Makes a tuple from a sequence of backend buffer objects."""
 
   @abc.abstractmethod
   def compile(self, computation, compile_options):
@@ -135,9 +133,6 @@ class LocalBackend(Backend):
     return _xla.PyLocalBuffer.from_python(pyval, self.client, device,
                                           force_copy)
 
-  def make_tuple(self, c_buffers, device):
-    return _xla.PyLocalBuffer.make_tuple(c_buffers, self.client, device)
-
   def compile(self, c_computation, compile_options):
     options = _xla.ExecutableBuildOptions()
     options.num_replicas = compile_options.num_replicas
@@ -152,7 +147,8 @@ class LocalBackend(Backend):
     return _xla.LocalExecutable.Compile(c_computation,
                                         compile_options.argument_layouts,
                                         options, self.client,
-                                        compile_options.device_assignment)
+                                        compile_options.device_assignment,
+                                        compile_options.tuple_arguments)
 
   def get_default_device_assignment(self, num_replicas, num_partitions=None):
     if num_partitions is not None:
@@ -170,14 +166,11 @@ xla_platform_names = {
 
 
 def _cpu_backend_factory():
-  client = _xla.LocalClient.Get(
-      platform='cpu',
-      xla_platform_id=xla_platform_names['cpu'],
-      asynchronous=True)
+  client = _xla.get_cpu_client(asynchronous=True)
   return LocalBackend(platform='cpu', client=client)
 
 
-def _gpu_backend_factory():
+def _gpu_backend_factory(distributed_client=None, node_id=0):
   """Returns a GPU backend. BFC allocator is used by default."""
   allocator = os.getenv('XLA_PYTHON_CLIENT_ALLOCATOR', 'default').lower()
   memory_fraction = os.getenv('XLA_PYTHON_CLIENT_MEM_FRACTION')
@@ -186,22 +179,22 @@ def _gpu_backend_factory():
     raise ValueError(
         'XLA_PYTHON_CLIENT_ALLOCATOR env var must be "default", "platform", or '
         '"bfc", got "%s"' % allocator)
-  config = _xla.AllocatorConfig()
+  config = _xla.GpuAllocatorConfig()
   if allocator == 'default':
-    config.kind = _xla.AllocatorConfig.Kind.DEFAULT
+    config.kind = _xla.GpuAllocatorConfig.Kind.DEFAULT
   if allocator == 'platform':
-    config.kind = _xla.AllocatorConfig.Kind.PLATFORM
+    config.kind = _xla.GpuAllocatorConfig.Kind.PLATFORM
   if allocator == 'bfc':
-    config.kind = _xla.AllocatorConfig.Kind.BFC
+    config.kind = _xla.GpuAllocatorConfig.Kind.BFC
   if memory_fraction:
     config.memory_fraction = float(memory_fraction)
   config.preallocate = preallocate not in ('0', 'false', 'False')
 
-  client = _xla.LocalClient.Get(
-      platform='gpu',
-      xla_platform_id=xla_platform_names['gpu'],
+  client = _xla.get_nvidia_gpu_client(
       asynchronous=True,
-      allocator_config=config)
+      allocator_config=config,
+      distributed_client=distributed_client,
+      node_id=node_id)
   return LocalBackend(platform='gpu', client=client)
 
 
@@ -397,18 +390,12 @@ class Buffer(object):
     backend = backend or get_local_backend()
     return backend.buffer_from_pyval(pyval, device, force_copy=force_copy)
 
-  @staticmethod
-  def make_tuple(buffers, device, backend=None):
-    backend = backend or get_local_backend()
-    return backend.make_tuple(buffers, device)
-
   # Buffer is not an instantiable type and exists only for its static methods.
   # The underlying buffer objects are C++ object with the following
   # API:
   # def shape(self) -> Shape:
   # def device(self) -> int:
   # def delete(self):
-  # def destructure(self) -> [Buffer]
   # def is_deleted(self) -> bool:
   # def block_host_until_ready(self):
   #    """Blocks the calling thread until the buffer is ready on device."""
@@ -425,11 +412,6 @@ class Buffer(object):
   #
   # TODO(phawkins): remove Buffer and its static methods completely, have
   # clients call methods on Backend to create buffers.
-
-
-# TODO(phawkins): Alias for backward compatibility. Remove after JAX drops
-# compatibility with Jaxlib versions older than 0.1.13.
-LocalBuffer = Buffer
 
 
 def shape_from_pyval(pyval):
@@ -454,8 +436,8 @@ def transfer_to_infeed(value, device=None):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    device: the device to infeed the value to. Each device has a
-      distinct infeed queue.
+    device: the device to infeed the value to. Each device has a distinct infeed
+      queue.
   """
   # TODO(phawkins): support non-default backends.
   backend = get_local_backend()
@@ -501,7 +483,6 @@ def computation_count():
   '''Returns the number of computations per replica.'''
 """
 
-
 Device = _xla.Device
 
 
@@ -524,6 +505,7 @@ class CompileOptions(object):
     self.argument_layouts = None
     self.result_layout = None
     self.device_assignment = None
+    self.tuple_arguments = False
 
 
 class Computation(object):
@@ -607,17 +589,17 @@ class Computation(object):
 #   def SizeOfGeneratedCodeInBytes(self) -> int:
 #     """Return generated binary size, or -1 if not known."""
 #
-#   def ExecutePerReplica(self, arguments: [[Buffer]]) -> [Buffer]:
+#   def ExecuteOnLocalDevices(self, arguments: [[Buffer]]) -> [Buffer]:
 #     """Execute on many replicas with Buffer arguments and return value.
 #
 #     Args:
 #       arguments: A sequence of sequences of Buffers. The i'th inner sequence
-#         comprises the arguments for execution on the i'th replica.
+#         comprises the arguments for execution on the i'th local device.
 #
 #     Returns:
-#       A list of the computation's outputs for each replica, as a Buffer. If
-#       a shallow sequence of arguments was passed in for `arguments`, then the
-#       sole, zero'th replica's output is returned instead, as a Buffer.
+#       A list of the computation's outputs for each local device, as a Buffer.
+#       If a shallow sequence of arguments was passed in for `arguments`, then
+#       the sole, zero'th device's output is returned instead, as a Buffer.
 #     """
 #
 # There are different implementations of Executable for different backends.
@@ -633,7 +615,8 @@ def execute_with_python_values(executable, arguments=(), backend=None):
         arg, device=executable.local_devices()[0], backend=backend)
 
   arguments = [put(arg) for arg in arguments]
-  return executable.Execute(arguments).to_py()
+  outputs = executable.Execute(arguments, tuple_arguments=False)
+  return [x.to_py() for x in outputs]
 
 
 def execute_with_python_values_replicated(executable, arguments, backend=None):
@@ -641,8 +624,8 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
 
   Arguments:
     executable: the program to run.
-    arguments: a list of lists of Python values indexed by
-      `[replica][arg_num]` to pass as inputs.
+    arguments: a list of lists of Python values indexed by `[replica][arg_num]`
+      to pass as inputs.
     backend: the backend we are targeting.
 
   Returns:
@@ -661,7 +644,8 @@ def execute_with_python_values_replicated(executable, arguments, backend=None):
   for replica_args in arguments:
     arg_buffers.append(flat_arg_buffers[:len(replica_args)])
     flat_arg_buffers = flat_arg_buffers[len(replica_args):]
-  return [out.to_py() for out in executable.ExecutePerReplica(arg_buffers)]
+  return [[x.to_py() for x in xs] for xs in executable.ExecuteOnLocalDevices(
+      arg_buffers, tuple_arguments=False)]
 
 
 class PaddingType(enum.Enum):
@@ -787,6 +771,7 @@ class ComputationBuilder(object):
       shape: a `Shape` describing the shape of the infed value.
       token: an optional `XlaOp` representing a token after which the infeed
         effect should be sequenced.
+
     Returns:
       An XlaOp, representing a (value, token) pair.
     """
@@ -805,6 +790,7 @@ class ComputationBuilder(object):
       operand: an `XlaOp` representing the data to outfeed.
       token: an `XlaOp` representing a token after which the outfeed should be
         sequenced.
+
     Returns:
       An `XlaOp` representing a token.
     """
@@ -880,8 +866,11 @@ class ComputationBuilder(object):
     """
     return self.Constant(np.array(value, dtype=np.bool))
 
-  def ParameterWithShape(self, shape, name=None, parameter_num=None,
-                         replicated=False):
+  def ParameterWithShape(self,
+                         shape,
+                         name=None,
+                         parameter_num=None,
+                         replicated=None):
     """Enqueues a Parameter op onto the computation, given a shape.
 
     Args:
@@ -891,8 +880,9 @@ class ComputationBuilder(object):
         next linear parameter number is used. The default value capability can
         be used for auto-numbering. If you're using auto-numbering for some
         parameters, use it for *all* parameters to avoid clashes.
-      replicated: whether to mark the parameter's leaves as replicated. May be
-        a bool, in which case it applies to all leaves, or an iterable of bools.
+      replicated: whether to mark the parameter's leaves as replicated. May be a
+        bool, in which case it applies to all leaves, or an iterable of bools.
+        The default is None, which means no replication annotation.
 
     Returns:
       An XlaOp.
@@ -901,7 +891,9 @@ class ComputationBuilder(object):
       name = ''
     if parameter_num is None:
       parameter_num = next(self._parameter_numbering)
-    if isinstance(replicated, bool):
+    if replicated is None:
+      replicated = []
+    elif isinstance(replicated, bool):
       replicated = [replicated] * shape.leaf_count()
 
     return ops.Parameter(self._builder, parameter_num,
@@ -1192,12 +1184,14 @@ class ComputationBuilder(object):
     return ops.Call(self._builder, computation_to_apply.computation,
                     list(operands))
 
-  def CustomCall(self,
-                 call_target_name,
-                 operands,
-                 shape_with_layout,
-                 operand_shapes_with_layout,
-                 opaque=None):
+  # TODO(skyewm): remove CustomCallWithLayout after callers are updated to use
+  # CustomCall.
+  def CustomCallWithLayout(self,
+                           call_target_name,
+                           operands,
+                           shape_with_layout,
+                           operand_shapes_with_layout,
+                           opaque=None):
     """Enqueues a custom call operation onto the computation.
 
     Args:
@@ -1213,9 +1207,35 @@ class ComputationBuilder(object):
       An XlaOp representing the added custom call op.
     """
     opaque = opaque or b''
-    return ops.CustomCall(self._builder, call_target_name,
-                          list(operands), shape_with_layout,
-                          list(operand_shapes_with_layout), opaque)
+    return ops.CustomCallWithLayout(
+        self._builder, call_target_name, list(operands), shape_with_layout,
+        list(operand_shapes_with_layout), opaque)
+
+  def CustomCall(self, call_target_name, operands, shape,
+                 operand_shapes_with_layout=None, opaque=None):
+    """Enqueues a custom call operation onto the computation.
+
+    Args:
+      call_target_name: the name of the function to call.
+      operands: an iterable of XlaOp. The number and types of operands must
+        match the arity of `operand_shapes_with_layout`.
+      shape: the shape of the operator's output. Must have layout if
+        `operand_shapes_with_layout` is provided.
+      operand_shapes_with_layout: optional, the shapes of `operands` including
+        the expected layouts.
+      opaque: an opaque string passed to the backend.
+
+    Returns:
+      An XlaOp representing the added custom call op.
+    """
+    opaque = opaque or b''
+    if operand_shapes_with_layout is None:
+      return ops.CustomCall(self._builder, call_target_name, list(operands),
+                            shape, opaque)
+    else:
+      return ops.CustomCallWithLayout(
+          self._builder, call_target_name, list(operands), shape,
+          list(operand_shapes_with_layout), opaque)
 
   def Map(self, operands, computation_to_apply, dimensions):
     """Enqueues a map operation onto the computation.
@@ -1638,6 +1658,7 @@ FftType = _xla.FftType
 
 _UNARY_OPS = [
     'Not',
+    'PopulationCount',
     'Clz',
     'Abs',
     'Exp',
@@ -1701,6 +1722,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Igamma',
+    'IgammaGradA',
     'Igammac',
     'Complex',
     'NextAfter',
@@ -1722,6 +1744,7 @@ _OTHER_OPS = [
     'Rev',
     'Select',
     'SliceInDim',
+    'TopK',
 ]
 
 
@@ -1759,6 +1782,7 @@ def register_custom_call_target(name, fn, platform='cpu'):
     platform: the target platform.
   """
   _xla.RegisterCustomCallTarget(name, fn, xla_platform_names[platform])
+
 
 # Deprecated. Use register_custom_call_target instead.
 register_cpu_custom_call_target = register_custom_call_target

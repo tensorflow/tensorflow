@@ -18,6 +18,7 @@ cc_library(
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
     ],
+    alwayslink = 1,
 )
 
 filegroup(

@@ -1,12 +1,14 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "SummaryProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-import "tensorflow/core/framework/tensor.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/summary_go_proto";
 
 // Metadata associated with a series of Summary data
 message SummaryDescription {
@@ -31,7 +33,7 @@ message HistogramProto {
   //   i != 0:  bucket_limit(i-1) .. bucket_limit(i)
   repeated double bucket_limit = 6 [packed = true];
   repeated double bucket = 7 [packed = true];
-};
+}
 
 // A SummaryMetadata encapsulates information on which plugins are able to make
 // use of a certain summary value.
@@ -59,7 +61,7 @@ message SummaryMetadata {
   // imposes constraints on the dtype and shape of the corresponding tensor
   // values. See `DataClass` docs for details.
   DataClass data_class = 4;
-};
+}
 
 enum DataClass {
   // Unknown data class, used (implicitly) for legacy data. Will not be

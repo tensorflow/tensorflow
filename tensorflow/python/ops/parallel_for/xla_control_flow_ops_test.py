@@ -35,7 +35,7 @@ from tensorflow.python.platform import test
 @test_util.run_all_in_graph_and_eager_modes
 class PForTest(PForTestCase):
 
-  def test_einsum(self):
+  def test_xla_einsum(self):
     num_loop = 10
     x_series = random_ops.random_uniform([num_loop, 9, 9])
     y_series = random_ops.random_uniform([num_loop, 9, 1])

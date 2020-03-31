@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/group_events.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
@@ -95,8 +96,7 @@ TEST(ConvertXPlaneToOpStats, CpuOnlyStepDbTest) {
   CreateXEvent(&host_plane_builder, &tf_executor_thread,
                HostEventType::kExecutorStateProcess, 20, 80,
                {{StatType::kStepId, 0}});
-  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70,
-               {{StatType::kDeviceId, 1}});
+  CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 70, {});
 
   GroupTfEvents(&space, /*event_group_name_map=*/nullptr);
   OpStats op_stats = ConvertXSpaceToOpStats(space);
@@ -122,7 +122,7 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
                HostEventType::kExecutorStateProcess, 20, 20,
                {{StatType::kStepId, 0}});
   CreateXEvent(&host_plane_builder, &tf_executor_thread, "matmul", 30, 10,
-               {{StatType::kCorrelationId, 100}, {StatType::kDeviceId, 1}});
+               {{StatType::kCorrelationId, 100}});
 
   XPlaneBuilder device_plane_builder(space.add_planes());
   device_plane_builder.SetName(absl::StrCat(kGpuPlanePrefix, ":0"));
@@ -137,6 +137,11 @@ TEST(ConvertXPlaneToOpStats, GpuStepDbTest) {
   const StepDatabaseResult& step_db = op_stats.step_db();
 
   EXPECT_EQ(step_db.step_sequence_size(), 1);
+
+  PrecisionStats precision_stats =
+      op_stats.device_op_metrics_db().precision_stats();
+  EXPECT_EQ(precision_stats.compute_16bit_ps(), 0);
+  EXPECT_EQ(precision_stats.compute_32bit_ps(), 40);
 }
 
 }  // namespace

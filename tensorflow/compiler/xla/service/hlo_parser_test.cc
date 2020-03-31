@@ -1055,6 +1055,17 @@ ENTRY %RngGetAndUpdateState () -> u64[2] {
 
 )"
 },
+{
+"RngBitGenerator",
+R"(HloModule gng_bit_generator
+
+ENTRY %RngBitGenerator (p0: u64[2]) -> (u64[2], u32[11,17]) {
+  %p0 = u64[2]{0} parameter(0)
+  ROOT %rand = (u64[2]{0}, u32[11,17]{1,0}) rng-bit-generator(u64[2]{0} %p0), algorithm=rng_three_fry
+}
+
+)"
+}
   });
   // clang-format on
 }

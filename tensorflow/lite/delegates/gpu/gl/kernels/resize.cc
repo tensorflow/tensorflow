@@ -33,10 +33,8 @@ namespace {
 
 class Resize : public NodeShader {
  public:
-  Resize() {}
-
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     auto input = ctx.graph->FindInputs(ctx.node->id)[0];
     auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
     auto attr =
@@ -44,15 +42,15 @@ class Resize : public NodeShader {
 
     if (input->tensor.shape.w > output->tensor.shape.w ||
         input->tensor.shape.h > output->tensor.shape.h) {
-      return InvalidArgumentError("Output size is less than input size.");
+      return absl::InvalidArgumentError("Output size is less than input size.");
     }
     if (output->tensor.shape.w != attr.new_shape.w ||
         output->tensor.shape.h != attr.new_shape.h) {
-      return InvalidArgumentError(
+      return absl::InvalidArgumentError(
           "Output size does not match new_size in attributes.");
     }
     if (input->tensor.shape.c != output->tensor.shape.c) {
-      return InvalidArgumentError("Input/output channels mismatch.");
+      return absl::InvalidArgumentError("Input/output channels mismatch.");
     }
     if (input->tensor.shape.h == 1 && input->tensor.shape.w == 1) {
       // Copy a single element from input.
@@ -66,7 +64,7 @@ class Resize : public NodeShader {
           /*input=*/IOStructure::ONLY_DEFINITIONS,
           /*output=*/IOStructure::AUTO,
       };
-      return OkStatus();
+      return absl::OkStatus();
     }
     std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
@@ -80,14 +78,20 @@ class Resize : public NodeShader {
 
     std::string source;
     if (attr.type == SamplingType::BILINEAR) {
-      source = R"(
-      vec2 coord = vec2(gid.xy) * $scale_factor$;
+      if (attr.half_pixel_centers) {
+        source = "vec2 coord = (vec2(gid.xy) + 0.5) * $scale_factor$ - 0.5;";
+      } else {
+        source = "vec2 coord = vec2(gid.xy) * $scale_factor$;";
+      }
+      source += R"(
+      vec2 coord_floor = floor(coord);
+      ivec2 icoord_floor = ivec2(coord_floor);
       ivec2 borders = ivec2($input_data_0_w$, $input_data_0_h$) - ivec2(1, 1);
       ivec4 st;
-      st.xy = ivec2(coord);
-      st.zw = min(st.xy + ivec2(1, 1), borders);
+      st.xy = max(icoord_floor, ivec2(0, 0));
+      st.zw = min(icoord_floor + ivec2(1, 1), borders);
 
-      vec2 t = coord - vec2(st.xy); //interpolating factors
+      vec2 t = coord - coord_floor; // interpolating factors
 
       vec4 tex11 = $input_data_0[st.x, st.y, gid.z]$;
       vec4 tex21 = $input_data_0[st.z, st.y, gid.z]$;
@@ -101,7 +105,7 @@ class Resize : public NodeShader {
       value_0 = $input_data_0[coord.x, coord.y, gid.z]$;
       )";
     } else {
-      return InvalidArgumentError("Unknown sampling type");
+      return absl::InvalidArgumentError("Unknown sampling type");
     }
     *generated_code = {
         /*parameters=*/std::move(parameters),
@@ -113,7 +117,7 @@ class Resize : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::AUTO,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

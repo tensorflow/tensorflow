@@ -132,7 +132,7 @@ def main(_):
   else:
     fingerprint_input = input_placeholder
 
-  logits, dropout_prob = models.create_model(
+  logits, dropout_rate = models.create_model(
       fingerprint_input,
       model_settings,
       FLAGS.model_architecture,
@@ -157,7 +157,7 @@ def main(_):
   if FLAGS.quantize:
     try:
       tf.contrib.quantize.create_training_graph(quant_delay=0)
-    except ImportError as e:
+    except AttributeError as e:
       msg = e.args[0]
       msg += ('\n\n The --quantize option still requires contrib, which is not '
               'part of TensorFlow 2.0. Please install a previous version:'
@@ -248,15 +248,19 @@ def main(_):
             fingerprint_input: train_fingerprints,
             ground_truth_input: train_ground_truth,
             learning_rate_input: learning_rate_value,
-            dropout_prob: 0.5
+            dropout_rate: 0.5
         })
     train_writer.add_summary(train_summary, training_step)
-    tf.compat.v1.logging.info(
+    tf.compat.v1.logging.debug(
         'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
         (training_step, learning_rate_value, train_accuracy * 100,
          cross_entropy_value))
     is_last_step = (training_step == training_steps_max)
     if (training_step % FLAGS.eval_step_interval) == 0 or is_last_step:
+      tf.compat.v1.logging.info(
+          'Step #%d: rate %f, accuracy %.1f%%, cross entropy %f' %
+          (training_step, learning_rate_value, train_accuracy * 100,
+           cross_entropy_value))
       set_size = audio_processor.set_size('validation')
       total_accuracy = 0
       total_conf_matrix = None
@@ -271,7 +275,7 @@ def main(_):
             feed_dict={
                 fingerprint_input: validation_fingerprints,
                 ground_truth_input: validation_ground_truth,
-                dropout_prob: 1.0
+                dropout_rate: 0.0
             })
         validation_writer.add_summary(validation_summary, training_step)
         batch_size = min(FLAGS.batch_size, set_size - i)
@@ -305,7 +309,7 @@ def main(_):
         feed_dict={
             fingerprint_input: test_fingerprints,
             ground_truth_input: test_ground_truth,
-            dropout_prob: 1.0
+            dropout_rate: 0.0
         })
     batch_size = min(FLAGS.batch_size, set_size - i)
     total_accuracy += (test_accuracy * batch_size) / set_size
@@ -482,23 +486,23 @@ if __name__ == '__main__':
       ArgumentTypeError: Not an expected value.
     """
     value = value.upper()
-    if value == 'INFO':
-      return tf.compat.v1.logging.INFO
-    elif value == 'DEBUG':
+    if value == 'DEBUG':
       return tf.compat.v1.logging.DEBUG
+    elif value == 'INFO':
+      return tf.compat.v1.logging.INFO
+    elif value == 'WARN':
+      return tf.compat.v1.logging.WARN
     elif value == 'ERROR':
       return tf.compat.v1.logging.ERROR
     elif value == 'FATAL':
       return tf.compat.v1.logging.FATAL
-    elif value == 'WARN':
-      return tf.compat.v1.logging.WARN
     else:
       raise argparse.ArgumentTypeError('Not an expected value')
   parser.add_argument(
       '--verbosity',
       type=verbosity_arg,
       default=tf.compat.v1.logging.INFO,
-      help='Log verbosity. Can be "INFO", "DEBUG", "ERROR", "FATAL", or "WARN"')
+      help='Log verbosity. Can be "DEBUG", "INFO", "WARN", "ERROR", or "FATAL"')
   parser.add_argument(
       '--optimizer',
       type=str,

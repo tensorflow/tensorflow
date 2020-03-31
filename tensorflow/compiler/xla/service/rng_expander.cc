@@ -84,7 +84,7 @@ StatusOr<HloComputation*> GetComputationForRng(HloInstruction* rng) {
 
   auto generator = [](xla::XlaOp key, xla::XlaOp state,
                       const xla::Shape& shape) {
-    return PhiloxBitGenerator(key, state, shape, /*scramble=*/false);
+    return PhiloxBitGenerator(key, state, shape);
   };
 
   XlaOp result;

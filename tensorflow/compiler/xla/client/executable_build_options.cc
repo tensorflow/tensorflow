@@ -70,6 +70,12 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_num_partitions(
   return *this;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_assignment(
+    const DeviceAssignment& device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
 string ExecutableBuildOptions::ToString() const {
   string result_layout = "nullopt";
   if (result_layout_set_) {

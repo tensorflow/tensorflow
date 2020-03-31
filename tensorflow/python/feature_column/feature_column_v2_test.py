@@ -1369,7 +1369,7 @@ class CrossedColumnTest(test.TestCase):
   def test_linear_model(self):
     """Tests linear_model.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc.numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc.bucketized_column(a, boundaries=(0, 1))
@@ -1463,7 +1463,7 @@ class CrossedColumnTest(test.TestCase):
   def test_old_linear_model(self):
     """Tests linear_model.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc.numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc.bucketized_column(a, boundaries=(0, 1))
@@ -1573,7 +1573,7 @@ class CrossedColumnTest(test.TestCase):
   def test_old_linear_model_old_numeric(self):
     """Tests linear_model.
 
-    Uses data from test_get_sparse_tesnsors_simple.
+    Uses data from test_get_sparse_tensors_simple.
     """
     a = fc_old._numeric_column('a', dtype=dtypes.int32, shape=(2,))
     b = fc.bucketized_column(a, boundaries=(0, 1))

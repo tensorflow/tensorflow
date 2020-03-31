@@ -25,13 +25,16 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/path.h"
+#include "tensorflow/core/platform/resource_loader.h"
 #include "tensorflow/core/platform/scanner.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace {
 
-constexpr char kTestData[] = "core/platform/cloud/testdata/";
+string TestData() {
+  return io::JoinPath("tensorflow", "core", "platform", "cloud", "testdata");
+}
 
 constexpr char kTokenJson[] = R"(
     {
@@ -92,9 +95,8 @@ TEST(OAuthClientTest, GetTokenFromRefreshTokenJson) {
 }
 
 TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
-  std::ifstream credentials(
-      io::JoinPath(io::JoinPath(testing::TensorFlowSrcRoot(), kTestData),
-                   "service_account_credentials.json"));
+  std::ifstream credentials(GetDataDependencyFilepath(
+      io::JoinPath(TestData(), "service_account_credentials.json")));
   ASSERT_TRUE(credentials.is_open());
   Json::Value json;
   Json::Reader reader;
@@ -135,9 +137,8 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
   // Check that 'signature' signs 'header_dot_claim'.
 
   // Read the serialized public key.
-  std::ifstream public_key_stream(
-      io::JoinPath(io::JoinPath(testing::TensorFlowSrcRoot(), kTestData),
-                   "service_account_public_key.txt"));
+  std::ifstream public_key_stream(GetDataDependencyFilepath(
+      io::JoinPath(TestData(), "service_account_public_key.txt")));
   string public_key_serialized(
       (std::istreambuf_iterator<char>(public_key_stream)),
       (std::istreambuf_iterator<char>()));

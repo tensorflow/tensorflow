@@ -294,9 +294,10 @@ extern inline char *TF_TString_GetMutableDataPointer(TF_TString *str) {
       return str->u.smll.str;
     case TF_TSTR_OFFSET:
     case TF_TSTR_VIEW:
-      // Convert OFFSET/VIEW to LARGE
+      // Convert OFFSET/VIEW to SMALL/LARGE
       TF_TString_ResizeUninitialized(str, TF_TString_GetSize(str));
-      return str->u.large.ptr;
+      return (TF_TString_GetType(str) == TF_TSTR_SMALL) ? str->u.smll.str
+                                                        : str->u.large.ptr;
     case TF_TSTR_LARGE:
       return str->u.large.ptr;
     default:

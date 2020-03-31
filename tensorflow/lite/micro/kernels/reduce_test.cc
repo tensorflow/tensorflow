@@ -49,7 +49,7 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    TfLiteReducerParams* params,
                                    float tolerance = 1e-5) {
   TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
+  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
 
   ::tflite::ops::micro::AllOpsResolver resolver;
 

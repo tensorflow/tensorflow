@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
-"""ResNet models for Keras."""
+"""ResNet models for Keras.
+
+Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -21,9 +26,9 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -50,6 +55,8 @@ WEIGHTS_HASHES = {
         ('34fb605428fcc7aa4d62f44404c11509', '0f678c91647380debd923963594981b3')
 }
 
+layers = None
+
 
 def ResNet(stack_fn,
            preact,
@@ -61,12 +68,20 @@ def ResNet(stack_fn,
            input_shape=None,
            pooling=None,
            classes=1000,
+           classifier_activation='softmax',
            **kwargs):
   """Instantiates the ResNet, ResNetV2, and ResNeXt architecture.
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+    (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.resnet.preprocess_input` for an example.
 
   Arguments:
     stack_fn: a function that returns output tensor for the
@@ -103,18 +118,24 @@ def ResNet(stack_fn,
     classes: optional number of classes to classify images
       into, only to be specified if `include_top` is True, and
       if no `weights` argument is specified.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A Keras model instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
   if not (weights in {'imagenet', None} or os.path.exists(weights)):
@@ -167,7 +188,9 @@ def ResNet(stack_fn,
 
   if include_top:
     x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-    x = layers.Dense(classes, activation='softmax', name='probs')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Dense(classes, activation=classifier_activation,
+                     name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
@@ -508,12 +531,20 @@ def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_CAFFE)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
+
 DOC = """
+
+  Reference paper:
+  - [Deep Residual Learning for Image Recognition]
+  (https://arxiv.org/abs/1512.03385) (CVPR 2015)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.

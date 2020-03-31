@@ -46,6 +46,7 @@ bool IsCallerInstruction(HloInstruction* hlo) {
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSort:
     case HloOpcode::kFusion:
+    case HloOpcode::kCustomCall:
       return true;
     default:
       return false;
@@ -412,6 +413,23 @@ Status ShapeVerifier::HandleRng(HloInstruction* instruction) {
           RandomDistribution_Name(instruction->random_distribution()));
   }
 
+  return Status::OK();
+}
+
+Status ShapeVerifier::HandleRngBitGenerator(HloInstruction* hlo) {
+  if (!hlo->shape().IsTuple() || hlo->shape().tuple_shapes_size() != 2) {
+    return InternalError(
+        "Expected tuple shape with 2 elements for RngBitGenerator. Got: %s",
+        hlo->shape().ToString());
+  }
+  if (!ShapeUtil::Compatible(hlo->operand(0)->shape(),
+                             hlo->shape().tuple_shapes(0))) {
+    return InternalError(
+        "Expected state shape to match between input and output for "
+        "RngBitGenerator. Got %s vs. %s",
+        hlo->operand(0)->shape().ToString(),
+        hlo->shape().tuple_shapes(0).ToString());
+  }
   return Status::OK();
 }
 
@@ -1762,8 +1780,12 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
   }
 
   TF_RETURN_IF_ERROR(module->input_output_alias_config().Verify(
-      *module, [this](const Shape& shape) {
-        return target_metadata_->ShapeSize(shape);
+      *module, [this](const Shape& shape) -> int64 {
+        if (target_metadata_->IsLayoutSensitive()) {
+          return target_metadata_->ShapeSize(shape);
+        } else {
+          return 0;
+        }
       }));
 
   TF_RETURN_IF_ERROR(module->dynamic_parameter_binding().Verify(*module));

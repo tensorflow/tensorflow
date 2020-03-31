@@ -20,7 +20,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/direct_session.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -271,9 +270,9 @@ TEST_F(DeviceTracerTest, TraceToXSpace) {
   XSpace space;
   TF_ASSERT_OK(tracer->CollectData(&space));
   // At least one gpu plane and one host plane for launching events.
-  const XPlane* host_plane = FindPlaneWithName(space, kHostThreads);
+  const XPlane* host_plane = FindPlaneWithName(space, kCuptiDriverApiPlaneName);
   ASSERT_NE(host_plane, nullptr);
-  EXPECT_EQ(host_plane->id(), kHostPlaneId);
+  EXPECT_EQ(host_plane->id(), kCuptiDriverApiPlaneId);
 
   const XPlane* device_plane =
       FindPlaneWithName(space, strings::StrCat(kGpuPlanePrefix, 0));

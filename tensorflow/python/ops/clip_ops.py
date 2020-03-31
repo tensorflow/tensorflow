@@ -120,12 +120,12 @@ def clip_by_value(t, clip_value_min, clip_value_max,
       t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
-  # TODO(scottzhu): switch to use new implmentation in 2 weeks.
+  # TODO(scottzhu): switch to use new implementation in 2 weeks.
   # return gen_math_ops.clip_by_value(
   #     t, clip_value_min, clip_value_max, name=name)
 
 
-# TODO(scottzhu): switch to use new implmentation in 2 weeks.
+# TODO(scottzhu): switch to use new implementation in 2 weeks.
 # @ops.RegisterGradient("ClipByValue")
 def _clip_by_value_grad(op, grad):
   """Returns grad of clip_by_value."""

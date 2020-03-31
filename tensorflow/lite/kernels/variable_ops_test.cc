@@ -22,7 +22,7 @@ limitations under the License.
 
 namespace tflite {
 
-// Forward declaraction for op kernels.
+// Forward declaration for op kernels.
 namespace ops {
 namespace custom {
 
@@ -104,7 +104,7 @@ TEST_F(VariableOpsTest, TestReadVariableBeforeAssign) {
   ASSERT_EQ(interpreter_.Invoke(), kTfLiteError);
 }
 
-TEST_F(VariableOpsTest, TestReeasignToDifferentSize) {
+TEST_F(VariableOpsTest, TestReassignToDifferentSize) {
   // 1st invocation. The variable is assigned as a scalar.
   {
     ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);

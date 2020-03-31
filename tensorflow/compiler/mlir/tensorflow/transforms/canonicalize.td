@@ -27,6 +27,10 @@ def SingleResultAndOperandHaveSameType : Constraint<
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
+// Checks if the value has only one user.
+def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
+
+
 //===----------------------------------------------------------------------===//
 // Add op patterns.
 //===----------------------------------------------------------------------===//
@@ -175,3 +179,11 @@ def TruncateDivWithSqrtDivisor : Pat<(TF_TruncateDivOp $arg0,
 
 def XdivyWithSqrtDivisor : Pat<(TF_XdivyOp $arg0, (TF_SqrtOp $arg1)),
                                (TF_MulNoNanOp (TF_RsqrtOp $arg1), $arg0)>;
+
+
+//===----------------------------------------------------------------------===//
+// Cast op followed by a ReadVariable op can be folded into the ReadVariable
+//===----------------------------------------------------------------------===//
+
+def ReadVariableOfCast : Pat<(TF_ReadVariableOp (TF_CastOp:$output $x, BoolAttr:$Truncate)), (TF_ReadVariableOp $x), [(HasOneUse $output)]>;
+

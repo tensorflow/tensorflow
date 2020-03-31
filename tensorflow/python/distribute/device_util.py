@@ -62,7 +62,7 @@ def canonicalize(d, default=None):
     result = result.make_merged_spec(
         tf_device.DeviceSpec.from_string(default))
 
-  # Apply `d` last, so that it's values take precidence over the defaults.
+  # Apply `d` last, so that it's values take precedence over the defaults.
   result = result.make_merged_spec(d)
   return result.to_string()
 

@@ -27,6 +27,7 @@ namespace {
 
 std::string GetResizeCode(
     const OperationDef& op_def, SamplingType sampling_type,
+    bool half_pixel_centers,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor(
       "src_data", WHSPoint{"src_size.x", "src_size.y", "src_size.z"},
@@ -66,11 +67,18 @@ std::string GetResizeCode(
     }
     c += "  FLT4 r0 = " + src_tensor.ReadWHS("coord.x", "coord.y", "Z") + ";\n";
   } else {
-    c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
+    if (half_pixel_centers) {
+      c += "  float2 f_coords = ((float2)(X, Y) + 0.5f) * scale_factor - "
+           "0.5f;\n";
+    } else {
+      c += "  float2 f_coords = (float2)(X, Y) * scale_factor;\n";
+    }
+    c += "  float2 f_coords_floor = floor(f_coords);\n";
+    c += "  int2 coords_floor = (int2)(f_coords_floor.x, f_coords_floor.y);\n";
     c += "  int4 st;\n";
-    c += "  st.xy = (int2)(f_coords.x, f_coords.y);\n";
-    c += "  st.zw = min(st.xy + (int2)(1, 1), border);\n";
-    c += "  float2 t = f_coords - (float2)(st.x, st.y);\n";
+    c += "  st.xy = max(coords_floor, (int2)(0, 0));\n";
+    c += "  st.zw = min(coords_floor + (int2)(1, 1), border);\n";
+    c += "  float2 t = f_coords - f_coords_floor;\n";
     if (op_def.IsBatchSupported()) {
       c += "  st.x = st.x * src_size.w + B;\n";
       c += "  st.z = st.z * src_size.w + B;\n";
@@ -201,14 +209,15 @@ Resize& Resize::operator=(Resize&& operation) {
   return *this;
 }
 
-Status Resize::Compile(const CreationContext& creation_context) {
-  const auto code = GetResizeCode(definition_, attr_.type, linked_operations_);
+absl::Status Resize::Compile(const CreationContext& creation_context) {
+  const auto code = GetResizeCode(definition_, attr_.type,
+                                  attr_.half_pixel_centers, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
 }
 
-Status Resize::BindArguments() {
+absl::Status Resize::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -221,7 +230,7 @@ Status Resize::BindArguments() {
       float2(CalculateResizeScale(src_[0]->Width(), dst_[0]->Width(), attr_),
              CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(scale_factor));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Resize::GetGridSize() const {
@@ -231,12 +240,12 @@ int3 Resize::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Resize::AddToQueue(CLCommandQueue* queue) {
+absl::Status Resize::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status Resize::Tune(const TuningParameters& params) {
+absl::Status Resize::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
@@ -262,7 +271,7 @@ Resize3D& Resize3D::operator=(Resize3D&& operation) {
   return *this;
 }
 
-Status Resize3D::Compile(const CreationContext& creation_context) {
+absl::Status Resize3D::Compile(const CreationContext& creation_context) {
   const auto code =
       GetResize3DCode(definition_, attr_.type, linked_operations_);
   return creation_context.cache->GetOrCreateCLKernel(
@@ -270,7 +279,7 @@ Status Resize3D::Compile(const CreationContext& creation_context) {
       *creation_context.device, &kernel_);
 }
 
-Status Resize3D::BindArguments() {
+absl::Status Resize3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
@@ -287,7 +296,7 @@ Status Resize3D::BindArguments() {
       CalculateResizeScale(src_[0]->Height(), dst_[0]->Height(), attr_),
       CalculateResizeScale(src_[0]->Depth(), dst_[0]->Depth(), attr_), 1.0f);
   RETURN_IF_ERROR(kernel_.SetBytesAuto(scale_factor));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 Resize3D::GetGridSize() const {
@@ -297,12 +306,12 @@ int3 Resize3D::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status Resize3D::AddToQueue(CLCommandQueue* queue) {
+absl::Status Resize3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status Resize3D::Tune(const TuningParameters& params) {
+absl::Status Resize3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }

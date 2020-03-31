@@ -262,6 +262,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -740,9 +741,7 @@ cc_library(
     name = "exhaustive_op_test_utils",
     testonly = True,
     srcs = ["exhaustive_op_test_utils.cc"],
-    hdrs = [
-        "exhaustive_op_test_utils.h",
-    ],
+    hdrs = ["exhaustive_op_test_utils.h"],
     tags = ["no_pip"],
     deps = [
         ":client_library_test_base",
@@ -753,6 +752,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -778,8 +778,7 @@ cc_library(
 
 xla_test(
     name = "exhaustive_unary_test_f32_or_smaller",
-    srcs = ["exhaustive_unary_test.cc"],
-    copts = ["-DUNARY_TEST_TARGET_F32_OR_SMALLER"],
+    srcs = ["exhaustive_unary_test_f32_or_smaller.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -797,19 +796,19 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_f64",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
         "no_oss",
         "no_pip",
+        # TODO(b/151340488): Timed out on 2020-03-18.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -820,13 +819,11 @@ xla_test(
 
 xla_test(
     name = "exhaustive_unary_test_complex",
-    srcs = ["exhaustive_unary_test.cc"],
+    srcs = ["exhaustive_unary_test_complex.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DUNARY_TEST_TARGET_COMPLEX"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -842,14 +839,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_f16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_16_bit_test",
+    srcs = ["exhaustive_binary_16_bit_test.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_F16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -863,56 +858,12 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_binary_test_bf16",
-    srcs = ["exhaustive_binary_test.cc"],
+    name = "exhaustive_binary_test_f32_f64",
+    srcs = ["exhaustive_binary_test_f32_f64.cc"],
     backends = [
         "gpu",
         "cpu",
     ],
-    copts = ["-DBINARY_TEST_TARGET_BF16"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f32",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F32"],
-    real_hardware_only = True,  # Very slow on the interpreter.
-    shard_count = 48,
-    tags = [
-        "optonly",
-        # This is a big test that we skip for capacity reasons in OSS testing.
-        "no_oss",
-        "no_pip",
-    ],
-    deps = [
-        ":exhaustive_op_test_utils",
-    ],
-)
-
-xla_test(
-    name = "exhaustive_binary_test_f64",
-    srcs = ["exhaustive_binary_test.cc"],
-    backends = [
-        "gpu",
-        "cpu",
-    ],
-    copts = ["-DBINARY_TEST_TARGET_F64"],
-    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
         "optonly",
@@ -990,6 +941,8 @@ xla_test(
     tags = [
         "no_rocm",
         "optonly",
+        # TODO(b/151340488): Timed out on 2020-03-12.
+        "nozapfhahn",
     ],
     deps = [
         ":client_library_test_base",
@@ -1020,11 +973,12 @@ xla_test(
         ":client_library_test_base",
         ":hlo_test_base",
         ":test_macros_header",
+        ":xla_internal_test_main",
         "//tensorflow/compiler/xla:execution_options_util",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
 )
 
@@ -1185,7 +1139,9 @@ xla_test(
     backend_args = {"gpu": ["--xla_backend_extra_options=xla_gpu_experimental_conv_disable_layout_heuristic"]},
     backends = ["gpu"],
     shard_count = 25,
-    tags = ["no_rocm"],
+    tags = [
+        "no_rocm",
+    ],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -2481,15 +2437,16 @@ tf_cc_test(
     tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
+        ":literal_test_util",
+        ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:cpu_plugin",  # reference backend
         "//tensorflow/compiler/xla/service:gpu_plugin",  # test backend
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:resource_loader",
     ],
 )
 
@@ -2554,6 +2511,18 @@ xla_test(
         # Disabled in OSS until nvidia publicly releases a fixed ptxas.
         "no_oss",
     ],
+    deps = [
+        ":hlo_test_base",
+        ":test_macros_header",
+        ":xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
+    name = "get_dimension_size_test",
+    srcs = ["get_dimension_size_test.cc"],
     deps = [
         ":hlo_test_base",
         ":test_macros_header",

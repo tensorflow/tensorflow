@@ -52,13 +52,25 @@ namespace gpu {
 class IrEmitterUnnested : public IrEmitter,
                           private ThunkEmitter::EmissionContext {
  public:
+  struct ThreadIdInfo {
+    // Raw thread id.
+    llvm::Value* thread_id;
+
+    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
+    llvm::Value* thread_id_x;
+
+    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
+    llvm::Value* thread_id_y;
+
+    // Lane id: `thread_id % kWarpSize`
+    llvm::Value* lane_id;
+  };
+
   // A function object to generate code to process one element in a tile.
   //
-  // hlo: the instruction for which the code is generated for.
   // index: the index for the first output element of the current thread.
   // y_loc: The y coordinate within a tile.
   // x_loc: The x coordinate within a tile.
-  // kernel_info: Other information to support the kernel code generation.
   // x_iter_num: When a thread process N elements in the X dimension, x_iter_num
   //             has a value of 0..N-1 to identify the element being process.
   using EmitElementFunction = std::function<void(
@@ -69,7 +81,7 @@ class IrEmitterUnnested : public IrEmitter,
 
   // A function to generate the code to emit the entire tile.
   using TileElementGenerator = std::function<void(
-      llvm::Value* y, llvm::Value* x, const llvm_ir::IrArray::Index& index,
+      const ThreadIdInfo& thread_id_info, const llvm_ir::IrArray::Index& index,
       const string& loop_name, llvm::Value* tile_height,
       llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
 
@@ -169,6 +181,61 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Generates code for reduction to contiguous dimensions.
   //
+  // Row reduction uses the following algorithm described in CUDA-like
+  // pseudocode:
+  //
+  // ```
+  //  __global__ void reduce(int num_rows, float *in, float out) {
+  //    __shared__ float[32] cache;
+  //    int offset = blockDim.x * blockIdx.x + threadIdx.x;
+  //    if (offset >= num_rows) return;
+  //    int tile_bound = std::min(offset + kTileSizeX, num_rows);
+  //    float accum = 0;
+  //    for (int i=offset; i<num_rows; i+= blockDim.x) {
+  //      accum += in[i];
+  //    }
+  //    accum = warp_reduce(accum);
+  //    if (threadIdx.x % kWarpSize == 0) {
+  //      cache[threadIdx.x / kWarpSize] = accum;
+  //    }
+  //    __syncthreads();
+  //    if (threadIdx.x / kWarpSize == 0) {
+  //      bool warp_exists = threadIdx.x < (blockDim.x / kWarpSize);
+  //      float block_accum = warp_exists ? cache[threadIdx.x % kWarpSize] : 0;
+  //      block_accum = warp_reduce(accum);
+  //      if (threadIdx.x == 0) {
+  //        out += block_accum;
+  //      }
+  //    }
+  //  }
+  // ```
+  //
+  // Column reduction uses the following algorithm:
+  //
+  // ```
+  // void reduce(float** in, float* out) {
+  //   __shared__ float[32][33] cache;
+  //   int thread_id = GetThreadId();
+  //   int block_id = GetBlockId();
+  //   int tile_size = 128;
+  //
+  //   float accum = 0;
+  //   for (int i=0; i<tile_size; i++) {
+  //     accum += in[thread_id.y * tile_size + i][block_id * 32 + thread_id.x];
+  //   }
+  //   cache[thread_id.x][thread_id.y] = accum;
+  //
+  //   __syncthreads();
+  //   accum = cache[thread_id.y][thread_id.x];
+  //   accum = warp_reduce(accum); // Sum all the values of `accum` in the same
+  //                               // warp.
+  //
+  //   if (thread_id.y % 32 == 0) {
+  //     out[block_id * 32 + thread_id.x] = accum;
+  //   }
+  // }
+  // ```
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.
@@ -235,21 +302,55 @@ class IrEmitterUnnested : public IrEmitter,
       const KernelMappingScheme& mapping_scheme, llvm::Type* index_ty,
       const TileElementGenerator& tile_element_generator);
 
+  // Emits code to process up to
+  // (tile_size_x/num_threads_x * tile_size_y/num_threads_y) elements in a tile,
+  // given `emit_elem_function` is the function to emit code to process one
+  // element, `thread_id_y` and `thread_id_x` are the intra-tile coordinates for
+  // the first element to process, and `index` is the index for the origin of
+  // the tile. Information about tile_size_x/y and num_threads_x/y are stored in
+  // `mapping_scheme`. Emits bounds check to ensure that each processed element
+  // is within the boundary defined by `tile_width` and `tile_height`.
+  //
+  // Pseudocode:
+  //
+  // for (y_loc = 0; y_loc < tile_height; y_loc += num_threads_y) {
+  //   for (j = 0; j < tile_size_x / num_threads_x; j++) { // unrolled
+  //     if (dilated) {
+  //       x_loc = x + j * num_threads_x;
+  //     } else {
+  //       x_loc = x * (tile_size_x / num_threads_x) + j;
+  //     }
+  //
+  //     if (x_loc < tile_width) {
+  //       emit_elem_function(y + y_loc, x_loc);
+  //     }
+  //   }
+  // }
+  //
+  void EmitTile(
+      const KernelMappingScheme& mapping_scheme,
+      const llvm_ir::IrArray::Index& tile_origin_index, const string& loop_name,
+      KernelSupportLibrary* ksl, const ThreadIdInfo& thread_id_info,
+      llvm::Value* tile_height, llvm::Value* tile_width,
+      const IrEmitterUnnested::EmitElementFunction& emit_elem_function);
+
   // Emits code to process a tensor element in a tile for the given kCopy HLO
   // that performs a 0-2-1 transpose.
+  // y_loc: The y coordinate within a tile.
+  // x_loc: The x coordinate within a tile.
   void EmitTileElementForCopy(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num,
-      absl::Span<llvm::Value* const> param_shmem_buffers);
+      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
-  // Emits code to process a tensor element in a tile for the given kLoop fusion
-  // HLO containing parameters that are 0-2-1 transpose of its outputs.
+  // Emits code to process a tensor element in a tile for the given kLoop
+  // fusion HLO containing parameters that are 0-2-1 transpose of its outputs.
+  // y_loc: The y coordinate within a tile.
+  // x_loc: The x coordinate within a tile.
   void EmitTileElementForFusion(
       HloInstruction* hlo, const llvm_ir::IrArray::Index& index,
       const KernelMappingScheme& mapping_scheme, llvm::Value* y_loc,
-      llvm::Value* x_loc, int64 x_iter_num,
-      absl::Span<llvm::Value* const> param_shmem_buffers);
+      llvm::Value* x_loc, absl::Span<llvm::Value* const> param_shmem_buffers);
 
   // Emits code to process a tensor element in a tile for the given input hlo
   // that is either a unnested kReduce or a kInput fusion.
@@ -272,8 +373,8 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloInstruction* const> reduce_instructions,
       llvm::Type* index_type);
 
-  // Wraps up the code generation for a tile block of a reduction kernel: write
-  // the calculated output into the output tensor.
+  // Wraps up the code generation for a tile block of a reduction kernel:
+  // write the calculated output into the output tensor.
   void EmitEpilogueForReduction(
       llvm::Type* index_ty, HloInstruction* unnested_hlo,
       const ReductionCodegenInfo& reduction_info,
@@ -297,15 +398,15 @@ class IrEmitterUnnested : public IrEmitter,
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object. The kernel implementation will be unrolled if unroll_factor
-  // is greater than one. 'implements_whole_instruction' specifies whether this
-  // KernelThunk implements the whole 'inst' HloInstruction. In some cases
-  // 'inst' will be implemented by a sequence of Thunks.
+  // is greater than one. 'implements_whole_instruction' specifies whether
+  // this KernelThunk implements the whole 'inst' HloInstruction. In some
+  // cases 'inst' will be implemented by a sequence of Thunks.
   std::unique_ptr<KernelThunk> BuildKernelThunk(
       const HloInstruction* inst, bool implements_whole_instruction,
       int unroll_factor = 1);
 
-  // Returns a thunk that, given a reduce or select-and-scatter op, initializes
-  // its memory to the appropriate initial value.
+  // Returns a thunk that, given a reduce or select-and-scatter op,
+  // initializes its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
       HloInstruction* hlo, const ShapeIndex& index = {});
 
@@ -328,21 +429,8 @@ class IrEmitterUnnested : public IrEmitter,
   // Sets the return value range to [0, threads_per_block).
   llvm::Value* EmitThreadId(int64 threads_per_block, llvm::Type* index_ty);
 
-  struct ThreadIdInfo {
-    // Raw thread id.
-    llvm::Value* thread_id;
-
-    // X-coordinate calculated from thread id: `thread_id % num_threads_x`
-    llvm::Value* thread_id_x;
-
-    // Y-coordinate calculated from thread id: `thread_id / num_threads_x`
-    llvm::Value* thread_id_y;
-
-    // Lane id: `thread_id % kWarpSize`
-    llvm::Value* lane_id;
-  };
-
-  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane id.
+  // Emits the LLVM values for thread_id, thread_id.x, thread_id.y and lane
+  // id.
   //
   // Returns a struct containting these values.
   ThreadIdInfo EmitThreadIdInfo(int64 threads_per_block, llvm::Type* index_ty,
@@ -354,11 +442,11 @@ class IrEmitterUnnested : public IrEmitter,
   // Emits current block id.
   llvm::Value* EmitBlockId();
 
-  // Prints a given format string with the given arguments, prefixed with thread
-  // id and block id, and postfixed with a newline.
+  // Prints a given format string with the given arguments, prefixed with
+  // thread id and block id, and postfixed with a newline.
   //
-  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing to
-  // only given thread and/or block id.
+  // `thread_id_filter` and `block_id_filter`: if provided, restrict printing
+  // to only given thread and/or block id.
   void EmitPrintfWithThreadId(
       absl::string_view fmt, absl::Span<llvm::Value* const> arguments,
       absl::optional<int64> thread_id_filter = absl::nullopt,

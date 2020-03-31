@@ -15,15 +15,24 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_EAGER_PYWRAP_GRADIENT_EXCLUSIONS_H_
 #define TENSORFLOW_PYTHON_EAGER_PYWRAP_GRADIENT_EXCLUSIONS_H_
 
+#include "absl/types/optional.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 
-bool OpGradientDoesntRequireInputIndices(
-    const tensorflow::string& op_name,
-    std::pair<bool, tensorflow::gtl::FlatSet<int>>** output);
+// Lookup whether the Op with the given op_name has unused input indices.
+// Returns absl::nullopt if all inputs are used, set of unused indices
+// otherwise. Empty set indicates that all indices are unused. The latter is
+// necessary because sometimes it may not be possible to enumerate all indices
+// just using OpDef e.g. when there are `list(T)` or `N * T` type inputs.
+absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedInputIndices(
+    const tensorflow::string& op_name);
 
-bool OpGradientDoesntRequireOutputIndices(
-    const tensorflow::string& op_name,
-    std::pair<bool, tensorflow::gtl::FlatSet<int>>** output);
+// Lookup whether the Op with the given op_name has unused output indices.
+// Returns absl::nullopt if all outputs are used, set of unused indices
+// otherwise. Empty set indicates that all indices are unused. The latter is
+// necessary because sometimes it may not be possible to enumerate all indices
+// just using OpDef e.g. when there are `list(T)` or `N * T` type outputs.
+absl::optional<tensorflow::gtl::FlatSet<int>> OpGradientUnusedOutputIndices(
+    const tensorflow::string& op_name);
 
 #endif  // TENSORFLOW_PYTHON_EAGER_PYWRAP_GRADIENT_EXCLUSIONS_H_

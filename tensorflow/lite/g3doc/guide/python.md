@@ -33,7 +33,7 @@ For example, if you have Raspberry Pi that's running Raspbian Buster (which has
 Python 3.7), install the Python wheel as follows:
 
 <pre class="devsite-terminal devsite-click-to-copy">
-pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-linux_armv7l.whl
+pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl
 </pre>
 
 <table>
@@ -41,79 +41,79 @@ pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-
 <tr>
   <td style="white-space:nowrap" rowspan="3">Linux (ARM 32)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp35-cp35m-linux_armv7l.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_armv7l.whl</td>
 </tr>
 <tr>
   <!-- ARM 32 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp36-cp36m-linux_armv7l.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_armv7l.whl</td>
 </tr>
 <tr>
   <!-- ARM 32 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-linux_armv7l.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl</td>
 </tr>
 <tr>
   <td style="white-space:nowrap" rowspan="3">Linux (ARM 64)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp35-cp35m-linux_aarch64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_aarch64.whl</td>
 </tr>
 <tr>
   <!-- ARM 64 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp36-cp36m-linux_aarch64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_aarch64.whl</td>
 </tr>
 <tr>
   <!-- ARM 64 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-linux_aarch64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_aarch64.whl</td>
 </tr>
 <tr>
   <td style="white-space:nowrap" rowspan="3">Linux (x86-64)</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp35-cp35m-linux_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_x86_64.whl</td>
 </tr>
 <tr>
   <!-- x86-64 -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp36-cp36m-linux_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-linux_x86_64.whl</td>
 </tr>
 <tr>
   <!-- x86-64 -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-linux_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_x86_64.whl</td>
 </tr>
 
 <tr>
   <td style="white-space:nowrap" rowspan="3">macOS 10.14</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp35-cp35m-macosx_10_14_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-macosx_10_14_x86_64.whl</td>
 </tr>
 <tr>
   <!-- Mac -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp36-cp36m-macosx_10_14_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-macosx_10_14_x86_64.whl</td>
 </tr>
 <tr>
   <!-- Mac -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-macosx_10_14_x86_64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-macosx_10_14_x86_64.whl</td>
 </tr>
 
 <tr>
   <td style="white-space:nowrap" rowspan="3">Windows 10</td>
   <td style="white-space:nowrap">3.5</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp35-cp35m-win_amd64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-win_amd64.whl</td>
 </tr>
 <tr>
   <!-- Win -->
   <td style="white-space:nowrap">3.6</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp36-cp36m-win_amd64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp36-cp36m-win_amd64.whl</td>
 </tr>
 <tr>
   <!-- Win -->
   <td style="white-space:nowrap">3.7</td>
-  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0-cp37-cp37m-win_amd64.whl</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-win_amd64.whl</td>
 </tr>
 
 </table>

@@ -49,7 +49,7 @@ struct SimpleBinaryFunctor<GPUDevice, Functor> {
 };
 
 // Macros to explicitly instantiate kernels on GPU for multiple types
-// (T0, T1, etc.) for SimpleBiaryFunctor (e.g., functor::tanh_grad).
+// (T0, T1, etc.) for SimpleBinaryFunctor (e.g., functor::tanh_grad).
 #define DEFINE_SIMPLE_BINARY1(F, T) \
   template struct SimpleBinaryFunctor<GPUDevice, F<T> >
 #define DEFINE_SIMPLE_BINARY2(F, T0, T1) \

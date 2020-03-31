@@ -92,7 +92,7 @@ extern tflite::ErrorReporter* reporter;
 
 // TODO(petewarden): I'm going to hell for what I'm doing to this poor for loop.
 #define TF_LITE_MICRO_TEST(name)                                           \
-  micro_test::reporter->Report("Testing %s", #name);                       \
+  micro_test::reporter->Report("Testing " #name);                          \
   for (micro_test::is_test_complete = false,                               \
       micro_test::did_test_fail = false;                                   \
        !micro_test::is_test_complete; micro_test::is_test_complete = true, \
@@ -109,9 +109,11 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_EXPECT_EQ(x, y)                                          \
   do {                                                                         \
-    if ((x) != (y)) {                                                          \
+    auto vx = x;                                                               \
+    auto vy = y;                                                               \
+    if ((vx) != (vy)) {                                                        \
       micro_test::reporter->Report(#x " == " #y " failed at %s:%d (%d vs %d)", \
-                                   __FILE__, __LINE__, (x), (y));              \
+                                   __FILE__, __LINE__, (vx), (vy));            \
       micro_test::did_test_fail = true;                                        \
     }                                                                          \
   } while (false)
@@ -142,15 +144,17 @@ extern tflite::ErrorReporter* reporter;
     }                                                                   \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
-  do {                                                                        \
-    auto delta = ((x) > (y)) ? ((x) - (y)) : ((y) - (x));                     \
-    if (delta > epsilon) {                                                    \
-      micro_test::reporter->Report(                                           \
-          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(x), \
-          static_cast<float>(y), __FILE__, __LINE__);                         \
-      micro_test::did_test_fail = true;                                       \
-    }                                                                         \
+#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                               \
+  do {                                                                         \
+    auto vx = (x);                                                             \
+    auto vy = (y);                                                             \
+    auto delta = ((vx) > (vy)) ? ((vx) - (vy)) : ((vy) - (vx));                \
+    if (delta > epsilon) {                                                     \
+      micro_test::reporter->Report(                                            \
+          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(vx), \
+          static_cast<float>(vy), __FILE__, __LINE__);                         \
+      micro_test::did_test_fail = true;                                        \
+    }                                                                          \
   } while (false)
 
 #define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \
@@ -211,6 +215,17 @@ extern tflite::ErrorReporter* reporter;
   do {                                                                 \
     micro_test::reporter->Report("FAIL: %s", msg, __FILE__, __LINE__); \
     micro_test::did_test_fail = true;                                  \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_STRING_EQ(string1, string2)                   \
+  do {                                                                     \
+    for (int i = 0; string1[i] != '\0' && string2[i] != '\0'; i++) {       \
+      if (string1[i] != string2[i]) {                                      \
+        micro_test::reporter->Report("FAIL: %s did not match %s", string1, \
+                                     string2, __FILE__, __LINE__);         \
+        micro_test::did_test_fail = true;                                  \
+      }                                                                    \
+    }                                                                      \
   } while (false)
 
 #endif  // TENSORFLOW_LITE_MICRO_TESTING_MICRO_TEST_H_

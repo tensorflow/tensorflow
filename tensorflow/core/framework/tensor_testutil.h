@@ -201,8 +201,8 @@ struct Expector<T, false> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       ExpectEqual(a[i], b[i]);
     }
@@ -218,8 +218,8 @@ struct Expector<T, true> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       ExpectEqual(a[i], b[i]);
     }
@@ -235,8 +235,8 @@ struct Expector<T, true> {
     ASSERT_EQ(x.dtype(), DataTypeToEnum<T>::v());
     AssertSameTypeDims(x, y);
     const auto size = x.NumElements();
-    const T* a = x.flat<T>().data();
-    const T* b = y.flat<T>().data();
+    const T* a = x.unaligned_flat<T>().data();
+    const T* b = y.unaligned_flat<T>().data();
     for (int i = 0; i < size; ++i) {
       EXPECT_TRUE(Near(a[i], b[i], abs_err))
           << "a = " << a[i] << " b = " << b[i] << " index = " << i;

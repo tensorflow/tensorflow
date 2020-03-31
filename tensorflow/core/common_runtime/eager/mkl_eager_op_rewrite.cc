@@ -135,11 +135,13 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
-  if (orig_op->Device() != nullptr) {
-    (*new_mkl_op)->SetDevice(orig_op->Device());
-  } else {
+  if (orig_op->Device() == kVariantDeviceNull) {
     string device_name = orig_op->GetDeviceName();
     (*new_mkl_op)->SetDeviceName(device_name.c_str());
+  } else if (VariantDeviceIsCustom(orig_op->Device())) {
+    (*new_mkl_op)->SetDevice(absl::get<CustomDevice*>(orig_op->Device()));
+  } else {
+    (*new_mkl_op)->SetDevice(absl::get<Device*>(orig_op->Device()));
   }
   return Status::OK();
 }

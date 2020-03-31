@@ -1,14 +1,15 @@
 syntax = "proto3";
 
 package tensorflow;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ResourceHandle";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
-
-import "tensorflow/core/framework/tensor_shape.proto";
-import "tensorflow/core/framework/types.proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework/resource_handle_go_proto";
 
 // Protocol buffer representing a handle to a tensorflow resource. Handles are
 // not valid across executions, but can be serialized back and forth from within
@@ -39,4 +40,8 @@ message ResourceHandleProto {
 
   // Data types and shapes for the underlying resource.
   repeated DtypeAndShape dtypes_and_shapes = 6;
-};
+
+  // A set of devices containing the resource. If empty, the resource only
+  // exists on `device`.
+  repeated string allowed_devices = 7;
+}

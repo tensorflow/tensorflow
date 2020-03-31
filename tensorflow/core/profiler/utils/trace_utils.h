@@ -23,12 +23,15 @@ namespace profiler {
 // First derived stream/thread id.
 constexpr int kThreadIdDerivedMin = 0xdeadbeef;
 constexpr int kThreadIdStepInfo = kThreadIdDerivedMin;
-constexpr int kThreadIdTfOp = kThreadIdDerivedMin + 1;
-constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 2;
-constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 3;
+constexpr int kThreadIdKernelLaunch = kThreadIdDerivedMin + 1;
+constexpr int kThreadIdTfNameScope = kThreadIdDerivedMin + 2;
+constexpr int kThreadIdTfOp = kThreadIdDerivedMin + 3;
 constexpr int kThreadIdHloModule = kThreadIdDerivedMin + 4;
+constexpr int kThreadIdHloOp = kThreadIdDerivedMin + 5;
+constexpr int kThreadIdOverhead = kThreadIdDerivedMin + 6;
+
 // Last derived stream/thread id.
-constexpr int kThreadIdDerivedMax = kThreadIdHloModule;
+constexpr int kThreadIdDerivedMax = kThreadIdOverhead;
 
 static inline bool IsDerivedThreadId(int thread_id) {
   return thread_id >= kThreadIdDerivedMin && thread_id <= kThreadIdDerivedMax;

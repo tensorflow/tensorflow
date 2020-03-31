@@ -476,7 +476,7 @@ class CommandHandlerRegistryTest(test_util.TensorFlowTestCase):
     help_lines = registry.get_help().lines
 
     # The help info should list commands in alphabetically sorted order,
-    # regardless of order in which the commands are reigstered.
+    # regardless of order in which the commands are registered.
     self.assertEqual("cols", help_lines[0])
     self.assertTrue(help_lines[1].endswith("Aliases: c"))
     self.assertFalse(help_lines[2])
@@ -790,7 +790,7 @@ class SliceRichTextLinesTest(test_util.TensorFlowTestCase):
     self.assertEqual(["Roses are red"], sliced.lines)
     self.assertEqual({0: [(0, 5, "red")]}, sliced.font_attr_segs)
 
-    # Non-line-number metadata should be preseved.
+    # Non-line-number metadata should be preserved.
     self.assertEqual({
         0: "longer wavelength",
         "foo_metadata": "bar"
@@ -1024,7 +1024,7 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
       self.assertEqual(
           ["help 2\n", "help 3\n", "help 4\n"], f.readlines())
 
-  def testCommandHistoryHandlesReadingIOErrorGracoiusly(self):
+  def testCommandHistoryHandlesReadingIOErrorGraciously(self):
     with open(self._history_file_path, "wt") as f:
       f.write("help\n")
 
@@ -1037,7 +1037,7 @@ class CommandHistoryTest(test_util.TensorFlowTestCase):
 
     self._restoreFileReadWritePermissions(self._history_file_path)
 
-  def testCommandHistoryHandlesWritingIOErrorGracoiusly(self):
+  def testCommandHistoryHandlesWritingIOErrorGraciously(self):
     with open(self._history_file_path, "wt") as f:
       f.write("help\n")
 

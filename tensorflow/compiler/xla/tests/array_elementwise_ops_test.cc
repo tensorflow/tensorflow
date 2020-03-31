@@ -231,8 +231,8 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
                           0,
                           0x7FFFFFFFFFFFFFFFLL,
                           0x7FFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
-                          0x8000000000000000LL,
+                          0x8000000000000000ULL,
+                          0x8000000000000000ULL,
                           1};
   Literal lhs_literal = LiteralUtil::CreateR1<uint64>({lhs});
   auto lhs_param = Parameter(&b, 0, lhs_literal.shape(), "lhs_param");
@@ -242,12 +242,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
   std::vector<uint64> rhs{1,
                           0x7FFFFFFFFFFFFFFLL,
                           0x7FFFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
+                          0x8000000000000000ULL,
                           0,
                           static_cast<uint64>(-1),
                           0,
                           1,
-                          0x8000000000000000LL};
+                          0x8000000000000000ULL};
   Literal rhs_literal = LiteralUtil::CreateR1<uint64>({rhs});
   auto rhs_param = Parameter(&b, 1, rhs_literal.shape(), "rhs_param");
   std::unique_ptr<GlobalData> rhs_data =

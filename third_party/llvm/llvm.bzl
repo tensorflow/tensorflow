@@ -103,7 +103,7 @@ def _quote(s):
       command.
     """
     return ('"' +
-            s.replace("\\", "\\\\").replace("$", "\\$").replace('"', '\\"') +
+            s.replace("\\", "\\\\").replace("$", "\\$").replace('"', "\\\"") +
             '"')
 
 def cmake_var_string(cmake_vars):

@@ -34,7 +34,7 @@ template <typename T>
 TfLiteStatus PackImpl(TfLiteContext* context, TfLiteNode* node,
                       TfLiteTensor* output, int values_count, int axis) {
   const int dimensions = output->dims->size;
-  const TfLiteTensor* input0 = &context->tensors[node->inputs->data[0]];
+  const TfLiteTensor* input0 = GetInput(context, node, 0);
   const TfLiteIntArray* input_dims = input0->dims;
   const TfLiteIntArray* output_dims = output->dims;
 
@@ -59,7 +59,7 @@ TfLiteStatus PackImpl(TfLiteContext* context, TfLiteNode* node,
   T* output_data = GetTensorData<T>(output);
 
   for (int i = 0; i < values_count; ++i) {
-    TfLiteTensor* t = &context->tensors[node->inputs->data[i]];
+    const TfLiteTensor* t = GetInput(context, node, i);
     const T* input_data = GetTensorData<T>(t);
     for (int k = 0; k < outer_size; ++k) {
       const T* input_ptr = input_data + copy_size * k;
@@ -100,8 +100,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                data->axis);
     }
     default: {
-      context->ReportError(context, "Type '%s' is not supported by pack.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Type '%s' is not supported by pack.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   }

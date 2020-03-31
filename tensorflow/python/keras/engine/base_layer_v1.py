@@ -47,6 +47,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import generic_utils
@@ -178,6 +179,7 @@ class Layer(base_layer.Layer):
     # Indicates whether `build` needs to be called upon layer call, to create
     # the layer's weights.
     self.built = False
+    self._build_input_shape = None
     # Provides information about which inputs are compatible with the layer.
     self._input_spec = None
     self.supports_masking = False
@@ -245,6 +247,15 @@ class Layer(base_layer.Layer):
     # Manage initial weight values if passed.
     self._initial_weights = kwargs.get('weights', None)
 
+    # Whether the layer will track any layers that is set as attribute on itself
+    # as sub-layers, the weights from the sub-layers will be included in the
+    # parent layer's variables() as well.
+    # Default to True, which means auto tracking is turned on. Certain subclass
+    # might want to turn it off, like Sequential model.
+    self._auto_track_sub_layers = True
+
+  @trackable.no_automatic_dependency_tracking
+  @generic_utils.default
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -259,6 +270,8 @@ class Layer(base_layer.Layer):
         `TensorShape` if the layer expects a list of inputs
         (one instance per input).
     """
+    if not hasattr(self.build, '_is_default'):
+      self._build_input_shape = input_shape
     self.built = True
 
   @doc_controls.for_subclass_implementers
@@ -366,7 +379,7 @@ class Layer(base_layer.Layer):
       dtype = self.dtype or backend.floatx()
     dtype = dtypes.as_dtype(dtype)
     if self._dtype_policy.variable_dtype is None:
-      # The policy is "infer", so we infer the policy from the variable dtype.
+      # The policy is "_infer", so we infer the policy from the variable dtype.
       self._dtype_policy = policy.Policy(dtype.base_dtype.name)
     initializer = initializers.get(initializer)
     regularizer = regularizers.get(regularizer)
@@ -389,7 +402,7 @@ class Layer(base_layer.Layer):
     if initializer is None:
       # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
       if dtype.is_floating:
-        initializer = initializers.glorot_uniform()
+        initializer = initializers.get('glorot_uniform')
       # If dtype is DT_INT/DT_UINT, provide a default value `zero`
       # If dtype is DT_BOOL, provide a default value `FALSE`
       elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
@@ -455,7 +468,7 @@ class Layer(base_layer.Layer):
         self._non_trainable_weights.append(variable)
     return variable
 
-  @base_layer_utils.default
+  @generic_utils.default
   def get_config(self):
     """Returns the config of the layer.
 
@@ -535,7 +548,7 @@ class Layer(base_layer.Layer):
       # with the shape the Layer will be called on (these users will have to
       # implement `compute_output_shape` themselves).
       self._maybe_build(input_shape)
-      with context.graph_mode():
+      with ops.get_default_graph().as_default():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
           input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
@@ -593,7 +606,7 @@ class Layer(base_layer.Layer):
         lambda s: tensor_spec.TensorSpec(dtype=dtype, shape=s),
         output_shape)
 
-  @base_layer_utils.default
+  @generic_utils.default
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
 
@@ -666,10 +679,10 @@ class Layer(base_layer.Layer):
     # Accept NumPy and scalar inputs by converting to Tensors.
     if any(isinstance(x, (np.ndarray, float, int)) for x in input_list):
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor` on all `inputs` because
+        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np.ndarray, float, int)):
-          return ops.convert_to_tensor(x)
+          return ops.convert_to_tensor_v2(x)
         return x
       inputs = nest.map_structure(_convert_non_tensor, inputs)
       input_list = nest.flatten(inputs)
@@ -1025,7 +1038,7 @@ class Layer(base_layer.Layer):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       loss._unconditional_loss = (inputs is None)  # pylint: disable=protected-access
       return loss
 
@@ -1040,7 +1053,7 @@ class Layer(base_layer.Layer):
       if loss is None:
         continue
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if (tf_utils.is_symbolic_tensor(loss) and
           not base_layer_utils.is_in_tf_function()):
@@ -1200,7 +1213,7 @@ class Layer(base_layer.Layer):
       elif hasattr(x, 'op'):
         update = x.op
       else:
-        update = ops.convert_to_tensor(x)
+        update = ops.convert_to_tensor_v2(x)
 
       reachable = tf_utils.get_reachable_from_inputs(relevant_inputs, [update])
       update._unconditional_update = update not in reachable
@@ -1721,6 +1734,18 @@ class Layer(base_layer.Layer):
       self._dtype_policy = policy.Policy(dtypes.as_dtype(dtype).name)
     else:
       self._dtype_policy = policy.global_policy()
+    if (self._dtype_policy.name == 'mixed_float16' and
+        not loss_scale_optimizer.strategy_supports_loss_scaling()):
+      # Although only loss scaling doesn't support certain strategies, to avoid
+      # confusion, we disallow the 'mixed_float16' policy with unsupported
+      # strategies. This is because 'mixed_float16' requires loss scaling for
+      # numeric stability.
+      strategy = ds_context.get_strategy()
+      raise ValueError('Mixed precision is not supported with the '
+                       'tf.distribute.Strategy: %s. Either stop using mixed '
+                       'precision by removing the use of the "%s" policy or '
+                       'use a different Strategy, e.g. a MirroredStrategy.' %
+                       (strategy.__class__.__name__, self._dtype_policy.name))
 
     # This has no impact on the layer behavior, and is only used for printing
     # warnings.
@@ -1784,7 +1809,7 @@ class Layer(base_layer.Layer):
           "Layer {self.name} is casting an input tensor from dtype "
           "{input_dtype} to the layer's dtype of {layer_dtype}, which is new "
           "behavior in TensorFlow 2.  The layer has dtype {layer_dtype} "
-          "because it's dtype defaults to floatx.\n\n"
+          'because its dtype defaults to floatx.\n\n'
           ""
           "If you intended to run this layer in {layer_dtype}, you can safely "
           "ignore this warning. If in doubt, this warning is likely only an "
@@ -2251,10 +2276,7 @@ class Layer(base_layer.Layer):
     # TODO(scottzhu): Need to track Module object as well for weight tracking.
     # Be careful about metric if it becomes a Module in future.
     # Append value to self._layers if relevant
-
-    # Sequential models use a separate layer tracking mechanism, so skip the
-    # logic defined here for tracking layers.
-    if (self.__class__.__name__ != 'Sequential' and
+    if (getattr(self, '_auto_track_sub_layers', True) and
         (isinstance(value, Layer) or trackable_layer_utils.has_weights(value))):
       self._maybe_create_attribute('_layers', [])
       # We need to check object identity to avoid de-duplicating empty

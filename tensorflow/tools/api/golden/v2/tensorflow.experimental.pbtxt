@@ -1,8 +1,20 @@
 path: "tensorflow.experimental"
 tf_module {
   member {
+    name: "dlpack"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "tensorrt"
     mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "async_clear_error"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "async_scope"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "function_executor_type"

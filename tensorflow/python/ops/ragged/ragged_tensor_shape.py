@@ -38,7 +38,7 @@ class RaggedTensorDynamicShape(object):
   Each `RaggedTensorDynamicShape` consists of an ordered list of dimension
   sizes.  There are two dimension types:
 
-    * "Uniform dimensions" are dimenisons where all slices have the same
+    * "Uniform dimensions" are dimensions where all slices have the same
       length.  `RaggedTensorDynamicShape` records the size of each uniform
       dimension using a single scalar integer.
 
@@ -60,7 +60,7 @@ class RaggedTensorDynamicShape(object):
   The sizes of partitioned dimensions are recorded using `partitioned_dim_sizes`
   and `inner_dim_sizes`:
 
-    * `paritioned_dim_sizes` is a list of tensors (one for each partitioned
+    * `partitioned_dim_sizes` is a list of tensors (one for each partitioned
       dimension).
 
       * For uniform dimensions, the tensor is an integer scalar specifying the

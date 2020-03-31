@@ -9,6 +9,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "CollectiveHints"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MultiWorkerMirroredStrategy"
     mtype: "<type \'type\'>"
   }
@@ -18,6 +22,10 @@ tf_module {
   }
   member {
     name: "TPUStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ValueContext"
     mtype: "<type \'type\'>"
   }
 }

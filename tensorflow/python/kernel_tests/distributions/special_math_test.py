@@ -132,7 +132,7 @@ class NdtriTest(test.TestCase):
             1. - np.exp(-32.),
             1.,
         ]).astype(dtype))
-    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # Not having the lambda sanitizer means we'd get an `IndexError` whenever
     # the user supplied function has default args.
     _, grads = _value_and_gradient(
         lambda x: special_math.ndtri(x), p)  # pylint: disable=unnecessary-lambda
@@ -276,7 +276,7 @@ class NdtrGradientTest(test.TestCase):
     x = constant_op.constant([-100., 0., 100.], dtype=dtype)
     output = (sm.log_ndtr(x) if self._use_log else sm.ndtr(x))
     fn = sm.log_ndtr if self._use_log else sm.ndtr
-    # Not having the lambda sanitzer means we'd get an `IndexError` whenever
+    # Not having the lambda sanitizer means we'd get an `IndexError` whenever
     # the user supplied function has default args.
     output, grad_output = _value_and_gradient(
         lambda x_: fn(x_), x)  # pylint: disable=unnecessary-lambda

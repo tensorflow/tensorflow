@@ -56,12 +56,19 @@ message OpMetrics {
   string deduplicated_name = 15;
   // Children of the op. e.g. fused ops if this op is fusion.
   OpMetricsDb children = 16;
-
   reserved 4, 8, 9;
 }
 
+// Statistics about the various precision used in computation.
+message PrecisionStats {
+  // Amount of time spent on 16-bit computation (in ps).
+  uint64 compute_16bit_ps = 1;
+  // Amount of time spent on 32-bit computation (in ps).
+  uint64 compute_32bit_ps = 2;
+}
+
 // A database for OpMetrics.
-// Next ID: 13
+// Next ID: 14
 message OpMetricsDb {
   // A bunch of OpMetrics.
   repeated OpMetrics metrics_db = 10;
@@ -74,5 +81,7 @@ message OpMetricsDb {
   uint64 total_time_ps = 11;
   // The total time incurred by OPs in picoseconds.
   uint64 total_op_time_ps = 12;
+  // Precision-related stats.
+  PrecisionStats precision_stats = 13;
   reserved 1, 4, 5, 6, 7, 8, 9;
 }

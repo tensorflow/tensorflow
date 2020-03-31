@@ -29,7 +29,13 @@ limitations under the License.
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/util.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/subgraph.h"
+#endif
+
 namespace tflite {
+
+namespace impl {
 
 // Forward declare since NNAPIDelegate uses Interpreter.
 class NNAPIDelegate;
@@ -343,6 +349,13 @@ class Subgraph {
     void EndEvent(uint32_t event_handle) override {
       if (!profiler_) return;
       profiler_->EndEvent(event_handle);
+    }
+
+    void AddEvent(const char* tag, EventType event_type,
+                  uint32_t event_metadata, uint64_t start,
+                  uint64_t end) override {
+      if (!profiler_) return;
+      profiler_->AddEvent(tag, event_type, event_metadata, start, end);
     }
 
    private:
@@ -667,6 +680,14 @@ class Subgraph {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap* resources_ = nullptr;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Subgraph = tflrt::Subgraph;
+#else
+using Subgraph = impl::Subgraph;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_CORE_SUBGRAPH_H_

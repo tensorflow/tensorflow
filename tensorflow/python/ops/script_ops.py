@@ -93,7 +93,7 @@ class EagerFunc(object):
 
     Returns:
       A tensor of type `dtype`, or a zeros tensor if value is None and
-      this function is in fact a grdient function.
+      this function is in fact a gradient function.
 
     Raises:
       RuntimeError: if `value` is a variable.
@@ -108,7 +108,7 @@ class EagerFunc(object):
           "question: %s" % value)
     if value is None and self._is_grad_func:
       # Gradient functions may legitimately return a list that contains
-      # both Tensors and Python Nones. Unfortuantely this breaks the
+      # both Tensors and Python Nones. Unfortunately this breaks the
       # OpKernel, so for now we replace None objects with zeros, which is
       # mathematically correct but will prevent short-circuiting gradient
       # computations.

@@ -23,6 +23,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+#include <fnmatch.h>
+#else
+#include "tensorflow/core/platform/regexp.h"
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/platform.h"
@@ -31,6 +37,23 @@ limitations under the License.
 #include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
+
+bool FileSystem::Match(const string& filename, const string& pattern) {
+#if defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+  // We avoid relying on RE2 on mobile platforms, because it incurs a
+  // significant binary size increase.
+  // For POSIX platforms, there is no need to depend on RE2 if `fnmatch` can be
+  // used safely.
+  return fnmatch(pattern.c_str(), filename.c_str(), FNM_PATHNAME) == 0;
+#else
+  string regexp(pattern);
+  regexp = str_util::StringReplace(regexp, "*", "[^/]*", true);
+  regexp = str_util::StringReplace(regexp, "?", ".", true);
+  regexp = str_util::StringReplace(regexp, "(", "\\(", true);
+  regexp = str_util::StringReplace(regexp, ")", "\\)", true);
+  return RE2::FullMatch(filename, regexp);
+#endif  // defined(PLATFORM_POSIX) || defined(IS_MOBILE_PLATFORM)
+}
 
 string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
@@ -56,6 +79,11 @@ Status FileSystem::IsDirectory(const string& name) {
     return Status::OK();
   }
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
+}
+
+Status FileSystem::HasAtomicMove(const string& path, bool* has_atomic_move) {
+  *has_atomic_move = true;
+  return Status::OK();
 }
 
 void FileSystem::FlushCaches() {}

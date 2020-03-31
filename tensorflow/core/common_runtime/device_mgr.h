@@ -138,13 +138,14 @@ class DynamicDeviceMgr : public DeviceMgr {
   mutable mutex devices_mu_;
 
   std::unordered_map<Device*, std::unique_ptr<Device>> dynamic_devices_
-      GUARDED_BY(devices_mu_);
+      TF_GUARDED_BY(devices_mu_);
 
-  std::unordered_map<string, Device*> device_map_ GUARDED_BY(devices_mu_);
+  std::unordered_map<string, Device*> device_map_ TF_GUARDED_BY(devices_mu_);
 
-  std::unordered_map<string, int> device_type_counts_ GUARDED_BY(devices_mu_);
+  std::unordered_map<string, int> device_type_counts_
+      TF_GUARDED_BY(devices_mu_);
 
-  mutable Device* cpu_device_ GUARDED_BY(devices_mu_);
+  mutable Device* cpu_device_ TF_GUARDED_BY(devices_mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(DynamicDeviceMgr);
 };

@@ -386,18 +386,18 @@ class TestNode : public model::Node {
 
  protected:
   std::shared_ptr<Node> Clone(std::shared_ptr<Node> output) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return nullptr;
   }
 
   double OutputTimeLocked(std::vector<double>* input_times,
                           std::map<string, double>* gradient) const override
-      SHARED_LOCKS_REQUIRED(mu_) {
+      TF_SHARED_LOCKS_REQUIRED(mu_) {
     return 0;
   }
 
   double TotalProcessingTimeLocked(std::map<string, double>* processing_times)
-      override SHARED_LOCKS_REQUIRED(mu_) {
+      override TF_SHARED_LOCKS_REQUIRED(mu_) {
     return 0;
   }
 };

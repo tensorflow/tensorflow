@@ -6,7 +6,7 @@ func @main() {
   // CHECK-NEXT:   name: "Const"
   // CHECK-NEXT:   op: "Const"
   // CHECK-NEXT:   attr {
-  // CHECK-NEXT:     key: "dtype"
+  // CHECK:          key: "dtype"
   // CHECK-NEXT:     value {
   // CHECK-NEXT:       type: DT_FLOAT
   // CHECK-NEXT:     }
@@ -31,7 +31,7 @@ func @main() {
   // CHECK-NEXT:   name: "foo"
   // CHECK-NEXT:   op: "foo"
   // CHECK-NEXT:   input: "Const"
-  // CHECK-NEXT:   experimental_debug_info {
+  // CHECK:        experimental_debug_info {
   // CHECK-NEXT:   }
   // CHECK-NEXT: }
     %1:2 = tf_executor.island wraps "tf.foo"(%0#0) {device = ""} : (tensor<f32>) -> tensor<*xf32> loc("foo")

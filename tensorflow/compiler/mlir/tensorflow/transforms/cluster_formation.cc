@@ -20,13 +20,13 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -100,7 +100,8 @@ void ReplaceLiveOutExternalUses(llvm::ArrayRef<Value> live_outs,
   Region* launch_op_region = &launch_op.body();
   for (const auto& p : llvm::zip(live_outs, launch_op.getResults())) {
     Value from = std::get<0>(p);
-    for (auto& use : from.getUses()) {
+    // TODO(jingpu): move this to RegionUtils.h in MLIR core.
+    for (auto& use : llvm::make_early_inc_range(from.getUses())) {
       if (launch_op_region->isAncestor(use.getOwner()->getParentRegion()))
         continue;
       use.set(std::get<1>(p));

@@ -107,11 +107,20 @@ tf_cuda_library(
         ":eager_executor",
         ":kernel_and_device",
         ":tensor_handle",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:variant",
         "//tensorflow/core:framework",
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:platform_port",
-        "@com_google_absl//absl/types:optional",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:core_cpu_lib",
+        ],
+    }),
 )
 
 tf_cuda_library(
@@ -131,8 +140,10 @@ tf_cuda_library(
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }),
 )
@@ -157,6 +168,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "@com_google_absl//absl/strings",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:framework_internal",
@@ -176,6 +188,7 @@ tf_cc_test(
     srcs = ["tensor_handle_test.cc"],
     deps = [
         ":tensor_handle",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -276,6 +289,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "@com_google_absl//absl/types:optional",
+            "@com_google_absl//absl/types:variant",
             "//tensorflow/core:core_cpu_lib",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
@@ -335,6 +349,7 @@ cc_library(
         ":kernel_and_device",
         ":tensor_handle",
         ":process_function_library_runtime",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -402,6 +417,7 @@ tf_cc_test(
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

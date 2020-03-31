@@ -16,7 +16,7 @@ limitations under the License.
 // TFLite legalization patterns
 
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
@@ -167,6 +167,7 @@ def : Pat<(TF_SigmoidOp $arg), (TFL_LogisticOp $arg)>;
 def : Pat<(TF_SinOp F32Tensor:$arg), (TFL_SinOp $arg)>;
 def : Pat<(TF_SliceOp $input, $begin, $size), (TFL_SliceOp $input, $begin, $size)>;
 def : Pat<(TF_SoftmaxOp $arg), (TFL_SoftmaxOp $arg, ConstF32Attr<"1.0">)>;
+def : Pat<(TF_SoftplusOp F32Tensor:$arg0), (TFL_LogOp (TFL_AddOp (TFL_ExpOp $arg0), (ConstantOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">), TFL_AF_None))>;
 def : Pat<(TF_SqueezeOp $arg, $squeeze_dims), (TFL_SqueezeOp $arg, $squeeze_dims)>;
 def : Pat<(TF_TanhOp $arg), (TFL_TanhOp $arg)>;
 def : Pat<(TF_TransposeOp $arg, $perm), (TFL_TransposeOp $arg, $perm)>;
@@ -205,32 +206,12 @@ def : Pat<(TF_LogicalAndOp $l, $r), (TFL_LogicalAndOp $l, $r)>;
 
 def : Pat<(TF_LogicalOrOp $l, $r), (TFL_LogicalOrOp $l, $r)>;
 
-// Multi-pattern consisting of matching stand-alone op or op followed by relu.
-// TODO(karimnosseir): Can the activation part here be removed by modifying the
-// very similar pass in optimize_patterns.td?
-multiclass FusedBinaryActivationFuncOpPat<dag FromOp, dag ToOp> {
-  def : Pat<(FromOp AnyTensor:$l, AnyTensor:$r),
-            (ToOp $l, $r, TFL_AF_None)>;
-  foreach actFnPair = [[TF_ReluOp, TFL_AF_Relu],
-                       [TF_Relu6Op, TFL_AF_Relu6]] in {
-    def : Pat<(actFnPair[0] (FromOp:$bin_out $lhs, $rhs)),
-              (ToOp $lhs, $rhs, actFnPair[1]),
-              [(HasOneUse $bin_out)]>;
-    // TODO: Maybe move these below to general pass?
-    def : Pat<(actFnPair[0] (ToOp:$bin_out $lhs, $rhs, TFL_AF_None)),
-              (ToOp $lhs, $rhs, actFnPair[1]),
-              [(HasOneUse $bin_out)]>;
-  }
-}
-
-// Instantiated FusedBinary patterns for the from-to pairs of ops.
-foreach fromToPair = [[TF_AddOp, TFL_AddOp],
-                      [TF_AddV2Op, TFL_AddOp],
-                      [TF_DivOp, TFL_DivOp],
-                      [TF_MulOp, TFL_MulOp],
-                      [TF_RealDivOp, TFL_DivOp],
-                      [TF_SubOp, TFL_SubOp]] in
-  defm : FusedBinaryActivationFuncOpPat<fromToPair[0], fromToPair[1]>;
+def : Pat<(TF_AddOp $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_AddV2Op $lhs, $rhs), (TFL_AddOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_SubOp $lhs, $rhs), (TFL_SubOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_MulOp $lhs, $rhs), (TFL_MulOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_RealDivOp $lhs, $rhs), (TFL_DivOp $lhs, $rhs, TFL_AF_None)>;
+def : Pat<(TF_DivOp $lhs, $rhs), (TFL_DivOp $lhs, $rhs, TFL_AF_None)>;
 
 def : Pat<(TF_BiasAddOp F32Tensor:$l, F32Tensor:$r,
                         IsDataFormatNHWC:$data_format),
@@ -340,7 +321,7 @@ def : Pat<(TF_MatrixDiagOp $diagonal), (TFL_MatrixDiagOp $diagonal)>;
 class I32VectorElementsAttr<int len> : ElementsAttrBase<
   CPred<"$_self.isa<DenseIntElementsAttr>() &&"
       "$_self.cast<DenseIntElementsAttr>().getType()."
-      "getElementType().isInteger(32)">,
+      "getElementType().isSignlessInteger(32)">,
   "32-bit int elements attribute of shape [" # len # "]"> {
 
   let storageType = [{ DenseIntElementsAttr }];
@@ -365,3 +346,7 @@ def : Pat<
      /*padding=*/ $padding,
      /*stride_h=*/ ExtractI32At<1>:$strides,
      /*stride_w=*/ ExtractI32At<2>:$strides)>;
+
+def : Pat<
+  (TF_MatrixSetDiagOp $input, $diagonal),
+  (TFL_MatrixSetDiagOp $input, $diagonal)>;

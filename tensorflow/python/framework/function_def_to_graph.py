@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-"""Utlity to convert FunctionDef to GraphDef and Graph."""
+"""Utility to convert FunctionDef to GraphDef and Graph."""
 
 from __future__ import absolute_import
 from __future__ import division

@@ -14,7 +14,17 @@ limitations under the License.
 ==============================================================================*/
 #include <sys/mman.h>
 
+#include <algorithm>
+#include <array>
+#include <iterator>
+#include <memory>
+#include <numeric>
+#include <ostream>
+#include <unordered_set>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_mock_test.h"
@@ -31,8 +41,9 @@ namespace {
 class SingleOpModelWithNNAPI : public SingleOpModel {
  public:
   SingleOpModelWithNNAPI() = default;
-  void Init(tflite::StatefulNnApiDelegate::Options options) {
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+  void Init(const NnApi* nnapi,
+            tflite::StatefulNnApiDelegate::Options options) {
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
     auto* delegate = stateful_delegate_.get();
     this->SetApplyDelegate([delegate, this](Interpreter* interpreter) {
       compilation_status_ = interpreter->ModifyGraphWithDelegate(delegate);
@@ -54,11 +65,11 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
 class FloatAddOpModel : public SingleOpModelWithNNAPI {
  public:
   FloatAddOpModel() = default;
-  void Init(tflite::StatefulNnApiDelegate::Options options,
+  void Init(const NnApi* nnapi, tflite::StatefulNnApiDelegate::Options options,
             const TensorData& input1, const TensorData& input2,
             const TensorData& output, ActivationFunctionType activation_type,
             bool allow_fp32_relax_to_fp16 = false) {
-    SingleOpModelWithNNAPI::Init(options);
+    SingleOpModelWithNNAPI::Init(nnapi, options);
     input1_ = AddInput(input1);
     input2_ = AddInput(input2);
     output_ = AddOutput(output);
@@ -85,26 +96,23 @@ struct NnApiDeviceSelectionTest
     : ::tflite::delegate::nnapi::NnApiDelegateMockTest {
   void SetUp() override {
     ::tflite::delegate::nnapi::NnApiDelegateMockTest::SetUp();
-    nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-      *numDevices = 3;
-      return ANEURALNETWORKS_NO_ERROR;
-    };
-    nnapi_->ANeuralNetworks_getDevice =
+    nnapi_mock_->GetDeviceCountReturnsCount<3>();
+    nnapi_mock_->StubGetDeviceWith(
         [](uint32_t devIndex, ANeuralNetworksDevice** device) -> int {
-      *device = reinterpret_cast<ANeuralNetworksDevice*>(devIndex + 1);
-      return 0;
-    };
-    nnapi_->ANeuralNetworksDevice_getName =
+          *device = reinterpret_cast<ANeuralNetworksDevice*>(devIndex + 1);
+          return 0;
+        });
+    nnapi_mock_->StubGetDeviceNameWith(
         [](const ANeuralNetworksDevice* device, const char** name) -> int {
-      if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-        *name = "dsp";
-      } else if (device == reinterpret_cast<ANeuralNetworksDevice*>(2)) {
-        *name = "gpu";
-      } else {
-        *name = "nnapi-reference";
-      }
-      return ANEURALNETWORKS_NO_ERROR;
-    };
+          if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
+            *name = "dsp";
+          } else if (device == reinterpret_cast<ANeuralNetworksDevice*>(2)) {
+            *name = "gpu";
+          } else {
+            *name = "nnapi-reference";
+          }
+          return ANEURALNETWORKS_NO_ERROR;
+        });
     nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
         [](const ANeuralNetworksModel* model,
            const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
@@ -114,7 +122,7 @@ struct NnApiDeviceSelectionTest
         });
   }
   void InitWithOptions(tflite::StatefulNnApiDelegate::Options options) {
-    m.Init(options, {TensorType_FLOAT32, {1, 2, 2, 1}},
+    m.Init(nnapi_mock_->GetNnApi(), options, {TensorType_FLOAT32, {1, 2, 2, 1}},
            {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
            ActivationFunctionType_NONE);
     m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
@@ -191,17 +199,8 @@ TEST_F(NnApiDeviceSelectionTest, DisallowsCPUBasedOnOptions) {
 TEST_F(NnApiDeviceSelectionTest,
        DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuEnabled) {
   // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return ANEURALNETWORKS_NO_ERROR;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return ANEURALNETWORKS_NO_ERROR;
-  };
+  nnapi_mock_->GetDeviceCountReturnsCount<1>();
+  nnapi_mock_->GetDeviceNameReturnsName("nnapi-reference");
 
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = false;
@@ -214,17 +213,8 @@ TEST_F(NnApiDeviceSelectionTest,
 TEST_F(NnApiDeviceSelectionTest,
        DoesNotDelegateIfOnlyReferenceDeviceIsAvailable_CpuDisabled) {
   // Only nnapi-reference is available on device
-  nnapi_->ANeuralNetworks_getDeviceCount = [](uint32_t* numDevices) -> int {
-    *numDevices = 1;
-    return ANEURALNETWORKS_NO_ERROR;
-  };
-  nnapi_->ANeuralNetworksDevice_getName =
-      [](const ANeuralNetworksDevice* device, const char** name) -> int {
-    if (device == reinterpret_cast<ANeuralNetworksDevice*>(1)) {
-      *name = "nnapi-reference";
-    }
-    return ANEURALNETWORKS_NO_ERROR;
-  };
+  nnapi_mock_->GetDeviceCountReturnsCount<1>();
+  nnapi_mock_->GetDeviceNameReturnsName("nnapi-reference");
 
   tflite::StatefulNnApiDelegate::Options options;
   options.disallow_nnapi_cpu = true;
@@ -243,18 +233,22 @@ class AcceleratedModel {
 
  protected:
   // build a delegate with a target accelerator name.
-  explicit AcceleratedModel(const std::string& accelerator_name) {
+  AcceleratedModel(const NnApi* nnapi, const std::string& accelerator_name,
+                   int max_nnapi_partitions = 0) {
     StatefulNnApiDelegate::Options options;
     options.accelerator_name = accelerator_name.c_str();
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    options.max_number_delegated_partitions = max_nnapi_partitions;
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
   }
 
   // build a delegate with no target accelerator name, can disable the NNAPI CPU
   // fallback implementation using the disallow_nnapi_cpu flag.
-  explicit AcceleratedModel(bool disallow_nnapi_cpu) {
+  AcceleratedModel(const NnApi* nnapi, bool disallow_nnapi_cpu,
+                   int max_nnapi_partitions = 0) {
     StatefulNnApiDelegate::Options options;
     options.disallow_nnapi_cpu = disallow_nnapi_cpu;
-    stateful_delegate_.reset(new StatefulNnApiDelegate(options));
+    options.max_number_delegated_partitions = max_nnapi_partitions;
+    stateful_delegate_.reset(new StatefulNnApiDelegate(nnapi, options));
   }
 
  private:
@@ -264,14 +258,16 @@ class AcceleratedModel {
 class ArgMaxOpModel : public SingleOpModel, public AcceleratedModel {
  public:
   ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, const char* device_name)
-      : SingleOpModel(), AcceleratedModel(device_name) {
+                int axis_value, TensorType output_type, const NnApi* nnapi,
+                const char* device_name)
+      : SingleOpModel(), AcceleratedModel(nnapi, device_name) {
     Init(input_shape, input_type, axis_value, output_type);
   }
 
   ArgMaxOpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int axis_value, TensorType output_type, bool disallow_nnapi_cpu)
-      : SingleOpModel(), AcceleratedModel(disallow_nnapi_cpu) {
+                int axis_value, TensorType output_type, const NnApi* nnapi,
+                bool disallow_nnapi_cpu)
+      : SingleOpModel(), AcceleratedModel(nnapi, disallow_nnapi_cpu) {
     Init(input_shape, input_type, axis_value, output_type);
   }
 
@@ -302,9 +298,19 @@ TEST_F(UnsupportedOperationOnDeviceTest,
        ShouldUseDeviceFeatureLevelWhenSpecifyingTargetDevice) {
   nnapi_mock_->SetAndroidSdkVersion(29);
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
+  // Setting this here because I want the delegate not to be applied in the
+  // first case because the feature level is not high enough and not because the
+  // operations are not supported by the device.
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps, supportedOps + 1, true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
 
   ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, "test-device");
+                  TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m.Invoke();
 
@@ -315,7 +321,7 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
 
   ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, "test-device");
+                   TensorType_INT32, nnapi_mock_->GetNnApi(), "test-device");
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m1.Invoke();
 
@@ -327,9 +333,20 @@ TEST_F(UnsupportedOperationOnDeviceTest,
        ShouldUseDeviceFeatureLevelWhenDisablingCPU) {
   nnapi_mock_->SetAndroidSdkVersion(29);
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/28);
+  // Setting this here because I want the delegate not to be applied in the
+  // first case because the feature level is not high enough and not because the
+  // operations are not supported by the device.
+  nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+      [](const ANeuralNetworksModel* model,
+         const ANeuralNetworksDevice* const* devices, uint32_t numDevices,
+         bool* supportedOps) -> int {
+        std::fill(supportedOps, supportedOps + 1, true);
+        return ANEURALNETWORKS_NO_ERROR;
+      });
 
   ArgMaxOpModel m({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                  TensorType_INT32, /*disallow_nnapi_cpu=*/true);
+                  TensorType_INT32, nnapi_mock_->GetNnApi(),
+                  /*disallow_nnapi_cpu=*/true);
   m.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m.Invoke();
 
@@ -338,7 +355,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
          "1.2 and device declares to support only NNAPI 1.1.";
 
   ArgMaxOpModel m1({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/false);
+                   TensorType_INT32, nnapi_mock_->GetNnApi(),
+                   /*disallow_nnapi_cpu=*/false);
   m1.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m1.Invoke();
 
@@ -349,7 +367,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   nnapi_mock_->SetNnapiSupportedDevice("test-device", /* feature_level=*/29);
 
   ArgMaxOpModel m2({1, 1, 1, 4}, TensorType_FLOAT32, /*axis_value=*/3,
-                   TensorType_INT32, /*disallow_nnapi_cpu=*/true);
+                   TensorType_INT32, nnapi_mock_->GetNnApi(),
+                   /*disallow_nnapi_cpu=*/true);
   m2.PopulateTensor<float>(m.input(), {0.1, 0.9, 0.7, 0.3});
   m2.Invoke();
 
@@ -371,9 +390,10 @@ class AddSubOpsAcceleratedModel : public MultiOpModel, public AcceleratedModel {
   AddSubOpsAcceleratedModel(const TensorData& input1, const TensorData& input2,
                             const TensorData& input3, const TensorData& output,
                             ActivationFunctionType activation_type,
+                            const NnApi* nnapi,
                             const std::string& accelerator_name,
                             bool allow_fp32_relax_to_fp16 = false)
-      : MultiOpModel(), AcceleratedModel(accelerator_name) {
+      : MultiOpModel(), AcceleratedModel(nnapi, accelerator_name) {
     auto* delegate = GetDelegate();
     this->SetApplyDelegate([delegate](Interpreter* interpreter) {
       interpreter->ModifyGraphWithDelegate(delegate);
@@ -450,7 +470,8 @@ TEST_F(UnsupportedOperationOnDeviceTest,
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
@@ -479,7 +500,8 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldRunOnCpuIfDeviceSupportsNoOps) {
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
@@ -511,7 +533,8 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
   AddSubOpsAcceleratedModel m(
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {1, 2, 2, 1}},
       {TensorType_FLOAT32, {1, 2, 2, 1}}, {TensorType_FLOAT32, {}},
-      ActivationFunctionType_NONE, /*accelerator_name=*/"test-device");
+      ActivationFunctionType_NONE, nnapi_mock_->GetNnApi(),
+      /*accelerator_name=*/"test-device");
   std::vector<float> input1{-2.0, 0.2, 0.7, 0.9};
   std::vector<float> input2{0.1, 0.2, 0.3, 0.5};
   m.PopulateTensor<float>(m.input1(), input1);
@@ -521,6 +544,290 @@ TEST_F(UnsupportedOperationOnDeviceTest, ShouldCacheModelCompilation) {
 
   ASSERT_EQ(m.CountOpsExecutedByCpuKernel(), 0);
   EXPECT_EQ(should_cache_model_compilation_model_create_count, 1);
+}
+
+// Model with a chain of no-op (add with zero operations)
+// interleaved with no-op custom nodes.
+class LongIdentityModel : public MultiOpModel, public AcceleratedModel {
+ public:
+  LongIdentityModel(const std::vector<int>& input_shape, int graph_size,
+                    const std::unordered_set<int>& custom_nodes_indexes,
+                    const NnApi* nnapi, const std::string& accelerator_name,
+                    int max_nnapi_partitions)
+      : MultiOpModel(),
+        AcceleratedModel(nnapi, accelerator_name, max_nnapi_partitions) {
+    Init(input_shape, graph_size, custom_nodes_indexes);
+  }
+
+  LongIdentityModel(const std::vector<int>& input_shape, int graph_size,
+                    const std::unordered_set<int>& custom_nodes_indexes,
+                    const NnApi* nnapi, int max_nnapi_partitions)
+      : MultiOpModel(), AcceleratedModel(nnapi, false, max_nnapi_partitions) {
+    Init(input_shape, graph_size, custom_nodes_indexes);
+  }
+
+  void SetInput(std::vector<float> value) { PopulateTensor(input_, value); }
+
+  int CountNnApiPartitions() {
+    return std::count_if(
+        std::begin(interpreter_->execution_plan()),
+        std::end(interpreter_->execution_plan()), [this](const int node_index) {
+          return interpreter_->node_and_registration(node_index)
+                     ->first.delegate != nullptr;
+        });
+  }
+
+ private:
+  void Init(const std::vector<int>& input_shape, int graph_size,
+            const std::unordered_set<int>& custom_nodes_indexes) {
+    auto* delegate = GetDelegate();
+    this->SetApplyDelegate([delegate](Interpreter* interpreter) {
+      interpreter->ModifyGraphWithDelegate(delegate);
+    });
+
+    const TensorData tensor_data{TensorType_FLOAT32, input_shape};
+
+    input_ = AddInput(tensor_data);
+    zero_input_ = AddInput(tensor_data);
+
+    std::vector<int> intermediate_outputs(graph_size - 1);
+    std::generate(
+        std::begin(intermediate_outputs), std::end(intermediate_outputs),
+        [this, &tensor_data]() { return AddInnerTensor<float>(tensor_data); });
+
+    output_ = AddOutput(tensor_data);
+
+    AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                 CreateAddOptions(builder_).Union(), {input_, zero_input_},
+                 {intermediate_outputs[0]});
+
+    for (int i = 0; i < intermediate_outputs.size() - 1; i++) {
+      if (custom_nodes_indexes.count(i + 1) == 1) {
+        AddCustomOp("custom_no_op", {}, [this]() { return CustomNoOpNode(); },
+                    {intermediate_outputs[i]}, {intermediate_outputs[i + 1]});
+      } else {
+        AddBuiltinOp(BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+                     CreateAddOptions(builder_).Union(),
+                     {intermediate_outputs[i], zero_input_},
+                     {intermediate_outputs[i + 1]});
+      }
+    }
+
+    AddBuiltinOp(
+        BuiltinOperator_ADD, BuiltinOptions_AddOptions,
+        CreateAddOptions(builder_).Union(),
+        {intermediate_outputs[intermediate_outputs.size() - 1], zero_input_},
+        {output_});
+
+    BuildInterpreter({GetShape(input_), GetShape(zero_input_)});
+
+    std::vector<float> zero(GetTensorSize(input_), 0.0);
+    PopulateTensor(zero_input_, zero);
+  }
+
+  // Return the registration of a custom node simply copying input to output.
+  TfLiteRegistration* CustomNoOpNode() {
+    static TfLiteRegistration no_op = {
+        .init = [](TfLiteContext* context, const char* buffer,
+                   size_t length) -> void* { return nullptr; },
+
+        .free = [](TfLiteContext* context, void* buffer) -> void {},
+
+        .prepare = [](TfLiteContext* context,
+                      TfLiteNode* node) -> TfLiteStatus {
+          if (node->inputs->size != 1 || node->outputs->size != 1) {
+            return kTfLiteError;
+          }
+
+          return kTfLiteOk;
+        },
+
+        .invoke = [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
+          auto input_tensor = context->tensors[node->inputs->data[0]];
+          auto output_tensor = context->tensors[node->outputs->data[0]];
+
+          std::copy(input_tensor.data.raw,
+                    input_tensor.data.raw + input_tensor.bytes,
+                    output_tensor.data.raw);
+
+          return kTfLiteOk;
+        },
+
+        .profiling_string = nullptr,
+        .builtin_code = kTfLiteBuiltinDelegate,
+        .custom_name = "NoOpTestDelegate",
+        .version = 1,
+    };
+
+    return &no_op;
+  }
+  int input_;
+  int zero_input_;
+  int output_;
+};
+
+class NodeFilter {
+ public:
+  void ConfigureSupportedNodes(
+      int graph_size, const std::unordered_set<int>& unsupported_indexes) {
+    graph_size_ = graph_size;
+    unsupported_indexes_ = unsupported_indexes;
+  }
+
+  void SetNodeSupport(bool* supported_ops) {
+    for (int i = 0; i < graph_size_; i++) {
+      supported_ops[i] = (unsupported_indexes_.count(i) == 0);
+    }
+  }
+
+ private:
+  int graph_size_;
+  std::unordered_set<int> unsupported_indexes_;
+};
+
+// Using the same node filter for all DelegatePartitionLimitTests
+// because StubGetSupportedOperationsForDevicesWith wants a C function.
+NodeFilter* DelegatePartitionLimitTestNodeFilter() {
+  static NodeFilter* node_filter = new NodeFilter();
+  return node_filter;
+}
+
+class DelegatePartitionLimitTest
+    : public ::tflite::delegate::nnapi::NnApiDelegateMockTest {
+ protected:
+  // Configure the underlying graph to generate a set of nnapi partition
+  // with the sizes specified in nnapi_partition_sizes and the given
+  // input_shape.
+  void Init(int max_nnapi_partitions,
+            const std::vector<int>& nnapi_partition_sizes,
+            const std::vector<int>& input_shape,
+            bool specify_accelerator = true) {
+    // The graph will have as number of nodes the sum of nodes in the NNAPI
+    // partitions plus nnapi_partition_sizes.size() - 1 nodes that will be
+    // not supported by NNAPI and will cause the
+    graph_size_ = std::accumulate(std::begin(nnapi_partition_sizes),
+                                  std::end(nnapi_partition_sizes),
+                                  nnapi_partition_sizes.size() - 1);
+
+    std::unordered_set<int> unsupported_ops_idxs;
+    int partition_node_idx = -1;
+    for (int i = 0; i < nnapi_partition_sizes.size() - 1; i++) {
+      partition_node_idx += nnapi_partition_sizes[i] + 1;
+      unsupported_ops_idxs.insert(partition_node_idx);
+    }
+
+    if (specify_accelerator) {
+      // Building a model that will contain initially a single partition
+      // and will get then partitioned by checking the operations supported
+      // by the target accelerator.
+      // This because I am not able to know the size of each partition in my
+      // stubbed GetSupportedOperationsForDevices API.
+      DelegatePartitionLimitTestNodeFilter()->ConfigureSupportedNodes(
+          graph_size_, unsupported_ops_idxs);
+
+      nnapi_mock_->StubGetSupportedOperationsForDevicesWith(
+          [](const ANeuralNetworksModel* model,
+             const ANeuralNetworksDevice* const* devices, uint32_t num_devices,
+             bool* supported_ops) -> int {
+            DelegatePartitionLimitTestNodeFilter()->SetNodeSupport(
+                supported_ops);
+            return ANEURALNETWORKS_NO_ERROR;
+          });
+
+      model_ = std::make_unique<LongIdentityModel>(
+          input_shape, graph_size_,
+          /*custom_nodes_indexes=*/std::unordered_set<int>(),
+          nnapi_mock_->GetNnApi(),
+          /*accelerator_name=*/"test-device", max_nnapi_partitions);
+    } else {
+      // Building a model containing custom nodes that won't be supported
+      // by the delegate and generate the partitions.
+      model_ = std::make_unique<LongIdentityModel>(
+          input_shape, graph_size_, unsupported_ops_idxs,
+          nnapi_mock_->GetNnApi(), max_nnapi_partitions);
+    }
+  }
+
+  std::unique_ptr<LongIdentityModel> model_;
+
+  int OriginalGraphSize() { return graph_size_; }
+
+ private:
+  int graph_size_;
+};
+
+TEST_F(DelegatePartitionLimitTest, ShouldDelegateOnePartitionOnly) {
+  Init(/*max_nnapi_partitions=*/1,
+       /*nnapi_partition_sizes=*/{3, 2},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 1);
+}
+
+TEST_F(DelegatePartitionLimitTest,
+       ShouldDelegateAllPossiblePartitionsIfLimitIsZero) {
+  Init(/*max_nnapi_partitions=*/0,
+       /*nnapi_partition_sizes=*/{3, 2},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 2);
+}
+
+TEST_F(DelegatePartitionLimitTest,
+       ShouldDelegateAllPossiblePartitionsIfLimitIsNegative) {
+  Init(/*max_nnapi_partitions=*/0,
+       /*nnapi_partition_sizes=*/{3, 2},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 2);
+}
+
+TEST_F(DelegatePartitionLimitTest,
+       ShouldDelegateAllPossiblePartitionsIfBelowLimit) {
+  Init(/*max_nnapi_partitions=*/3,
+       /*nnapi_partition_sizes=*/{3, 2},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 2);
+}
+
+TEST_F(DelegatePartitionLimitTest, ShouldDelegatePartitionWithHigherNodeCount) {
+  int kLargestModelSize = 3;
+  Init(/*max_nnapi_partitions=*/1,
+       /*nnapi_partition_sizes=*/{3, 2},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 1);
+  EXPECT_EQ(model_->CountOpsExecutedByCpuKernel(),
+            OriginalGraphSize() - kLargestModelSize);
+}
+
+TEST_F(DelegatePartitionLimitTest,
+       ShouldDelegatePartitionsWithHigherNodeCount) {
+  int kLargestModelSize = 5;
+  int kSecondLargestModelSize = 4;
+  Init(/*max_nnapi_partitions=*/2,
+       /*nnapi_partition_sizes=*/
+       {1, kLargestModelSize, 2, kSecondLargestModelSize},
+       /*input_shape=*/{1, 2, 2, 1});
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 2);
+  EXPECT_EQ(model_->CountOpsExecutedByCpuKernel(), OriginalGraphSize() - 9);
+}
+
+TEST_F(DelegatePartitionLimitTest,
+       ShouldLimitPartitionsEvenWithoutAcceleratorNameSpecified) {
+  int kLargestModelSize = 5;
+  int kSecondLargestModelSize = 4;
+  Init(/*max_nnapi_partitions=*/2,
+       /*nnapi_partition_sizes=*/
+       {1, kLargestModelSize, 2, kSecondLargestModelSize},
+       /*input_shape=*/{1, 2, 2, 1}, /*specify_accelerator=*/false);
+
+  EXPECT_EQ(model_->CountNnApiPartitions(), 2);
+  EXPECT_EQ(
+      model_->CountOpsExecutedByCpuKernel(),
+      OriginalGraphSize() - (kLargestModelSize + kSecondLargestModelSize));
 }
 
 }  // namespace

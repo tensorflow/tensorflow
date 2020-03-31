@@ -278,8 +278,12 @@ Status IrEmitter::HandleConstant(HloInstruction* constant) {
 }
 
 Status IrEmitter::HandleCopy(HloInstruction* copy) {
-  if (copy->shape().IsTuple()) {
-    // kCopy shallow copies a tuple so just memcpy the top-level buffer.
+  if (copy->shape().IsTuple() ||
+      (copy->shape().IsArray() &&
+       LayoutUtil::Equal(copy->operand(0)->shape().layout(),
+                         copy->shape().layout()))) {
+    // If the layouts are equal this is just a memcpy. kCopy shallow copies a
+    // tuple so just memcpy the top-level buffer for tuples.
     TF_RETURN_IF_ERROR(EmitTargetAddressForOp(copy));
     return EmitMemcpy(*(copy->operand(0)), *copy);
   } else if (copy->shape().IsArray()) {
@@ -1412,6 +1416,7 @@ Status IrEmitter::HandleAllReduceMultipleReplica(HloInstruction* crs) {
   bool is_datatype_supported = [&] {
     // TODO(cheshire): Fix duplication wrt. cpu_runtime
     switch (datatype) {
+      case PRED:
       case S8:
       case U8:
       case S32:

@@ -119,12 +119,12 @@ std::string GetFullyConnectedCode(bool shared_memory, int src_channels,
 
 std::vector<ComputeTaskDescriptorPtr> FullyConnected(
     int id, ValueId input_id, ValueId output_id,
-    const FullyConnectedAttributes& attr, const RuntimeOptions& options) {
+    const FullyConnectedAttributes& attr, const DeviceInfo& device_info,
+    const RuntimeOptions& options) {
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
   desc->is_linkable = false;
-  auto gpu_type = GetGpuType();
-  bool shared = gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8;
+  bool shared = device_info.apple_info.IsLocalMemoryPreferredOverGlobal();
   desc->shader_source =
       GetFullyConnectedCode(shared, attr.weights.shape.i, attr.weights.shape.o);
 

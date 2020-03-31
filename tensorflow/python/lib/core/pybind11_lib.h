@@ -45,7 +45,7 @@ inline py::object pyo(PyObject* ptr) {
   return py::reinterpret_steal<py::object>(ptr);
 }
 
-// Raise an exception if the PyErrOcurred flag is set or else return the Python
+// Raise an exception if the PyErrOccurred flag is set or else return the Python
 // object.
 
 inline py::object pyo_or_throw(PyObject* ptr) {

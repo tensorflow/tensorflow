@@ -118,7 +118,8 @@ class TrainingCheckpointTests(test.TestCase, parameterized.TestCase):
             loss = v + v
           gradients = tape.gradient(loss, [v])
           opt.apply_gradients(zip(gradients, [v]))
-        distribution.experimental_run_v2(f)
+
+        distribution.run(f)
 
       return v, opt, step
 

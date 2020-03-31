@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=1.2.1
+LATEST_BAZEL_VERSION=2.0.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -67,7 +67,7 @@ function install_bazelisk {
   esac
   mkdir -p "$HOME/bin"
   wget --no-verbose -O "$HOME/bin/bazel" \
-      "https://github.com/bazelbuild/bazelisk/releases/download/v1.2.1/$name"
+      "https://github.com/bazelbuild/bazelisk/releases/download/v1.3.0/$name"
   chmod u+x "$HOME/bin/bazel"
   if [[ ! ":$PATH:" =~ :"$HOME"/bin/?: ]]; then
     PATH="$HOME/bin:$PATH"
@@ -103,25 +103,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# Install the given bazel version on macos
-function update_bazel_macos {
-  if [[ -z "$1" ]]; then
-    BAZEL_VERSION=${LATEST_BAZEL_VERSION}
-  else
-    BAZEL_VERSION=$1
-  fi
-  BAZEL_COMMAND="curl -L https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh -O && \
-  chmod +x bazel-*.sh && ./bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh --user && \
-  rm -f bazel-${BAZEL_VERSION}-installer-darwin-x86_64.sh"
-  # If the bazel update fails retry again in 60 seconds.
-  run_with_retry "${BAZEL_COMMAND}"
-  # Add new bazel installation to path
-  PATH="/Users/kbuilder/bin:$PATH"
-  set_bazel_outdir
-  which bazel
-  bazel version
-}
-
 function install_pip2 {
   curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
   sudo python2 get-pip.py
@@ -152,6 +133,8 @@ function install_pip_deps {
   # TODO(aselle): Change all these to be --user instead of sudo.
   ${SUDO_CMD} ${PIP_CMD} install astunparse==1.6.3
   ${SUDO_CMD} ${PIP_CMD} install keras_preprocessing==1.1.0 --no-deps
+  "${PIP_CMD}" install numpy==1.16.0 --user
+  "${PIP_CMD}" install PyYAML==3.13 --user
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
@@ -183,7 +166,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
-  "${PIP_CMD}" install numpy==1.14.5 --user
+  "${PIP_CMD}" install numpy==1.16.0 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
   "${PIP_CMD}" install gast==0.3.3 --user
   "${PIP_CMD}" install h5py==2.10.0 --user
@@ -192,6 +175,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install portpicker --user
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
+  "${PIP_CMD}" install PyYAML==3.13 --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
   # LINT.ThenChange(:ubuntu_pip_installations)
@@ -228,7 +212,7 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install --upgrade mock portpicker scipy grpcio
   ${SUDO_CMD} ${PIP_CMD} install six==1.12.0
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn
-  ${SUDO_CMD} ${PIP_CMD} install numpy==1.14.5
+  ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
@@ -272,7 +256,7 @@ function copy_to_new_project_name {
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
-  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
+  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data" || echo
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME}/${NEW_PROJECT_NAME}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/RECORD"
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"

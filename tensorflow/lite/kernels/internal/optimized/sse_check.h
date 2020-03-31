@@ -22,7 +22,7 @@ limitations under the License.
 #else
 
 // No SSSE 3 available: Use Portable code
-#define SSE_OR_PORTABLE(...) Portable##funcname(__VA_ARGS__)
+#define SSE_OR_PORTABLE(funcname, ...) Portable##funcname(__VA_ARGS__)
 #endif
 
 #endif  // TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_SSE_CHECK_H_

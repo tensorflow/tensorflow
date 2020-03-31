@@ -418,7 +418,7 @@ class IfStatementTest(ControlFlowTestBase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(1), -1)
 
-  def test_semi(self):
+  def test_unbalanced(self):
 
     def test_fn(n):
       if n > 0:
@@ -427,6 +427,20 @@ class IfStatementTest(ControlFlowTestBase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(2), 3)
     self.assertTransformedResult(test_fn, constant_op.constant(-3), -3)
+
+  def test_unbalanced_raising(self):
+
+    def test_fn(n):
+      if n > 0:
+        n = n + 1
+        raise ValueError()
+      return n
+
+    self.assertTransformedResult(test_fn, -3, -3)
+
+    with self.converted(test_fn, control_flow, {}) as result:
+      with self.assertRaises(ValueError):
+        result.test_fn(1)
 
   def test_local_var(self):
 

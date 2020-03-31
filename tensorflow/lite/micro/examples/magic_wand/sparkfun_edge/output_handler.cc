@@ -36,7 +36,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
 
   // Set the LED color and print a symbol (red: wing, blue: ring, green: slope)
   if (kind == 0) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "WING:\n\r*         *         *\n\r *       * *       "
         "*\n\r  *     *   *     *\n\r   *   *     *   *\n\r    * *       "
         "* *\n\r     *         *\n\r");
@@ -44,7 +45,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_BLUE);
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   } else if (kind == 1) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "RING:\n\r          *\n\r       *     *\n\r     *         *\n\r "
         "   *           *\n\r     *         *\n\r       *     *\n\r      "
         "    *\n\r");
@@ -52,7 +54,8 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, int kind) {
     am_devices_led_on(am_bsp_psLEDs, AM_BSP_LED_BLUE);
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_GREEN);
   } else if (kind == 2) {
-    error_reporter->Report(
+    TF_LITE_REPORT_ERROR(
+        error_reporter,
         "SLOPE:\n\r        *\n\r       *\n\r      *\n\r     *\n\r    "
         "*\n\r   *\n\r  *\n\r * * * * * * * *\n\r");
     am_devices_led_off(am_bsp_psLEDs, AM_BSP_LED_RED);

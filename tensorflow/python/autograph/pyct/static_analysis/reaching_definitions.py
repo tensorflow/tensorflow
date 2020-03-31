@@ -234,7 +234,7 @@ class TreeAnnotator(transformer.Base):
     # Recursively process any remaining subfunctions.
     self.current_analyzer = analyzer
     # Note: not visiting name, decorator_list and returns because they don't
-    # apply to this anlysis.
+    # apply to this analysis.
     # TODO(mdan): Should we still process the function name?
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)

@@ -49,6 +49,7 @@ limitations under the License.
 #endif
 
 #if defined(PLATFORM_WINDOWS)
+#include <io.h>
 #define isatty _isatty
 #endif
 

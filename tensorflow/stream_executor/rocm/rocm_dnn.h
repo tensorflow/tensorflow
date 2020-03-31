@@ -20,9 +20,9 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DNN_H_
 
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/temporary_device_memory.h"
 
@@ -228,9 +228,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationForward(
       Stream* stream, const DeviceMemory<Eigen::half>& x,
@@ -244,9 +242,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       DeviceMemory<float>* batch_mean, DeviceMemory<float>* batch_var,
       DeviceMemory<float>* saved_mean, DeviceMemory<float>* saved_inv_var,
       bool is_training, ScratchAllocator* reserve_space_allocator,
-      ScratchAllocator* workspace_allocator,
-      std::function<const DeviceMemory<float>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var) override;
+      ScratchAllocator* workspace_allocator) override;
 
   bool DoBatchNormalizationBackward(
       Stream* stream, const DeviceMemory<float>& y_backprop,
@@ -670,8 +666,7 @@ class MIOpenSupport : public dnn::DnnSupport {
       dnn::ActivationMode activation_mode, DeviceMemory<T>* y,
       DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
       DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
-      bool is_training, std::function<const DeviceMemory<U>&()> var_to_inv_var,
-      std::function<void()> inv_var_to_var);
+      bool is_training);
 
   template <class T, class U>
   bool DoBatchNormalizationBackwardImpl(

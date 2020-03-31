@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Bechmarks for `tf.data.Dataset.map()`."""
+"""Benchmarks for `tf.data.Dataset.map()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function

@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip_longest
 
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import combinations
@@ -728,6 +729,40 @@ class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
         pass
       results.append(elements)
     self.assertAllEqual(results[0], results[1])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              sloppy=[None, True, False], global_determinism=[True, False])))
+  def testDeterminismConfiguration(self, sloppy, global_determinism):
+    if sloppy is None:
+      expect_determinism = global_determinism
+    else:
+      expect_determinism = not sloppy
+    elements = list(range(1000))
+
+    def dataset_fn(delay_ms):
+
+      def interleave_fn(x):
+        ds = dataset_ops.Dataset.from_tensors(x)
+        if math_ops.equal(x, 0):
+          ds = ds.apply(testing.sleep(delay_ms * 1000))
+        else:
+          ds = ds.apply(testing.sleep(0))
+        return ds
+
+      dataset = dataset_ops.Dataset.from_tensor_slices(elements)
+      dataset = dataset.apply(
+          interleave_ops.parallel_interleave(
+              interleave_fn, cycle_length=10, sloppy=sloppy))
+
+      opts = dataset_ops.Options()
+      opts.experimental_deterministic = global_determinism
+      dataset = dataset.with_options(opts)
+      return dataset
+
+    self.checkDeterminism(dataset_fn, expect_determinism, elements)
 
 
 if __name__ == "__main__":

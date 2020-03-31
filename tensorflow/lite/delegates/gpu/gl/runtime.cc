@@ -41,13 +41,13 @@ namespace gl {
 namespace {
 
 struct TextureF16Maker {
-  Status operator()(const uint3& size) const {
+  absl::Status operator()(const uint3& size) const {
     return CreateReadOnlyImageTextureF16(size, data, gl_texture);
   }
-  Status operator()(const uint2& size) const {
+  absl::Status operator()(const uint2& size) const {
     return CreateReadOnlyImageTextureF16(size, data, gl_texture);
   }
-  Status operator()(const size_t& size) const {
+  absl::Status operator()(const size_t& size) const {
     return CreateReadOnlyImageTextureF16(uint2(static_cast<uint32_t>(size), 1U),
                                          data, gl_texture);
   }
@@ -56,13 +56,13 @@ struct TextureF16Maker {
 };
 
 struct TextureF32Maker {
-  Status operator()(const uint3& size) const {
+  absl::Status operator()(const uint3& size) const {
     return CreateReadOnlyImageTexture(size, data, gl_texture);
   }
-  Status operator()(const uint2& size) const {
+  absl::Status operator()(const uint2& size) const {
     return CreateReadOnlyImageTexture(size, data, gl_texture);
   }
-  Status operator()(const size_t& size) const {
+  absl::Status operator()(const size_t& size) const {
     return CreateReadOnlyImageTexture(uint2(static_cast<uint32_t>(size), 1U),
                                       data, gl_texture);
   }
@@ -70,20 +70,21 @@ struct TextureF32Maker {
   GlTexture* gl_texture;
 };
 
-Status MakeGlTexture(const Object& object, const ObjectData& data,
-                     GlTexture* gl_texture) {
+absl::Status MakeGlTexture(const Object& object, const ObjectData& data,
+                           GlTexture* gl_texture) {
   if (object.access == AccessType::READ_WRITE ||
       object.access == AccessType::WRITE) {
-    return InvalidArgumentError("Read-write textures are not supported");
+    return absl::InvalidArgumentError("Read-write textures are not supported");
   }
   if (object.data_type != DataType::FLOAT16 &&
       object.data_type != DataType::FLOAT32) {
-    return InvalidArgumentError("Textures support float16 or float32 only.");
+    return absl::InvalidArgumentError(
+        "Textures support float16 or float32 only.");
   }
   switch (object.data_type) {
     case DataType::FLOAT16: {
       if (data.size() % 2 != 0) {
-        return InvalidArgumentError("Texture size is not aligned");
+        return absl::InvalidArgumentError("Texture size is not aligned");
       }
       return absl::visit(
           TextureF16Maker{
@@ -96,7 +97,7 @@ Status MakeGlTexture(const Object& object, const ObjectData& data,
     }
     case DataType::FLOAT32: {
       if (data.size() % sizeof(float) != 0) {
-        return InvalidArgumentError("Texture size is not aligned");
+        return absl::InvalidArgumentError("Texture size is not aligned");
       }
       return absl::visit(
           TextureF32Maker{
@@ -108,18 +109,18 @@ Status MakeGlTexture(const Object& object, const ObjectData& data,
           object.size);
     }
     default:
-      return InvalidArgumentError("Unsupported textures data type.");
+      return absl::InvalidArgumentError("Unsupported textures data type.");
   }
 }
 
 struct TextureRefMaker {
-  Status operator()(const uint3& size) const {
+  absl::Status operator()(const uint3& size) const {
     return CreateReadWriteRgbaImageTexture(type, size, gl_texture);
   }
-  Status operator()(const uint2& size) const {
+  absl::Status operator()(const uint2& size) const {
     return CreateReadWriteRgbaImageTexture(type, size, gl_texture);
   }
-  Status operator()(const size_t& size) const {
+  absl::Status operator()(const size_t& size) const {
     return CreateReadWriteRgbaImageTexture(
         type, uint2(static_cast<uint32_t>(size), 1U), gl_texture);
   }
@@ -128,37 +129,38 @@ struct TextureRefMaker {
 };
 
 // Makes read-write gl texture
-Status MakeGlTextureRef(const Object& object, GlTexture* gl_texture) {
+absl::Status MakeGlTextureRef(const Object& object, GlTexture* gl_texture) {
   return absl::visit(TextureRefMaker{object.data_type, gl_texture},
                      object.size);
 }
 
-Status MakeGlBuffer(const Object& object, const ObjectData& data,
-                    GlBuffer* gl_buffer) {
+absl::Status MakeGlBuffer(const Object& object, const ObjectData& data,
+                          GlBuffer* gl_buffer) {
   if (data.size() % SizeOf(object.data_type) != 0) {
-    return InvalidArgumentError("Buffer size is not aligned");
+    return absl::InvalidArgumentError("Buffer size is not aligned");
   }
   return CreateReadOnlyShaderStorageBuffer(absl::MakeConstSpan(data),
                                            gl_buffer);
 }
 
 // Looks up an object with the given id. If found, makes a binding function.
-Status MakeBindingFunc(const Object& object, uint32_t id,
-                       const ObjectManager& objects,
-                       std::function<Status()>* binding_func) {
+absl::Status MakeBindingFunc(const Object& object, uint32_t id,
+                             const ObjectManager& objects,
+                             std::function<absl::Status()>* binding_func) {
   const uint32_t binding = object.binding;
   switch (object.object_type) {
     case ObjectType::BUFFER: {
       auto ptr = objects.FindBuffer(id);
       if (!ptr) {
-        return NotFoundError(absl::StrCat("Buffer ", id, " is not found"));
+        return absl::NotFoundError(
+            absl::StrCat("Buffer ", id, " is not found"));
       }
 
       // Validate buffer.
       size_t size_in_bytes = ByteSizeOf(object);
       // TODO(akulik): make comparison != instead of <
       if (ptr->bytes_size() < size_in_bytes) {
-        return FailedPreconditionError(
+        return absl::FailedPreconditionError(
             absl::StrCat("Buffer ", id, " size in bytes ", ptr->bytes_size(),
                          " < requested size_in_bytes ", size_in_bytes));
       }
@@ -168,15 +170,16 @@ Status MakeBindingFunc(const Object& object, uint32_t id,
     case ObjectType::TEXTURE: {
       auto ptr = objects.FindTexture(id);
       if (!ptr) {
-        return NotFoundError(absl::StrCat("Texture ", id, " is not found"));
+        return absl::NotFoundError(
+            absl::StrCat("Texture ", id, " is not found"));
       }
       *binding_func = [=]() { return ptr->BindAsReadWriteImage(binding); };
       break;
     }
     case ObjectType::UNKNOWN:
-      return InvalidArgumentError("Unknown object type");
+      return absl::InvalidArgumentError("Unknown object type");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -194,10 +197,10 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
   }
 }
 
-Status Runtime::AddProgram(const GlShader& shader,
-                           const std::vector<Variable>& parameters,
-                           const std::vector<Object>& objects,
-                           const uint3& num_workgroups) {
+absl::Status Runtime::AddProgram(const GlShader& shader,
+                                 const std::vector<Variable>& parameters,
+                                 const std::vector<Object>& objects,
+                                 const uint3& num_workgroups) {
   GlProgram program;
   RETURN_IF_ERROR(GlProgram::CreateWithShader(shader, &program));
 
@@ -217,10 +220,10 @@ Status Runtime::AddProgram(const GlShader& shader,
       // Reference object could be provided externally as a model input/output
       // but also for debugging purposes. Otherwise all references are collected
       // and allocated later.
-      Status status = MakeBindingFunc(object, GetRef(object),
-                                      *external_objects_, &binding_func);
+      absl::Status status = MakeBindingFunc(object, GetRef(object),
+                                            *external_objects_, &binding_func);
       if (!status.ok()) {
-        if (status.code() == StatusCode::kNotFound) {
+        if (absl::IsNotFound(status)) {
           program.refs.push_back(object);
           continue;  // don't add to binding.
         }
@@ -238,10 +241,10 @@ Status Runtime::AddProgram(const GlShader& shader,
 
   // All parameters once set stay with program, therefore, we only need to keep
   // program and bindings for execution.
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Runtime::AllocateInternalObject(const Object& object) {
+absl::Status Runtime::AllocateInternalObject(const Object& object) {
   const ObjectRef ref = GetRef(object);
   switch (object.object_type) {
     case ObjectType::BUFFER: {
@@ -260,15 +263,16 @@ Status Runtime::AllocateInternalObject(const Object& object) {
       break;
     }
     default:
-      return InternalError("Unexpected internal object type");
+      return absl::InternalError("Unexpected internal object type");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Runtime::AllocateConstObject(const Object& object, uint32_t* id) {
+absl::Status Runtime::AllocateConstObject(const Object& object, uint32_t* id) {
   const ObjectData* data = GetData(object);
   if (data == nullptr) {
-    return InternalError("Unable to allocate reference as a const object");
+    return absl::InternalError(
+        "Unable to allocate reference as a const object");
   }
   *id = next_const_id_++;
   switch (object.object_type) {
@@ -289,12 +293,12 @@ Status Runtime::AllocateConstObject(const Object& object, uint32_t* id) {
       break;
     }
     case ObjectType::UNKNOWN:
-      return InternalError("Unknown object type");
+      return absl::InternalError("Unknown object type");
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Runtime::PrepareForExecution() {
+absl::Status Runtime::PrepareForExecution() {
   if (shared_readonly_buffer_ && !shared_readonly_buffer_->empty()) {
     GlBuffer shared_buffer;
     RETURN_IF_ERROR(
@@ -320,11 +324,10 @@ Status Runtime::PrepareForExecution() {
       // Check whether it is created already.
       BindFunc binding;
       ObjectRef ref = GetRef(object);
-      Status status = MakeBindingFunc(object, ref, internal_objects_, &binding);
+      absl::Status status =
+          MakeBindingFunc(object, ref, internal_objects_, &binding);
       if (!status.ok()) {
-        if (status.code() != StatusCode::kNotFound) {
-          return status;
-        }
+        if (absl::IsNotFound(status)) return status;
         RETURN_IF_ERROR(AllocateInternalObject(object));
         RETURN_IF_ERROR(
             MakeBindingFunc(object, ref, internal_objects_, &binding));
@@ -333,7 +336,7 @@ Status Runtime::PrepareForExecution() {
     }
     program.refs.clear();
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 namespace {
@@ -399,8 +402,8 @@ struct AddUsageRecordForTextureFunc {
 
 // We assume that AddUsageRecord for different objects is called in order of
 // program_id.
-Status AddUsageRecord(CombinedUsageRecords* usage_records, const Object& object,
-                      const size_t program_id) {
+absl::Status AddUsageRecord(CombinedUsageRecords* usage_records,
+                            const Object& object, const size_t program_id) {
   auto ref = GetRef(object);
   if (ref >= usage_records->usage_refs.size()) {
     usage_records->usage_refs.resize(ref + 1, kNotAssigned);
@@ -416,17 +419,17 @@ Status AddUsageRecord(CombinedUsageRecords* usage_records, const Object& object,
     } else {
       UpdateUsageRecord(&usage_records->buffers[usage_ref], program_id);
     }
-    return OkStatus();
+    return absl::OkStatus();
   }
   if (object.object_type == ObjectType::TEXTURE) {
     absl::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
                 object.size);
-    return OkStatus();
+    return absl::OkStatus();
   }
-  return InternalError("Unexpected object type");
+  return absl::InternalError("Unexpected object type");
 }
 
-Status ApplyBuffersAssignment(
+absl::Status ApplyBuffersAssignment(
     const ObjectsAssignment<size_t>& assignment,
     const std::vector<size_t>& global_ref_to_usage_rec,
     const std::vector<Object*>& global_ref_to_object_ptr,
@@ -462,11 +465,11 @@ Status ApplyBuffersAssignment(
     }
     (*global_ref_to_shared_ref)[global_ref] = shared_ref;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 template <typename ObjectSizeT>
-Status ApplyTexturesAssignment(
+absl::Status ApplyTexturesAssignment(
     const ObjectsAssignment<ObjectSizeT>& assignment,
     const std::vector<size_t>& global_ref_to_usage_rec,
     const std::vector<Object*>& global_ref_to_object_ptr,
@@ -504,7 +507,7 @@ Status ApplyTexturesAssignment(
     }
     (*global_ref_to_shared_ref)[global_ref] = shared_ref;
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -512,7 +515,8 @@ Status ApplyTexturesAssignment(
 // Assign shared objects to internal objects, using memory allocation
 // algorithms. Usage records for the algorithms are calculated separately for
 // each data type and object type.
-Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
+absl::Status Runtime::AssignInternalObjects(
+    std::vector<Object>* shared_objects) {
   // Build tensor usage records, clusterized by object type and data type.
   std::map<DataType, CombinedUsageRecords> usage_records_by_data_type;
   std::vector<Object*> global_ref_to_object_ptr;
@@ -579,10 +583,10 @@ Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
       object.object = global_ref_to_shared_ref[GetRef(object)];
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Runtime::Execute() {
+absl::Status Runtime::Execute() {
   for (const auto& descriptor : programs_) {
     for (auto& b : descriptor.bindings) {
       RETURN_IF_ERROR(b());
@@ -590,7 +594,7 @@ Status Runtime::Execute() {
     RETURN_IF_ERROR(command_queue_->Dispatch(descriptor.program,
                                              descriptor.num_workgroups));
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

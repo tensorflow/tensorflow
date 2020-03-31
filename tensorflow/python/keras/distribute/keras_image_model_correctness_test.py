@@ -21,9 +21,9 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.platform import test
 
 
 class DistributionStrategyCnnCorrectnessTest(
@@ -32,7 +32,6 @@ class DistributionStrategyCnnCorrectnessTest(
   def get_model(self,
                 initial_weights=None,
                 distribution=None,
-                experimental_run_tf_function=None,
                 input_shapes=None):
     del input_shapes
     with keras_correctness_test_base.MaybeDistributionScope(distribution):
@@ -60,8 +59,7 @@ class DistributionStrategyCnnCorrectnessTest(
       model.compile(
           optimizer=gradient_descent.SGD(learning_rate=0.1),
           loss='sparse_categorical_crossentropy',
-          metrics=['sparse_categorical_accuracy'],
-          experimental_run_tf_function=experimental_run_tf_function)
+          metrics=['sparse_categorical_accuracy'])
 
     return model
 
@@ -95,38 +93,32 @@ class DistributionStrategyCnnCorrectnessTest(
 
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
-  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data,
-                           experimental_run_tf_function):
-    self.run_correctness_test(distribution, use_numpy, use_validation_data,
-                              experimental_run_tf_function)
+  def test_cnn_correctness(self, distribution, use_numpy, use_validation_data):
+    self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_batch_norm_correctness(self, distribution, use_numpy,
-                                           use_validation_data,
-                                           experimental_run_tf_function):
+                                           use_validation_data):
     self.skipTest('Flakily times out, b/134670856')
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm='regular',
-        experimental_run_tf_function=experimental_run_tf_function)
+        with_batch_norm='regular')
 
   @combinations.generate(
       keras_correctness_test_base.all_strategy_and_input_config_combinations())
   def test_cnn_with_sync_batch_norm_correctness(self, distribution, use_numpy,
-                                                use_validation_data,
-                                                experimental_run_tf_function):
-    if not context.executing_eagerly() or not experimental_run_tf_function:
+                                                use_validation_data):
+    if not context.executing_eagerly():
       self.skipTest('SyncBatchNorm is not enabled in graph mode.')
 
     self.run_correctness_test(
         distribution,
         use_numpy,
         use_validation_data,
-        with_batch_norm='sync',
-        experimental_run_tf_function=experimental_run_tf_function)
+        with_batch_norm='sync')
 
   @combinations.generate(
       keras_correctness_test_base.test_combinations_with_tpu_strategies() +

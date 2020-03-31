@@ -202,6 +202,27 @@ string GetModelHash(const Model& model) {
   return "";
 }
 
+// This function scans through the error message string, extracts the part about
+// missing ops and prunes away all other information in the error info.
+string SanitizeErrorMessage(const string& error_message) {
+  const string s1 = "Ops that can be supported by the flex runtime";
+  const string s2 = "Ops that need custom implementation";
+  string pruned_message;
+  size_t pos = error_message.find(s1);
+  if (pos != string::npos) {
+    // Find the terminate point for flex op list.
+    auto end = error_message.find(".", pos);
+    pruned_message.append(error_message.substr(pos, end - pos + 1));
+  }
+  pos = error_message.find(s2);
+  if (pos != string::npos) {
+    // Find the terminate point for custom op list.
+    auto end = error_message.find(".", pos);
+    pruned_message.append(error_message.substr(pos, end - pos + 1));
+  }
+  return pruned_message;
+}
+
 void PopulateConversionLog(const Model& model, TocoConversionLog* log) {
   // Get the list of ops after conversion.
   const std::vector<string> op_names = GetOperatorNames(model);

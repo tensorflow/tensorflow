@@ -24,14 +24,17 @@ import operator
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_preprocessing_layer import Combiner
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
 
 # The string tokens in the extracted vocabulary
@@ -43,7 +46,7 @@ _ACCUMULATOR_VOCAB_NAME = "vocab"
 _ACCUMULATOR_COUNTS_NAME = "counts"
 
 
-class IndexLookup(CombinerPreprocessingLayer):
+class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Maps strings (or integers) from a vocabulary to integer indices.
 
   This layer translates a set of arbitray strings or integers into an integer
@@ -64,8 +67,17 @@ class IndexLookup(CombinerPreprocessingLayer):
       vocabulary is `(max_tokens - num_oov_tokens)` when this value is set.
     num_oov_tokens: The number of out-of-vocabulary tokens to use; defaults to
       1. If this value is more than 1, OOV inputs are hashed to determine their
-      OOV value; if this value is 0, passing an OOV input will result in a
-      runtime error.
+      OOV value; if this value is 0, passing an OOV input will result in a '-1'
+      being returned for that value in the output tensor. (Note that, because
+      the value is -1 and not 0, this will allow you to effectively drop OOV
+      values from categorical encodings.)
+    vocabulary: An optional list of vocabulary terms, or a path to a text file
+      containing a vocabulary to load into this layer. The file should contain
+      one token per line. In either case, the vocabulary must be unique; if
+      the list or file contains the same token multiple times, an error will
+      be thrown. Note that when passing a vocabulary - either as a list or as
+      a file - the vocabulary will not be present in the layer's config dict;
+      it will instead be a part of the layer's weights.
     reserve_zero: Whether to reserve the index 0, which indicates pad values in
       the Keras masking system. If True, the output of this layer will be in the
       range `[1...max_tokens+1)`; if False, the output will be in the range
@@ -73,12 +85,19 @@ class IndexLookup(CombinerPreprocessingLayer):
     mask_zero: If True, input values of 0 (for integers) and `""` (for strings)
       will be treated as masked values and assigned an output value of 0. If
       this option is set, `reserve_zero` must also be set. Defaults to False.
+
+  Call arguments:
+    inputs: The data to look up. Can be a tf.Tensor or RaggedTensor.
+    invert: Controls the lookup direction. If False, the layer will map strings
+      to integers; if true, the layer will map integers to strings. Defaults
+      to False.
   """
   # TODO(momernick): Add an examples section to the docstring.
 
   def __init__(self,
-               max_tokens,
+               max_tokens=None,
                num_oov_tokens=1,
+               vocabulary=None,
                reserve_zero=True,
                mask_zero=False,
                **kwargs):
@@ -95,10 +114,9 @@ class IndexLookup(CombinerPreprocessingLayer):
       raise ValueError("max_tokens must be greater than 1.")
 
     # For now, limit the num_oov_tokens to one.
-    if num_oov_tokens != 1:
-      raise ValueError("num_oov_tokens must be 1 for the time being. Other "
-                       "values will be supported in the near future. "
-                       "You passed %s" % num_oov_tokens)
+    if num_oov_tokens < 0:
+      raise ValueError("num_oov_tokens must be greater than 0. You passed %s" %
+                       num_oov_tokens)
 
     self.max_tokens = max_tokens
     self.num_oov_tokens = num_oov_tokens
@@ -141,28 +159,53 @@ class IndexLookup(CombinerPreprocessingLayer):
       self._output_dtype = dtypes.int32
     else:
       self._output_dtype = dtypes.int64
-
     self._table = lookup_ops.MutableHashTable(
         key_dtype=self.dtype,
         value_dtype=self._output_dtype,
         default_value=self._oov_value,
         name=(self._name + "_index_table"))
-
-    # This is a workaround for saving not working yet for MutableHashTables.
-    # By replacing the existing function call by an explicit failure, we
-    # can provide a more user-friendly error message.
-    def fail(_):
-      raise NotImplementedError(
-          "Saving is not yet supported for IndexLookup layers.")
-
-    self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
-
     tracked_table = self._add_trackable(self._table, trainable=False)
     # This is a workaround for summary() on this layer. Because the table is
     # not mutable during training, the effective number of parameters (and so
     # the weight shape) is 0; we add this as an attr so that the parameter
     # counting code in the Model object doesn't throw an attribute error.
     tracked_table.shape = tensor_shape.TensorShape((0,))
+
+    self._inverse_table = None
+
+    if vocabulary is not None:
+      if isinstance(vocabulary, str):
+        vocabulary = self._get_vocabulary_from_file(vocabulary)
+
+      vocabulary_set = set(vocabulary)
+      if len(vocabulary) != len(vocabulary_set):
+        repeated_items = [
+            item for item, count in collections.Counter(vocabulary).items()
+            if count > 1
+        ]
+        raise ValueError("The passed vocabulary has at least one repeated "
+                         "term. Please uniquify your dataset before passing "
+                         "it to IndexLookup(). The repeated terms are %s" %
+                         repeated_items)
+      self.set_vocabulary(vocabulary)
+
+  def _get_vocabulary_from_file(self, vocabulary_path):
+    vocab = []
+    with gfile.GFile(vocabulary_path, "r") as reader:
+      while True:
+        # Get the next line, and break if it is None.
+        text = reader.readline()
+        if not text:
+          break
+
+        # Convert the raw text into UTF8 and strip whitespace.
+        if isinstance(text, str):
+          token = text
+        elif isinstance(text, bytes):
+          token = text.decode("utf-8", "ignore")
+        token = token.strip()
+        vocab.append(token)
+    return vocab
 
   def _get_table_data(self):
     keys, values = self._table.export()
@@ -174,6 +217,9 @@ class IndexLookup(CombinerPreprocessingLayer):
   def _clear_table(self):
     keys, _ = self._table.export()
     self._table.remove(keys)
+    if self._inverse_table:
+      keys, _ = self._inverse_table.export()
+      self._inverse_table.remove(keys)
 
   def _insert_table_data(self, keys, values):
     if len(values) != len(keys):
@@ -181,6 +227,12 @@ class IndexLookup(CombinerPreprocessingLayer):
                          "Keys had size %s, values had size %s." %
                          (len(keys), len(values)))
     self._table.insert(keys, values)
+    if self._inverse_table:
+      self._inverse_table.insert(values, keys)
+
+  def _initialize_inverse_table(self):
+    keys, values = self._table.export()
+    self._inverse_table.insert(values, keys)
 
   def _to_numpy(self, preprocessed_data):
     """Converts preprocessed inputs into numpy arrays."""
@@ -207,9 +259,12 @@ class IndexLookup(CombinerPreprocessingLayer):
   def compute_output_shape(self, input_shape):
     return input_shape
 
-  def compute_output_signature(self, input_spec):
+  def compute_output_signature(self, input_spec, invert=False):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
-    output_dtype = dtypes.int64
+    if invert:
+      output_dtype = dtypes.string
+    else:
+      output_dtype = dtypes.int64
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def adapt(self, data, reset_state=True):
@@ -242,8 +297,9 @@ class IndexLookup(CombinerPreprocessingLayer):
     config = {
         "max_tokens": self.max_tokens,
         "num_oov_tokens": self.num_oov_tokens,
+        "vocabulary": None,
         "reserve_zero": self.reserve_zero,
-        "mask_zero": self.mask_zero
+        "mask_zero": self.mask_zero,
     }
     base_config = super(IndexLookup, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
@@ -285,7 +341,6 @@ class IndexLookup(CombinerPreprocessingLayer):
 
     start_index = self._reserved_values + (self.vocab_size() if append else 0)
     values = np.arange(start_index, len(vocab) + start_index, dtype=np.int64)
-
     vocab = self._convert_to_ndarray(vocab, self.dtype)
     self._assert_same_type(self.dtype, vocab, "vocab")
 
@@ -301,19 +356,84 @@ class IndexLookup(CombinerPreprocessingLayer):
       raise RuntimeError("_set_state_variables() must be called after build().")
     self.set_vocabulary(updates[_VOCAB_NAME])
 
-  def call(self, inputs):
+  def __call__(self, inputs, invert=False, **kwargs):
+    if invert and not self._inverse_table:
+      # If the user wants to perform an inverse lookup, we need to build an
+      # inverse lookup table and initialize it to have the inverse of the
+      # forward table's vocabulary.
+      self._inverse_table = lookup_ops.MutableHashTable(
+          key_dtype=self._output_dtype,
+          value_dtype=self.dtype,
+          default_value="",
+          name=(self._name + "_inverse_index_table"))
+
+      tracked_inverse_table = self._add_trackable(
+          self._inverse_table, trainable=False)
+      # This is a workaround for summary() on this layer. Because the table is
+      # not mutable during training, the effective number of parameters (and so
+      # the weight shape) is 0; we add this as an attr so that the parameter
+      # counting code in the Model object doesn't throw an attribute error.
+      tracked_inverse_table.shape = tensor_shape.TensorShape((0,))
+
+      # This is a workaround for saving not working yet for MutableHashTables.
+      # By replacing the existing function call by an explicit failure, we
+      # can provide a more user-friendly error message.
+      def fail(_):
+        raise NotImplementedError(
+            "Saving is not yet supported for IndexLookup layers.")
+
+      self._inverse_table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
+      self._initialize_inverse_table()
+
+    return super(IndexLookup, self).__call__(inputs, invert=invert, **kwargs)
+
+  def replace_oov_buckets(self, inputs, lookups):
+    if self.num_oov_tokens <= 1:
+      return lookups
+
+    if inputs.dtype.is_integer:
+      inputs = string_ops.as_string(inputs)
+    hashed_inputs = string_ops.string_to_hash_bucket_fast(
+        inputs, num_buckets=self.num_oov_tokens)
+    if self.reserve_zero:
+      hashed_inputs = math_ops.add(hashed_inputs, 1)
+    return array_ops.where(math_ops.equal(lookups, -1), hashed_inputs, lookups)
+
+  def call(self, inputs, invert=False):
+    table = self._inverse_table if invert else self._table
     # The table lookup ops don't natively support ragged tensors, so if we have
     # a RT we need to use map_flat_values to look up every element.
     if ragged_tensor.is_ragged(inputs):
-      indexed_data = ragged_functional_ops.map_flat_values(
-          self._table.lookup, inputs)
+      indexed_data = ragged_functional_ops.map_flat_values(table.lookup, inputs)
+      if not invert:
+        indexed_data = ragged_functional_ops.map_flat_values(
+            self.replace_oov_buckets, inputs, indexed_data)
+    elif isinstance(
+        inputs, (sparse_tensor.SparseTensor, sparse_tensor.SparseTensorValue)):
+      if not invert:
+        values = self.replace_oov_buckets(inputs.values,
+                                          table.lookup(inputs.values))
+      indexed_data = sparse_tensor.SparseTensor(inputs.indices, values,
+                                                inputs.dense_shape)
     else:
-      indexed_data = self._table.lookup(inputs)
+      indexed_data = table.lookup(inputs)
+      if not invert:
+        indexed_data = self.replace_oov_buckets(inputs, indexed_data)
+      # (b/149446477): output does not preserve input shape.
+      indexed_data.set_shape(inputs.shape)
 
-    return indexed_data
+    # Composite tensors can pass tensor values through, which will cause
+    # errors if this is the only layer in the model. To fix this, pass
+    # the output through an identity op.
+    return array_ops.identity(indexed_data)
 
 
-class _IndexLookupCombiner(Combiner):
+class _IndexLookupAccumulator(
+    collections.namedtuple("Accumulator", ["count_dict"])):
+  pass
+
+
+class _IndexLookupCombiner(base_preprocessing_layer.Combiner):
   """Combiner for the IndexLookup preprocessing layer.
 
   This class encapsulates the logic for computing a vocabulary based on the
@@ -323,29 +443,26 @@ class _IndexLookupCombiner(Combiner):
     vocab_size: (Optional) If set, only the top `vocab_size` tokens (based on
       frequency across the dataset) are retained in the vocabulary. If None, or
       set to a value greater than the total number of distinct tokens in the
-      dataset, all tokens are retained.
+      dataset, all tokens are retained.s
   """
-  ACCUMULATOR_CLS = collections.namedtuple("Accumulator", ["count_dict"])
 
   def __init__(self, vocab_size=None):
     self._vocab_size = vocab_size
 
   def compute(self, values, accumulator=None):
     """Compute a step in this computation, returning a new accumulator."""
-    if ragged_tensor.is_ragged(values):
-      values = values.to_list()
-    if isinstance(values, ops.EagerTensor):
-      values = values.numpy()
-    if isinstance(values, np.ndarray):
-      values = values.tolist()
+    values = base_preprocessing_layer.convert_to_list(values)
 
     if accumulator is None:
       accumulator = self._create_accumulator()
 
     # TODO(momernick): Benchmark improvements to this algorithm.
     for document in values:
-      for token in document:
-        accumulator.count_dict[token] += 1
+      if not isinstance(document, list):
+        accumulator.count_dict[document] += 1
+      else:
+        for token in document:
+          accumulator.count_dict[token] += 1
 
     return accumulator
 
@@ -406,4 +523,4 @@ class _IndexLookupCombiner(Combiner):
     """Accumulate a sorted array of vocab tokens and corresponding counts."""
 
     count_dict = collections.defaultdict(int)
-    return self.ACCUMULATOR_CLS(count_dict)
+    return _IndexLookupAccumulator(count_dict)

@@ -70,21 +70,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node, bool is_arg_max) {
           TF_LITE_ARG_MIN_MAX(int8_t, int32_t, int32_t);
           break;
         default:
-          context->ReportError(context,
-                               "Only float32, uint8 and int8 are "
-                               "supported currently, got %s.",
-                               TfLiteTypeGetName(input->type));
+          TF_LITE_KERNEL_LOG(context,
+                             "Only float32, uint8 and int8 are "
+                             "supported currently, got %s.",
+                             TfLiteTypeGetName(input->type));
           return kTfLiteError;
       }
     } else {
-      context->ReportError(context,
-                           "Only int32 are supported currently, got %s.",
-                           TfLiteTypeGetName(output->type));
+      TF_LITE_KERNEL_LOG(context, "Only int32 are supported currently, got %s.",
+                         TfLiteTypeGetName(output->type));
       return kTfLiteError;
     }
   } else {
-    context->ReportError(context, "Only int32 are supported currently, got %s.",
-                         TfLiteTypeGetName(axis->type));
+    TF_LITE_KERNEL_LOG(context, "Only int32 are supported currently, got %s.",
+                       TfLiteTypeGetName(axis->type));
     return kTfLiteError;
   }
 

@@ -33,6 +33,15 @@ limitations under the License.
 namespace xla {
 using absl::StrCat;
 
+StatusOr<HloInstruction*> MakeUnaryHlo(HloOpcode opcode,
+                                       HloInstruction* operand) {
+  HloComputation* computation = operand->parent();
+  TF_ASSIGN_OR_RETURN(Shape unary_op_shape,
+                      ShapeInference::InferUnaryOpShape(opcode, operand));
+  return computation->AddInstruction(
+      HloInstruction::CreateUnary(unary_op_shape, opcode, operand));
+}
+
 StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
                                         HloInstruction* rhs) {
   HloComputation* computation = lhs->parent();
@@ -296,6 +305,31 @@ StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
 
 StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
                                         HloInstruction* init_value,
+                                        absl::Span<const int64> dimensions,
+                                        HloOpcode binary_opcode) {
+  auto scalar_shape = ShapeUtil::MakeShape(operand->shape().element_type(), {});
+  auto result_shape = ShapeUtil::FilterDimensions(
+      [&](const int64 dim) { return !absl::c_linear_search(dimensions, dim); },
+      operand->shape());
+  HloComputation* reduce_computation;
+  {
+    HloComputation::Builder b(operand->name() + ".reduce_sub_computation");
+    auto lhs = b.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "lhs"));
+    auto rhs = b.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "rhs"));
+    b.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, binary_opcode, lhs, rhs));
+    reduce_computation =
+        operand->parent()->parent()->AddEmbeddedComputation(b.Build());
+  }
+
+  return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
+      result_shape, operand, init_value, dimensions, reduce_computation));
+}
+
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
                                         HloOpcode binary_opcode,
                                         HloModule* module) {
   DCHECK_NE(nullptr, module);
@@ -317,6 +351,15 @@ StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
 
   return operand->parent()->AddInstruction(HloInstruction::CreateReduce(
       scalar_shape, operand, init_value, all_dims, reduce_computation));
+}
+
+StatusOr<HloInstruction*> MakeReverseHlo(HloInstruction* operand,
+                                         absl::Span<const int64> dimensions) {
+  HloComputation* computation = operand->parent();
+  TF_ASSIGN_OR_RETURN(Shape reverse_shape, ShapeInference::InferReverseShape(
+                                               operand->shape(), dimensions));
+  return computation->AddInstruction(
+      HloInstruction::CreateReverse(reverse_shape, operand, dimensions));
 }
 
 StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,

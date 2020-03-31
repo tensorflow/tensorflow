@@ -43,6 +43,7 @@ void PercentileSamplerCell::Add(double sample) {
 
 Percentiles PercentileSamplerCell::value() const {
   Percentiles pct_samples;
+  pct_samples.unit_of_measure = unit_of_measure_;
   size_t total_samples;
   long double accumulator;
   std::vector<Sample> samples = GetSamples(&total_samples, &accumulator);

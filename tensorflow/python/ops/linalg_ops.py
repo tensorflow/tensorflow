@@ -200,7 +200,7 @@ def eye(num_rows,
   ==> [[1., 0.],
        [0., 1.]]
 
-  # Construct a batch of 3 identity matricies, each 2 x 2.
+  # Construct a batch of 3 identity matrices, each 2 x 2.
   # batch_identity[i, :, :] is a 2 x 2 identity matrix, i = 0, 1, 2.
   batch_identity = tf.eye(2, batch_shape=[3])
 

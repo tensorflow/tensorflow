@@ -170,6 +170,14 @@ class ReductionCodegenInfo {
     return &reduction_input_addresses_;
   }
 
+  std::vector<llvm::Value*>* GetMutableInitialValues() {
+    return &initial_values_;
+  }
+
+  absl::Span<llvm::Value* const> GetInitialValues() const {
+    return initial_values_;
+  }
+
   // Returns the address of the input element to perform the reduction with.
   absl::Span<llvm::AllocaInst* const> GetReductionInputAddresses() const {
     return reduction_input_addresses_;
@@ -177,7 +185,19 @@ class ReductionCodegenInfo {
 
   bool IsRowReduction() const { return is_row_reduction_; }
 
+  // Gets a pointer to a mutable shared cache used by reduction.
+  std::vector<llvm::GlobalVariable*>* GetMutableSharedCache() {
+    return &shared_cache_;
+  }
+
+  // Shared cache used for reduction.
+  absl::Span<llvm::GlobalVariable* const> GetSharedCache() const {
+    return shared_cache_;
+  }
+
  private:
+  std::vector<llvm::GlobalVariable*> shared_cache_;
+  std::vector<llvm::Value*> initial_values_;
   const KernelMappingScheme mapping_scheme_;
   AddressVector partial_result_addresses_;
   AddressVector reduction_input_addresses_;

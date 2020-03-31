@@ -24,12 +24,16 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/container/inlined_vector.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/device_base.h"
@@ -151,14 +155,10 @@ TEST(TestKernel, TestRegisterKernelBuilder) {
 
 class DummyDevice : public DeviceBase {
  public:
-  DummyDevice(Env* env, bool save) : DeviceBase(env), save_(save) {}
-  bool RequiresRecordingAccessedTensors() const override { return save_; }
+  explicit DummyDevice(Env* env) : DeviceBase(env) {}
   Allocator* GetAllocator(AllocatorAttributes /*attr*/) override {
     return cpu_allocator();
   }
-
- private:
-  bool save_;
 };
 
 TEST(TestKernel, TestInputAndOutputCount) {
@@ -219,7 +219,7 @@ TEST(TestKernel, TestInputAndOutputCount) {
 
   {
     OpKernelContext::Params p;
-    DummyDevice dummy_device(nullptr, false);
+    DummyDevice dummy_device(nullptr);
     p.device = &dummy_device;
     p.step_id = 43;
 

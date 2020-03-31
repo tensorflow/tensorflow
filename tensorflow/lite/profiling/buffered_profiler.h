@@ -88,6 +88,13 @@ class BufferedProfiler : public tflite::Profiler {
     buffer_.EndEvent(event_handle);
   }
 
+  void AddEvent(const char* tag, EventType event_type, uint32_t event_metadata,
+                uint64_t start, uint64_t end,
+                uint32_t event_subgraph_index) override {
+    buffer_.AddEvent(tag, event_type, event_metadata, start, end,
+                     event_subgraph_index);
+  }
+
   void StartProfiling() { buffer_.SetEnabled(true); }
   void StopProfiling() { buffer_.SetEnabled(false); }
   void Reset() { buffer_.Reset(); }

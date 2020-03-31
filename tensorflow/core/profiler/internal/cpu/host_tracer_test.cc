@@ -17,7 +17,6 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/types/optional.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -37,7 +36,7 @@ namespace {
 
 using ::testing::UnorderedElementsAre;
 
-NodeExecStats MakeNodeStats(const string& name, int32 thread_id,
+NodeExecStats MakeNodeStats(const string& name, uint32 thread_id,
                             const string& label = "") {
   NodeExecStats ns;
   ns.set_node_name(name);
@@ -75,7 +74,7 @@ inline ::testing::PolymorphicMatcher<NodeStatsMatcher> EqualsNodeStats(
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
-  int32 thread_id = Env::Default()->GetCurrentThreadId();
+  uint32 thread_id = Env::Default()->GetCurrentThreadId();
 
   auto tracer = CreateHostTracer(ProfilerOptions());
 
@@ -107,23 +106,36 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsRunMetadata) {
 }
 
 TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
-  int32 thread_id = Env::Default()->GetCurrentThreadId();
-  string thread_name;
-  ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
-
-  auto tracer = CreateHostTracer(ProfilerOptions());
-
-  TF_ASSERT_OK(tracer->Start());
-  { TraceMe traceme("hello"); }
-  { TraceMe traceme("world"); }
-  { TraceMe traceme("contains#inside"); }
-  { TraceMe traceme("good#key1=value1#"); }
-  { TraceMe traceme("morning#key1=value1,key2=value2#"); }
-  { TraceMe traceme("incomplete#key1=value1,key2#"); }
-  TF_ASSERT_OK(tracer->Stop());
-
+  uint32 thread_id;
+  string thread_name = "MyThreadName";
   XSpace space;
-  TF_ASSERT_OK(tracer->CollectData(&space));
+
+  // We start a thread with a known and controled name. As of the time of
+  // writing, not all platforms (example: Windows) allow reading through the
+  // system to the current thread name/description. By starting a thread with a
+  // name, we control this behavior entirely within the TensorFlow subsystems.
+  std::unique_ptr<Thread> traced_thread(
+      Env::Default()->StartThread(ThreadOptions(), thread_name, [&] {
+        // Some implementations add additional information to the thread name.
+        // Recapture this information.
+        ASSERT_TRUE(Env::Default()->GetCurrentThreadName(&thread_name));
+        thread_id = Env::Default()->GetCurrentThreadId();
+
+        auto tracer = CreateHostTracer(ProfilerOptions());
+
+        TF_ASSERT_OK(tracer->Start());
+        { TraceMe traceme("hello"); }
+        { TraceMe traceme("world"); }
+        { TraceMe traceme("contains#inside"); }
+        { TraceMe traceme("good#key1=value1#"); }
+        { TraceMe traceme("morning#key1=value1,key2=value2#"); }
+        { TraceMe traceme("incomplete#key1=value1,key2#"); }
+        TF_ASSERT_OK(tracer->Stop());
+
+        TF_ASSERT_OK(tracer->CollectData(&space));
+      }));
+  traced_thread.reset();      // Join thread, waiting for completion.
+  ASSERT_NO_FATAL_FAILURE();  // Test for failure in child thread.
 
   ASSERT_EQ(space.planes_size(), 1);
   const auto& plane = space.planes(0);

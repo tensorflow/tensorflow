@@ -649,7 +649,7 @@ class RNNTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
-  # TODO(scottzhu): Look into updating for V2 Intializers.
+  # TODO(scottzhu): Look into updating for V2 Initializers.
   @test_util.run_deprecated_v1
   def testRNNCellSerialization(self):
     for cell in [

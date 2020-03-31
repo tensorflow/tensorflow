@@ -548,6 +548,12 @@ Status WindowsFileSystem::GetMatchingPaths(const string& pattern,
   return Status::OK();
 }
 
+bool WindowsFileSystem::Match(const string& filename, const string& pattern) {
+  std::wstring ws_path(Utf8ToWideChar(filename));
+  std::wstring ws_pattern(Utf8ToWideChar(pattern));
+  return PathMatchSpecW(ws_path.c_str(), ws_pattern.c_str()) == TRUE;
+}
+
 Status WindowsFileSystem::Stat(const string& fname, FileStatistics* stat) {
   Status result;
   struct _stat sbuf;

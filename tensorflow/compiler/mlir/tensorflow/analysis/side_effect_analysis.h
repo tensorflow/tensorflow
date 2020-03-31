@@ -22,10 +22,10 @@ limitations under the License.
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Region.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {
@@ -64,7 +64,7 @@ class ResourceAliasAnalysis {
 // successors for each op, based on side-effects on known and unknown resources.
 // Side-effecting ops on unknown resources are conservatively treated as
 // interfering with all known resource op accesses. It distinguishes accesses
-// based on whether they are read-only, and read-only ops do not interfer with
+// based on whether they are read-only, and read-only ops do not interfere with
 // each other.
 //
 // If there are nested regions, each region is handled separately, and control

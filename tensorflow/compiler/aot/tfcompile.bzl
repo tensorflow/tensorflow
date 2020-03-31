@@ -26,6 +26,7 @@ def tf_library(
         name,
         graph,
         config,
+        debug_info = None,
         freeze_checkpoint = None,
         freeze_saver = None,
         cpp_class = None,
@@ -37,7 +38,7 @@ def tf_library(
         tfcompile_tool = "//tensorflow/compiler/aot:tfcompile",
         include_standard_runtime_deps = True,
         enable_xla_hlo_profiling = False,
-        mlir_components = None,
+        mlir_components = "None",
         deps = None,
         tags = []):
     """Runs tfcompile to compile a TensorFlow graph into executable code.
@@ -88,8 +89,8 @@ def tf_library(
       enable_xla_hlo_profiling: Enable XLA HLO profiling in the generated
         program, and emit metadata that lets us pretty-print the gathered
         profile counters.
-      mlir_components: When the value is "Bridge", use MLIR to translate
-        GraphDef to HLO.
+      mlir_components: When the value is "None", no components use MLIR. When
+        the value is "Bridge", use MLIR to translate GraphDef to HLO.
       deps: a list of deps to include on the build rules for the generated
         library, added to the standard deps if standard_runtime_deps is True.
       tags: tags to apply to subsidiary build rules.
@@ -189,17 +190,17 @@ def tf_library(
     else:
         profiling_flag = ""
 
-    if mlir_components:
-        mlir_flag = "--mlir_components=" + mlir_components
-    else:
-        mlir_flag = ""
+    mlir_flag = "--mlir_components=" + mlir_components
+
+    srcs = [tfcompile_graph, config]
+    debug_info_flag = ""
+    if debug_info:
+        srcs.append(debug_info)
+        debug_info_flag = " --debug_info=$(location " + debug_info + ")"
 
     native.genrule(
         name = ("gen_" + name),
-        srcs = [
-            tfcompile_graph,
-            config,
-        ],
+        srcs = srcs,
         outs = [
             header_file,
             metadata_object_file,
@@ -209,6 +210,7 @@ def tf_library(
             "CUDA_VISIBLE_DEVICES='' " +
             "$(location " + tfcompile_tool + ")" +
             " --graph=$(location " + tfcompile_graph + ")" +
+            debug_info_flag +
             " --config=$(location " + config + ")" +
             " --entry_point=" + ep +
             " --cpp_class=" + cpp_class +
@@ -240,10 +242,7 @@ def tf_library(
     session_module_pb = name + "_session_module.pb"
     native.genrule(
         name = (name + "_session_module"),
-        srcs = [
-            tfcompile_graph,
-            config,
-        ],
+        srcs = srcs,
         outs = [
             session_module_pb,
         ],
@@ -251,6 +250,7 @@ def tf_library(
             "CUDA_VISIBLE_DEVICES='' " +
             "$(location " + tfcompile_tool + ")" +
             " --graph=$(location " + tfcompile_graph + ")" +
+            debug_info_flag +
             " --config=$(location " + config + ")" +
             " --entry_point=" + ep +
             " --cpp_class=" + cpp_class +
@@ -410,5 +410,6 @@ def target_llvm_triple():
         "//tensorflow:ios_x86_64": "x86_64-apple-ios",
         "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
         "//tensorflow:macos": "x86_64-none-darwin",
+        "//tensorflow:windows": "x86_64-none-windows",
         "//conditions:default": "x86_64-pc-linux",
     })

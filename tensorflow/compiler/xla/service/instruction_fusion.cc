@@ -167,6 +167,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRng:
     case HloOpcode::kRngGetAndUpdateState:
+    case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
@@ -688,14 +689,6 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (FusionWouldDuplicate(*producer, *consumer) &&
       (!may_duplicate_ || is_expensive_(*producer)) &&
       !IsAlwaysDuplicable(*producer)) {
-    return false;
-  }
-
-  if (producer->CouldBeBitcast() &&
-      // We can't fuse parameters anyhow, so we leave the user unfused to become
-      // a bitcast. If the operand is not a parameter, we would break a
-      // potential fusion to make it a bitcast, which is not so clear a win.
-      producer->operand(0)->opcode() == HloOpcode::kParameter) {
     return false;
   }
 

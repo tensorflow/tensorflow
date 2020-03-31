@@ -71,9 +71,18 @@ class IndexLookup(index_lookup.IndexLookup,
   def _clear_table(self):
     keys, _ = self._table.export()
     K.get_session().run(self._table.remove(keys))
+    if self._inverse_table:
+      keys, _ = self._inverse_table.export()
+      K.get_session().run(self._inverse_table.remove(keys))
 
   def _insert_table_data(self, keys, values):
     K.get_session().run(self._table.insert(keys, values))
+    if self._inverse_table:
+      K.get_session().run(self._inverse_table.insert(values, keys))
+
+  def _initialize_inverse_table(self):
+    keys, values = self._table.export()
+    K.get_session().run(self._inverse_table.insert(values, keys))
 
   def _to_numpy(self, data):
     """Converts preprocessed inputs into numpy arrays."""

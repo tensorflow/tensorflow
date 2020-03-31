@@ -34,10 +34,17 @@ namespace tensorflow {
 namespace testing {
 
 // Return a temporary directory suitable for temporary testing files.
+//
+// Where possible, consider using Env::LocalTempFilename over this function.
 string TmpDir();
 
 // Returns the path to TensorFlow in the directory containing data
 // dependencies.
+//
+// A better alternative would be making use if
+// tensorflow/core/platform/resource_loader.h:GetDataDependencyFilepath. That
+// function should do the right thing both within and outside of tests allowing
+// avoiding test specific APIs.
 string TensorFlowSrcRoot();
 
 // Return a random number generator seed to use in randomized tests.

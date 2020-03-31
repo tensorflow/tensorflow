@@ -1045,7 +1045,7 @@ def export_scoped_meta_graph(filename=None,
       name, _ = os.path.splitext(filename)
       debug_filename = "{name}{ext}".format(name=name, ext=".debug")
 
-      # Gets the operation from the graph by the name. Exludes variable nodes,
+      # Gets the operation from the graph by the name. Excludes variable nodes,
       # so only the nodes in the frozen models are included.
       # TODO(liufengdb): fix this for functions.
       ops_to_export = []

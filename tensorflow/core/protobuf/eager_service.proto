@@ -11,7 +11,7 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
 
 // A proto representation of an eager operation.
 message Operation {
@@ -23,7 +23,17 @@ message Operation {
   // future.
   int64 id = 1;
   string name = 2;
+  // TODO(b/150963957): Deprecate this.
   repeated RemoteTensorHandle inputs = 3;
+
+  message Input {
+    oneof item {
+      RemoteTensorHandle remote_handle = 1;
+      TensorProto tensor = 2;
+    }
+  }
+
+  repeated Input op_inputs = 10;
 
   // Control Operation IDs that will be respected when ops are re-ordered by
   // async execution. If async execution (+ op re-ordering) is not enabled, this
@@ -55,11 +65,20 @@ message QueueItem {
     // Takes a FunctionDef and makes it enqueable on the remote worker.
     RegisterFunctionOp register_function = 4;
     CleanupFunctionOp cleanup_function = 5;
+    // A remote executor is created to execute ops/functions asynchronously
+    // enqueued in streaming call. Request with this item type waits for pending
+    // nodes to finish on the remote executor and report status.
+    SyncRemoteExecutorForStream sync_remote_executor_for_stream = 6;
   }
 }
 
 message QueueResponse {
+  // `shape` and `tensor` cannot be set in the same response.
+  // Shapes of output tensors for creating remote TensorHandles.
   repeated TensorShapeProto shape = 1;
+
+  // Output tensors of a remote function. Set when Operation.id is invalid.
+  repeated TensorProto tensor = 2;
 }
 
 message CreateContextRequest {
@@ -191,6 +210,8 @@ message RegisterFunctionOp {
 message CleanupFunctionOp {
   int64 step_id = 1;
 }
+
+message SyncRemoteExecutorForStream {}
 
 message SendTensorOp {
   // All remote tensors are identified by <Op ID, Output num>. To mimic this

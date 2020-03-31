@@ -124,7 +124,7 @@ def _node_name(n):
 
 
 def _get_colocated_node_name(colocated_node_name):
-  """Decodes colocated node name and returns it without loc:@ preprended."""
+  """Decodes colocated node name and returns it without loc:@ prepended."""
   colocated_node_decoded = colocated_node_name.decode("utf-8")
   if colocated_node_decoded.startswith("loc:@"):
     return colocated_node_decoded[5:]

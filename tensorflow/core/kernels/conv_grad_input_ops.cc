@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -36,7 +37,6 @@ limitations under the License.
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,7 +57,7 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
@@ -450,14 +450,12 @@ class Conv2DBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
-            "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
+
     TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context,
+                   Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
+                                                   out_backprop.shape(),
+                                                   data_format_, &input_shape));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,
@@ -549,14 +547,12 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     const Tensor& input_sizes = context->input(0);
     const Tensor& filter = context->input(1);
     const Tensor& out_backprop = context->input(2);
-    OP_REQUIRES(
-        context, TensorShapeUtils::IsVector(input_sizes.shape()),
-        errors::InvalidArgument(
-            "Conv2DBackpropInput: input_sizes input must be 1-dim, not ",
-            input_sizes.dims()));
+
     TensorShape input_shape;
-    OP_REQUIRES_OK(context, TensorShapeUtils::MakeShape(
-                                input_sizes.vec<int32>(), &input_shape));
+    OP_REQUIRES_OK(context,
+                   Conv2DBackpropComputeInputShape(input_sizes, filter.shape(),
+                                                   out_backprop.shape(),
+                                                   data_format_, &input_shape));
 
     ConvBackpropDimensions dims;
     OP_REQUIRES_OK(context,
@@ -1143,6 +1139,12 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
       device_id,                           // device_id
       conv_desc.group_count()              // group_count
   };
+#if TENSORFLOW_USE_ROCM
+  // cudnn_use_autotune is applicable only the CUDA flow
+  // for ROCm/MIOpen, we need to call GetMIOpenConvolveAlgorithms explicitly
+  // if we do not have a cached algorithm_config for this conv_parameters
+  cudnn_use_autotune = true;
+#endif
   AlgorithmConfig algorithm_config;
   if (cudnn_use_autotune && !AutoTuneConvBwdData::GetInstance()->Find(
                                 conv_parameters, &algorithm_config)) {

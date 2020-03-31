@@ -30,9 +30,8 @@ idf_component_register(
 target_compile_options(${COMPONENT_LIB} PRIVATE
   -Wno-maybe-uninitialized
   -Wno-missing-field-initializers
-  -Wno-pointer-sign
   -Wno-type-limits)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} %{CC_FLAGS}%")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} %{CXX_FLAGS}%")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} %{LINKER_FLAGS}%")
+target_compile_options(${COMPONENT_LIB} PRIVATE %{CC_FLAGS}%)
+target_compile_options(${COMPONENT_LIB} PRIVATE $<$<COMPILE_LANGUAGE:CXX>: %{CXX_FLAGS}% >)
+target_link_libraries(${COMPONENT_LIB} PRIVATE %{LINKER_FLAGS}%)

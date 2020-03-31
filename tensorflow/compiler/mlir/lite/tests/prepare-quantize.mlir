@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-whitelist="quantize_float_placeholder_only" | FileCheck %s
+// RUN: tf-opt %s -tfl-prepare-quantize -tfl-test-quantize-whitelist="quantize_float_placeholder_only,not_reset_input" | FileCheck %s
 
 // CHECK-LABEL: quantize_float_placeholder_only
 func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xf32>) -> (tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>) {
@@ -9,6 +9,15 @@ func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>
 // CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%arg2)
 // CHECK-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
 // CHECK-NEXT: %[[dq]], %arg1, %[[dq_0]]
+}
+
+// CHECK-LABEL: not_reset_input
+func @not_reset_input(%arg0: tensor<f32>) -> (tensor<!quant.uniform<i16:f32, 1.0>>) {
+  %0 = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i16:f32, 1.0>>} : (tensor<f32>) -> tensor<!quant.uniform<i16:f32, 1.0>>
+  return %0: tensor<!quant.uniform<i16:f32, 1.0>>
+
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%arg0) {qtype = tensor<!quant.uniform<i16:f32, 1.000000e+00>>}
+// CHECK-NEXT: return %[[q]]
 }
 
 // CHECK-LABEL: DequantizeAndQuantize
@@ -612,4 +621,17 @@ func @QuantizeSharedBiases2(
 // CHECK: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
 // CHECK: %{{.*}} = tfl.add %{{.*}}, %[[dq_0]]
 // CHECK: %{{.*}} = "tfl.conv_2d"(%{{.*}}, %{{.*}}, %[[dq]])
+}
+
+// CHECK-LABEL: ReturnQuantizedResult
+func @ReturnQuantizedResult(%arg0: tensor<1x224x224x3xf32>, %arg1: tensor<32x3x3x3xf32>, %arg2: tensor<32xf32>) -> (tensor<1x112x112x32xf32>, tensor<1x112x112x32xf32>) {
+  %0 = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2) {depth_multiplier = 4 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "VALID", stride_h = 4 : i32, stride_w = 5 : i32} : (tensor<1x224x224x3xf32>, tensor<32x3x3x3xf32>, tensor<32xf32>) -> tensor<1x112x112x32xf32>
+  %1 = "tfl.quantize"(%0) {qtype = tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>} : (tensor<1x112x112x32xf32>) -> tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>
+  %2 = "tfl.dequantize"(%1) : (tensor<1x112x112x32x!quant.uniform<u8:f32, 0.023528476789885875>>) -> (tensor<1x112x112x32xf32>)
+  return %0, %2 : tensor<1x112x112x32xf32>, tensor<1x112x112x32xf32>
+
+// CHECK: %[[dw:.*]] = "tfl.depthwise_conv_2d"(%arg0, %arg1, %arg2)
+// CHECK: %[[q:.*]] = "tfl.quantize"(%[[dw]])
+// CHECK: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
+// CHECK: return %[[dq]], %[[dq]]
 }

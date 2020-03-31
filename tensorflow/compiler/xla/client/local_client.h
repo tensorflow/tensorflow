@@ -61,8 +61,7 @@ class LocalExecutable {
   // executable.
   StatusOr<ExecutionOutput> RunAsync(
       absl::Span<Shape const* const> argument_host_shapes,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
-      ExecutableRunOptions run_options);
+      std::vector<ExecutionInput> arguments, ExecutableRunOptions run_options);
 
   // Return the options used to build the executable.
   const ExecutableBuildOptions& build_options() const { return build_options_; }
@@ -76,8 +75,8 @@ class LocalExecutable {
   //
   // The given ExecutableRunOptions override any values from TF_XLA_FLAGS
   // environment variable.
-  Status ValidateExecutionOptions(
-      const ExecutableRunOptions& run_options, const Backend& backend);
+  Status ValidateExecutionOptions(const ExecutableRunOptions& run_options,
+                                  const Backend& backend);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
   StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);

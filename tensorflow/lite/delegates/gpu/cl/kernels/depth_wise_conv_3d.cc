@@ -256,7 +256,7 @@ DepthWiseConvolution3D& DepthWiseConvolution3D::operator=(
   return *this;
 }
 
-Status DepthWiseConvolution3D::Compile(
+absl::Status DepthWiseConvolution3D::Compile(
     const CreationContext& creation_context) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
@@ -268,7 +268,7 @@ Status DepthWiseConvolution3D::Compile(
       *creation_context.device, &kernel_);
 }
 
-Status DepthWiseConvolution3D::BindArguments() {
+absl::Status DepthWiseConvolution3D::BindArguments() {
   kernel_.ResetBindingCounter();
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
   if (weights_are_buffer_) {
@@ -295,7 +295,7 @@ Status DepthWiseConvolution3D::BindArguments() {
   }
   RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDS()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDS()));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 int3 DepthWiseConvolution3D::GetGridSize() const {
@@ -305,17 +305,17 @@ int3 DepthWiseConvolution3D::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-Status DepthWiseConvolution3D::Tune(const TuningParameters& params) {
+absl::Status DepthWiseConvolution3D::Tune(const TuningParameters& params) {
   RETURN_IF_ERROR(BindArguments());
   return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
-Status DepthWiseConvolution3D::AddToQueue(CLCommandQueue* queue) {
+absl::Status DepthWiseConvolution3D::AddToQueue(CLCommandQueue* queue) {
   RETURN_IF_ERROR(BindArguments());
   return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
-Status CreateDepthWiseConvolution3D(
+absl::Status CreateDepthWiseConvolution3D(
     const CreationContext& creation_context, const OperationDef& definition,
     const DepthwiseConvolution3DAttributes& attr,
     DepthWiseConvolution3D* result) {
@@ -330,7 +330,7 @@ Status CreateDepthWiseConvolution3D(
   create_info.aligned_size = attr.weights.shape.o * attr.weights.shape.i;
   RETURN_IF_ERROR(CreateLinearStorage(
       create_info, attr.bias, creation_context.context, &result->biases_));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace cl

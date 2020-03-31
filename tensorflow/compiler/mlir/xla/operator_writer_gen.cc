@@ -26,8 +26,8 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
-#include "mlir/TableGen/Operator.h"  // TF:llvm-project
+#include "mlir/Support/STLExtras.h"  // from @llvm-project
+#include "mlir/TableGen/Operator.h"  // from @llvm-project
 
 using llvm::raw_ostream;
 using llvm::RecordKeeper;
@@ -131,7 +131,12 @@ static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   // Emit a function to generate an XLA operation for the operations with
   // auto-generated builders.
   os << "mlir::LogicalResult ExportXlaOperator(\n"
-        "mlir::Operation* op, OpLoweringContext lowering_context) {\n";
+        "mlir::Operation* op, OpLoweringContext lowering_context) {\n\n";
+
+  // Create a scoped object to assign sharding to generated XLA ops. Any HLO
+  // can have an attribute of "sharding".
+  os << "  xla::XlaScopedShardingAssignment sharding(lowering_context.builder, "
+        "CreateOpShardingFromAttribute(op));\n\n";
 
   // Retrieve all the definitions derived from HLO_Op and sort by record name.
   for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {

@@ -97,7 +97,7 @@ class LinearModel(training.Model):
 
   def build(self, input_shape):
     self.dense_layers = []
-    if isinstance(input_shape, list):
+    if isinstance(input_shape, (tuple, list)):
       for shape in input_shape:
         layer = core.Dense(
             units=self.units,

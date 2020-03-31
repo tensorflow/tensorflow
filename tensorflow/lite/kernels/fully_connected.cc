@@ -23,10 +23,12 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/optimized/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/sparse_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -38,11 +40,24 @@ namespace ops {
 namespace builtin {
 namespace fully_connected {
 
+namespace {
+bool SupportedSparsityFormat(const TfLiteSparsity& sparsity) {
+  if (sparsity.dim_metadata[0].format == kTfLiteDimDense &&
+      sparsity.dim_metadata[1].format == kTfLiteDimSparseCSR) {
+    return true;
+  }
+
+  return false;
+}
+}  // namespace
+
 // This file has four implementations of FullyConnected
 enum KernelType {
   kReference,
   kGenericOptimized,
   kLegacyPie,  // Legacy path used by the PIE team and related clients.
+  kSparseReference,
+  kSparseOptimized,
 };
 
 struct OpData {
@@ -180,6 +195,11 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
         &data->output_activation_max));
   }
 
+  if (input->type == kTfLiteInt16 && output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+  }
+
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate a temporary
   // buffer to store the intermediate quantized values.
@@ -231,7 +251,7 @@ TfLiteStatus PrepareImpl(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_size_array = nullptr;
   if (params->keep_num_dims) {
     // When number of dimensions are kept the filter operates along the last
-    // dimenions. In other words, for an input tensor with shape
+    // dimensions. In other words, for an input tensor with shape
     // [batch_size, ..., n_inputs] and a filter of shape [n_inputs, n_units]
     // this Op produces an output of shape [batch_size, ..., n_units].
     TF_LITE_ENSURE_EQ(context, input->dims->data[input->dims->size - 1],
@@ -298,8 +318,7 @@ TfLiteStatus EvalPie(TfLiteContext* context, TfLiteNode* node,
   // Compute output += weight * input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       GetTensorData<float>(filter), num_units, input_size,
-      GetTensorData<float>(input), batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      GetTensorData<float>(input), batch_size, GetTensorData<float>(output));
 
   // Apply activation function
   tensor_utils::ApplyActivationToVector(
@@ -364,12 +383,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
       batch_size, scratch, GetTensorData<float>(output),
-      /*result_stride=*/1, CpuBackendContext::GetFromContext(context));
+      CpuBackendContext::GetFromContext(context));
 #else
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
       filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
-      batch_size, GetTensorData<float>(output),
-      /*result_stride=*/1);
+      batch_size, GetTensorData<float>(output));
 #endif
   // Apply activation function to floats.
   tensor_utils::ApplyActivationToVector(
@@ -417,9 +435,7 @@ void FullyConnectedInt16(const OpData* data, const TfLiteTensor* input,
                          const TfLiteTensor* filter, const TfLiteTensor* bias,
                          TfLiteTensor* output) {
   FullyConnectedParams op_params;
-  op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = -filter->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data->output_multiplier;
   op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
@@ -574,8 +590,38 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
     FullyConnectedParams op_params;
     op_params.float_activation_min = output_activation_min;
     op_params.float_activation_max = output_activation_max;
+
     reference_ops::FullyConnected(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
+        GetTensorShape(filter), GetTensorData<float>(filter),
+        GetTensorShape(bias), GetTensorData<float>(bias),
+        GetTensorShape(output), GetTensorData<float>(output));
+  } else if (kernel_type == kSparseReference) {
+    FullyConnectedParams op_params;
+    op_params.float_activation_min = output_activation_min;
+    op_params.float_activation_max = output_activation_max;
+    TF_LITE_ENSURE(context, filter->sparsity != nullptr);
+
+    const auto& sparsity = *filter->sparsity;
+    reference_ops::FullyConnectedSparseWeight(
+        sparsity, op_params, GetTensorShape(input), GetTensorData<float>(input),
+        GetTensorShape(filter), GetTensorData<float>(filter),
+        GetTensorShape(bias), GetTensorData<float>(bias),
+        GetTensorShape(output), GetTensorData<float>(output));
+  } else if (kernel_type == kSparseOptimized) {
+    FullyConnectedParams op_params;
+    op_params.float_activation_min = output_activation_min;
+    op_params.float_activation_max = output_activation_max;
+    TF_LITE_ENSURE(context, filter->sparsity != nullptr);
+
+    const auto& sparsity = *filter->sparsity;
+    if (!SupportedSparsityFormat(sparsity)) {
+      context->ReportError(context,
+                           "Unsupported sparse fully-connected weight format.");
+      return kTfLiteError;
+    }
+    optimized_ops::FullyConnectedSparseWeight(
+        sparsity, op_params, GetTensorShape(input), GetTensorData<float>(input),
         GetTensorShape(filter), GetTensorData<float>(filter),
         GetTensorShape(bias), GetTensorData<float>(bias),
         GetTensorShape(output), GetTensorData<float>(output));
@@ -652,6 +698,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 }  // namespace fully_connected
+
+// TODO(b/147449640): Clean up sparse registrations after conversion is done.
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_REF() {
+  static TfLiteRegistration r = {
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kSparseReference>,
+      fully_connected::Eval<fully_connected::kSparseReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_FULLY_CONNECTED_SPARSE_OPT() {
+  static TfLiteRegistration r = {
+      fully_connected::Init, fully_connected::Free,
+      fully_connected::Prepare<fully_connected::kSparseOptimized>,
+      fully_connected::Eval<fully_connected::kSparseOptimized>};
+  return &r;
+}
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF() {
   static TfLiteRegistration r = {

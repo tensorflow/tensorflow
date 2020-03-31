@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,6 +37,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
 from tensorflow.python.ops import stateless_random_ops
+from tensorflow.python.util.tf_export import keras_export
 
 ResizeMethod = image_ops.ResizeMethod
 
@@ -51,6 +53,7 @@ _RESIZE_METHODS = {
 }
 
 
+@keras_export('keras.layers.experimental.preprocessing.Resizing')
 class Resizing(Layer):
   """Image resizing layer.
 
@@ -63,21 +66,21 @@ class Resizing(Layer):
     interpolation: String, the interpolation method. Defaults to `bilinear`.
       Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
       `gaussian`, `mitchellcubic`
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, interpolation='bilinear', **kwargs):
+  def __init__(self,
+               height,
+               width,
+               interpolation='bilinear',
+               name=None,
+               **kwargs):
     self.target_height = height
     self.target_width = width
     self.interpolation = interpolation
     self._interpolation_method = get_interpolation(interpolation)
     self.input_spec = InputSpec(ndim=4)
-    super(Resizing, self).__init__(**kwargs)
-
-  def build(self, input_shape):
-    channel_axis = 3
-    channel_dim = int(input_shape[channel_axis])
-    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
-    self.built = True
+    super(Resizing, self).__init__(name=name, **kwargs)
 
   def call(self, inputs):
     outputs = image_ops.resize_images_v2(
@@ -101,6 +104,7 @@ class Resizing(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.CenterCrop')
 class CenterCrop(Layer):
   """Crop the central portion of the images to target height and width.
 
@@ -118,19 +122,14 @@ class CenterCrop(Layer):
   Arguments:
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, **kwargs):
+  def __init__(self, height, width, name=None, **kwargs):
     self.target_height = height
     self.target_width = width
     self.input_spec = InputSpec(ndim=4)
-    super(CenterCrop, self).__init__(**kwargs)
-
-  def build(self, input_shape):
-    channel_axis = 3
-    channel_dim = int(input_shape[channel_axis])
-    self.input_spec = InputSpec(ndim=4, axes={channel_axis: channel_dim})
-    self.built = True
+    super(CenterCrop, self).__init__(name=name, **kwargs)
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -173,12 +172,13 @@ class CenterCrop(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomCrop')
 class RandomCrop(Layer):
   """Randomly crop the images to target height and width.
 
   This layer will crop all the images in the same batch to the same cropping
   location.
-  By default, random croppping is only applied during training. At inference
+  By default, random cropping is only applied during training. At inference
   time, the images will be first rescaled to preserve the shorter side, and
   center cropped. If you need to apply random cropping at inference time,
   set `training` to True when calling the layer.
@@ -195,15 +195,16 @@ class RandomCrop(Layer):
     height: Integer, the height of the output shape.
     width: Integer, the width of the output shape.
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, height, width, seed=None, **kwargs):
+  def __init__(self, height, width, seed=None, name=None, **kwargs):
     self.height = height
     self.width = width
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomCrop, self).__init__(**kwargs)
+    super(RandomCrop, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -215,10 +216,8 @@ class RandomCrop(Layer):
       crop_size = array_ops.stack(
           [input_shape[0], self.height, self.width, input_shape[3]])
       check = control_flow_ops.Assert(
-          math_ops.reduce_all(input_shape >= crop_size), [
-              'Need value.shape >= size, got input shape', input_shape,
-              ' but height is ', self.height, ' and weight is ', self.width
-          ])
+          math_ops.reduce_all(input_shape >= crop_size),
+          [self.height, self.width])
       input_shape = control_flow_ops.with_dependencies([check], input_shape)
       limit = input_shape - crop_size + 1
       offset = stateless_random_ops.stateless_random_uniform(
@@ -280,6 +279,7 @@ class RandomCrop(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.Rescaling')
 class Rescaling(Layer):
   """Multiply inputs by `scale`.
 
@@ -296,11 +296,12 @@ class Rescaling(Layer):
 
   Arguments:
     scale: Float, the scale to apply to the inputs.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, scale, **kwargs):
+  def __init__(self, scale, name=None, **kwargs):
     self.scale = scale
-    super(Rescaling, self).__init__(**kwargs)
+    super(Rescaling, self).__init__(name=name, **kwargs)
 
   def call(self, inputs):
     dtype = self._compute_dtype
@@ -317,13 +318,16 @@ class Rescaling(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+HORIZONTAL = 'horizontal'
+VERTICAL = 'vertical'
+HORIZONTAL_AND_VERTICAL = 'horizontal_and_vertical'
+
+
+@keras_export('keras.layers.experimental.preprocessing.RandomFlip')
 class RandomFlip(Layer):
   """Randomly flip each image horizontally and vertically.
 
-  This layer will by default flip the images horizontally and then vertically
-  during training time.
-  `RandomFlip(horizontal=True)` will only flip the input horizontally.
-  `RandomFlip(vertical=True)` will only flip the input vertically.
+  This layer will flip the images based on the `mode` attribute.
   During inference time, the output will be identical to input. Call the layer
   with `training=True` to flip the input.
 
@@ -336,23 +340,35 @@ class RandomFlip(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    horizontal: Bool, whether to randomly flip horizontally.
-    width: Bool, whether to randomly flip vertically.
+    mode: String indicating which flip mode to use. Can be "horizontal",
+      "vertical", or "horizontal_and_vertical". Defaults to
+      "horizontal_and_vertical".
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
   """
 
-  def __init__(self, horizontal=None, vertical=None, seed=None, **kwargs):
-    # If both arguments are None, set both to True.
-    if horizontal is None and vertical is None:
+  def __init__(self,
+               mode=HORIZONTAL_AND_VERTICAL,
+               seed=None,
+               name=None,
+               **kwargs):
+    super(RandomFlip, self).__init__(name=name, **kwargs)
+    self.mode = mode
+    if mode == HORIZONTAL:
+      self.horizontal = True
+      self.vertical = False
+    elif mode == VERTICAL:
+      self.horizontal = False
+      self.vertical = True
+    elif mode == HORIZONTAL_AND_VERTICAL:
       self.horizontal = True
       self.vertical = True
     else:
-      self.horizontal = horizontal or False
-      self.vertical = vertical or False
+      raise ValueError('RandomFlip layer {name} received an unknown mode '
+                       'argument {arg}'.format(name=name, arg=mode))
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomFlip, self).__init__(**kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -378,14 +394,15 @@ class RandomFlip(Layer):
 
   def get_config(self):
     config = {
-        'horizontal': self.horizontal,
-        'vertical': self.vertical,
+        'mode': self.mode,
         'seed': self.seed,
     }
     base_config = super(RandomFlip, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+# TODO(tanzheny): Add examples, here and everywhere.
+@keras_export('keras.layers.experimental.preprocessing.RandomTranslation')
 class RandomTranslation(Layer):
   """Randomly translate each image during training.
 
@@ -402,16 +419,26 @@ class RandomTranslation(Layer):
       When represented as a single float, this value is used for both the upper
       and lower bound.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'nearest', 'bilinear'}`).
-    fill_value: Value used for points outside the boundaries of the input if
-      `mode='constant'`.
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      - *reflect*: `(d c b a | a b c d | d c b a)`
+        The input is extended by reflecting about the edge of the last pixel.
+      - *constant*: `(k k k k | a b c d | k k k k)`
+        The input is extended by filling all values beyond the edge with the
+        same constant value k = 0.
+      - *wrap*: `(a b c d | a b c d | a b c d)`
+        The input is extended by wrapping around to the opposite edge.
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
+
   Output shape:
     4D tensor with shape: `(samples, height, width, channels)`,
       data_format='channels_last'.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
@@ -420,9 +447,10 @@ class RandomTranslation(Layer):
   def __init__(self,
                height_factor,
                width_factor,
-               fill_mode='nearest',
-               fill_value=0.,
+               fill_mode='reflect',
+               interpolation='bilinear',
                seed=None,
+               name=None,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -450,15 +478,20 @@ class RandomTranslation(Layer):
       raise ValueError('`width_factor` must have values between [-1, 1], '
                        'got {}'.format(width_factor))
 
-    if fill_mode not in {'nearest', 'bilinear'}:
+    if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+          '`constant` are supported.'.format(fill_mode))
+    if interpolation not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          'Unknown `interpolation` {}. Only `nearest` and '
+          '`bilinear` are supported.'.format(interpolation))
     self.fill_mode = fill_mode
-    self.fill_value = fill_value
+    self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomTranslation, self).__init__(**kwargs)
+    super(RandomTranslation, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -487,7 +520,8 @@ class RandomTranslation(Layer):
       return transform(
           inputs,
           get_translation_matrix(translations),
-          interpolation=self.fill_mode)
+          interpolation=self.interpolation,
+          fill_mode=self.fill_mode)
 
     output = tf_utils.smart_cond(training, random_translated_inputs,
                                  lambda: inputs)
@@ -502,7 +536,7 @@ class RandomTranslation(Layer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
-        'fill_value': self.fill_value,
+        'interpolation': self.interpolation,
         'seed': self.seed,
     }
     base_config = super(RandomTranslation, self).get_config()
@@ -544,7 +578,8 @@ def get_translation_matrix(translations, name=None):
 
 def transform(images,
               transforms,
-              interpolation='nearest',
+              fill_mode='reflect',
+              interpolation='bilinear',
               output_shape=None,
               name=None):
   """Applies the given transform(s) to the image(s).
@@ -561,10 +596,32 @@ def transform(images,
       `k = c0 x + c1 y + 1`. The transforms are *inverted* compared to the
       transform mapping input points to output points. Note that gradients are
       not backpropagated into transformation parameters.
-    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+    fill_mode: Points outside the boundaries of the input are filled according
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
     name: The name of the op.
+
+  ## Fill mode.
+  Behavior for each valid value is as follows:
+
+  reflect (d c b a | a b c d | d c b a)
+  The input is extended by reflecting about the edge of the last pixel.
+
+  constant (k k k k | a b c d | k k k k)
+  The input is extended by filling all values beyond the edge with the same
+  constant value k = 0.
+
+  wrap (a b c d | a b c d | a b c d)
+  The input is extended by wrapping around to the opposite edge.
+
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Output shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
 
   Returns:
     Image(s) with the same type and shape as `images`, with the given
@@ -583,7 +640,7 @@ def transform(images,
         if output_shape_value is not None:
           output_shape = output_shape_value
 
-    output_shape = ops.convert_to_tensor(
+    output_shape = ops.convert_to_tensor_v2(
         output_shape, dtypes.int32, name='output_shape')
 
     if not output_shape.get_shape().is_compatible_with([2]):
@@ -591,6 +648,13 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
+    if compat.forward_compatible(2020, 3, 25):
+      return image_ops.image_projective_transform_v2(
+          images,
+          output_shape=output_shape,
+          transforms=transforms,
+          fill_mode=fill_mode.upper(),
+          interpolation=interpolation.upper())
     return image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
@@ -638,6 +702,7 @@ def get_rotation_matrix(angles, image_height, image_width, name=None):
         axis=1)
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomRotation')
 class RandomRotation(Layer):
   """Randomly rotate each image.
 
@@ -658,9 +723,24 @@ class RandomRotation(Layer):
       2 representing lower and upper bound for rotating clockwise and
       counter-clockwise. When represented as a single float, lower = upper.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'constant', 'nearest', 'bilinear', 'reflect',
-      'wrap'}`).
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      - *reflect*: `(d c b a | a b c d | d c b a)`
+        The input is extended by reflecting about the edge of the last pixel.
+      - *constant*: `(k k k k | a b c d | k k k k)`
+        The input is extended by filling all values beyond the edge with the
+        same constant value k = 0.
+      - *wrap*: `(a b c d | a b c d | a b c d)`
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+  Output shape:
+    4D tensor with shape: `(samples, height, width, channels)`,
+      data_format='channels_last'.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
@@ -668,8 +748,10 @@ class RandomRotation(Layer):
 
   def __init__(self,
                factor,
-               fill_mode='nearest',
+               fill_mode='reflect',
+               interpolation='bilinear',
                seed=None,
+               name=None,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -680,14 +762,20 @@ class RandomRotation(Layer):
     if self.lower < 0. or self.upper < 0.:
       raise ValueError('Factor cannot have negative values, '
                        'got {}'.format(factor))
-    if fill_mode not in {'nearest', 'bilinear'}:
+    if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+          '`constant` are supported.'.format(fill_mode))
+    if interpolation not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          'Unknown `interpolation` {}. Only `nearest` and '
+          '`bilinear` are supported.'.format(interpolation))
     self.fill_mode = fill_mode
+    self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomRotation, self).__init__(**kwargs)
+    super(RandomRotation, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -707,7 +795,8 @@ class RandomRotation(Layer):
       return transform(
           inputs,
           get_rotation_matrix(angles, img_hd, img_wd),
-          interpolation=self.fill_mode)
+          fill_mode=self.fill_mode,
+          interpolation=self.interpolation)
 
     output = tf_utils.smart_cond(training, random_rotated_inputs,
                                  lambda: inputs)
@@ -721,12 +810,14 @@ class RandomRotation(Layer):
     config = {
         'factor': self.factor,
         'fill_mode': self.fill_mode,
+        'interpolation': self.interpolation,
         'seed': self.seed,
     }
     base_config = super(RandomRotation, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomZoom')
 class RandomZoom(Layer):
   """Randomly zoom each image during training.
 
@@ -742,10 +833,16 @@ class RandomZoom(Layer):
       upper and lower bound. For instance, `width_factor=(0.2, 0.3)` result in
       an output zoom varying in the range `[original * 20%, original * 30%]`.
     fill_mode: Points outside the boundaries of the input are filled according
-      to the given mode (one of `{'nearest', 'bilinear'}`).
-    fill_value: Value used for points outside the boundaries of the input if
-      `mode='constant'`.
+      to the given mode (one of `{'constant', 'reflect', 'wrap'}`).
+      - *reflect*: `(d c b a | a b c d | d c b a)`
+        The input is extended by reflecting about the edge of the last pixel.
+      - *constant*: `(k k k k | a b c d | k k k k)`
+        The input is extended by filling all values beyond the edge with the
+        same constant value k = 0.
+      - *wrap*: `(a b c d | a b c d | a b c d)`
+    interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
 
   Input shape:
     4D tensor with shape:
@@ -763,9 +860,10 @@ class RandomZoom(Layer):
   def __init__(self,
                height_factor,
                width_factor,
-               fill_mode='nearest',
-               fill_value=0.,
+               fill_mode='reflect',
+               interpolation='bilinear',
                seed=None,
+               name=None,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -793,15 +891,20 @@ class RandomZoom(Layer):
       raise ValueError('`width_factor` cannot have lower bound larger than '
                        'upper bound, got {}.'.format(width_factor))
 
-    if fill_mode not in {'nearest', 'bilinear'}:
+    if fill_mode not in {'reflect', 'wrap', 'constant'}:
       raise NotImplementedError(
-          '`fill_mode` {} is not supported yet.'.format(fill_mode))
+          'Unknown `fill_mode` {}. Only `reflect`, `wrap` and '
+          '`constant` are supported.'.format(fill_mode))
+    if interpolation not in {'nearest', 'bilinear'}:
+      raise NotImplementedError(
+          'Unknown `interpolation` {}. Only `nearest` and '
+          '`bilinear` are supported.'.format(interpolation))
     self.fill_mode = fill_mode
-    self.fill_value = fill_value
+    self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
     self.input_spec = InputSpec(ndim=4)
-    super(RandomZoom, self).__init__(**kwargs)
+    super(RandomZoom, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -829,7 +932,8 @@ class RandomZoom(Layer):
           dtype=inputs.dtype)
       return transform(
           inputs, get_zoom_matrix(zooms, img_hd, img_wd),
-          interpolation=self.fill_mode)
+          fill_mode=self.fill_mode,
+          interpolation=self.interpolation)
 
     output = tf_utils.smart_cond(training, random_zoomed_inputs,
                                  lambda: inputs)
@@ -844,7 +948,7 @@ class RandomZoom(Layer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
-        'fill_value': self.fill_value,
+        'interpolation': self.interpolation,
         'seed': self.seed,
     }
     base_config = super(RandomZoom, self).get_config()
@@ -892,6 +996,7 @@ def get_zoom_matrix(zooms, image_height, image_width, name=None):
         axis=1)
 
 
+@keras_export('keras.layers.experimental.preprocessing.RandomContrast')
 class RandomContrast(Layer):
   """Adjust the contrast of an image or images by a random factor.
 
@@ -911,17 +1016,19 @@ class RandomContrast(Layer):
     `(samples, height, width, channels)`, data_format='channels_last'.
 
   Attributes:
-    factor: a positive float represented as fraction of value, or a tuple
-      of size 2 representing lower and upper bound. When represented as a
-      single float, lower = upper. The contrast factor will be randomly picked
-      between [1.0 - lower, 1.0 + upper].
+    factor: a positive float represented as fraction of value, or a tuple of
+      size 2 representing lower and upper bound. When represented as a single
+      float, lower = upper. The contrast factor will be randomly picked between
+      [1.0 - lower, 1.0 + upper].
     seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
   Raise:
     ValueError: if lower bound is not between [0, 1], or upper bound is
       negative.
   """
 
-  def __init__(self, factor, seed=None, **kwargs):
+  def __init__(self, factor, seed=None, name=None, **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
       self.lower = factor[0]
@@ -933,7 +1040,7 @@ class RandomContrast(Layer):
                        'got {}'.format(factor))
     self.seed = seed
     self.input_spec = InputSpec(ndim=4)
-    super(RandomContrast, self).__init__(**kwargs)
+    super(RandomContrast, self).__init__(name=name, **kwargs)
 
   def call(self, inputs, training=None):
     if training is None:
@@ -957,6 +1064,194 @@ class RandomContrast(Layer):
         'seed': self.seed,
     }
     base_config = super(RandomContrast, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.layers.experimental.preprocessing.RandomHeight')
+class RandomHeight(Layer):
+  """Randomly vary the height of a batch of images during training.
+
+  Adjusts the height of a batch of images by a random factor. The input
+  should be a 4-D tensor in the "channels_last" image data format.
+
+  By default, this layer is inactive during inference.
+
+  Arguments:
+    factor: A positive float (fraction of original height), or a tuple of size 2
+      representing lower and upper bound for resizing vertically. When
+      represented as a single float, this value is used for both the upper and
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output height
+      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
+      0.3)` results in an output height varying in the range `[original - 20%,
+      original + 30%]`. `factor=0.2` results in an output height varying in the
+      range `[original - 20%, original + 20%]`.
+    interpolation: String, the interpolation method. Defaults to `bilinear`.
+      Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
+      `gaussian`, `mitchellcubic`
+    seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
+  Input shape:
+    4D tensor with shape: `(samples, height, width, channels)`
+      (data_format='channels_last').
+  Output shape:
+    4D tensor with shape: `(samples, random_height, width, channels)`.
+  """
+
+  def __init__(self,
+               factor,
+               interpolation='bilinear',
+               seed=None,
+               name=None,
+               **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.height_lower = -factor[0]
+      self.height_upper = factor[1]
+    else:
+      self.height_lower = self.height_upper = factor
+    if self.height_lower > 1.:
+      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+                       'got {}'.format(factor))
+    self.interpolation = interpolation
+    self._interpolation_method = get_interpolation(interpolation)
+    self.input_spec = InputSpec(ndim=4)
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    super(RandomHeight, self).__init__(name=name, **kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_height_inputs():
+      """Inputs height-adjusted with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      h_axis, w_axis = 1, 2
+      img_hd = math_ops.cast(inputs_shape[h_axis], dtypes.float32)
+      img_wd = inputs_shape[w_axis]
+      height_factor = self._rng.uniform(
+          shape=[],
+          minval=(1.0 - self.height_lower),
+          maxval=(1.0 + self.height_upper))
+      adjusted_height = math_ops.cast(height_factor * img_hd, dtypes.int32)
+      adjusted_size = array_ops.stack([adjusted_height, img_wd])
+      output = image_ops.resize_images_v2(
+          images=inputs, size=adjusted_size, method=self._interpolation_method)
+      original_shape = inputs.shape.as_list()
+      output_shape = [original_shape[0]] + [None] + original_shape[2:4]
+      output.set_shape(output_shape)
+      return output
+
+    return tf_utils.smart_cond(training, random_height_inputs, lambda: inputs)
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    return tensor_shape.TensorShape(
+        [input_shape[0], None, input_shape[2], input_shape[3]])
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'interpolation': self.interpolation,
+        'seed': self.seed,
+    }
+    base_config = super(RandomHeight, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
+@keras_export('keras.layers.experimental.preprocessing.RandomWidth')
+class RandomWidth(Layer):
+  """Randomly vary the width of a batch of images during training.
+
+  Adjusts the width of a batch of images by a random factor. The input
+  should be a 4-D tensor in the "channels_last" image data format.
+
+  By default, this layer is inactive during inference.
+
+  Arguments:
+    factor: A positive float (fraction of original width), or a tuple of
+      size 2 representing lower and upper bound for resizing horizontally. When
+      represented as a single float, this value is used for both the upper and
+      lower bound. For instance, `factor=(0.2, 0.3)` results in an output width
+      varying in the range `[original + 20%, original + 30%]`. `factor=(-0.2,
+      0.3)` results in an output width varying in the range `[original - 20%,
+      original + 30%]`. `factor=0.2` results in an output width varying in the
+      range `[original - 20%, original + 20%]`.
+    interpolation: String, the interpolation method. Defaults to `bilinear`.
+      Supports `bilinear`, `nearest`, `bicubic`, `area`, `lanczos3`, `lanczos5`,
+      `gaussian`, `mitchellcubic`
+    seed: Integer. Used to create a random seed.
+    name: A string, the name of the layer.
+
+  Input shape:
+    4D tensor with shape:
+    `(samples, height, width, channels)` (data_format='channels_last').
+
+  Output shape:
+    4D tensor with shape:
+    `(samples, random_height, width, channels)`.
+  """
+
+  def __init__(self,
+               factor,
+               interpolation='bilinear',
+               seed=None,
+               name=None,
+               **kwargs):
+    self.factor = factor
+    if isinstance(factor, (tuple, list)):
+      self.width_lower = -factor[0]
+      self.width_upper = factor[1]
+    else:
+      self.width_lower = self.width_upper = factor
+    if self.width_lower > 1.:
+      raise ValueError('`factor` cannot have abs lower bound larger than 1.0, '
+                       'got {}'.format(factor))
+    self.interpolation = interpolation
+    self._interpolation_method = get_interpolation(interpolation)
+    self.input_spec = InputSpec(ndim=4)
+    self.seed = seed
+    self._rng = make_generator(self.seed)
+    super(RandomWidth, self).__init__(name=name, **kwargs)
+
+  def call(self, inputs, training=None):
+    if training is None:
+      training = K.learning_phase()
+
+    def random_width_inputs():
+      """Inputs width-adjusted with random ops."""
+      inputs_shape = array_ops.shape(inputs)
+      h_axis, w_axis = 1, 2
+      img_hd = inputs_shape[h_axis]
+      img_wd = math_ops.cast(inputs_shape[w_axis], dtypes.float32)
+      width_factor = self._rng.uniform(
+          shape=[],
+          minval=(1.0 - self.width_lower),
+          maxval=(1.0 + self.width_upper))
+      adjusted_width = math_ops.cast(width_factor * img_wd, dtypes.int32)
+      adjusted_size = array_ops.stack([img_hd, adjusted_width])
+      output = image_ops.resize_images_v2(
+          images=inputs, size=adjusted_size, method=self._interpolation_method)
+      original_shape = inputs.shape.as_list()
+      output_shape = original_shape[0:2] + [None] + [original_shape[3]]
+      output.set_shape(output_shape)
+      return output
+
+    return tf_utils.smart_cond(training, random_width_inputs, lambda: inputs)
+
+  def compute_output_shape(self, input_shape):
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    return tensor_shape.TensorShape(
+        [input_shape[0], input_shape[1], None, input_shape[3]])
+
+  def get_config(self):
+    config = {
+        'factor': self.factor,
+        'interpolation': self.interpolation,
+        'seed': self.seed,
+    }
+    base_config = super(RandomWidth, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 

@@ -151,7 +151,7 @@ def _get_argspec_for_partial(obj):
   """Implements `getargspec` for `functools.partial` objects.
 
   Args:
-    obj: The `functools.partial` obeject
+    obj: The `functools.partial` object
   Returns:
     An `inspect.ArgSpec`
   Raises:

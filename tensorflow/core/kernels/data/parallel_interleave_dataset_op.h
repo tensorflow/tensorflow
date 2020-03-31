@@ -29,6 +29,10 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kOtherArguments = "other_arguments";
   static constexpr const char* const kCycleLength = "cycle_length";
   static constexpr const char* const kBlockLength = "block_length";
+  static constexpr const char* const kBufferOutputElements =
+      "buffer_output_elements";
+  static constexpr const char* const kPrefetchInputElements =
+      "prefetch_input_elements";
   static constexpr const char* const kNumParallelCalls = "num_parallel_calls";
   static constexpr const char* const kFunc = "f";
   static constexpr const char* const kTarguments = "Targuments";

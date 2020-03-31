@@ -521,7 +521,7 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     estimator_.compute_memory_overlap_ = value;
   }
 
-  void ValidateOpDimensionsFromImputs(const int n, const int h, const int w,
+  void ValidateOpDimensionsFromInputs(const int n, const int h, const int w,
                                       const int c, const int kx, const int ky,
                                       const int sx, const int sy,
                                       const string& data_format,
@@ -571,12 +571,12 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
-  std::unordered_set<string> persisent_ops = {
+  std::unordered_set<string> persistent_ops = {
       "Const",       "Variable",       "VariableV2", "AutoReloadVariable",
       "VarHandleOp", "ReadVariableOp",
   };
-  // Minmum cost for all persistent ops.
-  for (const auto& op : persisent_ops) {
+  // Minimum cost for all persistent ops.
+  for (const auto& op : persistent_ops) {
     op_context.op_info.set_op(op);
     auto cost = estimator_.PredictCosts(op_context);
     EXPECT_EQ(Costs::Duration(0), cost.memory_time);
@@ -1128,10 +1128,10 @@ TEST_F(OpLevelCostEstimatorTest, OpDimensionsFromInputs) {
   for (const auto& p : paddings) {
     for (const auto& f : formats) {
       // n, h, w, c, kx, ky, sx, sy, data_format, padding.
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
-      ValidateOpDimensionsFromImputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
-      ValidateOpDimensionsFromImputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 3, 3, 2, 2, f, p);
+      ValidateOpDimensionsFromInputs(10, 20, 20, 100, 1, 1, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 200, 200, 100, 5, 5, 3, 3, f, p);
+      ValidateOpDimensionsFromInputs(10, 14, 14, 3840, 3, 3, 2, 2, f, p);
     }
   }
 }

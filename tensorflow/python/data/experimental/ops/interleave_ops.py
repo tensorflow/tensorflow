@@ -76,9 +76,11 @@ def parallel_interleave(map_func,
     cycle_length: The number of input `Dataset`s to interleave from in parallel.
     block_length: The number of consecutive elements to pull from an input
       `Dataset` before advancing to the next input `Dataset`.
-    sloppy: If false, elements are produced in deterministic order. Otherwise,
-      the implementation is allowed, for the sake of expediency, to produce
-      elements in a non-deterministic order.
+    sloppy: A boolean controlling whether determinism should be traded for
+      performance by allowing elements to be produced out of order.  If
+      `sloppy` is `None`, the `tf.data.Options.experimental_deterministic`
+      dataset option (`True` by default) is used to decide whether to enforce a
+      deterministic order.
     buffer_output_elements: The number of elements each iterator being
       interleaved should buffer (similar to the `.prefetch()` transformation for
       each interleaved iterator).

@@ -1270,7 +1270,7 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = np.ones([3, 6, 5], dtype=dtype)
@@ -1304,7 +1304,7 @@ class AvgPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = np.ones([3, 6, 6, 5], dtype=dtype)
@@ -1355,7 +1355,7 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test1DNumpy(self):
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = np.ones([3, 6, 5], dtype=dtype)
@@ -1389,7 +1389,7 @@ class MaxPoolTest(test_lib.TestCase):
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
   def test2DNumpy(self):
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = np.ones([3, 6, 6, 5], dtype=dtype)
@@ -1442,7 +1442,7 @@ class MaxPoolTest(test_lib.TestCase):
 class ConvolutionTest(test_lib.TestCase):
 
   def testUnknownSize(self):
-    # explicilty use float32 for ROCm, as MIOpen does not yet support float64
+    # explicitly use float32 for ROCm, as MIOpen does not yet support float64
     # np.ones defaults to using float64 when dtype is not explicitly specified
     dtype = np.float32 if test_lib.is_built_with_rocm() else np.float64
     x = tensor_spec.TensorSpec(None, dtypes.float32, name="x")
@@ -1589,6 +1589,34 @@ class RaggedEmbeddingTest(test_lib.TestCase):
     with self.assertRaisesRegex(
         ValueError, "The values contained by the inputs have type*"):
       nn.embedding_lookup_ragged(weights, ragged_ids)
+
+  def testMaxNormForEmbeddings(self):
+    weights = constant_op.constant([[0, 0, 0, 0], [1, 1, 1, 1],
+                                    [2, 2, 2, 2], [3, 3, 3, 3]],
+                                   dtype=dtypes.float32)
+    ragged_ids = ragged_factory_ops.constant([[1, 2, 3], [0], [1, 2]],
+                                             ragged_rank=1)
+
+    actual_embeddings = [
+        nn.embedding_lookup(weights, ragged_ids, max_norm=max_norm)
+        for max_norm in [1, 2, 5]]
+
+    expected_embeddings = (
+        # max_norm = 1
+        [[[.5, .5, .5, .5], [.5, .5, .5, .5], [.5, .5, .5, .5]],
+         [[0, 0, 0, 0]], [[.5, .5, .5, .5], [.5, .5, .5, .5]]],
+        # max_norm = 2
+        [[[1, 1, 1, 1], [1, 1, 1, 1], [1, 1, 1, 1]],
+         [[0, 0, 0, 0]], [[1, 1, 1, 1], [1, 1, 1, 1]]],
+        # max_norm = 5
+        [[[1, 1, 1, 1], [2, 2, 2, 2], [2.5, 2.5, 2.5, 2.5]],
+         [[0, 0, 0, 0]], [[1, 1, 1, 1], [2, 2, 2, 2]]],
+        )
+
+    for expected, actual in zip(expected_embeddings, actual_embeddings):
+      self.assertAllClose(
+          ragged_factory_ops.constant(expected, dtype=float, ragged_rank=1),
+          actual)
 
 
 if __name__ == "__main__":

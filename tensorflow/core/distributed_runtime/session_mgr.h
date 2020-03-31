@@ -100,11 +100,11 @@ class SessionMgr {
 
   Status WorkerSessionForSessionLocked(
       const string& session_handle, std::shared_ptr<WorkerSession>* out_session)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   // A map from session identifier to internal session structure.
-  std::map<string, std::shared_ptr<WorkerSession>> sessions_ GUARDED_BY(mu_);
+  std::map<string, std::shared_ptr<WorkerSession>> sessions_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

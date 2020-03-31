@@ -25,12 +25,14 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_shape_optimization_profiles.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -52,6 +54,7 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
@@ -248,6 +251,16 @@ void GetInputProperties(const grappler::GraphProperties& graph_properties,
   }
 }
 
+// This function checks if a tensor is compatible with TRT.
+//
+// We check that the shape and datatype are compatible with TensorRT. We also
+// return the corresponding trt_dtype, the trt_dims and the batch_size (latter
+// is only needed in implicit batch mode).
+//
+// The return status indicates wether the tensor is compatible.
+//
+// For implicit batch mode, when validation_only == false, we also check that
+// all input dimensions (besides the batch dimension) are known dimensions.
 Status ValidateTensorProperties(const string& producer_node_type,
                                 const DataType dtype,
                                 const PartialTensorShape& shape,
@@ -291,13 +304,15 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
 
   if (validation_only) return Status::OK();
-  // Following are validations at runtime.
 
-  for (int d = first_trt_dim; d < shape.dims(); ++d) {
-    if (shape.dim_size(d) < 0) {
-      return errors::InvalidArgument(
-          "Input tensor with shape ", shape.DebugString(),
-          " has an unknown non-batch dimension at dim ", d);
+  // Following checks are only used during TRT engine creation time.
+  if (use_implicit_batch) {
+    for (int d = first_trt_dim; d < shape.dims(); ++d) {
+      if (shape.dim_size(d) < 0) {
+        return errors::InvalidArgument(
+            "Input tensor with shape ", shape.DebugString(),
+            " has an unknown non-batch dimension at dim ", d);
+      }
     }
   }
   return Status::OK();
@@ -646,6 +661,9 @@ size_t TRT_ShapedWeights::size_bytes() const {
       data_type_size = 2;
       break;
     case nvinfer1::DataType::kINT8:
+#if IS_TRT_VERSION_GE(7, 0, 0, 0)
+    case nvinfer1::DataType::kBOOL:
+#endif
       data_type_size = 1;
       break;
   }
@@ -1329,7 +1347,7 @@ Status Converter::RenameAndMarkOutputTensors(
 Status Converter::BuildCudaEngine(
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, int max_batch_size,
     size_t max_workspace_size_bytes, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator) {
+    TRTInt8Calibrator* calibrator, TrtShapeOptimizationProfile* profiles) {
   VLOG(1) << "Configuring TensorRT builder";
   trt_builder_->setMaxBatchSize(max_batch_size);
   trt_builder_->setGpuAllocator(allocator);
@@ -1349,7 +1367,10 @@ Status Converter::BuildCudaEngine(
       builder_config->setInt8Calibrator(nullptr);
     }
   }
-
+  if (!use_implicit_batch_ && profiles) {
+    TF_RETURN_IF_ERROR(profiles->ConfigureBuilder(
+        trt_builder_.get(), builder_config.get(), network()));
+  }
   VLOG(1) << "Building TensorRT engine";
   engine->reset(
       trt_builder_->buildEngineWithConfig(*network(), *builder_config));
@@ -2205,6 +2226,21 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   return Status::OK();
 }
 
+bool AllowInefficientTranspose() {
+  static bool result = [] {
+    bool value;
+    Status status =
+        ReadBoolFromEnvVar("TF_DEBUG_TRT_ALLOW_INEFFICIENT_TRANSPOSE",
+                           /*default_value=*/false, &value);
+    if (!status.ok()) {
+      LOG(ERROR) << status;
+    }
+    return value;
+  }();
+
+  return result;
+}
+
 Status ConvertTranspose(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
@@ -2225,6 +2261,14 @@ Status ConvertTranspose(OpConverterParams* params) {
   if (perm[0] != 0) {
     return errors::Unimplemented(
         "Transpose at batch dimension is not supported.");
+  }
+
+  // TensorRT as of version 7.0.0.11 is slow transposing large tensors.
+  // So check tensor size, and don't convert if it is too large.
+  constexpr int64_t kMaxEfficientTranspose = 2500000;
+  int64_t tensor_size = TrtTensorDimsNumElements(input_tensor->getDimensions());
+  if (!AllowInefficientTranspose() && tensor_size > kMaxEfficientTranspose) {
+    return errors::Unimplemented(StrCat("Transpose too large:", tensor_size));
   }
 
   if (params->validation_only) return Status::OK();
@@ -2385,6 +2429,56 @@ Status ConvertExpandDims(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status Converter::SqueezeTensor(nvinfer1::ITensor* input,
+                                const std::vector<int>& trt_axes,
+                                nvinfer1::ITensor** output) {
+  const nvinfer1::Dims dims = input->getDimensions();
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  // Mark axes to remove by setting them to 0.
+  for (int axis : trt_axes) {
+    input_dims[axis] = 0;
+  }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  // If the remaining dimensions of a squeeze operation have dynamic sizes, we
+  // need to use TRT ops to build the result shape for the squeeze operation.
+  // This is because IShuffleLayer::setReshapeDimensions treats -1 as a special
+  // value.
+  if (absl::c_any_of(input_dims, [](int i) { return i == -1; })) {
+    nvinfer1::ITensor* shape = network()->addShape(*input)->getOutput(0);
+    std::vector<nvinfer1::ITensor const*> concat_inputs;
+    for (int i = 0; i < input_dims.size(); i++) {
+      // If input dim wasn't set to 0 earlier, we include it in new shape.
+      if (input_dims[i] != 0) {
+        concat_inputs.push_back(
+            network()
+                ->addSlice(*shape, {1, {i}}, {1, {1}}, {1, {1}})
+                ->getOutput(0));
+      }
+    }
+    nvinfer1::IConcatenationLayer* concat_layer = network()->addConcatenation(
+        const_cast<nvinfer1::ITensor* const*>(concat_inputs.data()),
+        concat_inputs.size());
+    concat_layer->setAxis(0);
+    nvinfer1::ITensor* new_shape = concat_layer->getOutput(0);
+    // Reshape input using new shape
+    nvinfer1::IShuffleLayer* shuffle = network()->addShuffle(*input);
+    shuffle->setInput(1, *new_shape);
+    *output = shuffle->getOutput(0);
+    return Status::OK();
+  }
+#endif
+  // Remove all dims which are equal to 0.
+  input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
+                   input_dims.end());
+  // Reshape tensor.
+  nvinfer1::Dims new_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
+  TF_RETURN_IF_ERROR(PrepareTensorForShape(TRT_TensorOrWeights(input), new_dims,
+                                           /*validation_only=*/false, output));
+  return Status::OK();
+}
+
 Status ConvertSqueeze(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
@@ -2395,39 +2489,34 @@ Status ConvertSqueeze(OpConverterParams* params) {
   const TRT_TensorOrWeights& input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
   if (squeeze_dims.empty()) {
     return errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
+  std::vector<int> trt_axes;
+  trt_axes.reserve(squeeze_dims.size());
   for (int tf_axis : squeeze_dims) {
-    // Make sure axis is valid.
+    // If the axis is valid, then convert it to TRT axis, otherwise abort
+    // conversion.
     int trt_axis;
     TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dims.nbDims, node_def.name(),
-                                   /*use_implicit_batch=*/true, &trt_axis));
-    // Make sure target dimension is size 1.
-    if (input_dims[trt_axis] != 1) {
+                                   params->use_implicit_batch, &trt_axis));
+    // Make sure target dimension is size 1 or unknown size (-1)
+    if (input_dims[trt_axis] != -1 && input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
           "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
           " cannot be squeezed because it must be size 1, at ",
           node_def.name());
     }
-    // Mark dim for removal by setting to 0.
-    input_dims[trt_axis] = 0;
+    trt_axes.push_back(trt_axis);
   }
   if (params->validation_only) return Status::OK();
 
-  // Remove all dims which are equal to 0.
-  input_dims.erase(std::remove(input_dims.begin(), input_dims.end(), 0),
-                   input_dims.end());
-  // Reshape tensor.
-  nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   nvinfer1::ITensor* output_tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
+  TF_RETURN_IF_ERROR(params->converter->SqueezeTensor(
+      input_tensor.tensor(), trt_axes, &output_tensor));
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
 }
@@ -4033,6 +4122,7 @@ Status ConvertBinary(OpConverterParams* params) {
   nvinfer1::ILayer* layer = params->converter->network()->addElementWise(
       *tensor_l, *tensor_r, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
 
 #if IS_TRT_VERSION_GE(5, 1, 0, 0)
@@ -5682,7 +5772,8 @@ Status ConvertGraphDefToEngine(
     nvinfer1::ILogger* trt_logger, nvinfer1::IGpuAllocator* allocator,
     TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
-    const bool use_implicit_batch, bool* convert_successfully) {
+    const bool use_implicit_batch, bool* convert_successfully,
+    TrtShapeOptimizationProfile* profiles) {
   engine->reset();
   if (convert_successfully) *convert_successfully = false;
 
@@ -5781,7 +5872,8 @@ Status ConvertGraphDefToEngine(
 
   // Build the engine.
   TF_RETURN_IF_ERROR(converter->BuildCudaEngine(
-      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator));
+      engine, max_batch_size, max_workspace_size_bytes, allocator, calibrator,
+      profiles));
 
   VLOG(1) << "Finished conversion";
   return Status::OK();
