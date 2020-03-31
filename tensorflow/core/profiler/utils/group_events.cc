@@ -356,8 +356,14 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
       {HostEventType::kFunctionRun,
        HostEventType::kExecutorStateProcess,
        {StatType::kStepId}},
+      {HostEventType::kFunctionRun,
+       HostEventType::kExecutorDoneCallback,
+       {StatType::kStepId}},
       {HostEventType::kSessionRun,
        HostEventType::kExecutorStateProcess,
+       {StatType::kStepId}},
+      {HostEventType::kSessionRun,
+       HostEventType::kExecutorDoneCallback,
        {StatType::kStepId}},
       {HostEventType::kExecutorStateProcess,
        HostEventType::kIteratorGetNextOp,
@@ -371,6 +377,10 @@ std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {
   for (int64 event_type : kFunctionalOpEventTypes) {
     connect_info_list.push_back({event_type,
                                  HostEventType::kExecutorStateProcess,
+                                 {StatType::kFunctionStepId},
+                                 {StatType::kStepId}});
+    connect_info_list.push_back({event_type,
+                                 HostEventType::kExecutorDoneCallback,
                                  {StatType::kFunctionStepId},
                                  {StatType::kStepId}});
   }
