@@ -261,11 +261,9 @@ Status LhloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
 
   TF_ASSIGN_OR_RETURN(auto function, CreateFunction(*instr));
   OpBuilder func_builder(function.getBody());
-  llvm::SmallVector<Value, 4> arg_values{function.args_begin(),
-                                         function.args_end()};
-  Value result_memref = function.getArgument(function.getNumArguments() - 1);
   func_builder.create<lhlo::ConcatenateOp>(
-      getLocation(instr), arg_values, result_memref, concatenate_dim);
+      getLocation(instr), function.getArguments().drop_back(),
+      function.getArguments().back(), concatenate_dim);
   return Status::OK();
 }
 
@@ -292,7 +290,7 @@ Status LhloDialectEmitter::HandleFusion(HloInstruction* instr) {
   // Insert the write-back from the HLO computation to the result argument
   // buffer.
   body_builder.setInsertionPoint(fusion_op.region().back().getTerminator());
-  Value result_memref = function.getArgument(function.getNumArguments() - 1);
+  Value result_memref = function.getArguments().back();
   body_builder.create<::mlir::TensorStoreOp>(getLocation(instr), result,
                                              result_memref);
 

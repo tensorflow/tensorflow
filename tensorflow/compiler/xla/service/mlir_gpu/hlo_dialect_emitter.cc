@@ -113,6 +113,7 @@ Status HloDialectEmitter::DefaultAction(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto res_type, ConvertTensorShapeToType<RankedTensorType>(
                                          instr->shape(), builder_));
   llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
@@ -141,6 +142,7 @@ Status HloDialectEmitter::HandleConcatenate(HloInstruction* instr) {
                                          instr->shape(), builder_));
 
   llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
@@ -221,6 +223,7 @@ Status HloDialectEmitter::HandleCompare(HloInstruction* instr) {
       builder_.getStringAttr(
           ComparisonDirectionToString(instr->comparison_direction())));
   llvm::SmallVector<Value, 4> arguments;
+  arguments.reserve(instr->operand_count());
   for (auto operand : instr->operands()) {
     arguments.push_back(instruction_to_values_[operand]);
   }
