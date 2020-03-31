@@ -384,15 +384,16 @@ class OctaveConv1D(OctaveConv):
     channel, in `data_format="channels_last"`.
 
     Examples:
-    # TODO HERE
+
     >>> # The inputs are 128-length vectors with 10 timesteps, and the batch size
-    >>> # is 4.
-    >>> input_shape = (4, 10, 128)
-    >>> x = tf.random.normal(input_shape)
-    >>> y = tf.keras.layers.OctaveConv1D(
-    ... 32, 3, activation='relu',input_shape=input_shape)(x)
-    >>> print(y.shape)
-    (4, 8, 32)
+    >>> # is None.
+    >>> x = Input(shape=(10,128,))
+    >>> y = tf.keras.layers.octave_convolutional.OctaveConv1D(32, 3,
+    ... padding='same', activation='relu',low_freq_ratio=0.25)(x)
+    >>> print(len(y))
+    2
+    >>> print(y[0].shape, y[1].shape])
+    (None, 10, 24) (None, 5, 8)
 
     Arguments
       filters: Integer, the dimensionality of the output space (i.e. the number
@@ -603,32 +604,16 @@ class OctaveConv2D(OctaveConv):
     in `data_format="channels_last"`.
 
     Examples:
-    # TODO HERE
+
     >>> # The inputs are 28x28 RGB images with `channels_last` and the batch
-    >>> # size is 4.
-    >>> input_shape = (4, 28, 28, 3)
-    >>> x = tf.random.normal(input_shape)
-    >>> y = tf.keras.layers.Conv2D(
-    ... 2, 3, activation='relu', input_shape=input_shape)(x)
+    >>> # size is None.
+    >>> x = Input(shape=(28,28,3,))
+    >>> y = tf.keras.layers.octave_convolutional.OctaveConv2D(
+    ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
+    >>> print(len(y))
+    2
     >>> print(y.shape)
-     (4, 26, 26, 2)
-
-    >>> # With `dilation_rate` as 2.
-    >>> input_shape = (4, 28, 28, 3)
-    >>> x = tf.random.normal(input_shape)
-    >>> y = tf.keras.layers.Conv2D(
-    ... 2, 3, activation='relu', dilation_rate=2, input_shape=input_shape)(x)
-    >>> print(y.shape)
-    (4, 24, 24, 2)
-
-    >>> # With `padding` as "same".
-    >>> input_shape = (4, 28, 28, 3)
-    >>> x = tf.random.normal(input_shape)
-    >>> y = tf.keras.layers.Conv2D(
-    ... 2, 3, activation='relu', padding="same", input_shape=input_shape)(x)
-    >>> print(y.shape)
-    (4, 28, 28, 2)
-
+    (None, 28, 28, 24) (None, 14, 14, 8)
 
     Arguments
       filters: Integer, the dimensionality of the output space (i.e. the number
@@ -850,15 +835,16 @@ class OctaveConv3D(OctaveConv):
     in `data_format="channels_last"`.
 
     Examples:
-    # TODO HERE
+
     >>> # The inputs are 28x28x28 volumes with a single channel, and the
-    >>> # batch size is 4
-    >>> input_shape =(4, 28, 28, 28, 1)
-    >>> x = tf.random.normal(input_shape)
-    >>> y = tf.keras.layers.Conv3D(
-    ... 2, 3, activation='relu', input_shape=input_shape)(x)
+    >>> # batch size is None.
+    >>> x = Input(shape=(28, 28, 28, 1,))
+    >>> y = tf.keras.layers.octave_convolutional.OctaveConv3D(
+    ... 32, 3, activation='relu', low_freq_ratio=0.25)(x)
+    >>> print(len(y))
+    2
     >>> print(y.shape)
-    (4, 26, 26, 26, 2)
+    (None, 28, 28, 28, 24) (None, 14, 14, 14, 8)
 
     Arguments
       filters: Integer, the dimensionality of the output space (i.e. the number
@@ -1485,21 +1471,18 @@ class OctaveConvAdd(Layer):
     outputs of Octave Convolution layers
 
     Examples:
-    # TODO HERE
-     >>> # The inputs are 28x28 RGB images with `channels_last` and the batch
-     >>> # size is 4.
-     >>> input_shape = (4, 28, 28, 3)
-     >>> x = tf.random.normal(input_shape)
-     >>> y = tf.keras.layers.Conv2D(
-     ... 2, 3, activation='relu', input_shape=input_shape)(x)
-     >>> print(y.shape)
-     (4, 26, 26, 2)
+
+     >>> # The inputs are 28x28 grayscale images with `channels_last` and the batch
+     >>> # size is None.
+     >>> l1_input = Input(shape=(28,28, 1))
+     >>> l2 = OctaveConv2D(32, (5, 5), activation='relu', low_freq_ratio=0.25)
+     ... (l1_input)
+     >>> l3 = OctaveConvAdd()(l2, builder=MaxPooling2D(pool_size=(2, 2)))
 
     Arguments:
       inputs: list/tuple of input tensors.
       **kwargs: should contain a `builder` argument which is a keras layer
-        # TODO HERE check dropout
-        (e.g. keras.layers.Dropout)
+        (e.g. tensorflow.python.keras.layers.Dropout)
 
     Returns:
       outputs: list of output tensors.
