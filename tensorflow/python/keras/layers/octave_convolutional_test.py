@@ -24,7 +24,7 @@ class OctaveConv1DTest(keras_parameterized.TestCase):
 
     with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
-          keras.layers.OctaveConv1D,
+          keras.layers.octave_convolutional.OctaveConv1D,
           kwargs=kwargs,
           input_shape=(num_samples, length, stack_size),
           expected_output_shape=expected_output_shape)
@@ -40,12 +40,12 @@ class OctaveConv1DTest(keras_parameterized.TestCase):
       ('strides', {'strides': 2}, (None, 3, 2)),
       ('dilation_rate', {'dilation_rate': 2}, (None, 3, 2)),
   )
-  def test_conv1d(self, kwargs, expected_output_shape):
+  def test_octave_conv1D(self, kwargs, expected_output_shape):
     kwargs['filters'] = 2
     kwargs['kernel_size'] = 3
     self._run_test(kwargs, expected_output_shape)
 
-  def test_conv1d_regularizers(self):
+  def test_octave_conv1D_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -57,13 +57,13 @@ class OctaveConv1DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv1D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 2)
       layer(keras.backend.variable(np.ones((1, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-  def test_conv1d_constraints(self):
+  def test_octave_conv1D_constraints(self):
     k_constraint = lambda x: x
     b_constraint = lambda x: x
 
@@ -77,14 +77,14 @@ class OctaveConv1DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv1D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
-  def test_conv1d_recreate_conv(self):
+  def test_octave_conv1D_recreate_conv(self):
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv1D(filters=1,
+      layer = keras.layers.octave_convolutional.OctaveConv1D(filters=1,
                                   kernel_size=3,
                                   strides=1,
                                   dilation_rate=2,
@@ -107,7 +107,7 @@ class OctaveConv2DTest(keras_parameterized.TestCase):
 
     with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
-          keras.layers.OctaveConv2D,
+          keras.layers.octave_convolutional.OctaveConv2D,
           kwargs=kwargs,
           input_shape=(num_samples, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
@@ -123,13 +123,13 @@ class OctaveConv2DTest(keras_parameterized.TestCase):
       # TODO(b/62340061): Support channels_first on CPU.
       ('data_format', {'data_format': 'channels_first'}),
   )
-  def test_conv2d(self, kwargs, expected_output_shape=None):
+  def test_octave_conv2D(self, kwargs, expected_output_shape=None):
     kwargs['filters'] = 2
     kwargs['kernel_size'] = (3, 3)
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
-  def test_conv2d_regularizers(self):
+  def test_octave_conv2D_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -141,13 +141,13 @@ class OctaveConv2DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv2D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
       layer(keras.backend.variable(np.ones((1, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-  def test_conv2d_constraints(self):
+  def test_octave_conv2D_constraints(self):
     k_constraint = lambda x: x
     b_constraint = lambda x: x
 
@@ -161,15 +161,15 @@ class OctaveConv2DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv2D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
-  def test_conv2d_zero_kernel_size(self):
+  def test_octave_conv2D_zero_kernel_size(self):
     kwargs = {'filters': 2, 'kernel_size': 0}
     with self.assertRaises(ValueError):
-      keras.layers.OctaveConv2D(**kwargs)
+      keras.layers.octave_convolutional.OctaveConv2D(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
@@ -184,7 +184,7 @@ class OctaveConv3DTest(keras_parameterized.TestCase):
 
     with self.cached_session(use_gpu=True):
       testing_utils.layer_test(
-          keras.layers.OctaveConv3D,
+          keras.layers.octave_convolutional.OctaveConv3D,
           kwargs=kwargs,
           input_shape=(num_samples, depth, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
@@ -198,13 +198,13 @@ class OctaveConv3DTest(keras_parameterized.TestCase):
       # TODO(b/62340061): Support channels_first on CPU.
       ('data_format', {'data_format': 'channels_first'}),
   )
-  def test_conv3d(self, kwargs, expected_output_shape=None):
+  def test_octave_conv3D(self, kwargs, expected_output_shape=None):
     kwargs['filters'] = 2
     kwargs['kernel_size'] = (3, 3, 3)
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
 
-  def test_conv3d_regularizers(self):
+  def test_octave_conv3D_regularizers(self):
     kwargs = {
         'filters': 3,
         'kernel_size': 3,
@@ -216,14 +216,14 @@ class OctaveConv3DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv3D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
       self.assertEqual(len(layer.losses), 2)
       layer(keras.backend.variable(np.ones((1, 5, 5, 5, 2))))
       self.assertEqual(len(layer.losses), 3)
 
-  def test_conv3d_constraints(self):
+  def test_octave_conv3D_constraints(self):
     k_constraint = lambda x: x
     b_constraint = lambda x: x
 
@@ -237,17 +237,17 @@ class OctaveConv3DTest(keras_parameterized.TestCase):
         'strides': 1
     }
     with self.cached_session(use_gpu=True):
-      layer = keras.layers.OctaveConv3D(**kwargs)
+      layer = keras.layers.octave_convolutional.OctaveConv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(layer.kernel.constraint, k_constraint)
       self.assertEqual(layer.bias.constraint, b_constraint)
 
-  def test_conv3d_dynamic_shape(self):
+  def test_octave_conv3D_dynamic_shape(self):
     input_data = np.random.random((1, 3, 3, 3, 3)).astype(np.float32)
     with self.cached_session(use_gpu=True):
       # Won't raise error here.
       testing_utils.layer_test(
-          keras.layers.OctaveConv3D,
+          keras.layers.octave_convolutional.OctaveConv3D,
           kwargs={
               'data_format': 'channels_last',
               'filters': 3,
@@ -258,7 +258,7 @@ class OctaveConv3DTest(keras_parameterized.TestCase):
           input_data=input_data)
       if test.is_gpu_available(cuda_only=True):
         testing_utils.layer_test(
-            keras.layers.OctaveConv3D,
+            keras.layers.octave_convolutional.OctaveConv3D,
             kwargs={
                 'data_format': 'channels_first',
                 'filters': 3,
@@ -280,7 +280,7 @@ class OctaveConv2DTransposeTest(keras_parameterized.TestCase):
 
     with test_util.use_gpu():
       testing_utils.layer_test(
-          keras.layers.OctaveConv2DTranspose,
+          keras.layers.octave_convolutional.OctaveConv2DTranspose,
           kwargs=kwargs,
           input_shape=(num_samples, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
@@ -294,7 +294,7 @@ class OctaveConv2DTransposeTest(keras_parameterized.TestCase):
       # TODO(b/62340061): Support channels_first on CPU.
       ('data_format', {'data_format': 'channels_first'}),
   )
-  def test_conv2d_transpose(self, kwargs, expected_output_shape=None):
+  def test_octave_conv2D_transpose(self, kwargs, expected_output_shape=None):
     kwargs['filters'] = 2
     kwargs['kernel_size'] = (3, 3)
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
@@ -313,7 +313,7 @@ class OctaveConv3DTransposeTest(keras_parameterized.TestCase):
 
     with test_util.use_gpu():
       testing_utils.layer_test(
-          keras.layers.OctaveConv3DTranspose,
+          keras.layers.octave_convolutional.OctaveConv3DTranspose,
           kwargs=kwargs,
           input_shape=(num_samples, depth, num_row, num_col, stack_size),
           expected_output_shape=expected_output_shape)
@@ -327,8 +327,11 @@ class OctaveConv3DTransposeTest(keras_parameterized.TestCase):
       # TODO(b/62340061): Support channels_first on CPU.
       ('data_format', {'data_format': 'channels_first'}),
   )
-  def test_conv3d_transpose(self, kwargs, expected_output_shape=None):
+  def test_octave_conv3D_transpose(self, kwargs, expected_output_shape=None):
     kwargs['filters'] = 2
     kwargs['kernel_size'] = (3, 3, 3)
     if 'data_format' not in kwargs or test.is_gpu_available(cuda_only=True):
       self._run_test(kwargs, expected_output_shape)
+
+if __name__ == '__main__':
+  test.main()

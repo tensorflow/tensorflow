@@ -1514,7 +1514,7 @@ class OctaveConvAdd(Layer):
     def call(self, inputs, **kwargs):
         builder = kwargs.get('builder', None)
         if builder is None:
-            raise ValueError('A builder function must be passed as argument.')
+            raise ValueError('A builder layer must be passed as argument.')
         if not isinstance(inputs, (list, tuple)):
             inputs = [inputs]
         if len(inputs) > 2:
