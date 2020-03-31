@@ -204,8 +204,7 @@ def swish(x):
   Swish activation function which returns `x*sigmoid(x)`.
   It is a smooth, non-monotonic function that consistently matches 
   or outperforms ReLU on deep networks, it is unbounded above and 
-  bounded below & it is the non-monotonic attribute that actually
-  creates the difference.
+  bounded below.
   
   
   Example Usage:
