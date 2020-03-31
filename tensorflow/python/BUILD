@@ -6479,11 +6479,7 @@ tf_py_test(
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
     tags = ["no_rocm"], # flaky on CI nodes
-=======
-    tags = ["no_rocm"],
->>>>>>> upstream/master
     deps = [
         "client_testlib",
         "framework_test_lib",
@@ -7612,39 +7608,6 @@ tf_py_test(
     ],
 )
 
-<<<<<<< HEAD
-py_library(
-    name = "graph_placer",
-    srcs = [
-        "grappler/controller.py",
-        "grappler/graph_placer.py",
-        "grappler/hierarchical_controller.py",
-    ],
-    deps = [
-        ":python",
-        "//third_party/py/numpy",
-    ],
-)
-
-tf_py_test(
-    name = "graph_placer_test",
-    size = "large",
-    srcs = ["grappler/graph_placer_test.py"],
-    python_version = "PY3",
-    tags = [
-        "grappler",
-        "no_pip",  # graph_placer is not available in pip.
-        "no_rocm",
-    ],
-    deps = [
-        ":client_testlib",
-        ":graph_placer",
-        ":math_ops",
-    ],
-)
-
-=======
->>>>>>> upstream/master
 tf_py_test(
     name = "memory_optimizer_test",
     size = "medium",

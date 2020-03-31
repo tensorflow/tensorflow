@@ -13,12 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-<<<<<<< HEAD
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-=======
-#include "tensorflow/core/framework/node_properties.h"
-#ifdef GOOGLE_CUDA
->>>>>>> upstream/master
 #define EIGEN_USE_GPU
 #include "tensorflow/core/common_runtime/gpu/gpu_managed_allocator.h"
 #endif
@@ -37,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_properties.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
