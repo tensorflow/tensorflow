@@ -159,9 +159,8 @@ class PyLocalClient : public std::enable_shared_from_this<PyLocalClient> {
     notifier(Unimplemented("Cross host receives not implemented."));
   }
 
-  virtual Status CopyToRemoteDevice(PyLocalBuffer* buffer,
-                                    absl::string_view serialized_descriptor,
-                                    Device* device) const {
+  virtual Status CopyToRemoteDevice(
+      PyLocalBuffer* buffer, absl::string_view serialized_descriptor) const {
     return Unimplemented("Cross host sends not implemented.");
   }
 
@@ -275,17 +274,16 @@ class PyLocalBuffer {
   // Copies the buffer to device `dst_device`.
   StatusOr<std::unique_ptr<PyLocalBuffer>> CopyToDevice(Device* dst_device);
 
-  // Copies the buffer to remote device `dst_device`. This call must be preceded
-  // by a call to MakeCrossHostReceiveBuffers on the remote host's
-  // dst_device. MakeCrossHostReceiveBuffers takes an array of shapes to
-  // construct the destination buffers, and a callback supplies an array
-  // containing both the destination buffers, and a serialized descriptor for
-  // each buffer. For each destination buffer there should be a matching call to
-  // src->CopyToRemoteDevice on a remote host for a src buffer of the
-  // corresponding shape. serialized_descriptor is the string returned by the
-  // callback along with the corresponding destination buffer.
-  Status CopyToRemoteDevice(absl::string_view serialized_descriptor,
-                            Device* dst_device);
+  // Copies the buffer to the remote device encoded in serialized_descriptor.
+  // This call must be preceded by a call to MakeCrossHostReceiveBuffers on the
+  // remote host's destination device. MakeCrossHostReceiveBuffers takes an
+  // array of shapes to construct the destination buffers, and a callback
+  // supplies an array containing both the destination buffers, and a serialized
+  // descriptor for each buffer. For each destination buffer there should be a
+  // matching call to src->CopyToRemoteDevice on a remote host for a src buffer
+  // of the corresponding shape. serialized_descriptor is the string returned by
+  // the callback along with the corresponding destination buffer.
+  Status CopyToRemoteDevice(absl::string_view serialized_descriptor);
 
   // Blocks the host until the buffer's value has been computed and is ready for
   // immediate use on the device. Useful in particular for timing benchmarks.

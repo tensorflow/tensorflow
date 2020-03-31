@@ -636,8 +636,8 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalBuffer::CopyToDevice(
 }
 
 Status PyLocalBuffer::CopyToRemoteDevice(
-    absl::string_view serialized_descriptor, Device* dst_device) {
-  return client_->CopyToRemoteDevice(this, serialized_descriptor, dst_device);
+    absl::string_view serialized_descriptor) {
+  return client_->CopyToRemoteDevice(this, serialized_descriptor);
 }
 
 Status PyLocalBuffer::BlockHostUntilReady() {
