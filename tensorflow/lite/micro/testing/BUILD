@@ -1,3 +1,8 @@
+load(
+    "//tensorflow/lite/micro/testing:micro_test.bzl",
+    "tflite_micro_cc_test",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -20,6 +25,16 @@ cc_library(
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/micro:micro_framework",
         "//tensorflow/lite/micro:micro_utils",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "util_test",
+    srcs = [
+        "util_test.cc",
+    ],
+    deps = [
+        ":micro_test",
     ],
 )
 
