@@ -883,9 +883,11 @@ class ExecutorState {
   // A tagged node: <frame*, iter, node*>.
   struct TaggedNode {
     const NodeItem* node_item;
-    FrameState* input_frame = nullptr;
-    int64 input_iter = -1;
-    bool is_dead = false;
+    FrameState* input_frame;  // = nullptr;
+    int64 input_iter;         // = -1;
+    bool is_dead;             // = false;
+
+    TaggedNode() {}
 
     TaggedNode(const NodeItem* node_item, FrameState* in_frame, int64 in_iter,
                bool dead)
@@ -2466,15 +2468,22 @@ void ExecutorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
   const GraphView& gview = executor->gview_;
   IterationState* iter_state = GetIteration(iter);
 
-  auto maybe_add_to_ready = [&](int dst_id,
-                                PendingCounts::AdjustResult adjust_result) {
-    // Add dst to the ready queue if it's ready
-    if (!adjust_result.any_pending) {
-      const NodeItem* dst_item = gview.node(dst_id);
-      ready->emplace_back(dst_item, this, iter, adjust_result.any_dead);
-      iter_state->outstanding_ops++;
-    }
-  };
+// Add dst to the ready queue if it's ready
+//
+// NOTE(mrry): Use a macro here instead of a lambda, because this method is
+// performance-critical and we need to ensure that the code is inlined.
+#define MAYBE_ADD_TO_READY(dst_id, adjust_result)    \
+  do {                                               \
+    if (!adjust_result.any_pending) {                \
+      const NodeItem* dst_item = gview.node(dst_id); \
+      TaggedNode& t = ready->emplace_back();         \
+      t.node_item = dst_item;                        \
+      t.input_frame = this;                          \
+      t.input_iter = iter;                           \
+      t.is_dead = adjust_result.any_dead;            \
+      iter_state->outstanding_ops++;                 \
+    }                                                \
+  } while (0);
 
   Entry* input_tensors = iter_state->input_tensors;
 
@@ -2493,7 +2502,7 @@ void ExecutorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
     } else {
       input_tensors[dst_loc] = (*outputs)[src_slot];
     }
-    maybe_add_to_ready(dst_id, adjust_result);
+    MAYBE_ADD_TO_READY(dst_id, adjust_result);
   }
 
   for (const ControlEdgeInfo& e : item->output_control_edges()) {
@@ -2501,8 +2510,9 @@ void ExecutorState::FrameState::ActivateNodesFastPath(const NodeItem* item,
     const PendingCounts::Handle dst_pending_id = executor->pending_ids_[dst_id];
     const PendingCounts::AdjustResult adjust_result =
         iter_state->adjust_for_activation(dst_pending_id, is_dead);
-    maybe_add_to_ready(dst_id, adjust_result);
+    MAYBE_ADD_TO_READY(dst_id, adjust_result);
   }
+#undef MAYBE_ADD_TO_READY
 }
 
 void ExecutorState::FrameState::ActivateNodesSlowPath(const NodeItem* item,
