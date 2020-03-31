@@ -1421,6 +1421,14 @@ def train_validation_split(arrays, validation_split, shuffle=True):
   train_indices = indices[:split_at]
   val_indices = indices[split_at:]
 
+  if split_at == 0 or split_at == batch_dim:
+    raise ValueError(
+        "Training data contains {batch_dim} samples, which is not sufficient "
+        "to split it into a validation and training set as specified by "
+        "`validation_split={validation_split}`. Either provide more data, or a "
+        "different value for the `validation_split` argument." .format(
+            batch_dim=batch_dim, validation_split=validation_split))
+
   def _split(t, indices):
     if t is None:
       return t
