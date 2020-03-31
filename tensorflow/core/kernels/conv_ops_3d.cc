@@ -43,6 +43,7 @@ using stream_executor::dnn::DimIndex;
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -201,7 +202,23 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
       }
     }
 
-    if (data_format == FORMAT_NHWC) {
+#if GOOGLE_CUDA
+    const bool compute_in_nhwc = CUDNN_VERSION >= 8000 &&
+                                 DataTypeToEnum<T>::value == DT_HALF;
+#else
+    // fast NHWC implementation is a CUDA only feature
+    const bool compute_in_nhwc = false;
+#endif
+    const TensorFormat compute_data_format =
+        (compute_in_nhwc && data_format == FORMAT_NHWC) ? FORMAT_NHWC
+                                                        : FORMAT_NCHW;
+
+    VLOG(3) << "Compute Conv3D with cuDNN:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
+
+    if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+			VLOG(4) << "Convert the input tensor from NDHWC to NCDHW.";
       const TensorShape nchw_shape = ShapeFromFormat(
           FORMAT_NCHW, in_batch, {{in_planes, in_rows, in_cols}}, in_depth);
       if (in_depth > 1) {
@@ -219,7 +236,25 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
       } else {
         CHECK(input.CopyFrom(input, nchw_shape));
       }
+    } else {
+      CHECK(data_format == compute_data_format)  // Crash OK
+          << "Illegal data and compute format pair:"
+          << " data_format=" << ToString(data_format)
+          << " compute_data_format=" << ToString(compute_data_format);
     }
+
+	  constexpr auto kComputeInNHWC =
+        std::make_tuple(se::dnn::DataLayout::kBatchYXDepth,
+                        se::dnn::FilterLayout::kOutputYXInput);
+    constexpr auto kComputeInNCHW =
+        std::make_tuple(se::dnn::DataLayout::kBatchDepthYX,
+                        se::dnn::FilterLayout::kOutputInputYX);
+
+    se::dnn::DataLayout compute_data_layout;
+    se::dnn::FilterLayout filter_layout;
+
+    std::tie(compute_data_layout, filter_layout) =
+        compute_data_format == FORMAT_NHWC ? kComputeInNHWC : kComputeInNCHW;
 
     CHECK(pad_rows >= 0 && pad_cols >= 0 && pad_planes >= 0)
         << "Negative paddings: (" << pad_rows << ", " << pad_cols << ", "
@@ -230,20 +265,21 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         .set_spatial_dim(DimIndex::X, in_cols)
         .set_spatial_dim(DimIndex::Y, in_rows)
         .set_spatial_dim(DimIndex::Z, in_planes)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::BatchDescriptor output_desc(3);
     output_desc.set_count(in_batch)
         .set_spatial_dim(DimIndex::X, out_cols)
         .set_spatial_dim(DimIndex::Y, out_rows)
         .set_spatial_dim(DimIndex::Z, out_planes)
         .set_feature_map_count(out_depth)
-        .set_layout(se::dnn::DataLayout::kBatchDepthYX);
+        .set_layout(compute_data_layout);
     se::dnn::FilterDescriptor filter_desc(3);
     filter_desc.set_spatial_dim(DimIndex::X, filter_cols)
         .set_spatial_dim(DimIndex::Y, filter_rows)
         .set_spatial_dim(DimIndex::Z, filter_planes)
         .set_input_feature_map_count(filter_depth)
-        .set_output_feature_map_count(out_depth);
+        .set_output_feature_map_count(out_depth)
+        .set_layout(filter_layout);
     se::dnn::ConvolutionDescriptor conv_desc(3);
     conv_desc.set_dilation_rate(DimIndex::X, dilations[2])
         .set_dilation_rate(DimIndex::Y, dilations[1])
@@ -257,25 +293,42 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         .set_group_count(in_depth / filter_depth);
 
     Tensor transformed_filter;
+    auto dst_format = 
+        compute_data_format == FORMAT_NCHW ? FORMAT_OIHW: FORMAT_OHWI;
+    VLOG(4) << "Transform filter tensor from " << ToString(FORMAT_HWIO)
+            << " to " << ToString(dst_format);
+    TensorShape dst_shape =
+			  dst_format == FORMAT_OIHW
+            ? TensorShape({filter.dim_size(4), filter.dim_size(3),
+                           filter.dim_size(0), filter.dim_size(1),
+                           filter.dim_size(2)})
+            : TensorShape({filter.dim_size(4), filter.dim_size(0),
+                           filter.dim_size(1), filter.dim_size(2),
+                           filter.dim_size(3)});
     OP_REQUIRES_OK(
         ctx, ctx->allocate_temp(DataTypeToEnum<T>::value,
-                                TensorShape({out_depth, in_depth, filter_planes,
-                                             filter_rows, filter_cols}),
+                                dst_shape,
                                 &transformed_filter));
     // filter: [x, y, z, in, out]
-    // t_filter: [out, in, x, y, z]
+    // t_filter: [out, in, x, y, z] (NCDHW) or
+    // t_filter: [out, x, y, z, in] (NDHWC)
     functor::TransformFilter<GPUDevice, T, int, 5>()(
-        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        ctx->eigen_device<GPUDevice>(), dst_format,
         To32Bit(filter.tensor<T, 5>()),
         To32Bit(transformed_filter.tensor<T, 5>()));
 
     Tensor transformed_output;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_temp(
-                 DataTypeToEnum<T>::value,
-                 ShapeFromFormat(FORMAT_NCHW, in_batch,
-                                 {{out_planes, out_rows, out_cols}}, out_depth),
-                 &transformed_output));
+		if (data_format != compute_data_format) {
+			VLOG(4) << "Allocate temporary memory for output in compute data format";
+      OP_REQUIRES_OK(
+          ctx, ctx->allocate_temp(
+                   DataTypeToEnum<T>::value,
+                   ShapeFromFormat(FORMAT_NCHW, in_batch,
+                                   {{out_planes, out_rows, out_cols}}, out_depth),
+                   &transformed_output));
+    } else {
+			transformed_output = *output;
+    }
 
     auto input_ptr = AsDeviceMemory(input.template flat<T>().data(),
                                     input.template flat<T>().size());
@@ -295,7 +348,7 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         in_batch,
         in_depth,
         {{in_planes, in_rows, in_cols}},
-        FORMAT_NCHW,
+        compute_data_format,
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
         {{dilations[0], dilations[1], dilations[2]}},
@@ -455,15 +508,14 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
           ") filter shape(", filter.shape().DebugString(), ")"));
     }
 
-    if (data_format == FORMAT_NHWC) {
+    if (data_format == FORMAT_NHWC && compute_data_format == FORMAT_NCHW) {
+			VLOG(4) << "Convert the output tensor back from NCDHW to NDHWC.";
       // t_output: [b, out, x, y, z]
       // output: [b, x, y, z, out]
       functor::NCHWToNHWC<GPUDevice, T, 5>()(
           ctx->eigen_device<GPUDevice>(),
           const_cast<const Tensor&>(transformed_output).tensor<T, 5>(),
           output->tensor<T, 5>());
-    } else {
-      *output = transformed_output;
     }
   }
 };
